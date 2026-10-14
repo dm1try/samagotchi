@@ -1,0 +1,113 @@
+import "./dom_shim.js";
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  chainLinkView, infoBarModel, infoButtons, sessionBar, workerBadgeFor,
+} from "../../../lib/samagotchi/web/public/info_bar_model.js";
+import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
+
+const ID = "0123456789abcdef";
+const title = (s) => `title of ${s.id}`;
+
+function args(over = {}) {
+  return {
+    id: ID, state: { ...emptySessionState(), status: "idle", model: "qwen", dir: "/p" }, sessions: [{ id: ID }],
+    versions: { served: "1.0.0", installed: null }, cardTitle: title, continuing: new Set(), restarting: new Set(),
+    streaming: false, running: false, now: 10_000, ...over,
+  };
+}
+
+test("no session: the buttons hidden, no line", () => {
+  const { buttons, bar } = sessionBar(args({ id: null }));
+  assert.equal(bar, null);
+  assert.deepEqual([buttons.continue.shown, buttons.delete.shown, buttons.archive.shown, buttons.stop.shown], [false, false, false, false]);
+  assert.equal(buttons.continue.text, "continue →");
+});
+
+test("a session's line: id, status, model, folder, no chain, parent or delegates", () => {
+  const { bar, buttons } = sessionBar(args());
+  assert.equal(bar.id, ID);
+  assert.equal(bar.status, "idle");
+  assert.equal(bar.model.text, "qwen");
+  assert.equal(bar.dir, "/p");
+  assert.deepEqual(bar.chain, { prev: null, next: null });
+  assert.equal(bar.parent, null);
+  assert.equal(bar.kids, null);
+  assert.equal(bar.worker, null);
+  assert.equal(bar.clock, "");
+  assert.equal(bar.copied, false);
+  assert.deepEqual([buttons.continue.shown, buttons.delete.shown, buttons.archive.shown, buttons.stop.shown], [true, true, true, false]);
+});
+
+test("copied for 2 s after the copy", () => {
+  const state = { ...emptySessionState(), attachCopiedAt: 9_000 };
+  assert.equal(sessionBar(args({ state })).bar.copied, true);
+  assert.equal(sessionBar(args({ state, now: 11_000 })).bar.copied, false);
+});
+
+test("a chain link: ← its previous, → its next (no continue then); the links' titles are the lists'", () => {
+  const sessions = [
+    { id: "prev0000", created_at: "2026-10-01T10:00:00Z", archived: true },
+    { id: ID, continues: "prev0000", created_at: "2026-10-02T10:00:00Z" },
+    { id: "next0000", continues: ID, created_at: "2026-10-03T10:00:00Z" },
+  ];
+  const { bar, buttons } = sessionBar(args({ sessions }));
+  assert.equal(bar.chain.prev.id, "prev0000");
+  assert.equal(bar.chain.prev.preview, "title of prev0000");
+  assert.equal(bar.chain.prev.archived, true);
+  assert.match(bar.chain.prev.date, /^2026-10-0[12]$/);
+  assert.equal(bar.chain.next.id, "next0000");
+  assert.equal(buttons.continue.shown, false);
+  assert.equal(chainLinkView(null, title), null);
+  assert.deepEqual(chainLinkView({ id: "x" }, title), { id: "x", date: "", preview: "", archived: false });
+});
+
+test("a delegate names its parent; a parent its delegates", () => {
+  const sessions = [
+    { id: ID, parent_id: "parent00", first_preview: "mine" },
+    { id: "parent00", first_preview: "the parent" },
+    { id: "kid00000", parent_id: ID, delegate: true, status: "running" },
+  ];
+  const { bar } = sessionBar(args({ sessions, state: { ...emptySessionState(), parentId: "parent00" } }));
+  assert.equal(bar.parent.id, "parent00");
+  assert.match(bar.parent.title, /parent00: the parent/);
+  assert.equal(bar.kids.total, 1);
+});
+
+test("archive flips to unarchive; continue says continuing while one runs; a terminal's session has no continue", () => {
+  const archived = sessionBar(args({ sessions: [{ id: ID, archived: true }] })).buttons.archive;
+  assert.deepEqual([archived.archived, archived.text], [true, "unarchive"]);
+  const busy = sessionBar(args({ continuing: new Set([ID]) })).buttons.continue;
+  assert.deepEqual([busy.disabled, busy.text], [true, "continuing…"]);
+  const tui = sessionBar(args({ state: { ...emptySessionState(), owner: "tui" } })).buttons;
+  assert.equal(tui.continue.shown, false);
+  assert.equal(tui.stop.shown, false);
+});
+
+test("stop while a worker runs it, or the page streams from one", () => {
+  assert.equal(sessionBar(args({ state: { ...emptySessionState(), owner: "worker" } })).buttons.stop.shown, true);
+  assert.equal(sessionBar(args({ streaming: true })).buttons.stop.shown, true);
+  assert.equal(infoButtons({ id: null, state: emptySessionState(), chain: { next: null }, archived: false, continuing: false, streaming: true }).stop.shown, false);
+});
+
+test("an older worker's badge (with its Restart's busy state); none for a current one or a terminal's", () => {
+  const state = { ...emptySessionState(), owner: "worker", workerVersion: "0.9.0", workerFeatures: ["restart"] };
+  const { bar } = sessionBar(args({ state, restarting: new Set([ID]) }));
+  assert.equal(bar.worker.badge.restart, true);
+  assert.equal(bar.worker.busy, true);
+  assert.equal(workerBadgeFor(ID, { ...state, workerVersion: "1.0.0" }, { served: "1.0.0", installed: null }), null);
+  assert.equal(workerBadgeFor(ID, { ...state, owner: "tui" }, { served: "1.0.0", installed: null }), null);
+  assert.equal(workerBadgeFor(null, state, { served: "1.0.0", installed: null }), null);
+});
+
+test("the session clock while a turn runs; ctx and speed from the timing's tokens", () => {
+  const state = {
+    ...emptySessionState(),
+    timing: { ...emptySessionState().timing, activeTurn: { started_at: new Date(Date.now() - 5000).toISOString() } },
+  };
+  const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
+                             restarting: false, running: true, now: Date.now() });
+  assert.match(bar.clock, /^session /);
+  assert.equal(typeof bar.ctx.text, "string");
+  assert.equal(bar.speed, null);
+});
