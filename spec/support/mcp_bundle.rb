@@ -122,7 +122,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     listed = JSON.parse(File.read(cache))["tools"].select { |tool| names.include?(tool["name"]) }
     schemas = listed.map do |tool|
       name = "mcp_#{server}_#{tool["name"]}".downcase.gsub(/[^a-z0-9_]+/, "_").squeeze("_")
-      Samagotchi::Plugin::Api.tool_spec(name, tool["description"], schema: tool["inputSchema"]) { nil }[:schema]
+      Samagotchi::Plugin::ToolSpec.build(name, tool["description"], schema: tool["inputSchema"]) { nil }.schema
     end
     definition_tokens(schemas)
   end

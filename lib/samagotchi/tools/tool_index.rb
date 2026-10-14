@@ -4,6 +4,7 @@ require "json"
 require_relative "args"
 require_relative "../token_usage"
 require_relative "../tool_declarations"
+require_relative "../plugin/tool_spec"
 
 module Samagotchi
   module Tools
@@ -181,31 +182,30 @@ module Samagotchi
       def declare(registry, failures: nil)
         return [] if @sources.empty?
 
-        require_relative "../plugin/api"
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
-          if (taken = registry[spec[:name]])
-            failures&.add("tool #{spec[:name]}", "already registered (#{taken.source}); the tool index's is left out",
+          if (taken = registry[spec.name])
+            failures&.add("tool #{spec.name}", "already registered (#{taken.source}); the tool index's is left out",
                           required: false)
             next
           end
 
-          registry.register(spec[:name], source: SOURCE, **Plugin::Api.entry_fields(spec, nil))
+          registry.register(spec.name, source: SOURCE, **spec.entry_fields(nil))
           spec
         end
-        names = declared.map { |spec| spec[:name] }
+        names = declared.map(&:name)
         tokens = declared.sum { |spec| ToolIndex.spec_tokens(spec) }
         @sources.each { |source| source.declared!(names, tokens) }
         names
       end
 
-      # A checked tool declaration's (Plugin::Api.tool_spec) definition as
+      # A checked tool declaration's (Plugin::ToolSpec) definition as
       # the chat path sends it (LLM::ChatLoop#tool_definitions: the chat
       # schema, wrapped as a function), in estimated tokens
       # (TokenUsage::CHARS_PER_TOKEN). The native prompts (Gemma, Qwen)
       # render a flatter schema, so it is an upper bound there.
       def self.spec_tokens(spec)
-        function = ToolDeclarations.chat_schemas([spec[:schema]]).first.slice(:name, :description, :parameters)
+        function = ToolDeclarations.chat_schemas([spec.schema]).first.slice(:name, :description, :parameters)
         TokenUsage.estimate(JSON.generate({ type: "function", function: function }))
       end
 
@@ -300,7 +300,7 @@ module Samagotchi
       private
 
       def find_spec
-        Plugin::Api.tool_spec(FIND_NAME, find_description, params: FIND_PARAMS,
+        Plugin::ToolSpec.build(FIND_NAME, find_description, params: FIND_PARAMS,
                                                            preview: lambda { |args|
                                                              [args["query"].to_s.strip, args["server"] && "in #{args["server"]}"].compact.join(" ")
                                                            }) do |args, _ctx|
@@ -309,7 +309,7 @@ module Samagotchi
       end
 
       def call_spec
-        Plugin::Api.tool_spec(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first.label,
+        Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first.label,
                                                            preview: ->(args) { call_preview(args) },
                                                            targets: ->(args) { call_targets(args) }) do |args, _ctx|
           call(args["tool"].to_s, args["args"])

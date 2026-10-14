@@ -85,7 +85,7 @@ module Samagotchi
       end
 
       # Every tool +source+ registered, declared or not (a plugin's tool set
-      # changing: Plugin::Api.apply_tools).
+      # changing: Plugin::ToolSpec.apply).
       # @return [Array<Entry>]
       def by_source(source) = @entries.values.select { |entry| entry.source == source }
 

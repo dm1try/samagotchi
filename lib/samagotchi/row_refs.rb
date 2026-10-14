@@ -26,7 +26,7 @@ module Samagotchi
 
     module_function
 
-    # Runs +fn+ (the tool's refs: lambda, as Api.per_call wraps it: call →
+    # Runs +fn+ (the tool's refs: lambda, as ToolSpec#per_call wraps it: call →
     # a list of {kind:, target:, label:, actions:}) on +call+. Never
     # raises: a lambda that raises or returns something other than a list
     # gives none, and a bad ref is dropped; both are logged (warn, not

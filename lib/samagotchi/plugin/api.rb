@@ -351,22 +351,10 @@ module Samagotchi
       end
       private :check_annotations!
 
-      # A checked tool declaration (ToolSpec.build): what bundles call
-      # (the mcp bundle's token estimate).
+      # A checked tool declaration (ToolSpec.build), for bundles: the mcp
+      # bundle's token estimate calls it, installed ones included.
       # @return [ToolSpec]
       def self.tool_spec(...) = ToolSpec.build(...)
-
-      # As ToolSpec.apply.
-      def self.apply_tools(...) = ToolSpec.apply(...)
-
-      # As ToolSpec#entry_fields.
-      def self.entry_fields(spec, context) = spec.entry_fields(context)
-
-      # As ToolSpec.args_of.
-      def self.args_of(...) = ToolSpec.args_of(...)
-
-      # As ToolSpec.result_text.
-      def self.result_text(result) = ToolSpec.result_text(result)
     end
   end
 end

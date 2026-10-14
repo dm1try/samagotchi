@@ -2,7 +2,7 @@
 
 require_relative "cancellation_controller"
 require_relative "log"
-require_relative "plugin/api"
+require_relative "plugin/tool_spec"
 
 module Samagotchi
   # An Engine's plugin init tasks (chi.init) and the tool sets plugins stage
@@ -153,7 +153,7 @@ module Samagotchi
       end
       changed = false
       staged.each do |bundle, (specs, context)|
-        result = Plugin::Api.apply_tools(@tools.call, bundle, specs, context)
+        result = Plugin::ToolSpec.apply(@tools.call, bundle, specs, context)
         changed ||= result[:changed]
         result[:skipped].each do |why|
           Log.warn(:plugins, "plugin_tool_skipped", bundle: bundle, msg: why)

@@ -58,7 +58,7 @@ RSpec.describe "Plugin init tasks" do
     engine.add_init_task(bundle: "slowb", label: label, plugin_label: "plugin.rb (bundle slowb)", provides_tools: true,
                          quiet: false, timeout: timeout) do
       gate.pop
-      spec = Samagotchi::Plugin::Api.tool_spec("slow_tool", "a late tool") { "done" }
+      spec = Samagotchi::Plugin::ToolSpec.build("slow_tool", "a late tool") { "done" }
       engine.send(:stage_tools, "slowb", [spec], ctx)
       "1 tool"
     end

@@ -31,11 +31,11 @@ RSpec.describe Samagotchi::Tools::Registry do
   # The tool list is part of the prompt's cached prefix: it must not
   # depend on which plugin's init finished first.
   describe "bundle tools' order" do
-    def spec_for(name, description = "does #{name}") = Samagotchi::Plugin::Api.tool_spec(name, description) { "ok" }
+    def spec_for(name, description = "does #{name}") = Samagotchi::Plugin::ToolSpec.build(name, description) { "ok" }
 
     def apply(registry, bundle, *names, description: nil)
       specs = names.map { |name| description ? spec_for(name, description) : spec_for(name) }
-      Samagotchi::Plugin::Api.apply_tools(registry, bundle, specs, nil)
+      Samagotchi::Plugin::ToolSpec.apply(registry, bundle, specs, nil)
     end
 
     it "is by bundle and name after the built-ins, whichever plugin applied its tools first" do
@@ -219,12 +219,12 @@ RSpec.describe Samagotchi::Tools::Registry do
 
     it "lets a plugin change a tool the toolkit leaves out" do
       registry = Samagotchi::Tools::Builtins.registry
-      spec = ->(description) { Samagotchi::Plugin::Api.tool_spec("mcp_alpha", description) { "ok" } }
-      Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [spec.call("one")], nil)
+      spec = ->(description) { Samagotchi::Plugin::ToolSpec.build("mcp_alpha", description) { "ok" } }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "mcp", [spec.call("one")], nil)
       registry.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["mcp_alpha"]).resolve(Samagotchi::Toolkit.kits)
-      expect(Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [spec.call("two")], nil)[:changed]).to be(true)
+      expect(Samagotchi::Plugin::ToolSpec.apply(registry, "mcp", [spec.call("two")], nil)[:changed]).to be(true)
       expect(registry["mcp_alpha"].schema[:description]).to eq("two")
-      expect(Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [], nil)[:changed]).to be(true)
+      expect(Samagotchi::Plugin::ToolSpec.apply(registry, "mcp", [], nil)[:changed]).to be(true)
       expect(registry["mcp_alpha"]).to be_nil
     end
   end
