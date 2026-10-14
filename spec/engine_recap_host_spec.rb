@@ -50,7 +50,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
 
     it "follows a /model switch at the next attempt" do
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
-      engine.instance_variable_set(:@effective_model_name, "box:m")
+      engine.switch_model!("box:m")
       expect(engine.recap.target).to have_attributes(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "m")
     end
 
