@@ -2,7 +2,7 @@
 // Finder files, drops) as thumbnails, the text (selection or clipboard)
 // below as quoted context, then a "New session" row, an "Everyone it
 // concerns" row and the targets: live sessions, agents in terminals
-// (AgentTerminal.swift: kitty windows), recent sessions. ⏎ sends a message
+// (AgentTerminal.swift: kitty windows, tmux panes), recent sessions. ⏎ sends a message
 // (`chi send`, or `chi send --new` on the new row, with `--image` per image;
 // pasted with Enter into an agent's terminal), ⌘⏎ a note (`chi note`, text
 // only; `chi broadcast` on the Everyone row, Broadcast.swift), ⌥⏎ a paste
@@ -36,8 +36,11 @@ final class PanelModel: ObservableObject {
   /// (none: no agent rows and no note).
   @Published var agentTargets: [AgentTarget] = []
   @Published var agentTerminalNames: [String] = []
-  /// Set once the listing answered: "no agents in kitty" or an error.
+  /// Set once the listing answered with no rows: "no agents in kitty"
+  /// (the terminals that answered).
   @Published var agentNote: String?
+  /// Why a terminal can't be asked, with or without rows; " · " between two.
+  @Published var agentErrors: String?
   /// Chi session ids and agent keys (never alike: UUIDs vs paths).
   @Published var selected: Set<String> = []
   /// The user changed the selection: a late agent listing keeps it.
@@ -241,14 +244,21 @@ final class PanelModel: ObservableObject {
     sessions.filter { selected.contains($0.id) && $0.valid }.map(\.id)
   }
 
-  /// A listing's answer: the rows, and "no agents in kitty" or why a
-  /// terminal can't be asked.
+  /// A listing's answer: the rows, "no agents in kitty" when there are
+  /// none, and why a terminal can't be asked.
   func showAgents(_ targets: [AgentTarget], errors: [(name: String, error: AgentTerminalError)]) {
     agentTargets = targets
-    if !errors.isEmpty {
-      agentNote = errors.map(\.error.description).joined(separator: " · ")
-    } else {
-      agentNote = targets.isEmpty ? "no agents in \(agentTerminalNames.joined(separator: " or "))" : nil
+    let answered = agentTerminalNames.filter { name in !errors.contains { $0.name == name } }
+    agentNote = targets.isEmpty && !answered.isEmpty ? "no agents in \(answered.joined(separator: " or "))" : nil
+    agentErrors = errors.isEmpty ? nil : errors.map(\.error.description).joined(separator: " · ")
+  }
+
+  /// ⌥⏎'s refusal: names the terminals switched on.
+  var pasteOnlyRefusal: String {
+    switch Set(agentTerminalNames) {
+    case ["tmux"]: return "Paste only is for tmux panes"
+    case ["kitty", "tmux"]: return "Paste only is for agents in kitty or tmux"
+    default: return "Paste only is for kitty windows"
     }
   }
 
@@ -366,7 +376,7 @@ struct PanelView: View {
           ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
             if index == live && agents > 0 { groupHeader(agentHeader, first: index == 0) }
             if index == live + agents && !model.recent.isEmpty {
-              if agents == 0 { agentNoteLine }
+              agentNoteLines
               groupHeader("recent", first: index == 0)
             }
             switch target {
@@ -374,7 +384,7 @@ struct PanelView: View {
             case .agent(let agent): agentRow(agent, index: index)
             }
           }
-          if model.recent.isEmpty && agents == 0 { agentNoteLine }
+          if model.recent.isEmpty { agentNoteLines }
         }
       }
     }
@@ -393,17 +403,23 @@ struct PanelView: View {
   /// The agent rows' divider: the terminal's name ("kitty").
   var agentHeader: String { model.agentTerminalNames.count == 1 ? model.agentTerminalNames[0] : "agents" }
 
-  /// "no agents in kitty" (or why kitty can't be asked) where the agent
-  /// rows would be; nothing without a terminal section.
-  @ViewBuilder var agentNoteLine: some View {
-    if !model.agentTerminalNames.isEmpty, let note = model.agentNote {
-      HStack(spacing: 6) {
-        Image(systemName: "terminal").font(.system(size: 11))
-        Text(note).font(.system(size: 11)).lineLimit(1)
-      }
-      .foregroundColor(.secondary.opacity(0.7))
-      .padding(.horizontal, 8).padding(.vertical, 4)
+  /// After the agent rows: "no agents in kitty" where they would be, and
+  /// why a terminal can't be asked (beside another's rows too); nothing
+  /// without a terminal section.
+  @ViewBuilder var agentNoteLines: some View {
+    if !model.agentTerminalNames.isEmpty {
+      if model.agentTargets.isEmpty, let note = model.agentNote { agentNoteLine(note) }
+      if let errors = model.agentErrors { agentNoteLine(errors) }
     }
+  }
+
+  func agentNoteLine(_ text: String) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: "terminal").font(.system(size: 11))
+      Text(text).font(.system(size: 11)).lineLimit(1)
+    }
+    .foregroundColor(.secondary.opacity(0.7))
+    .padding(.horizontal, 8).padding(.vertical, 4)
   }
 
   func agentRow(_ target: AgentTarget, index: Int) -> some View {
@@ -419,6 +435,10 @@ struct PanelView: View {
           Text(target.shortCwd).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
         }
         Spacer()
+        // Which terminal, when two are on.
+        if model.agentTerminalNames.count > 1 {
+          Text(target.terminal).font(.system(size: 10)).foregroundColor(.secondary)
+        }
         Image(systemName: "terminal").font(.system(size: 12)).foregroundColor(.secondary)
           .help("\(target.agent) in \(target.whereabouts): ⏎ pastes and presses Enter, ⌥⏎ only pastes")
         Text("⌘\(index + 1)").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
@@ -913,6 +933,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.agentTerminalNames = terminals.names
     model.agentTargets = []
     model.agentNote = nil
+    model.agentErrors = nil
     guard !terminals.isEmpty else { return }
     terminals.list { [weak self] targets, errors in
       guard let self, self.agents === terminals else { return }
@@ -964,7 +985,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
     if kind == .paste, windows.isEmpty || !ids.isEmpty || new {
       NSSound.beep()
-      model.message = "Paste only is for kitty windows"
+      model.message = model.pasteOnlyRefusal
       return
     }
     // A note into a session that doesn't exist yet makes no sense.

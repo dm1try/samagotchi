@@ -1,6 +1,6 @@
 // Agent CLIs (claude, codex, …) running in a terminal, as panel targets:
 // each terminal the launch file has a section for (kitty: Kitty.swift) lists
-// its agents and pastes text into one. The panel and `ChiHelper --agents`
+// its agents and pastes text into one; tmux: Tmux.swift. The panel and `ChiHelper --agents`
 // talk to them only through AgentTerminals.
 import Foundation
 
@@ -39,6 +39,7 @@ struct AgentTarget: Identifiable, Equatable {
   var whereabouts: String {
     switch terminal {
     case "kitty": return "a kitty window"
+    case "tmux": return place.isEmpty ? "a tmux pane" : "a tmux pane (\(place))"
     default: return place.isEmpty ? terminal : "\(terminal) (\(place))"
     }
   }
@@ -152,6 +153,7 @@ final class AgentTerminals {
       .flatMap { try? JSONDecoder().decode(LaunchConfig.self, from: $0) }
     var terminals: [AgentTerminal] = []
     if let kitty = launch?.kitty { terminals.append(KittyRunner(settings: kitty, queue: queue)) }
+    if let tmux = launch?.tmux { terminals.append(TmuxRunner(settings: tmux, queue: queue)) }
     self.init(terminals: terminals, queue: queue)
   }
 
@@ -161,6 +163,8 @@ final class AgentTerminals {
   func terminal(for key: String) -> AgentTerminal? { terminals.first { $0.owns(key: key) } }
 
   /// Every terminal's targets in terminal order, and the ones that failed.
+  /// With tmux on, a kitty window showing a tmux client (listed only with
+  /// kitty.agents "*") is left out: its panes are listed.
   func list(completion: @escaping ([AgentTarget], [(name: String, error: AgentTerminalError)]) -> Void) {
     guard !terminals.isEmpty else { queue.async { completion([], []) }; return }
     var results = [Result<[AgentTarget], AgentTerminalError>?](repeating: nil, count: terminals.count)
@@ -178,6 +182,9 @@ final class AgentTerminals {
           case .failure(let error): errors.append((terminal.name, error))
           case nil: break
           }
+        }
+        if self.names.contains("tmux") {
+          targets.removeAll { $0.terminal != "tmux" && $0.names.contains("tmux") }
         }
         completion(targets, errors)
       }

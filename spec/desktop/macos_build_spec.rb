@@ -191,6 +191,221 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
     end
   end
 
+  describe "ChiHelper --agents, against a real tmux" do
+    let(:tmux_binary) do
+      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).map { File.join(_1, "tmux") }.find { File.file?(_1) && File.executable?(_1) }
+    end
+    # Short: a unix socket path has a ~104-byte limit.
+    let(:tmp) { Dir.mktmpdir("tx", "/tmp") }
+    let(:socket_dir) { File.join(tmp, "tmux-#{Process.uid}") }
+    let(:launch) { File.join(tmp, "launch.json") }
+    let(:agents) { %w[claude codex] }
+    let(:started) { [] }
+    # tmux runs with this spec's own TMUX_TMPDIR, outside any tmux this may run in.
+    let(:tmux_env) { { "TMUX" => nil, "TMUX_PANE" => nil, "TMUX_TMPDIR" => tmp } }
+
+    before do
+      skip "no tmux on PATH" unless tmux_binary
+      FileUtils.mkdir_p(File.join(tmp, "bin"))
+      # A copy named claude (pane_current_command says claude); a copied
+      # system binary is killed until re-signed.
+      FileUtils.cp("/bin/cat", File.join(tmp, "bin", "claude"))
+      Open3.capture2e("codesign", "--force", "--sign", "-", File.join(tmp, "bin", "claude"))
+      File.write(File.join(tmp, "codex"), "while read line; do :; done\n")
+      write_launch
+    end
+
+    after do
+      # Only this spec's servers: nothing else is killed.
+      started.uniq.each { |name| Open3.capture2e(tmux_env, tmux_binary, "-L", name, "kill-server") }
+      FileUtils.remove_entry(tmp)
+    end
+
+    def tmux(name, *args)
+      out, status = Open3.capture2e(tmux_env, tmux_binary, "-L", name, *args)
+      raise "tmux #{args.first}: #{out}" unless status.success?
+
+      out.chomp
+    end
+
+    # A server with one pane running +command+ (in session "main").
+    def server(name, command)
+      started << name
+      tmux(name, "-f", "/dev/null", "new-session", "-d", "-s", "main", "-x", "120", "-y", "30", command)
+      name
+    end
+
+    def pane(name, command) = tmux(name, "new-window", "-d", "-P", "-F", "\#{pane_id}", command)
+    def first_pane(name) = tmux(name, "list-panes", "-a", "-F", "\#{pane_id}").lines.first.strip
+    def key(name, pane_id) = "tmux:#{socket_dir}/#{name}##{tmux(name, "display-message", "-p", "\#{pid}")}##{pane_id}"
+    def buffers(name) = tmux(name, "list-buffers")
+
+    def wait_for(what, seconds: 5)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+      until (value = yield)
+        raise "timed out waiting for #{what}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+        sleep 0.05
+      end
+      value
+    end
+
+    def running(name, pane_id, command)
+      wait_for("#{command} in #{pane_id}") do
+        tmux(name, "display-message", "-p", "-t", pane_id, "\#{pane_current_command}") == command
+      end
+    end
+
+    def write_launch(tmux_section = { "binary" => tmux_binary, "socket_dir" => socket_dir, "agents" => agents }, kitty: nil)
+      File.write(launch, JSON.generate({ "version" => "x", "argv" => ["/bin/echo"], "env" => {} }
+        .merge(kitty ? { "kitty" => kitty } : {}).merge(tmux_section ? { "tmux" => tmux_section } : {})))
+    end
+
+    # The helper with launchd's bare env (no PATH to tmux, no LANG): the
+    # absolute binary and -u carry it.
+    def helper(*args, stdin: "", env: {})
+      out, err, status = Open3.capture3({ "HOME" => tmp }.merge(env), executable, "--agents", *args, "--launch", launch,
+                                        stdin_data: stdin, unsetenv_others: true)
+      [out, err, status.exitstatus]
+    end
+
+    def list
+      out, err, = helper("list")
+      JSON.parse(out).tap { expect(err).to eq("") }
+    end
+
+    # A pane that records what it receives, raw, into +file+; with +bracketed+
+    # it turns bracketed paste on first, as claude and codex do.
+    def recorder(name, file, bracketed: true)
+      mode = bracketed ? %(printf '\\033[?2004h'; ) : ""
+      pane(name, %(sh -c "#{mode}stty raw -echo; exec cat > '#{file}'")).tap { |id| running(name, id, "cat") }
+    end
+
+    def received(file, bytes)
+      wait_for("#{bytes} bytes in #{file}") { File.size?(file).to_i >= bytes && File.binread(file) }
+    end
+
+    context "listing" do
+      before do
+        server("chi-spec-1", File.join(tmp, "bin", "claude"))
+        tmux("chi-spec-1", "select-pane", "-t", first_pane("chi-spec-1"), "-T", "✳ Claude Code")
+        # The native claude's look: pane_current_command says cat, ps says claude.
+        running("chi-spec-1", pane("chi-spec-1", "bash -c 'exec -a claude /bin/cat'"), "cat")
+        pane("chi-spec-1", "/bin/sh #{tmp}/codex")
+        pane("chi-spec-1", "/bin/sh")
+        server("chi-spec-2", File.join(tmp, "bin", "claude"))
+        # A stale socket: a server killed earlier leaves its file.
+        server("chi-spec-3", "/bin/sh")
+        tmux("chi-spec-3", "kill-server")
+      end
+
+      it "lists agent panes of every live server, matched on ps's names, keyed with the server pid" do
+        result = list
+        expect(result["errors"]).to eq({})
+        rows = result["agents"].map { |a| a.values_at("terminal", "agent", "title") }
+        expect(rows).to eq([["tmux", "claude", "Claude Code"], ["tmux", "claude", ""], ["tmux", "codex", ""], ["tmux", "claude", ""]])
+        pid = tmux("chi-spec-1", "display-message", "-p", "\#{pid}")
+        expect(result["agents"].first["key"]).to eq("tmux:#{socket_dir}/chi-spec-1##{pid}#%0")
+        expect(result["agents"].last["key"]).to start_with("tmux:#{socket_dir}/chi-spec-2#")
+        expect(result["agents"].first["cwd"]).not_to be_empty
+      end
+
+      context "with agents: *" do
+        let(:agents) { %w[*] }
+
+        it "lists every pane and names the look-alike claude, not cat" do
+          expect(list["agents"].map { |a| a["agent"] }).to eq(%w[claude claude codex sh claude])
+        end
+      end
+
+      it "says tmux isn't found, beside kitty's rows, when the binary is gone" do
+        sock_dir = File.join(tmp, "k").tap { |d| FileUtils.mkdir_p(d) }
+        ls_dir = File.join(tmp, "ls").tap { |d| FileUtils.mkdir_p(d) }
+        UNIXServer.new(File.join(sock_dir, "kitty-1")).close
+        File.write(File.join(ls_dir, "kitty-1.json"), JSON.generate([{ "id" => 1, "tabs" => [{ "windows" => [
+          { "id" => 4, "title" => "", "cwd" => "/w", "foreground_processes" => [{ "cmdline" => ["claude"] }] }
+        ] }] }]))
+        fake = File.expand_path("../fixtures/desktop/fake_kitty", __dir__)
+        write_launch({ "binary" => File.join(tmp, "no", "tmux"), "socket_dir" => socket_dir, "agents" => agents },
+                     kitty: { "listen_on" => "unix:#{sock_dir}/kitty", "binary" => fake, "agents" => agents })
+        # fake_kitty is a ruby script: it needs the PATH to ruby.
+        out, _err, status = helper("list", env: { "PATH" => ENV.fetch("PATH"), "FAKE_KITTY_LOG" => File.join(tmp, "k.log"),
+                                                  "FAKE_KITTY_LS" => ls_dir })
+        expect(status).to eq(1)
+        expect(JSON.parse(out)).to eq(
+          "agents" => [{ "key" => "#{sock_dir}/kitty-1#4", "terminal" => "kitty", "agent" => "claude", "title" => "",
+                         "cwd" => "/w", "label" => "claude · w" }],
+          "errors" => { "tmux" => "tmux not found at #{tmp}/no/tmux: set tmux.binary, then chi update" }
+        )
+      end
+    end
+
+    describe "send" do
+      let(:name) { server("chi-spec-s", "/bin/sh") }
+      let(:out_file) { File.join(tmp, "out") }
+      let(:message) { "same bug?" }
+      let(:text) { "#{Samagotchi::ContextQuote.block("line one\nline two\n")}#{message}" }
+
+      it "pastes quote and message as one bracketed paste, then presses Enter; no buffer left" do
+        id = recorder(name, out_file)
+        out, _err, status = helper("send", key(name, id), "--message", message, stdin: "line one\nline two\n")
+        expect([out, status]).to eq(["sent\n", 0])
+        expected = "\e[200~#{text}\e[201~\r"
+        expect(received(out_file, expected.bytesize)).to eq(expected.b)
+        expect(buffers(name)).to eq("")
+      end
+
+      it "with --paste-only ends the paste with a newline and presses no Enter" do
+        id = recorder(name, out_file)
+        out, _err, status = helper("send", key(name, id), "--paste-only", "--message", message)
+        expect([out, status]).to eq(["pasted\n", 0])
+        expected = "\e[200~#{message}\n\e[201~"
+        expect(received(out_file, expected.bytesize)).to eq(expected.b)
+        sleep 0.2
+        expect(File.binread(out_file)).to eq(expected.b)
+      end
+
+      it "pastes bare text, newlines kept, into a program without bracketed paste" do
+        id = recorder(name, out_file, bracketed: false)
+        helper("send", key(name, id), "--paste-only", "--message", "a\nb")
+        expect(received(out_file, 4)).to eq("a\nb\n")
+      end
+
+      it "leaves copy mode first" do
+        id = recorder(name, out_file)
+        tmux(name, "copy-mode", "-t", id)
+        expect(tmux(name, "display-message", "-p", "-t", id, "\#{pane_mode}")).to eq("copy-mode")
+        out, = helper("send", key(name, id), "--message", "hi")
+        expect(out).to eq("sent\n")
+        expect(received(out_file, 15)).to eq("\e[200~hi\e[201~\r".b)
+        expect(tmux(name, "display-message", "-p", "-t", id, "\#{pane_in_mode}")).to eq("0")
+      end
+
+      it "refuses a pane in another mode, pasting nothing" do
+        id = recorder(name, out_file)
+        tmux(name, "choose-tree", "-t", id)
+        out, _err, status = helper("send", key(name, id), "--message", "hi")
+        expect([out, status]).to eq(["pane in tree-mode\n", 1])
+        expect(File.size(out_file)).to eq(0)
+        expect(buffers(name)).to eq("")
+      end
+
+      it "says pane closed for a killed pane, and for a restarted server's pane of the same id" do
+        id = recorder(name, out_file)
+        old = key(name, id)
+        tmux(name, "kill-pane", "-t", id)
+        expect(helper("send", old, "--message", "hi").values_at(0, 2)).to eq(["pane closed\n", 1])
+        expect(buffers(name)).to eq("")
+
+        restarted = key(name, first_pane(name))
+        tmux(name, "kill-server")
+        server(name, "/bin/sh")
+        expect(first_pane(name)).to eq("%0")
+        expect(helper("send", restarted, "--message", "hi").values_at(0, 2)).to eq(["pane closed\n", 1])
+      end
+    end
+  end
+
   describe "ChiHelper --broadcast, the Everyone row's chi broadcast, against a fake chi" do
     let(:tmp) { Dir.mktmpdir("bc") }
     let(:launch) { File.join(tmp, "launch.json") }

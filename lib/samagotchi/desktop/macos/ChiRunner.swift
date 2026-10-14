@@ -10,11 +10,13 @@ struct LaunchConfig: Decodable {
   /// Agents in kitty windows (Kitty.swift); nil = none. AgentTerminals
   /// makes one runner per terminal section.
   let kitty: KittySettings?
+  /// Agents in tmux panes (Tmux.swift); nil = none.
+  let tmux: TmuxSettings?
   /// Seconds `chi broadcast` may take (Broadcast.swift); nil = the default.
   let broadcastTimeout: Double?
 
   enum CodingKeys: String, CodingKey {
-    case version, argv, env, kitty
+    case version, argv, env, kitty, tmux
     case broadcastTimeout = "broadcast_timeout"
   }
 }
