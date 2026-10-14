@@ -70,12 +70,14 @@ class Plugin < Samagotchi::Plugin::Peer
   # has plugin/plugin.rb and scripts/ beside plugin/.
   SCRIPTS_DIRS = [File.join(__dir__, "scripts"), File.expand_path("../scripts", __dir__)].freeze
 
-  TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the " \
-                     "Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take " \
-                     "as context, or to answer a question about. Only when the user asks for it. Needs a paired " \
-                     "Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer " \
-                     "comes back later as the claude-review context (a validate's wakes you): don't wait or poll. " \
-                     "Never send secrets or the whole conversation."
+  TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your " \
+                     "last answer) to the Claude Code session paired with it (the claude-inbox " \
+                     "context), for Claude to validate, to take as context, or to answer a " \
+                     "question about. Only when the user asks for it, or to reply to its answer " \
+                     "in a peer turn. Needs a paired Claude Code session: without one it fails, " \
+                     "and the user pairs from Claude. Claude's answer comes back later as the " \
+                     "claude-review context (a validate's wakes you): don't wait or poll. Never " \
+                     "send secrets or the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Claude to know, no " \

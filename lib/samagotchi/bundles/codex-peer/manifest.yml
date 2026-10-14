@@ -6,14 +6,14 @@ description: "Pair this session with an OpenAI Codex CLI session you work with: 
 trust_level: reviewed
 files:
   skill_codex_peer.md:
-    sha256: sha256:b17b97830d7895ca6bf393fe040d71a2eacc2e0b68fa9a23ba35d44f39132493
-    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks; validate, context or question; Codex's answer comes as the codex-review context"
+    sha256: sha256:db77cba8fd4cfc0d03bce48d265b4883f8b907ac294226f104080194e335b8cd
+    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as the codex-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:041528383946aadd31b60855bffeb564f2387eb6da0c773228175da1bd11ec8a
+  sha256: sha256:5ead014138ab9920c949382de208c229c1e5069acb6e0f85146434c85a765941
 scripts:
   pair: sha256:90cc286587260a4221c6ca9621cf5f34dd2ac42dc1e6393b69ba3e974806e695
-  chi-peer-SKILL.md: sha256:886b6c430e9678f7f8bd991bdb374b6146ca2cbb0f42e36865ab14f5a21fa6e0
+  chi-peer-SKILL.md: sha256:7530a4aef6754dd9464a0901565ce707a5a7fc0e29205fcc727b0b14873b84cb
 # Codex's answer is a pushed source's first wake: true push, which wakes the
 # session from chi 0.63.0 (before, the first answer arrives as a note
 # without waking); ctx.context.list's summary: (the /codex card's last

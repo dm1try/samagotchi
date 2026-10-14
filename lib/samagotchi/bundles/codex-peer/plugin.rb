@@ -75,12 +75,14 @@ class Plugin < Samagotchi::Plugin::Peer
   SCRIPTS_DIRS = [File.join(__dir__, "scripts"), File.expand_path("../scripts", __dir__)].freeze
   CONTEXT_PLACEHOLDER = "__CHI_PEER_CONTEXT__"
 
-  TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the " \
-                     "Codex CLI session paired with it (the codex-inbox context), for Codex to validate, to take " \
-                     "as context, or to answer a question about. Only when the user asks for it. Needs a paired " \
-                     "Codex session: without one it fails, and the user pairs from Codex. Codex's answer comes " \
-                     "back later as the codex-review context (a validate's wakes you): don't wait or poll. Never " \
-                     "send secrets or the whole conversation."
+  TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your " \
+                     "last answer) to the Codex CLI session paired with it (the codex-inbox " \
+                     "context), for Codex to validate, to take as context, or to answer a " \
+                     "question about. Only when the user asks for it, or to reply to its answer " \
+                     "in a peer turn. Needs a paired Codex session: without one it fails, and the " \
+                     "user pairs from Codex. Codex's answer comes back later as the codex-review " \
+                     "context (a validate's wakes you): don't wait or poll. Never send secrets or " \
+                     "the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Codex to know, no " \

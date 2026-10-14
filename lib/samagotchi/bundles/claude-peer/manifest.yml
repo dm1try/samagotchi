@@ -6,14 +6,14 @@ description: "Pair this session with a Claude Code session you work with: the cl
 trust_level: reviewed
 files:
   skill_claude_peer.md:
-    sha256: sha256:dff0175d0370f43920daf5ecbb81315fdd2c7d8063a33fbefc75c7d0e7312993
-    description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks; validate, context or question; Claude's answer comes as the claude-review context"
+    sha256: sha256:9293740f3e1afa0fc2eff381f2c6406087598205df351abd22b4459a3bcb5d0e
+    description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as the claude-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:48cc06c151b60f98b1eccb832cbf001872468a477290836cc43b8cd4b5ef1993
+  sha256: sha256:74960c46f4b98a453a6c6b16a53a4e9cb76752e6df1deecf55784fc7a0e616ce
 scripts:
   pair: sha256:033f1fc6a644950b57e71865253526a0a487bb4c9fd5a61bb89d031b65f40417
-  chi-peer-SKILL.md: sha256:f35f726b1a86091ff69d289e8dd58794ac6f44879a63630fcc88d69867c56e20
+  chi-peer-SKILL.md: sha256:753b609bca01877d46e6b1c3c5b74edba745433cbe33a86702d3ab75bc3f7107
 # Two things need chi 0.63.0, and the bundle works without them on 0.62:
 # ctx.context.list's summary: (the /claude card's last answer; without it
 # the card shows no summary), and a pushed source's first wake: true push

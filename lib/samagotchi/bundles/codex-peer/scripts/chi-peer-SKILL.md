@@ -90,6 +90,9 @@ text: read that file.
   `file:line` where you can), what is missing, one improvement if it matters,
   and a last line `VERDICT: OK` / `VERDICT: CHANGES` / `VERDICT: UNSURE (why)`.
   Verify claims against the code; say what you did not check.
+- A **validate** whose title you answered before is a follow-up round: chi
+  fixed what you flagged, or disagrees. Check it again and answer the same
+  way; say `VERDICT: OK` once you are satisfied (chi stops the round on it).
 - **context**: take it in for your own work. No reply, unless something in it
   contradicts what you know: then reply with that.
 - **question**: answer it briefly.
@@ -112,9 +115,11 @@ EOF
 - `wake` for a validate or a question (chi asked and is waiting); no `wake`
   for a reply to context.
 - Each answer replaces the last (chi keeps the latest one), so start the
-  summary with the title you are answering.
-- Use `chi send -m "..." <id>` instead only when chi should act on it as a
-  user-style instruction, or the user asks for it.
+  summary with the title you are answering, and end it with your verdict
+  (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): chi doesn't wake for
+  an OK.
+- Never answer a chi message with `chi send`: it counts as the user typing,
+  outside the round's limit. Use it only when the user asks you to.
 
 ## Don't loop
 
