@@ -21,7 +21,8 @@ and Claude's answer comes back as attached context. The
 [codex-peer bundle](plugins.md#the-codex-peer-bundle) does the same with a
 Codex CLI session (`codex_send`, `/codex`, through `codex queue`). The peer's
 answers wake chi in a short loop (fix or disagree, send again) until it says
-`VERDICT OK` or after `context.peer_turns` turns: [Waking: peer
+`VERDICT OK` (one closing wake: chi carries on or tells you what was agreed)
+or after `context.peer_turns` turns: [Waking: peer
 sources](context.md#peer-sources-the-peer-loop).
 
 ## The commands

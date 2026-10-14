@@ -303,7 +303,8 @@ module Samagotchi
       # ("Codex", PeerSources::LABEL), said in chi's own lines. Such a
       # source, when it is a pushed one of the session's own, wakes on
       # context.peer_turns rather than the 10-minute window, with the peer
-      # line (docs/context.md, Waking). Declared here, in-process, never by
+      # line, or the closing line for an answer that agrees (docs/context.md,
+      # Waking). Declared here, in-process, never by
       # a source file; gone with the bundle.
       def peer_source(name, label:)
         raise ArgumentError, "this chi has no peer sources (plugins: false)" unless @registries.peer_sources

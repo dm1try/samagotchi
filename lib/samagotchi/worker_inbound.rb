@@ -47,6 +47,9 @@ module Samagotchi
       def name = delivery.name
       # For a peer agent's answer (its own budget, WorkerWakes#peer_open?).
       def peer? = !delivery.peer.nil?
+      # Whether the wake counts toward context.peer_turns: a peer's answer
+      # that agrees closes the round and counts toward session.max_wakes only.
+      def peer_turn? = peer? && !delivery.agreed
       def origin = { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" }
     end
 

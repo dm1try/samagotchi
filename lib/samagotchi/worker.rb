@@ -496,13 +496,13 @@ module Samagotchi
     # turn from context:<name> whose first message is the wake note already
     # in the conversation (named by +turn_id+), on the same rules as a
     # delegate report's wake turn: it counts toward session.max_wakes (a
-    # peer's answer toward context.peer_turns too), and a failure goes back
+    # peer's answer toward context.peer_turns too, unless it agrees), and a failure goes back
     # to before the turn (the note stays, as a plain one:
     # WorkerInbound#unmark_wake) and pauses wakes until a human's input.
     # +context_wake+: a WorkerInbound::ContextWake.
     def run_context_wake_turn(context_wake)
       name = context_wake.name
-      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer?))
+      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: context_wake.origin,
                            id: context_wake.turn_id, max_iterations: IterationLimit.for) do |result, error|

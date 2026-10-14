@@ -1,23 +1,26 @@
 ---
 name: claude-peer
-version: 0.3.0
+version: 0.4.0
 scope: system
 description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as the claude-review context; /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed
 files:
   skill_claude_peer.md:
-    sha256: sha256:9293740f3e1afa0fc2eff381f2c6406087598205df351abd22b4459a3bcb5d0e
+    sha256: sha256:ac7429392c44e5ac03ae696c691736861e747e42ebb68d65532f898d44082039
     description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as the claude-review context"
 plugin:
   file: plugin.rb
   sha256: sha256:74960c46f4b98a453a6c6b16a53a4e9cb76752e6df1deecf55784fc7a0e616ce
 scripts:
   pair: sha256:033f1fc6a644950b57e71865253526a0a487bb4c9fd5a61bb89d031b65f40417
-  chi-peer-SKILL.md: sha256:753b609bca01877d46e6b1c3c5b74edba745433cbe33a86702d3ab75bc3f7107
+  chi-peer-SKILL.md: sha256:82162b6c231b93608eebdee2d357266536248664e78f6b89c8fe3b912d5552a2
 # Two things need chi 0.63.0, and the bundle works without them on 0.62:
 # ctx.context.list's summary: (the /claude card's last answer; without it
 # the card shows no summary), and a pushed source's first wake: true push
 # waking the session (on 0.62 Claude's first answer arrives as a note
 # without waking; later ones wake).
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
+# An agreeing answer's closing wake (the skills say an OK wakes chi once)
+# needs the next chi.
 requires_chi: ">= 0.67.0"
+requires_chi_next: true

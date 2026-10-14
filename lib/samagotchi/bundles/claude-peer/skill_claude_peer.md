@@ -42,8 +42,9 @@ woke you (step 5), and you may reply to it with `claude_send`.
    it flagged, or reply with `claude_send` (`validate`, the same title) where
    you disagree or for it to check your fix. Answers wake you up to
    `context.peer_turns` (3) turns in a row; one that says `VERDICT: OK`
-   arrives as a note and doesn't wake you. When Claude agrees, or after the
-   last such turn, stop and tell the user what changed. The user decides.
+   wakes you once to close the round: carry on with what waited on it, or
+   tell the user what was agreed; don't send it again. After the last such
+   turn, stop and tell the user what changed. The user decides.
 
 ## When it fails
 

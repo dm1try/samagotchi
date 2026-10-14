@@ -168,7 +168,8 @@ module Samagotchi
       # next turn.
       Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
       # A peer agent's answers (a source a peer bundle declares, claude-review): wake turns in a row they may start
-      # with no input typed in the web or a TUI (within session.max_wakes); then they wait as notes. 0: a peer source
+      # with no input typed in the web or a TUI (within session.max_wakes; an agreeing answer's closing wake isn't
+      # counted here); then they wait as notes. 0: a peer source
       # wakes like any other (once per 10 minutes, the guard line).
       Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli]),
 

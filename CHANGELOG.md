@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Peer bundles (claude-peer, codex-peer): a peer's `VERDICT OK` answer now wakes chi once to close the round, so chi
+  carries on with what waited on it (another peer, the next step) or tells you what was agreed, instead of waiting
+  for your next message. That turn counts toward `session.max_wakes`, not `context.peer_turns`. Run `/claude
+  install-skill` and `/codex install-skill` (Replace) after `chi update` for the matching skill text.
+
 ## [0.69.0] - 2026-10-14
 
 ### Added

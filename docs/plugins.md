@@ -665,9 +665,9 @@ index = Samagotchi::Tools::ToolIndex
 Declares a context source as a peer agent's answers: the peer bundles'
 `claude-review` and `codex-review`. Such a source, when it is a pushed source
 of the session's own, wakes the session by the peer loop's rules instead of
-the 10-minute window: up to `context.peer_turns` wake turns in a row, no wake
-for an answer whose verdict is `VERDICT OK`, and a wake line that names the
-peer and keeps the turn within the user's task (see [Waking: peer
+the 10-minute window: up to `context.peer_turns` wake turns in a row, one
+closing wake (outside that count) for an answer whose verdict is `VERDICT OK`,
+and a wake line that names the peer and keeps the turn within the user's task (see [Waking: peer
 sources](context.md#peer-sources-the-peer-loop)).
 
 ```ruby
@@ -1767,8 +1767,8 @@ Claude pairs; without one the bundle costs one tool declaration.
   wake chi by the loop's rules ([Waking: peer
   sources](context.md#peer-sources-the-peer-loop)): chi fixes what Claude
   flagged or disagrees and sends again, up to `context.peer_turns` (3) wake
-  turns in a row, and a `VERDICT OK` answer arrives as a note and ends the
-  round. Only a message you type in the web or a TUI starts the count again.
+  turns in a row, and a `VERDICT OK` answer wakes chi once to close the
+  round (carry on, or tell you what was agreed). Only a message you type in the web or a TUI starts the count again.
 - **The skill.** `skill_claude_peer` (system scope) tells the model to send
   only when you ask or to reply in a peer turn, to pick the part rather than
   the session, not to wait or poll, and how to read the `claude-review`
@@ -1883,7 +1883,7 @@ skill install card) works the same.
   guardrails rule with `tool: codex_send` (see the claude-peer section).
 - **The peer loop** works as claude-peer's: `codex-review` is declared a
   peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
-  and `VERDICT OK` ends the round. Needs chi 0.67.0.
+  and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0.
 
 ## Shutdown
 

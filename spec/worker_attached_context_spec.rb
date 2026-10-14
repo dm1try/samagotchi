@@ -268,7 +268,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         answer("v1")
         _, kwargs, last = wake_turn
         expect(kwargs).to include(continue: true, origin: { client_id: "context:codex-review" })
-        expect(last[:content]).to include("What your peer agent Codex answered", "after 2 such turns in a row")
+        expect(last[:content]).to include("What your peer agent Codex answered", "After 2 such turns in a row")
         answer("v2")
         expect(wake_turn&.last&.dig(:content)).to include("What changed, as your peer agent Codex reports it")
 
@@ -295,12 +295,27 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn&.dig(1, :origin)).to eq({ client_id: "context:codex-review" })
       end
 
-      it "doesn't wake for an answer that agrees: it arrives as a note" do
+      it "wakes once with the closing line for an answer that agrees, outside context.peer_turns" do
+        config["context.peer_turns"] = 1
         start_worker
         answer("v1", summary: "step 2: VERDICT OK")
+        expect(wake_turn&.last&.dig(:content)).to include("your peer agent Codex agreed with what you sent it (VERDICT OK)")
 
+        answer("v2")
+        expect(wake_turn&.last&.dig(:content)).to include("After 1 such turns in a row")
+        expect(peer_notices).to be_empty
+      end
+
+      it "counts an agreeing answer's wake toward session.max_wakes" do
+        config["session.max_wakes"] = 1
+        start_worker
+        answer("v1", summary: "step 2: VERDICT OK")
+        expect(wake_turn).not_to be_nil
+
+        answer("v2")
         expect(wake_turns.pop(timeout: 0.5)).to be_nil
-        expect(saved_context_notes.last[:content]).to include("Attached: codex-review.")
+        expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
+                                                         "message (1 wake turn in a row, session.max_wakes)"])
       end
 
       it "stays within session.max_wakes" do

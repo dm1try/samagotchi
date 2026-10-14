@@ -112,8 +112,8 @@ EOF
   for a reply to context.
 - Each answer replaces the last (chi keeps the latest one), so start the
   summary with the title you are answering, and end it with your verdict
-  (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): chi doesn't wake for
-  an OK.
+  (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): an OK wakes chi once
+  to close the round.
 - Never answer a chi message with `chi send`: it counts as the user typing,
   outside the round's limit. Use it only when the user asks you to.
 
