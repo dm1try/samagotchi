@@ -143,6 +143,10 @@ RSpec.shared_context "effective model configs" do
     EffectiveModelConfigs.serve_defaults(server)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:ensure!)
+    # The prompt's "prefer rg" line follows PATH (SystemPrompt#rg_available?);
+    # CI runners have no rg, so the goldens pin it as found.
+    allow(Samagotchi::BundleNeeds).to receive(:found?).and_call_original
+    allow(Samagotchi::BundleNeeds).to receive(:found?).with("rg", any_args).and_return(true)
   end
 
   def rewrite_config(&) = EffectiveModelConfigs.write(File.join(tmp, "config"), server, down_port, &)
