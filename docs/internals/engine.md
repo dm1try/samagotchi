@@ -37,7 +37,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate),
   │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
-  │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, a prompt rebuild when it changed)
+  │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
+  │     #   chi line, a prompt rebuild when it changed)
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
@@ -255,8 +256,11 @@ One iteration with tool calls:
       → :tool_dispatch_started {iteration, call_count}
       → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
                                       on_stream_event:, max_tool_output_chars:)
-          → a tool the session's toolkit leaves out (Registry#left_out) skips the gate: no hooks, no card;
-            KernelLoop#dispatch answers it with the not-loaded error
+          → first, the call's entry unwraps it (Registry::Entry#unwrap: a call_tool of chi/<built-in> becomes
+            that built-in's call with via: "call_tool", ToolIndex#unwrap); the rest sees the real call
+          → a tool the session's toolkit leaves out (Registry#left_out; with via:, one Registry#indexed doesn't
+            reach) skips the gate: no hooks, no card; KernelLoop#dispatch answers it (the call_tool route for a
+            reachable tool, the not-loaded error for a removed one)
           → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
           → :tool_call_started
           → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)
@@ -273,11 +277,13 @@ One iteration with tool calls:
 ```
 
 **ToolRunner** (`ToolRunner#run`):
+- Unwraps a call_tool of a built-in first (`Registry::Entry#unwrap`), so `original`, the params and the label
+  are the built-in's and no "ran as:" line follows.
 - Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
   replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
 - Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
-  title, called_as, view, ref, refs}. The row fields (title, called_as, view, ref) come from `ToolRowFields.for`, which the
-  reload (`Web::MessageParts#tool_part`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as) travel
+  title, called_as, via, view, ref, refs}. The row fields (title, called_as, via, view, ref) come from `ToolRowFields.for`, which the
+  reload (`Web::MessageParts#tool_part`, after `BuiltinCalls.unwrap_saved`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as, via) travel
   inside `activity` on the completed event; `EVENT_KEYS` (view, ref, refs) go top-level on both events.
   `Bridge::TurnAccumulator` (snapshot and replay) and the web (`activity.js` `ACTIVITY_FIELDS` /
   `EVENT_FIELDS`) copy them by these lists, so a new row field is added there. `ref` is `FileRef.for` (a
@@ -486,9 +492,10 @@ Engine initialization (in this order, among other things):
   @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
   @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
-    then @tool_index.declare(@tools): find_tools + call_tool (source "index", not core) when a plugin
-    registered a chi.tool_source (Tools::ToolIndex: the index's groups, search, call checks; the source runs
-    the call with its own plugin Context)
+    then (plugins or not) @tool_index.declare(@tools): find_tools + call_tool (source "index", not core),
+    declared per toolkit by Registry#declared? (a source registered at load, or a reachable built-in) and
+    sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'
+    groups, search, call checks, the unwrap; a source runs the call with its own plugin Context)
   wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
   @hooks.runtime = @hook_routes.runtime (HookRoutes, built first: what a hook or plugin does reaches the UIs)

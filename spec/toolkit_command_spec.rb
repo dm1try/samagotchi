@@ -29,10 +29,16 @@ RSpec.describe Samagotchi::ToolkitCommand do
     lines = output.lines.map(&:chomp)
     expect(lines[0]).to eq("toolkit: lean (applies at the next turn's start)")
     expect(lines[1]).to match(/\A  declared \(16, ~\d\.\dk tokens\): execute ~\d+, read ~\d+/)
-    expect(lines[2]).to eq("  not loaded: register_reminder, cancel_reminder, list_reminders, list_sessions, send_note, " \
-                           "delegate, delegate_result")
-    expect(lines[3]).to eq("  toolkits: full, lean, child; /toolkit [NAME | add TOOL | remove TOOL] changes it")
-    expect(saved).to be_empty
+    expect(lines[2]).to eq("  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions, " \
+                           "send_note, delegate, delegate_result")
+    expect(lines[3]).to eq("  removed: none")
+    expect(lines[4]).to eq("  toolkits: full, lean, child; /toolkit [NAME | add TOOL | remove TOOL] changes it")
+    expect(command.run("child")[0].lines[2..3].map(&:chomp))
+      .to eq(["  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions",
+              "  removed: memory_write, delegate, delegate_result"])
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["call_tool"])
+    expect(command.run("")[0].lines[2]).to start_with("  not loaded: register_reminder, ")
+    expect(saved.size).to eq(1) # the child switch only
   end
 
   it "puts the session on another toolkit, or adds and removes a tool, saved at once" do
@@ -89,9 +95,14 @@ RSpec.describe Samagotchi::ToolkitCommand do
   it "asks first for that remove once the session has a model reply" do
     session.toolkit = Samagotchi::Toolkit.new(name: "lean")
     allow(engine).to receive(:history?).and_return(true)
-    _, changed, ask = command.run("remove delegate")
+    output, changed, ask = command.run("remove delegate")
     expect(changed).to be(false)
     expect(ask&.line).to eq("/toolkit remove delegate --yes")
+    expect(output).to start_with("Switching to lean -delegate removes delegate (call_tool can't reach it).")
+    expect(command.run("remove execute")[0]).to start_with("Switching to lean -execute removes execute (call_tool can't reach it).")
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["find_tools"])
+    allow(engine).to receive(:history?).and_return(false)
+    expect(command.run("")[0].lines[2]).to start_with("  reachable (call_tool): register_reminder")
   end
 
   it "refuses an unknown toolkit or tool, keeping a tool's case" do

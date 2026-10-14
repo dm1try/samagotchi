@@ -303,7 +303,7 @@ A plugin tool that runs other tools for the model (a dispatcher such as
 and with which arguments (`args:`). A rule's `tool:` then matches the call's
 own name **or** the tool it acts as: `tool: mcp_github_*` fires for a
 `call_tool` that acts as `mcp_github_merge_pull_request`, and `tool: call_tool`
-fires whatever it acts as. The question names the tool it acts as (by the
+fires whatever MCP tool it acts as. The question names the tool it acts as (by the
 `label:` its `targets:` gives, if any: display only) and shows its arguments, and an approval of "this call" is keyed by the real name, the
 alias and those arguments (`/guardrails` lists it as
 `call_tool>mcp_github_merge_pull_request:number=7 …`), so it never covers a
@@ -325,6 +325,15 @@ trade-off, when such a clash exists:
 - `session` and `repo` approvals stay distinct (`call_tool>mcp_x:…` vs
   `mcp_x:…`);
 - deny rules cover both, which is the point.
+
+A `call_tool` of one of chi's own tools (`chi/delegate`: a built-in the
+session's toolkit leaves out, [toolkits](configuration.md#toolkits)) is
+gated **as that tool**: it is turned into the `delegate` call before the
+guardrails run, so every rule on `delegate` (or `execute`'s `command:`, the
+`rm` check, a delegate child's boundary) gives the same verdict as for a
+direct call, and an approval is keyed `delegate:…` either way. `tool:
+call_tool` rules no longer see such calls, only MCP calls and misses. A
+`chi/` name the toolkit removes is refused before the gate, with no card.
 
 ```yaml
     - id: mcp-ask

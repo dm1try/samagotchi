@@ -87,10 +87,12 @@ module Samagotchi
 
       # What the UIs show (the snapshot, command_ran): nil when it declares
       # every tool on full (full, full +delegate), which has no chip.
+      # +left_out+ is +reachable+ and +removed+ together.
       def summary
         return nil if toolkit.name == Toolkit::FULL && left_out.empty? && resolved.fallback.nil?
 
-        { name: toolkit.name, label: toolkit.label, left_out: left_out, fallback: resolved.fallback }
+        { name: toolkit.name, label: toolkit.label, left_out: left_out, reachable: reachable, removed: removed,
+          fallback: resolved.fallback }
       end
     end
 

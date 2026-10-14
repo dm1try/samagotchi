@@ -13,6 +13,24 @@ and commands may change between minor versions. How releases are made:
 - Web: a new chain link (continue →) shows the model picker in its composer until its first turn, so the next link can
   start on another model or provider; the continue toast shows the fallback warning when the previous model's host is
   gone.
+- Built-ins a session's toolkit leaves out are reachable: `find_tools` searches them (group `chi`) beside MCP
+  servers' tools, and `call_tool` runs them through the usual guardrails as the real call. `remove:` /
+  `--no-tool` / `/toolkit remove` stay hard.
+
+### Changed
+
+- find_tools' description and its `server` parameter (now `group`) changed: sessions with MCP servers read their
+  prompt again once. So do sessions on `lean`, `child`, `coordinator` or a kit based on them: they now declare
+  `find_tools` and `call_tool`, and their not-loaded line changed.
+- A toolkit based on `lean` or `child` (a `toolkit.kits` entry, a bundle's `chi.toolkit`) no longer keeps the
+  built-ins its base leaves out from the model: they're reachable through `find_tools` / `call_tool`, guarded as
+  themselves. Name one under `remove:` to keep it out.
+- Guardrail rules on `call_tool` no longer see calls of chi's own tools made through it; they match the tool's own
+  name.
+- `/toolkit remove X` on a tool the toolkit leaves out is saved (it makes X unreachable). `/toolkit add X` then
+  `/toolkit remove X` now removes X (it used to go back to the kit's default), and a remove then an add declares X.
+- The `child` toolkit also removes `delegate` and `delegate_result`: a child on it can't start children, even
+  through call_tool.
 
 ### Fixed
 

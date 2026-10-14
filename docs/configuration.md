@@ -1331,7 +1331,7 @@ toolkit:
 |---|---|
 | `full` | every built-in; the default |
 | `lean` | `execute`, `read`, `write`, `edit`, `memory_read`, `memory_write`, `task_create`, `task_wait`, `task_get`, `task_list`, `task_stop`, `ask_user_question`, `web_fetch`, `context_read` |
-| `child` | `lean` plus `send_note`, without `memory_write` |
+| `child` | `lean` plus `send_note`, without `memory_write`, `delegate`, `delegate_result` |
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions` (declared by the coordinator bundle) |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
@@ -1342,9 +1342,26 @@ toolkit:
   for a delegate child, or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
   doesn't move existing sessions, not even when their worker is woken again; a session from before toolkits is on
   `full`. A continue and a fork keep the toolkit. `/toolkit` shows and changes it.
-- **Not loaded.** When a toolkit leaves tools out, one line after the base prompt names them (`Not loaded in this
-  session (toolkit lean): …. Only the user can load one (/toolkit add <name>).`). A call to one is refused before
-  the guardrails (no approval card): `Error: delegate isn't loaded in this session (toolkit lean) …`.
+- **Left out: reachable or removed.** A built-in missing from a kit's base list (`lean` has no `delegate`; a
+  `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, with its inputSchema) beside
+  the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate` itself, through the
+  usual guardrails, approvals and hooks ([plugins](plugins.md#chitool_sourcecall-acts_as-label-wait-prefix)). A
+  tool in a toolkit's `remove:`, a `--no-tool` or a `/toolkit remove` is **removed**: hard, also after an add, and
+  call_tool can't reach it (`child` removes `memory_write`, `delegate` and `delegate_result`, so a child on it
+  starts no children). To keep a built-in away from the model, name it under `remove:`. `find_tools` and `call_tool`
+  are declared when a toolkit has a reachable built-in (or an MCP server is configured); `full` with no MCP server
+  declares neither.
+- **The prompt line.** One line after the base prompt names them: `Not declared in this session (toolkit lean): ….
+  Search them with find_tools; call one with call_tool.`, then `Removed (toolkit child): memory_write, …. Only the
+  user can load one (/toolkit add <name>).` With `find_tools` removed, the first sentence ends `Call one with
+  call_tool(tool: "chi/<name>", args: {…}).` instead. With `call_tool` itself removed, nothing is reachable and one
+  line names them all: `Not loaded in this session (toolkit lean): …. Only the user can load one (/toolkit add
+  <name>).`
+- **Calls by name.** A direct call of a reachable tool is refused before the guardrails (no approval card), with
+  the route: `Error: delegate isn't declared in this session (toolkit lean); call it with call_tool(tool:
+  "chi/delegate", args: {…}) (find_tools gives its inputSchema).` A removed tool's: `Error: memory_write isn't
+  loaded in this session (toolkit child) and can't be loaded from here; only the user can (/toolkit add
+  memory_write).` `/toolkit` lists both kinds, and the web's toolkit chip says them in its tooltip.
 - **Applied at a turn's start.** A change (`/toolkit`, a plugin's `ctx.use_toolkit`) is saved at once and the next
   turn declares it; once the session has a model reply, `/toolkit` asks first ("Changes that restart the prompt
   cache").

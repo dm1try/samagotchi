@@ -25,13 +25,14 @@ right-hand column happens.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ tools        built-ins, then plugin tools sorted by (bundle, name),      │  a tool added/changed,
 │              the tool index's find_tools/call_tool as bundle "index"     │
-│              (declared once at load; publishes change only results)      │
+│              (per toolkit; MCP lines from load, the chi line per toolkit)│
 │              those the session's toolkit declares (per toolkit)          │  /model, a profile change,
 │              (chat: the `tools` field; native: the model's template)     │  a toolkit change
 ├──────────────────────────────────────────────────────────────────────────┤
 │ SYSTEM, stable part                         SystemPrompt#system_prompt_with_index
 │   [native thinking token] base prompt                                    │
-│   not-loaded line (only when the toolkit leaves tools out)               │
+│   not-loaded line (only when the toolkit leaves tools out:               │
+│     not declared / removed)                                              │
 │   rg guidance                                                            │  /thinking level,
 │   system identity (+ model overlay)                                      │  /model, editing a
 │   model notes (model_notes_* matching the model)                         │  memory / AGENTS.md
@@ -70,6 +71,12 @@ right-hand column happens.
   beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request, so a mid-turn change
   would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
   they were before toolkits.
+- find_tools' description is a function of the toolkit and the source groups **at load**: `ToolIndex#declare`
+  snapshots the MCP groups' lines (name, summary, callable count) and `ToolIndex#refresh!` (from
+  `ToolkitBinding#apply!`) rebuilds only the `chi` line, the built-ins the toolkit reaches. An MCP server that
+  finishes booting between load and the first turn changes search answers only, so two sessions on the same
+  toolkit with the same MCP cache send the same bytes. Whether find_tools/call_tool are declared at all reads the
+  same two things (`Registry#index_needed?`), never live groups.
 - On remote Claude, `LLM::PromptCache.mark` sends the system message as two text parts. The stable part carries
   breakpoint #1, so a **new session** reads it from the cache. The last non-system message carries breakpoint
   #2, so the **next request in the session** reads everything up to it. Mid and tail system messages never take

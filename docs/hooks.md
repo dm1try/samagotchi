@@ -536,6 +536,10 @@ A `write`'s `content:` is the file text; an `edit` carries `old_text:` and
 arguments whole on `args:` (string keys) instead, and its `content:` is those
 arguments as JSON. An MCP tool's call is chi's `call_tool` (its tool index's, which the mcp
 bundle runs): `tool: "call_tool"`, with `args: {"tool" => "<server>/<tool>", "args" => {…}}`.
+A built-in reached through `call_tool` (`chi/delegate`, a tool the session's toolkit doesn't
+declare) fires as that built-in, its call built as a direct call's, with `call[:via] == "call_tool"`.
+A hook that drops `via:` or rewrites the call to a tool the toolkit removes gets the call refused
+by its name.
 
 ## Bundle Hooks (unified workflow bundle)
 

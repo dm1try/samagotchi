@@ -7,7 +7,8 @@ require_relative "toolkit"
 module Samagotchi
   # /toolkit, the session's toolkit (Session#toolkit): with no argument,
   # the tools its next turn declares with their estimated tokens, the
-  # toolkit and the tools it leaves out; `/toolkit NAME` puts the session
+  # toolkit and the tools it leaves out (the ones find_tools reaches, the
+  # ones it removes); `/toolkit NAME` puts the session
   # on another toolkit (its own adds and removes go), `/toolkit add TOOL`
   # and `/toolkit remove TOOL` change one tool. A change is saved at once
   # and applies at the next turn's start (Engine#apply_toolkit!). The
@@ -57,7 +58,9 @@ module Samagotchi
       [[listing(after), "From the next turn's start (a running turn keeps its tools)."].join("\n"), true, nil]
     end
 
-    # The toolkit, its declared tools with tokens, and the ones left out.
+    # The toolkit, its declared tools with tokens, and the ones left out:
+    # reachable with find_tools / call_tool, removed (only /toolkit add
+    # brings one back), or, with call_tool not declared, not loaded.
     def listing(explained)
       toolkit = explained.toolkit
       lines = ["toolkit: #{toolkit.label}#{" (applies at the next turn's start)" if explained.pending}"]
@@ -68,7 +71,13 @@ module Samagotchi
       lines << "  declared (#{declared.size}, ~#{format_tokens(declared.sum { |entry| tokens(entry) })} tokens): " \
                "#{declared.map { |entry| "#{entry.name} ~#{format_tokens(tokens(entry))}" }.join(", ")}"
       left_out = explained.left_out
-      lines << "  not loaded: #{left_out.empty? ? "none" : left_out.join(", ")}"
+      if explained.reachable.empty?
+        lines << "  not loaded: #{left_out.empty? ? "none" : left_out.join(", ")}"
+      else
+        route = explained.removed.include?("find_tools") ? "call_tool" : "find_tools"
+        lines << "  reachable (#{route}): #{explained.reachable.join(", ")}"
+        lines << "  removed: #{explained.removed.empty? ? "none" : explained.removed.join(", ")}"
+      end
       lines << "  toolkits: #{@engine.toolkit_kits.keys.join(", ")}; #{USAGE.delete_prefix("usage: ")} changes it"
       lines.join("\n")
     end
@@ -101,8 +110,15 @@ module Samagotchi
       added = names(after) - names(before)
       removed = names(before) - names(after)
       parts = []
+      # Removed (hard: call_tool can't reach it), declared before or not;
+      # left out by the kit (soft); reachable now and not before.
+      hard = after.removed - before.removed
+      left = removed - hard
+      soft = after.reachable - before.reachable - removed
       parts << "declares #{added.join(", ")}" unless added.empty?
-      parts << "leaves out #{removed.join(", ")}" unless removed.empty?
+      parts << "leaves out #{left.join(", ")}" unless left.empty?
+      parts << "removes #{hard.join(", ")} (call_tool can't reach #{hard.size == 1 ? "it" : "them"})" unless hard.empty?
+      parts << "lets call_tool reach #{soft.join(", ")}" unless soft.empty?
       parts << "declares the same tools under its own name" if parts.empty?
       "Switching to #{after.toolkit.label} #{parts.join("; ")}."
     end

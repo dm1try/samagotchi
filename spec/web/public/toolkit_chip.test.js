@@ -14,6 +14,15 @@ test("chipModel: the label, and what it leaves out in the tooltip", () => {
     "/toolkit lists them; /toolkit NAME, add TOOL or remove TOOL changes them from the next turn.");
 });
 
+test("chipModel: what find_tools reaches and what the toolkit removes", () => {
+  const chip = chipModel({ name: "child", label: "child", left_out: ["list_sessions", "memory_write"],
+    reachable: ["list_sessions"], removed: ["memory_write"], fallback: null });
+  assert.equal(chip.title, "Toolkit: child, the tools this session declares. Reachable with find_tools: list_sessions. " +
+    "Removed: memory_write. /toolkit lists them; /toolkit NAME, add TOOL or remove TOOL changes them from the next turn.");
+  assert.doesNotMatch(chipModel({ name: "lean", label: "lean", left_out: ["delegate"], reachable: ["delegate"], removed: [] }).title,
+    /Removed|Not loaded/);
+});
+
 test("chipModel: a name that didn't resolve, and the file's reading (no left_out)", () => {
   const chip = chipModel({ name: "coordinator", label: "coordinator", left_out: [], fallback: "no toolkit named coordinator" });
   assert.equal(chip.text, "tools coordinator ?");

@@ -517,7 +517,12 @@ line, the web as the `reasoning` chip. See "Reasoning history" in
 [configuration.md](configuration.md).
 
 `/toolkit` lists the tools the next turn declares (each with its estimated
-tokens), the session's toolkit and the tools it leaves out. `/toolkit NAME` puts
+tokens), the session's toolkit and the tools it leaves out: `reachable
+(find_tools): …` (built-ins the model reaches with find_tools and call_tool)
+and `removed: …` (only `/toolkit add` brings one back), or `not loaded: …` when
+the toolkit removes call_tool. `/toolkit remove TOOL` is hard: a tool the
+toolkit left out reachable becomes unreachable (saved, and asked first once the
+session has a model reply), also after an add. `/toolkit NAME` puts
 the session on another toolkit (dropping its own adds and removes); `/toolkit
 add TOOL` and `/toolkit remove TOOL` change one tool (a tool's name keeps its
 case). The change is saved at once and applies from the next turn's start; a

@@ -585,15 +585,32 @@ chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
 
 Tools the model reaches through a search instead of declaring them one by
 one: the plugin publishes them into chi's **tool index**, and chi declares
-two tools in all, whatever the number of sources: `find_tools` (a keyword
-search that answers each match's `inputSchema`) and `call_tool` (calls one as
-`<group>/<tool>`; its row label is the first source's `label`). They
-are declared once, after the plugins load, and only when a plugin registered
-a source: a session without one declares neither. Nothing a source publishes
-later changes the request's tools, only what a search answers, so the prompt
-cache keeps (the search tool's description lists the groups as they were at
-load). The mcp bundle is the only source so far (a group per server), and the
-texts speak of MCP servers.
+two tools in all, whatever the number of sources: `find_tools(query,
+group?)` (a keyword search that answers each match's `inputSchema`) and
+`call_tool(tool, args)` (calls one as `<group>/<tool>`; its row label is the
+first source's `label`). The index has one group of its own, **`chi`**: the
+built-ins the session's toolkit leaves out but doesn't remove
+([toolkits](configuration.md#toolkits)), each with its registered schema.
+The two tools are registered once, after the plugins load, and declared per
+toolkit: when a plugin registered a source then, or when the toolkit has a
+reachable built-in (`full` with no source declares neither). Nothing a
+source publishes later changes the request's tools, only what a search
+answers, so the prompt cache keeps: the search tool's description lists the
+source groups as they were at load, and a `chi` line first, per toolkit.
+The mcp bundle is the only source so far (a group per server). A source's
+group named `chi`, or named like an earlier group, is left out of search,
+lookup and the description, with one warning per name.
+
+**A built-in through `call_tool` runs as that built-in.** `call_tool(tool:
+"chi/delegate", args: {…})` (or a bare `delegate` while it's reachable) is
+turned into the `delegate` call itself before the guardrails, so rules on
+`delegate`, approvals (keyed `delegate:…`, the same as a direct call's),
+`before_tool_call`/`after_tool_call` hooks and the row see `delegate`, with
+`call[:via] == "call_tool"`; the row reads "delegate (via call_tool)", live
+and after a reload. `tool: call_tool` rules see MCP calls and misses only. A
+`chi/` name the toolkit removes or declares, or any built-in once
+`call_tool` itself is removed, is refused by its name before the guardrails
+(no hook, no card).
 
 ```ruby
 @source = chi.tool_source(label: "mcp", prefix: "mcp_",
@@ -635,11 +652,11 @@ index = Samagotchi::Tools::ToolIndex
   what the two tools take in every request (none when other tools had both
   names). A `Group` in a state other than the three, holding another group's
   tool, or a `Tool` with a blank `acts_as` raises `ArgumentError`.
-- `find_tools` and `call_tool` aren't chi's own tools: every toolkit declares
-  them (unless its `remove:` names them), as it does plugin tools. A bundle
-  that declares tools of those names itself (an mcp bundle before 0.7.0 has
-  `find_mcp_tools` and `mcp_call`) keeps them, and with no source chi
-  declares neither.
+- `find_tools` and `call_tool` aren't chi's own tools: a toolkit that needs
+  them declares them (unless its `remove:` names one; `call_tool` stays
+  usable with `find_tools` removed). A bundle that declares tools of other
+  names itself (an mcp bundle before 0.7.0 has `find_mcp_tools` and
+  `mcp_call`) keeps them; with no source, `full` declares neither of chi's.
 
 ### `chi.peer_source(name, label:)`
 
@@ -1067,7 +1084,7 @@ bundles:
 
 - **Tools: search, then call.** The servers' tools are kept in chi's tool index;
   the model has two fixed tools:
-  - `find_tools(query, server?)` searches it by keywords over the
+  - `find_tools(query, group?)` searches it by keywords over the
     server's name, the tool's name and its description, and answers up to 5
     tools, each with its name `<server>/<tool>`, its description and its
     whole `inputSchema`. A word counts more the fewer tools have it (a word
@@ -1092,7 +1109,7 @@ bundles:
     `args` are typed by the tool's
     `inputSchema` (numbers and booleans given as text, JSON text for an
     object). A name it doesn't know answers the closest ones (`Error: no
-    MCP tool chrome/open_url. Closest: chrome/new_page, …`). Its row shows
+    tool chrome/open_url. Closest: chrome/new_page, …`). Its row shows
     `mcp chrome/take_screenshot fullPage=true`.
   - A tool turn takes a few more steps than when every tool was declared
     (the P1 spike: about 1.5 more on a 30-tool server), and each request is
@@ -1162,8 +1179,9 @@ bundles:
   session" (or in this repo) allows that tool with those arguments only.
   (Approvals stored before 0.6.0, under the old name, don't carry over, nor
   ones stored before 0.7.0 under `mcp_call`: each MCP tool is asked about once more.)
-  Two things see `call_tool`, not the tool: hooks (a `before_tool_call`
-  event's `tool:` is `"call_tool"`, the tool in its args), and loop-guard's
+  Two things see `call_tool`, not the MCP tool: hooks (a `before_tool_call`
+  event's `tool:` is `"call_tool"`, the tool in its args; a built-in reached
+  through `call_tool` is the exception, it fires as that built-in), and loop-guard's
   `ignore_tools` (`call_tool` ignores every MCP call; calls to different
   tools, or with different args, stay distinct, since the tool is in the
   args).
