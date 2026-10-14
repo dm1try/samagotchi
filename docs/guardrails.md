@@ -313,6 +313,19 @@ one of chi's own tools or another bundle's tool: that `acts_as:` is dropped
 name only. Hooks and loop-guard's `ignore_tools` still see the call's own
 name.
 
+chi's `call_tool` is exempt from the "another bundle's tool" drop (not the
+core-tool one): its `acts_as` is always a tool its sources published, so a
+bundle tool that happens to share an MCP tool's `mcp_<server>_<tool>` name
+can't take `call_tool` calls of that MCP tool out of your `mcp_*` rules. The
+trade-off, when such a clash exists:
+- an `allow` or `ask` rule by that name matches both the bundle tool and the
+  MCP call;
+- a `rule`-scope approval ("always for this rule") covers both, because it
+  matches by rule, source and place, not by tool;
+- `session` and `repo` approvals stay distinct (`call_tool>mcp_x:…` vs
+  `mcp_x:…`);
+- deny rules cover both, which is the point.
+
 ```yaml
     - id: mcp-ask
       # every MCP call (call_tool, acting as mcp_<server>_<tool>); not a find_tools search.

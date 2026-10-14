@@ -113,6 +113,59 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       end
     end
 
+    describe "chi's call_tool (source index) acting as an MCP tool a bundle tool shares a name with" do
+      # The index's call_targets only name a tool its sources published, so
+      # another bundle's tool of that name doesn't drop the acts_as.
+      def registry_with(clash_source)
+        Samagotchi::Tools::Builtins.registry.tap do |r|
+          r.register("call_tool", schema: {}, handler: ->(*) { "" }, source: Samagotchi::Tools::ToolIndex::SOURCE,
+                                 targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
+          r.register("mcp_fs_read", schema: {}, handler: ->(*) { "" }, source: clash_source)
+        end
+      end
+
+      def verdict_via(tool, set, registry)
+        call = { name: "call_tool", args: { "tool" => tool, "args" => { "path" => "a" } } }
+        v = Samagotchi::Guardrails::Verdict.new(call: call)
+        v.context = context
+        v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
+        set.check(v)
+      end
+
+      %w[notes mcp].each do |clash_source|
+        it "keeps the acts_as with the clashing tool under source #{clash_source}, so mcp_* rules match" do
+          registry = registry_with(clash_source)
+          targets = Samagotchi::Guardrails::Targets.for({ name: "call_tool", args: { "tool" => "mcp_fs_read" } }, context,
+                                                        registry: registry)
+          expect(targets.acts_as).to eq("mcp_fs_read")
+          expect(verdict_via("mcp_fs_read", rules({ id: "no-mcp", tool: "mcp_*", verdict: "deny" }), registry)).to be_deny
+          expect(verdict_via("mcp_fs_read", rules({ id: "fs", tool: "mcp_fs_read", verdict: "ask" }), registry)).to be_ask
+        end
+      end
+
+      it "still drops (and logs once) an acts_as naming a core tool" do
+        allow(Samagotchi::Log).to receive(:warn)
+        registry = registry_with("notes")
+        set = rules({ id: "x", tool: "execute", verdict: "deny" })
+        2.times { expect(verdict_via("execute", set, registry)).to be_allow }
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:plugins, "plugin_acts_as_dropped", hash_including(tool: "call_tool", acts_as: "execute",
+                                                                   msg: /it is a core tool/)).once
+      end
+
+      it "keeps the index call's approval key apart from the bundle tool's" do
+        registry = registry_with("notes")
+        set = rules({ id: "fs", tool: "mcp_fs_read", verdict: "ask" })
+        via = verdict_via("mcp_fs_read", set, registry)
+        expect(Samagotchi::Guardrails::Approvals.key_for(via)).to eq("call_tool>mcp_fs_read:path=a")
+        direct = Samagotchi::Guardrails::Verdict.new(call: { name: "mcp_fs_read", args: { "path" => "a" } })
+        direct.context = context
+        direct.targets = Samagotchi::Guardrails::Targets.for(direct.call, context, registry: registry)
+        set.check(direct)
+        expect(Samagotchi::Guardrails::Approvals.key_for(direct)).to eq("mcp_fs_read:path=a")
+      end
+    end
+
     it "matches memory: remove on a memory_write that removes, not on one that writes" do
       set = rules({ id: "memory-remove", tool: "memory_write", memory: "remove", verdict: "ask" })
       expect(verdict_for({ name: "memory_write", path: "h", scope: "project", remove: true }, set)).to be_ask

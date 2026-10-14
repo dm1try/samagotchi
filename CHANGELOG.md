@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A bundle tool named like an MCP tool (`mcp_fs_read`) no longer takes `call_tool` calls of that MCP tool out of
+  `mcp_*` rules.
+
 ## [0.68.0] - 2026-10-14
 
 ### Changed

@@ -294,6 +294,8 @@ is what `targets:` says:
   (chi's `call_tool`, which calls a tool a [source](#chitool_sourcecall-acts_as-label-wait-prefix) published). Rules keyed by that tool's name match the
   call too, as well as rules on the tool's own name. It can't be one of
   chi's own tools or another bundle's tool: that is dropped (and logged).
+  The "another bundle's tool" drop doesn't apply to chi's `call_tool`: its
+  `acts_as` is always a tool its sources published.
 - `args:`: the arguments it acts with (a Hash), when they aren't the call's
   own (a dispatcher's inner arguments). A call with no `command:` or
   `paths:` is asked about with them, and "allow this call" is keyed by them.
@@ -621,7 +623,8 @@ index = Samagotchi::Tools::ToolIndex
   block returns (a String, a `ToolResult` with images).
 - **Guardrails** see a `call_tool` as the tool it calls: its `acts_as`, its
   arguments and `"<group>: <tool>"` as the question's label
-  ([acts_as:](#guardrails)). A call made before its tool is published is
+  ([acts_as:](#guardrails)), even when another bundle has a tool of that
+  name (only the core-tool drop applies). A call made before its tool is published is
   named by `acts_as` from the names alone; a bare name with `prefix` is
   taken as an `acts_as` as given. The `acts_as:` hook must give exactly the
   `acts_as` the source publishes for that tool: a call whose tool isn't the

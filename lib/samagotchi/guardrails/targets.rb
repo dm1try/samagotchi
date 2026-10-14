@@ -3,6 +3,7 @@
 require_relative "../tools/tool_path"
 require_relative "../tools/memory"
 require_relative "../tool_declarations"
+require_relative "../tools/tool_index"
 require_relative "../log"
 require_relative "model_size"
 require_relative "outside"
@@ -147,14 +148,20 @@ module Samagotchi
 
       # +name+ as the acts_as of +entry+'s calls: nil for none, and for a
       # core tool or a tool another bundle registered (logged); the tool's
-      # own name is no alias either.
+      # own name is no alias either. chi's tool index (call_tool, source
+      # ToolIndex::SOURCE) skips the other-bundle check: its call_targets
+      # only name a tool one of its sources published (or a source-prefixed
+      # name, ToolIndex#claimed), so the registry is the wrong owner test,
+      # and a bundle tool sharing an MCP tool's name would otherwise take
+      # call_tool calls of that tool out of its mcp_* rules.
       def self.acts_as_of(name, entry, registry)
         name = name.to_s.strip
         return nil if name.empty? || name == entry.name
 
         other = registry[name]
         whose = if CORE_TOOLS.include?(name) || other&.core? then "a core tool"
-                elsif other && other.source != entry.source then "bundle #{other.source}'s tool"
+                elsif other && other.source != entry.source && entry.source != Tools::ToolIndex::SOURCE
+                  "bundle #{other.source}'s tool"
                 end
         return name unless whose
 
