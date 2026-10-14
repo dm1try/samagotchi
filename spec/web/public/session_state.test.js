@@ -23,6 +23,7 @@ test("starts every field empty", () => {
   assert.deepEqual(s.preloadedMemories, []);
   assert.deepEqual(s.mutedMemories, []);
   assert.deepEqual(s.timing, normalizeTiming());
+  assert.equal(s.turnStarted, false);
 });
 
 test("each call is a fresh object: one session's writes never reach the next", () => {
@@ -171,4 +172,13 @@ test("sessionStateFrom leaves the stream cursor, its guess and the attach copy t
   assert.equal("streamSeq" in st, false);
   assert.equal("streamFromGuess" in st, false);
   assert.equal("attachCopiedAt" in st, false);
+});
+
+test("turnStarted is the page's, never a payload's: a resync of the same session keeps it", () => {
+  const st = sessionStateFrom({ session: { model_name: "fake", continues: "d2" }, timing: { turn_records: [] } });
+  assert.equal("turnStarted" in st, false);
+  const current = emptySessionState();
+  current.turnStarted = true;
+  Object.assign(current, st);
+  assert.equal(current.turnStarted, true);
 });

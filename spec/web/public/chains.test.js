@@ -1,7 +1,7 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, openChildrenTemplate } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate } from "../../../lib/samagotchi/web/public/chains.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template's markup as the page gets it (lit's marker comments dropped).
@@ -209,6 +209,33 @@ test("continuedText: the new link, the archive, and the delegates that moved", (
     "Continued d3d3d3d3 in e4e4e4e4; 2 open delegates moved");
   // An older server's answer has no moved.
   assert.equal(continuedText("d3", { id: "e4" }), "Continued d3 in e4; d3 is archived");
+});
+
+test("continuedText: the model fallback's warning is its own part; none or empty leaves it as it was", () => {
+  const warning = "gone:x isn't available (host gone is gone); the link starts on fake";
+  assert.equal(continuedText("d3", { id: "e4", model_warning: warning }), `Continued d3 in e4; d3 is archived; ${warning}`);
+  assert.equal(continuedText("d3", { id: "e4", moved: ["a"], model_warning: warning }, { opened: false }),
+    `Continued d3 in e4; 1 open delegate moved; ${warning}`);
+  assert.equal(continuedText("d3", { id: "e4", model_warning: null }), "Continued d3 in e4; d3 is archived");
+  assert.equal(continuedText("d3", { id: "e4", model_warning: "" }), "Continued d3 in e4; d3 is archived");
+  assert.equal(continuedText("d3", { id: "e4", model_warning: "  " }, { opened: false }), "Continued d3 in e4");
+});
+
+test("freshLink: a chain link with no turn yet, not running, not a terminal's, not continued", () => {
+  const fresh = (extra = {}, timing = {}) => ({
+    continues: "d2", owner: "worker", turnStarted: false, ...extra,
+    timing: { turnRecords: [], activeTurn: null, ...timing },
+  });
+  assert.equal(freshLink(fresh()), true);
+  assert.equal(freshLink(fresh({ owner: null })), true);
+  assert.equal(freshLink(fresh({ continues: null })), false);
+  assert.equal(freshLink(fresh({}, { turnRecords: [{ id: "t1", status: "failed" }] })), false);
+  assert.equal(freshLink(fresh({}, { activeTurn: { id: "t1" } })), false);
+  assert.equal(freshLink(fresh({ turnStarted: true })), false);
+  assert.equal(freshLink(fresh(), { running: true }), false);
+  assert.equal(freshLink(fresh({ owner: "tui" })), false);
+  assert.equal(freshLink(fresh(), { continued: true }), false);
+  assert.equal(freshLink(null), false);
 });
 
 test("continueRefusal: anything else is the server's words", () => {

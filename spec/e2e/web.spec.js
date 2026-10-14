@@ -759,8 +759,21 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(stripCard).toBeVisible();
 });
 
-test("continue → starts the next link with the opener in the composer, unsent; the previous link is archived and reached from the chain's chip and the ← → links; its open delegate moves to the new link", async ({ page, script, chi }) => {
+// Two models on the default host: the fresh link's picker switches between them.
+const TWO_MODELS = {
+  default: "fake-script",
+  models: [
+    { name: "fake-script", host: "main", id: "fake-script" },
+    { name: "fake-b", host: "main", id: "fake-b" },
+  ],
+};
+
+test("continue → starts the next link with the opener in the composer, unsent, and the model picker until its first turn; the previous link is archived and reached from the chain's chip and the ← → links; its open delegate moves to the new link", async ({ page, script, chi }) => {
   script("plain");
+  // loadModels() runs at page load (and on + new chat): route, then reload.
+  await page.route("**/api/models", (route) => route.fulfill({ json: TWO_MODELS }));
+  await page.reload();
+  await expect(page.locator("#modelPick")).toHaveText("fake-script");
   await send(page, "Chain day one");
   await turnEnded(page, 1);
   const first = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
@@ -783,6 +796,23 @@ async function continueAndCheck(page, first, kid) {
   await expect(page.locator("#actionBtn")).toHaveText("Send");
   await expect(page.locator("#toast")).toContainText(`Continued ${first.slice(0, 8)} in ${second.slice(0, 8)}`);
   await expect(page.locator("#toast")).toContainText("1 open delegate moved");
+  // A fresh link: the picker shows its model; a pick runs /model in it, the
+  // start page's remembered model and Recent stay, the opener stays.
+  const pick = page.locator("#modelPick");
+  const infoModel = page.locator("#infoText .meta .status + .model");
+  const stored = await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")]);
+  await expect(pick).toBeVisible();
+  await expect(pick).toHaveText("fake-script");
+  await expect(pick).toHaveAttribute("aria-label", "Model this link starts on");
+  await pick.click();
+  await page.locator("#modelSearch").fill("fake-b");
+  await page.locator("#modelSearch").press("Enter");
+  await expect(pick).toHaveText("fake-b");
+  await expect(infoModel).toContainText("fake-b");
+  await expect(page.locator(`${H()} .bubble`).filter({ hasText: "/model fake-b" })).toHaveCount(1);
+  expect(await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")])).toEqual(stored);
+  await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
+  await expect(page.locator("#prompt")).toBeFocused();
   // The moved delegate folds under the new link, unarchived.
   const family = page.locator(`#topStrip .card[data-id="${second}"] .family-chip`);
   await expect(family).toContainText("1 delegate");
@@ -808,13 +838,38 @@ async function continueAndCheck(page, first, kid) {
   await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
   await expect(page.locator("#chainPop")).toBeHidden();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
-  // A link continued already: its → link, no Continue.
+  // A link continued already: its → link, no Continue, no picker (it has turns).
   await expect(page.locator("#infoContinueBtn")).toBeHidden();
+  await expect(pick).toBeHidden();
   const forward = page.locator("#infoBar a.chain-link");
   await expect(forward).toHaveText(/^\d{4}-\d{2}-\d{2} →$/);
   await forward.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
+  await expect(pick).toHaveText("fake-b");
+
+  // Its first turn: the picker goes.
+  await page.locator("#actionBtn").click();
+  await turnEnded(page, 1);
+  await expect(pick).toBeHidden();
+  // The turn asked for fake-b (the fake server stamps fake-script on every answer).
+  await expect(infoModel).toHaveAttribute("title", /asked for fake-b/);
+  // The start page: its own remembered model came back.
+  await page.locator("#newBtn").click();
+  await expect(pick).toBeVisible();
+  await expect(pick).toHaveText("fake-script");
+  await expect(pick).toHaveAttribute("aria-label", "Model for the new chat");
+  expect(await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")])).toEqual(stored);
+  // A panel open on the start page closes when a session (not a fresh link) opens without a click
+  // outside it (a hash change: back, a link), and stays closed back here.
+  await pick.click();
+  await expect(page.locator("#modelPanel")).toBeVisible();
+  await page.evaluate((id) => { location.hash = `#/s/${id}`; }, second);
+  await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
+  await expect(pick).toHaveAttribute("aria-expanded", "false");
+  await page.locator("#newBtn").click();
+  await expect(pick).toBeVisible();
+  await expect(page.locator("#modelPanel")).toBeHidden();
 }
 
 test("all sessions: a card's archive button hides it without opening it, the toast's Undo brings it back", async ({ page, script }) => {

@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: a new chain link (continue →) shows the model picker in its composer until its first turn, so the next link can
+  start on another model or provider; the continue toast shows the fallback warning when the previous model's host is
+  gone.
+
 ### Fixed
 
 - A bundle tool named like an MCP tool (`mcp_fs_read`) no longer takes `call_tool` calls of that MCP tool out of

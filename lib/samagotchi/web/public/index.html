@@ -578,7 +578,7 @@ body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
 body.has-session #composer textarea{min-height:0}
 body.has-session #composeHint{display:none}
 body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
-/* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
+/* The model picker (the start page, and a fresh chain link: app.js syncModelPick): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
 #composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
 #composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
@@ -587,6 +587,9 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 .model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none;transition:transform .12s ease}
 .model-pick[aria-expanded="true"]::after{transform:translateY(-20%) rotate(225deg)}
 @media(max-width:600px){#composer .actions-col .model-pick{max-width:60%}}
+/* A fresh link's (body.fresh-link): the session composer is one row and .actions-col is content-sized there, so a px cap keeps the text field's room and Send in view. :not([hidden]) keeps a failed /api/models' hide (this selector outranks the [hidden] one). */
+body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){display:inline-block;flex:0 1 auto;min-width:0;max-width:200px}
+@media(max-width:600px){body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){max-width:100px}}
 /* The new chat's LLM context chip, after the picker: as quiet as it; accent once a choice is set (the info bar chip's .own). */
 #composer .actions-col .llmctx-new{order:0;flex:0 1 auto;min-width:0;max-width:min(40%,260px);height:24px;min-height:24px;line-height:22px;padding:0 6px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis}
 #composer .actions-col .llmctx-new:hover{filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
@@ -603,7 +606,7 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 #modelPanel{position:absolute;left:10px;width:min(560px,calc(100% - 20px));bottom:calc(100% + 8px);max-height:360px;border-radius:12px;z-index:21;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-panel);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 #modelPanel.down{bottom:auto;top:calc(100% + 8px)}
 #modelPanel.over{bottom:0}
-#modelPanel[hidden],body.has-session #modelPanel{display:none}
+#modelPanel[hidden],body.has-session:not(.fresh-link) #modelPanel{display:none}
 #modelPanel .model-search{flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--border)}
 #modelPanel .model-search svg{flex:none;width:14px;height:14px;color:var(--text-faint)}
 #modelSearch{flex:1;min-width:0;height:38px;background:transparent;border:0;color:var(--text);font-size:13px}

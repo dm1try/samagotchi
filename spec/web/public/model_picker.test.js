@@ -21,7 +21,7 @@ const PAYLOAD = {
   ],
 };
 
-function picker({ payload = PAYLOAD, stored = null, recent = [] } = {}) {
+function picker({ payload = PAYLOAD, stored = null, recent = [], remember } = {}) {
   localStorage.removeItem(MODEL_KEY);
   localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
   document.body.innerHTML = `<div id="center"><div id="composer"><div id="modelPanel" hidden><input id="modelSearch"
@@ -30,7 +30,7 @@ function picker({ payload = PAYLOAD, stored = null, recent = [] } = {}) {
   const picks = [];
   const ctl = createModelPicker({ button: $("#modelPick"), panel: $("#modelPanel"), input: $("#modelSearch"),
                                   list: $("#modelList"), composer: $("#composer"), center: $("#center"),
-                                  onPick: (name) => picks.push(name) });
+                                  onPick: (name) => picks.push(name), ...(remember ? { remember } : {}) });
   ctl.setModels(payload, stored);
   const list = $("#modelList");
   const input = $("#modelSearch");
@@ -175,4 +175,54 @@ test("a press outside closes; the button toggles it", () => {
   p.ctl.close();
   p.button.click();
   assert.equal(p.ctl.isOpen(), false, "a hidden button opens nothing");
+});
+
+test("show puts a name on the button and stores nothing; a name that isn't a row still shows, no row chosen", () => {
+  const p = picker({ recent: ["other"] });
+  p.ctl.show("box:alpha");
+  assert.equal(p.button.textContent, "box:alpha");
+  assert.equal(p.ctl.chosenRow().host, "box");
+  p.ctl.show("openrouter:vendor/model");
+  assert.equal(p.button.textContent, "openrouter:vendor/model");
+  assert.equal(p.ctl.chosen(), "openrouter:vendor/model");
+  assert.equal(p.ctl.chosenRow(), null);
+  assert.equal(localStorage.getItem(MODEL_KEY), null);
+  assert.equal(localStorage.getItem(RECENT_KEY), JSON.stringify(["other"]));
+});
+
+test("a pick with remember false runs onPick and stores neither the choice nor Recent", () => {
+  const p = picker({ recent: ["other"], remember: () => false });
+  p.button.click();
+  p.type("alpha");
+  p.key("Enter");
+  assert.deepEqual(p.picks, ["box:alpha"]);
+  assert.equal(p.button.textContent, "box:alpha");
+  assert.equal(localStorage.getItem(MODEL_KEY), null);
+  assert.equal(localStorage.getItem(RECENT_KEY), JSON.stringify(["other"]));
+});
+
+test("a pick by default stores the choice and puts it first in Recent", () => {
+  const p = picker({ recent: ["other"] });
+  p.button.click();
+  p.type("alpha");
+  p.key("Enter");
+  assert.deepEqual(p.picks, ["box:alpha"]);
+  assert.equal(localStorage.getItem(MODEL_KEY), "box:alpha");
+  assert.deepEqual(JSON.parse(localStorage.getItem(RECENT_KEY)), ["box:alpha", "other"]);
+});
+
+test("restore goes back to the stored name while offered, else the default; nothing before the list", () => {
+  const p = picker({ stored: "other" });
+  p.ctl.show("box:alpha");
+  p.ctl.restore("other");
+  assert.equal(p.ctl.chosen(), "other");
+  assert.equal(p.button.textContent, "other");
+  p.ctl.show("box:alpha");
+  p.ctl.restore(null);
+  assert.equal(p.ctl.chosen(), "fake");
+  p.ctl.restore("gone:x");
+  assert.equal(p.ctl.chosen(), "fake");
+  const q = picker({ payload: { models: [] } });
+  q.ctl.restore("other");
+  assert.equal(q.ctl.chosen(), "");
 });
