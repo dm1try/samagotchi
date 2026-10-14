@@ -436,6 +436,7 @@ Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
   @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
+  @hook_routes (HookRoutes: notices, hook questions, stop_turn/stop_generation, steer attribution)
   @guardrail_wiring, @question_desk
   @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
@@ -445,7 +446,7 @@ Engine initialization (in this order, among other things):
     the call with its own plugin Context)
   wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
-  @hooks.runtime = hook_runtime
+  @hooks.runtime = @hook_routes.runtime (HookRoutes, built first: what a hook or plugin does reaches the UIs)
   @native_backend = LLM::NativeBackend.new(kernel: @kernel)
   @prompt_builder = SystemPrompt.new(...)
   @session_observer with the metrics, the log subscriber and the thinking tails subscribed (subscribe_session_observers)
@@ -467,7 +468,7 @@ Model probes (per turn):
 
 Plugins and hook files register hooks on hook points (see "Hook points" above, and docs/hooks.md). Every fire
 puts the hook runtime on the event: `event[:hook]` (the hook's label) and five helpers, which call the Engine's
-`Hooks::Runtime`. A plugin's `ctx` has the same ones (`ctx.notify`, `ctx.steer`, ...).
+`Hooks::Runtime` (built by `HookRoutes`, `hook_routes.rb`, which routes each to the UIs). A plugin's `ctx` has the same ones (`ctx.notify`, `ctx.steer`, ...).
 
 | Helper | What it does | Used by |
 |---|---|---|
@@ -602,7 +603,7 @@ Paths are under `lib/samagotchi/`.
 
 | File | Role |
 |---|---|
-| `engine.rb` | Engine: turn lifecycle, event emission, hooks runtime, plugins, model switching |
+| `engine.rb` | Engine: turn lifecycle, event emission, plugins, model switching |
 | `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
 | `steer_cut.rb` | `SteerCut`: the Engine's seam for a message cutting the generation |
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
@@ -630,6 +631,7 @@ Paths are under `lib/samagotchi/`.
 | `toolkit.rb`, `toolkit_command.rb` | A session's toolkit (`Toolkit#resolve`, what `Registry` declares); `/toolkit` |
 | `toolkit_binding.rb` | `ToolkitBinding`: the Engine's toolkit seam (the kits, `#explained`, `ctx.use_toolkit`, the turn-start `#apply!` behind `Engine#apply_toolkit!`) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
+| `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
 | `events.rb` | Event type sets shared by the Worker, the Bridge, the TUI and the web |

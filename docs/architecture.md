@@ -500,7 +500,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | MemoryBundle | `memory_bundle.rb`, `memory_bundle/{installer,builder,installed_bundle,plugin_ref,bundle_hook}.rb` (`Installer`, `Builder`, `InstalledBundle`, `PluginRef`, `BundleHook`) | Installing, building and reading bundles of memories, hooks and plugins. |
 | Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/loader.rb` | What a bundle's plugin registers: tools, commands, annotation actions, hooks, services, toolkits ([plugins.md](plugins.md)). |
 | Shipped bundles | `bundles/` (`mcp`, `github-pr`, `loop-guard`, `skills`, `source-links`, …) | Bundles that ship with chi. |
-| Hooks | `hooks/registry.rb` (`Hooks::Registry`), `hooks/loader.rb` | Hook registration and dispatch ([hooks.md](hooks.md)). |
+| Hooks | `hooks/registry.rb` (`Hooks::Registry`), `hooks/loader.rb`, `hook_routes.rb` (`HookRoutes`) | Hook registration and dispatch; what a hook or plugin does beyond reading its event (notice, question, stop, steer) routed to the UIs ([hooks.md](hooks.md)). |
 | Guardrails | `guardrails.rb`, `guardrails/shell_lex.rb`, `guardrails/rules.rb`, `guardrail_wiring.rb` | The gate before every tool call: shell lexing, YAML rules, approvals ([guardrails.md](guardrails.md)). |
 | Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `relay_desk.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
 | send / broadcast | `send_command.rb` (`SendCommand`), `broadcast_command.rb` (`BroadcastCommand`), `broadcast/` | `chi send` and `chi broadcast` ([broadcast.md](broadcast.md), [sub-agent.md](sub-agent.md)). |

@@ -45,6 +45,7 @@ require_relative "recap_setup"
 require_relative "idle_reminders"
 require_relative "idle_scheduler"
 require_relative "hooks"
+require_relative "hook_routes"
 require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "reminder_queue"
@@ -150,6 +151,10 @@ module Samagotchi
       rescue StandardError
         nil
       end
+      # What hooks and plugins do beyond reading their event (a notice, a
+      # question, a stop, a steer), routed to the UIs. Built before anything
+      # that may notify.
+      @hook_routes = build_hook_routes
       # Load hooks from config (plugins) and create the registry; what fails
       # to load is announced, and a required guardrail's failure denies
       # every tool call. Rules load now too, so their errors are announced.
@@ -1536,122 +1541,59 @@ module Samagotchi
     end
     private :store_answer_display
 
-    # ── The hook runtime (Hooks::Runtime) ─────────────────────────────────────
+    # ── The hook runtime (HookRoutes) ───────────────────────────────────────
 
-    # The three things a hook can do beyond reading its event. Each gets the
-    # hook's label (event[:hook]) from the registry.
-    def hook_runtime
-      Hooks::Runtime.new(
-        notify: ->(text:, level:, hook:, fallback_for: nil) { hook_notify(text, level, hook, fallback_for: fallback_for) },
-        ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { hook_ask_user(question, options, header, allow_freeform, hook) },
-        stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) },
-        steer: ->(text:, hook:) { steer(text, source: hook_source(hook)) },
-        stop_generation: ->(reason:, hook:) { hook_stop_generation(reason, hook) }
-      )
-    end
+    # What a hook (Hooks::Runtime) and a plugin (Plugin::Host) can do beyond
+    # reading its event, routed to the UIs by HookRoutes; these forward.
+    def hook_runtime = @hook_routes.runtime
     private :hook_runtime
 
-    # What a steer is attributed to: the bundle of a bundle hook's label
-    # ("<file> (bundle <name>)"), the label of any other.
-    def hook_source(hook)
-      hook.to_s[/\(bundle (.+)\)\z/, 1] || hook.to_s
-    end
+    def hook_source(hook) = @hook_routes.source(hook)
     private :hook_source
 
     # What a notice may stand in for (hook_notify's fallback_for:).
-    NOTICE_FALLBACKS = %i[display editor].freeze
+    NOTICE_FALLBACKS = HookRoutes::NOTICE_FALLBACKS
 
-    # One line to the user (:hook_notice). During a turn it is a turn
-    # event: the turn's sink (the REPL) and the observers (bridge, log).
-    # Outside one (a plugin's command at the prompt) it is announced with
-    # between_turns: true, which every UI shows as cards are shown.
-    #
-    # +fallback_for+ names what the line stands in for (NOTICE_FALLBACKS):
-    # :display, the answer's display (AnswerDisplay), for a UI that doesn't
-    # render its links; :editor, a ref the viewer could open in its editor
-    # (Web::Capabilities#editor), for a UI or a viewer that can't. A UI that
-    # does leaves the line out; the others, the log among them, show it. An
-    # unknown value is dropped, so the line shows everywhere.
-    # +extra+: more fields for the UIs (a toolkit change's summary).
+    # One line to the user (:hook_notice), HookRoutes#notify.
     def hook_notify(text, level, hook, fallback_for: nil, extra: {})
-      level = (level || :info).to_sym
-      level = :info unless %i[info warn].include?(level)
-      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level,
-                 fallback_for: notice_fallback(fallback_for, hook) }.compact.merge(extra)
-      return @extension_load.hold(notice) && nil if @extension_load.loading?
-
-      in_turn, sink = @turn_state.in_turn_sink
-      if anytime_thread?
-        announce_anytime(notice.merge(between_turns: true))
-      elsif current_init_task
-        announce(notice.merge(between_turns: true))
-      elsif in_turn
-        emit_event(sink, notice)
-      else
-        announce_or_hold(notice.merge(between_turns: true))
-      end
-      nil
+      @hook_routes.notify(text, level, hook, fallback_for: fallback_for, extra: extra)
     end
     private :hook_notify
 
-    # A known fallback_for (a String is symbolized), else nil; an unknown
-    # one is logged once at debug.
-    def notice_fallback(value, hook)
-      return if value.nil?
-
-      fallback = value.to_s.to_sym
-      return fallback if NOTICE_FALLBACKS.include?(fallback)
-
-      @unknown_fallbacks ||= Set.new
-      Log.debug(:hooks, "notice_unknown_fallback", hook: hook.to_s, value: value.to_s) if @unknown_fallbacks.add?(fallback)
-      nil
-    end
-    private :notice_fallback
-
-    # A guardrails line to the user after load (:guardrail_warning, as the
-    # load failures show): a running turn's event, else announced.
-    def guardrail_notify(message)
-      event = { type: :guardrail_warning, message: message.to_s }
-      in_turn, sink = @turn_state.in_turn_sink
-      in_turn ? emit_event(sink, event) : announce_or_hold(event)
-      nil
-    end
+    def guardrail_notify(message) = @hook_routes.guardrail_notify(message)
     private :guardrail_notify
 
-    # A question through the question flow (REPL sync handler, attached TUI,
-    # web), single-select, kind "hook". A --non-interactive run has no one
-    # to ask: nil at once. Anything but an answer (a sync handler's text, no
-    # answer, cancelled) is nil too.
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
     def hook_ask_user(question, options, header, allow_freeform, hook)
-      @question_desk.ask_for_hook(question, options, header, allow_freeform, hook)
+      @hook_routes.ask_user(question, options, header, allow_freeform, hook)
     end
     private :hook_ask_user
 
-    # Cancel the running turn (reason :hook), after a notice that says why.
-    # The gate denies the rest of a tool batch once the controller is
-    # cancelled; the next request ends the turn as :turn_canceled.
     # @return [Boolean] true when a running turn was cancelled now
-    def hook_stop_turn(reason, hook)
-      ctrl = active_cancel_controller
-      return false unless ctrl && !ctrl.cancelled?
-
-      hook_notify("stopped the turn: #{reason}", :warn, hook)
-      ctrl.cancel!(:hook, { by: hook_source(hook), reason: reason.to_s })
-    end
+    def hook_stop_turn(reason, hook) = @hook_routes.stop_turn(reason, hook)
     private :hook_stop_turn
 
-    # Cut the streaming generation (reason :hook); the turn goes on and asks
-    # the model again (the loops' cut path). No notice: the plugin posts its
-    # own. The bundle and +reason+ go to the log and the retry's nudge.
     # @return [Boolean] true when a streaming generation was cut now
-    def hook_stop_generation(reason, hook)
-      ctrl = active_cancel_controller
-      return false unless ctrl
-
-      ctrl.cancel_generation!(:hook, { by: hook_source(hook), reason: reason.to_s })
-    end
+    def hook_stop_generation(reason, hook) = @hook_routes.stop_generation(reason, hook)
     private :hook_stop_generation
+
+    # The hook routes (see #initialize for when).
+    def build_hook_routes
+      HookRoutes.new(
+        extension_load: -> { @extension_load },
+        in_turn_sink: -> { @turn_state.in_turn_sink },
+        anytime_thread: -> { anytime_thread? },
+        announce_anytime: ->(event) { announce_anytime(event) },
+        init_task: -> { current_init_task },
+        announce: ->(event) { announce(event) },
+        announce_or_hold: ->(event) { announce_or_hold(event) },
+        emit: ->(sink, event) { emit_event(sink, event) },
+        question_desk: -> { @question_desk },
+        cancel_controller: -> { active_cancel_controller },
+        steer: ->(text, source) { steer(text, source: source) }
+      )
+    end
+    private :build_hook_routes
 
     # ── Ask-user-question (structured qualification) ──────────────────────────
 

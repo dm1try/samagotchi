@@ -3,7 +3,7 @@
 module Samagotchi
   module Web
     # What this web page renders that a notice may stand in for
-    # (Engine#hook_notify's fallback_for:), and what this viewer can do. The
+    # (HookRoutes#notify's fallback_for:), and what this viewer can do. The
     # session and tail JSON carry it as +capabilities+; the page leaves out
     # a notice whose fallback_for names a capability that is true here.
     # +display+: the answer's display is rendered as markdown, so its links
