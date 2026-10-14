@@ -1235,11 +1235,11 @@ hosts:
 `models:` wins over `hosts:`. On a native host, `vision: true` skips only the
 modalities check: without a media marker the prompt can't carry an image.
 
-## Desktop helper: agents in kitty
+## Desktop helper: agents in kitty and tmux
 
 The desktop helper (`chi desktop`) can also paste into agent CLIs (claude,
-codex, …) running in [kitty](https://sw.kovidgoyal.net/kitty/) windows. It
-lists them only with `kitty.listen_on` set: copy the value of `listen_on` from
+codex, …) running in [kitty](https://sw.kovidgoyal.net/kitty/) windows or
+tmux panes. It lists kitty's only with `kitty.listen_on` set: copy the value of `listen_on` from
 your `kitty.conf` as it is (kitty must also have `allow_remote_control` on).
 
 ```yaml
@@ -1249,8 +1249,20 @@ kitty:
   agents: [claude, codex]   # the programs listed; "*" = every window
 ```
 
+tmux panes (agents started inside tmux, in any terminal) only with
+`tmux.enabled` on:
+
+```yaml
+tmux:
+  enabled: true             # default false
+  binary: /opt/homebrew/bin/tmux   # default: the tmux on chi's PATH when the launch file is written
+  agents: [claude, codex]   # default as kitty.agents; "*" = every pane
+```
+
 The helper reads these from its launch file: after editing them run
-`chi desktop upgrade` (or `chi update`). See [Desktop helper](desktop.md#agents-in-kitty).
+`chi desktop upgrade` (or `chi update`). The tmux binary and the socket dir
+(`$TMUX_TMPDIR/tmux-<uid>`, else `/tmp/tmux-<uid>`) are resolved then and
+frozen in it. See [Desktop helper](desktop.md#agents-in-kitty-and-tmux).
 
 ## Project specific description
 
@@ -1578,6 +1590,9 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `kitty.listen_on` | none | | The desktop helper's kitty socket, copied from `kitty.conf`; unset = no kitty targets. See "Desktop helper: agents in kitty". |
 | `kitty.binary` | `/Applications/kitty.app/Contents/MacOS/kitty` | | The kitty the helper runs `kitty @` with. |
 | `kitty.agents` | `claude\|codex\|gemini\|aider\|opencode\|cursor-agent\|amp\|goose` | | Foreground programs whose kitty windows the helper lists, `\|`-separated (a YAML list works too); `*` lists every window. |
+| `tmux.enabled` | `false` | | The desktop helper lists agents in tmux panes. See "Desktop helper: agents in kitty and tmux". |
+| `tmux.binary` | none | | The tmux the helper runs; unset = the `tmux` on chi's PATH when the launch file is written. |
+| `tmux.agents` | `claude\|codex\|gemini\|aider\|opencode\|cursor-agent\|amp\|goose` | | Foreground programs whose tmux panes the helper lists, as `kitty.agents`; `*` lists every pane. |
 | `read.truncate_at_bytes` | `65536` | yes | A `read` result larger than this is cut to a preview. |
 | `read.preview_bytes` | `12288` | yes | Size of that preview. |
 | `read.hard_max_bytes` | `2097152` | yes | Largest file `read` opens. |

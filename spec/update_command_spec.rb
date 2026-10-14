@@ -244,7 +244,17 @@ RSpec.describe Samagotchi::UpdateCommand do
     let(:supported) { true }
     let(:helper) do
       instance_double(Samagotchi::Desktop::MacOS, installed?: true, app_version: "0.0.9", stale?: false,
-                                                  launch_outdated?: false)
+                                                  launch_outdated?: false, terminal_warnings: [])
+    end
+
+    it "adds the terminals' warnings to the row, rebuilt or not" do
+      allow(helper).to receive(:terminal_warnings).and_return(["tmux.enabled but no tmux found on PATH: set tmux.binary"])
+      run
+      expect(line("Chi Helper")).to end_with("up to date; tmux.enabled but no tmux found on PATH: set tmux.binary")
+      allow(helper).to receive(:stale?).and_return(true)
+      allow(helper).to receive(:upgrade)
+      run
+      expect(line("Chi Helper")).to end_with("updated (restarted); tmux.enabled but no tmux found on PATH: set tmux.binary")
     end
 
     it "says not installed" do

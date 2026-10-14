@@ -225,13 +225,16 @@ module Samagotchi
       row.from = helper.app_version
       if helper.stale?
         row.to = VERSION
-        return done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade { nil } }
+        done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade { nil } }
+      elsif helper.launch_outdated?
+        helper.refresh_launch_file unless @dry_run
+        up_to_date(row).tap { |r| r.status += @dry_run ? " (would refresh the launch file)" : " (launch file refreshed)" }
+      else
+        up_to_date(row)
       end
-
-      return up_to_date(row) unless helper.launch_outdated?
-
-      helper.refresh_launch_file unless @dry_run
-      up_to_date(row).tap { |r| r.status += @dry_run ? " (would refresh the launch file)" : " (launch file refreshed)" }
+      # The terminals' warnings only: the host key ones read the Keychain.
+      helper.terminal_warnings.each { |warning| row.status += "; #{warning}" }
+      row
     rescue Desktop::MacOS::Error, SystemCallError => e
       failed(row, e.message.lines.first.to_s.strip)
     end

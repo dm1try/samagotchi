@@ -66,6 +66,8 @@ module Samagotchi
     # Section names: lower alnum only, no _ or -.
     SECTION_RE = /\A[a-z0-9]+\z/
     LEAF_RE    = /\A[a-z0-9_]+\z/
+    # The agent CLIs the desktop helper lists in kitty and tmux by default.
+    DESKTOP_AGENTS = "claude|codex|gemini|aider|opencode|cursor-agent|amp|goose"
 
     ENTRIES = [
       # universal – env+config+cli
@@ -241,7 +243,12 @@ module Samagotchi
       # the kitty binary, and the foreground programs listed, "|"-separated (a YAML list works too; "*" = every window).
       Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config]),
       Entry.new(key: "kitty.binary",             yaml_path: %w[kitty binary],             type: :string, default: "/Applications/kitty.app/Contents/MacOS/kitty", expose: %i[env config]),
-      Entry.new(key: "kitty.agents",             yaml_path: %w[kitty agents],             type: :string, default: "claude|codex|gemini|aider|opencode|cursor-agent|amp|goose", expose: %i[env config]),
+      Entry.new(key: "kitty.agents",             yaml_path: %w[kitty agents],             type: :string, default: DESKTOP_AGENTS,   expose: %i[env config]),
+      # Its tmux targets (Desktop::MacOS.tmux_settings): off until enabled; the tmux binary (unset = the tmux on
+      # chi's PATH when the launch file is written) and the foreground programs listed, as kitty.agents.
+      Entry.new(key: "tmux.enabled",             yaml_path: %w[tmux enabled],             type: :bool,   default: false,            expose: %i[env config]),
+      Entry.new(key: "tmux.binary",              yaml_path: %w[tmux binary],              type: :string, default: nil,              expose: %i[env config]),
+      Entry.new(key: "tmux.agents",              yaml_path: %w[tmux agents],              type: :string, default: DESKTOP_AGENTS,   expose: %i[env config]),
 
       Entry.new(key: "read.truncate_at_bytes",        yaml_path: %w[read truncate_at_bytes],        type: :integer, default: 65_536,   expose: %i[env config cli]),
       Entry.new(key: "read.preview_bytes",            yaml_path: %w[read preview_bytes],            type: :integer, default: 12_288,   expose: %i[env config cli]),

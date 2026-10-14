@@ -51,7 +51,7 @@ module Samagotchi
       BROADCAST_MARGIN = 10
       # The agent terminals the helper pastes into (AgentTerminal.swift):
       # one launch-file section each, in this order.
-      TERMINALS = %w[kitty].freeze
+      TERMINALS = %w[kitty tmux].freeze
 
       # Runs a command without a shell; [output, success].
       class Runner
@@ -73,9 +73,30 @@ module Samagotchi
         { "listen_on" => listen_on, "binary" => get.call("kitty.binary").to_s, "agents" => agents }
       end
 
+      # The tmux: settings, or nil while tmux.enabled is off. The binary is
+      # tmux.binary, else the tmux on +env+'s PATH ("" when there is none:
+      # see #warnings); the socket dir is where tmux puts `-L` sockets
+      # ($TMUX_TMPDIR when it is a directory, else /tmp, then tmux-<uid>).
+      # Both are frozen at bake time, like the rest of the launch file.
+      def self.tmux_settings(get = Config.method(:get), env: ENV)
+        return nil unless get.call("tmux.enabled")
+
+        binary = get.call("tmux.binary").to_s.strip
+        binary = path_tmux(env) if binary.empty?
+        tmpdir = env["TMUX_TMPDIR"].to_s
+        tmpdir = "/tmp" if tmpdir.empty? || !File.directory?(tmpdir)
+        agents = get.call("tmux.agents").to_s.split("|").map(&:strip).reject(&:empty?)
+        { "binary" => binary, "socket_dir" => File.join(tmpdir, "tmux-#{Process.uid}"), "agents" => agents }
+      end
+
+      def self.path_tmux(env)
+        env["PATH"].to_s.split(File::PATH_SEPARATOR).reject(&:empty?).map { File.join(_1, "tmux") }
+                   .find { File.file?(_1) && File.executable?(_1) }.to_s
+      end
+
       # Each switched-on terminal's settings by name ("kitty" => …).
-      def self.terminal_settings(get = Config.method(:get))
-        { "kitty" => kitty_settings(get) }.compact
+      def self.terminal_settings(get = Config.method(:get), env: ENV)
+        { "kitty" => kitty_settings(get), "tmux" => tmux_settings(get, env: env) }.compact
       end
 
       # The helper as chi desktop and chi update make it: the settings it
@@ -177,7 +198,16 @@ module Samagotchi
                      ["chi runs from a linked git worktree (#{@source_dir}); the helper stops working once it is removed. " \
                       "Install from the main checkout or a gem install."]
                    end
-        Array(worktree) + host_key_warnings
+        Array(worktree) + terminal_warnings + host_key_warnings
+      end
+
+      # What a terminal section can't do as baked (chi update shows these
+      # too: they need no Keychain lookup).
+      def terminal_warnings
+        tmux = @terminals["tmux"]
+        return [] unless tmux && tmux["binary"].to_s.empty?
+
+        ["tmux.enabled but no tmux found on PATH: set tmux.binary"]
       end
 
       # Each configured host key (api_key_env:) and whether the helper's chi

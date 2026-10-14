@@ -527,6 +527,114 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "tmux settings" do
+    let(:kitty) { { "listen_on" => "unix:/tmp/k", "binary" => "/k/kitty", "agents" => %w[claude] } }
+    let(:tmux) { { "binary" => "/t/tmux", "socket_dir" => "/tmp/tmux-501", "agents" => %w[claude codex] } }
+
+    before do
+      File.write(File.join(tmp, "ruby"), "")
+      FileUtils.mkdir_p(File.join(source_dir, "bin"))
+      File.write(File.join(source_dir, "bin", "chi"), "")
+    end
+
+    def helper(terminals = {})
+      described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                          ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir,
+                          broadcast_timeout: 30.0, terminals: terminals)
+    end
+
+    it "writes a tmux section after kitty's, and before the broadcast timeout" do
+      helper("tmux" => tmux, "kitty" => kitty).install
+      launch = JSON.parse(File.read(launch_file))
+      expect(launch.keys).to eq(%w[version argv env sources_sha kitty tmux broadcast_timeout])
+      expect(launch["tmux"]).to eq(tmux)
+    end
+
+    it "makes the launch file outdated when they change, and the refresh writes them" do
+      helper("kitty" => kitty).install
+      expect(helper("kitty" => kitty, "tmux" => tmux).launch_outdated?).to be(true)
+      helper("kitty" => kitty, "tmux" => tmux).refresh_launch_file
+      expect(helper("kitty" => kitty, "tmux" => tmux).launch_outdated?).to be(false)
+      expect(helper("kitty" => kitty, "tmux" => tmux.merge("agents" => %w[*])).launch_outdated?).to be(true)
+      helper("kitty" => kitty).refresh_launch_file
+      expect(JSON.parse(File.read(launch_file))).not_to have_key("tmux")
+    end
+
+    it "warns when no tmux binary was found, and only then" do
+      expect(helper("tmux" => tmux).terminal_warnings).to eq([])
+      expect(helper.terminal_warnings).to eq([])
+      warning = "tmux.enabled but no tmux found on PATH: set tmux.binary"
+      expect(helper("tmux" => tmux.merge("binary" => "")).terminal_warnings).to eq([warning])
+      expect(helper("tmux" => tmux.merge("binary" => "")).warnings).to include(warning)
+    end
+
+    describe ".tmux_settings" do
+      let(:bin) { File.join(tmp, "bin").tap { |d| FileUtils.mkdir_p(d) } }
+      let(:path_env) { { "PATH" => "#{File.join(tmp, "nothing")}:#{bin}" } }
+
+      def settings(values, env = path_env)
+        described_class.tmux_settings(->(key) { values.fetch(key) { Samagotchi::Config.find_by_key(key).default } }, env: env)
+      end
+
+      def put_tmux
+        File.join(bin, "tmux").tap { |p| File.write(p, "#!/bin/sh\n"); File.chmod(0o755, p) }
+      end
+
+      it "is nil while tmux.enabled is off (the default)" do
+        expect(settings({})).to be_nil
+        expect(settings("tmux.enabled" => false)).to be_nil
+      end
+
+      it "takes tmux.binary, else the tmux on PATH, else empty; a blank tmux.binary counts as unset" do
+        File.write(File.join(bin, "tmux"), "not executable")
+        expect(settings("tmux.enabled" => true)["binary"]).to eq("")
+        found = put_tmux
+        expect(settings("tmux.enabled" => true)["binary"]).to eq(found)
+        expect(settings("tmux.enabled" => true, "tmux.binary" => "")["binary"]).to eq(found)
+        expect(settings("tmux.enabled" => true, "tmux.binary" => "/opt/homebrew/bin/tmux")["binary"]).to eq("/opt/homebrew/bin/tmux")
+      end
+
+      it "puts the socket dir in an existing TMUX_TMPDIR, else in /tmp, as tmux does" do
+        uid = Process.uid
+        expect(settings("tmux.enabled" => true)["socket_dir"]).to eq("/tmp/tmux-#{uid}")
+        expect(settings({ "tmux.enabled" => true }, { "TMUX_TMPDIR" => tmp })["socket_dir"]).to eq("#{tmp}/tmux-#{uid}")
+        missing = { "TMUX_TMPDIR" => File.join(tmp, "missing") }
+        expect(settings({ "tmux.enabled" => true }, missing)["socket_dir"]).to eq("/tmp/tmux-#{uid}")
+      end
+
+      it "takes the agents, kitty.agents' default, split on |" do
+        expect(settings("tmux.enabled" => true)["agents"]).to eq(%w[claude codex gemini aider opencode cursor-agent amp goose])
+        expect(settings("tmux.enabled" => true, "tmux.agents" => "claude| * |")["agents"]).to eq(%w[claude *])
+      end
+
+      it "reaches the helper from chi desktop and chi update with SAMAGOTCHI_TMUX_ENABLED" do
+        require "samagotchi/desktop_command"
+        require "samagotchi/update_command"
+        original = ENV["SAMAGOTCHI_TMUX_ENABLED"]
+        ENV["SAMAGOTCHI_TMUX_ENABLED"] = "true"
+        [Samagotchi::DesktopCommand.new([]), Samagotchi::UpdateCommand.new([], web: ["127.0.0.1", 1])].each do |command|
+          made = command.instance_variable_get(:@platform).call(register: false)
+          # Not the binary: CI hosts may or may not have a tmux.
+          expect(made.launch_config["tmux"]).to include("agents" => %w[claude codex gemini aider opencode cursor-agent amp goose])
+        end
+      ensure
+        ENV["SAMAGOTCHI_TMUX_ENABLED"] = original
+      end
+
+      it "reads tmux: from config.yml" do
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+          File.write(File.join(dir, "samagotchi", "config.yml"), "tmux:\n  enabled: true\n  binary: /x/tmux\n  agents: [claude]\n")
+          original = ENV["XDG_CONFIG_HOME"]
+          ENV["XDG_CONFIG_HOME"] = dir
+          expect(described_class.tmux_settings).to include("binary" => "/x/tmux", "agents" => %w[claude])
+        ensure
+          ENV["XDG_CONFIG_HOME"] = original
+        end
+      end
+    end
+  end
+
   describe "the broadcast timeout" do
     before do
       File.write(File.join(tmp, "ruby"), "")
