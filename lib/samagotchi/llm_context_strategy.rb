@@ -211,17 +211,12 @@ module Samagotchi
     def for_session(session, registry: nil)
       return nil if session.nil?
 
-      require_relative "config"
-      require_relative "model_profile"
-      registry ||= begin
-        require_relative "host_registry"
-        HostRegistry.new
-      end
-      name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
-      target = registry.resolve(name)
-      names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
+      # Here, not at the top: config.rb requires this file before ConfigFile
+      # exists, and effective_model.rb requires config.rb (via host_registry.rb).
+      require_relative "effective_model"
+      registry ||= HostRegistry.new
       own = session.llm_context
-      explain(target, names: names, **(own&.resolve_args || {})).summary(own)
+      EffectiveModel.of_session(session, registry: registry).llm_context_explained(own&.resolve_args || {})&.summary(own)
     rescue StandardError
       nil
     end

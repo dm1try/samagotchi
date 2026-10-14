@@ -26,8 +26,8 @@ require_relative "../host_registry"
 require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
+require_relative "../effective_model"
 require_relative "../thinking"
-require_relative "../reasoning_history"
 require_relative "../sampling_settings"
 require_relative "../served_model"
 require_relative "../project_scope"
@@ -578,11 +578,7 @@ module Samagotchi
       # (SettingExplained#summary), as its worker would resolve it; nil
       # when it can't be. Config and the registry only: no network.
       def thinking_for(session)
-        registry = host_registry
-        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
-        target = registry.resolve(name)
-        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
-        Thinking.explain(target, names: names, session: session.thinking).summary
+        EffectiveModel.of_session(session, registry: host_registry).thinking_explained(own: session.thinking)&.summary
       rescue StandardError
         nil
       end
@@ -592,13 +588,8 @@ module Samagotchi
       # on a native host (it ignores the level) or when it can't be. Config
       # and the registry only: no network.
       def reasoning_history_for(session)
-        registry = host_registry
-        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
-        target = registry.resolve(name)
-        return nil unless target.entry&.chat?
-
-        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
-        ReasoningHistory.explain(target, names: names, session: session.reasoning_history).summary
+        EffectiveModel.of_session(session, registry: host_registry)
+                      .reasoning_history_explained(own: session.reasoning_history)&.summary
       rescue StandardError
         nil
       end
