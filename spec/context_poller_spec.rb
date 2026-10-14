@@ -134,7 +134,7 @@ RSpec.describe Samagotchi::ContextPoller do
     poller.stop
 
     File.read(pids).split.map(&:to_i).each do |pid|
-      expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH)
+      expect(wait_until { process_gone?(pid) }).to be(true)
     end
   end
 end

@@ -24,4 +24,14 @@ module SpecWaiting
     end
     value
   end
+
+  # Whether no process +pid+ is left. A killed grandchild is reparented and
+  # reaped by init a moment later (a zombie answers signal 0 until then):
+  # wait_until { process_gone?(pid) }, not an immediate check.
+  def process_gone?(pid)
+    Process.kill(0, pid)
+    false
+  rescue Errno::ESRCH
+    true
+  end
 end

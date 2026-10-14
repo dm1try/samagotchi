@@ -207,7 +207,7 @@ RSpec.describe "The codex-peer plugin" do
       expect(result).to eq("Error: Codex didn't take the message in 0.3 s (codex queue was stopped): try again, " \
                            "or pair again from Codex")
       sleeper = File.read(pid_file).to_i
-      expect { Process.kill(0, sleeper) }.to raise_error(Errno::ESRCH)
+      expect(wait_until { process_gone?(sleeper) }).to be(true)
     end
 
     it "refuses a text over the cap, an empty one and an unknown kind, sending nothing" do
