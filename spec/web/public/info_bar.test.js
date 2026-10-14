@@ -51,7 +51,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
     "id", "copy-attach", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
-    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model rh-chip own", "model tools-chip", "model notes-chip", "model mem-chip",
+    "model children-chip waiting", "model think-chip own", "model rh-chip own", "model llmctx-chip own", "model tools-chip", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
   assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");

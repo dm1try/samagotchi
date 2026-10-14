@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: the settings popovers' selects (thinking level, LLM context strategy and apply) look the same in Safari, Chrome
   and Firefox: chi's own box and caret instead of each browser's native control.
+- Web: the thinking chip comes before the LLM context chip, on the session bar (think, reasoning, llm ctx, tools) and
+  beside the start page's model picker.
 
 ### Fixed
 
