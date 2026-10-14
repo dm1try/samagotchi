@@ -103,6 +103,7 @@ RSpec.describe Samagotchi::Worker do
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, **signal_args)
       @worker = worker
+      count_loop_rounds(worker)
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
       expect(wait_until { File.exist?(sidecar) }).to be(true)
@@ -113,6 +114,29 @@ RSpec.describe Samagotchi::Worker do
 
     # Whether the worker's loop sleeps on its Waker (nothing to do).
     def loop_waiting?(thread) = thread.backtrace.to_a.any? { |frame| frame.include?("Waker#wait") }
+
+    # Each pass of the worker's loop with nothing to do ends in its Waker's
+    # wait: counted, so a check that nothing happens waits for passes, not
+    # a fixed time.
+    def count_loop_rounds(worker)
+      @rounds = [0]
+      waker = worker.instance_variable_get(:@waker)
+      allow(waker).to receive(:wait).and_wrap_original do |original, *args|
+        @rounds[0] += 1
+        original.call(*args)
+      end
+    end
+
+    # Wakes the loop until it came round to its wait +count+ more times:
+    # two make one whole pass that began after the call.
+    def loop_rounds(count = 2)
+      waker = @worker.instance_variable_get(:@waker)
+      count.times do
+        start = @rounds[0]
+        waker.wake
+        expect(wait_until { @rounds[0] > start }).to be(true)
+      end
+    end
 
     def sidecar
       File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
@@ -205,7 +229,7 @@ RSpec.describe Samagotchi::Worker do
     end
 
     it "picks up an input file written without a wake on the fallback tick" do
-      start_worker(poll_interval: 0.2)
+      start_worker(poll_interval: 0.02)
 
       Samagotchi::SessionManager.write_turn_input(session.id, prompt: "from another process", state_dir: tmpdir)
 
@@ -233,7 +257,8 @@ RSpec.describe Samagotchi::Worker do
 
       @reminder_callback.call(["stretch"])
 
-      expect(next_turn(timeout: 0.5)).to be_nil
+      loop_rounds
+      expect(turns).to be_empty
       expect(engine.due_reminder_names).to be_empty
     end
 
@@ -304,7 +329,12 @@ RSpec.describe Samagotchi::Worker do
 
     it "names a turn's reply after its input's enqueued_id, so a wait for that turn finds it" do
       answered = instance_double(Samagotchi::LLM::ModelResult, output: "the answer", canceled?: false, resumable?: false)
-      allow(engine).to receive(:run_turn).and_return(answered)
+      # Idle again as the Engine leaves it, or the wait gives the session
+      # its settle time (ReplyWait::SETTLE_SECONDS) to go idle.
+      allow(engine).to receive(:run_turn) do |turn_session, *|
+        turn_session.status = Samagotchi::Session::STATUS_IDLE
+        answered
+      end
       start_worker
 
       ack = JSON.parse(post_turn("hi").body)
@@ -339,7 +369,7 @@ RSpec.describe Samagotchi::Worker do
 
       %w[web:tab1 tui:4242 cli:send].each do |client_id|
         it "comes back to the lists on a prompt from #{client_id}" do
-          start_worker(poll_interval: 0.2)
+          start_worker(poll_interval: 0.02)
           Samagotchi::SessionManager.write_turn_input(session.id, prompt: "hi", client_id: client_id, state_dir: tmpdir)
 
           expect(next_turn&.first).to eq("hi")
@@ -349,7 +379,7 @@ RSpec.describe Samagotchi::Worker do
 
       %w[delegate:1234abcd plugin].each do |client_id|
         it "stays archived on a turn from #{client_id}" do
-          start_worker(poll_interval: 0.2)
+          start_worker(poll_interval: 0.02)
           Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: client_id, state_dir: tmpdir)
 
           expect(next_turn&.first).to eq("task")
@@ -372,7 +402,7 @@ RSpec.describe Samagotchi::Worker do
           turns << [prompt, mono, kwargs[:pending_input].call]
           result
         end
-        start_worker(poll_interval: 0.2)
+        start_worker(poll_interval: 0.02)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "delegate:1234abcd", state_dir: tmpdir)
 
         expect(next_turn&.last).to eq([Samagotchi::Steer::Line.new(text: "also this", source: nil)])
@@ -390,7 +420,7 @@ RSpec.describe Samagotchi::Worker do
           turns << [prompt, mono, kwargs[:pending_input].call]
           result
         end
-        start_worker(poll_interval: 0.2)
+        start_worker(poll_interval: 0.02)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
 
         lines = next_turn&.last
@@ -416,7 +446,7 @@ RSpec.describe Samagotchi::Worker do
           turns << [prompt, mono]
           result
         end
-        start_worker(poll_interval: 0.2)
+        start_worker(poll_interval: 0.02)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
 
         expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["now please"])
@@ -440,7 +470,7 @@ RSpec.describe Samagotchi::Worker do
           turns << [prompt, mono]
           result
         end
-        start_worker(poll_interval: 0.2)
+        start_worker(poll_interval: 0.02)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", state_dir: tmpdir)
 
         expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["steer"])
@@ -693,13 +723,13 @@ RSpec.describe Samagotchi::Worker do
       it "lets a turn that ended run its after_turn hooks past the grace (no cancel), its display kept" do
         engine.instance_variable_get(:@hooks).register(:after_turn) do |event|
           in_turn << :hook
-          sleep 0.6
+          sleep 0.3 # past the 0.1 s grace
           event[:present].call { |text| "#{text} (shown)" }
         end
         # The worker's own end of the turn, past the hooks, outlasts a
         # SIGNAL_RETRY: the turn no longer runs, the loop hasn't left yet.
         allow(Samagotchi::SessionInbox).to receive(:write_output).and_wrap_original do |original, *args, **options|
-          sleep 0.3
+          sleep 0.15
           original.call(*args, **options)
         end
         start_worker(poll_interval: 5, signals: signals, signal_grace: [0.1, 0.1, 5])
@@ -719,7 +749,7 @@ RSpec.describe Samagotchi::Worker do
       it "never raises into the worker's start: a grace that runs out before the loop starts waits for it" do
         allow(engine).to receive(:start_idle) do
           signals.fire("TERM")
-          sleep 0.3
+          sleep 0.15 # past the 0.05 + 0.05 s graces
         end
         worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir, idle_exit_minutes: 0,
                                      poll_interval: 5, signals: signals, signal_grace: [0.05, 0.05, 5])
@@ -960,7 +990,7 @@ RSpec.describe Samagotchi::Worker do
         allow(engine).to receive(:turn_running?).and_return(true)
 
         expect(post_exit).to eq([409, { "status" => "held", "reason" => "turn_running", "session_id" => session.id }])
-        sleep(0.2)
+        loop_rounds
         expect(@thread).to be_alive
       end
 
@@ -989,7 +1019,7 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { open_streams == 2 }).to be(true)
 
         expect(post_exit.last).to include("reason" => "client_connected")
-        sleep(0.2)
+        loop_rounds
         expect(@thread).to be_alive
       end
 
@@ -1018,14 +1048,14 @@ RSpec.describe Samagotchi::Worker do
           start_worker(poll_interval: 0.05)
           allow(engine).to receive(:pending_question).and_return({ id: "q1" })
           expect(post_restart.last).to include("status" => "held", "reason" => "question_pending")
-          sleep(0.2)
+          loop_rounds
           expect(@thread).to be_alive
 
           allow(engine).to receive(:pending_question).and_return(nil)
           policy = @worker.instance_variable_get(:@idle_exit)
           allow(policy).to receive(:hold_for_restart).and_return(nil, :input_queued)
           expect(post_restart.first).to eq(200)
-          sleep(0.3)
+          loop_rounds
           expect(@thread).to be_alive # held at the second look, as it left
         end
       end
@@ -1672,7 +1702,7 @@ RSpec.describe Samagotchi::Worker do
         end
 
         it "applies a command that came in an input file from chi send" do
-          start_worker(poll_interval: 0.2)
+          start_worker(poll_interval: 0.02)
           Samagotchi::SessionManager.write_turn_input(session.id, prompt: "/thinking off", client_id: "cli:send", state_dir: tmpdir)
 
           expect(ran_line("/thinking off")).to include(changed: ["thinking"])
@@ -1934,7 +1964,8 @@ RSpec.describe Samagotchi::Worker do
           command_id = JSON.parse(post_command("/slowside").body)["command_id"]
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
                          JSON.generate(client_id: "tui:9"), "Content-Type" => "application/json")
-          sleep(0.3)
+          # In its teardown: the Engine's shutdown joins the command.
+          expect(wait_until { @thread.backtrace.to_a.any? { |frame| frame.include?("shutdown'") } }).to be(true)
           expect(@thread).to be_alive # waiting for the command
           gate << true
 
@@ -2244,7 +2275,7 @@ RSpec.describe Samagotchi::Worker do
           expect(post_answer(["Continue"]).code).to eq("200")
 
           expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
-          sleep(0.2)
+          loop_rounds
           expect(events_seen.count { |e| e[:type] == :question_requested }).to eq(2)
           expect(engine.pending_question).to include(kind: "continue")
           expect(saved_session.pending_question).to include(kind: "continue")
