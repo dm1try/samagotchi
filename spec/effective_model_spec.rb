@@ -112,6 +112,59 @@ RSpec.describe Samagotchi::EffectiveModel do
               nil, nil, nil, [Samagotchi::SteerCut.cut_after, "steer.cut_after"], nil, [], nil, nil, nil, [nil, nil], nil, nil, nil])
   end
 
+  describe "the log lines its fallbacks leave" do
+    let(:lines) { [] }
+
+    before do
+      %i[warn debug].each do |level|
+        allow(Samagotchi::Log).to receive(level).and_wrap_original do |original, tag, event, **fields|
+          lines << [level, tag, event, fields.slice(:model, :error)] if tag == :model && event.to_s.end_with?("_unresolved", "_failed")
+          original.call(tag, event, **fields)
+        end
+      end
+    end
+
+    it "warns once per process when the effective model stops resolving, whatever reads it, then logs at debug" do
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:qwen-small")
+      engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "box:qwen-small", working_directory: project)
+      engine.profile_resolution
+      allow(registry).to receive(:resolve).and_raise(RuntimeError, "registry broken")
+
+      3.times { engine.session_state_snapshot }
+      fallbacks = [engine.thinking_explained, engine.turn_sampling, engine.steer_cut_after]
+
+      expect(fallbacks).to eq([nil, Samagotchi::SamplingSettings::EMPTY, Samagotchi::SteerCut.cut_after])
+      expected = { model: "box:qwen-small", error: "RuntimeError" }
+      expect(lines.first).to eq([:warn, :model, "effective_model_unresolved", expected])
+      expect(lines.drop(1).map(&:first).uniq).to eq([:debug])
+      expect(lines.size).to eq(6)
+    end
+
+    it "warns once per setting, model and error class when a setting fails on a resolved model" do
+      effective = described_class.of(registry, choice("oai:gpt-x"))
+      allow(Samagotchi::SamplingSettings).to receive(:for).and_raise(ArgumentError, "bad sampling")
+      allow(Samagotchi::Thinking).to receive(:resolve).and_raise(ArgumentError, "bad thinking")
+
+      2.times { effective.sampling }
+      effective.thinking(own: nil)
+      described_class.of(registry, choice("box:qwen-small")).sampling
+
+      expect(lines).to eq([[:warn, :model, "sampling_unresolved", { model: "oai:gpt-x", error: "ArgumentError" }],
+                           [:debug, :model, "sampling_unresolved", { model: "oai:gpt-x", error: "ArgumentError" }],
+                           [:warn, :model, "thinking_unresolved", { model: "oai:gpt-x", error: "ArgumentError" }],
+                           [:warn, :model, "sampling_unresolved", { model: "box:qwen-small", error: "ArgumentError" }]])
+    end
+
+    it "logs an alias note that fails, and keeps the plain summary" do
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "splash")
+      allow(registry).to receive(:alias_note).and_raise(RuntimeError, "aliases broken")
+      error = Samagotchi::LLM::ProviderError.new("boom", host: "main")
+
+      expect(engine.failure_summary(error)).to eq(error.summary)
+      expect(lines).to eq([[:warn, :model, "alias_note_failed", { model: "splash", error: "RuntimeError" }]])
+    end
+  end
+
   it "names only the model, its typed name and host when inspected (never the registry or a client)" do
     effective = described_class.of(registry, choice("main:gemma-x", "splash"))
 

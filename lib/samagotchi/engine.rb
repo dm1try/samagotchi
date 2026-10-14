@@ -594,8 +594,8 @@ module Samagotchi
 
       note = @host_registry.alias_note(effective_model_name)
       note && note.end_with?("on host #{error.host}") ? "#{summary} (#{note})" : summary
-    rescue StandardError
-      summary
+    rescue StandardError => e
+      EffectiveModel::Unresolved.fallback(:alias_note_failed, effective_model_name, e, summary)
     end
 
     # +name+'s resolved ref (ModelRef#ref).

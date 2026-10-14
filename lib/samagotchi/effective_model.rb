@@ -256,15 +256,28 @@ module Samagotchi
 
   class EffectiveModel
     # The fallback an effective model's reader gives when its setting
-    # can't be resolved.
+    # can't be resolved, with a log line: WARN the first time per process
+    # for an (event, model, error class), DEBUG after. The session state is
+    # read on every Bridge /state and SSE reset, so a broken host config
+    # would otherwise WARN per poll.
     module Unresolved
-      module_function
+      @seen = Set.new
+      @mutex = Mutex.new
 
       # @param event [Symbol] the log event (<setting>_unresolved)
       # @param model [EffectiveModel, String] the model (or its name)
       # @param error [StandardError]
       # @return +value+
-      def fallback(_event, _model, _error, value) = value
+      def self.fallback(event, model, error, value)
+        name = model.respond_to?(:name) ? model.name : model.to_s
+        first = @mutex.synchronize { @seen.add?([event, name, error.class.name]) }
+        fields = { model: name, error: error.class.name, msg: error.message.to_s[0, 200] }
+        first ? Log.warn(:model, event.to_s, **fields) : Log.debug(:model, event.to_s, **fields)
+        value
+      end
+
+      # Forget what was logged (specs).
+      def self.reset! = @mutex.synchronize { @seen.clear }
     end
   end
 end
