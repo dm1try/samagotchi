@@ -257,3 +257,46 @@ test("a member inserted before the focused row (a grandchild, depth first): the 
   pop.refresh();
   assert.equal(document.activeElement?.closest?.(".family-row"), null);
 });
+
+// ── syncPulses: the dots' pulse on the timeline's clock ─────────────────────
+import { syncPulses } from "../../../lib/samagotchi/web/public/families_view.js";
+
+test("syncPulses puts every dot's animation on start time 0, leaves synced ones and dot-less nodes alone", () => {
+  const sets = [];
+  const anim = (startTime) => {
+    let t = startTime;
+    return { get startTime() { return t; }, set startTime(v) { sets.push(v); t = v; } };
+  };
+  const fresh = anim(null); // a pulse just started (a new node, a status flip)
+  const late = anim(5230.5); // one started mid-way
+  const synced = anim(0);
+  const root = { querySelectorAll: (sel) => (sel === ".dot" ? [
+    { getAnimations: () => [fresh, late] },
+    { getAnimations: () => [synced] },
+    { getAnimations: () => [] },
+    {}, // no Web Animations (an old engine): nothing to do
+  ] : []) };
+  syncPulses(root);
+  assert.equal(fresh.startTime, 0);
+  assert.equal(late.startTime, 0);
+  assert.deepEqual(sets, [0, 0]);
+});
+
+test("familyPop syncs its dots' pulse on every draw", () => {
+  const dot = (cls) => html`<span class=${`status dot ${cls}`}></span>`;
+  const { pop, page, el } = setupPop({ rows: { p: rowsOf(dot("waiting")) } });
+  const seen = [];
+  const orig = HTMLElement.prototype.getAnimations;
+  HTMLElement.prototype.getAnimations = function () { seen.push(this.className); return []; };
+  try {
+    pop.open("p");
+    page.rows.p = rowsOf(dot("running"));
+    pop.refresh();
+  } finally {
+    if (orig) HTMLElement.prototype.getAnimations = orig;
+    else delete HTMLElement.prototype.getAnimations;
+  }
+  assert.deepEqual(seen, ["status dot waiting", "status dot running"]);
+  pop.close();
+  assert.equal(el().textContent, "");
+});
