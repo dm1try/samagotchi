@@ -40,10 +40,12 @@ RSpec.describe "Engine#system_prompt per loop" do
     expect(e.system_prompt).to end_with(declarations)
   end
 
-  it "answers for a given target, and rebuilds both after a model switch" do
+  def effective(model) = Samagotchi::EffectiveModel.of(registry, Samagotchi::ModelChoice.new(name: model, typed: model))
+
+  it "answers for a given model, and rebuilds both after a model switch" do
     e = engine("box:gemma-small", "gemma4")
     native = e.system_prompt
-    chat = e.system_prompt(registry.resolve("oai:m"))
+    chat = e.system_prompt(effective("oai:m"))
     expect(chat).not_to include("<|tool_call>")
     expect(native).to include("<|tool_call>")
 
@@ -51,7 +53,7 @@ RSpec.describe "Engine#system_prompt per loop" do
     e.switch_model!("oai:m")
 
     expect(e.system_prompt).to include("(new index)")
-    expect(e.system_prompt(registry.resolve("box:gemma-small"))).to include("(new index)")
+    expect(e.system_prompt(effective("box:gemma-small"))).to include("(new index)")
   end
 
   describe "with a thinking level" do

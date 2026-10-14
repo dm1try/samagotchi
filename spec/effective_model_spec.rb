@@ -59,8 +59,8 @@ RSpec.describe Samagotchi::EffectiveModel do
       expect(model_view(effective, engine)).to eq(engine_view(engine))
       expect([effective.ref, effective.bare, effective.host_name])
         .to eq([engine.effective_model_ref, engine.bare_model_name(model), engine.stats_snapshot[:price_host]])
-      expect(effective.context_window.to_h).to eq(engine.send(:current_context_window, registry.resolve(model)).to_h)
-      expect(effective.llm_context_layers({})).to eq(engine.send(:llm_context_layers, registry.resolve(model)))
+      expect(effective.context_window.to_h).to eq(engine.stats_snapshot[:context].slice(:window_tokens, :window_source)
+                                                    .then { |w| { tokens: w[:window_tokens], source: w[:window_source]&.to_sym } })
     end
   end
 
@@ -117,5 +117,25 @@ RSpec.describe Samagotchi::EffectiveModel do
 
     expect(effective.inspect).to eq('#<Samagotchi::EffectiveModel "main:gemma-x" typed="splash" host="main">')
     expect(effective).to be_frozen
+  end
+
+  # The torn read P0's thread smoke tolerated: #switch_model! now swaps the
+  # name and the typed name as one ModelChoice.
+  it "never pairs one model's name with the other's typed name for a reader on another thread" do
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:qwen-small")
+    engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "box:qwen-small", working_directory: project)
+    legit = [{ level: "medium", source: "models: fast", own: nil }, { level: "high", source: "models: gemma-x", own: nil }]
+    engine.switch_model!("box:qwen-small", typed: "fast")
+    stop = false
+    seen = []
+    reader = Thread.new { seen << engine.session_state_snapshot[:thinking] until stop }
+    300.times do |i|
+      i.even? ? engine.switch_model!("main:gemma-x", typed: "deep") : engine.switch_model!("box:qwen-small", typed: "fast")
+    end
+    stop = true
+    reader.join
+
+    expect(seen).not_to be_empty
+    expect(seen.uniq - legit).to eq([])
   end
 end

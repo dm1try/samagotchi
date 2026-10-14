@@ -24,7 +24,7 @@ RSpec.describe Samagotchi::Engine, "session thinking level" do
 
   after { ENV.delete("SAMAGOTCHI_THINKING_LEVEL") }
 
-  def turn_level = engine.send(:thinking_level, registry.resolve(engine.effective_model_name))
+  def turn_level = engine.turn_thinking
 
   it "puts the session's own level over the process default and the host's" do
     engine.session = session

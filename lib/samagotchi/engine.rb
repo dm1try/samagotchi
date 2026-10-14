@@ -141,7 +141,7 @@ module Samagotchi
       @model_choice = ModelChoice.new(name: @default_model_name, typed: typed.empty? ? @default_model_name : typed)
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
-      @client = @host_registry.resolve(effective_model_name).client
+      @client = effective_model.client
       # A caller's profile pins it (until a model switch); otherwise
       # #profile_resolution decides on first need (see there), so building an
       # Engine makes no network call.
@@ -376,8 +376,8 @@ module Samagotchi
     end
 
     # The backend for the next turn: the loop the effective model's host speaks.
-    def backend
-      backend_for(@host_registry.resolve(effective_model_name))
+    def backend(model = effective_model)
+      backend_for(model)
     end
 
     # Record that activity happened (user input or a completed turn): the
@@ -543,11 +543,11 @@ module Samagotchi
     # only, the model its /props names when that differs. Never a new
     # request: only the /props answer profile resolution already cached.
     def model_identity
-      target = @host_registry.resolve(effective_model_name)
-      entry = target.entry
+      model = effective_model
+      entry = model.entry
       host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
-      SystemPrompt::ModelIdentity.new(ref: effective_model_ref, host: host, key: @model_key,
-                                      served: prompt_served_model(target), fallback_key: @fallback_model_key)
+      SystemPrompt::ModelIdentity.new(ref: model.ref, host: host, key: @model_key,
+                                      served: model.prompt_served, fallback_key: @fallback_model_key)
     end
 
     # The model notes for the effective model (ModelNotes): matched on its
@@ -676,11 +676,10 @@ module Samagotchi
 
     # Point the kernel (and a chat backend) at the effective model's host
     # (after /model, --model, resume).
-    def sync_kernel_client!
-      target = @host_registry.resolve(effective_model_name)
-      @client = target.client
-      @kernel.client = target.client if @kernel.client != target.client
-      backend_for(target)
+    def sync_kernel_client!(model = effective_model)
+      @client = model.client
+      @kernel.client = model.client if @kernel.client != model.client
+      backend_for(model)
     end
 
     # Subscribe a persistent observer to engine events.
@@ -1059,22 +1058,24 @@ module Samagotchi
     # @return [Hash] @metrics.snapshot, filled in
     def stats_snapshot
       snapshot = @metrics.snapshot
-      target = @host_registry.resolve(effective_model_name)
-      served, served_for = served_model_for(snapshot, target: target)
+      # One resolve for the whole snapshot (its readers' rescues stay theirs);
+      # a model that doesn't resolve raises here, as it always has.
+      model = effective_model
+      served, served_for = served_model_for(snapshot, model: model)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
-                                served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
-                                thinking: thinking_explained&.summary,
-                                reasoning_history: reasoning_history_explained&.summary, prompt_notes: prompt_notes.map(&:to_h),
-                                prompt_files: @prompt_builder.prompt_files, price_host: target.entry.name)
+                                served_expected_by: model.served_expected_by(served), llm_context: llm_context_chip(model),
+                                thinking: thinking_chip(model), reasoning_history: reasoning_history_chip(model),
+                                prompt_notes: prompt_notes.map(&:to_h), prompt_files: @prompt_builder.prompt_files,
+                                price_host: model.host_name)
       unless snapshot.dig(:context, :window_tokens)
-        window = current_context_window(target)
+        window = current_context_window(model)
         if window
           snapshot = snapshot.merge(context: snapshot[:context].merge(window_tokens: window.tokens,
                                                                       window_source: window.source.to_s))
         end
       end
       # The chat loop uses no prompt profile: drop one a native turn reported.
-      return snapshot.except(:profile, :profile_source) if target.entry.chat?
+      return snapshot.except(:profile, :profile_source) if model.chat?
 
       unless snapshot[:profile]
         resolution = profile_resolution
@@ -1087,10 +1088,11 @@ module Samagotchi
     # no turn yet (it woke after an idle exit): nil when either count is
     # unknown or context.status is off. Counted as the turns count it:
     # against the effective model's llm_context budget when it has one.
-    def saved_context_status(context)
+    def saved_context_status(context, model: :current)
       return nil unless context
 
-      ContextStatus.new(llm_context: turn_llm_context)
+      llm_context = model == :current ? turn_llm_context : model&.llm_context_explained(llm_context_session_args)&.resolved
+      ContextStatus.new(llm_context: llm_context)
                    .display_for(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
     end
 
@@ -1098,10 +1100,7 @@ module Samagotchi
     # (LLMContextStrategy.explain), nil when it can't be resolved.
     # @return [LLMContextStrategy::Explained, nil]
     def llm_context_explained
-      target = @host_registry.resolve(effective_model_name)
-      LLMContextStrategy.explain(target, names: model_lookup_names(target), **llm_context_session_args)
-    rescue StandardError
-      nil
+      model_setting(nil) { |model| model.llm_context_explained(llm_context_session_args) }
     end
 
     # #llm_context_explained's summary (Explained#summary), nil when it
@@ -1129,16 +1128,11 @@ module Samagotchi
 
     # The effective model is on a chat host (api: openai or anthropic), whose loop uses
     # no prompt profile.
-    def chat_model? = @host_registry.resolve(effective_model_name).entry.chat?
+    def chat_model? = effective_model.chat?
 
     # "temperature=0.6 (hosts.work)" for /model: the effective model's
     # configured sampling, nil when none.
-    def sampling_summary
-      target = @host_registry.resolve(effective_model_name)
-      SamplingSettings.summary(target, names: model_lookup_names(target))
-    rescue StandardError
-      nil
-    end
+    def sampling_summary = model_setting(nil, &:sampling_summary)
 
     # "off (models: qwen)", "low (session)" for /model: the effective
     # model's thinking level and where it came from, nil when none is set.
@@ -1152,10 +1146,7 @@ module Samagotchi
     # turn_sampling; on any error, the global and its name.
     # @return [Array(Integer, String|nil)]
     def steer_cut_after_explained
-      target = @host_registry.resolve(effective_model_name)
-      SteerCutAfter.resolve(target, names: model_lookup_names(target))
-    rescue StandardError
-      [SteerCut.cut_after, "steer.cut_after"]
+      model_setting([SteerCut.cut_after, "steer.cut_after"], &:steer_cut_after_explained)
     end
 
     # #steer_cut_after_explained's seconds: what SteerCut#cut_for_steer
@@ -1177,10 +1168,7 @@ module Samagotchi
     # +own+: the session's own level to resolve with (the current one by
     # default; /thinking asks what a change would resolve to).
     def thinking_explained(own: thinking_override)
-      target = @host_registry.resolve(effective_model_name)
-      Thinking.explain(target, names: model_lookup_names(target), session: own)
-    rescue StandardError
-      nil
+      model_setting(nil) { |model| model.thinking_explained(own: own) }
     end
 
     # "drop (models: qwen)" for /model: the effective chat model's
@@ -1188,14 +1176,7 @@ module Samagotchi
     # default, the model runs on the native loop (which ignores it) or it
     # can't be resolved.
     def reasoning_history_summary
-      target = @host_registry.resolve(effective_model_name)
-      return nil unless target.entry&.chat?
-
-      level, source = ReasoningHistory.resolve(target, names: model_lookup_names(target),
-                                                       session: reasoning_history_override)
-      source ? ReasoningHistory.label(level, source) : nil
-    rescue StandardError
-      nil
+      model_setting(nil) { |model| model.reasoning_history_summary(own: reasoning_history_override) }
     end
 
     # The effective chat model's reasoning_history level with where it came
@@ -1207,12 +1188,7 @@ module Samagotchi
     # +own+: the session's own level to resolve with (the current one by
     # default; a command asks what a change would resolve to).
     def reasoning_history_explained(native: false, own: reasoning_history_override)
-      target = @host_registry.resolve(effective_model_name)
-      return nil unless native || target.entry&.chat?
-
-      ReasoningHistory.explain(target, names: model_lookup_names(target), session: own)
-    rescue StandardError
-      nil
+      model_setting(nil) { |model| model.reasoning_history_explained(own: own, native: native) }
     end
 
     # What a reasoning_history change from level +from+ to level +to+ costs
@@ -1221,10 +1197,7 @@ module Samagotchi
     # marked as refusing it may still get :history (one needless ask).
     # @return [Symbol, nil]
     def reasoning_history_cache_cost(from, to)
-      target = @host_registry.resolve(effective_model_name)
-      ReasoningHistory.cache_cost(from, to, target: target, conversation: @session&.messages)
-    rescue StandardError
-      nil
+      model_setting(nil) { |model| model.reasoning_history_cache_cost(from, to, conversation: @session&.messages) }
     end
 
     # Whether the session has a model reply (a cache to restart at all).
@@ -1253,8 +1226,7 @@ module Samagotchi
     # cache (Thinking.cache_cost): :full, :provider or :tail.
     # @return [Symbol]
     def thinking_cache_cost
-      target = @host_registry.resolve(effective_model_name)
-      Thinking.cache_cost(target, profile: target.entry&.chat? ? nil : profile&.name)
+      effective_model.thinking_cache_cost { profile }
     end
 
     # Set the session's own thinking level (nil unsets it); the next turn's
@@ -1273,17 +1245,15 @@ module Samagotchi
     # else [nil, nil].
     # @return [Array(String, String), Array(nil, nil)]
     def served_model(probe: true)
-      served_model_for(@metrics.served_report, target: probe ? @host_registry.resolve(effective_model_name) : nil)
+      served_model_for(@metrics.served_report, model: probe ? effective_model : nil)
     end
 
     # The host whose hosts.<name>.models.<id>.served names +served+ for the
     # current model (a gateway's round-robin targets): not a mismatch to
     # warn about. nil when none does.
     # @return [String, nil]
-    def served_expected_by(served, target: nil)
-      ServedModel.expected_by(target || @host_registry.resolve(effective_model_name), served)
-    rescue StandardError
-      nil
+    def served_expected_by(served)
+      model_setting(nil) { |model| model.served_expected_by(served) }
     end
 
     def served_expected?(served) = !served_expected_by(served).nil?
@@ -1315,6 +1285,10 @@ module Samagotchi
     def session_state_snapshot
       served_pair = served_model(probe: false)
       metrics = @metrics.snapshot
+      # One resolve for the model's fields; nil when it doesn't resolve (the
+      # Bridge's /state and reset frames rely on this never raising): those
+      # fields are nil then, as their own rescues always gave.
+      model = model_setting(nil) { |resolved| resolved }
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
@@ -1330,11 +1304,11 @@ module Samagotchi
         model_name: effective_model_ref,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
-        served_expected_by: served_expected_by(served_pair[0]),
-        context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
-        llm_context: llm_context_summary,
-        thinking: thinking_explained&.summary,
-        reasoning_history: reasoning_history_explained&.summary,
+        served_expected_by: model&.served_expected_by(served_pair[0]),
+        context_status: @last_context_status&.dup || saved_context_status(metrics[:context], model: model),
+        llm_context: model && llm_context_chip(model),
+        thinking: model && thinking_chip(model),
+        reasoning_history: model && reasoning_history_chip(model),
         toolkit: toolkit_summary,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
@@ -1691,31 +1665,23 @@ module Samagotchi
     # the chat loop's leaves out the raw-prompt tool text, since its tools go
     # as schemas. Built once per loop (and again after a model switch) so the
     # prompt prefix, and the server's KV cache for it, stay stable.
-    # @param target [HostRegistry::ModelTarget, nil]
+    # @param model [EffectiveModel, nil]
     # @return [String]
     # The native prompt depends on the thinking level too (Gemma's token,
-    # Qwen's turn preamble): a level change builds it again.
-    def system_prompt(target = nil)
-      target ||= @host_registry.resolve(effective_model_name)
-      chat = target.entry.chat?
-      level = chat ? nil : thinking_level(target)
-      prompt = @prompt_builder.build(chat: chat, thinking: level, layers: llm_context_layers(target))
+    # Qwen's turn preamble): a level change builds it again. A build that
+    # misses the cache names the model and the level through its own
+    # lambdas (#model_identity, #turn_thinking), which resolve again.
+    def system_prompt(model = nil)
+      model ||= effective_model
+      chat = model.chat?
+      level = chat ? nil : thinking_level(model)
+      prompt = @prompt_builder.build(chat: chat, thinking: level, layers: model.llm_context_layers(llm_context_session_args))
       # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
       @metrics.memory_index = @prompt_builder.memory_index
       # The model notes it carries: the session records them (/stats, /model, the web).
       record_prompt_notes(@prompt_builder.prompt_notes)
       prompt
     end
-
-    # The LLM context layers +target+'s turns run under: the native prompt
-    # declares the tools they add (forget_outputs under forget), so a
-    # model switch may change the tool list. [] under none.
-    def llm_context_layers(target)
-      LLMContextStrategy.resolve(target, names: model_lookup_names(target), **llm_context_session_args).active_layers
-    rescue StandardError
-      []
-    end
-    private :llm_context_layers
 
     # The base prompt (specs, plugins' declarations).
     def assist_system_prompt(chat: false, thinking: nil)
@@ -2047,14 +2013,16 @@ module Samagotchi
     # sampling and thinking, the thinking resolved before the hooks run.
     # The model name is added in #generate, after the hooks that may switch
     # the model.
+    # One resolve for all of them: nothing runs between them that could
+    # change what a resolve gives.
     def turn_settings(session)
-      vision = turn_vision(session)
-      sampling = turn_sampling
-      thinking_target = @host_registry.resolve(effective_model_name)
-      @turn_thinking = [thinking_level(thinking_target), thinking_target]
+      model = effective_model
+      vision = turn_vision(session, model)
+      sampling = model.sampling
+      @turn_thinking = [thinking_level(model), model.target]
       announce_thinking_level(*@turn_thinking)
       LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first,
-                            reasoning_history: reasoning_history_level(thinking_target), model_name: nil,
+                            reasoning_history: reasoning_history_level(model), model_name: nil,
                             window_setting: nil, llm_context: nil, price: nil)
     end
     private :turn_settings
@@ -2076,12 +2044,12 @@ module Samagotchi
     def warm_up_next_turn(turn, result)
       return if result.canceled? || result.resumable?
 
-      target = @host_registry.resolve(effective_model_name)
-      client = target.client
-      return unless warmup_target?(target, client)
+      model = effective_model
+      client = model.client
+      return unless warmup_target?(model, client)
       return if reminders_due? || @turn_state.carried_steers? || @next_turn_waiting&.call
 
-      messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(target) })
+      messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(model) })
       # Under the next turn's strategy (a /model switch may have changed it);
       # the last turn's when it can't be resolved.
       prompt, images = @kernel.warmup_prompt(messages, llm_context: turn_llm_context || @kernel.turn_settings&.llm_context)
@@ -2098,8 +2066,8 @@ module Samagotchi
     # Never a paid or remote host (cache.warmup auto means local only), nor
     # the chat loop (Splash keeps its own cache; llama.cpp's chat path is
     # not measured), nor a non-llama.cpp transport.
-    def warmup_target?(target, client)
-      return false if target.entry.chat? || target.entry.remote?
+    def warmup_target?(model, client)
+      return false if model.chat? || model.entry.remote?
       return false unless client.respond_to?(:warm_up) && client.respond_to?(:transport) && client.transport.native?
 
       PromptWarmup.enabled?
@@ -2140,16 +2108,19 @@ module Samagotchi
 
     # Ask the effective model's backend.
     def generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
-      sync_kernel_client!
+      # One resolve for the request: nothing runs between these reads that
+      # could change what a resolve gives (the hooks ran before).
+      model = effective_model
+      sync_kernel_client!(model)
       # Route model name as bare (without host prefix) to the transport;
       # host selection already done via active client.
-      bare_for_backend = bare_model_name(effective_model_name)
+      bare_for_backend = bare_model_name(model.name)
       # The turn's settings, set once here. The chat loop dispatches tools
       # through the kernel without its #run: tag those dumps with this
       # turn's model, not the last native one.
-      explained = llm_context_explained
-      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: turn_window_setting,
-                                                 llm_context: explained&.resolved, price: turn_price)
+      explained = model.llm_context_explained(llm_context_session_args)
+      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
+                                                 llm_context: explained&.resolved, price: model.price)
       log_llm_context(explained)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
@@ -2157,7 +2128,7 @@ module Samagotchi
       # end keeps it, so a Continue resumes this run.
       run_start = turn.messages.length
       reasoning_since = resumed_run_start(turn, run_start)
-      result = backend.complete(
+      result = backend(model).complete(
         messages: turn.messages,
         max_iterations: turn.limit,
         on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
@@ -2371,29 +2342,17 @@ module Samagotchi
 
     # The turn's VisionContext: the session's images folder, and whether the
     # effective model can see images, asked only when a request carries one.
-    def turn_vision(session)
-      target = @host_registry.resolve(effective_model_name)
+    def turn_vision(session, model = effective_model)
       VisionContext.new(session_dir: Session.session_dir(session.id, state_dir: session_state_dir),
-                        capability: lambda {
-                          VisionSupport.for(target, profile: profile, adapter: vision_adapter(target), names: model_lookup_names(target))
-                        })
+                        capability: -> { model.vision_support(profile) })
     end
 
     # The effective model's request parameters (hosts: and models:
     # sampling), read per turn: /model can change the model between turns.
-    def turn_sampling
-      target = @host_registry.resolve(effective_model_name)
-      SamplingSettings.for(target, names: model_lookup_names(target))
-    rescue StandardError
-      SamplingSettings::EMPTY
-    end
+    def turn_sampling = model_setting(SamplingSettings::EMPTY, &:sampling)
 
     # The effective model's thinking level (Thinking.resolve), read each turn.
-    def turn_thinking
-      thinking_level(@host_registry.resolve(effective_model_name))
-    rescue StandardError
-      Thinking::DEFAULT
-    end
+    def turn_thinking = model_setting(Thinking::DEFAULT) { |model| thinking_level(model) }
 
     # An effort on a native host, which has no knob for it: said once per
     # session and host.
@@ -2503,32 +2462,18 @@ module Samagotchi
       hook_notify(text, level, "thinking")
     end
 
-    # +target+'s ReasoningHistory level, the session's own first; the
+    # +model+'s ReasoningHistory level, the session's own first; the
     # default when it can't be resolved.
-    def reasoning_history_level(target)
-      ReasoningHistory.resolve(target, names: model_lookup_names(target), session: reasoning_history_override).first
-    rescue StandardError
-      ReasoningHistory::DEFAULT
-    end
+    def reasoning_history_level(model) = model.reasoning_history(own: reasoning_history_override)
 
-    # +target+'s thinking level (Thinking.resolve), the session's own first.
-    def thinking_level(target)
-      Thinking.resolve(target, names: model_lookup_names(target), session: thinking_override).first
-    rescue StandardError
-      Thinking::DEFAULT
-    end
-
-    def vision_adapter(target)
-      target.entry.chat? ? @host_registry.adapter_for(target.entry) : nil
-    rescue StandardError
-      nil
-    end
+    # +model+'s thinking level (Thinking.resolve), the session's own first.
+    def thinking_level(model) = model.thinking(own: thinking_override)
 
     # A model known not to see images fails a turn with images up front.
     def refuse_images!(vision)
       return if vision.sendable?
 
-      host = @host_registry.resolve(effective_model_name).entry.name
+      host = effective_model.host_name
       raise LLM::VisionUnsupported.new("#{host}: #{vision.refusal_reason}", host: host)
     end
 
@@ -2623,14 +2568,14 @@ module Samagotchi
       session.messages = messages
     end
 
-    # Pick the loop for a target; the chat loop is pointed at the target
-    # host's adapter (one per host, kept for its cached model list).
-    def backend_for(target)
-      return @native_backend unless target.entry.chat?
+    # Pick the loop for +model+ (EffectiveModel); the chat loop is pointed
+    # at its host's adapter (one per host, kept for its cached model list).
+    def backend_for(model)
+      return @native_backend unless model.chat?
 
       @chat_backend_mutex.synchronize do
         @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel, stable_length: ->(text) { @prompt_builder.stable_length(text) })
-        @chat_backend.adapter = @host_registry.adapter_for(target.entry)
+        @chat_backend.adapter = @host_registry.adapter_for(model.entry)
         @chat_backend.session_id = session&.id
         @chat_backend
       end
@@ -2937,38 +2882,13 @@ module Samagotchi
       emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names, read_names: read_names })
     end
 
-    # The window as the target's loop would see it (see ChatLoop#context_window:
-    # a remote chat host has no /props, only its model list).
-    def current_context_window(target)
-      client = target.client
-      adapter = nil
-      if target.entry.chat?
-        adapter = @host_registry.adapter_for(target.entry)
-        client = nil if adapter.remote?
-      end
-      ContextWindow.resolve(client: client, model: target.bare_model, adapter: adapter,
-                            setting: ContextWindow.setting(target, names: model_lookup_names(target)))
-    rescue StandardError
-      nil
-    end
-
     # The effective model's models:/hosts: window_tokens, read per turn
     # (after the hooks that may switch the model).
-    def turn_window_setting
-      target = @host_registry.resolve(effective_model_name)
-      ContextWindow.setting(target, names: model_lookup_names(target))
-    rescue StandardError
-      nil
-    end
+    def turn_window_setting = model_setting(nil, &:window_setting)
 
     # The effective model's price on its host (hosts.<name>.models.<id>.price),
     # by the requested id, never the served one; read per turn as the window is.
-    def turn_price
-      target = @host_registry.resolve(effective_model_name)
-      target.entry.models&.dig(target.bare_model.to_s.strip.downcase)&.price
-    rescue StandardError
-      nil
-    end
+    def turn_price = model_setting(nil, &:price)
 
     # The LLM context strategy the next turn runs under: the session's own
     # (Session#llm_context), else the effective model's (models:/hosts:
@@ -2982,34 +2902,49 @@ module Samagotchi
     private :llm_context_session_args
 
     # See #served_model. A report for another name (before a /model switch)
-    # doesn't count. Without a target, no probe. A remote chat host has no
-    # /props: nil until a turn.
-    def served_model_for(snapshot, target: nil)
-      asked = bare_model_name(effective_model_name)
+    # doesn't count. Without a model (EffectiveModel), no probe. A remote
+    # chat host has no /props: nil until a turn. The name asked is never
+    # resolved (HostRegistry#bare_name), so it holds on a broken resolve.
+    def served_model_for(snapshot, model: nil)
+      asked = bare_model_name(model ? model.name : effective_model_name)
       return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
-      return [nil, nil] unless target
+      return [nil, nil] unless model
 
-      client = target.client
-      if target.entry.chat?
-        adapter = @host_registry.adapter_for(target.entry)
-        return [nil, nil] if adapter.remote?
-      end
-      served = ServedModel.from_props(client.server_props(model: target.bare_model))
-      served ? [served, asked] : [nil, nil]
+      model.served_from_props(asked)
+    # Only bare_model_name and the snapshot lookup are left to fail here:
+    # the probe's failure is EffectiveModel#served_from_props's.
     rescue StandardError
       [nil, nil]
     end
 
-    # What a local native host's cached /props names, when it isn't the
-    # model asked for; nil for a chat or remote host, or before any probe.
-    def prompt_served_model(target)
-      entry = target.entry
-      return nil if entry.nil? || entry.chat? || entry.remote? || !target.client.respond_to?(:cached_server_props)
+    # The window as +model+'s loop would see it (EffectiveModel#context_window).
+    def current_context_window(model) = model.context_window
 
-      served = ServedModel.from_props(target.client.cached_server_props(model: target.bare_model))
-      served if ServedModel.differs?(target.bare_model, served)
-    rescue StandardError
-      nil
+    # The chips /stats and the session state carry (the web's info bar),
+    # from one EffectiveModel.
+    def llm_context_chip(model) = model.llm_context_explained(llm_context_session_args)&.summary(llm_context_override)
+    def thinking_chip(model) = model.thinking_explained(own: thinking_override)&.summary
+    def reasoning_history_chip(model) = model.reasoning_history_explained(own: reasoning_history_override)&.summary
+
+    # The effective model now (EffectiveModel.of): resolved on each call,
+    # never kept (config.yml, a model listing and another process's saved
+    # lists all move a resolve). Raises as HostRegistry#resolve does.
+    # @return [EffectiveModel]
+    def effective_model(choice = @model_choice) = EffectiveModel.of(@host_registry, choice)
+
+    # The block's answer for the effective model, or +fallback+ when the
+    # model doesn't resolve: the readers whose rescue always covered the
+    # resolve too. Each setting's own failure is the EffectiveModel's.
+    def model_setting(fallback)
+      # One read: the log line names the model that failed, even if a
+      # /model switched it meanwhile.
+      choice = @model_choice
+      model = begin
+        effective_model(choice)
+      rescue StandardError => e
+        return EffectiveModel::Unresolved.fallback(:effective_model_unresolved, choice.name, e, fallback)
+      end
+      yield model
     end
 
     # ── Prompt profile ─────────────────────────────────────────────────────────
@@ -3020,9 +2955,7 @@ module Samagotchi
       given = @given_profile
       return ModelProfile::Resolution.new(profile: given, source: :given, detail: nil, retry: false) if given
 
-      target = @host_registry.resolve(choice.name)
-      names = @host_registry.lookup_names(choice.typed, resolved: choice.name, target: target)
-      ModelProfile.resolve(names: names, entry: target.entry, client: target.client, bare_model: target.bare_model)
+      EffectiveModel.of(@host_registry, choice).profile_resolution
     end
 
     # Keeps +resolution+ as +choice+'s and applies it, unless the model
@@ -3038,13 +2971,6 @@ module Samagotchi
         @profile_resolution = [choice, resolution]
       end
       resolution
-    end
-
-    # The names a models: entry may be under (HostRegistry#lookup_names):
-    # the model as typed at start or at the last /model, and what it became.
-    def model_lookup_names(target)
-      choice = @model_choice
-      @host_registry.lookup_names(choice.typed, resolved: choice.name, target: target)
     end
 
     # Everything that holds a profile follows the resolution: the kernel's

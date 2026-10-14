@@ -70,8 +70,8 @@ RSpec.describe "Engine#system_prompt names the model" do
 
     expect(prompt[split..]).to start_with("Model: this session runs on oai:m")
     expect(prompt[0, split]).to end_with("System memories:\n(index)\n")
-    wire = e.send(:backend_for, registry.resolve("oai:m")).wire_messages([{ role: "system", content: prompt },
-                                                                          { role: "user", content: "hi" }])
+    wire = e.backend.wire_messages([{ role: "system", content: prompt },
+                                    { role: "user", content: "hi" }])
     expect(wire.first).to eq({ role: "system", content: prompt, cache_split: split })
 
     native = engine("box:gemma-small")
