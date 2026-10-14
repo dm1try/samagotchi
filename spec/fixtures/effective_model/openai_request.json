@@ -1,0 +1,68 @@
+{
+  "model": "gpt-x",
+  "messages": [
+    {
+      "role": "system",
+      "content": "sha256:d997ba0259385dc9f8ca2e4fdcc067ff7e161eea89a7d7b14cdf8f600bbbf3aa"
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "hello",
+      "reasoning_content": "they greet me"
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "say ok"
+        }
+      ]
+    }
+  ],
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "tools": {
+    "names": [
+      "execute",
+      "read",
+      "write",
+      "edit",
+      "memory_read",
+      "memory_write",
+      "task_create",
+      "task_get",
+      "task_list",
+      "task_stop",
+      "task_wait",
+      "web_fetch",
+      "register_reminder",
+      "cancel_reminder",
+      "list_reminders",
+      "list_sessions",
+      "send_note",
+      "context_read",
+      "delegate",
+      "delegate_result",
+      "ask_user_question"
+    ],
+    "digest": "sha256:05da2b7c241441ebdf4412fec2621033b96adbf3762afb9944e21a0c812f0837"
+  },
+  "tool_choice": "auto",
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  },
+  "reasoning_effort": "none",
+  "temperature": 0.3
+}

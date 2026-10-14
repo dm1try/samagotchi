@@ -1,0 +1,94 @@
+{
+  "rescued": {
+    "turn_sampling": {},
+    "turn_thinking": "default",
+    "steer_cut_after_explained": [
+      20,
+      "steer.cut_after"
+    ],
+    "steer_cut_after": 20,
+    "steer_cut_summary": "after 20 s (steer.cut_after)",
+    "sampling_summary": null,
+    "thinking_explained": null,
+    "thinking_summary": null,
+    "reasoning_history_summary": null,
+    "reasoning_history_explained": null,
+    "reasoning_history_cache_cost": null,
+    "llm_context_explained": null,
+    "llm_context_summary": null,
+    "served_expected_by": null,
+    "served_expected": false,
+    "saved_context_status": {
+      "est_pct": 12.5,
+      "bucket": "under20"
+    },
+    "turn_window_setting": null,
+    "turn_price": null,
+    "failure_summary": "error from host box: boom"
+  },
+  "raising": {
+    "chat_model": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "thinking_cache_cost": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "model_identity": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "system_prompt": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "turn_vision": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "sync_kernel_client": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "backend": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "stats_snapshot": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "served_model_probe": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    },
+    "session_model_recap_target": {
+      "raises": "RuntimeError",
+      "message": "registry broken"
+    }
+  },
+  "never_resolving": {
+    "effective_model_ref": "box:qwen-small",
+    "model_ref_for": "box:qwen-small",
+    "bare_model_name": "qwen-small",
+    "guardrail_model_name": "qwen-small",
+    "served_model_no_probe": [
+      null,
+      null
+    ],
+    "store_model": "box:qwen-small",
+    "profile": "qwen36"
+  },
+  "session_state": {
+    "model_name": "box:qwen-small",
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "context_status": null,
+    "llm_context": null,
+    "thinking": null,
+    "reasoning_history": null,
+    "toolkit": null
+  }
+}

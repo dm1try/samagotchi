@@ -1,0 +1,145 @@
+[
+  {
+    "name": "ant:claude-x",
+    "thinking": {
+      "level": "medium",
+      "source": "hosts.ant",
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "ant:gpt-x",
+    "sampling": "temperature=0.3 (models: gpt-x)",
+    "thinking": {
+      "level": "off",
+      "source": "models: gpt-x",
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "box:qwen-small",
+    "sampling": "temperature=0.6 top_k=20 (models: qwen-small)",
+    "thinking": {
+      "level": "low",
+      "source": "models: qwen-small",
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "stale",
+      "strategy_source": "model_setting",
+      "strategy_where": "models: qwen-small",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "down:declared-m",
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "oai:claude-x",
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "oai:gpt-x",
+    "sampling": "temperature=0.3 (models: gpt-x)",
+    "thinking": {
+      "level": "off",
+      "source": "models: gpt-x",
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  },
+  {
+    "name": "oai:shared-m",
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    }
+  }
+]

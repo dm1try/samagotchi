@@ -1,0 +1,11 @@
+{
+  "temperature": 0.6,
+  "top_k": 20,
+  "prompt": "sha256:de3c5c663c1e2174c20fbfc85a235db1ec9fd62db7c71b74664557517588893d",
+  "stop": [
+    "<|im_end|>"
+  ],
+  "stream": true,
+  "model": "qwen-small",
+  "cache_prompt": true
+}

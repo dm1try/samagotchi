@@ -1,0 +1,241 @@
+{
+  "effective_model_ref": "ant:claude-x",
+  "effective_model_name": "ant:claude-x",
+  "typed_model_name": "ant:claude-x",
+  "chat_model": true,
+  "profile_resolution": {
+    "name": "qwen36",
+    "label": "default",
+    "retry": false
+  },
+  "sampling_summary": null,
+  "thinking_summary": "medium (hosts.ant)",
+  "thinking_explained": {
+    "level": "medium",
+    "source": "hosts.ant",
+    "own": null
+  },
+  "thinking_explained_own_nil": {
+    "level": "medium",
+    "source": "hosts.ant",
+    "own": null
+  },
+  "thinking_explained_own_low": {
+    "level": "low",
+    "source": "session",
+    "own": "low"
+  },
+  "thinking_cache_cost": "provider",
+  "steer_cut_after_explained": [
+    0,
+    "models: claude-x"
+  ],
+  "steer_cut_after": 0,
+  "steer_cut_summary": "never (models: claude-x)",
+  "reasoning_history_summary": null,
+  "reasoning_history_explained": {
+    "level": "all",
+    "source": null,
+    "own": null
+  },
+  "reasoning_history_explained_native": {
+    "level": "all",
+    "source": null,
+    "own": null
+  },
+  "reasoning_history_cache_cost": "history",
+  "llm_context_summary": {
+    "strategy": "none",
+    "strategy_source": "config",
+    "strategy_where": "llm_context.strategy",
+    "apply": "payoff",
+    "apply_source": "config",
+    "apply_where": "llm_context.apply",
+    "budget_tokens": null,
+    "budget_source": "config",
+    "budget_where": "llm_context.budget_tokens",
+    "own": null
+  },
+  "llm_context_explained": {
+    "layers": [],
+    "strategy": "none",
+    "source": "config",
+    "apply": "payoff",
+    "protect_steps": 3,
+    "stale_edits": false,
+    "budget_tokens": null
+  },
+  "served_model_no_probe": [
+    null,
+    null
+  ],
+  "served_model": [
+    null,
+    null
+  ],
+  "served_expected_by_x": null,
+  "served_expected_by_declared": null,
+  "model_identity": {
+    "ref": "ant:claude-x",
+    "host": "host ant, http://127.0.0.1:PORT",
+    "key": "claude-x",
+    "served": null,
+    "fallback_key": null
+  },
+  "guardrail_model_name": "claude-x",
+  "bare_model_name": "claude-x",
+  "recap_target": {
+    "base_url": "http://127.0.0.1:PORT",
+    "api_key_env": "EM_ANT_KEY",
+    "model": "claude-x",
+    "label": "ant:claude-x",
+    "api": "anthropic",
+    "auth": null,
+    "dialect": "fireworks"
+  },
+  "backend": "Samagotchi::LLM::ChatLoop",
+  "session_state_keys": [
+    "status",
+    "message_count",
+    "last_prompt",
+    "event_seq",
+    "metrics",
+    "pending_question",
+    "used_memory_names",
+    "preloaded_memory_names",
+    "muted_memory_names",
+    "prompt_notes",
+    "parent_id",
+    "model_name",
+    "served_model",
+    "served_model_for",
+    "served_expected_by",
+    "context_status",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "toolkit",
+    "recap_enabled",
+    "recap_min_user_turns",
+    "recap_inactivity_seconds"
+  ],
+  "session_state": {
+    "model_name": "ant:claude-x",
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "context_status": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "medium",
+      "source": "hosts.ant",
+      "own": null
+    },
+    "reasoning_history": {
+      "level": "all",
+      "source": null,
+      "own": null
+    },
+    "toolkit": null
+  },
+  "stats_keys": [
+    "session_id",
+    "turns",
+    "cancellations",
+    "tokens",
+    "context",
+    "memory_index",
+    "served_model",
+    "served_model_for",
+    "tool_calls_total",
+    "tool_calls_by_tool",
+    "tool_errors",
+    "iterations_total",
+    "gen_latency_ms",
+    "retries",
+    "cuts",
+    "capped",
+    "started_at",
+    "last_activity_at",
+    "session_duration_ms",
+    "turn_records",
+    "tool_records",
+    "active_turn",
+    "active_tools",
+    "served_expected_by",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "prompt_notes",
+    "prompt_files",
+    "price_host"
+  ],
+  "stats": {
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "medium",
+      "source": "hosts.ant",
+      "own": null
+    },
+    "reasoning_history": {
+      "level": "all",
+      "source": null,
+      "own": null
+    },
+    "price_host": "ant",
+    "window": {
+      "window_tokens": 100000,
+      "window_source": "host_setting"
+    }
+  },
+  "turn": {
+    "failed": null,
+    "turn_settings": {
+      "sampling": {},
+      "thinking": "medium",
+      "reasoning_history": "all",
+      "model_name": "claude-x",
+      "window_setting": {
+        "tokens": 100000,
+        "source": "host_setting"
+      },
+      "llm_context": {
+        "layers": [],
+        "strategy": "none",
+        "source": "config",
+        "apply": "payoff",
+        "protect_steps": 3,
+        "stale_edits": false,
+        "budget_tokens": null
+      },
+      "price": null,
+      "vision_sendable": true
+    },
+    "system_prompt": "sha256:868fdedda056b3fd5bbfa235b21bdfe8b7c7d26f95c3a74ae19846e5a2ae40f3"
+  }
+}

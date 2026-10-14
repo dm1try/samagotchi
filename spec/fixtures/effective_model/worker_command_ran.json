@@ -1,0 +1,448 @@
+{
+  "llama": {
+    "model": {
+      "changed": [
+        "model"
+      ],
+      "model_name": "box:qwen-small",
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: qwen-small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      },
+      "reasoning_history": null
+    },
+    "thinking": {
+      "changed": [
+        "thinking"
+      ],
+      "model_name": "box:qwen-small",
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      }
+    },
+    "reasoning_history": {
+      "changed": [
+        "reasoning_history"
+      ],
+      "model_name": "box:qwen-small",
+      "reasoning_history": null
+    },
+    "llm_context": {
+      "changed": [
+        "llm_context"
+      ],
+      "model_name": "box:qwen-small",
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: qwen-small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    },
+    "toolkit": {
+      "changed": [
+        "toolkit"
+      ],
+      "model_name": "box:qwen-small",
+      "toolkit": null
+    },
+    "thinking+toolkit": {
+      "changed": [
+        "thinking",
+        "toolkit"
+      ],
+      "model_name": "box:qwen-small",
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      },
+      "toolkit": null
+    },
+    "": {
+      "changed": [],
+      "model_name": "box:qwen-small"
+    }
+  },
+  "openai": {
+    "model": {
+      "changed": [
+        "model"
+      ],
+      "model_name": "oai:gpt-x",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "off",
+        "source": "models: gpt-x",
+        "own": null
+      },
+      "reasoning_history": {
+        "level": "all",
+        "source": "hosts.oai",
+        "own": null
+      }
+    },
+    "thinking": {
+      "changed": [
+        "thinking"
+      ],
+      "model_name": "oai:gpt-x",
+      "thinking": {
+        "level": "off",
+        "source": "models: gpt-x",
+        "own": null
+      }
+    },
+    "reasoning_history": {
+      "changed": [
+        "reasoning_history"
+      ],
+      "model_name": "oai:gpt-x",
+      "reasoning_history": {
+        "level": "all",
+        "source": "hosts.oai",
+        "own": null
+      }
+    },
+    "llm_context": {
+      "changed": [
+        "llm_context"
+      ],
+      "model_name": "oai:gpt-x",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    },
+    "toolkit": {
+      "changed": [
+        "toolkit"
+      ],
+      "model_name": "oai:gpt-x",
+      "toolkit": null
+    },
+    "thinking+toolkit": {
+      "changed": [
+        "thinking",
+        "toolkit"
+      ],
+      "model_name": "oai:gpt-x",
+      "thinking": {
+        "level": "off",
+        "source": "models: gpt-x",
+        "own": null
+      },
+      "toolkit": null
+    },
+    "": {
+      "changed": [],
+      "model_name": "oai:gpt-x"
+    }
+  },
+  "anthropic": {
+    "model": {
+      "changed": [
+        "model"
+      ],
+      "model_name": "ant:claude-x",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "hosts.ant",
+        "own": null
+      },
+      "reasoning_history": {
+        "level": "all",
+        "source": null,
+        "own": null
+      }
+    },
+    "thinking": {
+      "changed": [
+        "thinking"
+      ],
+      "model_name": "ant:claude-x",
+      "thinking": {
+        "level": "medium",
+        "source": "hosts.ant",
+        "own": null
+      }
+    },
+    "reasoning_history": {
+      "changed": [
+        "reasoning_history"
+      ],
+      "model_name": "ant:claude-x",
+      "reasoning_history": {
+        "level": "all",
+        "source": null,
+        "own": null
+      }
+    },
+    "llm_context": {
+      "changed": [
+        "llm_context"
+      ],
+      "model_name": "ant:claude-x",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    },
+    "toolkit": {
+      "changed": [
+        "toolkit"
+      ],
+      "model_name": "ant:claude-x",
+      "toolkit": null
+    },
+    "thinking+toolkit": {
+      "changed": [
+        "thinking",
+        "toolkit"
+      ],
+      "model_name": "ant:claude-x",
+      "thinking": {
+        "level": "medium",
+        "source": "hosts.ant",
+        "own": null
+      },
+      "toolkit": null
+    },
+    "": {
+      "changed": [],
+      "model_name": "ant:claude-x"
+    }
+  },
+  "down": {
+    "model": {
+      "changed": [
+        "model"
+      ],
+      "model_name": "down:declared-m",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "default",
+        "source": null,
+        "own": null
+      },
+      "reasoning_history": null
+    },
+    "thinking": {
+      "changed": [
+        "thinking"
+      ],
+      "model_name": "down:declared-m",
+      "thinking": {
+        "level": "default",
+        "source": null,
+        "own": null
+      }
+    },
+    "reasoning_history": {
+      "changed": [
+        "reasoning_history"
+      ],
+      "model_name": "down:declared-m",
+      "reasoning_history": null
+    },
+    "llm_context": {
+      "changed": [
+        "llm_context"
+      ],
+      "model_name": "down:declared-m",
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    },
+    "toolkit": {
+      "changed": [
+        "toolkit"
+      ],
+      "model_name": "down:declared-m",
+      "toolkit": null
+    },
+    "thinking+toolkit": {
+      "changed": [
+        "thinking",
+        "toolkit"
+      ],
+      "model_name": "down:declared-m",
+      "thinking": {
+        "level": "default",
+        "source": null,
+        "own": null
+      },
+      "toolkit": null
+    },
+    "": {
+      "changed": [],
+      "model_name": "down:declared-m"
+    }
+  },
+  "alias": {
+    "model": {
+      "changed": [
+        "model"
+      ],
+      "model_name": "splash",
+      "llm_context": {
+        "strategy": "stale,forget",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: splash",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "off",
+        "source": "models: splash",
+        "own": null
+      },
+      "reasoning_history": null
+    },
+    "thinking": {
+      "changed": [
+        "thinking"
+      ],
+      "model_name": "splash",
+      "thinking": {
+        "level": "off",
+        "source": "models: splash",
+        "own": null
+      }
+    },
+    "reasoning_history": {
+      "changed": [
+        "reasoning_history"
+      ],
+      "model_name": "splash",
+      "reasoning_history": null
+    },
+    "llm_context": {
+      "changed": [
+        "llm_context"
+      ],
+      "model_name": "splash",
+      "llm_context": {
+        "strategy": "stale,forget",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: splash",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    },
+    "toolkit": {
+      "changed": [
+        "toolkit"
+      ],
+      "model_name": "splash",
+      "toolkit": null
+    },
+    "thinking+toolkit": {
+      "changed": [
+        "thinking",
+        "toolkit"
+      ],
+      "model_name": "splash",
+      "thinking": {
+        "level": "off",
+        "source": "models: splash",
+        "own": null
+      },
+      "toolkit": null
+    },
+    "": {
+      "changed": [],
+      "model_name": "splash"
+    }
+  }
+}

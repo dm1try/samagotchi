@@ -1,0 +1,230 @@
+{
+  "effective_model_ref": "down:declared-m",
+  "effective_model_name": "down:declared-m",
+  "typed_model_name": "down:declared-m",
+  "chat_model": false,
+  "profile_resolution": {
+    "name": "qwen36",
+    "label": "default",
+    "retry": true
+  },
+  "sampling_summary": null,
+  "thinking_summary": null,
+  "thinking_explained": {
+    "level": "default",
+    "source": null,
+    "own": null
+  },
+  "thinking_explained_own_nil": {
+    "level": "default",
+    "source": null,
+    "own": null
+  },
+  "thinking_explained_own_low": {
+    "level": "low",
+    "source": "session",
+    "own": "low"
+  },
+  "thinking_cache_cost": "tail",
+  "steer_cut_after_explained": [
+    20,
+    null
+  ],
+  "steer_cut_after": 20,
+  "steer_cut_summary": null,
+  "reasoning_history_summary": null,
+  "reasoning_history_explained": null,
+  "reasoning_history_explained_native": {
+    "level": "turn",
+    "source": null,
+    "own": null
+  },
+  "reasoning_history_cache_cost": null,
+  "llm_context_summary": {
+    "strategy": "none",
+    "strategy_source": "config",
+    "strategy_where": "llm_context.strategy",
+    "apply": "payoff",
+    "apply_source": "config",
+    "apply_where": "llm_context.apply",
+    "budget_tokens": null,
+    "budget_source": "config",
+    "budget_where": "llm_context.budget_tokens",
+    "own": null
+  },
+  "llm_context_explained": {
+    "layers": [],
+    "strategy": "none",
+    "source": "config",
+    "apply": "payoff",
+    "protect_steps": 3,
+    "stale_edits": false,
+    "budget_tokens": null
+  },
+  "served_model_no_probe": [
+    null,
+    null
+  ],
+  "served_model": [
+    null,
+    null
+  ],
+  "served_expected_by_x": null,
+  "served_expected_by_declared": null,
+  "model_identity": {
+    "ref": "down:declared-m",
+    "host": "host down, 127.0.0.1:DOWN_PORT",
+    "key": "declared-m",
+    "served": null,
+    "fallback_key": null
+  },
+  "guardrail_model_name": "declared-m",
+  "bare_model_name": "declared-m",
+  "recap_target": {
+    "base_url": "http://127.0.0.1:DOWN_PORT/v1",
+    "api_key_env": null,
+    "model": "declared-m",
+    "label": "down:declared-m",
+    "api": "openai",
+    "auth": null,
+    "dialect": null
+  },
+  "backend": "Samagotchi::LLM::NativeBackend",
+  "session_state_keys": [
+    "status",
+    "message_count",
+    "last_prompt",
+    "event_seq",
+    "metrics",
+    "pending_question",
+    "used_memory_names",
+    "preloaded_memory_names",
+    "muted_memory_names",
+    "prompt_notes",
+    "parent_id",
+    "model_name",
+    "served_model",
+    "served_model_for",
+    "served_expected_by",
+    "context_status",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "toolkit",
+    "recap_enabled",
+    "recap_min_user_turns",
+    "recap_inactivity_seconds"
+  ],
+  "session_state": {
+    "model_name": "down:declared-m",
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "context_status": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "reasoning_history": null,
+    "toolkit": null
+  },
+  "stats_keys": [
+    "session_id",
+    "turns",
+    "cancellations",
+    "tokens",
+    "context",
+    "memory_index",
+    "profile",
+    "profile_source",
+    "served_model",
+    "served_model_for",
+    "tool_calls_total",
+    "tool_calls_by_tool",
+    "tool_errors",
+    "iterations_total",
+    "gen_latency_ms",
+    "retries",
+    "cuts",
+    "capped",
+    "started_at",
+    "last_activity_at",
+    "session_duration_ms",
+    "turn_records",
+    "tool_records",
+    "active_turn",
+    "active_tools",
+    "served_expected_by",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "prompt_notes",
+    "prompt_files",
+    "price_host"
+  ],
+  "stats": {
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "reasoning_history": null,
+    "price_host": "down",
+    "profile": "qwen36",
+    "profile_source": "default",
+    "window": {
+      "window_tokens": 256000,
+      "window_source": "default"
+    }
+  },
+  "turn": {
+    "failed": "Samagotchi::LLM::ConnectionRefused",
+    "turn_settings": {
+      "sampling": {},
+      "thinking": "default",
+      "reasoning_history": "turn",
+      "model_name": "declared-m",
+      "window_setting": null,
+      "llm_context": {
+        "layers": [],
+        "strategy": "none",
+        "source": "config",
+        "apply": "payoff",
+        "protect_steps": 3,
+        "stale_edits": false,
+        "budget_tokens": null
+      },
+      "price": null,
+      "vision_sendable": false
+    },
+    "system_prompt": "sha256:51fd3f33bd04b19e39774152bf25b304f29ce74595c2d3d7d9f31b274e84bcee"
+  }
+}

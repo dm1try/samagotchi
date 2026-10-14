@@ -1,0 +1,70 @@
+{
+  "model": "claude-x",
+  "max_tokens": 64000,
+  "system": "sha256:88563076f8c9f87b2a553e07ff47ac3d5a9336cbf9fe29ad2d00693cdb3cb275",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "hello"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "say ok"
+        }
+      ]
+    }
+  ],
+  "stream": true,
+  "tools": {
+    "names": [
+      "execute",
+      "read",
+      "write",
+      "edit",
+      "memory_read",
+      "memory_write",
+      "task_create",
+      "task_get",
+      "task_list",
+      "task_stop",
+      "task_wait",
+      "web_fetch",
+      "register_reminder",
+      "cancel_reminder",
+      "list_reminders",
+      "list_sessions",
+      "send_note",
+      "context_read",
+      "delegate",
+      "delegate_result",
+      "ask_user_question"
+    ],
+    "digest": "sha256:cf97e5ec056b8d681a4ba94872faeb7f262519052c93b6f6a086c7133dddc15f"
+  },
+  "tool_choice": {
+    "type": "auto"
+  },
+  "thinking": {
+    "type": "adaptive"
+  },
+  "output_config": {
+    "effort": "medium"
+  }
+}

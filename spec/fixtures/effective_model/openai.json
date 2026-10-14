@@ -1,0 +1,245 @@
+{
+  "effective_model_ref": "oai:gpt-x",
+  "effective_model_name": "oai:gpt-x",
+  "typed_model_name": "oai:gpt-x",
+  "chat_model": true,
+  "profile_resolution": {
+    "name": "qwen36",
+    "label": "default",
+    "retry": false
+  },
+  "sampling_summary": "temperature=0.3 (models: gpt-x)",
+  "thinking_summary": "off (models: gpt-x)",
+  "thinking_explained": {
+    "level": "off",
+    "source": "models: gpt-x",
+    "own": null
+  },
+  "thinking_explained_own_nil": {
+    "level": "off",
+    "source": "models: gpt-x",
+    "own": null
+  },
+  "thinking_explained_own_low": {
+    "level": "low",
+    "source": "session",
+    "own": "low"
+  },
+  "thinking_cache_cost": "provider",
+  "steer_cut_after_explained": [
+    20,
+    null
+  ],
+  "steer_cut_after": 20,
+  "steer_cut_summary": null,
+  "reasoning_history_summary": "all (hosts.oai)",
+  "reasoning_history_explained": {
+    "level": "all",
+    "source": "hosts.oai",
+    "own": null
+  },
+  "reasoning_history_explained_native": {
+    "level": "all",
+    "source": "hosts.oai",
+    "own": null
+  },
+  "reasoning_history_cache_cost": "history",
+  "llm_context_summary": {
+    "strategy": "none",
+    "strategy_source": "config",
+    "strategy_where": "llm_context.strategy",
+    "apply": "payoff",
+    "apply_source": "config",
+    "apply_where": "llm_context.apply",
+    "budget_tokens": null,
+    "budget_source": "config",
+    "budget_where": "llm_context.budget_tokens",
+    "own": null
+  },
+  "llm_context_explained": {
+    "layers": [],
+    "strategy": "none",
+    "source": "config",
+    "apply": "payoff",
+    "protect_steps": 3,
+    "stale_edits": false,
+    "budget_tokens": null
+  },
+  "served_model_no_probe": [
+    null,
+    null
+  ],
+  "served_model": [
+    null,
+    null
+  ],
+  "served_expected_by_x": null,
+  "served_expected_by_declared": "oai",
+  "model_identity": {
+    "ref": "oai:gpt-x",
+    "host": "host oai, http://127.0.0.1:PORT/v1",
+    "key": "gpt-x",
+    "served": null,
+    "fallback_key": null
+  },
+  "guardrail_model_name": "gpt-x",
+  "bare_model_name": "gpt-x",
+  "recap_target": {
+    "base_url": "http://127.0.0.1:PORT/v1",
+    "api_key_env": "EM_OAI_KEY",
+    "model": "gpt-x",
+    "label": "oai:gpt-x",
+    "api": "openai",
+    "auth": null,
+    "dialect": null
+  },
+  "backend": "Samagotchi::LLM::ChatLoop",
+  "session_state_keys": [
+    "status",
+    "message_count",
+    "last_prompt",
+    "event_seq",
+    "metrics",
+    "pending_question",
+    "used_memory_names",
+    "preloaded_memory_names",
+    "muted_memory_names",
+    "prompt_notes",
+    "parent_id",
+    "model_name",
+    "served_model",
+    "served_model_for",
+    "served_expected_by",
+    "context_status",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "toolkit",
+    "recap_enabled",
+    "recap_min_user_turns",
+    "recap_inactivity_seconds"
+  ],
+  "session_state": {
+    "model_name": "oai:gpt-x",
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "context_status": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "off",
+      "source": "models: gpt-x",
+      "own": null
+    },
+    "reasoning_history": {
+      "level": "all",
+      "source": "hosts.oai",
+      "own": null
+    },
+    "toolkit": null
+  },
+  "stats_keys": [
+    "session_id",
+    "turns",
+    "cancellations",
+    "tokens",
+    "context",
+    "memory_index",
+    "served_model",
+    "served_model_for",
+    "tool_calls_total",
+    "tool_calls_by_tool",
+    "tool_errors",
+    "iterations_total",
+    "gen_latency_ms",
+    "retries",
+    "cuts",
+    "capped",
+    "started_at",
+    "last_activity_at",
+    "session_duration_ms",
+    "turn_records",
+    "tool_records",
+    "active_turn",
+    "active_tools",
+    "served_expected_by",
+    "llm_context",
+    "thinking",
+    "reasoning_history",
+    "prompt_notes",
+    "prompt_files",
+    "price_host"
+  ],
+  "stats": {
+    "served_model": null,
+    "served_model_for": null,
+    "served_expected_by": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "off",
+      "source": "models: gpt-x",
+      "own": null
+    },
+    "reasoning_history": {
+      "level": "all",
+      "source": "hosts.oai",
+      "own": null
+    },
+    "price_host": "oai",
+    "window": {
+      "window_tokens": 131072,
+      "window_source": "model_list"
+    }
+  },
+  "turn": {
+    "failed": null,
+    "turn_settings": {
+      "sampling": {
+        "temperature": 0.3
+      },
+      "thinking": "off",
+      "reasoning_history": "all",
+      "model_name": "gpt-x",
+      "window_setting": null,
+      "llm_context": {
+        "layers": [],
+        "strategy": "none",
+        "source": "config",
+        "apply": "payoff",
+        "protect_steps": 3,
+        "stale_edits": false,
+        "budget_tokens": null
+      },
+      "price": {
+        "input": 1.5,
+        "cache_read": 1.5,
+        "cache_write": 1.5,
+        "output": 6
+      },
+      "vision_sendable": true
+    },
+    "system_prompt": "sha256:85588b10c3c549137ab2469723ac8f88151e845db71a6bce3380a87de36fba75"
+  }
+}

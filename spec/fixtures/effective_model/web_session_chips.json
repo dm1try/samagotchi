@@ -1,0 +1,331 @@
+{
+  "llama": {
+    "saved": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: qwen-small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      },
+      "reasoning_history": null,
+      "toolkit": null
+    },
+    "saved_own": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "session",
+        "strategy_where": "the session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "stale"
+          ]
+        }
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "session",
+        "own": "medium"
+      },
+      "reasoning_history": null,
+      "toolkit": {
+        "name": "lean",
+        "label": "lean +delegate"
+      }
+    }
+  },
+  "openai": {
+    "saved": {
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "off",
+        "source": "models: gpt-x",
+        "own": null
+      },
+      "reasoning_history": {
+        "level": "all",
+        "source": "hosts.oai",
+        "own": null
+      },
+      "toolkit": null
+    },
+    "saved_own": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "session",
+        "strategy_where": "the session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "stale"
+          ]
+        }
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "session",
+        "own": "medium"
+      },
+      "reasoning_history": {
+        "level": "drop",
+        "source": "session",
+        "own": "drop"
+      },
+      "toolkit": {
+        "name": "lean",
+        "label": "lean +delegate"
+      }
+    }
+  },
+  "anthropic": {
+    "saved": {
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "hosts.ant",
+        "own": null
+      },
+      "reasoning_history": {
+        "level": "all",
+        "source": null,
+        "own": null
+      },
+      "toolkit": null
+    },
+    "saved_own": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "session",
+        "strategy_where": "the session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "stale"
+          ]
+        }
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "session",
+        "own": "medium"
+      },
+      "reasoning_history": {
+        "level": "drop",
+        "source": "session",
+        "own": "drop"
+      },
+      "toolkit": {
+        "name": "lean",
+        "label": "lean +delegate"
+      }
+    }
+  },
+  "down": {
+    "saved": {
+      "llm_context": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "default",
+        "source": null,
+        "own": null
+      },
+      "reasoning_history": null,
+      "toolkit": null
+    },
+    "saved_own": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "session",
+        "strategy_where": "the session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "stale"
+          ]
+        }
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "session",
+        "own": "medium"
+      },
+      "reasoning_history": null,
+      "toolkit": {
+        "name": "lean",
+        "label": "lean +delegate"
+      }
+    }
+  },
+  "alias": {
+    "saved": {
+      "llm_context": {
+        "strategy": "stale,forget",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: splash",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "off",
+        "source": "models: splash",
+        "own": null
+      },
+      "reasoning_history": null,
+      "toolkit": null
+    },
+    "saved_own": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "session",
+        "strategy_where": "the session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "stale"
+          ]
+        }
+      },
+      "thinking": {
+        "level": "medium",
+        "source": "session",
+        "own": "medium"
+      },
+      "reasoning_history": null,
+      "toolkit": {
+        "name": "lean",
+        "label": "lean +delegate"
+      }
+    }
+  },
+  "snapshot": {
+    "present": {
+      "llm_context": {
+        "strategy": "none"
+      },
+      "thinking": {
+        "level": "high"
+      },
+      "reasoning_history": {
+        "level": "all"
+      },
+      "toolkit": {
+        "name": "lean"
+      }
+    },
+    "nil_valued": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: qwen-small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      },
+      "reasoning_history": null,
+      "toolkit": null
+    },
+    "absent": {
+      "llm_context": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: qwen-small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "thinking": {
+        "level": "low",
+        "source": "models: qwen-small",
+        "own": null
+      },
+      "reasoning_history": null,
+      "toolkit": null
+    }
+  }
+}
