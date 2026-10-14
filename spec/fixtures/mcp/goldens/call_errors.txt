@@ -1,0 +1,9 @@
+Error: no MCP tool fake/echo_text. Closest: fake/echo, fake/navigate_page, fake/take_screenshot
+---
+Error: no MCP tool zebra. Search with find_mcp_tools.
+---
+Error: fake/bad can't be called: schema must be {type: "object", properties: {…}}
+---
+Error: args must be an object.
+
+fake/echo's inputSchema: {"type":"object","properties":{"text":{"type":"string","description":"what to echo"}},"required":["text"]}

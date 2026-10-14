@@ -1,0 +1,7 @@
+Call one with mcp_call(tool: "<server>/<tool>", args: {…}).
+
+fake/echo: Echo the text back.
+inputSchema: {"type":"object","properties":{"text":{"type":"string","description":"what to echo"}},"required":["text"]}
+
+slow/echo: Echo the text back.
+inputSchema: {"type":"object","properties":{"text":{"type":"string","description":"what to echo"}},"required":["text"]}

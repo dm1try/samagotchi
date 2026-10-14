@@ -1,0 +1,9 @@
+**fake**: cached (not started), 3 tools, ~184 tokens
+- `fake/bad` (bad schema)
+- `fake/echo`
+- `fake/navigate_page`
+- `fake/take_screenshot`
+
+**slow**: starting
+
+Every request carries find_mcp_tools and mcp_call: ~253 tokens. The tools above, ~184 tokens, reach the model only in a search's answer (estimated: their JSON as the chat API gets it, ÷ 4).

@@ -1,0 +1,6 @@
+{"tool":"fake/echo","args":{"text":"hi"}} → {acts_as: "mcp_fake_echo", args: {"text" => "hi"}, label: "fake: echo"} | fake/echo text=hi
+{"tool":"mcp_fake_echo"} → {acts_as: "mcp_fake_echo", args: {}, label: "fake: echo"} | fake/echo
+{"tool":"fake/nope"} → {acts_as: "mcp_fake_nope", args: {}, label: "fake: nope"} | fake/nope
+{"tool":"slow/echo","args":{"text":"x"}} → {acts_as: "mcp_slow_echo", args: {"text" => "x"}, label: "slow: echo"} | slow/echo
+{"tool":"nope"} → {} | nope
+find → echo in fake
