@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: the settings popovers' selects (thinking level, LLM context strategy and apply) look the same in Safari, Chrome
+  and Firefox: chi's own box and caret instead of each browser's native control.
+
 ### Fixed
 
 - `/model` while the web or another terminal read `/stats` no longer leaves the new model on the old model's prompt

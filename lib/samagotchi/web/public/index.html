@@ -578,8 +578,7 @@ body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
 body.has-session #composer textarea{min-height:0}
 body.has-session #composeHint{display:none}
 body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
-/* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a native select under a drawn caret. */
-/* A select is as wide as its widest option: a hidden copy of the chosen name (data-value) sizes the box to that name instead, and the select fills it. */
+/* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
 #composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
 #composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
@@ -827,6 +826,12 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
 .llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:13px/1.4 inherit}
 .llmctx-field select:focus,.llmctx-field input:focus{outline:none;border-color:var(--accent-border)}
+/* The settings selects draw their own closed box (each browser's native one differs) with the model picker's drawn caret on the label; the open list stays the OS menu. */
+.llmctx-field select{appearance:none;-webkit-appearance:none;padding-right:26px;cursor:pointer}
+.llmctx-field select option{background:var(--bg-raised);color:var(--text)}
+.llmctx-field input::placeholder{color:var(--text-faint);opacity:1}
+.llmctx-field:has(select){position:relative}
+.llmctx-field:has(select)::after{content:"";position:absolute;right:11px;top:50%;width:5px;height:5px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:translateY(-70%) rotate(45deg);pointer-events:none}
 .llmctx-form .llmctx-set{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
 .llmctx-form .llmctx-set:disabled{opacity:.6;cursor:default}
 /* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */
