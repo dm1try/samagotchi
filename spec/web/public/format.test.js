@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadTrimmed, previewOf, relativeTime, escapeHtml, normalize, modelLabel, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
+import { clip, leadTrimmed, previewOf, relativeTime, escapeHtml, normalize, modelLabel, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");
@@ -21,9 +21,16 @@ test("previewOf normalizes whitespace and trims", () => {
   assert.equal(previewOf("  hello\nworld  "), "hello world");
 });
 
+test("clip: whole when it fits, else n characters ending in …, the kept part's trailing spaces dropped", () => {
+  assert.equal(clip("abcde", 5), "abcde");
+  assert.equal(clip("abcdef", 5), "abcd…");
+  assert.equal(clip("ab   cdef", 5), "ab…");
+  assert.equal(clip(null, 5), "");
+});
+
 test("previewOf truncates at 40 chars with an ellipsis", () => {
-  const fortyOne = "a".repeat(41);
-  const result = previewOf(fortyOne);
+  assert.equal(previewOf("a".repeat(41)), "a".repeat(41));
+  const result = previewOf("a".repeat(42));
   assert.equal(result.length, 41);
   assert.equal(result.slice(0, 40), "a".repeat(40));
   assert.equal(result.slice(-1), "\u2026");
@@ -297,7 +304,8 @@ import { firstPreview } from "../../../lib/samagotchi/web/public/format.js";
 test("firstPreview: the first message, whitespace collapsed, cut at 80 with an ellipsis", () => {
   assert.equal(firstPreview("  fix\n the   bug "), "fix the bug");
   assert.equal(firstPreview("x".repeat(80)), "x".repeat(80));
-  assert.equal(firstPreview("x".repeat(81)), `${"x".repeat(80)}…`);
+  assert.equal(firstPreview("x".repeat(81)), "x".repeat(81));
+  assert.equal(firstPreview("x".repeat(82)), `${"x".repeat(80)}…`);
   assert.equal(firstPreview(""), "");
   assert.equal(firstPreview(null), "");
 });

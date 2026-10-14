@@ -34,6 +34,7 @@ test("tabTitle: the title in front of the base", () => {
 test("tabTitle: cut at 40 chars with an ellipsis, newlines and double spaces collapsed", () => {
   const forty = "a".repeat(40);
   assert.equal(tabTitle({ title: forty, base: "Chi" }), `${forty} · Chi`);
-  assert.equal(tabTitle({ title: `${forty}b`, base: "Chi" }), `${forty}… · Chi`);
+  assert.equal(tabTitle({ title: `${forty}b`, base: "Chi" }), `${forty}b · Chi`);
+  assert.equal(tabTitle({ title: `${forty}bc`, base: "Chi" }), `${forty}… · Chi`);
   assert.equal(tabTitle({ title: "line one\n\nline  two", base: "Chi" }), "line one line two · Chi");
 });
