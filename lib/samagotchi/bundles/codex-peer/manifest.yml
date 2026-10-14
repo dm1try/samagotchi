@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.1.0
+version: 0.2.0
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-review context; /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -10,7 +10,7 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks; validate, context or question; Codex's answer comes as the codex-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:365382abe8f9f72e82eb965b762969e64c3774e3279d1e9cdc63a3f7286eb76f
+  sha256: sha256:041528383946aadd31b60855bffeb564f2387eb6da0c773228175da1bd11ec8a
 scripts:
   pair: sha256:90cc286587260a4221c6ca9621cf5f34dd2ac42dc1e6393b69ba3e974806e695
   chi-peer-SKILL.md: sha256:886b6c430e9678f7f8bd991bdb374b6146ca2cbb0f42e36865ab14f5a21fa6e0
@@ -18,4 +18,6 @@ scripts:
 # session from chi 0.63.0 (before, the first answer arrives as a note
 # without waking); ctx.context.list's summary: (the /codex card's last
 # answer) is 0.63.0 too.
+# The plugin needs Samagotchi::Plugin::Peer (chi 0.67.0): raised to
+# ">= 0.67.0" at release (the branch's chi is still 0.66.0).
 requires_chi: ">= 0.63.0"
