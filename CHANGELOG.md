@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
 
 - `/model` while the web or another terminal read `/stats` no longer leaves the new model on the old model's prompt
   profile (its turns formatted for the wrong family until the next `/model`).
+- Web: the sessions strip no longer blinks when a session updates: a card fades in only when it is new to the list,
+  and a running or waiting card's dot keeps its pulse through the redraw.
 
 ## [0.67.0] - 2026-10-14
 

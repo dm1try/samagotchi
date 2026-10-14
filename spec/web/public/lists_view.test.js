@@ -2,7 +2,7 @@ import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  allCountText, allViewFamilies, cardTemplate, matchesFilter, stripCountText, stripOrder, stripPillTemplate, stripTileTemplate,
+  CARD_FADE_MS, DOT_PULSE_MS, allCountText, allViewFamilies, cardAnimStyle, cardTemplate, enteringCards, matchesFilter, stripCountText, stripOrder, stripPillTemplate, stripTileTemplate,
 } from "../../../lib/samagotchi/web/public/lists_view.js";
 import { families } from "../../../lib/samagotchi/web/public/sessions_list.js";
 import { stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
@@ -83,6 +83,54 @@ test("stripCountText: the strip's sessions, or how many are archived when all ar
   assert.equal(stripCountText(5, 9), "5 sessions");
   assert.equal(stripCountText(0, 3), "3 archived");
   assert.equal(stripCountText(0, 0), "0 sessions");
+});
+
+// ── Which cards fade in (no blink on a redraw) ───────────────────────────
+
+test("enteringCards: a list's first draw fades every card in", () => {
+  const { drawn, entering } = enteringCards(undefined, ["a", "b"], 1000);
+  assert.deepEqual([...entering], [["a", 0], ["b", 0]]);
+  assert.deepEqual([...drawn], [["a", 1000], ["b", 1000]]);
+});
+
+test("enteringCards: the same cards drawn again, or reordered, don't fade", () => {
+  const first = enteringCards(undefined, ["a", "b"], 1000).drawn;
+  const again = enteringCards(first, ["a", "b"], 1000 + CARD_FADE_MS);
+  assert.equal(again.entering.size, 0);
+  const reordered = enteringCards(again.drawn, ["b", "a"], 5000);
+  assert.equal(reordered.entering.size, 0);
+  assert.deepEqual([...reordered.drawn], [["b", 1000], ["a", 1000]]);
+});
+
+test("enteringCards: only a new card fades; a burst of redraws carries its fade on", () => {
+  const first = enteringCards(undefined, ["a"], 1000).drawn;
+  const added = enteringCards(first, ["n", "a"], 5000);
+  assert.deepEqual([...added.entering], [["n", 0]]);
+  // Drawn again 100 ms later: still entering, 100 ms into its fade (not from 0, not done).
+  const burst = enteringCards(added.drawn, ["n", "a"], 5100);
+  assert.deepEqual([...burst.entering], [["n", 100]]);
+  // Past the fade: settled.
+  assert.equal(enteringCards(burst.drawn, ["n", "a"], 5000 + CARD_FADE_MS).entering.size, 0);
+});
+
+test("enteringCards: a card no longer drawn is forgotten, and fades in again when it comes back", () => {
+  const first = enteringCards(undefined, ["a", "b"], 1000).drawn;
+  const gone = enteringCards(first, ["a"], 2000);
+  assert.deepEqual([...gone.drawn.keys()], ["a"]);
+  assert.deepEqual([...enteringCards(gone.drawn, ["a", "b"], 3000).entering.keys()], ["b"]);
+});
+
+test("cardAnimStyle: the fade's negative delay and the pulse's phase on the clock", () => {
+  assert.equal(cardAnimStyle(), "");
+  assert.equal(cardAnimStyle({ enterMs: 0, now: 1000 }), "--pulse-delay:-1000ms");
+  assert.equal(cardAnimStyle({ enterMs: 120.4, now: DOT_PULSE_MS * 3 + 250 }), "--enter-delay:-120ms;--pulse-delay:-250ms");
+});
+
+test("cardTemplate and stripTileTemplate: entering and anim", () => {
+  const out = markupOf(cardTemplate(sess("0123456789"), { entering: true, anim: "--pulse-delay:-5ms" }, { title: "T" }));
+  assert.match(out, /^<div class="card entering" data-id="0123456789" style="--pulse-delay:-5ms" title=/);
+  assert.match(markupOf(stripTileTemplate("1 session", { entering: true, anim: "--enter-delay:-3ms" })),
+    /<button type="button" class="card entering" id="allTile" style="--enter-delay:-3ms" title="All sessions, with search">/);
 });
 
 // ── Markup ───────────────────────────────────────────────────────────────
