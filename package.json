@@ -2,7 +2,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test spec/web/public/*.test.js",
+    "test": "node --test --test-isolation=none spec/web/public/*.test.js",
     "e2e": "playwright test -c spec/e2e"
   },
   "devDependencies": {

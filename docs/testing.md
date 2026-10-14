@@ -19,13 +19,18 @@ The web specs run in plain node. One that loads lit-html, itself or through a mo
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, the chips, `info_bar.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
 `chains.js`, `vendor/lit-html.js`) needs a DOM: `import "./dom_shim.js";` as its first import (happy-dom, a devDependency only,
-never shipped; about 0.3 s per spec file that loads it; lit reads `document` as it loads). The shim's `markupOf(template)`,
+never shipped; lit reads `document` as it loads). The shim's `markupOf(template)`,
 `htmlOf(nodes)` and `canon(html)` compare markup without lit's marker comments; the DOM writes text with only `&`, `<`, `>`
 escaped (a `"` in text stays `"`) and an attribute with `&` and `"` escaped. happy-dom 20 picks the wrong option of a `<select>` whose options lit inserted with
 `?selected`: read the option marked `selected` (`option[selected]`), not `select.value`; the browser follows the mark.
 A select bound with `.value` instead reads right in both, but lit sets it before the options exist on a first render:
 `llm_context_chip.js`'s `renderForm` draws twice then. Assert a kept node with `assert.ok(a === b)`: a failing
 `assert.equal` on two DOM nodes inspects the whole DOM (huge output, can stall the run).
+
+`npm test` runs every file in one process (`--test-isolation=none`; CI and local runs use Node 24): the files share
+`globalThis`, the shim's one happy-dom window and every module's state: a global a spec sets (stage_view's
+`ResizeObserver` stand-in) is there for the files after it, so set only harmless stand-ins and put anything else
+back (`t.mock` restores itself). One file: `node --test spec/web/public/NAME.test.js`.
 
 Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both terminals) and in the web
 (`composer.js#routeComposerLine`). `spec/fixtures/composer_routes.json` holds the cases both answer: rspec
