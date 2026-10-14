@@ -143,6 +143,25 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     expect(failures.any?).to be(true)
   end
 
+  it "leaves a source's group named chi, or one another group has, out of search and the description, said once" do
+    allow(Samagotchi::Log).to receive(:warn)
+    first = added
+    second = added
+    first.publish([described_class::Group.new(name: "fs", tools: [echo]),
+                   described_class::Group.new(name: "chi", tools: [tool("chi", "echo")])])
+    second.publish([described_class::Group.new(name: "fs", tools: [tool("fs", "other")])])
+    index.declare(registry)
+
+    expect(index.groups.map(&:name)).to eq(["fs"])
+    expect(registry[find_name].schema[:description]).to end_with("\nServers:\n- fs (1 tool)")
+    expect(index.find("echo")).to include("fs/echo")
+    expect(index.find("echo")).not_to include("chi/echo")
+    expect(index.find("other")).to start_with("No MCP tool matches")
+    index.groups
+    expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "chi")).once
+    expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "fs")).once
+  end
+
   it "takes only Group values in a publish" do
     expect { source.publish([{ name: "fs" }]) }.to raise_error(ArgumentError, /ToolIndex::Group/)
   end

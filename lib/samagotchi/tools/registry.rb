@@ -26,17 +26,32 @@ module Samagotchi
       # @!attribute layer [Symbol, nil] the LLM context layer the tool
       #   belongs to (LLMContextStrategy): offered only in a turn running
       #   under it (forget_outputs, :forget); nil: always
-      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :refs, :source, :layer, keyword_init: true) do
+      # @!attribute unwrap [#call, nil] (call, layers) → the call it stands
+      #   for, run in its place before the guardrail gate (call_tool on one
+      #   of chi's own tools: Tools::ToolIndex#unwrap), or nil to run it as
+      #   it is; nil on every other tool
+      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :refs, :source, :layer, :unwrap,
+                         keyword_init: true) do
         def core? = source == "core"
 
         # Offered in a turn under +layers+ (the turn's LLM context layers).
         def offered?(layers) = layer.nil? || Array(layers).include?(layer)
       end
 
+      # What Tools::ToolIndex#declare registered: the entries of +source+
+      # are the index's search and call tools, +call_name+ the call tool's
+      # name, and +sourced+ whether a source (an MCP server's bundle)
+      # registered when the plugins loaded.
+      Index = Data.define(:source, :call_name, :sourced)
+
       def initialize
         @entries = {}
         @toolkit = nil
+        @index = nil
       end
+
+      # The tool index's declaration (Index), nil without one.
+      attr_accessor :index
 
       # The session's resolved toolkit (Toolkit::Resolved), which the lists
       # below and #offered filter by; nil declares every tool (full). The
@@ -45,11 +60,12 @@ module Samagotchi
       attr_accessor :toolkit
 
       # @return [Entry]
-      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, refs: nil, source: "core", layer: nil)
+      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, refs: nil, source: "core", layer: nil,
+                   unwrap: nil)
         raise ArgumentError, "tool #{name} is already registered" if @entries.key?(name)
 
         @entries[name] = Entry.new(name: name, schema: schema, handler: handler, label: label, preview: preview,
-                                   targets: targets, refs: refs, source: source, layer: layer)
+                                   targets: targets, refs: refs, source: source, layer: layer, unwrap: unwrap)
       end
 
       # Remove a tool (a plugin's tool set changed after load).
@@ -84,6 +100,35 @@ module Samagotchi
         ordered(@entries.values.select { |entry| entry.offered?(layers) && !declared?(entry, toolkit) }).map(&:name)
       end
 
+      # The built-in +name+ names when the session's toolkit leaves it out
+      # but the tool index reaches it (#reachable_names).
+      # @return [Entry, nil]
+      def indexed(name, layers: [], toolkit: @toolkit)
+        entry = self[name]
+        entry if entry && call_offered?(toolkit) && soft?(entry, layers, toolkit)
+      end
+
+      # The built-ins +toolkit+ leaves out of a turn under +layers+ that the
+      # tool index reaches (call_tool): not in its kit's list, but not
+      # removed either (remove:, --no-tool, /toolkit remove), with call_tool
+      # itself declared.
+      # @return [Array<String>] in declaration order
+      def reachable_names(layers: [], toolkit: @toolkit)
+        return [] unless call_offered?(toolkit)
+
+        ordered(@entries.values.select { |entry| soft?(entry, layers, toolkit) }).map(&:name)
+      end
+
+      # The tools +toolkit+ removes from a turn under +layers+ (remove:,
+      # --no-tool, /toolkit remove): only the user brings them back.
+      # @return [Array<String>] in declaration order
+      def removed_names(layers: [], toolkit: @toolkit)
+        return [] if toolkit.nil?
+
+        ordered(@entries.values.select { |entry| entry.offered?(layers) && toolkit.removed.include?(entry.name) })
+          .map(&:name)
+      end
+
       # Every tool +source+ registered, declared or not (a plugin's tool set
       # changing: Plugin::ToolSpec.apply).
       # @return [Array<Entry>]
@@ -113,6 +158,19 @@ module Samagotchi
       private
 
       def declared?(entry, toolkit = @toolkit) = toolkit.nil? || toolkit.declares?(entry)
+
+      # A built-in +toolkit+ leaves out of a turn under +layers+ without
+      # removing it.
+      def soft?(entry, layers, toolkit)
+        !toolkit.nil? && entry.core? && entry.offered?(layers) && !toolkit.removed.include?(entry.name) &&
+          !toolkit.declares?(entry)
+      end
+
+      # Whether +toolkit+ declares the index's call tool.
+      def call_offered?(toolkit)
+        entry = @index && self[@index.call_name]
+        !entry.nil? && declared?(entry, toolkit)
+      end
 
       def ordered(entries)
         core, added = entries.partition(&:core?)

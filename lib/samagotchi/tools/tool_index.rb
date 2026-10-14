@@ -2,6 +2,8 @@
 
 require "json"
 require_relative "args"
+require_relative "registry"
+require_relative "../log"
 require_relative "../token_usage"
 require_relative "../tool_declarations"
 require_relative "../plugin/tool_spec"
@@ -34,6 +36,9 @@ module Samagotchi
       # times one in its description.
       NAME_WEIGHT = 3
       PREVIEW_CHARS = 60
+      # Group names a source can't publish: the index's own groups' (chi's
+      # built-ins a toolkit leaves out).
+      RESERVED_GROUPS = %w[chi].freeze
 
       FIND_PARAMS = {
         query: { type: "string", required: true,
@@ -50,15 +55,17 @@ module Samagotchi
       # +schema+ its inputSchema, +acts_as+ the name guardrail rules match
       # (mcp_<server>_<tool>; a bare name the call tool looks up too).
       # +refusal+ is why it can't be called (nil when it can), +mark+ what a
-      # search shows beside its name then ("(bad schema)"). A blank
-      # +acts_as+ raises ArgumentError: no rule could match the tool's calls.
-      Tool = Data.define(:group, :name, :description, :schema, :acts_as, :refusal, :mark) do
-        def initialize(group:, name:, acts_as:, description: "", schema: nil, refusal: nil, mark: nil)
+      # search shows beside its name then ("(bad schema)"). +entry+ is the
+      # Registry entry of a tool the index's own groups list (nil for a
+      # source's). A blank +acts_as+ raises ArgumentError: no rule could
+      # match the tool's calls.
+      Tool = Data.define(:group, :name, :description, :schema, :acts_as, :refusal, :mark, :entry) do
+        def initialize(group:, name:, acts_as:, description: "", schema: nil, refusal: nil, mark: nil, entry: nil)
           raise ArgumentError, "tool #{group}/#{name}: acts_as is blank" if acts_as.to_s.strip.empty?
 
           super(group: group.to_s, name: name.to_s, description: description.to_s,
                 schema: schema || { "type" => "object", "properties" => {} }, acts_as: acts_as.to_s,
-                refusal: refusal, mark: mark)
+                refusal: refusal, mark: mark, entry: entry)
         end
 
         def full_name = "#{group}/#{name}"
@@ -160,6 +167,11 @@ module Samagotchi
 
       def initialize
         @sources = []
+        # The source groups' lines in the search tool's description, as
+        # #declare found them (#find_description).
+        @described = [].freeze
+        @dropped = []
+        @dropped_mutex = Mutex.new
       end
 
       # A new source, not in the index yet (Plugin::Api#commit! #add's it).
@@ -172,8 +184,23 @@ module Samagotchi
 
       def sources = @sources.dup
 
-      # Every source's groups, now.
-      def groups = @sources.flat_map(&:groups)
+      # Every group, now: the index's own (#registry_groups), then the
+      # sources'. A source group with a reserved name, or one an earlier
+      # group has, is left out of search, lookup and the description (said
+      # once per name: a source publishes after load too).
+      def groups
+        own = registry_groups
+        taken = own.map(&:name) | RESERVED_GROUPS
+        kept = @sources.flat_map(&:groups).select do |group|
+          why = if RESERVED_GROUPS.include?(group.name) then "reserved"
+                elsif taken.include?(group.name) then "taken by another group"
+                end
+          dropped(group.name, why) if why
+          taken << group.name unless why
+          why.nil?
+        end
+        own + kept
+      end
 
       # Register the search and call tools in +registry+, once, after the
       # plugins load: nothing without a source. A name another tool has is
@@ -182,6 +209,7 @@ module Samagotchi
       def declare(registry, failures: nil)
         return [] if @sources.empty?
 
+        @described = description_lines(groups).freeze
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
           if (taken = registry[spec.name])
@@ -196,6 +224,7 @@ module Samagotchi
         names = declared.map(&:name)
         tokens = declared.sum { |spec| ToolIndex.spec_tokens(spec) }
         @sources.each { |source| source.declared!(names, tokens) }
+        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?)
         names
       end
 
@@ -217,20 +246,14 @@ module Samagotchi
       end
 
       # The search tool's description: how to use it, and one line per
-      # group from what is known when it is declared (a first-run server's:
-      # its name, and its summary if it has one). Never every tool: knowing
-      # the names, a model searches less and guesses arguments.
+      # group from what was known when it was declared (a first-run
+      # server's: its name, and its summary if it has one). Never every
+      # tool: knowing the names, a model searches less and guesses
+      # arguments.
       def find_description
-        lines = groups.map do |group|
-          count = group.callable.size
-          line = "- #{group.name}"
-          line += ": #{group.summary}" if group.summary
-          line += " (#{count} tool#{"s" unless count == 1})" unless group.tools.empty?
-          line
-        end
         "Search the tools of the MCP servers below by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
           "its name (<server>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
-          "name.\nServers:\n#{lines.join("\n")}"
+          "name.\nServers:\n#{@described.join("\n")}"
       end
 
       # ── Search ──────────────────────────────────────────────────────────
@@ -309,14 +332,45 @@ module Samagotchi
       end
 
       def call_spec
-        Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first.label,
+        Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first&.label,
                                                            preview: ->(args) { call_preview(args) },
                                                            targets: ->(args) { call_targets(args) }) do |args, _ctx|
           call(args["tool"].to_s, args["args"])
         end
       end
 
-      def source_of(group) = @sources.find { |source| source.groups.any? { |g| g.name == group } }
+      # The source whose group +group+ is: nil for the index's own (a
+      # reserved name).
+      def source_of(group)
+        return nil if RESERVED_GROUPS.include?(group)
+
+        @sources.find { |source| source.groups.any? { |g| g.name == group } }
+      end
+
+      # The index's own groups (none yet).
+      # @return [Array<Group>]
+      def registry_groups = []
+
+      # One line per group in the search tool's description: its name, its
+      # summary and how many tools it can call.
+      def description_lines(groups)
+        groups.map do |group|
+          count = group.callable.size
+          line = "- #{group.name}"
+          line += ": #{group.summary}" if group.summary
+          line += " (#{count} tool#{"s" unless count == 1})" unless group.tools.empty?
+          line
+        end
+      end
+
+      # Say once per name that a source's group was left out (#groups).
+      def dropped(name, why)
+        first = @dropped_mutex.synchronize { @dropped.include?(name) ? false : (@dropped << name) }
+        return unless first
+
+        Log.warn(:plugins, "tool_group_dropped", group: name, why: why,
+                                                 msg: "tool group #{name} is left out of the tool index: #{why}")
+      end
 
       # One match: its name, why it can't be called (if so), its
       # description and schema.
@@ -427,7 +481,10 @@ module Samagotchi
         group = named.find { |g| g.tools.any? { |t| t.name == name.delete_prefix("#{g.name}/") } } || named.first
         if group
           rest = name.delete_prefix("#{group.name}/")
-          [source_of(group.name).acts_as(group.name, rest), "#{group.name}: #{rest}"]
+          # A group of the index's own has no source: its tools act as
+          # themselves.
+          source = source_of(group.name)
+          [source ? source.acts_as(group.name, rest) : rest, "#{group.name}: #{rest}"]
         elsif @sources.any? { |source| source.prefix && name.start_with?(source.prefix) }
           [name, nil]
         end

@@ -211,6 +211,37 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry["delegate"]).not_to be_nil
     end
 
+    describe "what the tool index reaches" do
+      let(:registry) do
+        extended_registry.tap do |registry|
+          registry.register("call_tool", schema: schema.merge(name: "call_tool"), handler: ->(*) { "" }, source: "index")
+          registry.index = described_class::Index.new(source: "index", call_name: "call_tool", sourced: true)
+        end
+      end
+
+      def kit(name = "lean", **) = Samagotchi::Toolkit.new(name: name, **).resolve(Samagotchi::Toolkit.kits)
+
+      it "is a built-in the kit's list leaves out; a removed one is the user's to bring back" do
+        registry.toolkit = kit(remove: %w[delegate echo])
+        expect(registry.reachable_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+                                                  delegate_result])
+        expect(registry.removed_names).to eq(%w[delegate echo])
+        expect(registry.indexed("send_note")&.name).to eq("send_note")
+        expect(registry.indexed("delegate")).to be_nil
+        expect(registry.indexed("execute")).to be_nil
+        expect(registry.indexed("forget_outputs", layers: [:forget])).to be_nil
+      end
+
+      it "is nothing when the toolkit removes call_tool, or on full" do
+        registry.toolkit = kit(remove: %w[call_tool])
+        expect(registry.reachable_names).to eq([])
+        expect(registry.indexed("send_note")).to be_nil
+        registry.toolkit = nil
+        expect(registry.reachable_names).to eq([])
+        expect(registry.removed_names).to eq([])
+      end
+    end
+
     it "declares everything with none (full), as before" do
       registry = extended_registry
       expect(registry.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS + [schema])
