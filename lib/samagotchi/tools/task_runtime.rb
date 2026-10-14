@@ -8,11 +8,13 @@ require "time"
 require_relative "../atomic_file"
 require_relative "../process_group"
 require_relative "shell"
+require_relative "task_record"
 
 module Samagotchi
   module Tools
-    # Execute requires nothing from here at load, and P1b's Execute will
-    # require this file: autoload keeps the two from requiring each other.
+    # Execute requires this file (it hands a command over with adopt), and
+    # this one needs Execute only at run time: autoload keeps the two from
+    # requiring each other.
     autoload :Execute, File.expand_path("execute", __dir__)
 
     module TaskRuntime
@@ -22,7 +24,7 @@ module Samagotchi
       EXIT_CODE_FILENAME = "exit_code"
       STOP_GRACE_SEC = 3.0
       STOP_POLL_INTERVAL_SEC = 0.1
-      METADATA_VERSION = 1
+      METADATA_VERSION = TaskRecord::METADATA_VERSION
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
       SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
       # Set by chi (Builtins.parent_env); the model's env can't change it.
@@ -74,24 +76,9 @@ module Samagotchi
         # Read now, compared before each signal: a pid reused later is not this task.
         pid_started = ProcessGroup.start_time(pid)
 
-        now = timestamp
-        record = {
-          "metadata_version" => METADATA_VERSION,
-          "id" => task_id,
-          "command" => normalized_command,
-          "cwd" => resolved_cwd,
-          "workspace_root" => Dir.pwd,
-          "status" => "running",
-          "pid" => pid,
-          "pid_started" => pid_started,
-          "created_at" => now,
-          "started_at" => now,
-          "finished_at" => nil,
-          "exit_code" => nil,
-          "stop_reason" => nil,
-          "output_path" => output_path,
-          "exit_code_path" => exit_code_path
-        }
+        record = TaskRecord.running(id: task_id, command: normalized_command, cwd: resolved_cwd, pid: pid,
+                                    pid_started: pid_started, started_at: timestamp,
+                                    output_path: output_path, exit_code_path: exit_code_path)
 
         write_record(record)
         [record, nil]
@@ -102,41 +89,29 @@ module Samagotchi
       end
 
       # A record for a command chi already runs: an execute still running at
-      # its limit, handed over as a task (Execute::HANDED_OVER). Its logs and
+      # its limit, handed over as a task (Execute::HANDED_OVER), given as a
+      # TaskRecord.running whose +started_at+ is the spawn's. Its logs and
       # exit_code file stay where execute put them, so the paths must be
       # absolute; +stderr_path+ is a log of its own (task_wait tails it).
       # The pid's start time is read here, at the hand-over, not at the
       # spawn (a quick execute is spared the ps): read while execute's
       # detach waiter is still running, so the pid is still its child.
-      # @param started_at [Time] when execute spawned the command
-      # @return [Array(Hash, nil), Array(nil, String)] the record, or an error
-      def adopt(id:, command:, cwd:, pid:, started_at:, output_path:, stderr_path:, exit_code_path:)
+      # @param task [TaskRecord]
+      # @return [Array(TaskRecord, nil), Array(nil, String)] the record, or an error
+      def adopt(task)
+        id = task.id
         return [nil, "Error: invalid task id: #{id}"] unless TASK_ID_SHAPE.match?(id.to_s)
         return [nil, "Error: task already exists: #{id}"] if File.exist?(metadata_path(id))
 
-        paths = { "output_path" => output_path, "stderr_path" => stderr_path, "exit_code_path" => exit_code_path }
-        relative = paths.find { |_, path| !File.absolute_path?(path.to_s) }
-        return [nil, "Error: #{relative[0]} must be absolute: #{relative[1]}"] if relative
+        relative = %i[output_path stderr_path exit_code_path].find { |key| !File.absolute_path?(task.public_send(key).to_s) }
+        return [nil, "Error: #{relative} must be absolute: #{task.public_send(relative)}"] if relative
+
+        pid = task.pid
         return [nil, "Error: not a process chi can stop: #{pid.inspect}"] unless ProcessGroup.signalable?(pid)
 
-        started = started_at.utc.iso8601
-        record = {
-          "metadata_version" => METADATA_VERSION,
-          "id" => id,
-          "command" => command.to_s.strip,
-          "cwd" => File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
-          "workspace_root" => Dir.pwd,
-          "status" => "running",
-          "pid" => pid,
-          "pid_started" => ProcessGroup.start_time(pid),
-          "created_at" => started,
-          "started_at" => started,
-          "finished_at" => nil,
-          "exit_code" => nil,
-          "stop_reason" => nil,
-          **paths,
-          "handed_over_by" => Execute::NAME
-        }
+        cwd = task.cwd
+        record = task.with(command: task.command.to_s.strip, cwd: File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
+                           pid_started: ProcessGroup.start_time(pid), handed_over_by: Execute::NAME)
         write_record(record)
         [record, nil]
       rescue StandardError => e
@@ -154,7 +129,7 @@ module Samagotchi
           next nil unless record
 
           refresh_record(record)
-        end.compact.sort_by { |record| record["created_at"].to_s }.reverse
+        end.compact.sort_by { |record| record.created_at.to_s }.reverse
       end
 
       # The tasks this conversation started that are still running: its
@@ -166,7 +141,7 @@ module Samagotchi
       def running_created_in(messages)
         created_ids_in(messages).filter_map do |id|
           record, _error = get_record(id)
-          { id: id, command: record["command"].to_s } if record&.fetch("status") == "running"
+          { id: id, command: record.command.to_s } if record&.running?
         end
       end
 
@@ -232,13 +207,11 @@ module Samagotchi
         path = File.join(root || Dir.pwd, TASKS_DIR, id, METADATA_FILENAME)
         return nil unless File.file?(path)
 
-        command = JSON.parse(File.read(path))["command"]
+        command = TaskRecord.from_file(JSON.parse(File.read(path)))&.command
         command.is_a?(String) && !command.strip.empty? ? command : nil
       rescue StandardError
         nil
       end
-
-      def stopped_by_user?(record) = record["stop_reason"] == "stopped_by_user"
 
       def get_record(task_id)
         record = load_record(task_id)
@@ -271,19 +244,18 @@ module Samagotchi
         return [nil, not_found(task_id)] unless record
 
         refreshed = refresh_record(record)
-        return [refreshed, nil] unless refreshed["status"] == "running"
+        return [refreshed, nil] unless refreshed.running?
 
-        pid = refreshed["pid"]
         # Checked again just before the signal: never a group chi didn't start.
-        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed, started: refreshed["pid_started"])
+        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed, started: refreshed.pid_started)
 
-        refreshed["stop_requested_by"] = by.to_s
-        write_record(refreshed)
+        flagged = refreshed.with(stop_requested_by: by.to_s)
+        write_record(flagged)
 
         # A group that isn't ours (EPERM) is an error, not a stop.
-        ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
+        ProcessGroup.stop(flagged.pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
 
-        updated = mark_stopped(refresh_record(refreshed))
+        updated = mark_stopped(refresh_record(flagged))
         write_record(updated)
 
         [updated, nil]
@@ -292,10 +264,10 @@ module Samagotchi
       end
 
       def refresh_record(record)
-        return record unless record["status"] == "running"
+        return record unless record.running?
 
-        pid = record["pid"]
-        return record if chis_group?(record, started: record["pid_started"])
+        pid = record.pid
+        return record if chis_group?(record, started: record.pid_started)
         # Gone: its exit code says how it ended.
         return mark_finished_without_exit_code(record) if ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid)
 
@@ -307,7 +279,7 @@ module Samagotchi
       # ps per call on macOS (~5 ms), asked by each refresh (task_list,
       # task_get, each task_wait poll) so a reused pid reads as exited, and
       # by task_stop again just before the signal.
-      def chis_group?(record, started: nil) = ProcessGroup.leader?(record["pid"], started: started)
+      def chis_group?(record, started: nil) = ProcessGroup.leader?(record.pid, started: started)
 
       # A running record whose pid isn't a group chi started (NOT_CHIS_PROCESS)
       # ends as failed, unless its exit code or a stop on disk says more.
@@ -338,18 +310,18 @@ module Samagotchi
         path = metadata_path(task_id)
         return nil unless File.exist?(path)
 
-        JSON.parse(File.read(path))
+        TaskRecord.from_file(JSON.parse(File.read(path)))
       rescue JSON::ParserError
         nil
       end
 
       def write_record(record)
         ensure_tasks_dir
-        dir = task_dir_for(record.fetch("id"))
+        dir = task_dir_for(record.id)
         FileUtils.mkdir_p(dir)
 
         path = File.join(dir, METADATA_FILENAME)
-        AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
+        AtomicFile.write(path, JSON.pretty_generate(record.to_file) + "\n")
       end
 
       def metadata_path(task_id)
@@ -434,26 +406,20 @@ module Samagotchi
 
       def mark_finished_without_exit_code(record, missing_reason: "process_ended_without_exit_code")
         record = current_record(record)
-        return record unless record["status"] == "running"
+        return record unless record.running?
 
-        exit_code = read_exit_code(record["exit_code_path"])
-
-        if record["stop_requested_by"]
-          record["exit_code"] = exit_code
-          mark_stopped(record)
-        elsif exit_code.nil?
-          record["status"] = "failed"
-          record["exit_code"] = nil
-          record["stop_reason"] ||= missing_reason
-        elsif exit_code.zero?
-          record["status"] = "completed"
-          record["exit_code"] = 0
-        else
-          record["status"] = "failed"
-          record["exit_code"] = exit_code
-        end
-
-        record["finished_at"] ||= timestamp
+        exit_code = read_exit_code(record.exit_code_path)
+        record =
+          if record.stop_requested_by
+            mark_stopped(record.with(exit_code: exit_code))
+          elsif exit_code.nil?
+            record.with(status: "failed", exit_code: nil, stop_reason: record.stop_reason || missing_reason)
+          elsif exit_code.zero?
+            record.with(status: "completed", exit_code: 0)
+          else
+            record.with(status: "failed", exit_code: exit_code)
+          end
+        record = record.with(finished_at: record.finished_at || timestamp)
         write_record(record)
         record
       end
@@ -461,18 +427,16 @@ module Samagotchi
       # The disk copy when it is newer than +record+: already finished, or
       # flagged by a stop that started after +record+ was read.
       def current_record(record)
-        disk = load_record(record.fetch("id"))
+        disk = load_record(record.id)
         return record unless disk
-        return disk if disk["status"] != "running" || disk["stop_requested_by"]
+        return disk if !disk.running? || disk.stop_requested_by
 
         record
       end
 
       def mark_stopped(record)
-        record["status"] = "stopped"
-        record["stop_reason"] = "stopped_by_#{record["stop_requested_by"]}"
-        record["finished_at"] ||= timestamp
-        record
+        record.with(status: "stopped", stop_reason: "stopped_by_#{record.stop_requested_by}",
+                    finished_at: record.finished_at || timestamp)
       end
 
       def read_exit_code(path)

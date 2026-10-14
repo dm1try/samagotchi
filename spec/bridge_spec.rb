@@ -405,8 +405,8 @@ RSpec.describe Samagotchi::Bridge do
 
     def start(command = "sleep 30")
       record, = Samagotchi::Tools::TaskRuntime.create_task(command)
-      created << record["id"]
-      record["id"]
+      created << record.id
+      record.id
     end
 
     def created_by_tool(id) = "[task_create]\ntask_id: #{id}\nstatus: running"
@@ -422,7 +422,7 @@ RSpec.describe Samagotchi::Bridge do
       _, status, body = stop(id)
 
       expect([status, body]).to eq([200, { status: "stopped", stop_reason: "stopped_by_user", task_id: id }])
-      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to include("status" => "stopped")
+      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to have_attributes(status: "stopped")
     end
 
     it "stops a task the running turn created" do
@@ -466,7 +466,7 @@ RSpec.describe Samagotchi::Bridge do
       allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(turn)
 
       expect(stop(id)[1]).to eq(404)
-      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to include("status" => "running")
+      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to have_attributes(status: "running")
     end
 
     it "answers 404 for another conversation's task and an unknown one, and leaves them running" do
@@ -475,13 +475,13 @@ RSpec.describe Samagotchi::Bridge do
 
       expect(stop(foreign).drop(1)).to eq([404, { error: "task_not_found", task_id: foreign }])
       expect(stop("20261004120000-0a1b2c3d")[1]).to eq(404)
-      expect(Samagotchi::Tools::TaskRuntime.get_record(foreign).first).to include("status" => "running")
+      expect(Samagotchi::Tools::TaskRuntime.get_record(foreign).first).to have_attributes(status: "running")
     end
 
     it "answers 409 not_running, with its status, for a task that already ended" do
       id = start("true")
       allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: created_by_tool(id) }])
-      sleep 0.05 while Samagotchi::Tools::TaskRuntime.get_record(id).first["status"] == "running"
+      sleep 0.05 while Samagotchi::Tools::TaskRuntime.get_record(id).first.status == "running"
 
       expect(stop(id).drop(1)).to eq([409, { error: "not_running", status: "completed", task_id: id }])
     end

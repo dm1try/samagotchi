@@ -203,8 +203,9 @@ module Samagotchi
           # Ended right at the deadline: finished, not timed out.
           timed_out = false if timed_out && !wait_thr.alive?
           if timed_out && on_timeout == :task
-            text = hand_over(id: id, command: command, cwd: cwd, pid: pid, waiter: wait_thr, started_at: started_at,
-                             timeout_sec: timeout_sec, dir: dir, logs: logs, exit_code_path: exit_code_path)
+            task = TaskRecord.running(id: id, command: command, cwd: cwd, pid: pid, started_at: started_at.utc.iso8601,
+                                      output_path: logs[0], stderr_path: logs[1], exit_code_path: exit_code_path)
+            text = hand_over(task, waiter: wait_thr, timeout_sec: timeout_sec, dir: dir)
             if text
               handed_over = true
               Log.info(:turn, "execute_handed_over", id: id, after_sec: timeout_sec)
@@ -337,25 +338,24 @@ module Samagotchi
       private_class_method :read_log
 
       # A command still running at the limit becomes a task (TaskRuntime.
-      # adopt) with the logs where they are; a back-pointer in its dir names
-      # the record for the sweep. nil when it can't be adopted (the caller
+      # adopt +task+, a TaskRecord.running) with the logs where they are
+      # (+dir+); a back-pointer in that dir names the record for the sweep. nil when it can't be adopted (the caller
       # then kills it as in :kill mode) or when it ended meanwhile (the
       # caller then reads it as finished).
       # @return [String, nil] the HANDED_OVER result
-      def self.hand_over(id:, command:, cwd:, pid:, waiter:, started_at:, timeout_sec:, dir:, logs:, exit_code_path:)
+      def self.hand_over(task, waiter:, timeout_sec:, dir:)
         return nil unless waiter.alive?
 
-        record, error = TaskRuntime.adopt(id: id, command: command, cwd: cwd, pid: pid, started_at: started_at,
-                                          output_path: logs[0], stderr_path: logs[1], exit_code_path: exit_code_path)
+        record, error = TaskRuntime.adopt(task)
         return nil if error
 
-        File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record["id"])))
-        write_missing_exit_code(waiter, exit_code_path)
+        File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record.id)))
+        write_missing_exit_code(waiter, record.exit_code_path)
         # Ended between the deadline and the adopt: the record says how.
-        TaskRuntime.get_record(id) unless waiter.alive?
-        lines = [handed_over_line(timeout_sec), "task_id: #{id}",
+        TaskRuntime.get_record(record.id) unless waiter.alive?
+        lines = [handed_over_line(timeout_sec), "task_id: #{record.id}",
                  "Wait for it with task_wait (it may take minutes); task_stop stops it."]
-        { "stdout" => logs[0], "stderr" => logs[1] }.each do |label, path|
+        { "stdout" => record.output_path, "stderr" => record.stderr_path }.each do |label, path|
           tail = TaskRuntime.output_tail_lines(path, HAND_OVER_TAIL_LINES)
           lines << "#{label} (so far, tail):\n#{tail.chomp}" unless tail.empty?
         end

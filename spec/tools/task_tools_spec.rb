@@ -21,7 +21,7 @@ RSpec.describe "task tools" do
         # A task still running writes its exit_code into dir as it ends:
         # stop it before mktmpdir removes dir (ENOTEMPTY otherwise).
         Samagotchi::Tools::TaskRuntime.list_records.each do |record|
-          Samagotchi::Tools::TaskRuntime.stop_task(record["id"], by: "model")
+          Samagotchi::Tools::TaskRuntime.stop_task(record.id, by: "model")
         end
       end
     end
@@ -193,11 +193,11 @@ RSpec.describe "task tools" do
     it "notes a user stop, and not a model stop" do
       user_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")
       model_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")
-      Samagotchi::Tools::TaskRuntime.stop_task(user_task["id"], by: "user")
-      Samagotchi::Tools::TaskRuntime.stop_task(model_task["id"], by: "model")
+      Samagotchi::Tools::TaskRuntime.stop_task(user_task.id, by: "user")
+      Samagotchi::Tools::TaskRuntime.stop_task(model_task.id, by: "model")
 
-      expect(described_class.call(user_task["id"])).to end_with("note: the user stopped this task; don't restart it unless they ask.")
-      expect(described_class.call(model_task["id"])).not_to include("note:")
+      expect(described_class.call(user_task.id)).to end_with("note: the user stopped this task; don't restart it unless they ask.")
+      expect(described_class.call(model_task.id)).not_to include("note:")
     end
   end
 
@@ -252,19 +252,19 @@ RSpec.describe "task tools" do
     it "ends a user stop as stopped, recording who stopped it" do
       record, = described_class.create_task("sleep 30")
 
-      stopped, error = described_class.stop_task(record["id"], by: "user")
+      stopped, error = described_class.stop_task(record.id, by: "user")
 
       expect(error).to be_nil
-      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_user", "stop_requested_by" => "user")
-      expect(described_class.get_record(record["id"]).first).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+      expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user", stop_requested_by: "user")
+      expect(described_class.get_record(record.id).first).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
     end
 
     it "ends a stop as stopped when the command traps TERM and exits non-zero" do
       record, = described_class.create_task("trap 'exit 7' TERM; while true; do sleep 0.1; done")
 
-      stopped, = described_class.stop_task(record["id"], by: "model")
+      stopped, = described_class.stop_task(record.id, by: "model")
 
-      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+      expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_model")
     end
 
     def running?(pattern)
@@ -279,9 +279,9 @@ RSpec.describe "task tools" do
       record, = described_class.create_task("sleep 31.75 & wait")
       expect(wait_until { system("pgrep", "-f", "sleep 31.75", out: File::NULL) }).to be(true)
 
-      stopped, = described_class.stop_task(record["id"], by: "model")
+      stopped, = described_class.stop_task(record.id, by: "model")
 
-      expect(stopped).to include("status" => "stopped")
+      expect(stopped).to have_attributes(status: "stopped")
       expect(running?("sleep 31.75")).to be(false)
     end
 
@@ -291,10 +291,10 @@ RSpec.describe "task tools" do
       expect(wait_until { system("pgrep", "-f", "sleep 31.76", out: File::NULL) }).to be(true)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      stopped, = described_class.stop_task(record["id"], by: "model")
+      stopped, = described_class.stop_task(record.id, by: "model")
 
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 2)
-      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+      expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_model")
       expect(running?("sleep 31.76")).to be(false)
     end
 
@@ -304,17 +304,17 @@ RSpec.describe "task tools" do
       done = false
       reader = Thread.new do
         until done
-          seen << described_class.get_record(record["id"]).first&.fetch("status")
+          seen << described_class.get_record(record.id).first&.status
           sleep 0.005
         end
       end
 
-      described_class.stop_task(record["id"], by: "user")
+      described_class.stop_task(record.id, by: "user")
       done = true
       reader.join
 
       expect(seen).not_to include("failed")
-      expect(described_class.get_record(record["id"]).first).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+      expect(described_class.get_record(record.id).first).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
     end
 
     describe "a record whose pid isn't a process group chi started" do
@@ -331,9 +331,10 @@ RSpec.describe "task tools" do
       end
 
       def running_record(pid)
-        record = { "id" => described_class.generate_task_id, "command" => "sleep 30", "status" => "running",
-                   "created_at" => "2026-10-06T00:00:00Z", "exit_code_path" => File.join(Dir.pwd, "no-exit-code") }
-        record["pid"] = pid unless pid == :missing
+        data = { "id" => described_class.generate_task_id, "command" => "sleep 30", "status" => "running",
+                 "created_at" => "2026-10-06T00:00:00Z", "exit_code_path" => File.join(Dir.pwd, "no-exit-code") }
+        data["pid"] = pid unless pid == :missing
+        record = Samagotchi::Tools::TaskRecord.from_file(data)
         described_class.write_record(record)
         record
       end
@@ -344,10 +345,10 @@ RSpec.describe "task tools" do
         it "signals nothing for a pid #{pid.inspect}, and ends the task as failed, saying why" do
           record = running_record(pid)
 
-          stopped, error = described_class.stop_task(record["id"], by: "model")
+          stopped, error = described_class.stop_task(record.id, by: "model")
 
           expect(error).to be_nil
-          expect(stopped).to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
+          expect(stopped).to have_attributes(status: "failed", stop_reason: described_class::NOT_CHIS_PROCESS)
           expect(kills.map(&:last)).not_to include(0, 1, -1)
           expect(signals).to be_empty
         end
@@ -357,11 +358,11 @@ RSpec.describe "task tools" do
         other = Process.spawn("sleep", "31.78") # this spec's own child, in rspec's group
         record = running_record(other)
 
-        expect(described_class.get_record(record["id"]).first).to include("status" => "failed",
-                                                                          "stop_reason" => described_class::NOT_CHIS_PROCESS)
-        stopped, = described_class.stop_task(record["id"], by: "model")
+        expect(described_class.get_record(record.id).first).to have_attributes(status: "failed",
+                                                                               stop_reason: described_class::NOT_CHIS_PROCESS)
+        stopped, = described_class.stop_task(record.id, by: "model")
 
-        expect(stopped).to include("status" => "failed")
+        expect(stopped).to have_attributes(status: "failed")
         expect(signals).to be_empty
         expect(Process.wait2(other, Process::WNOHANG)).to be_nil
       ensure
@@ -376,20 +377,20 @@ RSpec.describe "task tools" do
       record, = described_class.create_task("sleep 30")
       allow(Samagotchi::ProcessGroup).to receive(:start_time).and_return(nil)
 
-      3.times { expect(described_class.get_record(record["id"]).first).to include("status" => "running") }
-      expect(described_class.list_records.first).to include("status" => "running")
+      3.times { expect(described_class.get_record(record.id).first).to have_attributes(status: "running") }
+      expect(described_class.list_records.first).to have_attributes(status: "running")
 
-      stopped, error = described_class.stop_task(record["id"], by: "model")
+      stopped, error = described_class.stop_task(record.id, by: "model")
       expect(error).to be_nil
-      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+      expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_model")
     end
 
     it "records the task's start time, and signals nothing for a group leader whose pid was reused since" do
       record, = described_class.create_task("sleep 30")
-      expect(record["pid_started"]).to eq(Samagotchi::ProcessGroup.start_time(record["pid"]))
+      expect(record.pid_started).to eq(Samagotchi::ProcessGroup.start_time(record.pid))
 
       other = Samagotchi::ProcessGroup.spawn({}, "sleep", "31.79", in: File::NULL, out: File::NULL, err: File::NULL)
-      reused = described_class.load_record(record["id"]).merge("pid" => other)
+      reused = described_class.load_record(record.id).with(pid: other)
       described_class.write_record(reused)
       # ps reads start times to the second: the reused pid's process starts later.
       allow(Samagotchi::ProcessGroup).to receive(:start_time).and_wrap_original do |original, pid|
@@ -397,10 +398,10 @@ RSpec.describe "task tools" do
       end
       allow(Process).to receive(:kill).and_call_original
 
-      stopped, error = described_class.stop_task(record["id"], by: "model")
+      stopped, error = described_class.stop_task(record.id, by: "model")
 
       expect(error).to be_nil
-      expect(stopped).to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
+      expect(stopped).to have_attributes(status: "failed", stop_reason: described_class::NOT_CHIS_PROCESS)
       expect(Process).not_to have_received(:kill).with(satisfy { |sig| sig.to_s != "0" }, anything)
       expect(Process.wait2(other, Process::WNOHANG)).to be_nil
     ensure
@@ -408,36 +409,36 @@ RSpec.describe "task tools" do
         Process.kill("KILL", other)
         Process.wait(other)
       end
-      Process.kill("KILL", -record["pid"]) if record && Samagotchi::ProcessGroup.leader?(record["pid"])
+      Process.kill("KILL", -record.pid) if record && Samagotchi::ProcessGroup.leader?(record.pid)
     end
 
     it "lists and reads a task whose pid a later group leader reused as exited, before any task_stop" do
       record, = described_class.create_task("sleep 30")
       other = Samagotchi::ProcessGroup.spawn({}, "sleep", "31.81", in: File::NULL, out: File::NULL, err: File::NULL)
-      described_class.write_record(described_class.load_record(record["id"]).merge("pid" => other))
+      described_class.write_record(described_class.load_record(record.id).with(pid: other))
       allow(Samagotchi::ProcessGroup).to receive(:start_time).and_wrap_original do |original, pid|
         pid == other ? "a later start" : original.call(pid)
       end
 
-      expect(described_class.list_records.find { |r| r["id"] == record["id"] }).to include("status" => "failed")
-      expect(described_class.get_record(record["id"]).first)
-        .to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
+      expect(described_class.list_records.find { |r| r.id == record.id }).to have_attributes(status: "failed")
+      expect(described_class.get_record(record.id).first)
+        .to have_attributes(status: "failed", stop_reason: described_class::NOT_CHIS_PROCESS)
       expect(Process.wait2(other, Process::WNOHANG)).to be_nil
     ensure
       if other
         Process.kill("KILL", other)
         Process.wait(other)
       end
-      Process.kill("KILL", -record["pid"]) if record && Samagotchi::ProcessGroup.leader?(record["pid"])
+      Process.kill("KILL", -record.pid) if record && Samagotchi::ProcessGroup.leader?(record.pid)
     end
 
     it "keeps a stop that already finished on disk when a stale copy is refreshed" do
       record, = described_class.create_task("sleep 30")
-      stale = described_class.load_record(record["id"])
-      described_class.stop_task(record["id"], by: "user")
+      stale = described_class.load_record(record.id)
+      described_class.stop_task(record.id, by: "user")
 
-      expect(described_class.refresh_record(stale)).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
-      expect(described_class.load_record(record["id"])).to include("status" => "stopped")
+      expect(described_class.refresh_record(stale)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+      expect(described_class.load_record(record.id)).to have_attributes(status: "stopped")
     end
   end
 
@@ -452,15 +453,15 @@ RSpec.describe "task tools" do
       File.write(File.join(dir, "out.log"), "o1\no2\n")
       File.write(File.join(dir, "err.log"), (1..20).map { |n| "e#{n}\n" }.join)
       record, = Samagotchi::Tools::TaskRuntime.create_task("sleep 31.83")
-      Samagotchi::Tools::TaskRuntime.write_record(record.merge("output_path" => File.join(dir, "out.log"),
-                                                               "stderr_path" => File.join(dir, "err.log")))
+      Samagotchi::Tools::TaskRuntime.write_record(record.with(output_path: File.join(dir, "out.log"),
+                                                              stderr_path: File.join(dir, "err.log")))
 
-      result = described_class.call(record["id"], timeout: 0, tail_lines: 50)
+      result = described_class.call(record.id, timeout: 0, tail_lines: 50)
 
       expect(result).to end_with("output_tail:\no1\no2\nstderr_tail:\n#{(11..20).map { |n| "e#{n}" }.join("\n")}")
       expect(result).to include("stderr_path: #{File.join(dir, "err.log")}")
       File.write(File.join(dir, "err.log"), "")
-      expect(described_class.call(record["id"], timeout: 0)).to end_with("output_tail:\no1\no2")
+      expect(described_class.call(record.id, timeout: 0)).to end_with("output_tail:\no1\no2")
     end
 
     it "uses a multi-minute default timeout" do
@@ -572,7 +573,7 @@ RSpec.describe "task tools" do
       expect(result).to include("task_wait #{task_id}").and include("task_stop #{task_id}")
       expect(result).to match(/^waited: \d+s$/)
       expect(result).to include("output_tail:\nbefore")
-      expect(Samagotchi::Tools::TaskRuntime.get_record(task_id).first.fetch("status")).to eq("running")
+      expect(Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status).to eq("running")
     ensure
       Samagotchi::Tools::TaskStop.call(task_id) if task_id
     end
@@ -593,7 +594,7 @@ RSpec.describe "task tools" do
     it "gives the finished result when the task ended before the Stop was seen" do
       create_result = Samagotchi::Tools::TaskCreate.call("true")
       task_id = extract_field(create_result, "task_id")
-      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(task_id).first.fetch("status") != "running"
+      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status != "running"
 
       result = described_class.call(task_id, cancelled: -> { true })
 
@@ -622,7 +623,7 @@ RSpec.describe "task tools" do
       live = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
       done = extract_field(Samagotchi::Tools::TaskCreate.call("true"), "task_id")
       other = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
-      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(done).first.fetch("status") != "running"
+      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(done).first.status != "running"
       messages = [
         { role: "user", content: "task_id: #{other}" },
         tool_response("[execute]\nexit: 0", "[task_create]\ntask_id: #{live}\nstatus: running",
@@ -710,6 +711,11 @@ RSpec.describe "task tools" do
 
     before { @spawned = [] }
 
+    # As execute hands one over: a TaskRecord.running with the spawn's time.
+    def adopt(started_at:, **fields)
+      runtime.adopt(Samagotchi::Tools::TaskRecord.running(started_at: started_at.utc.iso8601, **fields))
+    end
+
     # Stopped even when the example failed before adopt wrote a record, but
     # only while its waiter runs: a reaped pid (stopped by stop_task, or
     # ended) may lead another group by now.
@@ -725,27 +731,27 @@ RSpec.describe "task tools" do
       pid, started_at, paths = spawn_like_execute("sleep 31.81")
       id = runtime.generate_task_id
 
-      record, error = runtime.adopt(id: id, command: " sleep 31.81 ", cwd: Dir.pwd, pid: pid, started_at: started_at, **paths)
+      record, error = adopt(id: id, command: " sleep 31.81 ", cwd: Dir.pwd, pid: pid, started_at: started_at, **paths)
 
       expect(error).to be_nil
-      expect(record).to include("id" => id, "command" => "sleep 31.81", "status" => "running", "pid" => pid,
-                                "cwd" => Dir.pwd, "workspace_root" => Dir.pwd, "handed_over_by" => "execute",
-                                "created_at" => started_at.utc.iso8601, "started_at" => started_at.utc.iso8601,
-                                "output_path" => paths[:output_path], "stderr_path" => paths[:stderr_path],
-                                "exit_code_path" => paths[:exit_code_path])
-      expect(record["pid_started"]).to eq(Samagotchi::ProcessGroup.start_time(pid))
-      expect(runtime.get_record(id).first).to include("status" => "running")
+      expect(record).to have_attributes(id: id, command: "sleep 31.81", status: "running", pid: pid,
+                                        cwd: Dir.pwd, workspace_root: Dir.pwd, handed_over_by: "execute",
+                                        created_at: started_at.utc.iso8601, started_at: started_at.utc.iso8601,
+                                        output_path: paths[:output_path], stderr_path: paths[:stderr_path],
+                                        exit_code_path: paths[:exit_code_path])
+      expect(record.pid_started).to eq(Samagotchi::ProcessGroup.start_time(pid))
+      expect(runtime.get_record(id).first).to have_attributes(status: "running")
       expect(runtime.command_of(id)).to eq("sleep 31.81")
 
       stopped, = runtime.stop_task(id, by: "user")
-      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+      expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
       expect(Samagotchi::ProcessGroup.alive?(pid)).to be(false)
     end
 
     it "ends as the command did, from its exit_code file" do
       pid, started_at, paths = spawn_like_execute("sleep 0.3; echo out; echo err >&2; (exit 3)")
       id = runtime.generate_task_id
-      runtime.adopt(id: id, command: "x", cwd: nil, pid: pid, started_at: started_at, **paths)
+      adopt(id: id, command: "x", cwd: nil, pid: pid, started_at: started_at, **paths)
 
       result = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
 
@@ -759,11 +765,11 @@ RSpec.describe "task tools" do
       taken, = runtime.create_task("true")
       args = { command: "x", cwd: nil, pid: pid, started_at: started_at, **paths }
 
-      expect(runtime.adopt(id: "../x", **args)).to eq([nil, "Error: invalid task id: ../x"])
-      expect(runtime.adopt(id: taken["id"], **args)).to eq([nil, "Error: task already exists: #{taken["id"]}"])
+      expect(adopt(id: "../x", **args)).to eq([nil, "Error: invalid task id: ../x"])
+      expect(adopt(id: taken.id, **args)).to eq([nil, "Error: task already exists: #{taken.id}"])
       id = runtime.generate_task_id
-      expect(runtime.adopt(id: id, **args, stderr_path: "stderr.log").last).to eq("Error: stderr_path must be absolute: stderr.log")
-      expect(runtime.adopt(id: id, **args, pid: 1).last).to start_with("Error: not a process chi can stop")
+      expect(adopt(id: id, **args, stderr_path: "stderr.log").last).to eq("Error: stderr_path must be absolute: stderr.log")
+      expect(adopt(id: id, **args, pid: 1).last).to start_with("Error: not a process chi can stop")
       expect(runtime.load_record(id)).to be_nil
     end
   end
@@ -776,17 +782,17 @@ RSpec.describe "task tools" do
     }.each do |command, (code, output)|
       it "records #{code} for #{command.inspect}, with its output as typed" do
         record, = Samagotchi::Tools::TaskRuntime.create_task(command)
-        result = Samagotchi::Tools::TaskWait.call(record["id"], timeout: 10)
+        result = Samagotchi::Tools::TaskWait.call(record.id, timeout: 10)
 
         expect(result).to include("exit_code: #{code}")
-        expect(File.read(record["output_path"])).to eq(output)
+        expect(File.read(record.output_path)).to eq(output)
       end
     end
 
     it "fails a command with a trailing pipe (a parse error), never as a success" do
       record, = Samagotchi::Tools::TaskRuntime.create_task("echo a |")
 
-      expect(Samagotchi::Tools::TaskWait.call(record["id"], timeout: 10)).to include("status: failed")
+      expect(Samagotchi::Tools::TaskWait.call(record.id, timeout: 10)).to include("status: failed")
     end
   end
 

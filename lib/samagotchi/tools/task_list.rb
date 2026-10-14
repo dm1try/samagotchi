@@ -21,12 +21,12 @@ module Samagotchi
 
       def self.format_entry(record)
         [
-          "task_id: #{record.fetch("id")}",
-          "status: #{record.fetch("status")}",
-          "pid: #{record.fetch("pid")}",
-          "created_at: #{record.fetch("created_at")}",
-          "command: #{preview(record.fetch("command"))}",
-          "output_path: #{record.fetch("output_path")}"
+          "task_id: #{record.id}",
+          "status: #{record.status}",
+          "pid: #{record.pid}",
+          "created_at: #{record.created_at}",
+          "command: #{preview(record.command)}",
+          "output_path: #{record.output_path}"
         ].join("\n")
       end
       private_class_method :format_entry

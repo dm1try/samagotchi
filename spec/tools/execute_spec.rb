@@ -596,7 +596,7 @@ RSpec.describe Samagotchi::Tools::Execute do
             # Every task an example handed over, stopped through its record
             # (which checks the pid still is the group chi started).
             Samagotchi::Tools::TaskRuntime.list_records.each do |record|
-              Samagotchi::Tools::TaskRuntime.stop_task(record["id"], by: "model")
+              Samagotchi::Tools::TaskRuntime.stop_task(record.id, by: "model")
             end
           end
         end
@@ -616,14 +616,14 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
         record, = Samagotchi::Tools::TaskRuntime.get_record(id)
         dir = File.join(described_class.logs_root, id)
-        expect(record).to include("status" => "running", "command" => "echo before; echo oops >&2; sleep 2.5; echo done",
-                                  "output_path" => File.join(dir, "stdout.log"), "stderr_path" => File.join(dir, "stderr.log"),
-                                  "exit_code_path" => File.join(dir, "exit_code"), "handed_over_by" => "execute")
+        expect(record).to have_attributes(status: "running", command: "echo before; echo oops >&2; sleep 2.5; echo done",
+                                          output_path: File.join(dir, "stdout.log"), stderr_path: File.join(dir, "stderr.log"),
+                                          exit_code_path: File.join(dir, "exit_code"), handed_over_by: "execute")
         expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::Tools::TaskRuntime.metadata_path(id)))
 
         waited = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
         expect(waited).to include("status: completed", "exit_code: 0")
-        expect(File.read(record["output_path"])).to eq("before\ndone\n")
+        expect(File.read(record.output_path)).to eq("before\ndone\n")
       end
 
       # perl's setpgrp stands in for GNU timeout's setpgid (no coreutils
@@ -654,9 +654,9 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       it "reads a command that ended between the deadline and the hand-over as finished, not timed out" do
         ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
-        allow(described_class).to receive(:hand_over).and_wrap_original do |original, **args|
+        allow(described_class).to receive(:hand_over).and_wrap_original do |original, task, **args|
           args[:waiter].join(5)
-          original.call(**args)
+          original.call(task, **args)
         end
 
         expect(described_class.call("echo hi; sleep 1.3")).to eq("stdout:\nhi\n\nexit: 0")
@@ -669,7 +669,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         result = described_class.call("trap 'echo mine' EXIT; sleep 1.5; exit 4")
         record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-        sleep 0.05 until File.exist?(record["exit_code_path"]) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        sleep 0.05 until File.exist?(record.exit_code_path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
         expect(Samagotchi::Tools::TaskWait.call(task_id(result), timeout: 10)).to include("status: failed", "exit_code: 4")
       end

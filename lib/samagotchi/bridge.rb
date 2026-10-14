@@ -606,13 +606,13 @@ module Samagotchi
 
       record, error = Tools::TaskRuntime.get_record(task_id)
       return [{}, 404, { error: "task_not_found", task_id: task_id }] if error
-      return [{}, 409, { error: "not_running", status: record["status"], task_id: task_id }] unless record["status"] == "running"
+      return [{}, 409, { error: "not_running", status: record.status, task_id: task_id }] unless record.running?
 
       Log.info(:bridge, "task_stop", task_id: task_id)
       record, error = Tools::TaskRuntime.stop_task(task_id, by: "user")
       return [{}, 500, { error: "bridge_error", detail: error }] if error
 
-      [{}, 200, { status: record["status"], stop_reason: record["stop_reason"], task_id: task_id }]
+      [{}, 200, { status: record.status, stop_reason: record.stop_reason, task_id: task_id }]
     end
 
     # The tasks this session started: its history's (created_ids_in) and

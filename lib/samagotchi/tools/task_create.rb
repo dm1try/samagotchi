@@ -15,12 +15,12 @@ module Samagotchi
         return error if error
 
         [
-          "task_id: #{record.fetch("id")}",
-          "status: #{record.fetch("status")}",
-          "pid: #{record.fetch("pid")}",
-          "created_at: #{record.fetch("created_at")}",
-          "output_path: #{record.fetch("output_path")}",
-          "cwd: #{record.fetch("cwd")}"
+          "task_id: #{record.id}",
+          "status: #{record.status}",
+          "pid: #{record.pid}",
+          "created_at: #{record.created_at}",
+          "output_path: #{record.output_path}",
+          "cwd: #{record.cwd}"
         ].join("\n")
       rescue StandardError => e
         "Error: #{e.message}"

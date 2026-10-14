@@ -39,8 +39,7 @@ module Samagotchi
           record, error = TaskRuntime.get_record(task_id)
           return error if error
 
-          status = record.fetch("status")
-          return finished_response(record, tail_lines) unless status == "running"
+          return finished_response(record, tail_lines) unless record.running?
 
           if completion_pattern
             output_tail = output_tail(record, tail_lines)
@@ -56,7 +55,7 @@ module Samagotchi
 
         # Timeout reached — do one final refresh to capture the latest status
         refreshed, = TaskRuntime.get_record(task_id)
-        return finished_response(refreshed, tail_lines) unless refreshed.fetch("status") == "running"
+        return finished_response(refreshed, tail_lines) unless refreshed.running?
 
         format_response(refreshed, wait_result: "timeout", output_tail: output_tail(refreshed, tail_lines), tail_lines: tail_lines)
       rescue StandardError => e
@@ -68,7 +67,7 @@ module Samagotchi
       def self.cancelled_response(task_id, tail_lines, started)
         record, error = TaskRuntime.get_record(task_id)
         return error if error
-        return finished_response(record, tail_lines) unless record.fetch("status") == "running"
+        return finished_response(record, tail_lines) unless record.running?
 
         note = [
           "note: the user stopped the turn while waiting; the task is STILL RUNNING.",
@@ -83,7 +82,7 @@ module Samagotchi
       # A task the user stopped also says so, with the tail of its output:
       # the model sees where the job was cut off.
       def self.finished_response(record, tail_lines)
-        return format_response(record) unless TaskRuntime.stopped_by_user?(record)
+        return format_response(record) unless record.stopped_by_user?
 
         format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines,
                                extra: [TaskRuntime::USER_STOP_NOTE])
@@ -91,14 +90,14 @@ module Samagotchi
       private_class_method :finished_response
 
       def self.output_tail(record, tail_lines)
-        TaskRuntime.output_tail_lines(record.fetch("output_path"), tail_lines)
+        TaskRuntime.output_tail_lines(record.output_path, tail_lines)
       end
       private_class_method :output_tail
 
       # The last lines of a handed-over execute's stderr log (stderr_path),
       # "" for a task_create task (one log) or an empty stderr.
       def self.stderr_tail(record, tail_lines)
-        path = record["stderr_path"]
+        path = record.stderr_path
         return "" if path.to_s.empty? || tail_lines.nil?
 
         TaskRuntime.output_tail_lines(path, [tail_lines, STDERR_TAIL_LINES_MAX].min)
@@ -107,13 +106,13 @@ module Samagotchi
 
       def self.format_response(record, wait_result: nil, output_tail: nil, tail_lines: nil, extra: [])
         lines = [
-          "task_id: #{record.fetch("id")}",
-          "status: #{record.fetch("status")}",
-          "exit_code: #{record["exit_code"]}",
-          "stop_reason: #{record["stop_reason"]}",
-          "output_path: #{record.fetch("output_path")}"
+          "task_id: #{record.id}",
+          "status: #{record.status}",
+          "exit_code: #{record.exit_code}",
+          "stop_reason: #{record.stop_reason}",
+          "output_path: #{record.output_path}"
         ]
-        lines << "stderr_path: #{record["stderr_path"]}" if record["stderr_path"]
+        lines << "stderr_path: #{record.stderr_path}" if record.stderr_path
         return lines.join("\n") unless output_tail
 
         lines << "wait_result: #{wait_result}" if wait_result
