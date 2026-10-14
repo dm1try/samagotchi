@@ -44,7 +44,9 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   at once.
 - **The key.** A server that answers 401/403 wants an API key: `--key-env VAR`
   names the environment variable holding it (on a terminal chi asks for the
-  name). Only the variable's name is written, never the key.
+  name); on macOS a key only the login Keychain holds under that name counts
+  (docs/configuration.md, "API keys from the Keychain"). Only the variable's
+  name is written, never the key.
 - **The model.** One model is taken; with several, `--model ID` picks one
   (a terminal gets a numbered list, a script the ids and exit 2). A llama.cpp
   server also shows its context size and the prompt profile its chat template

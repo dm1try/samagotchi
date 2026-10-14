@@ -182,7 +182,7 @@ rewrites `launch.json`, which the app reads at each send, so the app keeps its o
 | `chi desktop install [--force] [--login]` | builds, installs and starts it; `--force` replaces an existing copy |
 | `chi desktop upgrade` | rebuilds it for this chi and restarts it, keeping the login setting (always; `chi update` does it only when needed) |
 | `chi desktop uninstall` | quits it and removes the app, its login item, launch file and settings |
-| `chi desktop status` | version against chi's, how it runs chi, state dirs, Service, hotkey, process, login item |
+| `chi desktop status` | version against chi's, how it runs chi, state dirs, Service, hotkey, process, login item, host keys |
 
 `chi self` has a `desktop` line: `0.1.x (matches)`, `0.1.w (up to date for chi 0.1.x)` (an older build whose sources
 haven't changed), `0.1.w (chi is 0.1.x: chi update)` (a rebuild is due) or `not installed`. `chi desktop status`
@@ -202,6 +202,20 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 
 The file freezes the install shell's values. If you install with a temporary `XDG_STATE_HOME`, the helper keeps
 using it. `status` prints the baked dirs.
+
+**Host API keys** don't go in the launch file either: with the variable a host's `api_key_env:` names unset, chi
+reads the key from the login Keychain (service `chi`, account the variable's name; see
+[API keys from the Keychain](configuration.md#api-keys-from-the-keychain)). Store each key the helper's sessions
+need once:
+
+```
+security add-generic-password -s chi -a FIREWORKS_API_KEY -w
+```
+
+`chi desktop status` has a `host keys` row for the hosts the helper's chi reads (the baked `XDG_CONFIG_HOME`'s
+config.yml): `FIREWORKS_API_KEY keychain` is fine; `WORK_API_KEY this shell only` (set in your terminal, not in
+the Keychain) or `unset` comes with the `security` command to store it. `install` and `upgrade` warn about the
+same keys. No row when no host has `api_key_env:`.
 
 ### The contract with chi
 
@@ -235,4 +249,9 @@ broadcast` says the note may be partly delivered.
   shortcuts.
 - **"Send to chi" missing on images in Finder or Preview** after an upgrade: the Services cache still has the old
   (text-only) entry; `/System/Library/CoreServices/pbs -update`, restart the helper, or log out and back in.
+- **A new session from the panel fails with `set VAR`**, or the model picker lists a host as unreachable: the
+  helper's chi has no environment variables, so the key must be in the Keychain (`chi desktop status`, host keys).
+  `security add-generic-password -s chi -a VAR -w`, then send again; no restart needed. A session started in a
+  terminal has the terminal's variables, but once its worker exited, a send from the panel wakes it without them.
+  A stopgap until the next reboot: `launchctl setenv VAR value` (then restart the helper).
 - **"No live sessions":** start one with `chi` in a terminal; `chi sessions list --live --scope=all` shows the same list.

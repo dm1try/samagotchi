@@ -13,6 +13,11 @@ and commands may change between minor versions. How releases are made:
 - **Continue on another model**: `chi send --new --continues ID --model NAME` and the web API's `POST /api/sessions`
   with `continues` and `model` start the next link of a chain on that model (its host checked first, nothing
   archived on a refusal). See docs/sessions.md, "Session chains".
+- **Host API keys from the macOS Keychain**: with the variable a host's `api_key_env:` names unset, chi reads the key
+  from the login Keychain (service `chi`, account the variable's name), so the desktop helper's sessions and model
+  list, launchd and cron reach keyed hosts. Store a key with `security add-generic-password -s chi -a VAR -w`.
+  `chi self` says `VAR (keychain)`, `chi desktop status` has a `host keys` row, and install/upgrade warn about keys
+  the helper won't get. `SAMAGOTCHI_KEYCHAIN=off` turns it off. See docs/configuration.md, "API keys from the Keychain".
 
 ### Changed
 

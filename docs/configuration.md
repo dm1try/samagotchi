@@ -217,7 +217,8 @@ hosts:
 A host can give `url:` instead of `host:`/`port:` (not both): `http` or `https`,
 with an optional path. For `api: openai` the url is the API base as written (no
 `/v1` is added); raw-prompt hosts use only its scheme, host and port. A remote
-provider's key comes from the environment variable that `api_key_env:` names;
+provider's key comes from the environment variable that `api_key_env:` names
+(on macOS, else from the login Keychain: [API keys from the Keychain](#api-keys-from-the-keychain));
 the key itself never goes into config.yml, `chi self`, logs or events, and
 workers get it by inheriting the environment:
 
@@ -229,7 +230,8 @@ hosts:
     api_key_env: FIREWORKS_API_KEY
 ```
 
-`chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`).
+`chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`), or comes from the
+Keychain (`(keychain)`).
 
 Every host with `api_key_env:` sends `Authorization: Bearer <key>` on each request (`api: anthropic`:
 `x-api-key: <key>`, see [Anthropic Messages hosts](#anthropic-messages-hosts)),
@@ -292,6 +294,29 @@ bodies are not logged. The interactive REPL, `--prompt`,
 workers, and resumed sessions all use the loop of the model's host. Hosts without
 `api: openai` keep using the native `/completion`, `/v1/completions`, or oMLX
 transport path.
+
+### API keys from the Keychain
+
+On macOS a key whose variable is unset (or blank) comes from the login Keychain: the generic password with
+service `chi` and account the variable's name. Apps macOS starts (the [desktop helper](desktop.md), launchd, a
+`chi web` started at login) get no shell exports, so this is how their sessions reach a keyed host. The variable
+still wins when it is set. Store a key once (`-w` last prompts for it, so it stays out of your shell history;
+`-U` updates an existing one):
+
+```
+security add-generic-password -s chi -a FIREWORKS_API_KEY -w
+security add-generic-password -U -s chi -a FIREWORKS_API_KEY -w
+security delete-generic-password -s chi -a FIREWORKS_API_KEY
+```
+
+chi runs `/usr/bin/security find-generic-password -s chi -a VAR -w` when a request needs the key, with a 5 s
+deadline (a locked keychain, e.g. over SSH, is a miss, not a hang). A found key is kept for the process; a miss
+isn't, so a key you add works on the next turn without a restart. Create items with `security` as above: an item
+made in Keychain Access or by another app may raise an "allow access" dialog the worker waits on until the
+deadline (or add `-T /usr/bin/security`). An unset key's error names the `security` command;
+`chi self` says `VAR (keychain)`, `chi desktop status` which keys the helper gets.
+`SAMAGOTCHI_KEYCHAIN=off` turns the Keychain off for a process and everything it starts (the spec suite sets it).
+Linux has no fallback: the variable only.
 
 ### Anthropic Messages hosts
 

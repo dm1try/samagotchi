@@ -116,6 +116,10 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 
 **Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` (`/model --default`, `/model --alias`) change one key on its own line of the text (`ConfigTextEdit`: the user's comments and layout stay; a new key goes at the end of its section, a missing section at the end of the file), check that the result parses to the old data plus that key (else they dump the whole file from it), and write through `AtomicFile` (a unique temp file renamed over config.yml, through a symlink, keeping its mode). Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:` / `guardrails:` / `bundles:`.
 
+## Host API keys
+
+A key never goes into config.yml: `api_key_env: VAR` names it. chi reads `VAR` from the environment, else (macOS) the login Keychain item with service `chi`, account `VAR` (`HostKeys`; `SAMAGOTCHI_KEYCHAIN=off` skips it). Don't store or read a key yourself: tell the user to run `security add-generic-password -s chi -a VAR -w` (it prompts for the key). `chi self` shows `VAR (set|keychain|unset)`; `chi desktop status` which keys the desktop helper gets.
+
 ## Workflow for any config edit
 
 1. **Read** the current file via `read` tool (or `ConfigFile.global_path`). If `File.file?` false, start from `{}`.
