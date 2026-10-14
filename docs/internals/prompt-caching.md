@@ -24,6 +24,8 @@ right-hand column happens.
  shared by every session ──────────────────────────────────────────────────  breaks it
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ tools        built-ins, then plugin tools sorted by (bundle, name),      │  a tool added/changed,
+│              the tool index's find_tools/call_tool as bundle "index"     │
+│              (declared once at load; publishes change only results)      │
 │              those the session's toolkit declares (per toolkit)          │  /model, a profile change,
 │              (chat: the `tools` field; native: the model's template)     │  a toolkit change
 ├──────────────────────────────────────────────────────────────────────────┤

@@ -438,7 +438,10 @@ Engine initialization (in this order, among other things):
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   @guardrail_wiring, @question_desk
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
-  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins)
+  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
+    then @tool_index.declare(@tools): find_tools + call_tool (source "index", not core) when a plugin
+    registered a chi.tool_source (Tools::ToolIndex: the index's groups, search, call checks; the source runs
+    the call with its own plugin Context)
   wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
   @hooks.runtime = hook_runtime

@@ -291,7 +291,7 @@ is what `targets:` says:
 - `command:`: a shell command the call runs; `command:` rules match it.
 - `cwd:`: where it runs, for the repo root and relative paths.
 - `acts_as:`: the tool a call stands for, when the tool runs other tools
-  (the mcp bundle's `call_tool`). Rules keyed by that tool's name match the
+  (chi's `call_tool`, which calls a tool a [source](#chitool_sourcecall-acts_as-label-wait-prefix) published). Rules keyed by that tool's name match the
   call too, as well as rules on the tool's own name. It can't be one of
   chi's own tools or another bundle's tool: that is dropped (and logged).
 - `args:`: the arguments it acts with (a Hash), when they aren't the call's
@@ -578,6 +578,65 @@ tool (full) until it comes back, with a warning at its first turn. See
 ```ruby
 chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
 ```
+
+### `chi.tool_source(call:, acts_as:, label:, wait:, prefix:)`
+
+Tools the model reaches through a search instead of declaring them one by
+one: the plugin publishes them into chi's **tool index**, and chi declares
+two tools in all, whatever the number of sources: `find_tools` (a keyword
+search that answers each match's `inputSchema`) and `call_tool` (calls one as
+`<group>/<tool>`; its row label is the first source's `label`). They
+are declared once, after the plugins load, and only when a plugin registered
+a source: a session without one declares neither. Nothing a source publishes
+later changes the request's tools, only what a search answers, so the prompt
+cache keeps (the search tool's description lists the groups as they were at
+load). The mcp bundle is the only source so far (a group per server), and the
+texts speak of MCP servers.
+
+```ruby
+@source = chi.tool_source(label: "mcp", prefix: "mcp_",
+                          call: ->(tool, args, ctx) { run(tool, args, ctx) },  # the result, as a tool block's
+                          acts_as: ->(group, tool) { "mcp_#{group}_#{tool}" }, # what rules match
+                          wait: ->(group) { start_of(group).value })           # a :starting group's start
+index = Samagotchi::Tools::ToolIndex
+@source.publish([index::Group.new(name: "fs", summary: "files in ~/scratch", tools: [
+                   index::Tool.new(group: "fs", name: "read", description: "Read a file.", schema: read_schema,
+                                   acts_as: "mcp_fs_read")
+                 ]),
+                 index::Group.new(name: "chrome", state: :starting)])
+```
+
+- **`publish(groups)`** swaps in the plugin's whole list, from any thread, at
+  any time (a server that started, `list_changed`): a search sees the old
+  list or the new one, never half. A `Group` has a `summary` (its line in
+  `find_tools`' description), a `state` (`:ready`; `:starting`, its tools may
+  still come: a call to it waits on `wait`, a search says "starting, try
+  again"; `:failed` with its `error`) and its tools. A group exists before its
+  tools do. A `Tool`'s `refusal` says why `call_tool` refuses it (nil: it can
+  be called), its `mark` what a search shows beside its name: the plugin
+  decides both (the mcp bundle: a bad schema, a name clash) and publishes
+  them again when they change.
+- **`call`** gets a call chi looked up and checked: the `Tool`, its `args`
+  typed by its `inputSchema`, and the plugin's `ctx`. It returns what a tool's
+  block returns (a String, a `ToolResult` with images).
+- **Guardrails** see a `call_tool` as the tool it calls: its `acts_as`, its
+  arguments and `"<group>: <tool>"` as the question's label
+  ([acts_as:](#guardrails)). A call made before its tool is published is
+  named by `acts_as` from the names alone; a bare name with `prefix` is
+  taken as an `acts_as` as given. The `acts_as:` hook must give exactly the
+  `acts_as` the source publishes for that tool: a call whose tool isn't the
+  one guardrails were given is refused ("the MCP tools changed while the call
+  waited"), so a hook that disagrees refuses every call.
+- **The row** shows `label` (default: the bundle's name) and
+  `<group>/<tool> args…`. `@source.declared_names` and `declared_tokens` say
+  what the two tools take in every request (none when other tools had both
+  names). A `Group` in a state other than the three, holding another group's
+  tool, or a `Tool` with a blank `acts_as` raises `ArgumentError`.
+- `find_tools` and `call_tool` aren't chi's own tools: every toolkit declares
+  them (unless its `remove:` names them), as it does plugin tools. A bundle
+  that declares tools of those names itself (an mcp bundle before 0.7.0 has
+  `find_mcp_tools` and `mcp_call`) keeps them, and with no source chi
+  declares neither.
 
 ### `chi.ctx`
 
@@ -907,7 +966,9 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and gives
 the model the tools of [MCP](https://modelcontextprotocol.io) servers. It
 has no memory file, and the servers' tools aren't declared to the model one
-by one: it has two tools, `find_tools` and `call_tool` (~250 tokens in
+by one: the bundle publishes them into chi's tool index
+([chi.tool_source](#chitool_sourcecall-acts_as-label-wait-prefix), a group
+per server), and the model has its two tools, `find_tools` and `call_tool` (~250 tokens in
 every request plus a line per server, whatever the servers have; `/mcp`
 says how many). Stdio servers only, for now.
 
@@ -977,7 +1038,7 @@ bundles:
     command: [chrome-devtools-mcp, --slim, --headless]   # after npm i -g chrome-devtools-mcp
   ```
 
-- **Tools: search, then call.** The servers' tools are kept in an index;
+- **Tools: search, then call.** The servers' tools are kept in chi's tool index;
   the model has two fixed tools:
   - `find_tools(query, server?)` searches it by keywords over the
     server's name, the tool's name and its description, and answers up to 5
@@ -1064,7 +1125,7 @@ bundles:
 
   `call_tool`'s `targets:` act as the tool it calls, by its
   `mcp_<server>_<tool>` name ([acts_as:](#guardrails)), so `tool:
-  "mcp_github_*"` or `tool: mcp_github_merge_pull_request` match an
+  "mcp_github_*"` or `tool: mcp_github_merge_pull_request` match a
   `call_tool` to it, as they matched the tool when it was declared by that
   name. A call made before the server's tools are known (a first run
   still starting) is matched by the name the model gave, so the rule fires
@@ -1072,7 +1133,8 @@ bundles:
   call is refused. The question shows the inner arguments under `<server>: <tool>`
   (`everything: get_sum: a=20 b=22`), and "Allow this call for the
   session" (or in this repo) allows that tool with those arguments only.
-  (Approvals stored before 0.6.0, under the old name, don't carry over.)
+  (Approvals stored before 0.6.0, under the old name, don't carry over, nor
+  ones stored before 0.7.0 under `mcp_call`: each MCP tool is asked about once more.)
   Two things see `call_tool`, not the tool: hooks (a `before_tool_call`
   event's `tool:` is `"call_tool"`, the tool in its args), and loop-guard's
   `ignore_tools` (`call_tool` ignores every MCP call; calls to different

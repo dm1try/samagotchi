@@ -16,6 +16,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- **MCP: `find_mcp_tools` and `mcp_call` are now `find_tools` and `call_tool`**, chi's own tool index's (the mcp
+  bundle publishes its servers' tools into it: `chi.tool_source`, docs/plugins.md). Run `chi bundle upgrade mcp`
+  (mcp 0.7.0) to get it; an older mcp bundle keeps its own two tools on this chi. Search, calls, lazy starts and
+  `/mcp` work as before. Rename `tool: mcp_call` in guardrail rules and hooks, and `mcp_call` in loop-guard's or
+  check-in's `ignore_tools` in config.yml, to `call_tool`; rules on `mcp_*` keep working (they match the MCP
+  tool). Approvals saved for MCP tools (keyed `mcp_call>…`) no longer match: each MCP tool is asked about once
+  more. The two tools' new names and place in the tool list re-prefill an MCP user's prompt once.
 - A continue whose previous link's model names a host config.yml no longer has (or a disabled one) starts the new
   link on the default model with a warning (`chi send: warning: …`, the API's `model_warning`) instead of being
   refused.

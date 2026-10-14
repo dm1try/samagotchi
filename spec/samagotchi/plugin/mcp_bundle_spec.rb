@@ -488,6 +488,18 @@ RSpec.describe "The mcp bundle" do
     expect(cards.last[:body]).to end_with("\n\n#{mcp_total(tokens)}")
   end
 
+  it "/mcp says the model can't reach the tools when chi's tool index declared neither (names taken)" do
+    engine.instance_variable_get(:@tool_index).sources.first.declared!([], 0)
+    commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                               default_model: "Gemma-4B-it", registry: engine.command_registry)
+    cards = []
+    engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+    engine.running_anytime { commands.run("/mcp") }
+    expect(cards.last[:body]).to end_with("\n\nThe search and call tools aren't declared in this session (other tools " \
+                                          "have their names; see the load warnings), so the model can't reach the tools above.")
+    expect(cards.last[:body]).not_to include("Every request carries")
+  end
+
   context "with two servers, one that doesn't start" do
     let(:servers) { { "fake" => fake.merge("tools" => %w[echo add]), "gone" => { "command" => ["/nonexistent/mcp-server"] } } }
 

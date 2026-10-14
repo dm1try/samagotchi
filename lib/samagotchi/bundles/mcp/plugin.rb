@@ -917,11 +917,22 @@ class Plugin
       tools = server.tools.sort_by(&:name).map { |t| ["- `#{t.server}/#{t.name}`", mark(t)].compact.join(" ") }
       tools.empty? ? head : "#{head}\n#{tools.join("\n")}"
     end
+    [*servers, totals_text].join("\n\n")
+  end
+
+  # /mcp's last line: what every request carries, and the servers' tools'
+  # tokens. When another tool took both names (chi's tool index left its
+  # tools out: a load warning), that the model can't reach them.
+  def totals_text
+    if @source.declared_names.empty?
+      return "The search and call tools aren't declared in this session (other tools have their names; see the " \
+             "load warnings), so the model can't reach the tools above."
+    end
+
     total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
-    [*servers, "Every request carries #{@source.declared_names.join(" and ")}: ~#{thousands(@source.declared_tokens)} tokens. " \
-               "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
-               "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."]
-      .join("\n\n")
+    "Every request carries #{@source.declared_names.join(" and ")}: ~#{thousands(@source.declared_tokens)} tokens. " \
+      "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
+      "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."
   end
 
   def state_text(server)
