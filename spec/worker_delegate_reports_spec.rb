@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
+require "support/worker_loop_rounds"
 
 require "samagotchi/engine"
 require "samagotchi/worker"
@@ -12,6 +13,8 @@ require "samagotchi/worker"
 # parent (ChildRing), and a parent's turns take its children's reports at
 # their iteration boundaries (ChildReports), committed when the turn is kept.
 RSpec.describe Samagotchi::Worker, "delegate reports" do
+  include WorkerLoopRounds
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
@@ -62,10 +65,12 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
     save(child)
   end
 
-  def start_worker(session, poll_interval: 0.1)
+  # Input files come in without a wake: the fallback tick takes them.
+  def start_worker(session, poll_interval: 0.02)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
     worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: dir, idle_exit_minutes: 0,
                                  poll_interval: poll_interval)
+    count_loop_rounds(worker)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
     expect(wait_until { File.exist?(File.join(dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
@@ -136,7 +141,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
       send_turn(child, "from the web", "web:tab1")
       expect(next_turn&.first).to eq("from the web")
-      sleep(0.2)
+      loop_rounds
       expect(rings).to be_empty
 
       send_turn(child, "and the second?", "delegate:#{parent.id[0, 8]}")
@@ -185,7 +190,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       # Settled: the user's next turn is the user's again.
       send_turn(child, "another", "web:tab1")
       expect(next_turn&.first).to eq("another")
-      sleep(0.2)
+      loop_rounds
       expect(rings).to be_empty
     end
 
@@ -196,7 +201,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       start_worker(child)
 
       expect(next_turn&.first).to eq("task")
-      sleep(0.2)
+      loop_rounds
       expect(rings).to be_empty
     end
 
@@ -208,7 +213,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       start_worker(fork)
 
       expect(next_turn&.first).to eq("seeded")
-      sleep(0.2)
+      loop_rounds
       expect(rings).to be_empty
     end
   end
@@ -470,7 +475,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         continue.call
         expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
         expect(wait_until { drain.any? { |e| e[:type] == :command_ran } }).to be(true)
-        sleep(0.3)
+        loop_rounds
         expect(rings.size).to eq(1)
 
         offers = drain.count { |e| e[:type] == :continue_offered }
@@ -531,7 +536,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         # Its message starts the turn (a reload shows the wake turn as its own).
         expect(lines.first.mark).to include(turn_start: true)
         expect(wait_until { rings.empty? }).to be(true)
-        sleep(0.3)
+        loop_rounds
         expect(wake_turns).to be_empty
       end
 
@@ -557,7 +562,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         child_answers("found it")
 
         expect(wake_turns.pop(timeout: 3)).not_to be_nil
-        sleep(0.4)
+        loop_rounds
         expect(wake_turns).to be_empty
         expect(rings.size).to eq(1)
         expect(Samagotchi::Session.load(parent.id, state_dir: tmpdir).messages.last[:content])
@@ -587,7 +592,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         child_answers("found it")
 
         expect(wake_turns.pop(timeout: 3)).not_to be_nil
-        sleep(0.5)
+        loop_rounds
         expect(wake_turns).to be_empty
         expect(rings.size).to eq(1)
 
@@ -609,7 +614,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         notice = nil
         expect(wait_until { notice = drain.find { |e| e[:type] == :hook_notice } }).to be_truthy
         expect(notice[:text]).to eq("1 delegate report waiting; it joins your next message (1 turn ran for reports in a row, session.max_wakes)")
-        sleep(0.3)
+        loop_rounds
         expect(wake_turns).to be_empty
         expect(drain.count { |e| e[:type] == :hook_notice }).to eq(1)
 
@@ -631,7 +636,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
           prompt, _kwargs, lines = next_turn
           expect(prompt).to eq("anything new?")
           expect(lines.map(&:source)).to eq(["delegate_report"])
-          sleep(0.3)
+          loop_rounds
           expect(wake_turns).to be_empty
         end
       end
@@ -655,7 +660,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("queue")
         start_worker(parent)
         child_answers("found it")
-        sleep(0.4)
+        loop_rounds
         expect(wake_turns).to be_empty
 
         send_turn(parent, "hi", "web:tab1")
@@ -677,7 +682,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(wait_until { drain.any? { |e| e[:type] == :continue_offered } }).to be_truthy
 
         child_answers("found it")
-        sleep(0.4)
+        loop_rounds
         expect(turns).to be_empty
         expect(rings.size).to eq(1)
       end

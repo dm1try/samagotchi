@@ -6,6 +6,7 @@ require "net/http"
 require "json"
 require "support/test_kernel"
 require "support/failing_saves"
+require "support/worker_loop_rounds"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -13,6 +14,8 @@ require "samagotchi/bridge_client"
 require "samagotchi/worker"
 
 RSpec.describe Samagotchi::Worker do
+  include WorkerLoopRounds
+
   def cmd(**fields) = Samagotchi::QueuedCommand.new(**fields)
 
   describe Samagotchi::Worker::Waker do
@@ -114,29 +117,6 @@ RSpec.describe Samagotchi::Worker do
 
     # Whether the worker's loop sleeps on its Waker (nothing to do).
     def loop_waiting?(thread) = thread.backtrace.to_a.any? { |frame| frame.include?("Waker#wait") }
-
-    # Each pass of the worker's loop with nothing to do ends in its Waker's
-    # wait: counted, so a check that nothing happens waits for passes, not
-    # a fixed time.
-    def count_loop_rounds(worker)
-      @rounds = [0]
-      waker = worker.instance_variable_get(:@waker)
-      allow(waker).to receive(:wait).and_wrap_original do |original, *args|
-        @rounds[0] += 1
-        original.call(*args)
-      end
-    end
-
-    # Wakes the loop until it came round to its wait +count+ more times:
-    # two make one whole pass that began after the call.
-    def loop_rounds(count = 2)
-      waker = @worker.instance_variable_get(:@waker)
-      count.times do
-        start = @rounds[0]
-        waker.wake
-        expect(wait_until { @rounds[0] > start }).to be(true)
-      end
-    end
 
     def sidecar
       File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
