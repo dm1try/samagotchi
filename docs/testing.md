@@ -4,6 +4,7 @@
 bundle exec parallel_rspec -n 8   # Ruby specs, in parallel (or plain: bundle exec rspec)
 npm test                          # web frontend specs
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
+npx playwright test spec/e2e/stage.spec.js   # one e2e file (the root playwright.config.js is the suite's)
 bundle exec rake lint             # RuboCop: no offenses (CI runs it)
 ```
 
