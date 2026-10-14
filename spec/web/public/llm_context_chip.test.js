@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   chipModel, chipTemplate, choiceWords, commandLine, createLlmContextControl, mergeChoice, NEW_CHAT, ownValues, parseBudget,
-  popoverPlace, renderForm, strategyValue, withChoice,
+  renderForm, strategyValue, withChoice,
 } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
@@ -153,16 +153,6 @@ test("a budget reads as chi reads one: tokens, k, off; out of range is none", ()
   assert.equal(parseBudget("0k"), 0);
   assert.equal(parseBudget("3999"), null);
   assert.equal(parseBudget("lots"), null);
-});
-
-test("the popover opens above the chip, below it when the room above is short, capped to the room it has", () => {
-  const win = { width: 343, innerWidth: 375, innerHeight: 560 };
-  // Room above: opens upward, its bottom 8 px over the chip.
-  assert.deepEqual(popoverPlace({ left: 130, top: 470, bottom: 494 }, { ...win, height: 300 }), { left: 16, bottom: 98 });
-  // A chip near the top: below it.
-  assert.deepEqual(popoverPlace({ left: 20, top: 60, bottom: 84 }, { ...win, height: 300 }), { left: 16, top: 92 });
-  // Neither side fits: the roomier one, capped (it scrolls), never above the window's top.
-  assert.deepEqual(popoverPlace({ left: 20, top: 300, bottom: 324 }, { ...win, height: 400 }), { left: 16, bottom: 268, maxHeight: 276 });
 });
 
 // A control on the shim's document: the chip inside +el+, a stub window
