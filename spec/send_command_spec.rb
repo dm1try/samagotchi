@@ -794,7 +794,7 @@ RSpec.describe Samagotchi::SendCommand do
       # GEM_HOME/GEM_PATH as Bundler set them: CI installs the gems under
       # vendor/bundle, where a bare ruby can't find nokogiri.
       bare = ENV.to_h.slice("GEM_HOME", "GEM_PATH")
-                .merge("XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin")
+                .merge("XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "SAMAGOTCHI_KEYCHAIN" => "off", "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin")
       stdout, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "send", "-m", "caf\u00E9?", short(a),
                                               stdin_data: "h\u00E9llo", unsetenv_others: true)
 

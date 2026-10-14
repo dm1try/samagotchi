@@ -220,7 +220,7 @@ RSpec.describe Samagotchi::NoteCommand do
       # GEM_HOME/GEM_PATH as Bundler set them: CI installs the gems under
       # vendor/bundle, where a bare ruby can't find nokogiri.
       bare = ENV.to_h.slice("GEM_HOME", "GEM_PATH")
-                .merge("XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin")
+                .merge("XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "SAMAGOTCHI_KEYCHAIN" => "off", "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin")
       _out, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "note", session.id, stdin_data: "h\u00E9llo",
                                             unsetenv_others: true)
       expect(status.exitstatus).to eq(0), stderr

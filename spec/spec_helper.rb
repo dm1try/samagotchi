@@ -58,6 +58,13 @@ ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
 # workers they spawn) raise instead, so a typo'd tag fails loudly.
 ENV["SAMAGOTCHI_LOG_STRICT"] = "1"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
+# A host key never comes from the developer's login Keychain: off for this
+# process and everything it starts (bin/chi, workers); in-process reads go to
+# a null keychain too (HostKeys specs inject their own fake).
+ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
+# Loaded here (not by the specs that need it) so the before hook below always
+# swaps in the null keychain: a spec's own env hash doesn't carry the switch.
+require "samagotchi/host_keys"
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")
 at_exit { FileUtils.remove_entry(SPEC_INTEGRATION_XDG_CONFIG_HOME) if SPEC_INTEGRATION_XDG_CONFIG_HOME && File.directory?(SPEC_INTEGRATION_XDG_CONFIG_HOME) }
@@ -128,6 +135,7 @@ RSpec.configure do |config|
     # The log facade is process-wide: unconfigured again, it resolves its
     # file from this example's config (the temp XDG_STATE_HOME by default).
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    Samagotchi::HostKeys.keychain = Samagotchi::HostKeys::NullKeychain
     # Hooks::BundleLoader evals each bundle hook into a Samagotchi::Bundles
     # module that lives for the process: chi builds one Engine, the suite
     # hundreds. Fresh modules, or each load redefines the last one's constants
@@ -199,6 +207,7 @@ RSpec.configure do |config|
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
     SPEC_ENV_CLEAR.call
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
+    ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
     ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
   end
