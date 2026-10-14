@@ -237,7 +237,7 @@ module Samagotchi
       Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config]),
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config]),
       Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config]),
-      # The desktop helper's kitty targets (Desktop::MacOS.kitty_settings): listen_on copied from kitty.conf (unset = none),
+      # The desktop helper's kitty targets (Desktop::MacOS.kitty_settings, one of its terminal_settings): listen_on copied from kitty.conf (unset = none),
       # the kitty binary, and the foreground programs listed, "|"-separated (a YAML list works too; "*" = every window).
       Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config]),
       Entry.new(key: "kitty.binary",             yaml_path: %w[kitty binary],             type: :string, default: "/Applications/kitty.app/Contents/MacOS/kitty", expose: %i[env config]),

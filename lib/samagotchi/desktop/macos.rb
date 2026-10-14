@@ -49,6 +49,9 @@ module Samagotchi
       # top of it (MacOS.broadcast_timeout).
       BROADCAST_TRIAGE_DEADLINE = 20
       BROADCAST_MARGIN = 10
+      # The agent terminals the helper pastes into (AgentTerminal.swift):
+      # one launch-file section each, in this order.
+      TERMINALS = %w[kitty].freeze
 
       # Runs a command without a shell; [output, success].
       class Runner
@@ -70,10 +73,15 @@ module Samagotchi
         { "listen_on" => listen_on, "binary" => get.call("kitty.binary").to_s, "agents" => agents }
       end
 
+      # Each switched-on terminal's settings by name ("kitty" => …).
+      def self.terminal_settings(get = Config.method(:get))
+        { "kitty" => kitty_settings(get) }.compact
+      end
+
       # The helper as chi desktop and chi update make it: the settings it
       # bakes into the launch file read from the config.
       def self.from_config(register: true)
-        new(register: register, kitty: kitty_settings, broadcast_timeout: broadcast_timeout)
+        new(register: register, terminals: terminal_settings, broadcast_timeout: broadcast_timeout)
       end
 
       # Seconds the helper gives `chi broadcast` before it stops it: the
@@ -87,7 +95,7 @@ module Samagotchi
 
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,
                      source_dir: SelfReport::SOURCE_DIR, ruby: RbConfig.ruby, version: VERSION,
-                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, kitty: nil,
+                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, terminals: {},
                      broadcast_timeout: nil)
         home = env["HOME"] || Dir.home
         @app_dir = app_dir || File.join(home, "Applications")
@@ -101,7 +109,7 @@ module Samagotchi
         @arch = arch
         @sources_dir = sources_dir
         @register = register
-        @kitty = kitty
+        @terminals = terminals
         @broadcast_timeout = broadcast_timeout
       end
 
@@ -115,13 +123,13 @@ module Samagotchi
       # What the helper runs: absolute ruby + chi (no shims, which need the
       # shell's PATH), and the allowlisted env. chi is an installed gem's
       # RubyGems wrapper (it activates the gem and outlives upgrades and
-      # `gem cleanup`), else this checkout's bin/chi. The kitty section only
-      # when kitty.listen_on is set; the broadcast timeout when given.
+      # `gem cleanup`), else this checkout's bin/chi. A section per terminal
+      # switched on (TERMINALS order); the broadcast timeout when given.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
         config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
-        config["kitty"] = @kitty if @kitty
+        TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
         config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout
         config
       end
@@ -146,11 +154,12 @@ module Samagotchi
       end
 
       # The launch file names another chi version or path than this one, or
-      # other kitty settings or broadcast timeout: refresh_launch_file fixes
-      # that without a rebuild.
+      # other terminal settings or broadcast timeout: refresh_launch_file
+      # fixes that without a rebuild.
       def launch_outdated?
         launch = read_launch
-        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] || launch["kitty"] != @kitty ||
+        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] ||
+          TERMINALS.map { launch[_1] } != TERMINALS.map { @terminals[_1] } ||
           launch["broadcast_timeout"] != @broadcast_timeout
       end
 

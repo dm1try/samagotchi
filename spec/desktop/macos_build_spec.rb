@@ -35,7 +35,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
     expect(plist).to include('"NSMessage":"sendToChi"', '"LSUIElement":true', '"NSSendFileTypes":["public.image"]')
   end
 
-  describe "ChiHelper --kitty, against a fake kitty" do
+  describe "ChiHelper --agents, against a fake kitty" do
     # Short: a unix socket path has a ~104-byte limit.
     let(:tmp) { Dir.mktmpdir("kt", "/tmp") }
     let(:sock_dir) { File.join(tmp, "s").tap { |d| FileUtils.mkdir_p(d) } }
@@ -73,7 +73,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       env = ENV.keys.grep(/\AKITTY_/).to_h { |k| [k, nil] }
                .merge("SOCKDIR" => sock_dir, "FAKE_KITTY_LOG" => log, "FAKE_KITTY_LS" => ls_dir,
                       "TMPDIR" => "#{temp_dir}/", "HOME" => tmp)
-      out, err, status = Open3.capture3(env, executable, "--kitty", *args, "--launch", launch, stdin_data: stdin)
+      out, err, status = Open3.capture3(env, executable, "--agents", *args, "--launch", launch, stdin_data: stdin)
       [out, err, status.exitstatus]
     end
 
@@ -100,11 +100,11 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
     it "lists agent windows from every live socket listen_on names, ${VAR} kept literal when unset" do
       result = list
-      expect(result["error"]).to be_nil
-      expect(result["windows"].map { |w| [w["key"], w["agent"]] }).to eq(
+      expect(result["errors"]).to eq({})
+      expect(result["agents"].map { |w| [w["key"], w["agent"]] }).to eq(
         [["#{sock_dir}/#{base}-1#1", "claude"], ["#{sock_dir}/#{base}-1#2", "codex"], ["#{sock_dir}/#{base}-2#7", "claude"]]
       )
-      expect(result["windows"].last).to include("title" => "Claude Code", "label" => "claude · samagotchi")
+      expect(result["agents"].last).to include("terminal" => "kitty", "title" => "Claude Code", "label" => "claude · samagotchi")
       asked = calls.map { |c| c["argv"][c["argv"].index("--to") + 1] }
       expect(asked).to match_array(%w[-1 -2 -3].map { |s| "unix:#{sock_dir}/#{base}#{s}" })
       expect(calls.map { |c| c["argv"].drop(3) }.uniq).to eq([["ls"]])
@@ -114,7 +114,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       let(:agents) { %w[*] }
 
       it "lists every window" do
-        expect(list["windows"].map { |w| w["agent"] }).to eq(%w[claude codex fish claude])
+        expect(list["agents"].map { |w| w["agent"] }).to eq(%w[claude codex fish claude])
       end
     end
 
@@ -125,7 +125,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         socket("k-123.sock")
         socket("k-x.sock")
         canned("k-123.sock", window(5, ["claude"]))
-        expect(list["windows"].map { |w| w["key"] }).to eq(["#{sock_dir}/k-123.sock#5"])
+        expect(list["agents"].map { |w| w["key"] }).to eq(["#{sock_dir}/k-123.sock#5"])
       end
     end
 
@@ -135,13 +135,13 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       it "says only unix: sockets work" do
         out, _err, status = helper("list")
         expect(status).to eq(1)
-        expect(JSON.parse(out)).to eq("windows" => [], "error" => "kitty.listen_on tcp:localhost:12345: only unix: sockets")
+        expect(JSON.parse(out)).to eq("agents" => [], "errors" => { "kitty" => "kitty.listen_on tcp:localhost:12345: only unix: sockets" })
       end
     end
 
     it "lists nothing and runs no kitty without a kitty section" do
       write_launch(nil)
-      expect(list).to eq("windows" => [], "error" => nil)
+      expect(list).to eq("agents" => [], "errors" => {})
       expect(calls).to be_empty
     end
 
@@ -181,6 +181,12 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         out, _err, status = helper("send", "#{sock_dir}/#{base}-1#99", "--message", "hi")
         expect([out, status]).to eq(["window closed\n", 1])
         expect(calls.map { |c| c["argv"][3] }).to eq(%w[ls])
+      end
+
+      it "says not an agent and runs no kitty for a key no terminal owns" do
+        out, _err, status = helper("send", "#{sock_dir}/#{base}-1#x", "--message", "hi")
+        expect([out, status]).to eq(["not an agent: #{sock_dir}/#{base}-1#x\n", 1])
+        expect(calls).to be_empty
       end
     end
   end

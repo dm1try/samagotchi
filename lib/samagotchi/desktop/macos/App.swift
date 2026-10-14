@@ -3,7 +3,7 @@
 // the clipboard (a screenshot too). No Dock icon (LSUIElement); it stays
 // running after the first launch. `ChiHelper --login on|off|status` (run
 // directly by chi desktop) manages the login item and exits;
-// `ChiHelper --kitty list|send` is the kitty targets' seam (Kitty.swift),
+// `ChiHelper --agents list|send` is the agent terminals' seam (AgentTerminal.swift),
 // `ChiHelper --model-pick` the model chooser's (Models.swift),
 // `ChiHelper --broadcast` the Everyone row's (Broadcast.swift).
 import AppKit
@@ -102,8 +102,8 @@ struct ChiHelperMain {
     if args.count >= 2, args[1] == "--login" {
       exit(loginCommand(args.count >= 3 ? args[2] : ""))
     }
-    if args.count >= 2, args[1] == "--kitty" {
-      exit(kittyCommand(Array(args.dropFirst(2))))
+    if args.count >= 2, args[1] == "--agents" {
+      exit(agentsCommand(Array(args.dropFirst(2))))
     }
     if args.count >= 2, args[1] == "--model-pick" {
       exit(modelPickCommand(Array(args.dropFirst(2))))

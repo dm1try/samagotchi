@@ -82,12 +82,12 @@ enum ImageIntake {
     }
   }
 
-  /// Images pasted into kitty windows, kept for the agent to read after
+  /// Images pasted into agent terminals, kept for the agent to read after
   /// the send: never deleted by it, swept at launch after a week.
   static let sentDir = tempRoot.appendingPathComponent("chi-helper-sent", isDirectory: true)
   static let sentMaxAge: TimeInterval = 7 * 86_400
 
-  /// The paths a kitty paste names: an image the helper wrote is copied to
+  /// The paths an agent paste names: an image the helper wrote is copied to
   /// sentDir first (the send deletes the original), with no spaces in its
   /// name; a file of the user's is named as it is. Call before any send
   /// job starts. An image that can't be copied is left out.

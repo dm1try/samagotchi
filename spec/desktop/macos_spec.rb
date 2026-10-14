@@ -409,7 +409,8 @@ RSpec.describe Samagotchi::Desktop::MacOS do
 
     def helper(kitty: nil)
       described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
-                          ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir, kitty: kitty)
+                          ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir,
+                          terminals: { "kitty" => kitty }.compact)
     end
 
     it "leaves the launch file as it was without them, and writes a kitty section with them" do
@@ -423,6 +424,35 @@ RSpec.describe Samagotchi::Desktop::MacOS do
 
       helper(kitty: kitty).install(force: true)
       expect(JSON.parse(File.read(launch_file))["kitty"]).to eq(kitty)
+    end
+
+    it "writes the kitty section between sources_sha and broadcast_timeout, byte for byte" do
+      made = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                                 ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir,
+                                 terminals: { "kitty" => kitty }, broadcast_timeout: 30.0)
+      made.install
+      expect(File.read(launch_file)).to eq(<<~JSON)
+        {
+          "version": "9.9.9",
+          "argv": [
+            "#{tmp}/ruby",
+            "#{source_dir}/bin/chi"
+          ],
+          "env": {
+            "LANG": "en_US.UTF-8"
+          },
+          "sources_sha": "#{made.sources_sha}",
+          "kitty": {
+            "listen_on": "unix:/tmp/kitty.${KITTY_PID}",
+            "binary": "/k/kitty",
+            "agents": [
+              "claude",
+              "codex"
+            ]
+          },
+          "broadcast_timeout": 30.0
+        }
+      JSON
     end
 
     it "makes the launch file outdated when they change, and the refresh writes them without a rebuild" do
@@ -461,6 +491,13 @@ RSpec.describe Samagotchi::Desktop::MacOS do
         )
         expect(settings("kitty.listen_on" => "unix:/k", "kitty.agents" => "claude| codex |")["agents"]).to eq(%w[claude codex])
         expect(settings("kitty.listen_on" => "unix:/k", "kitty.agents" => "*")["agents"]).to eq(%w[*])
+      end
+
+      it "are the kitty entry of .terminal_settings, which leaves a terminal out while it is off" do
+        get = ->(values) { ->(key) { values.fetch(key) { Samagotchi::Config.find_by_key(key).default } } }
+        expect(described_class.terminal_settings(get.call({}))).to eq({})
+        expect(described_class.terminal_settings(get.call("kitty.listen_on" => "unix:/k")))
+          .to eq("kitty" => settings("kitty.listen_on" => "unix:/k"))
       end
 
       it "reach the helper from chi desktop and chi update (their default platforms)" do

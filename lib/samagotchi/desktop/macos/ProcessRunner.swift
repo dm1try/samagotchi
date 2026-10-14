@@ -1,6 +1,6 @@
 // Runs one outside program without a shell: stdin written from a
 // background queue, stdout/stderr drained as they come (no pipe deadlock on
-// big input or output), a time limit. ChiRunner and KittyRunner use it.
+// big input or output), a time limit. ChiRunner and the agent terminals use it.
 import Foundation
 
 struct ChiResult {

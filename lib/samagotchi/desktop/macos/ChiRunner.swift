@@ -7,7 +7,8 @@ struct LaunchConfig: Decodable {
   let version: String?
   let argv: [String]
   let env: [String: String]?
-  /// Agents in kitty windows (Kitty.swift); nil = none.
+  /// Agents in kitty windows (Kitty.swift); nil = none. AgentTerminals
+  /// makes one runner per terminal section.
   let kitty: KittySettings?
   /// Seconds `chi broadcast` may take (Broadcast.swift); nil = the default.
   let broadcastTimeout: Double?
