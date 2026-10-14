@@ -586,7 +586,6 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 #composer .actions-col .model-pick.unavailable .model-pick-name{color:var(--text-faint)}
 .model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none;transition:transform .12s ease}
 .model-pick[aria-expanded="true"]::after{transform:translateY(-20%) rotate(225deg)}
-@media(max-width:600px){#composer .actions-col .model-pick{max-width:60%}}
 /* A fresh link's (body.fresh-link): the session composer is one row and .actions-col is content-sized there, so a px cap keeps the text field's room and Send in view. :not([hidden]) keeps a failed /api/models' hide (this selector outranks the [hidden] one). */
 body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){display:inline-block;flex:0 1 auto;min-width:0;max-width:200px}
 @media(max-width:600px){body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){max-width:100px}}
@@ -597,8 +596,8 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 #composer .actions-col .llmctx-new[hidden],body.has-session #composer .actions-col .llmctx-new{display:none}
 /* The new chat's thinking chip, after it: shorter text, so a smaller share of the row. */
 #composer .actions-col .think-new{max-width:min(25%,140px)}
-/* Phones: picker · chip · Start on one row (the key hint is gone there); names cut short rather than wrapping, the chip first. */
-@media(max-width:600px){#composer .actions-col:has(.llmctx-new:not([hidden])){flex-wrap:nowrap}#composer .actions-col .model-pick{flex:0 1 auto;min-width:0}#composer .actions-col .llmctx-new{max-width:45%;flex-shrink:4}#composer .actions-col .think-new{max-width:30%}}
+/* Phones (the key hint is gone there): the chips keep their whole text and the row wraps, Start staying right (its margin-left:auto) on the last line; only a model name wider than the row ellipsizes. */
+@media(max-width:600px){#composer .actions-col .model-pick{flex:0 1 auto;min-width:0;max-width:100%}#composer .actions-col .llmctx-new,#composer .actions-col .think-new{flex:0 0 auto;max-width:100%}}
 /* The model search: opaque like #commandList (a list over the conversation
    must stay readable), above the composer, or below it (.down) when the
    start page leaves no room above, or over the composer (.over) when
