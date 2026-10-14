@@ -20,7 +20,8 @@ sessions. Keys:
 - **⏎** sends a message: `chi send -m <the line>` with the text as quoted context above it. With the line empty,
   the text is the message.
 - **⌘⏎** sends a note: `chi note`, the line (if any) then the text.
-- **⌥⏎** pastes into an agent in a kitty window without pressing Enter (see [Agents in kitty](#agents-in-kitty));
+- **⌥⏎** pastes into an agent in a kitty window or tmux pane without pressing Enter (see
+  [Agents in kitty and tmux](#agents-in-kitty-and-tmux));
   it is not a newline.
 - **⇧⏎** is a newline, in either field. Esc closes.
 
@@ -105,11 +106,15 @@ thumbnails sit under the message line, 48 px high, the file name as a tooltip; h
   the panel closes; files from Finder are sent as they are, never touched. A send with images may take up to 30 s
   (converting, a worker starting) before the panel gives up.
 
-## Agents in kitty
+## Agents in kitty and tmux
 
 The panel can also send to agent CLIs (claude, codex, gemini, aider, …) running in
-[kitty](https://sw.kovidgoyal.net/kitty/) windows, next to chi sessions. kitty only, through its remote control;
-off until you set it up:
+[kitty](https://sw.kovidgoyal.net/kitty/) windows or [tmux](https://github.com/tmux/tmux) panes, next to chi
+sessions. Each is off until you set it up; both can be on.
+
+### kitty
+
+Through kitty's remote control:
 
 1. In `kitty.conf`, remote control on and a socket: `allow_remote_control yes` and a `listen_on unix:…` line.
 2. Copy that `listen_on` value as it is into chi's config.yml:
@@ -121,7 +126,7 @@ off until you set it up:
 
    `kitty.agents` picks the programs listed (default `claude|codex|gemini|aider|opencode|cursor-agent|amp|goose`, a
    YAML list works too; `"*"` lists every window, shells too), `kitty.binary` the kitty to run (default
-   `/Applications/kitty.app/Contents/MacOS/kitty`). See [Configuration](configuration.md#desktop-helper-agents-in-kitty).
+   `/Applications/kitty.app/Contents/MacOS/kitty`). See [Configuration](configuration.md#desktop-helper-agents-in-kitty-and-tmux).
 3. Run `chi update` (or `chi desktop upgrade`): the helper reads these from its launch file, so **after every edit of
    `kitty:`** run it again. `chi update` only rewrites the launch file when only the settings changed (no rebuild);
    `chi desktop upgrade` always rebuilds.
@@ -130,28 +135,66 @@ The helper finds the sockets itself: kitty adds `-<pid>` to a `listen_on` path f
 `{kitty_pid}`), `~` and variables the helper knows are expanded, others (`${KITTY_PID}`) stay as written, as kitty
 keeps them. Several kitty instances all count. Only `unix:` sockets work.
 
-The panel lists the windows whose foreground program is one of the agents under a **kitty** divider, between live
-and recent sessions: "claude · <its title>", the folder below, a terminal icon, and a ⌘ number like the sessions.
-With the settings on but no agent running, one dim line says "no agents in kitty". A window counts when a foreground
-process's program is an agent, also as the script of `node …/codex` (that match is untested for codex and gemini).
+A window counts when a foreground process's program is an agent, also as the script of `node …/codex` (that match is
+untested for codex and gemini).
 
-- **⏎** pastes into every chosen window and presses Enter: the text as a `> ` quote, a blank line, your message, then
+### tmux
+
+Any terminal works (iTerm, Terminal, Ghostty, kitty…) for agents started inside tmux, with no macOS permission to
+grant:
+
+1. In chi's config.yml:
+
+   ```yaml
+   tmux:
+     enabled: true
+   ```
+
+   `tmux.agents` picks the programs listed (kitty.agents' default; `"*"` lists every pane), `tmux.binary` the tmux
+   to run (default: the `tmux` on your shell's PATH when the launch file is written, e.g. `/opt/homebrew/bin/tmux`;
+   the helper itself has no PATH). See [Configuration](configuration.md#desktop-helper-agents-in-kitty-and-tmux).
+2. Run `chi update` (or `chi desktop upgrade`), and again after every edit of `tmux:`. With no tmux found they say
+   "tmux.enabled but no tmux found on PATH: set tmux.binary", and the panel "tmux not found…".
+
+Every tmux server whose socket is in `$TMUX_TMPDIR/tmux-<uid>` (`/tmp/tmux-<uid>` by default) counts: the default
+server and `tmux -L <name>` ones. A server started with `-S` elsewhere, or a tmux on another machine (inside `ssh`),
+isn't seen. The socket dir and the binary are read when the launch file is written, like the rest of it.
+
+A pane counts when its foreground program is an agent. The helper asks `ps`, not tmux's `pane_current_command`: that
+names the native claude by its version file ("2.1.296"). A pane's title is shown unless it is tmux's default (the
+host name).
+
+### In the panel
+
+The panel lists the agents between live and recent sessions: "claude · <its title>", the folder below, a terminal
+icon, and a ⌘ number like the sessions. With one terminal on, the divider says **kitty** (or **tmux**); with both,
+it says **agents**, kitty's rows come first and each row has a small `kitty` or `tmux` tag. With the settings on but
+no agent running, one dim line says "no agents in kitty" ("in tmux", "in kitty or tmux"); a terminal that can't be
+asked gets a dim line with why, also beside the other terminal's rows. The list shows at most 9 targets: many agents
+can push recent sessions out.
+
+- **⏎** pastes into every chosen agent and presses Enter: the text as a `> ` quote, a blank line, your message, then
   one image path per line. Chosen together with chi sessions, each gets the message and the panel shows one line
   ("Sent. · sent to claude · samagotchi").
-- **⌥⏎** only pastes (no Enter), and only when every chosen target is a kitty window: build up several screenshots,
-  each with its own line, then press Enter in kitty. The footer shows **Paste ⌥⏎** instead of Note then.
-- **⌘⏎** with a kitty window chosen beeps: "Notes are for chi sessions". ⌥⏎ with a chi session: "Paste only is
-  for kitty windows".
+- **⌥⏎** only pastes (no Enter), and only when every chosen target is an agent: build up several screenshots,
+  each with its own line, then press Enter in the terminal. The footer shows **Paste ⌥⏎** instead of Note then.
+- **⌘⏎** with an agent chosen beeps: "Notes are for chi sessions". ⌥⏎ with a chi session: "Paste only is for
+  kitty windows" ("… for tmux panes", "… for agents in kitty or tmux" when tmux is on).
 - **Images:** a screenshot or other image data is copied to `$TMPDIR/chi-helper-sent/<uuid>.png` (or `.tiff`) and
   its path pasted; the agent reads it from there (claude attaches it as `[Image #1]`). These files are deleted a week
   later, at the helper's next start. Finder files are pasted with their own path, `'…'`-quoted when they hold spaces.
 - The paste arrives as one bracketed paste, so the agent takes newlines as text (claude shows long ones as
-  `[Pasted text]`). With `agents: "*"` beware of a program that doesn't turn bracketed paste on: the newlines would
-  act as Enter.
-- No delivery confirmation: before pasting, the helper checks the window is still there ("window closed" if not);
-  it can't know whether the agent read it. The 16 KB cap is chi's; a kitty window takes more.
-- Focus goes back to the app you came from, as for sessions. The last choice (kitty windows too) is preselected
-  while listed; ⌘ numbers shift as windows come and go.
+  `[Pasted text]`). In kitty, with `agents: "*"`, beware of a program that doesn't turn bracketed paste on: the
+  newlines would act as Enter. tmux brackets the paste only for a program that asked for it, and keeps the newlines
+  as typed, so they don't act as Enter there.
+- tmux: a pane scrolled back (copy mode) is taken out of it first, so the paste and Enter reach the agent (the
+  scroll position is lost). A pane in another tmux mode (the `choose-tree` tree, the clock) is refused: "pane in
+  tree-mode".
+- No delivery confirmation: before pasting, the helper checks the window or pane is still there ("window closed",
+  "pane closed" if not; also for a pane of a tmux server restarted since the panel listed it); it can't know whether
+  the agent read it. The 16 KB cap is chi's; a terminal takes more.
+- Focus goes back to the app you came from, as for sessions. The last choice (agents too) is preselected while
+  listed; ⌘ numbers shift as agents come and go.
 
 ## Install
 
@@ -198,7 +241,8 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
   `RUBYLIB`. No tokens and no `SAMAGOTCHI_*` settings go in;
 - the settings the panel needs from config.yml, as chi read them then: the `kitty:` section (when
-  `kitty.listen_on` is set) and `broadcast_timeout` (`broadcast.triage_deadline` + 10 s).
+  `kitty.listen_on` is set), the `tmux:` section (when `tmux.enabled`: the tmux binary and the socket dir resolved
+  then, and the agents) and `broadcast_timeout` (`broadcast.triage_deadline` + 10 s).
 
 The file freezes the install shell's values. If you install with a temporary `XDG_STATE_HOME`, the helper keeps
 using it. `status` prints the baked dirs.
@@ -254,4 +298,9 @@ broadcast` says the note may be partly delivered.
   `security add-generic-password -s chi -a VAR -w`, then send again; no restart needed. A session started in a
   terminal has the terminal's variables, but once its worker exited, a send from the panel wakes it without them.
   A stopgap until the next reboot: `launchctl setenv VAR value` (then restart the helper).
+- **"tmux not found at …"** in the panel (or "no tmux found" from `chi update`): set `tmux.binary` to your tmux
+  (`which tmux` in a terminal), then `chi update`.
+- **No tmux agents listed while they run:** check `tmux.enabled: true` and that `chi update` ran since; then compare
+  the launch file's `tmux.socket_dir` with your server's socket, `tmux display-message -p '#{socket_path}'`: it must
+  be in that dir (a different `TMUX_TMPDIR`, or a server started with `-S`, isn't seen).
 - **"No live sessions":** start one with `chi` in a terminal; `chi sessions list --live --scope=all` shows the same list.

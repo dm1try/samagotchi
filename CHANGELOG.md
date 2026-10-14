@@ -10,6 +10,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- **Desktop helper: agents in tmux panes**: with `tmux.enabled: true` (then `chi update`) the panel lists agent CLIs
+  running in tmux panes, in any terminal, beside kitty's, and pastes into them with or without Enter (a pane in copy
+  mode is taken out of it first). `tmux.binary` defaults to the tmux on chi's PATH when the launch file is written;
+  `chi update` warns when there is none. `ChiHelper --kitty` is now `--agents` (the helper's internal seam). See
+  docs/desktop.md, "Agents in kitty and tmux".
+
 - **Continue on another model**: `chi send --new --continues ID --model NAME` and the web API's `POST /api/sessions`
   with `continues` and `model` start the next link of a chain on that model (its host checked first, nothing
   archived on a refusal). See docs/sessions.md, "Session chains".

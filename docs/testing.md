@@ -72,6 +72,13 @@ It runs `git worktree add ../samagotchi-NAME -b BRANCH main`, then `npm ci --pre
 `npm test` and `npm run e2e` work there right away (Ruby gems and Playwright's browsers are shared: nothing else
 to install). It refuses when the folder or the branch already exists.
 
+## The desktop helper's build specs
+
+`SAMAGOTCHI_MACOS_BUILD=1 bundle exec rspec spec/desktop` also compiles the macOS helper (`:macos_build`, needs the
+Command Line Tools) and runs `ChiHelper` against a fake kitty and, when a `tmux` is on PATH, a real one (private
+`-L` servers under a temp `TMUX_TMPDIR`, killed after). CI skips them, and `script/affected-specs` doesn't pick them
+for a Swift change: run them by hand after editing `lib/samagotchi/desktop/macos/`.
+
 ## Integration specs
 
 Examples tagged `:integration` (`spec/integration/`, the "with LLM access" part of `spec/hooks/integration_spec.rb`)
