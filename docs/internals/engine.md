@@ -613,6 +613,7 @@ Paths are under `lib/samagotchi/`.
 | `llm/chat_loop.rb` | Chat loop: `#complete` (tool schemas per request, wire conversion, block replay) |
 | `llm/adapters.rb` | `LLM::Adapters::BY_API`: which chat adapter a host's api gets |
 | `llm/openai_chat.rb` | `LLM::OpenAIChat`, the `/v1/chat/completions` adapter |
+| `llm/adapter_common.rb` | `LLM::AdapterCommon`: what both chat adapters share (the HTTP layer and its timeouts, the paged model list, the SSE line loop, JSON errors) |
 | `llm/anthropic_messages.rb`, `llm/anthropic_wire.rb`, `llm/anthropic_assembly.rb`, `llm/dialect.rb` | The `/v1/messages` adapter, its wire translation, its response, its dialects ([anthropic.md](anthropic.md)) |
 | `llm/prompt_cache.rb` | Cache breakpoints on the OpenAI path, and the `cache_control` both adapters send |
 | `llm/turn_settings.rb` | `LLM::TurnSettings`, what a turn runs under (vision, sampling, thinking, reasoning history, …) |

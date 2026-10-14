@@ -5,6 +5,7 @@ require "uri"
 require_relative "../config"
 require_relative "../sampling_settings"
 require_relative "../thinking"
+require_relative "adapter_common"
 require_relative "errors"
 require_relative "http"
 require_relative "model_listing"
@@ -70,11 +71,8 @@ module Samagotchi
     # only; the chat loop owns the conversation and the tools.
     class OpenAIChat
       include ModelListing
+      include AdapterCommon
 
-      MAX_MODEL_PAGES = 20
-      # How much of a 200's non-stream body is read as a possible JSON error.
-      PLAIN_ERROR_LIMIT = 64 * 1024
-      DEFAULT_MODELS_TTL = 60
       # OpenRouter holds a paid request's estimated cost against the balance
       # while it runs: the input plus the output max_tokens allows (a fixed
       # per-request cap when it is unset), and refuses a request with a 402
@@ -154,11 +152,9 @@ module Samagotchi
         @api_key_env = api_key_env
         @stream = stream
         init_model_listing(models_ttl)
-        open_timeout, read_timeout = timeouts(timeout, open_timeout)
-        policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
-        @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
-                         retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
-                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth))
+        @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
+                           sleeper: sleeper, first_token_timeout: first_token_timeout,
+                           api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth))
       end
 
       # @param messages [Array<Hash>] wire messages (role, content, tool_calls,
@@ -180,33 +176,12 @@ module Samagotchi
                        cache: cache_summary(body[:messages]), cache_by: ("session" if body.key?(:prompt_cache_key)) }
         return chat_once(request, cancel_controller, log_fields) unless @stream
 
-        assembly = Assembly.new
-        events = 0
-        other = +""
-        plain = +""
-        # A retry streams the answer from the start again.
-        restart = lambda do |**event|
-          assembly = Assembly.new
-          plain = +""
-          on_retry&.call(**event)
-        end
-        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart,
-                                                           log_fields: log_fields) do |line, shown|
-          events += 1 if line.start_with?("data:")
-          other << line[0, 200] if !line.start_with?("data:") && other.length < 200
-          raise_plain_error(plain, line) if events.zero?
-          payload = parse_line(line)
-          next unless payload
-
+        stream_assembled(request, cancel_controller, on_retry, log_fields, assembly_class: Assembly,
+                                                                           what: "stream chunk") do |assembly, payload, shown|
           content, reasoning = assembly.add(payload)
           shown.call if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
           on_delta&.call(content: content, reasoning: reasoning, payload: payload)
         end
-        # A server that ignores stream: true, or answers with something else
-        # entirely, would otherwise end the turn with no answer and no error.
-        raise ProtocolError.new("#{@host_name}: the response had no stream events: #{other}", host: @host_name) if events.zero?
-
-        assembly.response
       end
 
       # A provider on the network: no llama.cpp /props to ask for the window.
@@ -233,17 +208,7 @@ module Samagotchi
 
       # @return [Array<ModelInfo>] the host's models (every page)
       def list_models
-        models = []
-        after = nil
-        MAX_MODEL_PAGES.times do
-          uri = URI("#{@base_url}/models#{"?after=#{URI.encode_www_form_component(after)}" if after}")
-          body = parse_json(@http.fetch(uri, get_request(uri), log_fields: { purpose: "models" }).body, "model list")
-          models.concat(model_entries(body).map { |raw| model_info(raw) })
-          break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
-
-          after = body["last_id"].to_s
-        end
-        models
+        list_model_pages { |after| URI("#{@base_url}/models#{"?after=#{URI.encode_www_form_component(after)}" if after}") }
       end
 
       def self.served_model(payload)
@@ -259,15 +224,6 @@ module Samagotchi
       end
 
       private
-
-      def timeouts(timeout, open_limit = nil)
-        open_timeout = Samagotchi::Config.positive_seconds("server.open_timeout")
-        read_timeout = Samagotchi::Config.positive_seconds("server.read_timeout")
-        open_timeout = [open_timeout, open_limit].min if open_limit
-        return [open_timeout, read_timeout] unless timeout
-
-        [[open_timeout, timeout].min, timeout]
-      end
 
       def request_body(messages, tools, model, options, session_id)
         body = {
@@ -364,48 +320,9 @@ module Samagotchi
 
       def served_provider(payload) = self.class.served_provider(payload)
 
-      # The parsed payload of a `data:` line; nil for blank lines, comments
-      # and [DONE]. Error events raise their ProviderError.
-      # A 200 whose body is a plain JSON error instead of a stream (OpenRouter
-      # sends an upstream 503 so): raised, from inside the stream so it is
-      # retried by its kind, once the lines so far parse as an error object.
-      def raise_plain_error(plain, line)
-        return if line.empty? || line.start_with?(":") || (plain.empty? && !line.start_with?("{"))
-        return if plain.bytesize > PLAIN_ERROR_LIMIT
-
-        plain << line << "\n"
-        error = ProviderErrors.from_error_body(plain, host: @host_name)
-        raise error if error
-      end
-
-      def parse_line(line)
-        error = HTTP.sse_error(line, host: @host_name)
-        raise error if error
-        return nil unless line.start_with?("data:")
-
-        data = line.delete_prefix("data:").strip
-        return nil if data.empty? || data == "[DONE]"
-
-        payload = parse_json(data, "stream chunk")
-        payload.is_a?(Hash) ? payload : nil
-      end
-
-      def parse_json(text, what)
-        JSON.parse(text.to_s)
-      rescue JSON::ParserError => e
-        raise ProtocolError.new("#{@host_name}: malformed #{what}: #{e.message[0, 200]}", host: @host_name)
-      end
-
       def post_request(url, body, session_id: nil)
-        uri = URI(url)
-        Net::HTTP::Post.new(uri).tap do |request|
-          request["Content-Type"] = "application/json"
-          request["Session-Id"] = session_id.to_s unless session_id.to_s.empty?
-          request.body = JSON.generate(body)
-        end
+        json_post(url, body, session_id.to_s.empty? ? {} : { "Session-Id" => session_id.to_s })
       end
-
-      def get_request(uri) = Net::HTTP::Get.new(uri)
 
       # Streamed deltas put together: text, reasoning, tool calls by index,
       # the finish reason, the usage chunk, the served model and provider.

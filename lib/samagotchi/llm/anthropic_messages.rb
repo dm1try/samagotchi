@@ -5,6 +5,7 @@ require "uri"
 require_relative "../config"
 require_relative "../sampling_settings"
 require_relative "../thinking"
+require_relative "adapter_common"
 require_relative "errors"
 require_relative "http"
 require_relative "model_listing"
@@ -43,10 +44,9 @@ module Samagotchi
     #   names, per model.
     class AnthropicMessages
       include ModelListing
+      include AdapterCommon
 
       API_VERSION = "2023-06-01"
-      DEFAULT_MODELS_TTL = 60
-      MAX_MODEL_PAGES = 20
       # The budget form's budget_tokens per level (a model that takes no
       # adaptive thinking), and Messages' smallest budget.
       BUDGETS = { low: 2048, medium: 8192, high: 24_576 }.freeze
@@ -63,8 +63,6 @@ module Samagotchi
                     \bdisplay\W{0,4}(?:extra\s+inputs\s+are\s+not\s+permitted|is\s+not\s+(?:permitted|allowed|supported))/xi
       # "max_tokens: 200000 > 128000, which is the maximum allowed number of output tokens for …"
       OUTPUT_CAP_RE = /max_tokens`?:?\s*\d+\s*>\s*(\d+)/i
-      # How much of a 200's non-stream body is read as a possible JSON error.
-      PLAIN_ERROR_LIMIT = 64 * 1024
       # max_tokens when default.max_tokens is unset and the model list names
       # none (a listed one is capped by it too).
       DEFAULT_MAX_TOKENS = 64_000
@@ -102,11 +100,9 @@ module Samagotchi
         @output_caps = {}
         @cache_control_refused = false
         @thinking_display_refused = false
-        open_timeout, read_timeout = timeouts(timeout, open_timeout)
-        policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
-        @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
-                         retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
-                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth))
+        @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
+                           sleeper: sleeper, first_token_timeout: first_token_timeout,
+                           api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth))
       end
 
       # The same contract as OpenAIChat#chat; +messages+ are ChatLoop's
@@ -174,18 +170,7 @@ module Samagotchi
 
       # @return [Array<ModelInfo>]
       def list_models
-        models = []
-        after = nil
-        MAX_MODEL_PAGES.times do
-          query = URI.encode_www_form({ limit: 1000, after_id: after }.compact)
-          uri = URI("#{@base_url}/v1/models?#{query}")
-          body = parse_json(@http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" }).body, "model list")
-          models.concat(model_entries(body).map { |raw| model_info(raw) })
-          break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
-
-          after = body["last_id"].to_s
-        end
-        models
+        list_model_pages { |after| URI("#{@base_url}/v1/models?#{URI.encode_www_form({ limit: 1000, after_id: after }.compact)}") }
       end
 
       private
@@ -195,15 +180,6 @@ module Samagotchi
       def window_of(raw)
         window = raw["max_input_tokens"]
         window.is_a?(Integer) && window.positive? ? window : super
-      end
-
-      def timeouts(timeout, open_limit = nil)
-        open_timeout = Samagotchi::Config.positive_seconds("server.open_timeout")
-        read_timeout = Samagotchi::Config.positive_seconds("server.read_timeout")
-        open_timeout = [open_timeout, open_limit].min if open_limit
-        return [open_timeout, read_timeout] unless timeout
-
-        [[open_timeout, timeout].min, timeout]
       end
 
       # The Messages body: model, max_tokens, the system blocks, the
@@ -341,75 +317,21 @@ module Samagotchi
       # `event:` lines are not needed, so a gateway that drops them works);
       # on_delta gets every event but pings, with its text and reasoning.
       def chat_streamed(request, cancel_controller, on_delta, on_retry, log_fields)
-        assembly = AnthropicAssembly.new
-        events = 0
-        other = +""
-        plain = +""
-        # A retry streams the answer from the start again.
-        restart = lambda do |**event|
-          assembly = AnthropicAssembly.new
-          plain = +""
-          on_retry&.call(**event)
-        end
-        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart,
-                                                           log_fields: log_fields) do |line, shown|
-          events += 1 if line.start_with?("data:")
-          other << line[0, 200] if !line.start_with?("data:") && other.length < 200
-          raise_plain_error(plain, line) if events.zero?
-          event = parse_line(line)
-          next unless event
-
+        stream_assembled(request, cancel_controller, on_retry, log_fields, assembly_class: AnthropicAssembly,
+                                                                           what: "stream event") do |assembly, event, shown|
           content, reasoning = assembly.add(event)
           shown.call if AnthropicAssembly.shows?(event)
           on_delta&.call(content: content, reasoning: reasoning, payload: assembly.with_usage(event)) unless event["type"] == "ping"
         end
-        raise ProtocolError.new("#{@host_name}: the response had no stream events: #{other}", host: @host_name) if events.zero?
-
-        assembly.response
-      end
-
-      # A 200 whose body is a plain JSON error instead of a stream: raised
-      # from inside the stream (so it is retried by its kind) once the lines
-      # so far parse as an error object (OpenAIChat's rule).
-      def raise_plain_error(plain, line)
-        return if line.empty? || line.start_with?(":") || (plain.empty? && !line.start_with?("{"))
-        return if plain.bytesize > PLAIN_ERROR_LIMIT
-
-        plain << line << "\n"
-        error = ProviderErrors.from_error_body(plain, host: @host_name)
-        raise error if error
-      end
-
-      # The parsed event of a `data:` line; nil for `event:` lines, blank
-      # lines and comments. An error event raises its ProviderError.
-      def parse_line(line)
-        error = HTTP.sse_error(line, host: @host_name)
-        raise error if error
-        return nil unless line.start_with?("data:")
-
-        data = line.delete_prefix("data:").strip
-        return nil if data.empty? || data == "[DONE]"
-
-        event = parse_json(data, "stream event")
-        event.is_a?(Hash) ? event : nil
-      end
-
-      def parse_json(text, what)
-        JSON.parse(text.to_s)
-      rescue JSON::ParserError => e
-        raise ProtocolError.new("#{@host_name}: malformed #{what}: #{e.message[0, 200]}", host: @host_name)
       end
 
       def post_request(url, body, session_id: nil)
-        Net::HTTP::Post.new(URI(url)).tap do |request|
-          request["Content-Type"] = "application/json"
-          request["anthropic-version"] = API_VERSION
-          unless session_id.to_s.empty?
-            request["Session-Id"] = session_id.to_s
-            request[@dialect.session_header] = session_id.to_s if @dialect.session_header
-          end
-          request.body = JSON.generate(body)
+        headers = { "anthropic-version" => API_VERSION }
+        unless session_id.to_s.empty?
+          headers["Session-Id"] = session_id.to_s
+          headers[@dialect.session_header] = session_id.to_s if @dialect.session_header
         end
+        json_post(url, body, headers)
       end
     end
   end

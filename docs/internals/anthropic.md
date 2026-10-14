@@ -55,7 +55,7 @@ sends nothing. `#thinking_off_refused_fields` (low effort) is what `IdleClient` 
 thinking off.
 
 `#list_models` reads `GET {base}/v1/models` page by page (`limit=1000`, `after_id`, `has_more`/`last_id`, at most
-`MAX_MODEL_PAGES`); `#window_of` takes `max_input_tokens`, else the OpenAI-shaped fields (`ModelListing`).
+`AdapterCommon::MAX_MODEL_PAGES`, as OpenAIChat does); `#window_of` takes `max_input_tokens`, else the OpenAI-shaped fields (`ModelListing`).
 
 ## Wire translation (`AnthropicWire.translate`)
 

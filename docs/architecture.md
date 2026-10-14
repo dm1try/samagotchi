@@ -467,7 +467,8 @@ of chi reads (the prompt is input + cache reads + cache writes), stop reasons to
 (`max_tokens` → `length`, `tool_use` → `tool_calls`, `end_turn` → `stop`). A stream is read by content-block index
 from the `data:` lines alone (`event:` lines are not needed); `message_start` / `message_delta` events reach
 `on_delta` with that normalized `usage`, pings not at all, and a block's start or delta counts as shown for the
-first-token limit. Both adapters share their model-list cache (`LLM::ModelListing`). A host's `dialect:`
+first-token limit. Both adapters share their model-list cache (`LLM::ModelListing`) and their HTTP plumbing
+(`LLM::AdapterCommon`: timeouts, the paged model list, the SSE line loop, JSON errors). A host's `dialect:`
 (`LLM::Dialect`, `fireworks`) changes the auth header, the thinking `display`, the cache breakpoints and a session
 header; [internals/anthropic.md](internals/anthropic.md) covers the adapter.
 
