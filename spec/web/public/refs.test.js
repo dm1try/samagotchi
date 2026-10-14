@@ -1,7 +1,7 @@
-import { markupOf } from "./dom_shim.js";
+import { canon, markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bindRef, bindRowRefs, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, rowTitleRef, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
+import { bindRef, bindRowRefs, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refSpan, refTarget, rowTitleRef, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
 import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
 import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
 import { pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
@@ -36,6 +36,12 @@ test("refAttrs: the kind and the target, no action words", () => {
   assert.equal(refAttrs({ kind: "file", path: "/p/a.rb" }), ' data-ref-kind="file" data-ref-path="/p/a.rb"');
   assert.equal(refAttrs(null), "");
   assert.equal(refAttrs({ path: "/p/a.rb" }), "");
+});
+
+test("refSpan: a span.ref with refAttrs' attributes, built as DOM", () => {
+  for (const ref of [{ kind: "file", path: "/p/a \"b\" <c>.rb", line: 3, end_line: 9 }, { kind: "file", path: "/p/a.rb" }, null, { path: "/p/a.rb" }]) {
+    assert.equal(refSpan(document, ref).outerHTML, canon(`<span class="ref"${refAttrs(ref)}></span>`));
+  }
 });
 
 test("editorUrl encodes each path segment (spaces, #, unicode), keeps the slashes, line 1 by default", () => {
