@@ -139,6 +139,28 @@ RSpec.describe "chi bootstrap" do
     expect(err).to include("FAKE_KEY is not set")
   end
 
+  it "takes --key-env for a key only the Keychain holds, never writing the key" do
+    Samagotchi::HostKeys.keychain = Struct.new(:items) { def read(name) = items[name] }.new({ "FAKE_KEY" => "sk-keychain-1" })
+    server.default("/v1/models", json: models("m"))
+    server.default("/v1/chat/completions", json: chat_ok)
+
+    _out, err, status = bootstrap(target, "--key-env", "FAKE_KEY")
+
+    expect(status).to eq(0), err
+    expect(written.dig("hosts", "local")).to include("api_key_env" => "FAKE_KEY")
+    expect(File.read(config)).not_to include("sk-keychain-1")
+    expect(server.requests.last.header("Authorization")).to eq("Bearer sk-keychain-1")
+  end
+
+  it "names the Keychain in the unset --key-env refusal where it is read" do
+    allow(Samagotchi::HostKeys).to receive(:available?).and_return(true)
+    _out, err, status = bootstrap(target, "--key-env", "FAKE_KEY")
+
+    expect(status).to eq(1)
+    expect(err).to eq("chi bootstrap: FAKE_KEY is not set; export it or store it in the Keychain " \
+                      "(security add-generic-password -s chi -a FAKE_KEY -w) first (the API key; chi only writes its name)\n")
+  end
+
   it "refuses --key-env naming an unset variable through bin/chi without a backtrace" do
     _out, err, status = spawn_bootstrap(target, "--key-env", "FAKE_KEY")
 

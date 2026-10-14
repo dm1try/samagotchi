@@ -9,6 +9,7 @@ require_relative "../version"
 require_relative "../llm/openai_chat"
 require_relative "../llm/http"
 require_relative "../llm/api_key"
+require_relative "../host_keys"
 require_relative "../redacted_inspect"
 
 module Samagotchi
@@ -229,10 +230,10 @@ module Samagotchi
       end
 
       # One attempt through LLM::HTTP (User-Agent, the key's Bearer header),
-      # any status returned as is. A key whose variable is not set sends no
-      # header: the server's 401 then says one is needed.
+      # any status returned as is. A key neither its variable nor the
+      # Keychain holds sends no header: the server's 401 then says one is needed.
       def send_request(uri, request, key_env, read_timeout:)
-        key = key_env && !@env[key_env].to_s.strip.empty? ? LLM::ApiKey.for(key_env, host: uri.host, env: @env) : nil
+        key = key_env && HostKeys.fetch(key_env, env: @env) ? LLM::ApiKey.for(key_env, host: uri.host, env: @env) : nil
         LLM::HTTP.new(label: uri.host, open_timeout: @timeout, read_timeout: read_timeout, api_key: key,
                       retry_policy: LLM::HTTP::RetryPolicy.none)
                  .fetch(uri, request, retries: false, check_status: false, log_fields: { purpose: "probe" })

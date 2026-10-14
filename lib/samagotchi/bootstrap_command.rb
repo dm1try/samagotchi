@@ -4,6 +4,7 @@ require "rbconfig"
 require_relative "config"
 require_relative "model_profile"
 require_relative "host_registry"
+require_relative "host_keys"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
@@ -87,7 +88,7 @@ module Samagotchi
 
       key_env = options[:key_env]
       if key_env && unset?(key_env)
-        fail!("#{key_env} is not set; export it first (the API key; chi only writes its name)")
+        fail!("#{key_env} is not set; #{export_hint(key_env, "first")} (the API key; chi only writes its name)")
         return @exit
       end
 
@@ -187,7 +188,7 @@ module Samagotchi
       key_env = @stdin.gets.to_s.strip
       return fail!("no variable given") if key_env.empty?
       return fail!("#{key_env} isn't a variable name") unless key_env.match?(ConfigFile::ENV_NAME_RE)
-      return fail!("#{key_env} is not set; export it and run chi bootstrap again") if unset?(key_env)
+      return fail!("#{key_env} is not set; #{export_hint(key_env, "and run chi bootstrap again")}") if unset?(key_env)
 
       result = @probe.classify(result.candidate, key_env: key_env)
       return fail!("#{host} refused the key in #{key_env} (HTTP #{result.status})") if result.kind == :needs_key
@@ -433,7 +434,16 @@ module Samagotchi
       @stdin.respond_to?(:tty?) && @stdin.tty?
     end
 
-    def unset?(name) = @env[name].to_s.strip.empty?
+    # Neither the variable nor the Keychain (HostKeys) holds the key.
+    def unset?(name) = HostKeys.fetch(name, env: @env).nil?
+
+    # "export it first", or on macOS "export it or store it in the Keychain
+    # (security …) first".
+    def export_hint(name, tail)
+      return "export it #{tail}" unless HostKeys.available?
+
+      "export it or store it in the Keychain (#{HostKeys.store_command(name)}) #{tail}"
+    end
 
     def fail!(message)
       @stderr.puts("chi bootstrap: #{message}")

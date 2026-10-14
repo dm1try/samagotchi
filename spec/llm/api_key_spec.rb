@@ -39,6 +39,42 @@ RSpec.describe Samagotchi::LLM::ApiKey do
     end
   end
 
+  describe "the Keychain fallback" do
+    let(:keychain) { Struct.new(:items) { def read(name) = items[name] }.new({ "NOPE_KEY" => "sk-keychain-3" }) }
+
+    before { Samagotchi::HostKeys.keychain = keychain }
+
+    it "sends the Keychain's key when the variable is unset, and the hint says where it came from" do
+      request = Net::HTTP::Get.new(URI("http://box.test/"))
+      key = described_class.for("NOPE_KEY", host: "box", env: env)
+      key.authorize(request)
+
+      expect(request["Authorization"]).to eq("Bearer sk-keychain-3")
+      expect(key.hint).to eq("check NOPE_KEY (from the Keychain) (the API key for host box)")
+      expect(described_class.for("BOX_KEY", host: "box", env: env).hint).to eq("check BOX_KEY (the API key for host box)")
+      expect(key.inspect).not_to include("sk-keychain-3")
+    end
+
+    it "names the Keychain in the unset error and the missing-key hint where it is read" do
+      allow(Samagotchi::HostKeys).to receive(:available?).and_return(true)
+      key = described_class.for("ALSO_UNSET", host: "box", env: env)
+
+      expect { key.authorize(Net::HTTP::Get.new(URI("http://box.test/"))) }
+        .to raise_error(Samagotchi::LLM::AuthError, "box: set ALSO_UNSET (the API key for host box) or store it in the " \
+                                                   "Keychain: security add-generic-password -s chi -a ALSO_UNSET -w")
+      expect(described_class.missing_hint("box")).to include("an environment variable (or the Keychain)")
+    end
+
+    it "keeps the plain wording where the Keychain is not read (Linux, SAMAGOTCHI_KEYCHAIN=off)" do
+      allow(Samagotchi::HostKeys).to receive(:available?).and_return(false)
+      key = described_class.for("ALSO_UNSET", host: "box", env: env)
+
+      expect { key.authorize(Net::HTTP::Get.new(URI("http://box.test/"))) }
+        .to raise_error(Samagotchi::LLM::AuthError, "box: set ALSO_UNSET (the API key for host box)")
+      expect(described_class.missing_hint("box")).not_to include("Keychain")
+    end
+  end
+
   it "never shows the environment it reads the key from" do
     [key.inspect, key.to_s, key.pretty_inspect].each do |text|
       expect(text).to include("BOX_KEY")

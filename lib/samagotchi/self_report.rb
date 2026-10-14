@@ -13,6 +13,7 @@ require_relative "thinking"
 require_relative "reasoning_history"
 require_relative "served_model"
 require_relative "host_registry"
+require_relative "host_keys"
 require_relative "llm/adapters"
 require_relative "tools/memory"
 require_relative "hooks/loader"
@@ -391,13 +392,14 @@ module Samagotchi
       "#{entry.name} #{location}#{suffix}"
     end
 
-    # The variable the host's API key comes from and whether it is set; the
-    # key itself is never shown.
+    # The variable the host's API key comes from and whether it is set, or
+    # comes from the Keychain (HostKeys); the key itself is never shown.
     def api_key_for(model, env)
       name = HostRegistry.new(env: env).resolve(model).entry&.api_key_env
       return "-" unless name
 
-      "#{name} (#{env[name].to_s.empty? ? "unset" : "set"})"
+      state = { env: "set", keychain: "keychain" }.fetch(HostKeys.source(name, env: env), "unset")
+      "#{name} (#{state})"
     end
 
     # The Chi Helper app's version against this chi's (read from its

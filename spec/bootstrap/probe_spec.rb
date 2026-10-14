@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Bootstrap::Probe do
       expect(server.requests.last.path).to eq("/props")
       expect(server.requests.last.header("Authorization")).to be_nil
       expect(result).to have_attributes(kind: :unknown, status: nil,
-                                        reason: "#{candidate.host}: set UNSET_KEY (the API key for host #{candidate.host})")
+                                        reason: start_with("#{candidate.host}: set UNSET_KEY (the API key for host #{candidate.host})"))
     end
 
     it "says a server that doesn't answer in time timed out" do

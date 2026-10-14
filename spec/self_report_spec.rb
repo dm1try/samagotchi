@@ -173,6 +173,15 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("host")).to eq("fw https://api.example.test/v1 as m")
   end
 
+  it "says when the host's key comes from the Keychain" do
+    write_config("hosts:\n  fw:\n    url: https://api.example.test/v1\n    api: openai\n    api_key_env: EXAMPLE_KEY\n")
+    allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("fw:m")
+    Samagotchi::HostKeys.keychain = Struct.new(:key) { def read(name) = (key if name == "EXAMPLE_KEY") }.new("sk-keychain")
+
+    expect(field("api key")).to eq("EXAMPLE_KEY (keychain)")
+    expect(described_class.text(env: env)).not_to include("sk-keychain")
+  end
+
   it "shows no API key variable for a local host" do
     write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
