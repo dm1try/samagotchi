@@ -56,18 +56,26 @@ RSpec.describe "steering a running turn (chi send)" do
   def event(content) = "data: #{JSON.generate(content: content)}\n\n"
   def stop = "data: #{JSON.generate(content: "", stop: true)}\n\n"
 
-  # A generation that thinks for ~4 s, chunk by chunk, then reads a file
+  # A generation that thinks, chunk by chunk, until +sent+ says the
+  # example's message went in (at most +chunks+ of them), then reads a file
   # (a step boundary, where a plain message merges); with tool_call: false
-  # it only thinks, and the held stream never ends by itself. Every later
-  # generation answers PONG.
-  def stream_thinking(tool_call: true, chunks: 80, delay: 0.05)
+  # it only thinks, ~4 s, and the held stream never ends by itself. Every
+  # later generation answers PONG.
+  def stream_thinking(tool_call: true, chunks: 80, delay: 0.05, sent: -> { @sent })
     File.write(File.join(tmpdir, "notes.txt"), "notes\n")
-    pieces = [event("<think>")] + Array.new(chunks) { event("I should check the file again to be sure. ") }
-    if tool_call
-      pieces += [event("</think>"), event("<tool_call>\n<function=read>\n"),
-                 event("<parameter=path>\n#{File.join(tmpdir, "notes.txt")}\n</parameter>\n"),
-                 event("</function>\n</tool_call>"), stop]
-    end
+    thought = event("I should check the file again to be sure. ")
+    pieces = if tool_call
+               read = [event("</think>"), event("<tool_call>\n<function=read>\n"),
+                       event("<parameter=path>\n#{File.join(tmpdir, "notes.txt")}\n</parameter>\n"),
+                       event("</function>\n</tool_call>"), stop]
+               Enumerator.new do |chunk|
+                 chunk << event("<think>")
+                 (chunks * 4).times { sent.call ? break : chunk << thought }
+                 read.each { |piece| chunk << piece }
+               end
+             else
+               [event("<think>")] + Array.new(chunks) { thought }
+             end
     server.enqueue("/completion", sse: pieces, delay: delay, hold: !tool_call)
     server.default("/completion", sse: [event("<think>"), event("short"), event("</think>"), event("PONG"), stop])
   end
@@ -98,6 +106,7 @@ RSpec.describe "steering a running turn (chi send)" do
 
     sleep(seconds)
     Samagotchi::SendCommand.new([*argv, session.id], stdin: StringIO.new(""), stdout: out, stderr: err, state_dir: tmpdir).run
+      .tap { @sent = true }
   end
 
   def merged(content)
@@ -149,6 +158,7 @@ RSpec.describe "steering a running turn (chi send)" do
     expect(queued[:ack]).to include("delivery" => "queue")
     sleep(0.01)
     plain = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "mind the typos", client_id: "web:x", state_dir: tmpdir)
+    @sent = true
     expect(plain[:ack]).to include("delivery" => "next_step")
 
     expect(merged("mind the typos")).to be_truthy, "events: #{types.tally}"
@@ -163,7 +173,8 @@ RSpec.describe "steering a running turn (chi send)" do
   # P3b: chi send --queue --wait into a running turn is not refused, and
   # prints the queued turn's own answer, not the running turn's.
   it "waits for the queued turn's own answer (chi send --queue --wait)" do
-    stream_thinking
+    # The send waits for the queued turn: the thinking ends once it went in.
+    stream_thinking(sent: -> { err.string.include?("sent (queued") })
     answer = ->(text) { server.enqueue("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event(text), stop]) }
     answer.call("RUNNING ANSWER")
     answer.call("QUEUED ANSWER")

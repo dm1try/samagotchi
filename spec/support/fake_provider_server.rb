@@ -108,8 +108,10 @@ class FakeProviderServer
   end
 
   # Queue one response for +path+.
-  # @param sse [String, Array<String>, nil] an SSE body (split into events)
-  #   or its events; sent chunked with Content-Type text/event-stream
+  # @param sse [String, Enumerable<String>, nil] an SSE body (split into
+  #   events) or its events (an Enumerator's are made as they are sent: a
+  #   stream that goes on until the example says); sent chunked with
+  #   Content-Type text/event-stream
   # @param json [String, Hash, nil] a JSON body
   def enqueue(path, status: 200, sse: nil, json: nil, body: nil, headers: {}, delay: nil, hold: false, drop: false)
     @mutex.synchronize { @queues[path] << build(status, sse, json, body, headers, delay, hold, drop) }
@@ -133,7 +135,7 @@ class FakeProviderServer
   def build(status, sse, json, body, headers, delay, hold, drop)
     chunks = nil
     if sse
-      chunks = sse.is_a?(Array) ? sse : self.class.sse_events(sse)
+      chunks = sse.is_a?(String) ? self.class.sse_events(sse) : sse
       headers = { "Content-Type" => "text/event-stream" }.merge(headers)
     elsif json
       body = json.is_a?(String) ? json : JSON.generate(json)
