@@ -52,7 +52,7 @@ The chi session id is the `<id>` in `http://127.0.0.1:4567/#/s/<id>` (a unique
 prefix works; the URL works too). Run:
 
 ```sh
-sh "/Users/dmitrydedov/projects/samagotchi-peer-loop/lib/samagotchi/bundles/claude-peer/scripts/pair" <chi session id or URL>
+sh "<REPO>/lib/samagotchi/bundles/claude-peer/scripts/pair" <chi session id or URL>
 ```
 
 It attaches `claude-inbox` to the chi session (this session's inbox socket,

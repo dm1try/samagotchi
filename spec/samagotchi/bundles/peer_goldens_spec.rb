@@ -93,7 +93,8 @@ RSpec.describe "Peer bundle goldens" do
   end
 
   def normalize(text)
-    text.to_s.gsub(File.realpath(tmpdir), "<TMP>").gsub(tmpdir, "<TMP>").gsub(session.id, "<ID>")
+    # The checkout's own path: a worktree's differs from main's and CI's.
+    text.to_s.gsub(File.expand_path("../../..", __dir__), "<REPO>").gsub(File.realpath(tmpdir), "<TMP>").gsub(tmpdir, "<TMP>").gsub(session.id, "<ID>")
         .gsub(session.id[0, 8], "<SHORT>").gsub(%r{/\d{6}-}, "/HHMMSS-")
   end
 
