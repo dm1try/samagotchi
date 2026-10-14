@@ -3,6 +3,7 @@
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "desktop"
+require_relative "host_keys"
 
 module Samagotchi
   # `chi desktop install|upgrade|uninstall|status`: the native helper that
@@ -121,10 +122,20 @@ module Samagotchi
       dirs = s[:baked_dirs].empty? ? "(defaults)" : s[:baked_dirs].map { |name, value| "#{name}=#{value}" }.join(" ")
       service = s[:service] ? "registered" : "not registered (try chi desktop upgrade, or log out and back in)"
       running = s[:running] ? "running" : "not running (open -g \"#{s[:app_path]}\")"
-      @stdout.puts(format_rows([["Chi Helper", version], ["app", s[:app_path]], ["runs chi", launch],
-                                ["state dirs", dirs], ["service", service], ["hotkey", hotkey(s[:hotkey])],
-                                ["process", running], ["at login", login(s[:login])]]))
+      rows = [["Chi Helper", version], ["app", s[:app_path]], ["runs chi", launch], ["state dirs", dirs],
+              ["service", service], ["hotkey", hotkey(s[:hotkey])], ["process", running], ["at login", login(s[:login])]]
+      rows << ["host keys", host_keys(s[:host_keys])] unless Array(s[:host_keys]).empty?
+      @stdout.puts(format_rows(rows))
       0
+    end
+
+    # `VAR keychain · VAR this shell only (security …)`: what the helper's chi gets.
+    def host_keys(keys)
+      keys.map do |key|
+        next "#{key[:name]} keychain" if key[:state] == :keychain
+
+        "#{key[:name]} #{key[:state] == :shell_only ? "this shell only" : "unset"} (#{HostKeys.store_command(key[:name])})"
+      end.join(" · ")
     end
 
     def hotkey(state)

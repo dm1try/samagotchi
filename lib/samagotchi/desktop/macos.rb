@@ -11,6 +11,7 @@ require_relative "../version"
 require_relative "../self_report"
 require_relative "../installed_gem"
 require_relative "../config"
+require_relative "../host_keys"
 require_relative "../redacted_inspect"
 
 module Samagotchi
@@ -163,10 +164,32 @@ module Samagotchi
       end
 
       def warnings
-        return [] unless File.file?(File.join(@source_dir, ".git"))
+        worktree = if File.file?(File.join(@source_dir, ".git"))
+                     ["chi runs from a linked git worktree (#{@source_dir}); the helper stops working once it is removed. " \
+                      "Install from the main checkout or a gem install."]
+                   end
+        Array(worktree) + host_key_warnings
+      end
 
-        ["chi runs from a linked git worktree (#{@source_dir}); the helper stops working once it is removed. " \
-         "Install from the main checkout or a gem install."]
+      # Each configured host key (api_key_env:) and whether the helper's chi
+      # gets it: the helper's bare env has no keys, so only the Keychain's
+      # count (HostKeys). :keychain, :shell_only (set in this shell, not in
+      # the Keychain) or :unset. Hosts come from the config the helper's chi
+      # reads: the launch file's XDG_CONFIG_HOME when baked; disabled hosts
+      # are left out. @return [Array<Hash>] name:, hosts:, state:
+      def host_keys
+        baked = read_launch["env"]
+        dir = baked["XDG_CONFIG_HOME"] if baked.is_a?(Hash)
+        # Spelled out: Paths.config_home's ~ is this process's HOME, not @env's.
+        config_env = { "XDG_CONFIG_HOME" => dir.to_s.empty? ? File.join(@env["HOME"] || Dir.home, ".config") : dir }
+        hosts = ConfigFile.hosts_config(env: config_env).values.select(&:api_key_env).group_by(&:api_key_env)
+        hosts.map do |name, entries|
+          state = if HostKeys.from_keychain(name, env: @env) then :keychain
+                  elsif !@env[name].to_s.strip.empty? then :shell_only
+                  else :unset
+                  end
+          { name: name, hosts: entries.map(&:name), state: state }
+        end
       end
 
       def info_plist
@@ -248,7 +271,8 @@ module Samagotchi
           stale: stale?,
           baked_dirs: env.select { |name, _| name.start_with?("XDG_") },
           service: dump.include?(BUNDLE_ID),
-          running: running
+          running: running,
+          host_keys: host_keys
         )
       end
 
@@ -309,6 +333,14 @@ module Samagotchi
 
       def arch
         @arch ||= RbConfig::CONFIG["host_cpu"] == "arm64" ? "arm64" : `uname -m`.strip
+      end
+
+      def host_key_warnings
+        host_keys.reject { |key| key[:state] == :keychain }.map do |key|
+          where = key[:state] == :shell_only ? "is set in this shell only" : "is unset"
+          "#{key[:name]} #{where}: the helper's new sessions and model list won't reach host " \
+            "#{key[:hosts].join(", ")} until it is in the Keychain (#{HostKeys.store_command(key[:name])})"
+        end
       end
 
       def read_launch

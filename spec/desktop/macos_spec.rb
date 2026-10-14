@@ -112,6 +112,49 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "#host_keys" do
+    let(:keychain) { Struct.new(:items) { def read(name) = items[name] }.new({ "FW_KEY" => "sk-keychain-1" }) }
+    let(:config_home) { File.join(tmp, "helper-config") }
+
+    before do
+      Samagotchi::HostKeys.keychain = keychain
+      FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
+      File.write(File.join(config_home, "samagotchi", "config.yml"), <<~YAML)
+        hosts:
+          fw: { url: "https://fw.test/v1", api: openai, api_key_env: FW_KEY }
+          work: { url: "https://work.test/v1", api: openai, api_key_env: WORK_KEY }
+          work2: { url: "https://work2.test/v1", api: openai, api_key_env: WORK_KEY }
+          lab: { url: "https://lab.test/v1", api: openai, api_key_env: LAB_KEY }
+          off: { url: "https://off.test/v1", api: openai, api_key_env: OFF_KEY, enabled: false }
+          box: { host: 127.0.0.1, port: 8080 }
+      YAML
+      FileUtils.mkdir_p(support_dir)
+      File.write(launch_file, JSON.generate("env" => { "XDG_CONFIG_HOME" => config_home }))
+      env["WORK_KEY"] = "sk-shell-2"
+    end
+
+    it "reads the launch file's config: Keychain keys, keys only this shell has, unset ones; no disabled host" do
+      expect(macos.host_keys).to eq([{ name: "FW_KEY", hosts: ["fw"], state: :keychain },
+                                     { name: "WORK_KEY", hosts: %w[work work2], state: :shell_only },
+                                     { name: "LAB_KEY", hosts: ["lab"], state: :unset }])
+    end
+
+    it "warns after an install about each key the helper won't get, never showing a key" do
+      warnings = macos.warnings
+      expect(warnings.size).to eq(2)
+      expect(warnings[0]).to eq("WORK_KEY is set in this shell only: the helper's new sessions and model list won't reach " \
+                                "host work, work2 until it is in the Keychain (security add-generic-password -s chi -a WORK_KEY -w)")
+      expect(warnings[1]).to start_with("LAB_KEY is unset: ")
+      expect(warnings.join).not_to include("sk-")
+    end
+
+    it "ignores the terminal's XDG_CONFIG_HOME when the launch file bakes none" do
+      File.write(launch_file, JSON.generate("env" => {}))
+      env["XDG_CONFIG_HOME"] = config_home
+      expect(macos.host_keys).to eq([])
+    end
+  end
+
   describe "#info_plist" do
     it "names the app, the version and the Service" do
       plist = macos.info_plist

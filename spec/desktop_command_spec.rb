@@ -126,6 +126,20 @@ RSpec.describe Samagotchi::DesktopCommand do
       expect(out.string).to include("0.1.19 (matches chi)", "/r/ruby /c/bin/chi (ok)", "XDG_STATE_HOME=/s",
                                     "registered", "running", "⌃⌥⌘N (clipboard)")
       expect(out.string).to match(/^at login\s+on$/)
+      expect(out.string).not_to include("host keys")
+    end
+
+    it "shows a host keys row: what the helper's chi gets, and how to store a missing key" do
+      allow(macos).to receive(:status).and_return(
+        installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.19", app_version: "0.1.19",
+        launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: true, baked_dirs: {}, service: true, running: true,
+        login: "enabled", hotkey: nil,
+        host_keys: [{ name: "FW_KEY", hosts: ["fw"], state: :keychain },
+                    { name: "WORK_KEY", hosts: ["work"], state: :shell_only },
+                    { name: "LAB_KEY", hosts: ["lab"], state: :unset }]
+      )
+      run("status")
+      expect(out.string).to match(/^host keys\s+FW_KEY keychain · WORK_KEY this shell only \(security add-generic-password -s chi -a WORK_KEY -w\) · LAB_KEY unset \(security add-generic-password -s chi -a LAB_KEY -w\)$/)
     end
 
     it "says to upgrade on a version mismatch or a stale launch file, and what's missing" do
