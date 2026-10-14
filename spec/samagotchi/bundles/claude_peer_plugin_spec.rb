@@ -404,6 +404,20 @@ RSpec.describe "The claude-peer plugin" do
         expect(cards.last[:body]).to include("Installed and up to date.")
       end
 
+      it "flags an installed skill that differs from this bundle's in the status card; not a missing or same one" do
+        flag = "skill: **differs from this bundle's**: /claude install-skill (Replace), then pair again"
+        run
+        expect(cards.last[:body]).not_to include("skill:")
+
+        run("install-skill --yes")
+        run
+        expect(cards.last[:body]).not_to include("skill:")
+
+        File.write(target, "#{File.read(target)}my own line\n")
+        run
+        expect(cards.last[:body]).to include(flag)
+      end
+
       it "shows a short diff when the installed skill differs, and Replace" do
         FileUtils.mkdir_p(File.dirname(target))
         File.write(target, "---\nname: chi-peer\n---\nmy own version\n")

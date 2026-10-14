@@ -251,6 +251,7 @@ module Samagotchi
                 end
         lines << "last send: #{last_send_line(ctx, id)}" if id && last_send(ctx, id)
         lines << "last answer (#{peer::OUTBOX}): #{outbox_line(outbox)}" if outbox
+        lines << "skill: **differs from this bundle's**: #{peer::COMMAND} install-skill (Replace), then pair again" if skill_differs?(ctx)
         lines << transport_line
         ctx.card(id: peer::STATUS_CARD, title: "#{peer::BUNDLE}: #{paired ? "paired" : "not paired"}",
                  body: lines.join("\n\n"), actions: [{ label: "Refresh", command: peer::COMMAND },
@@ -291,14 +292,32 @@ module Samagotchi
       # /<peer> install-skill [--yes]
       def install_skill(ctx, yes:)
         peer = self.class
-        source = peer::SCRIPTS_DIRS.map { |dir| File.join(dir, SKILL_FILE) }.find { |path| File.file?(path) }
-        return "#{peer::COMMAND} install-skill: this bundle has no scripts/#{SKILL_FILE}; reinstall it (chi bundle install #{peer::BUNDLE} --force)" unless source
+        target, text = skill_target_and_text(ctx)
+        return "#{peer::COMMAND} install-skill: this bundle has no scripts/#{SKILL_FILE}; reinstall it (chi bundle install #{peer::BUNDLE} --force)" unless text
+
+        yes ? write_skill(ctx, target, text) : skill_card(ctx, target, text)
+      end
+
+      # Where install-skill writes the peer's skill and what it writes:
+      # [target, text]; the text nil when the bundle has no skill file.
+      def skill_target_and_text(ctx)
+        target = File.join(peer_dir, "skills", "chi-peer", "SKILL.md")
+        source = self.class::SCRIPTS_DIRS.map { |dir| File.join(dir, SKILL_FILE) }.find { |path| File.file?(path) }
+        return [target, nil] unless source
 
         substitutions = { PAIR_PLACEHOLDER => File.join(File.dirname(source), "pair"),
                           PAYLOADS_PLACEHOLDER => tilde(ctx.data_dir) }.merge(skill_substitutions(ctx))
-        text = substitutions.reduce(File.read(source)) { |skill, (placeholder, value)| skill.gsub(placeholder, value) }
-        target = File.join(peer_dir, "skills", "chi-peer", "SKILL.md")
-        yes ? write_skill(ctx, target, text) : skill_card(ctx, target, text)
+        [target, substitutions.reduce(File.read(source)) { |skill, (placeholder, value)| skill.gsub(placeholder, value) }]
+      end
+
+      # Whether the peer's installed skill isn't what install-skill would
+      # write (an older bundle's, or the user's edit): the status card says
+      # so. Not installed, or unreadable: no.
+      def skill_differs?(ctx)
+        target, text = skill_target_and_text(ctx)
+        text && File.file?(target) && File.read(target) != text
+      rescue SystemCallError
+        false
       end
 
       def skill_card(ctx, target, text)

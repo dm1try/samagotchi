@@ -98,3 +98,23 @@ nil
   "level": "info",
   "id": "codex"
 }
+=== /codex (paired, the installed skill differs)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: paired",
+  "body": "**paired** with a Codex session\n\nthread: `019a1b2c-3d4e-7f80-9abc-def012345678` (a closed Codex session still takes sends: they wait for `codex resume` there, or pair again)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (codex-outbox): validate step 2: VERDICT OK · just now\n\nskill: **differs from this bundle's**: /codex install-skill (Replace), then pair again\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}

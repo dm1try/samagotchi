@@ -1750,7 +1750,10 @@ Claude pairs; without one the bundle costs one tool declaration.
   the model:
   - `/claude` alone shows a card: paired or not, the socket and whether its
     file is there (it goes when that Claude session ends), the last send, and
-    Claude's last answer (the `claude-outbox` summary).
+    Claude's last answer (the `claude-outbox` summary). When Claude's installed
+    chi-peer skill differs from what `/claude install-skill` would write (an
+    older bundle's, or your edit), it says so: install it again (Replace),
+    then pair again.
   - `/claude validate <text>` and `/claude context <text>` send the text as it
     is, titled by its first line (past a web quote's `From …:` label and a
     quoted line's `> `): paste a selection after them.

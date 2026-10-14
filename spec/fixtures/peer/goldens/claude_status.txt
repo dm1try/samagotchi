@@ -118,3 +118,23 @@ nil
   "level": "info",
   "id": "claude"
 }
+=== /claude (paired, the installed skill differs)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: paired",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (claude-outbox): validate step 2: VERDICT OK · just now\n\nskill: **differs from this bundle's**: /claude install-skill (Replace), then pair again\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}

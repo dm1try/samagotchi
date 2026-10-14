@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Peer bundles: the `/claude` and `/codex` status cards say when the peer's installed chi-peer skill differs from
+  this bundle's (`install-skill`, Replace, then pair again).
+
 ### Changed
 
 - Peer bundles (claude-peer, codex-peer): a peer's `VERDICT OK` answer now wakes chi once to close the round, so chi

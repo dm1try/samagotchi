@@ -185,6 +185,11 @@ RSpec.describe "Peer bundle goldens" do
     run_command("paired, a payload send, an answer", "")
     tool(kind: "validate", title: "step 2", text: "short")
     run_command("paired, an inline send", "")
+    target = File.join(home, ".#{peer}", "skills", "chi-peer", "SKILL.md")
+    FileUtils.mkdir_p(File.dirname(target))
+    File.write(target, "a skill the user wrote\n")
+    run_command("paired, the installed skill differs", "")
+    FileUtils.rm_rf(File.dirname(target))
   end
 
   def skill_cards
