@@ -437,6 +437,7 @@ Engine initialization (in this order, among other things):
   @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   @guardrail_wiring, @question_desk
+  @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
   @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
     then @tool_index.declare(@tools): find_tools + call_tool (source "index", not core) when a plugin
@@ -627,6 +628,7 @@ Paths are under `lib/samagotchi/`.
 | `system_prompt.rb` | System prompt construction (stable part, volatile tail) |
 | `prompt_files.rb`, `model_notes.rb` | The AGENTS.md chain and appended files; the model notes the prompt loads |
 | `toolkit.rb`, `toolkit_command.rb` | A session's toolkit (`Toolkit#resolve`, what `Registry` declares); `/toolkit` |
+| `toolkit_binding.rb` | `ToolkitBinding`: the Engine's toolkit seam (the kits, `#explained`, `ctx.use_toolkit`, the turn-start `#apply!` behind `Engine#apply_toolkit!`) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |

@@ -32,7 +32,7 @@ require_relative "llm/backend"
 require_relative "llm/openai_chat"
 require_relative "llm/turn_settings"
 require_relative "session"
-require_relative "toolkit"
+require_relative "toolkit_binding"
 require_relative "answer_tail"
 require_relative "archive_store"
 require_relative "session_observer"
@@ -186,9 +186,9 @@ module Samagotchi
       # plugins' tool sets from chi.replace_tools until the turn thread
       # applies them (#apply_staged_tools!). Built before the plugins load.
       @plugin_tasks = build_plugin_tasks
-      # The toolkits plugins declare (chi.toolkit), beside the built-in and
-      # config ones (#toolkit_kits).
-      @plugin_kits = []
+      # The session's toolkit: the kits (the plugins' too, chi.toolkit),
+      # what its next turn declares, the turn-start apply.
+      @toolkit_binding = build_toolkit_binding
       # The tools plugins publish without declaring (chi.tool_source), and
       # the search and call tools that reach them (Tools::ToolIndex).
       @tool_index = Tools::ToolIndex.new
@@ -2680,7 +2680,7 @@ module Samagotchi
           add_init_task(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
                         quiet: quiet, timeout: timeout, failed: failed, &block)
         },
-        toolkits: @plugin_kits,
+        toolkits: @toolkit_binding.plugin_kits,
         tool_index: @tool_index
       )
       # What plugins show while they load (an MCP server that didn't
@@ -2706,100 +2706,42 @@ module Samagotchi
     end
     public :apply_staged_tools!
 
-    # The kits a session's toolkit resolves against: the built-ins, config's
-    # toolkit.kits, the plugins' (Toolkit.kits). Config's are read once per
-    # process, like the plugins': an edit to toolkit.kits never changes a
-    # live session's tools mid-session (a new worker reads it).
-    # @param errors [Array<String>] gets a line per config kit left out
-    # @return [Hash{String => Toolkit::Kit}]
-    def toolkit_kits(errors = [])
-      @config_kits = Toolkit.config_kits unless defined?(@config_kits)
-      Toolkit.kits(config: @config_kits, plugins: @plugin_kits, errors: errors)
-    end
-
-    # The session's toolkit resolved (Toolkit::Resolved): what its next
-    # turn declares. A plain full toolkit is nil, the Registry's "every tool".
-    def resolved_toolkit(session, errors = [])
-      resolved = Toolkit.of(session&.toolkit).resolve(toolkit_kits(errors))
-      resolved.everything? ? nil : resolved
-    end
+    # The session's toolkit (ToolkitBinding): the kits, what its next turn
+    # declares, ctx.use_toolkit and the turn-start apply.
+    def toolkit_kits(errors = []) = @toolkit_binding.kits(errors)
+    def resolved_toolkit(session, errors = []) = @toolkit_binding.resolved(session, errors)
+    def toolkit_explained(toolkit = nil) = @toolkit_binding.explained(toolkit)
+    def toolkit_summary = @toolkit_binding.summary
 
     # The tools this session registered (Tools::Registry), declared or not.
     attr_reader :tools
 
-    # +toolkit+ (the session's by default) as its next turn would declare
-    # it (/toolkit, the UIs' chip).
-    # @return [Toolkit::Explained]
-    def toolkit_explained(toolkit = nil)
-      toolkit ||= Toolkit.of(@session&.toolkit)
-      resolved = toolkit.resolve(toolkit_kits)
-      filter = resolved.everything? ? nil : resolved
-      Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: @tools.entries(toolkit: filter),
-                             left_out: @tools.left_out_names(toolkit: filter), pending: filter != @tools.toolkit)
-    end
-
-    # The session's toolkit for the UIs (the snapshot, command_ran): nil on
-    # full, or with no session.
-    def toolkit_summary
-      @session && toolkit_explained.summary
-    end
     public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
 
-    # A plugin's ctx.use_toolkit: put the session on toolkit +name+, saved,
-    # when it has no model reply yet and no turn runs (D3: no confirm from
-    # plugins), and tell the user as /toolkit would; it applies at the next
-    # turn's start.
+    # A plugin's ctx.use_toolkit (ToolkitBinding#use).
     # @return [Boolean] whether it was staged
     # @raise [ArgumentError] an unknown toolkit
-    def use_toolkit(name)
-      raise ArgumentError, "no toolkit named #{name}" unless toolkit_kits.key?(name)
-      return false if @session.nil? || turn_running? || history?
-
-      toolkit = Toolkit.new(name: name)
-      return true if @session.toolkit == toolkit
-
-      @session.toolkit = toolkit
-      @session.save(state_dir: session_state_dir)
-      hook_notify("toolkit: #{name} from the next turn's start", :info, "toolkit", extra: { toolkit: toolkit_summary })
-      true
-    end
+    def use_toolkit(name) = @toolkit_binding.use(name)
     public :use_toolkit
 
-    # Resolve the session's toolkit into the Registry, on the turn thread at
-    # a turn's start (before its prompt is built), and build the prompts
-    # again when what it declares changed. A name that doesn't resolve (a
-    # typo, an uninstalled bundle) declares everything for now and says so
-    # once; the saved toolkit stays as it is.
+    # At a turn's start (ToolkitBinding#apply!).
     # @return [Boolean] whether the declared tools changed
-    def apply_toolkit!(session, on_event = nil)
-      errors = []
-      resolved = Toolkit.of(session&.toolkit).resolve(toolkit_kits(errors))
-      warn_toolkit(session, resolved, errors, on_event)
-      resolved = nil if resolved.everything?
-      return false if resolved == @tools.toolkit
-
-      @tools.toolkit = resolved
-      @prompt_builder&.reset!
-      true
-    end
+    def apply_toolkit!(session, on_event = nil) = @toolkit_binding.apply!(session, on_event)
     private :apply_toolkit!
 
-    # The toolkit's load warnings, each once per process: a name that
-    # didn't resolve, config kits left out.
-    def warn_toolkit(session, resolved, errors, on_event)
-      lines = errors.dup
-      if resolved.fallback
-        lines << "#{Toolkit.of(session&.toolkit).label}: #{resolved.fallback}; this session declares every tool (full) " \
-                 "until it resolves"
-      end
-      @toolkit_warned ||= []
-      (lines - @toolkit_warned).each do |line|
-        @toolkit_warned << line
-        Log.warn(:config, "toolkit_unresolved", message: line)
-        emit_event(on_event, { type: :guardrail_warning, message: line, label: "toolkit" })
-      end
+    # The session's toolkit (see #initialize for when).
+    def build_toolkit_binding
+      ToolkitBinding.new(
+        tools: -> { @tools },
+        session: -> { @session },
+        state_dir: -> { session_state_dir },
+        can_stage: -> { !turn_running? && !history? },
+        reset_prompt: -> { @prompt_builder&.reset! },
+        emit: ->(sink, event) { emit_event(sink, event) },
+        notify: ->(text, level, source, extra:) { hook_notify(text, level, source, extra: extra) }
+      )
     end
-    private :warn_toolkit
+    private :build_toolkit_binding
 
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
     # which declare them, are built again on the next turn.
@@ -2827,7 +2769,7 @@ module Samagotchi
         steer: ->(text, label) { steer(text, source: hook_source(label)) },
         stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },
         stop_generation: ->(reason, label) { hook_stop_generation(reason, label) },
-        toolkit: -> { @session && Toolkit.of(@session.toolkit).name },
+        toolkit: -> { @toolkit_binding.name },
         declared_tools: -> { toolkit_explained.declared.map(&:name) },
         use_toolkit: ->(name) { use_toolkit(name) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
