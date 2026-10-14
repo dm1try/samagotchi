@@ -82,7 +82,7 @@ RSpec.describe "The mcp bundle's texts" do
              { "tool" => "fake/nope" }, { "tool" => "slow/echo", "args" => { "text" => "x" } }, { "tool" => "nope" }]
     lines = calls.map do |args|
       call = { name: call_entry.name, args: args }
-      "#{JSON.generate(args)} → #{targets.call(call).inspect} | #{call_entry.preview.call(call)}"
+      "#{JSON.generate(args)} → #{JSON.generate(targets.call(call))} | #{call_entry.preview.call(call)}"
     end
     find_call = { name: find_tool.name, args: { "query" => "echo", "server" => "fake" } }
     lines << "find → #{find_tool.preview.call(find_call)}"
