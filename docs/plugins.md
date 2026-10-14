@@ -25,6 +25,8 @@ plugin:
   file: plugin.rb
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
+# requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
+                             # to the chi being released (docs/releasing.md)
 needs: [gh]                  # optional: outside commands it relies on (see memory.md#bundles-that-need-outside-commands)
 ```
 

@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
   themselves. Name one under `remove:` to keep it out.
 - Guardrail rules on `call_tool` no longer see calls of chi's own tools made through it; they match the tool's own
   name.
+- Shipped bundles: a change that needs a newer chi marks the manifest `requires_chi_next` instead of raising
+  `requires_chi`; `rake release:bump` raises it to the released version and `rake release:check` fails on a marker
+  left over.
 - `/toolkit remove X` on a tool the toolkit leaves out is saved (it makes X unreachable). `/toolkit add X` then
   `/toolkit remove X` now removes X (it used to go back to the kit's default), and a remove then an add declares X.
 - The `child` toolkit also removes `delegate` and `delegate_result`: a child on it can't start children, even

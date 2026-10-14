@@ -18,8 +18,14 @@ can run the whole release; the user approves the notes before the tag and the
   `chi update` (all of them, with the gem) or `chi bundle upgrade NAME`. So:
   - a change to a bundle's files bumps that bundle's `version:`
     (`rake bundles:check` fails otherwise, once there's a tag to compare with);
-  - a bundle that uses something new in chi raises its `requires_chi` in the
-    same change; `release:bump` never touches `requires_chi`;
+  - a bundle that uses something new in chi marks it in the same change with
+    `requires_chi_next: true` (or a short reason) in its `manifest.yml`, and
+    leaves `requires_chi` alone: raising it to a chi that isn't released yet
+    would make chi on main refuse its own bundle. `release:bump` raises a
+    marked bundle's `requires_chi` to `">= X.Y.Z"` and drops the marker;
+    `release:check` fails while a marker is left. chi itself ignores the key,
+    and `bundles:check` notes it (and fails a marker that isn't `true` or a
+    one-line string). `release:bump` touches no other `requires_chi`;
   - a new shipped bundle joins a profile (`includes:` in `core` or `dev`; a
     spec checks every bundle is in exactly one), and that profile's version
     goes up: `chi update` then installs only the new bundle for those who
@@ -49,11 +55,11 @@ as the GitHub release body.
 | Task | What it does |
 | --- | --- |
 | `rake bundles:sha` | Recomputes the sha256 lines of every shipped bundle manifest (`files:`, `hooks:`, `plugin:`). |
-| `rake bundles:check` | Sha lines match; a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: raise it if the change uses anything new. The release workflow and `release:check` run it in full. |
+| `rake bundles:check` | Sha lines match; a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: mark it `requires_chi_next` if the change uses anything new. Notes a bundle marked `requires_chi_next`. The release workflow and `release:check` run it in full. |
 | `rake 'bundles:check[ci]'` | The CI workflow's (every push and PR): the same, except the version check leaves out the system bundle, which is changed and unbumped between releases (`release:bump` moves its version with VERSION). A task argument, not `CI=1`: GitHub sets `CI` in the release workflow too. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
-| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG. No commit. |
-| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, `bundles:check`, `rake lint` (RuboCop), rspec + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
+| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped). No commit. |
+| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop), rspec + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
 ## Runbook
@@ -68,7 +74,9 @@ The agent does each step and stops where the user has to say yes.
    the last tag (`git diff vPREV -- lib/samagotchi/bundles/*/manifest.yml`).
    Pick the version: fixes only → patch, anything else → minor.
 3. **The user approves the notes and the version.** Show them the section.
-4. **Bump.** `bundle exec rake "release:bump[X.Y.Z]"`, review `git diff`.
+4. **Bump.** `bundle exec rake "release:bump[X.Y.Z]"`, review `git diff`: it
+   names the bundles whose `requires_chi` it raised (their `requires_chi_next`
+   markers are gone).
 5. **Check.** Commit first (the check wants a clean tree), then run it:
    `git commit -am "Release X.Y.Z"` and `bundle exec rake release:check`.
    Fix anything it finds in new commits and run it again.

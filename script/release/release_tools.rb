@@ -165,7 +165,8 @@ module ReleaseTools
   # A bundle changed since the tag whose requires_chi the tagged chi already
   # meets: if the change uses anything new in chi, that chi would install it
   # and break (guardrails 0.2.0 and `models:` under 0.8.0). A warning only:
-  # most bundle changes need nothing new. A meta bundle (a profile, its
+  # most bundle changes need nothing new (one that does is marked
+  # requires_chi_next, and bundles_check drops its warning). A meta bundle (a profile, its
   # includes:) is left out: installing it checks each member's own
   # requires_chi (Profile.install_member), so its floor guards nothing.
   def stale_requires_chi(root, tag)
@@ -181,7 +182,63 @@ module ReleaseTools
       next if same
 
       "#{File.basename(dir)}: changed since #{tag} and requires_chi #{requires.to_s.inspect} admits that chi: " \
-        "raise it if the change uses anything newer"
+        "mark it requires_chi_next if the change uses anything newer"
+    end
+  end
+
+  # --- requires_chi_next: a floor raised at release time -------------------
+
+  # A bundle that needs something new in chi says so with
+  # `requires_chi_next: true` (or a short reason) in its manifest instead of
+  # raising requires_chi to a chi that isn't released yet (main would then
+  # refuse its own bundle). `release:bump` turns the marker into
+  # `requires_chi: ">= <released version>"`; `release:check` fails while one
+  # is left. chi itself ignores the key.
+  NEXT_KEY = "requires_chi_next"
+  NEXT_LINE = /^#{NEXT_KEY}:[^\n]*\n?/
+  REQUIRES_LINE = /^requires_chi:[^\n]*$/
+
+  # {bundle dir => the marker's value} for every manifest that carries one.
+  def requires_chi_next(root)
+    bundle_dirs(root).each_with_object({}) do |dir, out|
+      value = YAML.safe_load_file(File.join(dir, "manifest.yml"))&.fetch(NEXT_KEY, nil)
+      out[dir] = value unless value.nil? || value == false
+    end
+  end
+
+  # A marker that isn't `true` or a one-line reason, or that release:bump
+  # couldn't rewrite (a multi-line value): [problems].
+  def requires_chi_next_problems(root)
+    requires_chi_next(root).filter_map do |dir, value|
+      lines = File.read(File.join(dir, "manifest.yml")).scan(NEXT_LINE)
+      shape_ok = value == true || (value.is_a?(String) && !value.strip.empty?)
+      # One line that alone parses to the same value: not a block scalar
+      # or a value continued on the next lines, which the rewrite would cut.
+      next if shape_ok && lines.size == 1 && (YAML.safe_load(lines.first) || {})[NEXT_KEY] == value
+
+      "#{File.basename(dir)}: #{NEXT_KEY}: must be `true` or a one-line reason, on its own top-level line"
+    end
+  end
+
+  # The manifest text with requires_chi raised to ">= version" (replacing
+  # the line, or added after `version:`) and the marker line dropped.
+  def raise_requires_chi(text, version)
+    line = %(requires_chi: ">= #{version}")
+    text = text.sub(NEXT_LINE, "")
+    return text.sub(REQUIRES_LINE, line) if text.match?(REQUIRES_LINE)
+
+    text.sub(/^version:[^\n]*\n/) { |v| "#{v}#{line}\n" }
+  end
+
+  # The marked bundles' new manifest texts, {path => text}; raises (and so
+  # changes nothing) on a marker it can't rewrite.
+  def raised_requires_chi(root, version)
+    problems = requires_chi_next_problems(root)
+    raise Error, problems.join("; ") unless problems.empty?
+
+    requires_chi_next(root).keys.to_h do |dir|
+      path = File.join(dir, "manifest.yml")
+      [path, raise_requires_chi(File.read(path), version)]
     end
   end
 
@@ -191,14 +248,16 @@ module ReleaseTools
   # `rake release:bump`, so it is changed and unbumped between releases.
   # The sha lines stay strict for every bundle.
   def bundles_check(root, ci: false)
-    problems = stale_shas(root)
+    problems = stale_shas(root) + requires_chi_next_problems(root)
     notes = []
+    marked = requires_chi_next(root).keys.map { |dir| File.basename(dir) }
     if (tag = last_tag(root))
       problems += unbumped_bundles(root, tag, skip: ci ? [SYSTEM_BUNDLE] : [])
-      notes += stale_requires_chi(root, tag)
+      notes += stale_requires_chi(root, tag).reject { |n| marked.include?(n[/\A[^:]+/]) }
     else
       notes << "No v* tag yet: skipped the changed-bundle version check."
     end
+    notes += marked.map { |name| "#{name}: #{NEXT_KEY} is set: rake release:bump raises its requires_chi" }
     [problems, notes]
   end
 
@@ -243,9 +302,10 @@ module ReleaseTools
 
   # --- bump ---------------------------------------------------------------
 
-  # VERSION, the system manifest's version, Gemfile.lock's samagotchi lines
-  # and the CHANGELOG. requires_chi lines are never touched: a bundle that
-  # needs the new chi says so in its own change. No commit.
+  # VERSION, the system manifest's version, Gemfile.lock's samagotchi lines,
+  # the CHANGELOG, and the requires_chi of every bundle marked
+  # requires_chi_next (raised to ">= version", the marker dropped). No other
+  # requires_chi is touched. No commit.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
 
@@ -254,11 +314,13 @@ module ReleaseTools
 
     changelog = File.join(root, CHANGELOG)
     new_changelog = release_changelog(File.read(changelog), version, date)
+    raised = raised_requires_chi(root, version)
 
     edit(root, VERSION_FILE) { |t| t.sub(/VERSION = "[^"]+"/, %(VERSION = "#{version}")) }
     edit(root, SYSTEM_MANIFEST) { |t| t.sub(/^version: .*$/, "version: #{version}") }
     edit(root, "Gemfile.lock") { |t| t.gsub(/^(\s+)samagotchi \(#{Regexp.escape(current)}\)$/, "\\1samagotchi (#{version})") }
     File.write(changelog, new_changelog)
+    raised.each { |path, text| File.write(path, text) }
     current
   end
 
@@ -327,6 +389,10 @@ module ReleaseTools
     changelog = File.join(root, CHANGELOG)
     section = File.exist?(changelog) ? changelog_section(File.read(changelog), version) : nil
     problems << "CHANGELOG.md has no (or an empty) ## [#{version}] section" if section.to_s.empty?
+    requires_chi_next(root).each_key do |dir|
+      problems << "#{File.basename(dir)}: #{NEXT_KEY} is still set: raise its requires_chi to \">= #{version}\" " \
+                  "and drop the marker (rake release:bump does both)"
+    end
     problems
   end
 end

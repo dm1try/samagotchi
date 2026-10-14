@@ -83,11 +83,14 @@ namespace :bundles do
 end
 
 namespace :release do
-  desc "Bump VERSION, the system bundle, Gemfile.lock and the CHANGELOG (Unreleased → [VERSION] - today); no commit"
+  desc "Bump VERSION, the system bundle, Gemfile.lock and the CHANGELOG (Unreleased → [VERSION] - today), and raise " \
+       "the requires_chi of bundles marked requires_chi_next; no commit"
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
+    marked = ReleaseTools.requires_chi_next(ROOT).keys.map { |dir| File.basename(dir) }
     old = ReleaseTools.bump!(ROOT, version)
     puts "Bumped #{old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, Gemfile.lock, CHANGELOG.md"
+    puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{marked.join(", ")}" unless marked.empty?
     puts "Review with `git diff`, then run rake release:check and commit."
   rescue ReleaseTools::Error => e
     abort "release:bump: #{e.message}"

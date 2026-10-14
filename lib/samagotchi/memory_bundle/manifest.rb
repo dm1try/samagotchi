@@ -24,6 +24,9 @@ module Samagotchi
     #     file: plugin.rb
     #     sha256: sha256:0a1b...
     #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
+    #   requires_chi_next: true     # optional, shipped bundles — ignored here:
+    #                          #   `rake release:bump` raises requires_chi to
+    #                          #   the released chi (docs/releasing.md)
     #   needs:                 # optional — outside commands the memories rely on
     #     - command: gh        #   (checked on PATH, never installed; docs/memory.md)
     #       why: reads PRs     #   optional

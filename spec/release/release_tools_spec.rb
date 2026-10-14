@@ -216,7 +216,7 @@ RSpec.describe ReleaseTools do
           change_bundle(">= 0.1.0")
           expect(described_class.bundles_check(tmp)).to eq(
             [[], ["b: changed since v0.1.0 and requires_chi \">= 0.1.0\" admits that chi: " \
-                  "raise it if the change uses anything newer"]]
+                  "mark it requires_chi_next if the change uses anything newer"]]
           )
         end
 
@@ -225,6 +225,27 @@ RSpec.describe ReleaseTools do
           path = File.join(tmp, bundle, "manifest.yml")
           File.write(path, "#{File.read(path)}includes:\n- other\n")
           expect(described_class.bundles_check(tmp)).to eq([[], []])
+        end
+
+        it "notes a requires_chi_next marker instead of warning, and passes with it (main keeps loading the bundle)" do
+          change_bundle(">= 0.1.0")
+          path = File.join(tmp, bundle, "manifest.yml")
+          File.write(path, "#{File.read(path)}requires_chi_next: true\n")
+          expect(described_class.bundles_check(tmp, ci: true))
+            .to eq([[], ["b: requires_chi_next is set: rake release:bump raises its requires_chi"]])
+          expect(described_class.bundles_check(tmp).first).to eq([])
+        end
+
+        it "fails a requires_chi_next that isn't true or a one-line reason" do
+          change_bundle(">= 0.1.0")
+          path = File.join(tmp, bundle, "manifest.yml")
+          File.write(path, "#{File.read(path)}requires_chi_next: [x]\n")
+          expect(described_class.bundles_check(tmp).first)
+            .to eq(["b: requires_chi_next: must be `true` or a one-line reason, on its own top-level line"])
+          File.write(path, File.read(path).sub("requires_chi_next: [x]\n", "requires_chi_next: >\n  a reason\n"))
+          expect(described_class.bundles_check(tmp).first.size).to eq(1)
+          File.write(path, File.read(path).sub("requires_chi_next: >\n  a reason\n", "requires_chi_next: false\n"))
+          expect(described_class.bundles_check(tmp).first).to eq([])
         end
 
         it "is quiet when the changed bundle requires a newer chi, or the bundle didn't change" do
@@ -348,6 +369,25 @@ RSpec.describe ReleaseTools do
       expect(read("lib/samagotchi/bundles/mcp/manifest.yml")).to include('">= 0.1.37"')
     end
 
+    it "raises a marked bundle's requires_chi to the new version and drops the marker; leaves the others" do
+      write("lib/samagotchi/bundles/btw/manifest.yml", "name: btw\nversion: 0.1.2\nrequires_chi_next: the new hook\nplugin:\n  file: p.rb\n")
+      write("lib/samagotchi/bundles/mcp/manifest.yml",
+            "name: mcp\nversion: 0.3.1\nrequires_chi: \">= 0.1.37\"\nrequires_chi_next: true\n")
+      write("lib/samagotchi/bundles/skills/manifest.yml", "name: skills\nversion: 0.1.0\nrequires_chi: \">= 0.1.30\"\n")
+      described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+      expect(read("lib/samagotchi/bundles/btw/manifest.yml"))
+        .to eq("name: btw\nversion: 0.1.2\nrequires_chi: \">= 0.2.0\"\nplugin:\n  file: p.rb\n")
+      expect(read("lib/samagotchi/bundles/mcp/manifest.yml")).to eq("name: mcp\nversion: 0.3.1\nrequires_chi: \">= 0.2.0\"\n")
+      expect(read("lib/samagotchi/bundles/skills/manifest.yml")).to include('">= 0.1.30"')
+      expect(described_class.requires_chi_next(tmp)).to be_empty
+    end
+
+    it "changes nothing when a marker can't be rewritten" do
+      write("lib/samagotchi/bundles/mcp/manifest.yml", "name: mcp\nversion: 0.3.1\nrequires_chi_next: [1]\n")
+      expect { described_class.bump!(tmp, "0.2.0") }.to raise_error(ReleaseTools::Error, /mcp: requires_chi_next: must be/)
+      expect([described_class.gem_version(tmp), read("CHANGELOG.md")]).to eq(["0.1.37", "# Changelog\n\n## [Unreleased]\n\n- chi.\n"])
+    end
+
     it "refuses a malformed or lower version, and changes nothing then" do
       expect { described_class.bump!(tmp, "v0.2.0") }.to raise_error(ReleaseTools::Error, /isn't a version/)
       expect { described_class.bump!(tmp, "0.1.9") }.to raise_error(ReleaseTools::Error, /isn't above/)
@@ -409,6 +449,16 @@ RSpec.describe ReleaseTools do
       expect(problems.size).to eq(3)
       expect(problems.join("\n")).to include("uncommitted changes", "VERSION 0.2.0 != system bundle 0.1.37",
                                              "no (or an empty) ## [0.2.0] section")
+    end
+
+    it "names a bundle still marked requires_chi_next: the release didn't raise its requires_chi" do
+      write("lib/samagotchi/bundles/b/manifest.yml", "name: b\nversion: 0.1.0\nrequires_chi_next: true\n")
+      git("add", ".")
+      git("commit", "-q", "-m", "marker")
+      expect(described_class.consistency_problems(tmp)).to eq(
+        ["b: requires_chi_next is still set: raise its requires_chi to \">= 0.2.0\" and drop the marker " \
+         "(rake release:bump does both)"]
+      )
     end
   end
 end

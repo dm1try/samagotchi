@@ -24,7 +24,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 |---|---|
 | `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
-| `Manifest` | parses/validates `manifest.yml` (files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers) and writes it (`Manifest.write`, for Builder) |
+| `Manifest` | parses/validates `manifest.yml` (files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers) and writes it (`Manifest.write`, for Builder). It ignores `requires_chi_next`, a shipped bundle's release-time marker (`script/release/release_tools.rb`, docs/releasing.md) |
 | `Installer` | one install/upgrade/dry run of one bundle (below) |
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps) |
 | `Merger` | 3-way classification per file: `install`, `fast_forward`, `keep`, `noop`, `conflict` |

@@ -62,6 +62,16 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(manifest.requires_chi).to eq(">= 0.1.0")
     end
 
+    it "reads a requires_chi_next: marker (raised at release time, docs/releasing.md) like any manifest, " \
+       "its requires_chi unchanged" do
+      src = write_source(requires_chi: ">= 0.1.0")
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path) + "requires_chi_next: the new chi.thing hook\n")
+      expect(described_class.read(dir: src).requires_chi).to eq(">= 0.1.0")
+      install(src)
+      expect(provenance.record.requires_chi).to eq(">= 0.1.0")
+    end
+
     it "has no plugin when the manifest names none" do
       manifest = described_class.read(dir: write_source(plugin: nil))
       expect(manifest.plugin).to be_nil
