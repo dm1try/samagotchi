@@ -26,7 +26,7 @@ require_relative "../host_registry"
 require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
-require_relative "../effective_model"
+require_relative "../session_setting"
 require_relative "../thinking"
 require_relative "../sampling_settings"
 require_relative "../served_model"
@@ -557,43 +557,6 @@ module Samagotchi
         nil
       end
 
-      # A session's LLM context strategy, apply rule and budget, each with
-      # where it came from (LLMContextStrategy::Explained#summary), as its
-      # worker would resolve them; nil when they can't be.
-      # (LLMContextStrategy.for_session, shared with the ctx % the session
-      # lists count.)
-      def llm_context_for(session)
-        LLMContextStrategy.for_session(session, registry: host_registry)
-      end
-
-      # A session's toolkit as its file names it ({name:, label:}), nil on
-      # full: without a worker nothing resolves it (a bundle's kits load in
-      # the worker), so the tools it leaves out aren't known here.
-      def toolkit_for(session)
-        toolkit = session.toolkit
-        toolkit && !toolkit.full? ? { name: toolkit.name, label: toolkit.label } : nil
-      end
-
-      # A session's thinking level with where it came from and its own
-      # (SettingExplained#summary), as its worker would resolve it; nil
-      # when it can't be. Config and the registry only: no network.
-      def thinking_for(session)
-        EffectiveModel.of_session(session, registry: host_registry).thinking_explained(own: session.thinking)&.summary
-      rescue StandardError
-        nil
-      end
-
-      # A session's reasoning_history level with where it came from and its
-      # own (SettingExplained#summary), as its worker would resolve it; nil
-      # on a native host (it ignores the level) or when it can't be. Config
-      # and the registry only: no network.
-      def reasoning_history_for(session)
-        EffectiveModel.of_session(session, registry: host_registry)
-                      .reasoning_history_explained(own: session.reasoning_history)&.summary
-      rescue StandardError
-        nil
-      end
-
       # Built again when config.yml's hosts: changed (compared as read: the
       # YAML read is mtime-cached), so the model picker lists a host added
       # while chi web runs. An injected registry (specs) stays.
@@ -845,19 +808,13 @@ module Samagotchi
         else
           session_json = session_json.merge(saved_served_model(session, persisted))
         end
-        # The LLM context strategy the next turn runs under (the info bar's
-        # chip): the worker's, else worked out here from the session file.
-        session_json = session_json.merge(llm_context: (snapshot && snapshot["llm_context"]) || llm_context_for(session))
-        # The thinking level the next turn runs at (the think chip), the same way.
-        session_json = session_json.merge(thinking: (snapshot && snapshot["thinking"]) || thinking_for(session))
-        # Its reasoning history (the reasoning chip): the worker's (nil on a
-        # native host), else the server's reading (an older worker, none).
-        history = snapshot&.key?("reasoning_history") ? snapshot["reasoning_history"] : reasoning_history_for(session)
-        session_json = session_json.merge(reasoning_history: history)
-        # Its toolkit when it isn't full (the tools chip): the worker's, which
-        # resolved it, else the name saved in the session file.
-        toolkit = snapshot&.key?("toolkit") ? snapshot["toolkit"] : toolkit_for(session)
-        session_json = session_json.merge(toolkit: toolkit)
+        # The per-session settings' chips (the info bar's llm ctx, think,
+        # reasoning and tools): the worker's, else worked out here from the
+        # session file (SessionSetting#snapshot_value, #saved_summary).
+        SessionSetting::ALL.each do |setting|
+          chip = setting.snapshot_value(snapshot) { setting.saved_summary(session, registry: host_registry) }
+          session_json = session_json.merge(setting.key => chip)
+        end
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {

@@ -15,6 +15,7 @@ require_relative "steer"
 require_relative "turn_note"
 require_relative "model_profile"
 require_relative "effective_model"
+require_relative "session_setting"
 require_relative "thinking_notices"
 require_relative "cancellation_controller"
 require_relative "context_window"
@@ -1067,8 +1068,8 @@ module Samagotchi
       model = effective_model
       served, served_for = served_model_for(snapshot, model: model)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
-                                served_expected_by: model.served_expected_by(served), llm_context: llm_context_chip(model),
-                                thinking: thinking_chip(model), reasoning_history: reasoning_history_chip(model),
+                                served_expected_by: model.served_expected_by(served),
+                                **setting_chips(SessionSetting::STATS, model),
                                 prompt_notes: prompt_notes.map(&:to_h), prompt_files: @prompt_builder.prompt_files,
                                 price_host: model.host_name)
       unless snapshot.dig(:context, :window_tokens)
@@ -1116,7 +1117,7 @@ module Samagotchi
 
     # The session's own llm_context values, nil when it has none.
     # @return [LLMContextOverride, nil]
-    def llm_context_override = @session&.llm_context
+    def llm_context_override = SessionSetting::LLM_CONTEXT.own(@session)
 
     # Set the session's own llm_context values (an empty override unsets
     # them); the next turn's start resolves them, never a running one (its
@@ -1125,7 +1126,7 @@ module Samagotchi
     def llm_context_override=(override)
       raise ArgumentError, "no session yet" unless @session
 
-      @session.llm_context = override
+      SessionSetting::LLM_CONTEXT.set(@session, override)
       # The status a later client reads counts against the new budget.
       @last_context_status = saved_context_status(@metrics.snapshot[:context]) || @last_context_status if @last_context_status
     end
@@ -1211,7 +1212,7 @@ module Samagotchi
 
     # The session's own reasoning_history level, nil when it has none.
     # @return [Symbol, nil]
-    def reasoning_history_override = @session&.reasoning_history
+    def reasoning_history_override = SessionSetting::REASONING_HISTORY.own(@session)
 
     # Set the session's own reasoning_history level (nil unsets it); the
     # next turn's start resolves it. The caller saves the session.
@@ -1219,12 +1220,12 @@ module Samagotchi
     def reasoning_history_override=(level)
       raise ArgumentError, "no session yet" unless @session
 
-      @session.reasoning_history = level
+      SessionSetting::REASONING_HISTORY.set(@session, level)
     end
 
     # The session's own thinking level, nil when it has none.
     # @return [Symbol, nil]
-    def thinking_override = @session&.thinking
+    def thinking_override = SessionSetting::THINKING.own(@session)
 
     # What a thinking level change costs the effective model's prompt
     # cache (Thinking.cache_cost): :full, :provider or :tail.
@@ -1240,7 +1241,7 @@ module Samagotchi
     def thinking_override=(level)
       raise ArgumentError, "no session yet" unless @session
 
-      @session.thinking = level
+      SessionSetting::THINKING.set(@session, level)
     end
 
     # The model the server serves for the current model, and the name asked
@@ -1310,10 +1311,7 @@ module Samagotchi
         served_model_for: served_pair[1],
         served_expected_by: model&.served_expected_by(served_pair[0]),
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context], model: model),
-        llm_context: model && llm_context_chip(model),
-        thinking: model && thinking_chip(model),
-        reasoning_history: model && reasoning_history_chip(model),
-        toolkit: toolkit_summary,
+        **setting_chips(SessionSetting::ALL, model),
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
@@ -2813,11 +2811,11 @@ module Samagotchi
     # The window as +model+'s loop would see it (EffectiveModel#context_window).
     def current_context_window(model) = model.context_window
 
-    # The chips /stats and the session state carry (the web's info bar),
-    # from one EffectiveModel.
-    def llm_context_chip(model) = model.llm_context_explained(llm_context_session_args)&.summary(llm_context_override)
-    def thinking_chip(model) = model.thinking_explained(own: thinking_override)&.summary
-    def reasoning_history_chip(model) = model.reasoning_history_explained(own: reasoning_history_override)&.summary
+    # +settings+' chips (SessionSetting), the model's from +model+ (nil
+    # when it doesn't resolve): /stats, the session state, a :command_ran.
+    def setting_chips(settings, model)
+      settings.to_h { |setting| [setting.key, setting.model? ? setting.chip_for(model, @session) : toolkit_summary] }
+    end
 
     # The effective model now (EffectiveModel.of): resolved on each call,
     # never kept (config.yml, a model listing and another process's saved

@@ -22,6 +22,7 @@ require_relative "llm/errors"
 require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
+require_relative "session_setting"
 require_relative "queued_command"
 require_relative "model_profile"
 require_relative "child_reports"
@@ -873,15 +874,10 @@ module Samagotchi
       event[:anytime] = true if anytime
       # Its line was shown at its command_queued (waits: turn_end).
       event[:queued] = true if command.waits_for_turn_end?
-      # /llm-context or /model: what the next turn runs under now (the web's chip).
-      event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])
-      # /thinking or /model: the level the next turn runs at (the web's chip).
-      event[:thinking] = @engine.thinking_explained&.summary if changed.intersect?(%i[thinking model])
-      # /reasoning-history or /model: the level the next turn runs under
-      # (the web's chip); nil on a native host, which ignores it.
-      event[:reasoning_history] = @engine.reasoning_history_explained&.summary if changed.intersect?(%i[reasoning_history model])
-      # /toolkit: what the next turn declares (the web's chip; nil on full).
-      event[:toolkit] = @engine.toolkit_summary if changed.include?(:toolkit)
+      # The chips the command moved (SessionSetting#changed_by): what the next
+      # turn runs under now (/llm-context, /thinking, /reasoning-history,
+      # /toolkit, and /model for the model's).
+      SessionSetting::ALL.each { |setting| event[setting.key] = setting.summary(@engine) if setting.changed_by?(changed) }
       event[:confirm] = confirm.to_h if confirm
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
