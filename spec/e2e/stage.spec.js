@@ -190,8 +190,13 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   };
   const before = await stageEl(page).evaluate((el) => el.offsetHeight);
   await page.setViewportSize({ width: 390, height: 420 });
+  // setViewportSize returns with the new innerHeight but before the page's
+  // next frame, whose resize steps run fitCap: read the height in that
+  // frame's animation callbacks (after the resize, before its paint), not
+  // at once. (The card can already be in sight at the old height.)
+  const clamped = await stageEl(page).evaluate((el) => new Promise((done) => requestAnimationFrame(() => done(el.offsetHeight))));
+  expect(clamped).toBeLessThan(before);
   await expect.poll(inSight).toBe(true);
-  expect(await stageEl(page).evaluate((el) => el.offsetHeight)).toBeLessThan(before);
   await page.setViewportSize({ width: 390, height: 700 });
   await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBe(before);
   await expect.poll(inSight).toBe(true);
