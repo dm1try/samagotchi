@@ -15,6 +15,7 @@ require_relative "steer"
 require_relative "turn_note"
 require_relative "model_profile"
 require_relative "effective_model"
+require_relative "thinking_notices"
 require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
@@ -198,6 +199,9 @@ module Samagotchi
       # The session's toolkit: the kits (the plugins' too, chi.toolkit),
       # what its next turn declares, the turn-start apply.
       @toolkit_binding = build_toolkit_binding
+      # The notices a turn's thinking level leads to (once per session and host).
+      @thinking_notices = ThinkingNotices.new(session: -> { @session }, profile: -> { self.profile },
+                                              notify: ->(text, level, source) { hook_notify(text, level, source) })
       # The tools plugins publish without declaring (chi.tool_source), and
       # the search and call tools that reach them (Tools::ToolIndex).
       @tool_index = Tools::ToolIndex.new
@@ -2019,9 +2023,9 @@ module Samagotchi
       model = effective_model
       vision = turn_vision(session, model)
       sampling = model.sampling
-      @turn_thinking = [thinking_level(model), model.target]
-      announce_thinking_level(*@turn_thinking)
-      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first,
+      level = thinking_level(model)
+      @thinking_notices.turn_started(level, model.target)
+      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: level,
                             reasoning_history: reasoning_history_level(model), model_name: nil,
                             window_setting: nil, llm_context: nil, price: nil)
     end
@@ -2353,114 +2357,6 @@ module Samagotchi
 
     # The effective model's thinking level (Thinking.resolve), read each turn.
     def turn_thinking = model_setting(Thinking::DEFAULT) { |model| thinking_level(model) }
-
-    # An effort on a native host, which has no knob for it: said once per
-    # session and host.
-    def announce_thinking_level(level, target)
-      return if target.entry.chat? || Thinking.native(level, profile).honoured
-
-      thinking_notice_once(:unsupported, target, :info,
-                           "#{level} isn't supported by native #{profile.name} on #{target.entry.name}; " \
-                           "thinking stays as the model has it")
-    rescue StandardError
-      nil
-    end
-
-    # An effort on a llama.cpp chat host whose chat template takes none
-    # (its /props says so): said once per session and host, as for a native
-    # host. Read from the /props answer the turn's window probe left in the
-    # cache, so it asks the server nothing.
-    def announce_effort_ignored
-      level, target = @turn_thinking
-      return unless target&.entry&.chat? && Thinking::EFFORTS.include?(level)
-
-      client = target.client
-      props = client.cached_server_props(model: target.bare_model)
-      return unless Thinking.effort_ignored?(level, props)
-
-      thinking_notice_once(:unsupported, target, :info,
-                           "#{level} isn't supported by #{target.bare_model}'s chat template on #{target.entry.name} " \
-                           "(/props: supports_reasoning_effort false); thinking stays as the model has it")
-    rescue StandardError
-      nil
-    end
-
-    # Whether this generation's thinking lane said anything: nil while it
-    # streamed none, false while only whitespace (Gemma 4's empty thought
-    # with thinking off), true once a real thought came.
-    def note_generation_thought(thinking)
-      return if thinking.empty?
-
-      @generation_thought ||= thinking.match?(/\S/)
-    end
-
-    # Thinking off, and the model thought anyway: logged each time, said
-    # once per session and host. A thinking lane of whitespace alone is no
-    # thought.
-    def check_thinking_honoured(event)
-      level, target = @turn_thinking
-      chars = event[:thinking_chars].to_i
-      return unless level == :off && chars.positive? && target
-      return if @generation_thought == false
-
-      Log.warn(:model, "thinking_not_honoured", level: level, host: target.entry.name, model: target.bare_model, chars: chars)
-      thinking_notice_once(:not_honoured, target, :warn,
-                           "off wasn't honoured by #{target.bare_model} on #{target.entry.name} " \
-                           "(#{chars} chars of thinking); a sampling: override on the host or model may turn it off " \
-                           "(see Thinking in docs/configuration.md)")
-    rescue StandardError
-      nil
-    end
-
-    # The host refused the level's request fields (gpt-oss can't turn
-    # thinking off) and the chat loop sent the request without them: said
-    # once per session and host, standing in for the not-honoured notice.
-    def thinking_refused(event)
-      _level, target = @turn_thinking
-      return unless target
-
-      Log.warn(:model, "thinking_refused", level: event[:level], host: target.entry.name, model: event[:model],
-                                           detail: event[:detail])
-      (@thinking_notices ||= Set.new) << [@session&.id, target.entry.name, :not_honoured]
-      thinking_notice_once(:refused, target, :warn,
-                           "#{target.entry.name} refused thinking: #{event[:level]} for #{event[:model]} (#{event[:detail]}); " \
-                           "sent without it, so thinking stays as the model has it")
-    rescue StandardError
-      nil
-    end
-
-    # The host refused a sampling field (the empty-answer retry's
-    # temperature on a model that takes none) and the chat loop asked again
-    # without them, as it will for the model from now on: a log line.
-    def sampling_refused(event)
-      Log.info(:model, "sampling_refused", model: event[:model], detail: event[:detail])
-    rescue StandardError
-      nil
-    end
-
-    # The host refused the model's reasoning sent back (reasoning_history)
-    # and the chat loop asked the step again without it, as it will from
-    # now on: logged, and said once per session and host.
-    def reasoning_history_refused(event)
-      _level, target = @turn_thinking
-      return unless target
-
-      Log.warn(:model, "reasoning_history_refused", level: event[:level], host: target.entry.name, model: event[:model],
-                                                    detail: event[:detail])
-      return unless (@thinking_notices ||= Set.new).add?([@session&.id, target.entry.name, :reasoning_history_refused])
-
-      hook_notify("#{target.entry.name} refused reasoning sent back (reasoning_history: #{event[:level]}) for " \
-                  "#{event[:model]} (#{event[:detail]}); sent without it from now on", :warn, "reasoning history")
-    rescue StandardError
-      nil
-    end
-
-    def thinking_notice_once(kind, target, level, text)
-      key = [@session&.id, target.entry.name, kind]
-      return unless (@thinking_notices ||= Set.new).add?(key)
-
-      hook_notify(text, level, "thinking")
-    end
 
     # +model+'s ReasoningHistory level, the session's own first; the
     # default when it can't be resolved.
@@ -2803,29 +2699,26 @@ module Samagotchi
         @steer_cut.observe(event, progress)
         case event[:type]
         when :generation_started
-          @generation_thought = nil
+          @thinking_notices.generation_started
           watch&.started(event[:iteration])
         when :generation_retrying
           # A dropped stream's step asked again: it streams from the start.
           if event[:restarted]
-            @generation_thought = nil
+            @thinking_notices.generation_started
             watch&.started(event[:iteration], restarted: true)
           end
-        when :generation_chunk then note_generation_thought(progress[:thinking])
+        when :generation_chunk then @thinking_notices.note_thought(progress[:thinking])
         end
         # The chat loop asked again without the thinking fields or the
         # reasoning sent back: a notice, not an event of its own.
-        next thinking_refused(event) if event[:type] == :thinking_refused
-        next reasoning_history_refused(event) if event[:type] == :reasoning_history_refused
-        next sampling_refused(event) if event[:type] == :sampling_refused
+        next @thinking_notices.thinking_refused(event) if event[:type] == :thinking_refused
+        next @thinking_notices.reasoning_history_refused(event) if event[:type] == :reasoning_history_refused
+        next @thinking_notices.sampling_refused(event) if event[:type] == :sampling_refused
 
         event = with_generation_report(event) if event[:type] == :generation_completed
         emit_event(on_event, event)
         watch.feed(**progress) if watch && progress
-        if event[:type] == :generation_completed
-          check_thinking_honoured(event)
-          announce_effort_ignored
-        end
+        @thinking_notices.generation_completed(event) if event[:type] == :generation_completed
       end
     end
 
