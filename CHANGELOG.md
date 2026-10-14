@@ -39,6 +39,8 @@ and commands may change between minor versions. How releases are made:
 
 - A bundle tool named like an MCP tool (`mcp_fs_read`) no longer takes `call_tool` calls of that MCP tool out of
   `mcp_*` rules.
+- Web: on a phone the start page's model, thinking and LLM context chips wrap instead of being cut short; a toast no
+  longer covers a fresh link's open model panel; the family popover's status dots keep pulsing in step.
 
 ## [0.68.0] - 2026-10-14
 
