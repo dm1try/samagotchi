@@ -220,6 +220,13 @@ RSpec.describe ReleaseTools do
           )
         end
 
+        it "is quiet for a meta bundle: installing it checks each member's own requires_chi" do
+          change_bundle(">= 0.1.0")
+          path = File.join(tmp, bundle, "manifest.yml")
+          File.write(path, "#{File.read(path)}includes:\n- other\n")
+          expect(described_class.bundles_check(tmp)).to eq([[], []])
+        end
+
         it "is quiet when the changed bundle requires a newer chi, or the bundle didn't change" do
           git("commit", "-q", "--allow-empty", "-m", "after the tag")
           expect(described_class.bundles_check(tmp)).to eq([[], []])

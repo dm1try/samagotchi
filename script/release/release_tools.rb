@@ -165,11 +165,16 @@ module ReleaseTools
   # A bundle changed since the tag whose requires_chi the tagged chi already
   # meets: if the change uses anything new in chi, that chi would install it
   # and break (guardrails 0.2.0 and `models:` under 0.8.0). A warning only:
-  # most bundle changes need nothing new.
+  # most bundle changes need nothing new. A meta bundle (a profile, its
+  # includes:) is left out: installing it checks each member's own
+  # requires_chi (Profile.install_member), so its floor guards nothing.
   def stale_requires_chi(root, tag)
     tagged = Gem::Version.new(tag.delete_prefix("v"))
     bundle_dirs(root).filter_map do |dir|
-      requires = YAML.safe_load_file(File.join(dir, "manifest.yml"))["requires_chi"] or next
+      manifest = YAML.safe_load_file(File.join(dir, "manifest.yml"))
+      next if manifest["includes"]
+
+      requires = manifest["requires_chi"] or next
       next unless Gem::Requirement.new(*requires.to_s.split(",").map(&:strip)).satisfied_by?(tagged)
 
       _, same = git(root, "diff", "--quiet", tag, "--", dir.delete_prefix("#{File.expand_path(root)}/"))
