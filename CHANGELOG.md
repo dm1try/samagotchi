@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-10-14
+
 ### Added
 
 - Web: a new chain link (continue →) shows the model picker in its composer until its first turn, so the next link can
@@ -2994,7 +2996,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.68.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.69.0...HEAD
+[0.69.0]: https://github.com/dm1try/samagotchi/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/dm1try/samagotchi/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/dm1try/samagotchi/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/dm1try/samagotchi/compare/v0.65.0...v0.66.0
