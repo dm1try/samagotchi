@@ -782,40 +782,15 @@ module Samagotchi
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
         snapshot = live && live["session_state_snapshot"]
-        last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
+        last_event_seq = live_or_saved(snapshot, "event_seq") { bridge_event_seq(id) }
         current_turn = turn_snapshot && turn_snapshot["current_turn"]
         owner = session_owner(id)
-        # The file's question only while a worker owns the session: one a
-        # dead worker saved can't be answered (its turn is gone), nor a chi
-        # REPL's (it shares nothing with the web).
-        # A question between turns (the step-limit one) is the snapshot's own.
-        pending = if turn_snapshot
-                    current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
-                  elsif owner&.worker?
-                    session.pending_question
-                  end
-        # A /model in the worker changes it before the file catches up.
-        session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
-        session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
+        pending = shown_pending_question(session, turn_snapshot, owner)
         # What the worker's server said it served for that model (after a turn);
         # without a worker, what the session's analytics.json last saved.
         persisted = snapshot ? nil : read_analytics(id)
-        if snapshot
-          session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"],
-                                            served_expected_by: snapshot["served_expected_by"])
-          # The model notes its prompt carries now (a /model there changes them).
-          session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
-        else
-          session_json = session_json.merge(saved_served_model(session, persisted))
-        end
-        # The per-session settings' chips (the info bar's llm ctx, think,
-        # reasoning and tools): the worker's, else worked out here from the
-        # session file (SessionSetting#snapshot_value, #saved_summary).
-        SessionSetting::ALL.each do |setting|
-          chip = setting.snapshot_value(snapshot) { setting.saved_summary(session, registry: host_registry) }
-          session_json = session_json.merge(setting.key => chip)
-        end
-        raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
+        session_json = shown_session_json(session, snapshot, owner, persisted)
+        raw_messages = live_or_saved(turn_snapshot, "messages") { session.messages }
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {
           session: session_json,
@@ -834,7 +809,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: turn_snapshot ? Array(turn_snapshot["init_tasks"]) : [],
-          cards: cards_for_display(turn_snapshot ? turn_snapshot["cards"] : saved_cards(id)),
+          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id) }),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
@@ -851,6 +826,54 @@ module Samagotchi
         error_response(404, "not_found", e.message)
       end
 
+      # A live worker's +key+ as its reading (+live+: a snapshot, a tail)
+      # says it, nil included; without a worker (+live+ nil) the block's,
+      # the server's own reading of the saved session. A nil value from a
+      # worker is not a missing one (contrast SessionSetting#snapshot_value's
+      # :or).
+      def live_or_saved(live, key)
+        live ? live[key] : yield
+      end
+
+      # The file's question only while a worker owns the session: one a
+      # dead worker saved can't be answered (its turn is gone), nor a chi
+      # REPL's (it shares nothing with the web).
+      # A question between turns (the step-limit one) is the snapshot's own.
+      def shown_pending_question(session, turn_snapshot, owner)
+        if turn_snapshot
+          current_turn = turn_snapshot["current_turn"]
+          current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
+        elsif owner&.worker?
+          session.pending_question
+        end
+      end
+
+      # The full show's session part: the file's, with what a live worker's
+      # state +snapshot+ knows first (its model, status, served model,
+      # prompt notes and chips); without one, the served model from
+      # +persisted+ (analytics.json). Sets a worker's model on +session+:
+      # a /model in the worker changes it before the file catches up.
+      def shown_session_json(session, snapshot, owner, persisted)
+        session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
+        session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
+        if snapshot
+          session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"],
+                                            served_expected_by: snapshot["served_expected_by"])
+          # The model notes its prompt carries now (a /model there changes them).
+          session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
+        else
+          session_json = session_json.merge(saved_served_model(session, persisted))
+        end
+        # The per-session settings' chips (the info bar's llm ctx, think,
+        # reasoning and tools): the worker's, else worked out here from the
+        # session file (SessionSetting#snapshot_value, #saved_summary).
+        SessionSetting::ALL.each do |setting|
+          chip = setting.snapshot_value(snapshot) { setting.saved_summary(session, registry: host_registry) }
+          session_json = session_json.merge(setting.key => chip)
+        end
+        session_json
+      end
+
       # ?cards=1: the page's re-read when a card arrives, for its rendered
       # body (the stream carries the card's plain text only). The worker's
       # cards from its light GET tail, else the saved ones; the session file
@@ -859,7 +882,7 @@ module Samagotchi
         return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
 
         tail = live_tail(id)
-        json_response(200, { cards: cards_for_display(tail ? tail["cards"] : saved_cards(id)) })
+        json_response(200, { cards: cards_for_display(live_or_saved(tail, "cards") { saved_cards(id) }) })
       end
 
       # ?tail=1: the page's re-read at the end of a turn wants the final

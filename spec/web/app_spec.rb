@@ -1446,6 +1446,23 @@ RSpec.describe Samagotchi::Web::App do
       ensure
         FileUtils.rm_rf(state_dir) if state_dir
       end
+
+      # #live_or_saved: a live worker's missing value is its answer, not a
+      # reason to read the server's (the saved cards, the bridge's seq).
+      it "with a live worker that names no cards nor event_seq, hands out none (no fallback to the saved ones)" do
+        app = build_app(state_dir: Dir.mktmpdir)
+        live["snapshot"].delete("cards")
+        live["session_state_snapshot"].delete("event_seq")
+        allow(app).to receive(:saved_cards).and_return([{ "type" => "hook_notice", "text" => "saved" }])
+        allow(app).to receive(:bridge_event_seq).and_return(99)
+
+        payload = cards_of(app, "/api/sessions/s1")
+
+        expect(payload["cards"]).to eq([])
+        expect(payload["last_event_seq"]).to be_nil
+        expect(app).not_to have_received(:saved_cards)
+        expect(app).not_to have_received(:bridge_event_seq)
+      end
     end
 
     describe "?parts=1 (the turn view's reload: what each step did)" do
