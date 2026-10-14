@@ -11,7 +11,7 @@
 === /codex validate From your thinking:
 > the cache key is stable
 confirm (a quote)
-"sent to Codex: validate · the cache key is stable; Codex's answer comes as the codex-review context"
+"sent to Codex: validate · the cache key is stable; Codex's answer comes as the codex-outbox context"
 === last send
 {
   "at": "<AT>",
@@ -21,7 +21,7 @@ confirm (a quote)
   "payload": null
 }
 === /codex context  some background (context)
-"sent to Codex: context · some background; Codex's answer comes as the codex-review context"
+"sent to Codex: context · some background; Codex's answer comes as the codex-outbox context"
 === /codex last (the last answer)
 "sent to Codex: context · chi's last answer: The fix is in lib/a.rb."
 === last send

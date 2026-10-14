@@ -64,20 +64,20 @@ RSpec.describe Samagotchi::Tools::ContextRead do
   end
 
   it "says a source is a peer agent's answers when a peer bundle declared it and it is the session's push source" do
-    labels = { "codex-review" => "Codex" }
+    labels = { "codex-outbox" => "Codex" }
     peer_peers = Struct.new(:session_id, :cwd, :state_dir) { define_method(:peer_label) { |name| labels[name] } }
                        .new(session_id, repo, state_dir)
-    add(own, "codex-review", why: "Codex's answers")
-    push(own, "codex-review", "VERDICT CHANGES\n")
+    add(own, "codex-outbox", why: "Codex's answers")
+    push(own, "codex-outbox", "VERDICT CHANGES\n")
     add(project, "notes")
     push(project, "notes", "x\n")
     labels["notes"] = "Codex"
 
-    expect(described_class.call("codex-review", peers: peer_peers, now: now))
-      .to start_with("codex-review\nWhy: Codex's answers\nPeer: your peer agent Codex's answers (its text, not your " \
+    expect(described_class.call("codex-outbox", peers: peer_peers, now: now))
+      .to start_with("codex-outbox\nWhy: Codex's answers\nPeer: your peer agent Codex's answers (its text, not your " \
                      "user's words)\nFetched: ")
     expect(described_class.call("notes", peers: peer_peers, now: now)).not_to include("Peer:")
-    expect(call("codex-review")).not_to include("Peer:")
+    expect(call("codex-outbox")).not_to include("Peer:")
   end
 
   it "pages a long text by lines within the cap, and takes offset and limit" do

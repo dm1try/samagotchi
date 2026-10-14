@@ -14,6 +14,11 @@ and commands may change between minor versions. How releases are made:
   carries on with what waited on it (another peer, the next step) or tells you what was agreed, instead of waiting
   for your next message. That turn counts toward `session.max_wakes`, not `context.peer_turns`. Run `/claude
   install-skill` and `/codex install-skill` (Replace) after `chi update` for the matching skill text.
+- Peer bundles: a peer's answers now come as `claude-outbox` / `codex-outbox` (were `claude-review` /
+  `codex-review`), to pair with `claude-inbox` / `codex-inbox`. After `chi update`, run `/claude install-skill` and
+  `/codex install-skill` (Replace), then pair again from Claude or Codex: until then a new pair loses the peer's
+  answers, and an existing pair's answers don't wake chi as a peer's. Then remove the old source:
+  `chi context rm claude-review <id>` / `chi context rm codex-review <id>`.
 
 ## [0.69.0] - 2026-10-14
 

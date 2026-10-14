@@ -4,7 +4,7 @@ require_relative "context_sources"
 
 module Samagotchi
   # The attached context sources a loaded peer bundle declared as its
-  # peer's answers (chi.peer_source: claude-review, codex-review), with the
+  # peer's answers (chi.peer_source: claude-outbox, codex-outbox), with the
   # peer's name ("Claude"). In-process only: a source is a peer's because
   # the bundle's code says so, never because of what a source file holds,
   # which a pushing process can write. Uninstalling the bundle ends it.

@@ -9,7 +9,7 @@ require "samagotchi/plugin/peer"
 # this chi session and a Claude Code session the user works with. Claude
 # pairs (its chi-peer skill, scripts/pair): it attaches the `claude-inbox`
 # context, whose hint is its per-session inbox socket
-# (CLAUDE_CODE_MESSAGING_SOCKET), and `claude-review`, where its answers
+# (CLAUDE_CODE_MESSAGING_SOCKET), and `claude-outbox`, where its answers
 # come back as pushes that wake chi.
 #
 # The claude_send tool sends a part of the work (a plan step, a diff, a
@@ -30,7 +30,7 @@ require "samagotchi/plugin/peer"
 # /claude (anytime: it only reads files, writes one and posts to a socket)
 # lets the user send without the model: `/claude` alone is a status card
 # (paired or not, the socket and whether it is there, the last send, the
-# last claude-review answer); `/claude validate|context <text>` sends the
+# last claude-outbox answer); `/claude validate|context <text>` sends the
 # text as it is, titled by its first line; `/claude last` sends the model's
 # last completed answer as context (mid-turn, a worker's ctx.messages holds
 # the running turn's partial text, so the before_turn and after_turn hooks
@@ -51,7 +51,7 @@ require "samagotchi/plugin/peer"
 # socket transport.
 class Plugin < Samagotchi::Plugin::Peer
   INBOX = "claude-inbox"
-  REVIEW = "claude-review"
+  OUTBOX = "claude-outbox"
   BUNDLE = "claude-peer"
   NAME = "Claude"
   APP = "Claude Code"
@@ -76,7 +76,7 @@ class Plugin < Samagotchi::Plugin::Peer
                      "question about. Only when the user asks for it, or to reply to its answer " \
                      "in a peer turn. Needs a paired Claude Code session: without one it fails, " \
                      "and the user pairs from Claude. Claude's answer comes back later as the " \
-                     "claude-review context (a validate's wakes you): don't wait or poll. Never " \
+                     "claude-outbox context (a validate's wakes you): don't wait or poll. Never " \
                      "send secrets or the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,

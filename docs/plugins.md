@@ -663,7 +663,7 @@ index = Samagotchi::Tools::ToolIndex
 ### `chi.peer_source(name, label:)`
 
 Declares a context source as a peer agent's answers: the peer bundles'
-`claude-review` and `codex-review`. Such a source, when it is a pushed source
+`claude-outbox` and `codex-outbox`. Such a source, when it is a pushed source
 of the session's own, wakes the session by the peer loop's rules instead of
 the 10-minute window: up to `context.peer_turns` wake turns in a row, one
 closing wake (outside that count) for an answer whose verdict is `VERDICT OK`,
@@ -671,7 +671,7 @@ and a wake line that names the peer and keeps the turn within the user's task (s
 sources](context.md#peer-sources-the-peer-loop)).
 
 ```ruby
-chi.peer_source "codex-review", label: "Codex"
+chi.peer_source "codex-outbox", label: "Codex"
 ```
 
 - `name`: a context source name (as `chi context add` takes it). Another
@@ -681,7 +681,7 @@ chi.peer_source "codex-review", label: "Codex"
 
 The declaration lives in the session's process only, like a tool: a source
 file can't make itself a peer's, and uninstalling the bundle ends it.
-Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `REVIEW`
+Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `OUTBOX`
 source. Needs chi 0.67.0 (guard it with `chi.respond_to?(:peer_source)`).
 
 ### `chi.ctx`
@@ -1715,7 +1715,7 @@ Claude pairs; without one the bundle costs one tool declaration.
 - **Pairing is Claude's.** chi can't see Claude's inbox, so Claude attaches
   two pushed sources to the chi session: `claude-inbox`, whose hint is its
   per-session inbox socket (`CLAUDE_CODE_MESSAGING_SOCKET`, Claude Code
-  2.1.224 or later), and `claude-review`, where its answers come. You never
+  2.1.224 or later), and `claude-outbox`, where its answers come. You never
   run that yourself:
   1. `/claude install-skill` (once) shows a card with the target,
      `$CLAUDE_CONFIG_DIR/skills/chi-peer/SKILL.md` (else `~/.claude/…`),
@@ -1730,12 +1730,12 @@ Claude pairs; without one the bundle costs one tool declaration.
   2. In Claude Code you say "pair with chi <id or chi web URL>". The skill runs
      `sh <bundle>/scripts/pair <id or URL>`, which attaches `claude-inbox` (the
      socket as its hint, pushed as JSON so a re-pair after a Claude restart
-     refreshes it) and `claude-review`, and lists the session's context. A
+     refreshes it) and `claude-outbox`, and lists the session's context. A
      re-pair keeps Claude's last answer.
   3. Claude answers a validate or a question with a JSON push to
-     `claude-review` (`text`, `summary`, `wake: true`), which wakes chi, the
+     `claude-outbox` (`text`, `summary`, `wake: true`), which wakes chi, the
      first answer too (on chi 0.62 the first one arrives as a note without
-     waking); the model reads it with `context_read claude-review`.
+     waking); the model reads it with `context_read claude-outbox`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
@@ -1750,7 +1750,7 @@ Claude pairs; without one the bundle costs one tool declaration.
   the model:
   - `/claude` alone shows a card: paired or not, the socket and whether its
     file is there (it goes when that Claude session ends), the last send, and
-    Claude's last answer (the `claude-review` summary).
+    Claude's last answer (the `claude-outbox` summary).
   - `/claude validate <text>` and `/claude context <text>` send the text as it
     is, titled by its first line (past a web quote's `From …:` label and a
     quoted line's `> `): paste a selection after them.
@@ -1762,7 +1762,7 @@ Claude pairs; without one the bundle costs one tool declaration.
   - `/claude last` sends the model's last completed answer as context. Mid-turn
     it is the answer before the running turn, never the turn's partial text;
     a cancelled or failed turn has no answer, so the one before it goes.
-- **The peer loop.** The bundle declares `claude-review` a peer's
+- **The peer loop.** The bundle declares `claude-outbox` a peer's
   ([`chi.peer_source`](#chipeer_sourcename-label)), so Claude's answers
   wake chi by the loop's rules ([Waking: peer
   sources](context.md#peer-sources-the-peer-loop)): chi fixes what Claude
@@ -1771,7 +1771,7 @@ Claude pairs; without one the bundle costs one tool declaration.
   round (carry on, or tell you what was agreed). Only a message you type in the web or a TUI starts the count again.
 - **The skill.** `skill_claude_peer` (system scope) tells the model to send
   only when you ask or to reply in a peer turn, to pick the part rather than
-  the session, not to wait or poll, and how to read the `claude-review`
+  the session, not to wait or poll, and how to read the `claude-outbox`
   answer (a validate ends with `VERDICT: OK`, `CHANGES` or `UNSURE`): act on
   it only within your task, and stop and tell you when Claude agrees or after
   the last turn. Claude's skill ends each answer's summary with its verdict
@@ -1861,9 +1861,9 @@ skill install card) works the same.
   installed `scripts/pair` path, the payload folder and the writable root
   written in; in Codex you say "pair with chi <id or chi web URL>", and
   `sh <bundle>/scripts/pair` attaches `codex-inbox` (the thread id as its
-  hint, pushed so a re-pair refreshes it) and `codex-review`. Run outside
+  hint, pushed so a re-pair refreshes it) and `codex-outbox`. Run outside
   Codex (no `CODEX_THREAD_ID`) it refuses. Codex replies with one JSON push
-  to `codex-review` (`text`, `summary`, `wake: true`), which wakes chi, the
+  to `codex-outbox` (`text`, `summary`, `wake: true`), which wakes chi, the
   first answer too: that needs chi 0.63.0, the bundle's `requires_chi`.
 - **Peer messages are user turns in Codex.** Claude Code marks an inbox
   message as from another session; `codex queue` lands as a plain user
@@ -1881,7 +1881,7 @@ skill install card) works the same.
   Codex's names, and on a missing answer points to Codex being mid-turn or
   its sandbox (the `writable_roots` line). To be asked before each send, a
   guardrails rule with `tool: codex_send` (see the claude-peer section).
-- **The peer loop** works as claude-peer's: `codex-review` is declared a
+- **The peer loop** works as claude-peer's: `codex-outbox` is declared a
   peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
   and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0.
 

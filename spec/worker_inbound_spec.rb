@@ -232,10 +232,10 @@ RSpec.describe Samagotchi::WorkerInbound do
       let(:wakes) { Samagotchi::WorkerWakes.new(grace: 0, max: -> { max[0] }, peer_max: -> { 2 }) }
       let(:max) { [10] }
       let(:announced) { engine.announced }
-      let(:peer_note) { { note_id: "ctx-codex-review-1", text: "Codex answered", source: "context" } }
+      let(:peer_note) { { note_id: "ctx-codex-outbox-1", text: "Codex answered", source: "context" } }
       let(:peer) do
-        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-review", note: peer_note, peer: "Codex",
-                                                  subscription: Samagotchi::ContextSources::Subscription.blank("codex-review")
+        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-outbox", note: peer_note, peer: "Codex",
+                                                  subscription: Samagotchi::ContextSources::Subscription.blank("codex-outbox")
                                                                 .with(wakes_at: Time.now.iso8601),
                                                   wake_note: peer_note.merge(text: "Codex answered; peer line"))
       end
@@ -247,7 +247,7 @@ RSpec.describe Samagotchi::WorkerInbound do
       it "wakes past the 10-minute window, while the peer budget lasts; then a note and one notice" do
         2.times do
           wake = inbound.absorb_context(wake: true)
-          expect(wake).to have_attributes(name: "codex-review", peer?: true)
+          expect(wake).to have_attributes(name: "codex-outbox", peer?: true)
           wakes.count!(peer: wake.peer?)
         end
 

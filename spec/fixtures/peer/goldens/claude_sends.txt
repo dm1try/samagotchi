@@ -13,7 +13,7 @@ Error: claude-inbox's hint isn't a socket path (relative/socket): pair again fro
 === gone
 Error: that Claude session is gone (no inbox at <TMP>/inbox.sock): pair again from Claude
 === validate
-sent to Claude: validate · Step 2: the cache key. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+sent to Claude: validate · Step 2: the cache key. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"}}
 
@@ -23,12 +23,12 @@ sent to Claude: context · background. Claude takes it in; it answers only if so
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · context · background\nsome background"}}
 
 === question
-sent to Claude: question · why this name?. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+sent to Claude: question · why this name?. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · question · why this name?\nwhy?"}}
 
 === no title
-sent to Claude: validate · check this. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+sent to Claude: validate · check this. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · check this\ncheck this\nand that"}}
 

@@ -1,7 +1,7 @@
 === tool
 {
   "tool": "codex_send",
-  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Codex CLI session paired with it (the codex-inbox context), for Codex to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Codex session: without one it fails, and the user pairs from Codex. Codex's answer comes back later as the codex-review context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
+  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Codex CLI session paired with it (the codex-inbox context), for Codex to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Codex session: without one it fails, and the user pairs from Codex. Codex's answer comes back later as the codex-outbox context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
   "params": {
     "kind": {
       "type": "string",
@@ -40,7 +40,7 @@
 }
 === peer_source
 {
-  "peer_source": "codex-review",
+  "peer_source": "codex-outbox",
   "label": "Codex"
 }
 === hook

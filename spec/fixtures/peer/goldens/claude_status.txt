@@ -44,7 +44,7 @@ nil
 {
   "source": "claude-peer",
   "title": "claude-peer: paired",
-  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-review): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-outbox): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
   "actions": [
     {
       "label": "Refresh",
@@ -64,7 +64,7 @@ nil
 {
   "source": "claude-peer",
   "title": "claude-peer: paired",
-  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-review): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-outbox): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
   "actions": [
     {
       "label": "Refresh",
@@ -84,7 +84,7 @@ nil
 {
   "source": "claude-peer",
   "title": "claude-peer: paired",
-  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · context · the plan (5103 chars, in `<TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-plan.md`)\n\nlast answer (claude-review): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · context · the plan (5103 chars, in `<TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-plan.md`)\n\nlast answer (claude-outbox): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
   "actions": [
     {
       "label": "Refresh",
@@ -104,7 +104,7 @@ nil
 {
   "source": "claude-peer",
   "title": "claude-peer: paired",
-  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (claude-review): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (claude-outbox): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
   "actions": [
     {
       "label": "Refresh",

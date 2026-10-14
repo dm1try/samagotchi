@@ -112,11 +112,11 @@ RSpec.describe "Peer bundle goldens" do
 
   def pair(hint = good_hint) = add_source("#{peer}-inbox", hint)
 
-  def review(summary)
-    add_source("#{peer}-review", "latest answer") unless own.source("#{peer}-review")
+  def outbox(summary)
+    add_source("#{peer}-outbox", "latest answer") unless own.source("#{peer}-outbox")
     return unless summary
 
-    own.record_text("#{peer}-review", Samagotchi::ContextSources::Fetched.new(text: "answer", summary: summary,
+    own.record_text("#{peer}-outbox", Samagotchi::ContextSources::Fetched.new(text: "answer", summary: summary,
                                                                               wake: true, hint: nil))
   end
 
@@ -175,12 +175,12 @@ RSpec.describe "Peer bundle goldens" do
     run_command("no session yet", "", no_id_ctx)
     run_command("not paired", "")
     pair
-    review(nil)
+    outbox(nil)
     run_command("paired, no answer yet", "")
   end
 
   def cards_paired_with_history
-    review("validate step 2: VERDICT OK")
+    outbox("validate step 2: VERDICT OK")
     tool(kind: "context", title: "the plan", text: long_text)
     run_command("paired, a payload send, an answer", "")
     tool(kind: "validate", title: "step 2", text: "short")

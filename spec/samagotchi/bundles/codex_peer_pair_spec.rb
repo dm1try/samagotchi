@@ -8,7 +8,7 @@ require "samagotchi/context_sources"
 require_relative "../../support/fake_executables"
 
 # The codex-peer bundle's scripts/pair, as Codex runs it: with this
-# checkout's chi (isolated state) attaching codex-inbox and codex-review
+# checkout's chi (isolated state) attaching codex-inbox and codex-outbox
 # to a chi session. Nothing is queued: pairing only records the thread id.
 RSpec.describe "The codex-peer pair script" do
   let(:pair) { File.expand_path("../../../lib/samagotchi/bundles/codex-peer/scripts/pair", __dir__) }
@@ -39,22 +39,22 @@ RSpec.describe "The codex-peer pair script" do
     out, err, status = run_pair("http://127.0.0.1:4567/#/s/#{session.id}", thread: thread_a)
 
     expect([status.exitstatus, err]).to eq([0, ""])
-    expect(out).to include("paired with chi #{session.id} (thread #{thread_a})", "codex-inbox", "codex-review")
+    expect(out).to include("paired with chi #{session.id} (thread #{thread_a})", "codex-inbox", "codex-outbox")
     expect(own.source("codex-inbox")).to have_attributes(hint: thread_a, cmd: nil)
     inbox = own.snapshot("codex-inbox")
     expect(inbox).to have_attributes(hint: thread_a, summary: "Codex paired from #{tmpdir}")
     expect(inbox.text).to include("Codex peer inbox", "thread: #{thread_a}", "codex cwd: #{tmpdir}", "codex_send")
     # No placeholder: Codex's first answer (wake: true) wakes chi (chi 0.63.0).
-    expect(own.source("codex-review")).to have_attributes(hint: "latest Codex reply", cmd: nil)
-    expect(own.snapshot("codex-review").text).to be_nil
+    expect(own.source("codex-outbox")).to have_attributes(hint: "latest Codex reply", cmd: nil)
+    expect(own.snapshot("codex-outbox").text).to be_nil
 
-    own.record_text("codex-review", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
+    own.record_text("codex-outbox", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
                                                                             wake: true, hint: nil))
     _, err, status = run_pair(session.id[0, 8], thread: thread_b)
 
     expect([status.exitstatus, err]).to eq([0, ""])
     expect(own.snapshot("codex-inbox").hint).to eq(thread_b)
-    expect(own.snapshot("codex-review").text).to eq("VERDICT: OK")
+    expect(own.snapshot("codex-outbox").text).to eq("VERDICT: OK")
   end
 
   it "refuses outside Codex, a URL without a session and a missing argument, touching nothing" do

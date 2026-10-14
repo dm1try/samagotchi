@@ -112,17 +112,17 @@ RSpec.describe Samagotchi::WorkerWakes do
 
     it "opens for peer_turns peer wakes in a row, each counting toward both budgets, then logs the hold" do
       allow(Samagotchi::Log).to receive(:info)
-      expect(wakes.peer_open?(name: "codex-review")).to be(true)
+      expect(wakes.peer_open?(name: "codex-outbox")).to be(true)
       expect(wakes.count!(peer: true)).to eq(1)
       wakes.count!
-      expect(wakes.peer_open?(name: "codex-review")).to be(true)
+      expect(wakes.peer_open?(name: "codex-outbox")).to be(true)
       wakes.count!(peer: true)
 
       expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([3, 2])
-      expect(wakes.peer_open?(name: "codex-review")).to be(false)
+      expect(wakes.peer_open?(name: "codex-outbox")).to be(false)
       expect(wakes.spent?).to be(true)
       expect(Samagotchi::Log).to have_received(:info)
-        .with(:worker, "context_wake_held", reason: "peer_turns", names: "codex-review")
+        .with(:worker, "context_wake_held", reason: "peer_turns", names: "codex-outbox")
     end
 
     it "is never more than session.max_wakes, and 0 with peer_turns 0" do

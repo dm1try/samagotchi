@@ -12,7 +12,7 @@ module Samagotchi
     # docs/plugins.md): a live link between a chi session and another agent's
     # session the user works with. The peer pairs (its chi-peer skill,
     # scripts/pair): it attaches the `<peer>-inbox` context, whose hint says
-    # where to send (a subclass's #check_hint!), and `<peer>-review`, where
+    # where to send (a subclass's #check_hint!), and `<peer>-outbox`, where
     # its answers come back as pushes that wake chi.
     #
     # The `<peer>_send` tool sends a part of the work (a plan step, a diff, a
@@ -40,7 +40,7 @@ module Samagotchi
     # `From your thinking:` label.
     #
     # A subclass (the bundle's Plugin) sets the strings, as constants:
-    # INBOX, REVIEW ("<peer>-inbox", "-review"), BUNDLE, NAME (the peer, as
+    # INBOX, OUTBOX ("<peer>-inbox", "-outbox"), BUNDLE, NAME (the peer, as
     # the model and user call it: "Claude"), APP (its product: "Claude
     # Code"), COMMAND ("/claude"), TOOL, TOOL_DESCRIPTION, TOOL_PARAMS,
     # USAGE, STATUS_CARD, SKILL_CARD, CHECKED_ON and SCRIPTS_DIRS (beside the
@@ -90,9 +90,9 @@ module Samagotchi
         end
         # A chi without chi.annotation (before 0.66) loads the bundle without the pill.
         chi.annotation "Confirm with #{peer::NAME}", command: "#{peer::COMMAND} validate" if chi.respond_to?(:annotation)
-        # The review source is the peer's answers: its own wake budget and
+        # The outbox source is the peer's answers: its own wake budget and
         # line (context.peer_turns). A chi before 0.67 has no peer_source.
-        chi.peer_source peer::REVIEW, label: peer::NAME if chi.respond_to?(:peer_source)
+        chi.peer_source peer::OUTBOX, label: peer::NAME if chi.respond_to?(:peer_source)
         chi.on(:before_turn) do |event|
           @lock.synchronize { @before_turn = Array(event[:messages]) }
         end
@@ -172,7 +172,7 @@ module Samagotchi
 
       def send_text(ctx, kind, text)
         "#{deliver(ctx, kind: kind, title: text_title(text), text: text)}; #{self.class::NAME}'s answer comes as the " \
-          "#{self.class::REVIEW} context"
+          "#{self.class::OUTBOX} context"
       rescue SendError => e
         "#{self.class::COMMAND}: #{e.message}"
       end
@@ -240,7 +240,7 @@ module Samagotchi
         peer = self.class
         id = ctx.session_id
         sources = id ? sources(ctx) : []
-        inbox, review = [peer::INBOX, peer::REVIEW].map { |name| sources.find { |source| source[:name] == name } }
+        inbox, outbox = [peer::INBOX, peer::OUTBOX].map { |name| sources.find { |source| source[:name] == name } }
         hint = inbox && inbox[:hint].to_s.strip
         paired = !(hint.nil? || hint.empty?)
         lines = if paired
@@ -250,7 +250,7 @@ module Samagotchi
                    "#{peer::NAME} \"pair with chi #{id.to_s[0, 8]}\"."]
                 end
         lines << "last send: #{last_send_line(ctx, id)}" if id && last_send(ctx, id)
-        lines << "last answer (#{peer::REVIEW}): #{review_line(review)}" if review
+        lines << "last answer (#{peer::OUTBOX}): #{outbox_line(outbox)}" if outbox
         lines << transport_line
         ctx.card(id: peer::STATUS_CARD, title: "#{peer::BUNDLE}: #{paired ? "paired" : "not paired"}",
                  body: lines.join("\n\n"), actions: [{ label: "Refresh", command: peer::COMMAND },
@@ -271,10 +271,10 @@ module Samagotchi
         "#{ago(sent["at"])} · #{sent["kind"]} · #{sent["title"]} (#{sent["chars"]} chars, #{where})"
       end
 
-      def review_line(review)
-        return "none yet" unless review[:fetched_at]
+      def outbox_line(outbox)
+        return "none yet" unless outbox[:fetched_at]
 
-        [review[:summary], ago(review[:fetched_at])].compact.join(" · ")
+        [outbox[:summary], ago(outbox[:fetched_at])].compact.join(" · ")
       end
 
       def ago(stamp)
@@ -351,7 +351,7 @@ module Samagotchi
       def follow_up(kind)
         case kind
         when "context" then "#{self.class::NAME} takes it in; it answers only if something in it is wrong."
-        else "#{self.class::NAME}'s answer comes as an update of the #{self.class::REVIEW} context; don't wait or poll."
+        else "#{self.class::NAME}'s answer comes as an update of the #{self.class::OUTBOX} context; don't wait or poll."
         end
       end
 

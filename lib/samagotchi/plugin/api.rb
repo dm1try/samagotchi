@@ -299,7 +299,7 @@ module Samagotchi
       end
 
       # A context source that holds a peer agent's answers (the peer
-      # bundles' claude-review, codex-review): +label+ is the peer's name
+      # bundles' claude-outbox, codex-outbox): +label+ is the peer's name
       # ("Codex", PeerSources::LABEL), said in chi's own lines. Such a
       # source, when it is a pushed one of the session's own, wakes on
       # context.peer_turns rather than the 10-minute window, with the peer

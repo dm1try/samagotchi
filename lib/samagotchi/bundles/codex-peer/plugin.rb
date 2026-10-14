@@ -8,7 +8,7 @@ require "samagotchi/plugin/peer"
 # this chi session and an OpenAI Codex CLI session the user works with, the
 # claude-peer bundle with the transport swapped. Codex pairs (its chi-peer
 # skill, scripts/pair): it attaches the `codex-inbox` context, whose hint is
-# its thread id (CODEX_THREAD_ID), and `codex-review`, where its answers
+# its thread id (CODEX_THREAD_ID), and `codex-outbox`, where its answers
 # come back as pushes that wake chi.
 #
 # The codex_send tool sends a part of the work (a plan step, a diff, a
@@ -28,7 +28,7 @@ require "samagotchi/plugin/peer"
 # /codex (anytime: it reads files, writes one and runs `codex queue`, up to
 # QUEUE_SECONDS) lets the user send without the model: `/codex` alone is a
 # status card (paired or not, the thread, the last send, the last
-# codex-review answer); `/codex validate|context <text>` sends the text as
+# codex-outbox answer); `/codex validate|context <text>` sends the text as
 # it is, titled by its first line; `/codex last` sends the model's last
 # completed answer as context (mid-turn, a worker's ctx.messages holds the
 # running turn's partial text, so the before_turn and after_turn hooks keep
@@ -54,7 +54,7 @@ require "samagotchi/plugin/peer"
 
 class Plugin < Samagotchi::Plugin::Peer
   INBOX = "codex-inbox"
-  REVIEW = "codex-review"
+  OUTBOX = "codex-outbox"
   BUNDLE = "codex-peer"
   NAME = "Codex"
   APP = "Codex"
@@ -80,7 +80,7 @@ class Plugin < Samagotchi::Plugin::Peer
                      "context), for Codex to validate, to take as context, or to answer a " \
                      "question about. Only when the user asks for it, or to reply to its answer " \
                      "in a peer turn. Needs a paired Codex session: without one it fails, and the " \
-                     "user pairs from Codex. Codex's answer comes back later as the codex-review " \
+                     "user pairs from Codex. Codex's answer comes back later as the codex-outbox " \
                      "context (a validate's wakes you): don't wait or poll. Never send secrets or " \
                      "the whole conversation."
   TOOL_PARAMS = {

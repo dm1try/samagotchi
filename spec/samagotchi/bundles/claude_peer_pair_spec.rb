@@ -8,7 +8,7 @@ require "samagotchi/context_sources"
 require_relative "../../support/fake_executables"
 
 # The claude-peer bundle's scripts/pair, as Claude runs it: with this
-# checkout's chi (isolated state) attaching claude-inbox and claude-review
+# checkout's chi (isolated state) attaching claude-inbox and claude-outbox
 # to a chi session. No socket is opened: pairing only records its path.
 RSpec.describe "The claude-peer pair script" do
   let(:pair) { File.expand_path("../../../lib/samagotchi/bundles/claude-peer/scripts/pair", __dir__) }
@@ -37,22 +37,22 @@ RSpec.describe "The claude-peer pair script" do
     out, err, status = run_pair("http://127.0.0.1:4567/#/s/#{session.id}", socket: "/tmp/claude-a.sock")
 
     expect([status.exitstatus, err]).to eq([0, ""])
-    expect(out).to include("paired with chi #{session.id} (socket /tmp/claude-a.sock)", "claude-inbox", "claude-review")
+    expect(out).to include("paired with chi #{session.id} (socket /tmp/claude-a.sock)", "claude-inbox", "claude-outbox")
     expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/claude-a.sock", cmd: nil)
     inbox = own.snapshot("claude-inbox")
     expect(inbox).to have_attributes(hint: "/tmp/claude-a.sock", summary: "Claude Code paired from #{tmpdir}")
     expect(inbox.text).to include("socket: /tmp/claude-a.sock", "claude cwd: #{tmpdir}", "claude_send")
     # No placeholder: Claude's first answer (wake: true) wakes chi (chi 0.63.0).
-    expect(own.source("claude-review")).to have_attributes(hint: "latest Claude reply", cmd: nil)
-    expect(own.snapshot("claude-review").text).to be_nil
+    expect(own.source("claude-outbox")).to have_attributes(hint: "latest Claude reply", cmd: nil)
+    expect(own.snapshot("claude-outbox").text).to be_nil
 
-    own.record_text("claude-review", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
+    own.record_text("claude-outbox", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
                                                                              wake: true, hint: nil))
     _, err, status = run_pair(session.id[0, 8], socket: "/tmp/claude-b.sock")
 
     expect([status.exitstatus, err]).to eq([0, ""])
     expect(own.snapshot("claude-inbox").hint).to eq("/tmp/claude-b.sock")
-    expect(own.snapshot("claude-review").text).to eq("VERDICT: OK")
+    expect(own.snapshot("claude-outbox").text).to eq("VERDICT: OK")
   end
 
   it "refuses outside Claude Code, a URL without a session and a missing argument, touching nothing" do

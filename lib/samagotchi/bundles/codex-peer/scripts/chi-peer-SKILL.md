@@ -62,7 +62,7 @@ sh "__CHI_PEER_PAIR__" <chi session id or URL>
 ```
 
 It attaches `codex-inbox` to the chi session (this session's thread id,
-`$CODEX_THREAD_ID`, as its hint) and `codex-review` (where your answers go),
+`$CODEX_THREAD_ID`, as its hint) and `codex-outbox` (where your answers go),
 then lists the session's context. Running it again only refreshes the thread
 id. A write refused with "Operation not permitted" means the setup line above
 is missing (or Codex wasn't restarted); the script says so.
@@ -101,13 +101,13 @@ Tell the user in one line what came in and what you answered.
 
 ## Reply into chi
 
-Push the answer to the `codex-review` source, one push per answer. JSON gives
+Push the answer to the `codex-outbox` source, one push per answer. JSON gives
 the note chi sees a summary, and `wake` starts a chi turn only when chi is
 waiting on it (chi 0.63.0 or later wakes on the first answer too):
 
 ```sh
 ruby -rjson -e 'puts JSON.generate(text: STDIN.read, summary: ARGV[0], wake: ARGV[1] == "wake")' \
-  "validate <title>: VERDICT CHANGES, 2 issues" wake <<'EOF' | chi context push codex-review <id>
+  "validate <title>: VERDICT CHANGES, 2 issues" wake <<'EOF' | chi context push codex-outbox <id>
 <the full answer>
 EOF
 ```
@@ -133,4 +133,4 @@ tell the user.
   (checked on Codex 0.162.1). A message queued while you are mid-turn runs
   after the turn.
 - A payload file is under chi's state folder (`__CHI_PEER_PAYLOADS__/`).
-- Unpair: `chi context rm codex-inbox <id>` and `chi context rm codex-review <id>`.
+- Unpair: `chi context rm codex-inbox <id>` and `chi context rm codex-outbox <id>`.

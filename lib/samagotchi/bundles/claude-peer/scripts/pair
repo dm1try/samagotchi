@@ -6,7 +6,7 @@
 #
 # It attaches two pushed sources to the chi session: claude-inbox, whose hint
 # is this session's inbox socket (chi's claude_send tool writes there), and
-# claude-review, where Claude's answers go. Again after a Claude restart, it
+# claude-outbox, where Claude's answers go. Again after a Claude restart, it
 # only refreshes the socket: the push carries the new hint. CHI names the chi
 # command (default: chi on the PATH).
 set -eu
@@ -56,11 +56,11 @@ text="Claude Code peer inbox
 socket: $sock
 claude cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-review context."
+Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-outbox context."
 printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$sock")" \
   "$(json "Claude Code paired from $PWD")" | $chi context push claude-inbox "$id" >/dev/null
 
-attach claude-review --why "Claude's answers to what you sent it (claude-peer)" --hint "latest Claude reply"
+attach claude-outbox --why "Claude's answers to what you sent it (claude-peer)" --hint "latest Claude reply"
 
 echo "paired with chi $id (socket $sock)"
 $chi context ls "$id"

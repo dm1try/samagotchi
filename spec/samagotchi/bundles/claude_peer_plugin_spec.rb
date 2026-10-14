@@ -105,7 +105,7 @@ RSpec.describe "The claude-peer plugin" do
     expect(tool[:params].keys).to eq(%i[kind title text])
     expect(tool[:params][:kind][:enum]).to eq(%w[validate context question])
     expect(tool[:preview].call("kind" => "validate", "title" => "cache step 2")).to eq("validate: cache step 2")
-    expect(tool[:description]).to include("Only when the user asks", "claude-review")
+    expect(tool[:description]).to include("Only when the user asks", "claude-outbox")
   end
 
   it "writes one JSON line to the inbox: the header, then a short text inline" do
@@ -227,10 +227,10 @@ RSpec.describe "The claude-peer plugin" do
     end
 
     def review(text, summary)
-      own.add(Samagotchi::ContextSources::Source.new(name: "claude-review", cmd: nil, every_seconds: nil, why: "answers",
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-outbox", cmd: nil, every_seconds: nil, why: "answers",
                                                      hint: "latest Claude reply", scope: "session", added_by: "cli",
                                                      created_at: Time.now.utc.iso8601))
-      own.record_text("claude-review", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
+      own.record_text("claude-outbox", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
                                                                                hint: nil))
     end
 
@@ -272,7 +272,7 @@ RSpec.describe "The claude-peer plugin" do
         card = cards.last
         expect(card[:title]).to eq("claude-peer: paired")
         expect(card[:body]).to include("socket: `#{socket}` (there)", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last answer (claude-review): validate step 2: VERDICT OK · just now")
+                                       "last answer (claude-outbox): validate step 2: VERDICT OK · just now")
       ensure
         server&.close
       end
@@ -290,7 +290,7 @@ RSpec.describe "The claude-peer plugin" do
       pair
 
       result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-review context")
+      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-outbox context")
       expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\nStep 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
 
       _, content = sent_content("context we chose Redis")

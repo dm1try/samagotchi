@@ -97,7 +97,7 @@ RSpec.describe "The codex-peer plugin" do
     expect(tool[:params].keys).to eq(%i[kind title text])
     expect(tool[:params][:kind][:enum]).to eq(%w[validate context question])
     expect(tool[:preview].call("kind" => "validate", "title" => "cache step 2")).to eq("validate: cache step 2")
-    expect(tool[:description]).to include("Only when the user asks", "codex-review")
+    expect(tool[:description]).to include("Only when the user asks", "codex-outbox")
   end
 
   it "runs codex queue for the paired thread: the header, then a short text inline" do
@@ -246,10 +246,10 @@ RSpec.describe "The codex-peer plugin" do
     def hook(event, payload) = fake_chi.hooks.fetch(event).last.call(payload)
 
     def review(text, summary)
-      own.add(Samagotchi::ContextSources::Source.new(name: "codex-review", cmd: nil, every_seconds: nil, why: "answers",
+      own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: "answers",
                                                      hint: "latest Codex reply", scope: "session", added_by: "cli",
                                                      created_at: Time.now.utc.iso8601))
-      own.record_text("codex-review", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
+      own.record_text("codex-outbox", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
                                                                               hint: nil))
     end
 
@@ -279,7 +279,7 @@ RSpec.describe "The codex-peer plugin" do
         card = cards.last
         expect(card[:title]).to eq("codex-peer: paired")
         expect(card[:body]).to include("thread: `#{thread_id}` (a closed Codex session still takes sends", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last answer (codex-review): validate step 2: VERDICT OK · just now")
+                                       "last answer (codex-outbox): validate step 2: VERDICT OK · just now")
       end
     end
 
@@ -287,7 +287,7 @@ RSpec.describe "The codex-peer plugin" do
       pair
 
       result = run("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as the codex-review context")
+      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as the codex-outbox context")
       expect(queued_message).to eq("chi #{short} · validate · Step 3 keeps the old key\nStep 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
 
       run("context we chose Redis")

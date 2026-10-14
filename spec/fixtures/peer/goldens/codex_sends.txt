@@ -25,7 +25,7 @@ Error: no codex on the PATH: install Codex CLI, or set CODEX= to its path where 
 === hangs
 Error: Codex didn't take the message in 0.3 s (codex queue was stopped): try again, or pair again from Codex
 === validate
-sent to Codex: validate · Step 2: the cache key. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+sent to Codex: validate · Step 2: the cache key. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
 ["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"]
 === context
@@ -33,11 +33,11 @@ sent to Codex: context · background. Codex takes it in; it answers only if some
 === queued
 ["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · background\nsome background"]
 === question
-sent to Codex: question · why this name?. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+sent to Codex: question · why this name?. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
 ["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · question · why this name?\nwhy?"]
 === no title
-sent to Codex: validate · check this. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+sent to Codex: validate · check this. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
 ["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · check this\ncheck this\nand that"]
 === payload

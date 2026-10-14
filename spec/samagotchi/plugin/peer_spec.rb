@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::Plugin::Peer do
   let(:peer_class) do
     Class.new(described_class) do
       const_set(:INBOX, "echo-inbox")
-      const_set(:REVIEW, "echo-review")
+      const_set(:OUTBOX, "echo-outbox")
       const_set(:BUNDLE, "echo-peer")
       const_set(:NAME, "Echo")
       const_set(:APP, "Echo App")

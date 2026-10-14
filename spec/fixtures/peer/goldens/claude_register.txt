@@ -1,7 +1,7 @@
 === tool
 {
   "tool": "claude_send",
-  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer comes back later as the claude-review context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
+  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer comes back later as the claude-outbox context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
   "params": {
     "kind": {
       "type": "string",
@@ -40,7 +40,7 @@
 }
 === peer_source
 {
-  "peer_source": "claude-review",
+  "peer_source": "claude-outbox",
   "label": "Claude"
 }
 === hook

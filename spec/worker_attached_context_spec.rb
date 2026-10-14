@@ -186,19 +186,19 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     end
 
     it "wakes for a session push source added empty whose first push asks: the turn opens with the attached note" do
-      own.add(Samagotchi::ContextSources::Source.new(name: "claude-review", cmd: nil, every_seconds: nil, why: nil,
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-outbox", cmd: nil, every_seconds: nil, why: nil,
                                                      hint: nil, scope: "session", added_by: "cli", created_at: nil))
       start_worker
 
-      push("claude-review", "looks good", wake: true)
+      push("claude-outbox", "looks good", wake: true)
 
       prompt, kwargs, last = wake_turns.pop(timeout: 3)
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: { client_id: "context:claude-review" })
-      expect(last).to include(role: "system", kind: "note", context_source: "claude-review", turn_start: true)
-      expect(last[:content]).to include("\nAttached: claude-review.\n")
+      expect(kwargs).to include(continue: true, origin: { client_id: "context:claude-outbox" })
+      expect(last).to include(role: "system", kind: "note", context_source: "claude-outbox", turn_start: true)
+      expect(last[:content]).to include("\nAttached: claude-outbox.\n")
         .and end_with("\n#{Samagotchi::ContextAbsorber::WAKE_LAST_LINE}\n[END NOTE]")
-      expect(own.subscription("claude-review").wakes_at).to be_truthy
+      expect(own.subscription("claude-outbox").wakes_at).to be_truthy
     end
 
     it "wakes once per source in 10 minutes: a second change arrives as a plain note" do
@@ -241,14 +241,14 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       before do
         config["context.peer_turns"] = 2
         allow(Samagotchi::Config).to receive(:get).with("context.peer_turns") { config["context.peer_turns"] }
-        engine.peer_sources.declare("codex-review", label: "Codex", bundle: "codex-peer")
-        own.add(Samagotchi::ContextSources::Source.new(name: "codex-review", cmd: nil, every_seconds: nil, why: nil,
+        engine.peer_sources.declare("codex-outbox", label: "Codex", bundle: "codex-peer")
+        own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: nil,
                                                        hint: nil, scope: "session", added_by: "cli", created_at: nil))
       end
 
       def answer(text, summary: "step 2: VERDICT CHANGES")
-        push("codex-review", text, wake: true, summary: summary)
-        expect(wait_until { own.subscription("codex-review")&.seen == Samagotchi::ContextSources.revision_of(text) })
+        push("codex-outbox", text, wake: true, summary: summary)
+        expect(wait_until { own.subscription("codex-outbox")&.seen == Samagotchi::ContextSources.revision_of(text) })
           .to be(true)
       end
 
@@ -267,7 +267,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
         answer("v1")
         _, kwargs, last = wake_turn
-        expect(kwargs).to include(continue: true, origin: { client_id: "context:codex-review" })
+        expect(kwargs).to include(continue: true, origin: { client_id: "context:codex-outbox" })
         expect(last[:content]).to include("What your peer agent Codex answered", "After 2 such turns in a row")
         answer("v2")
         expect(wake_turn&.last&.dig(:content)).to include("What changed, as your peer agent Codex reports it")
@@ -292,7 +292,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
         type("go on", "web:tab1")
         answer("v3")
-        expect(wake_turn&.dig(1, :origin)).to eq({ client_id: "context:codex-review" })
+        expect(wake_turn&.dig(1, :origin)).to eq({ client_id: "context:codex-outbox" })
       end
 
       it "wakes once with the closing line for an answer that agrees, outside context.peer_turns" do

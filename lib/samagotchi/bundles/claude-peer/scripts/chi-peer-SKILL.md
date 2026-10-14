@@ -28,7 +28,7 @@ sh "__CHI_PEER_PAIR__" <chi session id or URL>
 ```
 
 It attaches `claude-inbox` to the chi session (this session's inbox socket,
-`$CLAUDE_CODE_MESSAGING_SOCKET`, as its hint) and `claude-review` (where your
+`$CLAUDE_CODE_MESSAGING_SOCKET`, as its hint) and `claude-outbox` (where your
 answers go), then lists the session's context. Running it again only refreshes
 the socket. The socket changes when this Claude session restarts: pair again
 then.
@@ -70,12 +70,12 @@ Tell the user in one line what came in and what you answered.
 
 ## Reply into chi
 
-Push the answer to the `claude-review` source. JSON gives the note chi sees a
+Push the answer to the `claude-outbox` source. JSON gives the note chi sees a
 summary, and `wake` starts a chi turn only when chi is waiting on it:
 
 ```sh
 ruby -rjson -e 'puts JSON.generate(text: STDIN.read, summary: ARGV[0], wake: ARGV[1] == "wake")' \
-  "validate <title>: VERDICT CHANGES, 2 issues" wake <<'EOF' | chi context push claude-review <id>
+  "validate <title>: VERDICT CHANGES, 2 issues" wake <<'EOF' | chi context push claude-outbox <id>
 <the full answer>
 EOF
 ```
@@ -106,4 +106,4 @@ tell the user.
   read those without being asked each time, the user can allow
   `Read(__CHI_PEER_PAYLOADS__/**)` in Claude Code's permissions (their call).
 - Auto mode refuses posting to this session's own socket, so test from chi.
-- Unpair: `chi context rm claude-inbox <id>` and `chi context rm claude-review <id>`.
+- Unpair: `chi context rm claude-inbox <id>` and `chi context rm claude-outbox <id>`.

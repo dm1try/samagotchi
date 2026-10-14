@@ -6,7 +6,7 @@
 #
 # It attaches two pushed sources to the chi session: codex-inbox, whose hint
 # is this session's thread id (chi's codex_send tool runs
-# `codex queue --thread <id>` with it), and codex-review, where Codex's
+# `codex queue --thread <id>` with it), and codex-outbox, where Codex's
 # answers go. Again later, it only refreshes the thread id: the push carries
 # the new hint. CHI names the chi command (default: chi on the PATH).
 #
@@ -80,13 +80,13 @@ text="Codex peer inbox
 thread: $thread
 codex cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as the codex-review context."
+Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as the codex-outbox context."
 if ! out=$(printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$thread")" \
   "$(json "Codex paired from $PWD")" | $chi context push codex-inbox "$id" 2>&1 >/dev/null); then
   fail "$out"
 fi
 
-attach codex-review --why "Codex's answers to what you sent it (codex-peer)" --hint "latest Codex reply"
+attach codex-outbox --why "Codex's answers to what you sent it (codex-peer)" --hint "latest Codex reply"
 
 echo "paired with chi $id (thread $thread)"
 $chi context ls "$id"

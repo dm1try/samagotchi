@@ -20,28 +20,28 @@ RSpec.describe "chi.peer_source" do
 
   it "declares the source when the plugin's register returns, and nothing for one that doesn't" do
     chi = api
-    chi.peer_source("codex-review", label: "Codex")
-    expect(peer_sources.label_for("codex-review")).to be_nil
+    chi.peer_source("codex-outbox", label: "Codex")
+    expect(peer_sources.label_for("codex-outbox")).to be_nil
 
     chi.commit!
-    expect(peer_sources.label_for("codex-review")).to eq("Codex")
+    expect(peer_sources.label_for("codex-outbox")).to eq("Codex")
     expect(chi.counts[:peer_sources]).to eq(1)
 
-    api("aborted").peer_source("other-review", label: "Other")
-    expect(peer_sources.names).to eq(["codex-review"])
+    api("aborted").peer_source("other-outbox", label: "Other")
+    expect(peer_sources.names).to eq(["codex-outbox"])
   end
 
   it "refuses a bad name or label, one declared twice or by another bundle, and a chi without plugins" do
     expect { api.peer_source("Bad Name", label: "Codex") }.to raise_error(ArgumentError, /peer source/)
-    expect { api.peer_source("x-review", label: "rm -rf /; echo") }.to raise_error(ArgumentError, /label must match/)
+    expect { api.peer_source("x-outbox", label: "rm -rf /; echo") }.to raise_error(ArgumentError, /label must match/)
     twice = api
-    twice.peer_source("x-review", label: "X")
-    expect { twice.peer_source("x-review", label: "X") }.to raise_error(ArgumentError, "peer source x-review is declared twice")
+    twice.peer_source("x-outbox", label: "X")
+    expect { twice.peer_source("x-outbox", label: "X") }.to raise_error(ArgumentError, "peer source x-outbox is declared twice")
     other = api("other")
-    other.peer_source("y-review", label: "Y")
+    other.peer_source("y-outbox", label: "Y")
     other.commit!
-    expect { api.peer_source("y-review", label: "Y") }
-      .to raise_error(ArgumentError, "peer source y-review is already declared (other)")
+    expect { api.peer_source("y-outbox", label: "Y") }
+      .to raise_error(ArgumentError, "peer source y-outbox is already declared (other)")
 
     bare = Samagotchi::Plugin::Registries.new(commands: nil, tools: nil, hooks: nil)
     expect { Samagotchi::Plugin::Api.new(bundle: "b", label: "l", registries: bare).peer_source("z", label: "Z") }
@@ -56,7 +56,7 @@ RSpec.describe "chi.peer_source" do
       plugin.register(chi)
       chi.commit!
 
-      expect(peer_sources.label_for("#{peer}-review")).to eq(name)
+      expect(peer_sources.label_for("#{peer}-outbox")).to eq(name)
     end
   end
 end

@@ -11,7 +11,7 @@
 === /claude validate From your thinking:
 > the cache key is stable
 confirm (a quote)
-"sent to Claude: validate · the cache key is stable; Claude's answer comes as the claude-review context"
+"sent to Claude: validate · the cache key is stable; Claude's answer comes as the claude-outbox context"
 === last send
 {
   "at": "<AT>",
@@ -21,7 +21,7 @@ confirm (a quote)
   "payload": null
 }
 === /claude context  some background (context)
-"sent to Claude: context · some background; Claude's answer comes as the claude-review context"
+"sent to Claude: context · some background; Claude's answer comes as the claude-outbox context"
 === /claude last (the last answer)
 "sent to Claude: context · chi's last answer: The fix is in lib/a.rb."
 === last send
