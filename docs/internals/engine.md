@@ -223,7 +223,8 @@ The differences from the native loop:
   `#reasoning_history` floors `drop` at `turn` there, since Messages needs the running run's thinking blocks.
 - A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again
   without it (not on a replaying adapter, where the body would be the same); when that goes through,
-  `#reasoning_history_refused!` marks the model (worker lifetime) and
+  `#reasoning_history_refused!` marks the model (worker lifetime; the loop's `LLM::RefusalMemo`, as for the thinking
+  and sampling refusals) and
   `:reasoning_history_refused` goes out. When it is refused too, the thinking-fields fallback (`#thinking_refused!`,
   `:thinking_refused`) runs on it, still without reasoning. Up to three requests per step. A 400 about a thinking
   block's signature (`BadRequest#thinking_signature?`) or a refused binding control

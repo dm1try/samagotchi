@@ -141,7 +141,8 @@ thinking, nil for none), `cache_breakpoints` and `session_header`.
 ## 400 fallbacks
 
 `AnthropicMessages#chat` handles the 400s it can fix itself, once each per request, and remembers the fix for the
-adapter's life, so ChatLoop's broader paths never see them (`#refusal_fix`, logged under `http`):
+adapter's life, so ChatLoop's broader paths never see them (`#refusal_fix`, logged under `http`; kept in an
+`LLM::RefusalMemo`, locked, since the turn, side-ask and recap threads share the host's adapter):
 
 | 400 about | Fix | Remembered |
 |---|---|---|

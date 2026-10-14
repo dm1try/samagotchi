@@ -8,6 +8,7 @@ require_relative "errors"
 require_relative "usage"
 require_relative "openai_chat"
 require_relative "native_tool_normalizer"
+require_relative "refusal_memo"
 require_relative "stream_drops"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
@@ -70,6 +71,9 @@ module Samagotchi
         @adapter = adapter
         @stable_length = stable_length
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
+        # What a host refused per model, for this loop's (the worker's)
+        # life: :reasoning_history, :thinking, :sampling.
+        @refusals = RefusalMemo.new
       end
 
       def provider = :chat
@@ -242,7 +246,7 @@ module Samagotchi
       # blocks always go back (a tool loop with thinking needs the last
       # assistant turn's), whatever the level says.
       def reasoning_history(model = nil)
-        level = model && @reasoning_history_refused&.include?(model) ? :drop : @kernel.turn_settings&.reasoning_history
+        level = model && @refusals.refused?(:reasoning_history, model) ? :drop : @kernel.turn_settings&.reasoning_history
         level ||= :drop
         level == :drop && replays_content? ? :turn : level
       end
@@ -254,7 +258,7 @@ module Samagotchi
       # The host refused +model+'s reasoning sent back: send none from now on
       # (this worker's lifetime, as #thinking_refused!).
       def reasoning_history_refused!(model)
-        (@reasoning_history_refused ||= Set.new) << model
+        @refusals.remember(:reasoning_history, model)
       end
 
       # The turn's VisionContext (the Engine sets the kernel's
@@ -274,14 +278,14 @@ module Samagotchi
       # takes them (OpenAIChat#thinking_fields: Thinking.chat_fields); none
       # for a model whose host refused them (#thinking_refused!).
       def thinking_fields(model = nil)
-        return {} if model && (@thinking_refused ||= Set.new).include?(model)
+        return {} if model && @refusals.refused?(:thinking, model)
 
         adapter.thinking_fields(thinking)
       end
 
       # The host refused +model+'s thinking fields: leave them out from now on.
       def thinking_refused!(model)
-        (@thinking_refused ||= Set.new) << model
+        @refusals.remember(:thinking, model)
       end
 
       # One generation's options: default.max_tokens as max_tokens (the
@@ -296,7 +300,7 @@ module Samagotchi
         options = deep_merge(thinking_fields(model), sampling)
         options = { max_tokens: max_tokens }.merge(options) if max_tokens
         options = EmptyAnswerRetry.sampling(options) if retry_generation
-        options = options.except(*SAMPLING_KEYS) if model && @sampling_refused&.include?(model)
+        options = options.except(*SAMPLING_KEYS) if model && @refusals.refused?(:sampling, model)
         deep_compact(options)
       end
 
@@ -306,7 +310,7 @@ module Samagotchi
       # The host refused a sampling field for +model+: send none of
       # SAMPLING_KEYS from now on (this worker's lifetime, as #thinking_refused!).
       def sampling_refused!(model)
-        (@sampling_refused ||= Set.new) << model
+        @refusals.remember(:sampling, model)
       end
 
       def strip_model_thought(text) = @kernel.strip_model_thought(text)

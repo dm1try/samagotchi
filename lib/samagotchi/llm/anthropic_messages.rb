@@ -11,6 +11,7 @@ require_relative "http"
 require_relative "model_listing"
 require_relative "openai_chat"
 require_relative "prompt_cache"
+require_relative "refusal_memo"
 require_relative "anthropic_assembly"
 require_relative "anthropic_wire"
 require_relative "dialect"
@@ -96,10 +97,9 @@ module Samagotchi
         @api_key_env = api_key_env
         @stream = stream
         init_model_listing(models_ttl)
-        @thinking_form_refused = Set.new
-        @output_caps = {}
-        @cache_control_refused = false
-        @thinking_display_refused = false
+        # The 400 fixes (#refusal_fix): :thinking_form and :output_cap per
+        # model, :thinking_display and :cache_control for the host.
+        @refusals = RefusalMemo.new
         @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
                            sleeper: sleeper, first_token_timeout: first_token_timeout,
                            api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth))
@@ -166,7 +166,7 @@ module Samagotchi
       # (max_input_tokens, max_tokens, capabilities) and the OpenAI shape a
       # gateway or Splash serves here are both read (ModelListing).
       # Whether +model+ gets the budget form (it refused adaptive thinking).
-      def budget_form?(model) = @thinking_form_refused.include?(model.to_s)
+      def budget_form?(model) = @refusals.refused?(:thinking_form, model.to_s)
 
       # @return [Array<ModelInfo>]
       def list_models
@@ -189,11 +189,12 @@ module Samagotchi
       def request_body(messages, tools, model, options)
         options = (options || {}).to_h.transform_keys(&:to_sym).except(*DROPPED_OPTIONS)
         options = budget_form(options) if budget_form?(model)
-        options = without_display(options) if @thinking_display_refused
-        cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@cache_control_refused
+        options = without_display(options) if @refusals.refused?(:thinking_display)
+        cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@refusals.refused?(:cache_control)
         translated = AnthropicWire.translate(messages, cache: cache)
         max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
-        max_tokens = [max_tokens, @output_caps[model.to_s]].min if @output_caps[model.to_s]
+        output_cap = @refusals[:output_cap, model.to_s]
+        max_tokens = [max_tokens, output_cap].min if output_cap
         body = { model: model, max_tokens: max_tokens }
         body[:system] = translated.system unless translated.system.empty?
         body[:messages] = translated.messages
@@ -259,21 +260,21 @@ module Samagotchi
         detail = error.detail.to_s
         # Before the adaptive check: the refused field's path
         # ("thinking.adaptive.display") names adaptive too.
-        if !@thinking_display_refused && body[:thinking].is_a?(Hash) && body[:thinking].key?(:display) &&
+        if !@refusals.refused?(:thinking_display) && body[:thinking].is_a?(Hash) && body[:thinking].key?(:display) &&
            DISPLAY_RE.match?(detail)
-          @thinking_display_refused = true
+          @refusals.remember(:thinking_display)
           Log.info(:http, "thinking_display_refused", host: @host_name, detail: detail[0, 200])
           :thinking_display
         elsif body.dig(:thinking, :type) == "adaptive" && ADAPTIVE_REFUSED_RE.match?(detail)
-          @thinking_form_refused << model.to_s
+          @refusals.remember(:thinking_form, model.to_s)
           Log.info(:http, "thinking_form_switched", host: @host_name, model: model.to_s, to: "budget", detail: detail[0, 200])
           :thinking_form
-        elsif !@cache_control_refused && CACHE_CONTROL_RE.match?(detail) && cache_summary(body)
-          @cache_control_refused = true
+        elsif !@refusals.refused?(:cache_control) && CACHE_CONTROL_RE.match?(detail) && cache_summary(body)
+          @refusals.remember(:cache_control)
           Log.info(:http, "cache_control_refused", host: @host_name, detail: detail[0, 200])
           :cache_control
         elsif (cap = detail[OUTPUT_CAP_RE, 1]&.to_i) && cap.positive? && body[:max_tokens].to_i > cap
-          @output_caps[model.to_s] = cap
+          @refusals.remember(:output_cap, model.to_s, cap)
           Log.info(:http, "output_cap", host: @host_name, model: model.to_s, max_tokens: cap)
           :max_tokens
         end
