@@ -236,15 +236,6 @@ module Samagotchi
       UNREADABLE_INPUT
     end
 
-    # Whether an unclaimed input file carries images (a mid-turn drain
-    # leaves it for its own turn).
-    def self.input_has_images?(input_file)
-      data = JSON.parse(File.read(input_file))
-      data.is_a?(Hash) && Array(data["images"]).any?
-    rescue JSON::ParserError, SystemCallError
-      false
-    end
-
     # Whether a mid-turn drain leaves this unclaimed input file for a turn
     # of its own instead of merging it at a step boundary: a queued message
     # (`delivery: queue`) or an image message (steering merges text only).
@@ -257,10 +248,6 @@ module Samagotchi
     rescue JSON::ParserError, SystemCallError
       false
     end
-
-    # Whether an input file carrying +enqueued_id+ still waits unclaimed in
-    # input/ (no worker has taken it for a turn or a step yet).
-    def self.input_waiting?(session_dir, enqueued_id) = !waiting_input(session_dir, enqueued_id).nil?
 
     # How the unclaimed input file carrying +enqueued_id+ waits: :turn_end
     # (a queue or an image message: it runs as a turn of its own, never

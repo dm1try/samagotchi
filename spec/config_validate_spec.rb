@@ -9,7 +9,7 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
   end
 
   it "takes every config-exposed registry entry as written, with no second list to update" do
-    data = Samagotchi::Config.all_entries.select(&:config_exposed?).each_with_object({}) do |entry, acc|
+    data = Samagotchi::Config::ENTRIES.select(&:config_exposed?).each_with_object({}) do |entry, acc|
       *section, leaf = entry.yaml_path
       section.reduce(acc) { |node, seg| node[seg] ||= {} }[leaf] = "x"
     end

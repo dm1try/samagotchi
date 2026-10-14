@@ -329,13 +329,18 @@ RSpec.describe Samagotchi::Web::Server do
     end
   end
 
-  describe ".probe_verdict" do
+  describe ".probe's verdict" do
+    def verdict(status, body)
+      allow(Samagotchi::Web::InfoProbe).to receive(:call) { Samagotchi::Web::InfoProbe.verdict(status, body) }
+      described_class.probe("127.0.0.1", 1)
+    end
+
     it "takes a chi web that knows ?dir, and nothing else" do
       info = { "app" => "chi-web", "pid" => 7, "features" => ["dir"] }
-      expect(described_class.probe_verdict(200, JSON.generate(info))).to eq(info)
-      expect(described_class.probe_verdict(200, JSON.generate(info.merge("features" => [])))).to eq(:other)
-      expect(described_class.probe_verdict(404, '{"error":"not_found","detail":"not found: /api/info"}')).to eq(:other)
-      expect(described_class.probe_verdict(200, "<html>")).to eq(:other)
+      expect(verdict(200, JSON.generate(info))).to eq(info)
+      expect(verdict(200, JSON.generate(info.merge("features" => [])))).to eq(:other)
+      expect(verdict(404, '{"error":"not_found","detail":"not found: /api/info"}')).to eq(:other)
+      expect(verdict(200, "<html>")).to eq(:other)
     end
   end
 

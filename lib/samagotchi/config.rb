@@ -310,10 +310,6 @@ module Samagotchi
         BY_KEY[key.to_s]
       end
 
-      def all_entries
-        ENTRIES
-      end
-
       def cli_entries
         ENTRIES.select(&:cli_exposed?)
       end

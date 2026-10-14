@@ -153,6 +153,7 @@ module Samagotchi
     end
 
     # "64000", "64k" or "off" (0): LLMContextStrategy.budget_tokens.
+    # .update reaches it (and the other parse_<field>s) by its name.
     # @return [Integer] 0 for off
     def self.parse_budget_tokens(text) = LLMContextStrategy.budget_tokens(text)
 

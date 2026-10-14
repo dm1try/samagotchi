@@ -121,16 +121,16 @@ RSpec.describe Samagotchi::SessionInbox do
       expect(described_class.reply_for(session_dir, nil)).to be_nil
     end
 
-    it "says whether an input with an enqueued_id still waits unclaimed" do
-      expect(described_class.input_waiting?(session_dir, "q1")).to be(false)
+    it "says how an input with an enqueued_id still waits unclaimed: for the turn's end, to merge, or not at all" do
+      expect(described_class.waiting_input(session_dir, "q1")).to be_nil
       path = described_class.write_input(session_dir, prompt: "later", enqueued_id: "q1", delivery: "queue")
       described_class.write_input(session_dir, prompt: "other", enqueued_id: "q2")
-      expect(described_class.input_waiting?(session_dir, "q1")).to be(true)
-      expect(described_class.input_waiting?(session_dir, nil)).to be(false)
+      expect(described_class.waiting_input(session_dir, "q1")).to eq(:turn_end)
+      expect(described_class.waiting_input(session_dir, nil)).to be_nil
 
       described_class.claim_input_file(path)
-      expect(described_class.input_waiting?(session_dir, "q1")).to be(false)
-      expect(described_class.input_waiting?(session_dir, "q2")).to be(true)
+      expect(described_class.waiting_input(session_dir, "q1")).to be_nil
+      expect(described_class.waiting_input(session_dir, "q2")).to eq(:merges)
     end
   end
 

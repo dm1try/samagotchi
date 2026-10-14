@@ -241,10 +241,6 @@ module Samagotchi
         knows_dir(InfoProbe.call(host, port, timeout: timeout))
       end
 
-      def self.probe_verdict(status, body)
-        knows_dir(InfoProbe.verdict(status, body))
-      end
-
       def self.knows_dir(info)
         info.is_a?(Hash) && !Array(info["features"]).include?("dir") ? :other : info
       end

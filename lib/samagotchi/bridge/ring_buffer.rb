@@ -40,11 +40,6 @@ module Samagotchi
         end
       end
 
-      # @return [Integer, nil] the highest seq buffered so far.
-      def last_seq
-        @mutex.synchronize { @events.last&.[](:seq) }
-      end
-
       # @return [Integer, nil] the lowest seq buffered so far.
       def oldest_seq
         @mutex.synchronize { @events.first&.[](:seq) }

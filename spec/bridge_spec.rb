@@ -240,7 +240,7 @@ RSpec.describe Samagotchi::Bridge do
     it "keeps only the most recent events up to capacity" do
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 3)
       10.times { |i| ring.push(seq: i, data: { n: i }) }
-      expect(ring.last_seq).to eq(9)
+      expect(ring.oldest_seq).to eq(7)
       expect(ring.events_in_range(after_seq: 0, to_seq: 9).map { |e| e[:seq] }).to eq([7, 8, 9])
     end
 
