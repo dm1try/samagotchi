@@ -218,7 +218,7 @@ module Samagotchi
     # The session, its Engine and what runs its turns, before anyone can
     # reach it.
     def start
-      # The wake turns' budget (delegate reports, attached context), from now.
+      # The wake turns' budget (delegate reports, attached context, peers), from now.
       @wakes = WorkerWakes.new(grace: WAKE_START_GRACE)
       # This worker holds the session now (a continue's starting marker held
       # off any other until it did), and a continue that died moving
@@ -496,13 +496,14 @@ module Samagotchi
     # A turn nobody typed for a changed source (a context wake): a continue
     # turn from context:<name> whose first message is the wake note already
     # in the conversation (named by +turn_id+), on the same rules as a
-    # delegate report's wake turn: it counts toward session.max_wakes, and
-    # a failure goes back to before the turn (the note stays, as a plain
-    # one: WorkerInbound#unmark_wake) and pauses wakes until a human's input.
+    # delegate report's wake turn: it counts toward session.max_wakes (a
+    # peer's answer toward context.peer_turns too), and a failure goes back
+    # to before the turn (the note stays, as a plain one:
+    # WorkerInbound#unmark_wake) and pauses wakes until a human's input.
     # +context_wake+: a WorkerInbound::ContextWake.
     def run_context_wake_turn(context_wake)
       name = context_wake.name
-      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!)
+      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer?))
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: context_wake.origin,
                            id: context_wake.turn_id, max_iterations: IterationLimit.for) do |result, error|
@@ -1220,12 +1221,13 @@ module Samagotchi
 
     # A human's input (ClientId.human?) un-archives the session;
     # a delegate's, a plugin's or a reminder's doesn't.
-    # It also resets the delegate-report wakes (budget and pause).
+    # It also resets the wakes (budget and pause); input typed in the web or
+    # a TUI the peer wakes too (chi send doesn't: a peer can run it).
     def user_input(client_id)
       return unless ClientId.human?(client_id)
 
       ArchiveStore.user_input(@session_id, state_dir: @state_dir)
-      @wakes.human_input!
+      @wakes.human_input!(interactive: ClientId.interactive?(client_id))
     end
 
     def stopped_on_disk?

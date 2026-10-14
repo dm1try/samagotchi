@@ -4,12 +4,14 @@ require "fileutils"
 require "securerandom"
 require "time"
 
+require_relative "child_reports"
 require_relative "client_id"
 require_relative "config"
 require_relative "context_note"
 require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "worker_wakes"
 
 module Samagotchi
   # What comes into a worker's session between turns, each kind with its
@@ -43,6 +45,8 @@ module Samagotchi
     # the turn +turn_id+.
     ContextWake = Data.define(:delivery, :turn_id) do
       def name = delivery.name
+      # For a peer agent's answer (its own budget, WorkerWakes#peer_open?).
+      def peer? = !delivery.peer.nil?
       def origin = { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" }
     end
 
@@ -230,14 +234,42 @@ module Samagotchi
     # context.wake is on, the wake budget is open (WorkerWakes#context_open?:
     # no continue offer, not paused, under session.max_wakes, past the start
     # grace) and the source hasn't woken the session in the last
-    # CONTEXT_WAKE_WINDOW. The others stay plain notes. Within the start
-    # grace a change is a note: it came while the session was away.
+    # CONTEXT_WAKE_WINDOW; a peer's answer (Delivery#peer) has no window but
+    # the peer budget (WorkerWakes#peer_open?). The others stay plain notes.
+    # Within the start grace a change is a note: it came while the session
+    # was away. A peer's answer held by either budget is announced once.
     def context_wake_for(batch, now: Time.now)
       candidates = batch.deliveries.select(&:wake_note)
       return nil if candidates.empty? || !context_wakes_on?
-      return nil unless @wakes.context_open?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
 
-      candidates.find { |delivery| !woke_lately?(delivery.subscription, now) }
+      unless @wakes.context_open?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
+        peer_held(candidates.find(&:peer), ChildRing::MAX_WAKES_KEY) if @wakes.spent?
+        return nil
+      end
+
+      held = []
+      waking = candidates.select do |delivery|
+        next !woke_lately?(delivery.subscription, now) unless delivery.peer
+
+        next true if @wakes.peer_open?(name: delivery.name)
+
+        held << delivery
+        false
+      end
+      peer_held(held.first, WorkerWakes::PEER_TURNS_KEY)
+      waking.first
+    end
+
+    # A peer's answer waits as a note: the UIs hear it once per
+    # interactive input (WorkerWakes#notice_peer_budget!). +key+: the
+    # budget that holds it.
+    def peer_held(delivery, key)
+      return unless delivery && @wakes.notice_peer_budget!
+
+      turns = key == ChildRing::MAX_WAKES_KEY ? @wakes.max : @wakes.peer_turns
+      @engine.announce(type: :hook_notice, hook: "context", level: :info, between_turns: true,
+                       text: "#{delivery.peer} answered again; it waits as a note for your next message " \
+                             "(#{turns} wake turn#{"s" if turns != 1} in a row, #{key})")
     end
 
     def context_wakes_on? = Config.get("context.wake") != false

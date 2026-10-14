@@ -73,7 +73,7 @@ session:
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
   # delegate_reports: wake  # a child's reply reaches its parent by itself: wake (an idle parent runs a turn), queue, off
-  # max_wakes: 10           # turns in a row a parent runs for delegate reports with no human input
+  # max_wakes: 10           # wake turns in a row (delegate reports, context, peers) with no human input
 
 # Baseline memories preloaded into the system prompt (same shape as --memory);
 # name entries you have, or chi warns at each start.
@@ -1529,7 +1529,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
 | `session.max_children` | `4` | | Running delegated sessions one session may have. |
 | `session.delegate_reports` | `wake` | | When a delegate child ends a turn, its reply reaches the parent: `wake` runs an idle parent's turn for it, `queue` waits for the parent's next turn, `off` leaves it to `delegate_result`. |
-| `session.max_wakes` | `10` | | Turns a parent runs for delegate reports in a row with no human input; past it reports wait for the next turn. |
+| `session.max_wakes` | `10` | | Wake turns a session runs in a row with no human input: for delegate reports, attached context and peer answers; past it reports wait for the next turn and context updates arrive as notes. |
 | `session.retention_days` | `14` | yes | Delete sessions not updated for N days; `0` = forever. See [Sessions](sessions.md). |
 | `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
 | `session.keep_status` | none | yes | Comma list of statuses never pruned (a session a worker or `chi` has open is never pruned anyway). |
@@ -1561,7 +1561,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `memory.index_warn_tokens` | `2500` | yes | The tokens one scope's memory index (project or system; sent with every prompt) may hold before a `memory_write`, `write` or `edit` that takes it over gets a note asking the model to tighten long index descriptions; `0`: no note. Estimated as characters / `context.chars_per_token`. `memory:` is its own section, not the `memories:` preload list. See [Memory](memory.md). |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that put the estimate into a bucket; the rise into a guidance bucket (from the second up) leaves the model its own `[CONTEXT: …]` line, and the bucket decides the guidance. |
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
-| `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
+| `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, a peer source up to `context.peer_turns` in a row, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
+| `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's review source, such as `codex-review`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` never wakes. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit. See "Toolkits". |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |

@@ -164,8 +164,13 @@ module Samagotchi
       # than 30 counts as 30).
       Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config]),
       # Whether a source's update with wake: true may start a turn in a live, idle session (Worker; one per source per
-      # 10 minutes, within session.max_wakes); false: it waits as a note for the next turn.
+      # 10 minutes, a peer source per context.peer_turns, within session.max_wakes); false: it waits as a note for the
+      # next turn.
       Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
+      # A peer agent's answers (a source a peer bundle declares, claude-review): wake turns in a row they may start
+      # with no input typed in the web or a TUI (within session.max_wakes); then they wait as notes. 0: a peer source
+      # wakes like any other (once per 10 minutes, the guard line).
+      Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli]),
 
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
       # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.

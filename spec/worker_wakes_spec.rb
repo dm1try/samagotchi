@@ -105,4 +105,53 @@ RSpec.describe Samagotchi::WorkerWakes do
         .to eq([4, *[Samagotchi::ChildRing::MAX_WAKES_DEFAULT] * 3])
     end
   end
+
+  describe "the peer budget (context.peer_turns)" do
+    let(:peers) { [2] }
+    let!(:wakes) { described_class.new(grace: 0, max: -> { budget[0] }, peer_max: -> { peers[0] }) }
+
+    it "opens for peer_turns peer wakes in a row, each counting toward both budgets, then logs the hold" do
+      allow(Samagotchi::Log).to receive(:info)
+      expect(wakes.peer_open?(name: "codex-review")).to be(true)
+      expect(wakes.count!(peer: true)).to eq(1)
+      wakes.count!
+      expect(wakes.peer_open?(name: "codex-review")).to be(true)
+      wakes.count!(peer: true)
+
+      expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([3, 2])
+      expect(wakes.peer_open?(name: "codex-review")).to be(false)
+      expect(wakes.spent?).to be(true)
+      expect(Samagotchi::Log).to have_received(:info)
+        .with(:worker, "context_wake_held", reason: "peer_turns", names: "codex-review")
+    end
+
+    it "is never more than session.max_wakes, and 0 with peer_turns 0" do
+      peers[0] = 5
+      expect(wakes.peer_turns).to eq(3)
+      peers[0] = 0
+      expect(wakes.peer_turns).to eq(0)
+      expect(wakes.peer_open?(name: "x")).to be(false)
+    end
+
+    it "is reset with its notice by interactive input only; chi send resets session.max_wakes alone" do
+      2.times { wakes.count!(peer: true) }
+      expect(wakes.notice_peer_budget!).to be(true)
+      expect(wakes.notice_peer_budget!).to be(false)
+
+      wakes.human_input!(interactive: false)
+      expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([0, 2])
+      expect(wakes.notice_peer_budget!).to be(false)
+
+      wakes.human_input!(interactive: true)
+      expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([0, 0])
+      expect(wakes.notice_peer_budget!).to be(true)
+    end
+
+    it "reads context.peer_turns: 0 or less is off, a non-integer the default" do
+      plain = described_class.new(grace: 0)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("context.peer_turns").and_return("4", "0", "-2", "lots", nil)
+      expect(Array.new(5) { plain.peer_max }).to eq([4, 0, 0, 3, 3])
+    end
+  end
 end

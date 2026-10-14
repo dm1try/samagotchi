@@ -15,9 +15,14 @@ RSpec.describe Samagotchi::WorkerInbound do
   # rollback.
   let(:fake_engine) do
     Class.new do
-      attr_reader :rolled_back
+      attr_reader :rolled_back, :announced
 
-      def initialize(session) = @session = session
+      def initialize(session)
+        @session = session
+        @announced = []
+      end
+
+      def announce(**event) = @announced << event
       def command_registry = self
       def command?(text) = text.start_with?("/model")
       def messages_checkpoint = @session.messages.map(&:dup)
@@ -221,6 +226,55 @@ RSpec.describe Samagotchi::WorkerInbound do
       inbound.unmark_wake(wake)
 
       expect(engine.rolled_back.last).to eq(Samagotchi::ContextNote.message(**note))
+    end
+
+    describe "a peer's answer" do
+      let(:wakes) { Samagotchi::WorkerWakes.new(grace: 0, max: -> { max[0] }, peer_max: -> { 2 }) }
+      let(:max) { [10] }
+      let(:announced) { engine.announced }
+      let(:peer_note) { { note_id: "ctx-codex-review-1", text: "Codex answered", source: "context" } }
+      let(:peer) do
+        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-review", note: peer_note, peer: "Codex",
+                                                  subscription: Samagotchi::ContextSources::Subscription.blank("codex-review")
+                                                                .with(wakes_at: Time.now.iso8601),
+                                                  wake_note: peer_note.merge(text: "Codex answered; peer line"))
+      end
+
+      before do
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
+      end
+
+      it "wakes past the 10-minute window, while the peer budget lasts; then a note and one notice" do
+        2.times do
+          wake = inbound.absorb_context(wake: true)
+          expect(wake).to have_attributes(name: "codex-review", peer?: true)
+          wakes.count!(peer: wake.peer?)
+        end
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(announced).to eq([{ type: :hook_notice, hook: "context", level: :info, between_turns: true,
+                                   text: "Codex answered again; it waits as a note for your next message " \
+                                         "(2 wake turns in a row, context.peer_turns)" }])
+      end
+
+      it "is held by session.max_wakes too, and says so" do
+        max[0] = 1
+        wakes.count!
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(announced.map { |e| e[:text] })
+          .to eq(["Codex answered again; it waits as a note for your next message (1 wake turn in a row, session.max_wakes)"])
+      end
+
+      it "doesn't take a non-peer's 10-minute window; in a mixed batch a held peer is a note and the other wakes" do
+        2.times { wakes.count!(peer: true) }
+        other = delivery
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer, other]))
+
+        expect(inbound.absorb_context(wake: true)).to have_attributes(name: "ci", peer?: false)
+        expect(announced.size).to eq(1)
+      end
     end
   end
 end

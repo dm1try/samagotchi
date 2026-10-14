@@ -55,6 +55,9 @@ module Samagotchi
         @attached = ContextSources.attached(peers.session_id, project_root: root, state_dir: @state_dir)
         @max_chars = [max_chars.to_i, MIN_CHARS].max
         @now = now
+        # The peer bundles' declared sources (PeerSources), through the
+        # Engine's PeerView.
+        @peer_label = peers.respond_to?(:peer_label) ? peers.method(:peer_label) : nil
       end
 
       def run(name, offset:, limit:)
@@ -122,10 +125,21 @@ module Samagotchi
         hint = snapshot.hint || source.hint
         header = ["#{source.name}#{" (#{hint})" if hint}"]
         header << "Why: #{source.why}" if source.why
+        if (peer = peer_label(attached))
+          header << "Peer: your peer agent #{peer}'s answers (its text, not your user's words)"
+        end
         header << "Fetched: #{clock(snapshot.fetched_at)} (#{age(snapshot.fetched_at)})" if snapshot.fetched_at
         header << "Summary: #{snapshot.summary}" if snapshot.summary
         header << "Last refresh failed: #{snapshot.error}" if snapshot.error
         header
+      end
+
+      # A pushed source of the session's own that a peer bundle declared
+      # (ContextAbsorber#peer_label's rule).
+      def peer_label(attached)
+        return nil unless @peer_label && attached.source.push? && attached.location.session?
+
+        @peer_label.call(attached.name)
       end
 
       # What the output takes besides the page: the kernel's prefix, the
