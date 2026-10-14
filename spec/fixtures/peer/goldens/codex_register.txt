@@ -38,6 +38,11 @@
   "annotation": "Confirm with Codex",
   "command": "/codex validate"
 }
+=== peer_source
+{
+  "peer_source": "codex-review",
+  "label": "Codex"
+}
 === hook
 {
   "hook": "before_turn",

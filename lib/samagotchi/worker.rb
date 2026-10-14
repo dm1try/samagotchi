@@ -272,7 +272,8 @@ module Samagotchi
                                         predecessor: @session.continues)
       # Its attached context's notes (ContextSources).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
-                                              project_root: @session.project_root)
+                                              project_root: @session.project_root,
+                                              peer_sources: @engine.peer_sources, peer_turns: -> { @wakes.peer_turns })
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
                                    context_absorber: @context_absorber, wakes: @wakes,

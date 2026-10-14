@@ -237,6 +237,85 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(wake_turns.pop(timeout: 0.5)).to be_nil
     end
 
+    describe "a peer agent's answers (a source a peer bundle declared)" do
+      before do
+        config["context.peer_turns"] = 2
+        allow(Samagotchi::Config).to receive(:get).with("context.peer_turns") { config["context.peer_turns"] }
+        engine.peer_sources.declare("codex-review", label: "Codex", bundle: "codex-peer")
+        own.add(Samagotchi::ContextSources::Source.new(name: "codex-review", cmd: nil, every_seconds: nil, why: nil,
+                                                       hint: nil, scope: "session", added_by: "cli", created_at: nil))
+      end
+
+      def answer(text, summary: "step 2: VERDICT CHANGES")
+        push("codex-review", text, wake: true, summary: summary)
+        expect(wait_until { own.subscription("codex-review")&.seen == Samagotchi::ContextSources.revision_of(text) })
+          .to be(true)
+      end
+
+      def wake_turn = wake_turns.pop(timeout: 3)
+
+      def type(prompt, client_id)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, client_id: client_id, state_dir: state_dir)
+        _, kwargs, = wake_turn
+        expect(kwargs[:origin]).to eq({ client_id: client_id })
+      end
+
+      def peer_notices = events.select { |e| e[:type] == :hook_notice && e[:hook] == "context" }
+
+      it "wakes peer_turns times in a row with the peer line, no 10-minute window; then notes and one notice" do
+        start_worker
+
+        answer("v1")
+        _, kwargs, last = wake_turn
+        expect(kwargs).to include(continue: true, origin: { client_id: "context:codex-review" })
+        expect(last[:content]).to include("What your peer agent Codex answered", "after 2 such turns in a row")
+        answer("v2")
+        expect(wake_turn&.last&.dig(:content)).to include("What changed, as your peer agent Codex reports it")
+
+        answer("v3")
+        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
+        answer("v4")
+        expect(peer_notices.map { |e| e[:text] })
+          .to eq(["Codex answered again; it waits as a note for your next message (2 wake turns in a row, context.peer_turns)"])
+      end
+
+      it "takes typed input in the web or a TUI as the reset, not chi send (which a peer can run)" do
+        config["context.peer_turns"] = 1
+        start_worker
+        answer("v1")
+        expect(wake_turn).not_to be_nil
+
+        type("go on", "cli:send")
+        answer("v2")
+        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+
+        type("go on", "web:tab1")
+        answer("v3")
+        expect(wake_turn&.dig(1, :origin)).to eq({ client_id: "context:codex-review" })
+      end
+
+      it "doesn't wake for an answer that agrees: it arrives as a note" do
+        start_worker
+        answer("v1", summary: "step 2: VERDICT OK")
+
+        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        expect(saved_context_notes.last[:content]).to include("Attached: codex-review.")
+      end
+
+      it "stays within session.max_wakes" do
+        config["session.max_wakes"] = 1
+        start_worker
+        answer("v1")
+        expect(wake_turn).not_to be_nil
+
+        answer("v2")
+        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
+                                                         "message (1 wake turn in a row, session.max_wakes)"])
+      end
+    end
+
     # Review item 3 (part 2): an exit or restart asked for doesn't wait
     # out a wake turn. A long tick: the loop runs only when woken, so the
     # change and the request are both there on its next pass.

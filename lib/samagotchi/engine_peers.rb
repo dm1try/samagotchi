@@ -20,6 +20,9 @@ module Samagotchi
       def model_ref = engine.effective_model_ref
       def thinking = engine.thinking_override
       def reasoning_history = engine.reasoning_history_override
+      # The peer's name when +name+ is a source a peer bundle declared
+      # (PeerSources), for context_read's header.
+      def peer_label(name) = engine.peer_sources&.label_for(name)
     end
 
     # What the approval relay needs from the parent's Engine (Peers#relay):

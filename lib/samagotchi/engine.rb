@@ -20,6 +20,7 @@ require_relative "kernel_loop"
 require_relative "tools/builtins"
 require_relative "tools/task_runtime"
 require_relative "tools/tool_index"
+require_relative "peer_sources"
 require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "extension_load"
@@ -197,6 +198,9 @@ module Samagotchi
       # The tools plugins publish without declaring (chi.tool_source), and
       # the search and call tools that reach them (Tools::ToolIndex).
       @tool_index = Tools::ToolIndex.new
+      # The context sources the peer bundles declare as a peer agent's
+      # answers (chi.peer_source); the worker's ContextAbsorber asks it.
+      @peer_sources = PeerSources.new
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -627,6 +631,9 @@ module Samagotchi
     # @return [Commands::Registry] the commands this session runs: the
     #   built-ins, and the ones bundle plugins add
     attr_reader :command_registry
+
+    # @return [PeerSources] the sources the peer bundles declared
+    attr_reader :peer_sources
 
     # The model id sent for +full_ref+ (its alias applied, the host prefix off).
     def bare_model_name(full_ref)
@@ -2626,7 +2633,8 @@ module Samagotchi
                         quiet: quiet, timeout: timeout, failed: failed, &block)
         },
         toolkits: @toolkit_binding.plugin_kits,
-        tool_index: @tool_index
+        tool_index: @tool_index,
+        peer_sources: @peer_sources
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI

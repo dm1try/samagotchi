@@ -35,6 +35,7 @@ module Samagotchi
         @services = []
         @inits = []
         @toolkits = []
+        @peer_sources = []
         @tool_source = nil
         @committed = false
       end
@@ -297,11 +298,29 @@ module Samagotchi
         nil
       end
 
+      # A context source that holds a peer agent's answers (the peer
+      # bundles' claude-review, codex-review): +label+ is the peer's name
+      # ("Codex", PeerSources::LABEL), said in chi's own lines. Such a
+      # source, when it is a pushed one of the session's own, wakes on
+      # context.peer_turns rather than the 10-minute window, with the peer
+      # line (docs/context.md, Waking). Declared here, in-process, never by
+      # a source file; gone with the bundle.
+      def peer_source(name, label:)
+        raise ArgumentError, "this chi has no peer sources (plugins: false)" unless @registries.peer_sources
+
+        name = @registries.peer_sources.check!(name, label: label, bundle: @bundle)
+        raise ArgumentError, "peer source #{name} is declared twice" if @peer_sources.any? { |item| item[:name] == name }
+
+        @peer_sources << { name: name, label: label.to_s }
+        nil
+      end
+
       # Register what was staged. Called by Loader after #register. What
       # can only be checked now (an annotation's command) is checked before
       # anything is registered: a raise here leaves the registries as they were.
       def commit!
         check_annotations!
+        @peer_sources.each { |item| @registries.peer_sources.check!(item[:name], label: item[:label], bundle: @bundle) }
         context = @context
         @commands.each do |cmd|
           block = cmd[:block]
@@ -332,13 +351,14 @@ module Samagotchi
         end
         @registries.toolkits&.concat(@toolkits)
         @registries.tool_index.add(@tool_source) if @tool_source
+        @peer_sources.each { |item| @registries.peer_sources.declare(item[:name], label: item[:label], bundle: @bundle) }
         @committed = true
       end
 
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
                      services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
-                     tool_sources: @tool_source ? 1 : 0 }
+                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size }
 
       # Each annotation's command is one #command staged.
       def check_annotations!

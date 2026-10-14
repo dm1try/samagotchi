@@ -90,6 +90,9 @@ module Samagotchi
         end
         # A chi without chi.annotation (before 0.66) loads the bundle without the pill.
         chi.annotation "Confirm with #{peer::NAME}", command: "#{peer::COMMAND} validate" if chi.respond_to?(:annotation)
+        # The review source is the peer's answers: its own wake budget and
+        # line (context.peer_turns). A chi before 0.67 has no peer_source.
+        chi.peer_source peer::REVIEW, label: peer::NAME if chi.respond_to?(:peer_source)
         chi.on(:before_turn) do |event|
           @lock.synchronize { @before_turn = Array(event[:messages]) }
         end

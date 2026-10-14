@@ -38,6 +38,11 @@
   "annotation": "Confirm with Claude",
   "command": "/claude validate"
 }
+=== peer_source
+{
+  "peer_source": "claude-review",
+  "label": "Claude"
+}
 === hook
 {
   "hook": "before_turn",

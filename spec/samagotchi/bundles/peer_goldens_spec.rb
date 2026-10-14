@@ -43,6 +43,8 @@ RSpec.describe "Peer bundle goldens" do
 
       def annotation(label, **opts) = @declared << { annotation: label, **opts }
 
+      def peer_source(name, label:) = @declared << { peer_source: name, label: label }
+
       def on(event, priority: 100, &) = @declared << { hook: event, priority: priority }
     end
   end
