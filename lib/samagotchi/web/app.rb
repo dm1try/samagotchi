@@ -799,16 +799,16 @@ module Samagotchi
                                                        cwd: session.working_directory),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
-          queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
+          queued: snapshot_list(turn_snapshot, "queued"),
           # Commands waiting for the running turn's end (their bubbles).
-          queued_commands: turn_snapshot ? Array(turn_snapshot["queued_commands"]) : [],
+          queued_commands: snapshot_list(turn_snapshot, "queued_commands"),
           recap: turn_snapshot && turn_snapshot["recap"],
           saved_recap: saved_recap_for(id, session, turn_snapshot),
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
-          init_tasks: turn_snapshot ? Array(turn_snapshot["init_tasks"]) : [],
+          init_tasks: snapshot_list(turn_snapshot, "init_tasks"),
           cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id) }),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
@@ -825,6 +825,10 @@ module Samagotchi
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
+
+      # A list in the worker's turn +snapshot+ (queued prompts, commands,
+      # init tasks); [] without a worker.
+      def snapshot_list(snapshot, key) = Array(snapshot&.[](key))
 
       # A live worker's +key+ as its reading (+live+: a snapshot, a tail)
       # says it, nil included; without a worker (+live+ nil) the block's,
@@ -902,17 +906,18 @@ module Samagotchi
         turn_id = nil if turn_id.empty?
         tail = live_tail(id, turn_id: turn_id)
         state = tail && tail["session_state_snapshot"]
-        if state.is_a?(Hash)
-          session_json = { id: id, status: state["status"], used_memory_names: Array(state["used_memory_names"]),
-                           prompt_notes: Array(state["prompt_notes"]) }
+        state = nil unless state.is_a?(Hash)
+        if state
+          status, used, notes = state.values_at("status", "used_memory_names", "prompt_notes")
           messages = last_assistant_for_display([tail["answer"]].compact)
         else
           session = @session_class.load(id, state_dir: default_state_dir)
-          state = nil
-          session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names),
-                           prompt_notes: session.prompt_notes.map(&:to_h) }
+          status = displayed_status(session)
+          used = session.used_memory_names
+          notes = session.prompt_notes.map(&:to_h)
           messages = last_assistant_for_display(session.messages, turn_id: turn_id, cwd: session.working_directory)
         end
+        session_json = { id: id, status: status, used_memory_names: Array(used), prompt_notes: Array(notes) }
         live_metrics = state && state["metrics"]
         # Without recent=1: a tab opened before this release (it replaces its
         # timing with the reply's). Remove this branch after the next release.
