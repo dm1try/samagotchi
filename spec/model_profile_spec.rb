@@ -211,18 +211,6 @@ RSpec.describe Samagotchi::ModelProfile do
         expect(described_class.check_host!("spare:org/model")).to eq("spare:org/model")
       end
 
-      it "refuses a disabled host in a worker, whose hosts come from SAMAGOTCHI_HOSTS_JSON" do
-        write_config(<<~YAML)
-          hosts:
-            main: {host: localhost, port: 8080}
-            box: {host: box.local, port: 8080, enabled: false}
-        YAML
-        json = Samagotchi::ConfigFile.hosts_json_for_env(env: ENV)
-        worker_env = ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => json)
-        expect { described_class.check_host!("box:gemma", env: worker_env) }
-          .to raise_error(described_class::UnknownHost, "host 'box' is disabled (enabled: false in config.yml)")
-      end
-
       it "takes a disabled host that the hosts given include as enabled" do
         write_config(<<~YAML)
           hosts:

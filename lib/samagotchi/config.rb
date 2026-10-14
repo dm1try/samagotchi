@@ -1058,25 +1058,6 @@ module Samagotchi
       hosts.keys.map { |k| k.to_s.downcase }.include?(prefix) ? nil : prefix
     end
 
-    # hosts_config as a SAMAGOTCHI_HOSTS_JSON override (workers no longer
-    # get one: they read config.yml).
-    def hosts_json_for_env(env: ENV, path: global_path(env: env))
-      hosts = hosts_config(env: env, path: path)
-      # Only serialize if non-default or explicitly configured hosts:
-      # include when hosts file exists with hosts: section or when workers need propagation
-      return nil if hosts.nil? || hosts.empty?
-
-      # Every field travels (HostConfig#to_env_h); the worker parses it back.
-      simple = hosts.transform_values(&:to_env_h)
-      # Disabled hosts travel as just that, so a worker refuses "box:x"
-      # the way its parent does instead of sending it to the default host.
-      disabled_host_names(env: env, path: path).grep(HOST_NAME_RE).each { |name| simple[name] ||= { "enabled" => false } }
-      JSON.generate(simple)
-    rescue StandardError => e
-      Log.error(:config, "hosts_json_failed", error: e.class.name, message: e.message)
-      nil
-    end
-
     # A top-level section of config.yml as written (nil when absent or the
     # file doesn't parse); a reader checks its shape.
     def section(name, env: ENV, path: global_path(env: env))

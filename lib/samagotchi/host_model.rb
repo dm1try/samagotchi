@@ -103,13 +103,6 @@ module Samagotchi
                          .map { |info| HostModel::Row.new(id: info.id.to_s, configured: false, info: info) }
       end
     end
-
-    # The entry as written back to config (HostConfig#to_env_h): nil for a
-    # bare id.
-    def to_config
-      config = { "price" => price&.to_config, "served" => served }.compact
-      config unless config.empty?
-    end
   end
 
   # A listing row (HostModel.rows): id as the host lists it, else as

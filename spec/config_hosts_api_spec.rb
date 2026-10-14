@@ -52,19 +52,6 @@ RSpec.describe "hosts: api" do
     expect { hosts("b" => { "host" => "h", "api" => "grpc" }) }.to output(/ignoring hosts entry 'b'/).to_stderr
   end
 
-  it "passes api to workers through SAMAGOTCHI_HOSTS_JSON" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "config.yml")
-      File.write(path, { "hosts" => { "oai" => { "host" => "h", "port" => 8000, "api" => "openai" },
-                                      "box" => { "host" => "b" } } }.to_yaml)
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-
-      expect(worker["oai"]).to have_attributes(host: "h", port: 8000, api: :openai)
-      expect(worker["box"]).to have_attributes(host: "b", api: nil, transport: nil)
-    end
-  end
-
   describe "enabled: false" do
     let(:yaml_hosts) do
       { "main" => { "host" => "h" }, "Box" => { "host" => "b", "enabled" => "FALSE" },
@@ -78,18 +65,6 @@ RSpec.describe "hosts: api" do
 
         expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path).keys).to eq(%w[main on])
         expect(Samagotchi::ConfigFile.disabled_host_names(env: {}, path: path)).to eq(%w[box spare])
-      end
-    end
-
-    it "carries the disabled names to a worker that has no config.yml" do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, "config.yml")
-        File.write(path, { "hosts" => yaml_hosts }.to_yaml)
-        worker_env = { "SAMAGOTCHI_HOSTS_JSON" => Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path) }
-        none = File.join(dir, "none.yml")
-
-        expect(Samagotchi::ConfigFile.hosts_config(env: worker_env, path: none).keys).to eq(%w[main on])
-        expect(Samagotchi::ConfigFile.disabled_host_names(env: worker_env, path: none)).to eq(%w[box spare])
       end
     end
   end
@@ -109,16 +84,6 @@ RSpec.describe "hosts: api" do
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:config, "config_warning", echo: a_string_including("hosts entry 'broken'"))
     end
-
-    it "keeps the other hosts in the workers' SAMAGOTCHI_HOSTS_JSON" do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, "config.yml")
-        File.write(path, { "hosts" => { "broken" => { "host" => "x" }, "fine" => { "host" => "h" } } }.to_yaml)
-        json = nil
-        expect { json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path) }.to output.to_stderr
-        expect(JSON.parse(json).keys).to eq(["fine"])
-      end
-    end
   end
 
   describe "a failure outside the entries" do
@@ -129,15 +94,6 @@ RSpec.describe "hosts: api" do
       expect(hosts("fine" => { "host" => "h" })).to eq({})
       expect(Samagotchi::Log).to have_received(:error)
         .with(:config, "hosts_config_failed", error: "TypeError", message: "bad section")
-    end
-
-    it "logs hosts_json_failed when the workers' copy can't be built" do
-      allow(Samagotchi::ConfigFile).to receive(:hosts_config).and_return({ "a" => nil })
-      allow(Samagotchi::Log).to receive(:error)
-
-      expect(Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: "/nonexistent.yml")).to be_nil
-      expect(Samagotchi::Log).to have_received(:error)
-        .with(:config, "hosts_json_failed", error: "NoMethodError", message: kind_of(String))
     end
   end
 

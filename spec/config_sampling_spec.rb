@@ -76,15 +76,11 @@ RSpec.describe "sampling config" do
     end
   end
 
-  it "travels to a worker in SAMAGOTCHI_HOSTS_JSON and reaches the HostEntry" do
+  it "reaches the HostEntry" do
     with_config("hosts" => { "work" => { "host" => "box", "sampling" => { "temperature" => 0.6, "min_p" => 0.05,
-                                                                          "chat_template_kwargs" => { "enable_thinking" => false } } } }) do |path, dir|
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-      registry = Samagotchi::HostRegistry.new(hosts_config: worker)
+                                                                          "chat_template_kwargs" => { "enable_thinking" => false } } } }) do |path|
+      registry = Samagotchi::HostRegistry.new(hosts_config: Samagotchi::ConfigFile.hosts_config(env: {}, path: path))
 
-      expect(JSON.parse(json)["work"]["sampling"]).to eq("temperature" => 0.6, "min_p" => 0.05,
-                                                         "chat_template_kwargs" => { "enable_thinking" => false })
       expect(registry.find_entry("work").sampling).to eq(temperature: 0.6, min_p: 0.05, chat_template_kwargs: { enable_thinking: false })
     end
   end

@@ -51,17 +51,6 @@ RSpec.describe "prompt profile config" do
         expect(hosts["plain"].profile).to be_nil
       end
     end
-
-    it "travels to a worker in SAMAGOTCHI_HOSTS_JSON and reaches the HostEntry" do
-      with_config("hosts" => { "mlx" => { "host" => "box", "port" => 8081, "profile" => "qwen36" } }) do |path, dir|
-        json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-        worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-        registry = Samagotchi::HostRegistry.new(hosts_config: worker)
-
-        expect(JSON.parse(json)["mlx"]).to include("profile" => "qwen36")
-        expect(registry.find_entry("mlx").profile).to eq("qwen36")
-      end
-    end
   end
 
   describe "ConfigFile.model_settings" do

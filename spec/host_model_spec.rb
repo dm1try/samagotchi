@@ -25,8 +25,6 @@ RSpec.describe Samagotchi::HostModel do
 
     expect(models["rr/a"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
     expect(models["rr/b"].price).to be_nil
-    expect(models["rr/a"].to_config).to eq("price" => { "input" => 0.27, "cache_read" => 0.07, "cache_write" => 0.27, "output" => 1.1 })
-    expect(models["rr/b"].to_config).to be_nil
   end
 
   it "reads served: as exact ids or any, and says whether a served model is one of them" do
@@ -36,8 +34,6 @@ RSpec.describe Samagotchi::HostModel do
     expect(models["rr/a"].serves?("together/a")).to be(false)
     expect(models["rr/b"].serves?("anything/at-all")).to be(true)
     expect(models["rr/c"].serves?("rr/c")).to be(false)
-    expect(models["rr/a"].to_config).to eq("served" => %w[fireworks/A baseten/a])
-    expect(models["rr/b"].to_config).to eq("served" => "any")
   end
 
   it "warns once and drops a served: that is neither a list of ids nor any" do

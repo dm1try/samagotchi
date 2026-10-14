@@ -90,14 +90,6 @@ RSpec.describe Samagotchi::Thinking do
                "models" => { "q" => { "thinking" => "high" } } }
       expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
     end
-
-    it "carries a host's level to workers in SAMAGOTCHI_HOSTS_JSON" do
-      with_config("hosts:\n  work:\n    host: h\n    thinking: off\n") do |path|
-        json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-        hosts = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(Dir.tmpdir, "none.yml"))
-        expect(hosts["work"].thinking).to eq(:off)
-      end
-    end
   end
 
   describe ".resolve" do

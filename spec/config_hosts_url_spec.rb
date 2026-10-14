@@ -63,27 +63,6 @@ RSpec.describe "hosts: url and api_key_env" do
                      "bad" => { "host" => "h", "remote" => "maybe" })
     end.to output(/'bad'.*remote must be true or false/).to_stderr
     expect(result.transform_values(&:remote)).to eq("lan" => false, "far" => true, "bad" => nil)
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "config.yml")
-      File.write(path, { "hosts" => { "lan" => { "url" => "https://lan.example/v1", "remote" => false } } }.to_yaml)
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-      expect(worker["lan"].remote).to be(false)
-    end
-  end
-
-  it "passes url and api_key_env to workers, never the key" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "config.yml")
-      File.write(path, { "hosts" => { "fw" => { "url" => "https://api.example.test/v1", "api" => "openai",
-                                                "api_key_env" => "EXAMPLE_KEY", "first_token_timeout" => 45 } } }.to_yaml)
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: { "EXAMPLE_KEY" => "sk-secret" }, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-
-      expect(json).not_to include("sk-secret")
-      expect(worker["fw"]).to have_attributes(url: "https://api.example.test/v1", host: "api.example.test", port: 443,
-                                              api_key_env: "EXAMPLE_KEY", api: :openai, first_token_timeout: 45)
-    end
   end
 
   describe Samagotchi::HostRegistry::HostEntry do
@@ -165,16 +144,12 @@ RSpec.describe "window_tokens on hosts: and models: entries" do
       expect(models["qwen3"].window_tokens).to eq(32_768)
       expect(models["odd"]).to have_attributes(window_tokens: nil)
       expect(Samagotchi::HostRegistry.new(hosts_config: hosts).entries["box"].window_tokens).to eq(65_536)
-
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-      expect(worker["box"].window_tokens).to eq(65_536)
     end
   end
 end
 
 RSpec.describe "llm_context_strategy on hosts: entries" do
-  it "passes a host's layers and apply rule to workers, none included" do
+  it "reads a host's layers and apply rule, none included" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => { "box" => { "host" => "box", "llm_context_strategy" => %w[stale forget],
@@ -182,13 +157,12 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
                                       "off" => { "host" => "off", "llm_context_strategy" => "none" },
                                       "plain" => { "host" => "plain" } } }.to_yaml)
 
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
+      hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-      expect(worker.transform_values(&:llm_context_strategy)).to eq("box" => %i[stale forget], "off" => [],
-                                                                    "plain" => nil)
-      expect(worker.transform_values(&:llm_context_apply)).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
-      expect(worker.transform_values(&:llm_context_budget_tokens)).to eq("box" => 64_000, "off" => nil, "plain" => nil)
+      expect(hosts.transform_values(&:llm_context_strategy)).to eq("box" => %i[stale forget], "off" => [],
+                                                                   "plain" => nil)
+      expect(hosts.transform_values(&:llm_context_apply)).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
+      expect(hosts.transform_values(&:llm_context_budget_tokens)).to eq("box" => 64_000, "off" => nil, "plain" => nil)
     end
   end
 end

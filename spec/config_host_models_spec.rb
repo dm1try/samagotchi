@@ -35,39 +35,17 @@ RSpec.describe "hosts.<name>.models" do
     expect(result.keys).to eq(["box"])
   end
 
-  it "passes the declared ids to workers through SAMAGOTCHI_HOSTS_JSON" do
-    with_config("work" => { "url" => "https://gateway.example/v1", "models" => %w[rr/A rr/b] }) do |path, dir|
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
-                                                   path: File.join(dir, "none.yml"))
-
-      expect(worker["work"].models.transform_values(&:id)).to eq("rr/a" => "rr/A", "rr/b" => "rr/b")
-    end
-  end
-
-  it "keeps a declared price through the SAMAGOTCHI_HOSTS_JSON round trip" do
-    price = { "input" => 0.27, "cache_read" => 0.07, "output" => 1.1 }
-    with_config("work" => { "url" => "https://gateway.example/v1", "models" => { "rr/x" => { "price" => price } } }) do |path, dir|
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
-                                                   path: File.join(dir, "none.yml"))
-
-      expect(worker["work"].models["rr/x"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
-    end
-  end
-
-  it "drops an infinite or NaN price (YAML .inf, .nan) and still passes the hosts to workers" do
+  it "drops an infinite or NaN price (YAML .inf, .nan) and keeps the models" do
     allow(Samagotchi::ConfigFile).to receive(:warn_once)
     yaml = "hosts:\n  work:\n    url: https://gateway.example/v1\n    models:\n      " \
            "rr/inf: {price: {input: .inf, output: 1}}\n      rr/nan: {price: {input: 1, output: .nan}}\n"
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, yaml)
-      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
-      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
+      work = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"]
 
-      expect(worker["work"].models.keys).to eq(%w[rr/inf rr/nan])
-      expect(worker["work"].models.values.map(&:price)).to eq([nil, nil])
+      expect(work.models.keys).to eq(%w[rr/inf rr/nan])
+      expect(work.models.values.map(&:price)).to eq([nil, nil])
     end
     expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/inf\.price needs input and output})
     expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/nan\.price needs input and output})

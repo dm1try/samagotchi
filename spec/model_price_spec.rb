@@ -47,8 +47,4 @@ RSpec.describe Samagotchi::ModelPrice do
         .to be_within(1e-12).of(100 * 0.5 / 1e6)
     end
   end
-
-  it "goes back to its written form" do
-    expect(parse("input" => 1, "output" => 2).to_config).to eq("input" => 1, "cache_read" => 1, "cache_write" => 1, "output" => 2)
-  end
 end

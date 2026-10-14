@@ -10,9 +10,7 @@ require_relative "reasoning_history"
 module Samagotchi
   # One config.yml hosts: entry, parsed and checked (ConfigFile.hosts_config
   # holds them by lowercased name; HostRegistry builds its HostEntry from
-  # one). #to_env_h writes every field in the shape of the
-  # SAMAGOTCHI_HOSTS_JSON override (ConfigFile.hosts_json_for_env), and
-  # .parse reads it back to an equal HostConfig.
+  # one).
   #
   # name: the lowercased entry name; host, port, scheme: where it is (from
   # url: when given); url: the configured url, nil when host/port; transport,
@@ -179,31 +177,5 @@ module Samagotchi
       nil
     end
     private_class_method :invalid
-
-    # The entry as a SAMAGOTCHI_HOSTS_JSON override carries it (string keys,
-    # unset fields left out); .parse(name, to_env_h) gives it back. A url
-    # entry travels as its url (host/port come from it); the API key stays
-    # in the environment.
-    # @return [Hash{String => Object}]
-    def to_env_h
-      location = url ? { "url" => url } : { "host" => host, "port" => port }
-      location.merge("transport" => transport&.to_s, "api" => api&.to_s, "api_key_env" => api_key_env,
-                     "auth" => (AUTH_SCHEMES.key(auth) if auth), "dialect" => dialect,
-                     "profile" => profile, "first_token_timeout" => first_token_timeout,
-                     "vision" => vision, "sampling" => sampling, "thinking" => thinking&.to_s,
-                     "reasoning_history" => reasoning_history&.to_s, "remote" => remote, "window_tokens" => window_tokens,
-                     "steer_cut_after" => steer_cut_after,
-                     "llm_context_strategy" => llm_context_strategy&.map(&:to_s),
-                     "llm_context_apply" => llm_context_apply&.to_s,
-                     "llm_context_budget_tokens" => llm_context_budget_tokens,
-                     "models" => models_config).compact
-    end
-
-    private
-
-    # hosts.<name>.models as written back (HostModel#to_config), nil when none.
-    def models_config
-      models.values.to_h { |m| [m.id, m.to_config] } unless models.nil? || models.empty?
-    end
   end
 end
