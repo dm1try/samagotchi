@@ -17,7 +17,7 @@ clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (We
 
 The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_view.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
-`question_cards.js`, `stream_handlers.js`, the chips, `info_bar.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
+`question_cards.js`, `stream_handlers.js`, `bubbles.js`, the chips, `info_bar.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
 `chains.js`, `vendor/lit-html.js`) needs a DOM: `import "./dom_shim.js";` as its first import (happy-dom, a devDependency only,
 never shipped; lit reads `document` as it loads). The shim's `markupOf(template)`,
 `htmlOf(nodes)` and `canon(html)` compare markup without lit's marker comments; the DOM writes text with only `&`, `<`, `>`
