@@ -4,9 +4,7 @@ require "samagotchi/plugin/api"
 
 RSpec.describe "Samagotchi::Plugin::Api.result_text" do
   def handler_result(value)
-    fields = Samagotchi::Plugin::Api.entry_fields(
-      { block: ->(_args, _ctx) { value }, schema: { parameters: {} }, label: "t" }, nil
-    )
+    fields = Samagotchi::Plugin::Api.entry_fields(Samagotchi::Plugin::Api.tool_spec("t", "t", label: "t") { value }, nil)
     fields[:handler].call({ name: "t", args: {} }, nil)
   end
 

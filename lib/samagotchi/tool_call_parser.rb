@@ -36,7 +36,7 @@ module Samagotchi
     #              <|channel>thought......<channel|>
     class Gemma
       # Digits after the first character: plugin tools may have them
-      # (Plugin::Api::TOOL_NAME).
+      # (Plugin::ToolSpec::TOOL_NAME).
       TOOL_CALL_BODY_RE = /\Acall:([a-z_][a-z0-9_]{0,49})\{/
       THOUGHT_CHANNEL_OPEN  = ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN
       THOUGHT_CHANNEL_CLOSE = ModelProfile::GEMMA_THOUGHT_CHANNEL_CLOSE

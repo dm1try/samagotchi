@@ -271,7 +271,7 @@ One iteration with tool calls:
   `EVENT_FIELDS`) copy them by these lists, so a new row field is added there. `ref` is `FileRef.for` (a
   read/write/edit's file against the cwd, `{kind: "file", path, line?, end_line?}`); the web opens it in the editor
   that `Web::Editor` (web.editor) names, for a local viewer only (`App#viewer_capabilities`).
-  `refs` is a plugin tool's row refs: its registry entry's `refs` (chi.tool's `refs:` lambda, `Api.per_call`), run
+  `refs` is a plugin tool's row refs: its registry entry's `refs` (chi.tool's `refs:` lambda, `ToolSpec#per_call`), run
   once per call by `RowRefs.for` (never raises: a raise or a non-list gives none, `tool_refs_failed`; each entry a
   `Ref`, a bad one dropped, `tool_refs_rejected`; a relative file resolved against the session's folder
   (`KernelLoop#session_cwd`, else the process's), one outside it (its spelling or its real path) dropped, a kept one
