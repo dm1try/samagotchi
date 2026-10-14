@@ -15,6 +15,11 @@ bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 
+Goldens (`*_golden_spec.rb`, the prompt snapshots) hold no machine state, so they pass on any runner: no absolute
+paths (replace them with placeholders), no PATH tools (the suite pins `rg` as found, `spec_helper.rb`; an example
+that sets PATH to test the lookup is tagged `:real_rg`), no Ruby-version-dependent `inspect` (a Hash's or an
+exception's text changes between Ruby versions: write the string yourself).
+
 The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_view.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, `stage_view.js`, `bubbles.js`, `cards_place.js`, the chips, `info_bar.js`, `info_bar_model.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,

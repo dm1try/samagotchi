@@ -23,14 +23,14 @@ RSpec.describe Samagotchi::SystemPrompt do
 
   # A PATH with no `command` program on it, as on Linux (macOS ships
   # /usr/bin/command): the check must not depend on a shell builtin.
-  it "finds rg on PATH without a shell" do
+  it "finds rg on PATH without a shell", :real_rg do
     File.write(File.join(@bin, "rg"), "#!/bin/sh\n")
     File.chmod(0o755, File.join(@bin, "rg"))
     ENV["PATH"] = @bin
     expect(rg_available?).to be(true)
   end
 
-  it "doesn't find rg when no PATH folder has it" do
+  it "doesn't find rg when no PATH folder has it", :real_rg do
     ENV["PATH"] = @bin
     expect(rg_available?).to be(false)
   end

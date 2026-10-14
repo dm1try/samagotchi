@@ -12,9 +12,11 @@ require "tmpdir"
 # muted memories, a scratch session. Machine-specific paths and ids are
 # replaced with placeholders.
 #
+# rg is found or not by the example's own PATH (#with_rg), hence :real_rg.
+#
 # Regenerate after an intended change with:
 #   UPDATE_PROMPTS=1 bundle exec rspec spec/system_prompt_full_spec.rb
-RSpec.describe "Full system prompt snapshots" do
+RSpec.describe "Full system prompt snapshots", :real_rg do
   def fixture_dir = File.expand_path("fixtures/system_prompt_full", __dir__)
 
   def expect_snapshot(name, actual)

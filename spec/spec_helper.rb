@@ -65,6 +65,8 @@ ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
 # Loaded here (not by the specs that need it) so the before hook below always
 # swaps in the null keychain: a spec's own env hash doesn't carry the switch.
 require "samagotchi/host_keys"
+# Loaded here so the before hook below always pins rg (a light file).
+require "samagotchi/bundle_needs"
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")
 at_exit { FileUtils.remove_entry(SPEC_INTEGRATION_XDG_CONFIG_HOME) if SPEC_INTEGRATION_XDG_CONFIG_HOME && File.directory?(SPEC_INTEGRATION_XDG_CONFIG_HOME) }
@@ -156,6 +158,14 @@ RSpec.configure do |config|
     # into later specs' output (AttachedLoop builds its view with the default
     # interval). Off by default; specs of the ticker pass an interval.
     stub_const("Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL)
+    # Goldens hold no machine state: the prompt's "prefer rg" line follows
+    # PATH (SystemPrompt#rg_available?), and CI runners have no rg. Pinned
+    # as found in this process (not in a bin/chi or worker a spec starts);
+    # examples tagged :real_rg look it up on PATH.
+    unless RSpec.current_example.metadata[:real_rg]
+      allow(Samagotchi::BundleNeeds).to receive(:found?).and_call_original
+      allow(Samagotchi::BundleNeeds).to receive(:found?).with("rg", any_args).and_return(true)
+    end
   end
 
   # An exit escaping an example fails it loudly. RSpec rescues everything but
