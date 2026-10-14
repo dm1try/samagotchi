@@ -44,10 +44,14 @@ module AffectedSpecs
 
   # Maps changed paths to the spec files a builder should run, in rank
   # order: (1) changed specs, (2) specs named after a changed file,
-  # (3) RULES, (4) weaker name matches, (5) specs naming the changed
-  # file's main constant. +tree+ answers spec_files, node_tests,
+  # (3) RULES, (4) weaker name matches (a spec matching more of the changed
+  # files first, then one beside the file, see #place), (5) specs naming the
+  # changed file's main constant. +tree+ answers spec_files, node_tests,
   # read(path) and mentions(word, paths, word:) (spec path => count).
   class Picker
+    # The kind of name match a spec in the changed file's mirrored folder is.
+    FOLDER = 2
+
     def initialize(changed:, tree:)
       @changed = changed.uniq
       @tree = tree
@@ -62,7 +66,9 @@ module AffectedSpecs
       code_files.each { |path| add_strong(path) }
       @changed.each { |path| add_rules(path) }
       # One tier after the other: every weak name match before any grep hit.
-      %i[add_weak add_mentions].each { |tier| code_files.each { |path| send(tier, path) } }
+      code_files.each { |path| add_weak(path) }
+      add_name_matches
+      code_files.each { |path| add_mentions(path) }
       @unmatched = code_files.reject { |path| matched?(path) }
       @hints << WEB_HINT if @changed.any? { |path| web?(path) }
       Result.new(ruby: @ruby.values, node: @node.values, hints: @hints.uniq, unmatched: @unmatched)
@@ -138,11 +144,9 @@ module AffectedSpecs
       end
     end
 
-    # 4: the same file name anywhere, a spec whose name starts with or
-    # contains it (foo_bar.rb -> foo_bar_x_spec.rb, x_foo_bar_spec.rb),
-    # the specs in the file's mirrored folder; a bundle's specs by its name;
-    # a node test importing the changed web file; a spec naming a support
-    # or data file.
+    # 4: a bundle's specs by its name; a node test importing the changed
+    # web file; a spec naming a support or data file; a dev script's spec
+    # folder. A code file's name matches are #add_name_matches.
     def add_weak(path)
       if web_js?(path) || path.start_with?("spec/web/public/")
         name = File.basename(path)
@@ -160,29 +164,81 @@ module AffectedSpecs
         spec_files.each { |spec| add(spec, "names bundle #{path.split("/")[3]}", path) if contains?(tokens(spec), bundle) }
         return
       end
-      parts = name_parts(path)
-      if path.start_with?("script/")
-        # A dev script's specs live in a folder named after it.
-        dir = "spec/#{parts.first}/"
-        spec_files.each { |spec| add(spec, "in spec folder of #{path}", path) if spec.start_with?(dir) }
-        return
+      return unless path.start_with?("script/")
+
+      # A dev script's specs live in a folder named after it.
+      dir = "spec/#{name_parts(path).first}/"
+      spec_files.each { |spec| add(spec, "in spec folder of #{path}", path) if spec.start_with?(dir) }
+    end
+
+    # 4, for the code files: the same file name anywhere, a spec whose name
+    # starts with or contains it (foo_bar.rb -> foo_bar_x_spec.rb,
+    # x_foo_bar_spec.rb), the specs in the file's mirrored folder. Ranked
+    # over all the changed files at once: a spec that matches more of them
+    # first (engine.rb + toolkit.rb -> engine_toolkit_spec.rb), then by
+    # #place, then by the kind of match, then in the changed files' order.
+    def add_name_matches
+      found = Hash.new { |hash, spec| hash[spec] = [] }
+      code_files.each_with_index do |path, index|
+        next unless ruby_code?(path) && !bundle?(path) && !path.start_with?("script/")
+
+        name_candidates(path).each { |spec, kind| found[spec] << [path, place(spec, path), kind, index] }
       end
-      base = parts.last.split("_")
-      tiers = [
-        ->(t) { t == base },
-        ->(t) { t.first(base.size) == base },
-        nil,
-        ->(t) { contains?(t, base) }
-      ]
-      tiers.each do |tier|
-        if tier.nil?
-          dir = "spec/#{parts.join("/")}/"
-          spec_files.each { |spec| add(spec, "in spec folder of #{path}", path) if spec.start_with?(dir) }
-        else
-          spec_files.each { |spec| add(spec, "name matches #{path}", path) if tier.call(tokens(spec)) }
-        end
+      ranked = found.map do |spec, hits|
+        hits = hits.uniq(&:first)
+        # A match counts toward "more of the changed files" only beside the
+        # file: plugin/context.rb's name in engine_context_note_spec.rb is
+        # another context.
+        near = hits.count { |path, place, *| place.zero? || (place == 1 && name_parts(path).size == 1) }
+        [near, hits.min_by { |hit| hit.drop(1) }, hits, spec]
+      end
+      ranked.sort_by { |size, best, _, spec| [-size, *best.drop(1), spec] }.each do |_, best, hits, spec|
+        reason = best[2] == FOLDER ? "in spec folder of #{best[0]}" : "name matches #{best[0]}"
+        others = hits.map(&:first) - [best[0]]
+        reason += " (and #{others.join(", ")})" if others.any?
+        add(spec, reason, best[0])
+        others.each { |path| (@matched ||= {})[path] = true }
       end
     end
+
+    # { spec => kind } for a code file's name: 0 the same name, 1 a name
+    # starting with it, FOLDER a spec in the file's mirrored folder, 3 a
+    # name containing it.
+    def name_candidates(path)
+      parts = name_parts(path)
+      base = parts.last.split("_")
+      dir = "spec/#{parts.join("/")}/"
+      spec_files.each_with_object({}) do |spec, kinds|
+        t = tokens(spec)
+        kind = if t == base then 0
+               elsif t.first(base.size) == base then 1
+               elsif spec.start_with?(dir) then FOLDER
+               elsif contains?(t, base) then 3
+               end
+        kinds[spec] = kind if kind
+      end
+    end
+
+    # How near +spec+ sits to the changed file: 0 beside it (its mirrored
+    # folder, spec/ or spec/samagotchi/, or a top-level spec named with
+    # that folder: plugin/context.rb -> spec/samagotchi/plugin/,
+    # spec/plugin_context_x_spec.rb), 1 a top-level spec, 2 a spec in
+    # another folder (spec/guardrails/context_spec.rb for plugin/context.rb:
+    # another file of that name).
+    def place(spec, path)
+      parts = name_parts(path)
+      dirs = parts[0...-1]
+      folder = spec_folder(spec)
+      if folder.any?
+        beside = (dirs.any? && folder.first(dirs.size) == dirs) || folder.first(parts.size) == parts
+        return beside ? 0 : 2
+      end
+      prefix = dirs.join("_").split("_")
+      dirs.any? && tokens(spec).first(prefix.size) == prefix ? 0 : 1
+    end
+
+    # spec/samagotchi/plugin/x_spec.rb -> ["plugin"]; spec/x_spec.rb -> [].
+    def spec_folder(spec) = spec.delete_prefix("spec/").delete_prefix("samagotchi/").split("/")[0...-1]
 
     def add_data_users(path)
       key = if path.start_with?("spec/support/")

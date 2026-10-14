@@ -55,6 +55,30 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.ruby.last.reason).to eq("names AttachedLoop (lib/samagotchi/terminal_ui/attached_loop.rb)")
   end
 
+  it "ranks the name matches beside the changed file first, a same-named spec in another folder last" do
+    files.merge!("lib/samagotchi/plugin/context.rb" => "", "spec/guardrails/context_spec.rb" => "", "spec/web/context_spec.rb" => "",
+                 "spec/samagotchi/plugin/attached_context_spec.rb" => "", "spec/context_note_spec.rb" => "",
+                 "spec/plugin_context_x_spec.rb" => "")
+
+    expect(paths(pick("lib/samagotchi/plugin/context.rb").ruby)).to eq(%w[
+      spec/plugin_context_x_spec.rb
+      spec/samagotchi/plugin/attached_context_spec.rb
+      spec/context_note_spec.rb
+      spec/guardrails/context_spec.rb
+      spec/web/context_spec.rb
+    ])
+  end
+
+  it "ranks a spec named after several of the changed files first, counting only the matches beside each file" do
+    files.merge!("lib/samagotchi/engine.rb" => "", "lib/samagotchi/toolkit.rb" => "", "lib/samagotchi/plugin/context.rb" => "",
+                 "spec/engine_aaa_spec.rb" => "", "spec/engine_context_note_spec.rb" => "", "spec/engine_toolkit_spec.rb" => "")
+    result = pick("lib/samagotchi/engine.rb", "lib/samagotchi/toolkit.rb", "lib/samagotchi/plugin/context.rb")
+
+    expect(paths(result.ruby)).to eq(%w[spec/engine_toolkit_spec.rb spec/engine_aaa_spec.rb spec/engine_context_note_spec.rb])
+    expect(result.ruby.first.reason).to eq("name matches lib/samagotchi/engine.rb (and lib/samagotchi/toolkit.rb)")
+    expect(result.unmatched).to eq([])
+  end
+
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
