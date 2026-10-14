@@ -106,7 +106,7 @@ module EffectiveModelConfigs
     paths.compact.sort_by { |path| -path.length }.each { |path| out = out.gsub(path, "TMP") }
     out = out.gsub(Dir.home, "HOME") unless Dir.home.to_s.empty?
     out = out.gsub(%r{memories/projects/[^/\s"]+}, "memories/projects/KEY")
-    out.gsub(server.port.to_s, "PORT").gsub(down_port.to_s, "DOWN_PORT")
+    out.gsub("127.0.0.1:#{server.port}", "127.0.0.1:PORT").gsub("127.0.0.1:#{down_port}", "127.0.0.1:DOWN_PORT")
   end
 
   def self.sha(text) = "sha256:#{Digest::SHA256.hexdigest(text)}"
