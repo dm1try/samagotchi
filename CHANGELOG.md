@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `/model` while the web or another terminal read `/stats` no longer leaves the new model on the old model's prompt
+  profile (its turns formatted for the wrong family until the next `/model`).
+
 ## [0.67.0] - 2026-10-14
 
 ### Added

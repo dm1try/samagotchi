@@ -135,6 +135,8 @@ module Samagotchi
       # is used (the REPL checks the model it starts on, #switch_model!).
       @default_model_name = ModelProfile.required_model_name(model_name)
       ModelProfile.check_host!(model_name, hosts: @host_registry.entries) unless model_name.to_s.strip.empty?
+      # Guards the model choice and the profile cached for it (#store_profile).
+      @profile_mutex = Mutex.new
       typed = model_typed.to_s.strip
       @model_choice = ModelChoice.new(name: @default_model_name, typed: typed.empty? ? @default_model_name : typed)
       # An injected client (specs) stands in for every host's client.
@@ -627,9 +629,15 @@ module Samagotchi
     # and kept, so the system prompt and the server's KV prefix stay stable;
     # #switch_model! starts over, and a failed server probe is retried before
     # the next turn (#refresh_profile!). The kernel follows each resolution.
+    # Kept with the model choice it was resolved for: one that finishes
+    # after a switch is neither kept nor applied (#store_profile).
     # @return [ModelProfile::Resolution]
     def profile_resolution
-      @profile_resolution ||= apply_profile(resolve_profile)
+      choice = @model_choice
+      cached = @profile_resolution
+      return cached.last if cached&.first.equal?(choice)
+
+      store_profile(choice, resolve_profile(choice))
     end
     attr_reader :default_model_name, :host_registry, :client
 
@@ -973,11 +981,14 @@ module Samagotchi
       # The alias is applied where the model is resolved (HostRegistry#resolve),
       # once; checked here: an unknown host, an alias naming another host.
       resolved = ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries)
-      # One assignment: a reader on another thread sees the old pair or the new one.
-      @model_choice = ModelChoice.new(name: resolved, typed: typed.to_s.strip.empty? ? model_name : typed.to_s.strip)
-      # A profile given to .new was for the starting model.
-      @given_profile = nil
-      @profile_resolution = nil
+      choice = ModelChoice.new(name: resolved, typed: typed.to_s.strip.empty? ? model_name : typed.to_s.strip)
+      @profile_mutex.synchronize do
+        # One assignment: a reader on another thread sees the old pair or the new one.
+        @model_choice = choice
+        # A profile given to .new was for the starting model.
+        @given_profile = nil
+        @profile_resolution = nil
+      end
       sync_model_key!
       @prompt_builder.reset!
       # The notes the new model's prompt loads at its next build, so /model,
@@ -3003,13 +3014,30 @@ module Samagotchi
 
     # ── Prompt profile ─────────────────────────────────────────────────────────
 
-    def resolve_profile
-      if @given_profile
-        return ModelProfile::Resolution.new(profile: @given_profile, source: :given, detail: nil, retry: false)
-      end
+    # +choice+'s profile (ModelProfile.resolve; may probe /props), or the
+    # one given to .new.
+    def resolve_profile(choice)
+      given = @given_profile
+      return ModelProfile::Resolution.new(profile: given, source: :given, detail: nil, retry: false) if given
 
-      target = @host_registry.resolve(effective_model_name)
-      ModelProfile.resolve(names: model_lookup_names(target), entry: target.entry, client: target.client, bare_model: target.bare_model)
+      target = @host_registry.resolve(choice.name)
+      names = @host_registry.lookup_names(choice.typed, resolved: choice.name, target: target)
+      ModelProfile.resolve(names: names, entry: target.entry, client: target.client, bare_model: target.bare_model)
+    end
+
+    # Keeps +resolution+ as +choice+'s and applies it, unless the model
+    # switched while it was resolved (a /stats on a Bridge thread probing
+    # as a /model ran): then it is only returned, and the new model's is
+    # resolved on its first need.
+    # @return [ModelProfile::Resolution]
+    def store_profile(choice, resolution)
+      @profile_mutex.synchronize do
+        return resolution unless @model_choice.equal?(choice)
+
+        apply_profile(resolution)
+        @profile_resolution = [choice, resolution]
+      end
+      resolution
     end
 
     # The names a models: entry may be under (HostRegistry#lookup_names):
@@ -3022,7 +3050,8 @@ module Samagotchi
     # Everything that holds a profile follows the resolution: the kernel's
     # prompt format and parser, and the system prompts built for the old one.
     def apply_profile(resolution)
-      @prompt_builder&.reset! if @profile_resolution && @profile_resolution.profile.name != resolution.profile.name
+      kept = @profile_resolution&.last
+      @prompt_builder&.reset! if kept && kept.profile.name != resolution.profile.name
       @kernel.use_profile!(resolution)
       resolution
     end
@@ -3031,11 +3060,10 @@ module Samagotchi
     # server probe failed (unreachable, or 503 while loading a model). A
     # profile that changes here drops the cached system prompts.
     def refresh_profile!
-      if @profile_resolution&.retry?
-        @profile_resolution = apply_profile(resolve_profile)
-      else
-        profile_resolution
-      end
+      choice, kept = @profile_resolution
+      return profile_resolution unless choice.equal?(@model_choice) && kept.retry?
+
+      store_profile(choice, resolve_profile(choice))
     end
   end
 end

@@ -100,6 +100,38 @@ RSpec.describe "Engine prompt profile resolution" do
     expect([engine.profile.name, client.asked]).to eq(["gemma4", %w[house-blend-35b other-blend]])
   end
 
+  # A /stats on a Bridge thread resolving the old model's profile while
+  # /model runs: its answer lands after the switch and must not stand for
+  # the new model (nor reach the kernel).
+  it "keeps no profile resolved for a model switched away while it was asked" do
+    client = FakeResolvingClient.new(answered(ornith_props), answered("chat_template" => gemma4_template))
+    asking = Queue.new
+    gate = Queue.new
+    allow(client).to receive(:server_props).and_wrap_original do |original, model:|
+      if model == "house-blend-35b"
+        asking << true
+        gate.pop
+      end
+      original.call(model: model)
+    end
+    engine = engine_with(client)
+    kernel = engine.instance_variable_get(:@kernel)
+    applied = []
+    allow(kernel).to receive(:use_profile!).and_wrap_original do |original, resolution|
+      applied << resolution.profile.name
+      original.call(resolution)
+    end
+
+    stats = Thread.new { engine.profile_resolution }
+    asking.pop
+    engine.switch_model!("other-blend")
+    gate << true
+
+    expect(stats.value.profile.name).to eq("qwen36")
+    expect(engine.profile.name).to eq("gemma4")
+    expect(applied).to eq(["gemma4"])
+  end
+
   it "keeps a resolution for the session: no new probe per turn" do
     client = FakeResolvingClient.new(answered(ornith_props))
     engine = engine_with(client)
