@@ -383,6 +383,13 @@ RSpec.describe Samagotchi::Engine do
       end.not_to raise_error
     end
 
+    it "logs a sink's error instead of dropping it" do
+      allow(kernel).to receive(:run).and_return(result)
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      build_engine(profile: "gemma4").run_turn(make_session, "hi", on_event: proc { |_event| raise "boom" })
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "sink_failed", hash_including(error: "RuntimeError", msg: "boom")).at_least(:once)
+    end
+
     it "forwards tool_call_completed output and output_truncated to the event sink" do
       engine = build_engine(profile: "gemma4")
       events = []

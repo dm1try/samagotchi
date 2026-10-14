@@ -193,6 +193,16 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "a failed turn's save" do
+    it "is logged when it fails, and the turn's error still raises" do
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      allow(session).to receive(:save).and_raise(Errno::ENOSPC)
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "boom")
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "turn_end_save_failed", hash_including(error: "Errno::ENOSPC"))
+    end
+  end
+
   describe "last_turn" do
     it "says how the turn ended, how long it took and who asked, by the time its end is announced" do
       allow(kernel).to receive(:run).and_return(kernel_result)

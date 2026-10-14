@@ -83,7 +83,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
 ```
 StandardError in run_turn:
   → if turn.ended (it came from the after_turn/session_end hooks): logged as post_turn_error, re-raised
-  → else: end_turn(turn, "failed", save: true)
+  → else: end_turn(turn, "failed", save: true) (a save that fails there is logged, turn_end_save_failed)
      # Both loops call LLM::FailedTurn.attach(e, conversation) before re-raising, so
      # failed_messages keeps the loop's partial conversation (tool iterations included),
      # else turn.messages, with TurnNote.failed(summary, continued: turn.continue) at the tail.

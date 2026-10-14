@@ -148,8 +148,8 @@ module Samagotchi
       begin
         require_relative "memory_bundle/system_bundle"
         MemoryBundle::SystemBundle.ensure!
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Log.warn(:memory, "system_bundle_ensure_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       end
       # What hooks and plugins do beyond reading their event (a notice, a
       # question, a stop, a steer), routed to the UIs. Built before anything
@@ -460,7 +460,8 @@ module Samagotchi
 
       log_dropped_steers(steers, "answered")
       []
-    rescue StandardError
+    rescue StandardError => e
+      Log.warn(:turn, "take_steers_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       []
     end
     private :take_steers
@@ -561,7 +562,8 @@ module Samagotchi
       return saved.dup if !@prompt_builder.prompt_notes.nil? || !saved.empty? || @session.messages.to_a.any?
 
       model_notes.map { |note| PromptNote.from_note(note) }
-    rescue StandardError
+    rescue StandardError => e
+      Log.warn(:model, "prompt_notes_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       []
     end
 
@@ -1503,7 +1505,8 @@ module Samagotchi
 
     def save_quietly(session)
       session.save(state_dir: session_state_dir)
-    rescue StandardError
+    rescue StandardError => e
+      Log.warn(:turn, "turn_end_save_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       nil
     end
     private :save_quietly
@@ -2174,8 +2177,8 @@ module Samagotchi
       # Persist deduped used memories onto the session for Web + reload.
       begin
         session.used_memory_names = used_memory_names
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Log.warn(:memory, "used_memories_store_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       end
       # Notify live observers of the updated memory list (so yellow bar refreshes
       # even without a tool_call event if the preload was the only addition).
@@ -2184,8 +2187,8 @@ module Samagotchi
 
       begin
         emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names })
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Log.warn(:memory, "used_memories_emit_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       end
     end
     private :publish_used_memories
@@ -2864,7 +2867,8 @@ module Samagotchi
     def with_generation_report(event)
       report = @metrics.finish_generation
       event.merge(speed: report.speed&.to_h, tokens: report.tokens, served_expected_by: served_expected_by(event[:served_model]))
-    rescue StandardError
+    rescue StandardError => e
+      Log.warn(:turn, "generation_report_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       event
     end
     private :with_generation_report
@@ -2881,7 +2885,8 @@ module Samagotchi
       # Capture used memories synchronously in the turn thread.
       read_names = begin
         @used_memories.capture(event, muted: @muted_memory_names)
-      rescue StandardError
+      rescue StandardError => e
+        Log.warn(:memory, "used_memories_capture_failed", error: e.class.name, msg: e.message.to_s[0, 200])
         nil
       end
       # Turn-scoped sink: receives the event hash as the stream handler
@@ -2890,8 +2895,9 @@ module Samagotchi
       if on_event
         begin
           on_event.call(event)
-        rescue StandardError
+        rescue StandardError => e
           # Sink errors must not break the kernel loop (same as KernelLoop's own handling)
+          Log.warn(:turn, "sink_failed", event_type: event[:type].to_s, error: e.class.name, msg: e.message.to_s[0, 200])
         end
       end
 
