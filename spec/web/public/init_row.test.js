@@ -1,6 +1,16 @@
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyInitEvent, dropDone, initRowHtml, newInitTasks, seedInitTasks } from "../../../lib/samagotchi/web/public/init_row.js";
+import {
+  applyInitEvent, dropDone, fadeDone, initRowTemplate, newInitTasks, seedInitTasks,
+} from "../../../lib/samagotchi/web/public/init_row.js";
+import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+// The row drawn into +row+ (a fresh div by default), as app.js does: its markup.
+const initRowHtml = (tasks, row = document.createElement("div")) => {
+  render(initRowTemplate(tasks), row);
+  return htmlOf(row.cloneNode(true)).replace(/^<div>|<\/div>$/g, "");
+};
 
 const started = { bundle: "mcp", id: "mcp-1", label: "Starting MCP server chrome (first run, saving its tools)" };
 
@@ -34,4 +44,34 @@ test("a snapshot seeds the running tasks and drops done lines; labels are escape
   dropDone(tasks, "p-1");
   assert.deepEqual([...tasks.keys()], ["p-1"]);
   assert.equal(applyInitEvent(tasks, "plugin_init_started", {}), null);
+});
+
+test("a fading done line draws faded; a redraw keeps it so, and the line after it keeps its node", () => {
+  const tasks = newInitTasks();
+  const row = document.createElement("div");
+  applyInitEvent(tasks, "plugin_init_started", started);
+  applyInitEvent(tasks, "plugin_init_started", { bundle: "b", id: "b-1", label: "Indexing" });
+  initRowHtml(tasks, row);
+  const second = row.querySelector('[data-id="b-1"]');
+  applyInitEvent(tasks, "plugin_init_finished", { ...started, ok: true });
+  fadeDone(tasks, "mcp-1");
+  fadeDone(tasks, "b-1");
+  assert.match(initRowHtml(tasks, row), /class="init-task done fading" data-id="mcp-1"/);
+  assert.match(initRowHtml(tasks, row), /class="init-task running" data-id="b-1"/);
+  assert.ok(row.querySelector('[data-id="b-1"]') === second);
+});
+
+test("a dropped line takes its node with it: the next line keeps its own", () => {
+  const tasks = newInitTasks();
+  const row = document.createElement("div");
+  applyInitEvent(tasks, "plugin_init_finished", { ...started, ok: true });
+  applyInitEvent(tasks, "plugin_init_finished", { bundle: "b", id: "b-1", label: "Indexing", ok: true });
+  fadeDone(tasks, "mcp-1");
+  initRowHtml(tasks, row);
+  const faded = row.querySelector('[data-id="mcp-1"]');
+  const second = row.querySelector('[data-id="b-1"]');
+  dropDone(tasks, "mcp-1");
+  assert.match(initRowHtml(tasks, row), /^<div class="init-task done" data-id="b-1">/);
+  assert.ok(row.querySelector('[data-id="b-1"]') === second);
+  assert.equal(faded.isConnected, false);
 });
