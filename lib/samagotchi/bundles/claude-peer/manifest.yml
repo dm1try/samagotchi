@@ -19,6 +19,5 @@ scripts:
 # the card shows no summary), and a pushed source's first wake: true push
 # waking the session (on 0.62 Claude's first answer arrives as a note
 # without waking; later ones wake).
-# The plugin needs Samagotchi::Plugin::Peer (chi 0.67.0): raised to
-# ">= 0.67.0" at release (the branch's chi is still 0.66.0).
-requires_chi: ">= 0.62.0"
+# The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
+requires_chi: ">= 0.67.0"

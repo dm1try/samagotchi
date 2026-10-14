@@ -8,6 +8,5 @@ files: {}
 plugin:
   file: plugin.rb
   sha256: sha256:895540d7c6cc4d04a640cd53fb0a68a0b2938a8e1cccd3d8457c52d0410ff757
-# 0.37.0 (published 2026-10-07) is the release whose targets: take acts_as:, args: and label:.
-# needs chi.tool_source (0.67.0): raised to >= 0.67.0 at release
-requires_chi: ">= 0.37.0"
+# 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
+requires_chi: ">= 0.67.0"

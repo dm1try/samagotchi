@@ -18,6 +18,5 @@ scripts:
 # session from chi 0.63.0 (before, the first answer arrives as a note
 # without waking); ctx.context.list's summary: (the /codex card's last
 # answer) is 0.63.0 too.
-# The plugin needs Samagotchi::Plugin::Peer (chi 0.67.0): raised to
-# ">= 0.67.0" at release (the branch's chi is still 0.66.0).
-requires_chi: ">= 0.63.0"
+# The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
+requires_chi: ">= 0.67.0"

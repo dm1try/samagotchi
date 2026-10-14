@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-10-14
+
 ### Added
 
 - **Desktop helper: agents in tmux panes**: with `tmux.enabled: true` (then `chi update`) the panel lists agent CLIs
@@ -15,7 +17,6 @@ and commands may change between minor versions. How releases are made:
   mode is taken out of it first). `tmux.binary` defaults to the tmux on chi's PATH when the launch file is written;
   `chi update` warns when there is none. `ChiHelper --kitty` is now `--agents` (the helper's internal seam). See
   docs/desktop.md, "Agents in kitty and tmux".
-
 - **Continue on another model**: `chi send --new --continues ID --model NAME` and the web API's `POST /api/sessions`
   with `continues` and `model` start the next link of a chain on that model (its host checked first, nothing
   archived on a refusal). See docs/sessions.md, "Session chains".
@@ -61,6 +62,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a send stays with the session it was sent from: switching sessions while its images upload no longer sends the
   prompt into the other session, and an image whose send failed in one session is uploaded again when it is sent to
   another (it was refused there as an unknown image).
+
+Update with `chi update` (it upgrades the bundles too): mcp 0.7.0, claude-peer 0.3.0, codex-peer 0.2.0 and the
+system bundle 0.67.0. Then restart `chi web` and run `chi desktop upgrade` for the tmux support.
 
 ## [0.66.0] - 2026-10-14
 
@@ -2933,7 +2937,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.66.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.67.0...HEAD
+[0.67.0]: https://github.com/dm1try/samagotchi/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/dm1try/samagotchi/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/dm1try/samagotchi/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/dm1try/samagotchi/compare/v0.63.0...v0.64.0
