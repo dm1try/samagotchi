@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, plainHeadline, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -389,4 +389,38 @@ test("frameTarget: collapsed or not holding a turn: the content's own height (nu
 test("QUEUED_CHILDREN: each queued row selector, among a parent's own children", () => {
   assert.equal(QUEUED_ROWS.split(", ").length, 2);
   assert.equal(QUEUED_CHILDREN, ':scope > .bubble.user.queued[data-delivery="queue"], :scope > .bubble.command.queued');
+});
+
+test("stepsText: one step, many steps", () => {
+  assert.equal(stepsText(1), "1 step");
+  assert.equal(stepsText(0), "0 steps");
+  assert.equal(stepsText(3), "3 steps");
+});
+
+test("chipLabelText: steps and calls, the time only when given", () => {
+  assert.equal(chipLabelText({ steps: 1, calls: 1 }), "1 step · 1 tool call");
+  assert.equal(chipLabelText({ steps: 2, calls: 0, elapsed: "" }), "2 steps · 0 tool calls");
+  assert.equal(chipLabelText({ steps: 3, calls: 5, elapsed: "4.2s" }), "3 steps · 5 tool calls · 4.2s");
+});
+
+test("stepSlotText: the step it is on while running; the count at the end unless the chip shows", () => {
+  assert.equal(stepSlotText({ step: 2, ended: false, chipHidden: false }), "step 2");
+  assert.equal(stepSlotText({ step: 1, ended: true, chipHidden: true }), "1 step");
+  assert.equal(stepSlotText({ step: 3, ended: true, chipHidden: false }), "");
+});
+
+test("miniToolText: the running call only on a collapsed stage, its command as the hover", () => {
+  const tool = { name: "execute", title: "ls +1", command: "ls && pwd" };
+  assert.deepEqual(miniToolText({ collapsed: true, tool }), { text: "execute ls +1", title: "ls && pwd" });
+  assert.deepEqual(miniToolText({ collapsed: true, tool: { name: "read", title: "a.rb" } }), { text: "read a.rb", title: "" });
+  assert.deepEqual(miniToolText({ collapsed: false, tool }), { text: "", title: "" });
+  assert.deepEqual(miniToolText({ collapsed: true, tool: null }), { text: "", title: "" });
+});
+
+test("MARKS and FLASH_MARKS: an ended phase's mark, a flash's mark", () => {
+  assert.equal(MARKS.answered, "✓");
+  assert.equal(MARKS["no answer"], "∅");
+  assert.equal(MARKS["running a tool"], undefined);
+  assert.equal(trailFlashText({ text: "careful" }, FLASH_MARKS.warn).text, "⚠ careful");
+  assert.equal(FLASH_MARKS.steer, "↪");
 });
