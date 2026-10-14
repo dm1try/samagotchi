@@ -24,9 +24,21 @@ and commands may change between minor versions. How releases are made:
   list, launchd and cron reach keyed hosts. Store a key with `security add-generic-password -s chi -a VAR -w`.
   `chi self` says `VAR (keychain)`, `chi desktop status` has a `host keys` row, and install/upgrade warn about keys
   the helper won't get. `SAMAGOTCHI_KEYCHAIN=off` turns it off. See docs/configuration.md, "API keys from the Keychain".
+- **The peer loop**: chi and a paired Claude Code or Codex session can go back and forth on a part. A peer's answer
+  wakes chi up to `context.peer_turns` (default 3) turns in a row, within `session.max_wakes`; chi fixes what it
+  flagged or replies with `claude_send`/`codex_send`; an answer whose verdict is `VERDICT OK` arrives as a note and
+  ends the round; only a message typed in the web or a TUI starts the count again (not `chi send`). The wake note
+  frames the answer as the peer's advice, within your task; every other source keeps its guard line. Plugins
+  declare a peer's source with `chi.peer_source`. See docs/context.md, "Peer sources: the peer loop".
 
 ### Changed
 
+- **claude-peer 0.3.0 and codex-peer 0.2.0** join the peer loop and need chi 0.67.0 (`chi update`, then `chi bundle
+  upgrade claude-peer` / `codex-peer`, and `/claude install-skill` / `/codex install-skill` again for the peer's
+  side). Both are now built on `Samagotchi::Plugin::Peer`, one shared base; their texts are unchanged but for the
+  peer loop's.
+- `session.max_wakes` caps every wake turn in a row (delegate reports, attached context, peers); the docs said
+  delegate reports only.
 - **MCP: `find_mcp_tools` and `mcp_call` are now `find_tools` and `call_tool`**, chi's own tool index's (the mcp
   bundle publishes its servers' tools into it: `chi.tool_source`, docs/plugins.md). Run `chi bundle upgrade mcp`
   (mcp 0.7.0) to get it; an older mcp bundle keeps its own two tools on this chi. Search, calls, lazy starts and

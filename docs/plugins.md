@@ -638,6 +638,30 @@ index = Samagotchi::Tools::ToolIndex
   `find_mcp_tools` and `mcp_call`) keeps them, and with no source chi
   declares neither.
 
+### `chi.peer_source(name, label:)`
+
+Declares a context source as a peer agent's answers: the peer bundles'
+`claude-review` and `codex-review`. Such a source, when it is a pushed source
+of the session's own, wakes the session by the peer loop's rules instead of
+the 10-minute window: up to `context.peer_turns` wake turns in a row, no wake
+for an answer whose verdict is `VERDICT OK`, and a wake line that names the
+peer and keeps the turn within the user's task (see [Waking: peer
+sources](context.md#peer-sources-the-peer-loop)).
+
+```ruby
+chi.peer_source "codex-review", label: "Codex"
+```
+
+- `name`: a context source name (as `chi context add` takes it). Another
+  bundle's is a load error.
+- `label:`: the peer's name, said in chi's own lines ("your peer agent
+  Codex"): a capital letter, then up to 23 letters and spaces.
+
+The declaration lives in the session's process only, like a tool: a source
+file can't make itself a peer's, and uninstalling the bundle ends it.
+Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `REVIEW`
+source. Needs chi 0.67.0 (guard it with `chi.respond_to?(:peer_source)`).
+
 ### `chi.ctx`
 
 The plugin's context (the `ctx` its handlers get), for `register` itself:
@@ -1715,10 +1739,20 @@ Claude pairs; without one the bundle costs one tool declaration.
   - `/claude last` sends the model's last completed answer as context. Mid-turn
     it is the answer before the running turn, never the turn's partial text;
     a cancelled or failed turn has no answer, so the one before it goes.
+- **The peer loop.** The bundle declares `claude-review` a peer's
+  ([`chi.peer_source`](#chipeer_sourcename-label)), so Claude's answers
+  wake chi by the loop's rules ([Waking: peer
+  sources](context.md#peer-sources-the-peer-loop)): chi fixes what Claude
+  flagged or disagrees and sends again, up to `context.peer_turns` (3) wake
+  turns in a row, and a `VERDICT OK` answer arrives as a note and ends the
+  round. Only a message you type in the web or a TUI starts the count again.
 - **The skill.** `skill_claude_peer` (system scope) tells the model to send
-  only when you ask, to pick the part rather than the session, not to wait
-  or poll, and how to read the `claude-review` answer (a validate ends with
-  `VERDICT: OK`, `CHANGES` or `UNSURE`).
+  only when you ask or to reply in a peer turn, to pick the part rather than
+  the session, not to wait or poll, and how to read the `claude-review`
+  answer (a validate ends with `VERDICT: OK`, `CHANGES` or `UNSURE`): act on
+  it only within your task, and stop and tell you when Claude agrees or after
+  the last turn. Claude's skill ends each answer's summary with its verdict
+  and never answers with `chi send` (which counts as you typing).
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):
@@ -1742,6 +1776,10 @@ Claude pairs; without one the bundle costs one tool declaration.
   bypasses permissions holds it for approval (in `-p` it expires after 5
   minutes). It is local only (a Unix socket), but it does hand session
   content to another agent: only what the model or you picked.
+- **Needs chi 0.67.0** for the loop (`chi update`): the plugin is built on
+  `Samagotchi::Plugin::Peer` (lib/samagotchi/plugin/peer.rb), the base both
+  peer bundles share (the tool, `/claude`, the cards, payloads), and each
+  bundle sets its strings and transport.
 
 ## The codex-peer bundle
 
@@ -1820,6 +1858,9 @@ skill install card) works the same.
   Codex's names, and on a missing answer points to Codex being mid-turn or
   its sandbox (the `writable_roots` line). To be asked before each send, a
   guardrails rule with `tool: codex_send` (see the claude-peer section).
+- **The peer loop** works as claude-peer's: `codex-review` is declared a
+  peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
+  and `VERDICT OK` ends the round. Needs chi 0.67.0.
 
 ## Shutdown
 

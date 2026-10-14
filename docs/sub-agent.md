@@ -19,7 +19,10 @@ you already work with (to validate, as context, or with a question), is the
 chi session, chi's `claude_send` tool or `/claude` writes to Claude's inbox,
 and Claude's answer comes back as attached context. The
 [codex-peer bundle](plugins.md#the-codex-peer-bundle) does the same with a
-Codex CLI session (`codex_send`, `/codex`, through `codex queue`).
+Codex CLI session (`codex_send`, `/codex`, through `codex queue`). The peer's
+answers wake chi in a short loop (fix or disagree, send again) until it says
+`VERDICT OK` or after `context.peer_turns` turns: [Waking: peer
+sources](context.md#peer-sources-the-peer-loop).
 
 ## The commands
 
