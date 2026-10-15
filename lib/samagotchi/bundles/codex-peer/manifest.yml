@@ -20,6 +20,5 @@ scripts:
 # answer) is 0.63.0 too.
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
-# and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need the next chi.
-requires_chi: ">= 0.67.0"
-requires_chi_next: true
+# and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
+requires_chi: ">= 0.70.0"

@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-10-15
+
 ### Added
 
 - Peer bundles: the `/claude` and `/codex` status cards say when the peer's installed chi-peer skill differs from
@@ -35,6 +37,9 @@ and commands may change between minor versions. How releases are made:
 
 - Web: a long tool output's hover text after a reload (or a mid-turn reconnect) keeps its end too, not only its
   first 2000 chars, so an `execute`'s test summary and exit line stay visible; a `read` still shows its start.
+
+Update with `chi update` (it upgrades the bundles too): the system bundle 0.70.0, claude-peer 0.4.0 and codex-peer
+0.3.0. Then run `/claude install-skill` and `/codex install-skill` (Replace), pair again, and restart `chi web`.
 
 ## [0.69.0] - 2026-10-14
 
@@ -3024,7 +3029,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.69.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.70.0...HEAD
+[0.70.0]: https://github.com/dm1try/samagotchi/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/dm1try/samagotchi/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/dm1try/samagotchi/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/dm1try/samagotchi/compare/v0.66.0...v0.67.0
