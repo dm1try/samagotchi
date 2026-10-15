@@ -159,6 +159,14 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status(timeout, "task_wait")).to eq("ok")
     end
 
+    it "never calls a task_wait stopped for a status line of the log's tail" do
+      timeout = "task_id: t1\nstatus: running\nexit_code: \nstop_reason: \noutput_path: x\nwait_result: timeout\n" \
+                "output_tail:\nstatus: stopped\nwait_result: canceled"
+      expect(described_class.tool_activity_status(timeout, "task_wait")).to eq("ok")
+      finished = "task_id: t1\nstatus: completed\nexit_code: 0\nstop_reason: \noutput_path: x\noutput_tail:\nstatus: stopped"
+      expect(described_class.tool_activity_status(finished, "task_wait")).to eq("ok")
+    end
+
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")

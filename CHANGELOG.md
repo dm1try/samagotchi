@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `task_wait` row is marked stopped only by the wait's own status, not by a `status: stopped` line the task's
+  log printed.
 - A `task_wait` whose task failed (exited non-zero, or without an exit code) is now marked failed in the web and
   terminal rows and counted in the turn's "(N failed)", as a failing `execute` is.
 

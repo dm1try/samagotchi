@@ -219,6 +219,8 @@ module Samagotchi
     # and for a command the user's Stop (or a signal to chi, a session stop)
     # killed or kept from starting: a cancel, not a failure (its text still
     # starts "Error:" for the model).
+    # A task_wait's own outcome is read from its header alone: the log's tail
+    # can print any line, "status: stopped" included.
     def tool_activity_status(result, tool_name = nil, command: nil)
       text = result.to_s
       return "stopped" if [Tools::Execute::NOT_RUN_ON_STOP, *Tools::Execute::NOT_RUN.values].include?(text)
@@ -234,9 +236,10 @@ module Samagotchi
       end
 
       if tool_name == Tools::TaskWait::NAME
-        return "stopped" if text.match?(/^(wait_result: canceled|status: stopped)$/)
-        # The first "status:" line is the header's: the tail comes after it.
-        return "error" if text[/^status: (\S+)$/, 1] == "failed"
+        # The header: every line before the log's tail (output_tail:), which can print any line.
+        header = text.split(/^output_tail:$/, 2).first.to_s
+        return "stopped" if header.match?(/^(wait_result: canceled|status: stopped)$/)
+        return "error" if header[/^status: (\S+)$/, 1] == "failed"
       end
 
       "ok"
