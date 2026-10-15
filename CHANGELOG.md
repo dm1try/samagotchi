@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Attached terminal: a session's reloaded tool rows read each result as the live row did: a command handed over
+  as a task is no longer shown failed because its output so far had `exit: 1`, and a failed `execute`
+  (`Error: …`) is no longer shown done.
 - A `task_wait` row is marked stopped only by the wait's own status, not by a `status: stopped` line the task's
   log printed.
 - A `task_wait` whose task failed (exited non-zero, or without an exit code) is now marked failed in the web and

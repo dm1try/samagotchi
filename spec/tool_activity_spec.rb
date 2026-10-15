@@ -382,4 +382,15 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_event("task_list", { name: "task_list" }, "ok")).not_to have_key(:title)
     end
   end
+
+  describe ".saved_result_text" do
+    it "drops a saved output's leading ran-as line and [tool] lead" do
+      expect(described_class.saved_result_text("[execute]\nexit: 0")).to eq("exit: 0")
+      expect(described_class.saved_result_text("[execute] Error: x")).to eq("Error: x")
+      expect(described_class.saved_result_text("ran as: execute command=\"ls\"\n[execute]\nexit: 0")).to eq("exit: 0")
+      expect(described_class.saved_result_text("exit: 0")).to eq("exit: 0")
+      expect(described_class.saved_result_text("ran as: x\nfoo")).to eq("ran as: x\nfoo")
+      expect(described_class.saved_result_text(nil)).to eq("")
+    end
+  end
 end

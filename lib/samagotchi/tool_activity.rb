@@ -35,6 +35,14 @@ module Samagotchi
 
     module_function
 
+    # A saved tool output's leading "ran as: …" line (ToolRunner#changed_call_line) and "[tool]" lead (the
+    # shape of ToolResponse::LEAD), which the live status never sees: it reads the tool's own result.
+    SAVED_LEAD = /\A(?:ran as: [^\n]*\n)?\[[^\]\s]+\](?:\n| |\z)/
+
+    # A saved output (what the model got) as the tool's own text, for tool_activity_status.
+    # Without a "[tool]" lead (an older or hand-made output) it stays as it is.
+    def saved_result_text(output) = output.to_s.sub(SAVED_LEAD, "")
+
     # @param registry [Tools::Registry, nil] the session's tools
     # @param cwd [String, nil] what a file tool's title is relative to (the
     #   worker runs in its session's working directory)

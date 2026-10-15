@@ -184,6 +184,37 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                   'tool> reading file (read path="NOPE.md"): error', "Done."])
     end
 
+    it "reads a saved tool row's status as the live row did, without the [tool] lead or a ran-as line" do
+      handed_over = "[execute]\nStill running at the 120s limit: moved to a background task, not killed.\n" \
+                    "task_id: t1\nWait for it with task_wait (it may take minutes); task_stop stops it.\n" \
+                    "stdout (so far, tail):\nexit: 1"
+      feed(snapshot(messages: [
+        { role: "user", content: "go" },
+        { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+        { role: "tool_response", tool_call_id: "c1", content: handed_over },
+        { role: "model", content: "", tool_calls: [{ id: "c2", name: "execute", arguments: { command: "true" } }] },
+        { role: "tool_response", tool_call_id: "c2", content: "[execute]\nError: cwd not found: /nope" },
+        { role: "model", content: "", tool_calls: [{ id: "c3", name: "execute", arguments: { command: "true" } }] },
+        { role: "tool_response", tool_call_id: "c3",
+          content: "ran as: execute command=\"true\"\n[execute]\nError: cwd not found: /nope" },
+        { role: "model", content: "", tool_calls: [{ id: "c4", name: "execute", arguments: { command: "true" } }] },
+        { role: "tool_response", tool_call_id: "c4",
+          content: "ran as: execute command=\"true\"\n[execute]\nstdout:\nx\n\nexit: 3" },
+        { role: "model", content: "", tool_calls: [{ id: "c5", name: "execute", arguments: { command: "true" } }] },
+        { role: "tool_response", tool_call_id: "c5",
+          content: "ran as: execute command=\"true\"\n[execute]\nstdout:\nx\n\nexit: 0" },
+        { role: "model", content: "Done." }
+      ]))
+
+      expect(screen.lines.first).to eq("user> go")
+      expect(screen.lines[1]).to end_with(": ok")
+      expect(screen.lines[2]).to end_with(": error")
+      expect(screen.lines[3]).to end_with(": error")
+      expect(screen.lines[4]).to end_with(": error")
+      expect(screen.lines[5]).to end_with(": ok")
+      expect(screen.lines.last).to eq("Done.")
+    end
+
     it "shows a saved grep that found nothing as done, a real exit 1 as an error" do
       feed(snapshot(messages: [{ role: "user", content: "find it" },
                                { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "rg zzz lib/" } }] },
