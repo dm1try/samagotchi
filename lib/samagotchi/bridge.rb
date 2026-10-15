@@ -289,13 +289,16 @@ module Samagotchi
     # session state, the last answer (Engine#last_answer_message: one
     # message, not the conversation) and the cards, as one step of the event
     # log (one event_seq). Light whatever the session's length: GET tail.
-    # @return [Hash] {session_id:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
+    # The session's folder (working_directory) rides along: what the web
+    # checks the answer's file refs against without reading the session file.
+    # @return [Hash] {session_id:, working_directory:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
     # +turn_id+: that turn's answer, not the newest (Engine#last_answer_message).
     def tail_frame(turn_id: nil)
       @engine.synchronize_events do
         seq = @engine.event_count
         state = @engine.session_state_snapshot.merge(event_seq: seq, event_id: event_id(seq))
-        { session_id: @session_id, session_state_snapshot: state, answer: @engine.last_answer_message(turn_id: turn_id),
+        { session_id: @session_id, working_directory: @engine.session&.working_directory,
+          session_state_snapshot: state, answer: @engine.last_answer_message(turn_id: turn_id),
           cards: @cards.list, event_seq: seq, event_id: event_id(seq) }
       end
     end

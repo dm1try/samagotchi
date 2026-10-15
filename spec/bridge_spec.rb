@@ -1034,7 +1034,8 @@ RSpec.describe Samagotchi::Bridge do
           body = tail
           state = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("state")
 
-          expect(body.keys).to contain_exactly("session_id", "session_state_snapshot", "answer", "cards", "event_seq", "event_id")
+          expect(body.keys).to contain_exactly("session_id", "working_directory", "session_state_snapshot", "answer", "cards", "event_seq", "event_id")
+          expect(body["working_directory"]).to eq(@session.working_directory)
           expect(body["answer"]).to eq("role" => "assistant", "content" => "All **good**.")
           expect(body["cards"].map { |c| c["id"] }).to eq(["card-1"])
           expect(body["event_seq"]).to eq(state["session_state_snapshot"]["event_seq"])

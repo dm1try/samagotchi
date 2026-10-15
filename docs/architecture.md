@@ -307,6 +307,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   the messages itself, then streams from its `event_seq`). Read by the web's full show
   (`GET /api/sessions/:id`, `?parts=1`) and the plugin's `list_sessions`; every message is copied.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
+  `working_directory` (the session's folder, which the web checks the answer's file refs against),
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),
   `cards` (`CardStore#list`; a card an earlier worker showed during a turn comes back read-only, with no
   actions: its turn no longer runs), `event_seq`, `event_id`, all taken in one event-log hold; no message
@@ -339,7 +340,9 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   finishes the ended turn's own line by its `turn_id` (sent as `&turn_id=`, which also picks that
   turn's answer). A tail read's timing is always the newest turn's; `recent=1` is accepted and not needed.
   The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
-  read's re-render) and pairs them with the bubble's links and text before the `path:line` scan.
+  read's re-render) and pairs them with the bubble's links and text before the `path:line` scan. A file ref outside the
+  session's folder is dropped, as a reload drops it: the folder `/tail` names, else (an older worker) the hub's
+  session list entry's.
   A plugin tool's row refs (`refs`, `RowRefs`) ride its tool events and, on a reload, its part (saved as
   `tool_refs`); `turn_view.js` binds them to the row's title (`refs.js bindRowRefs`: the first on the title,
   the others in its menu).

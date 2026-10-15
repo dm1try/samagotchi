@@ -909,10 +909,14 @@ module Samagotchi
         state = nil unless state.is_a?(Hash)
         if state
           status, used, notes = state.values_at("status", "used_memory_names", "prompt_notes")
-          # No session file read here: the folder the answer's file refs
-          # must stay under is the hub's session list entry's (nil without
-          # a hub or before it saw the session: refs aren't checked then).
-          messages = last_assistant_for_display([tail["answer"]].compact, cwd: @hub&.working_directory(id))
+          # No session file read here: the folder the answer's file refs must
+          # stay under is the worker's (its tail's working_directory), else the
+          # hub's session list entry's (a worker from before the field, or read
+          # through its snapshot); nil then without a hub or before it saw the
+          # session: refs aren't checked.
+          cwd = tail["working_directory"]
+          cwd = @hub&.working_directory(id) unless cwd.is_a?(String) && !cwd.empty?
+          messages = last_assistant_for_display([tail["answer"]].compact, cwd: cwd)
         else
           session = @session_class.load(id, state_dir: default_state_dir)
           status = displayed_status(session)
@@ -952,9 +956,9 @@ module Samagotchi
       end
 
       # The worker's light read (Bridge GET tail): {"session_state_snapshot",
-      # "answer", "cards", "event_seq", "event_id"}. A worker from before the
-      # route answers 404 not_found: its GET snapshot, in the same shape (the
-      # answer by AnswerTail). Anything else (no worker, a refused connect, a
+      # "working_directory", "answer", "cards", "event_seq", "event_id"}. A
+      # worker from before the route answers 404 not_found: its GET snapshot,
+      # in the same shape (the answer by AnswerTail; no working_directory). Anything else (no worker, a refused connect, a
       # 500, a timeout) is nil: the caller reads the disk, with no second
       # try at a worker that failed once.
       # @return [Hash, nil]

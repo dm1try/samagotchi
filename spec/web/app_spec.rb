@@ -1202,6 +1202,33 @@ RSpec.describe Samagotchi::Web::App do
         expect(hub).to have_received(:working_directory).with("s1")
       end
 
+      # The worker's tail names the folder: no hub needed (a session the hub
+      # hasn't seen yet), and the hub's entry isn't asked.
+      it "drops one from the live tail by the folder the worker's tail names, with no hub" do
+        outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
+        live["snapshot"]["messages"].last["display_refs"] = [jira, file, outside]
+        app = build_app(state_dir: Dir.mktmpdir)
+        stub_worker(app, live)
+        allow(app).to receive(:bridge_get).with("s1", "tail")
+                                          .and_return([200, tail_from(live).merge("working_directory" => Dir.pwd)])
+        expect(StubSessionLoader).not_to receive(:load)
+
+        expect(read(app, "?tail=1").last["display_refs"]).to eq([jira, file])
+      end
+
+      it "takes the worker's folder over the hub's entry" do
+        outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
+        live["snapshot"]["messages"].last["display_refs"] = [jira, file, outside]
+        hub = instance_double(Samagotchi::Web::SessionHub, working_directory: "/elsewhere")
+        app = build_app(state_dir: Dir.mktmpdir, hub: hub)
+        stub_worker(app, live)
+        allow(app).to receive(:bridge_get).with("s1", "tail")
+                                          .and_return([200, tail_from(live).merge("working_directory" => Dir.pwd)])
+
+        expect(read(app, "?tail=1").last["display_refs"]).to eq([jira, file])
+        expect(hub).not_to have_received(:working_directory)
+      end
+
       it "still shows the conversation when the stored refs are junk (no refs on that message)" do
         ["junk", [42, { "kind" => nil }]].each do |junk|
           live["snapshot"]["messages"].last["display_refs"] = junk
