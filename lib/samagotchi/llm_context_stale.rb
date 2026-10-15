@@ -8,6 +8,7 @@ require_relative "model_profile"
 require_relative "tool_call_parser"
 require_relative "tools/builtin_calls"
 require_relative "tools/tool_path"
+require_relative "tool_output_cut"
 
 module Samagotchi
   # The stale layer (LLMContextStrategy :stale): a file read that a later
@@ -226,10 +227,9 @@ module Samagotchi
     # output ToolRunner cut at max_tool_output_chars: it doesn't hold all
     # the lines asked for, so it supersedes nothing.
     PREVIEW = "[TRUNCATED_PREVIEW_HEAD]"
-    CUT = /\[cut: \d+ of \d+ chars; read it in parts\]\z/
 
     def partial?(body)
-      body.start_with?("truncated=true") || body.include?(PREVIEW) || body.match?(CUT)
+      body.start_with?("truncated=true") || body.include?(PREVIEW) || body.match?(ToolOutputCut::HEAD_CUT)
     end
 
     # The lines a read asked for: from start_line (1) to end_line (the end).
