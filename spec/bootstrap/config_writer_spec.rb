@@ -187,16 +187,6 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
       expect(parsed["default"]).to eq("input" => "hi")
     end
 
-    context "with SAMAGOTCHI_HOSTS_JSON in the environment (a worker's)" do
-      let(:env) { { "SAMAGOTCHI_HOSTS_JSON" => JSON.generate("other" => { "host" => "x" }) } }
-
-      it "checks the file's own hosts" do
-        existing("hosts:\n  main:\n    host: a\n")
-
-        expect(writer.write(name: "lan", fields: lan, model: "m").kind).to eq(:appended)
-      end
-    end
-
     it "puts the backup back when the check fails" do
       original = "hosts:\n  main:\n    host: a\n"
       existing(original)

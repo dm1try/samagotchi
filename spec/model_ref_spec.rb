@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::ModelRef do
     around do |example|
       with_config_home(tmp) do
         File.write(File.join(tmp, "samagotchi", "config.yml"), config)
-        with_env("SAMAGOTCHI_DEFAULT_MODEL" => nil, "SAMAGOTCHI_HOSTS_JSON" => nil) do
+        with_env("SAMAGOTCHI_DEFAULT_MODEL" => nil) do
           Samagotchi::Config.reload!(cli_overrides: {})
           example.run
         ensure

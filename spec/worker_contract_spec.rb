@@ -24,9 +24,6 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::SessionManager::BOOT_FALLBACK_ENV).to eq("SAMAGOTCHI_BOOT_FALLBACK")
     expect(Samagotchi::SessionManager::WORKER_PROCESS_ENV).to eq("SAMAGOTCHI_WORKER_PROCESS")
     expect(Samagotchi::SessionManager::WORKER_DETACH_ENV).to eq("SAMAGOTCHI_WORKER_DETACH")
-    hosts = Samagotchi::ConfigFile.disabled_host_names(env: { "SAMAGOTCHI_HOSTS_JSON" => '{"a":{"enabled":false}}' },
-                                                       path: File.join(Dir.tmpdir, "no-such-config.yml"))
-    expect(hosts).to eq(["a"])
   end
 
   it "reads the input/ files an older chi writes (INPUT_FORMAT 3)" do

@@ -60,12 +60,11 @@ module Samagotchi
       attr_reader :path
 
       # @param path [String] config.yml (a symlink is written through)
-      # @param env [Hash] the environment for the check (SAMAGOTCHI_HOSTS_JSON
-      #   is dropped: it would replace the file's hosts)
+      # @param env [Hash] the environment for the check
       # @param now [Proc] the time for the backup's name and the header
       def initialize(path:, env: ENV, now: -> { Time.now })
         @path = path
-        @env = env.to_h.except("SAMAGOTCHI_HOSTS_JSON")
+        @env = env.to_h
         @now = now
       end
 

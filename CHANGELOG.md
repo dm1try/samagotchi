@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Removed
+
+- `SAMAGOTCHI_HOSTS_JSON`: chi no longer reads it (workers stopped inheriting it in 0.64.0). Hosts come only from
+  config.yml's `hosts:`; one still exported in your shell is ignored.
+
 ### Fixed
 
 - Attached TUI: a turn of images alone sent from the web names each image once while you watch it start (or join

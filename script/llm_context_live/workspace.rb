@@ -26,11 +26,9 @@ module LLMContextLive
     def log_path = File.join(state_home, "samagotchi", "samagotchi.log")
 
     # chi's isolation: a test session (SAMAGOTCHI_ENV), its own state and
-    # config, and no inherited SAMAGOTCHI_HOSTS_JSON (it would beat the
-    # config copy's hosts).
+    # config.
     def env
-      { "SAMAGOTCHI_ENV" => "test", "XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home,
-        "SAMAGOTCHI_HOSTS_JSON" => nil }
+      { "SAMAGOTCHI_ENV" => "test", "XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home }
     end
 
     # The repo at +commit+ of +source_repo+ (git archive, then a fresh git

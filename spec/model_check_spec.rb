@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
   around do |example|
     FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
     File.write(File.join(config_home, "samagotchi", "config.yml"), config)
-    with_env("XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home, "SAMAGOTCHI_HOSTS_JSON" => nil) do
+    with_env("XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home) do
       Samagotchi::Config.reload!(cli_overrides: {})
       example.run
     ensure

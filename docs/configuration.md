@@ -107,9 +107,8 @@ Behavior:
   edit at once). A worker gets the CLI flags of the chi that started it
   through its environment.
 - A worker reads `hosts:` from the file as it starts, as every other setting, so a delegate (or any session
-  started later) sees a host added after its parent started. `SAMAGOTCHI_HOSTS_JSON` (a JSON object in the shape
-  of `hosts:`) replaces the file's `hosts:` for the process it is set on, the way specs use it; no worker inherits
-  it (`SessionManager.spawn_options` unsets it).
+  started later) sees a host added after its parent started. Hosts come only from config.yml: no environment
+  variable sets them.
 
 This lets you run `chi` without repeating common defaults such as model
 and llama host/port on every invocation.

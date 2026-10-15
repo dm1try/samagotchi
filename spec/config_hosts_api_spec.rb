@@ -88,7 +88,7 @@ RSpec.describe "hosts: api" do
 
   describe "a failure outside the entries" do
     it "logs hosts_config_failed instead of answering {} silently" do
-      allow(Samagotchi::ConfigFile).to receive(:hosts_source).and_raise(TypeError, "bad section")
+      allow(Samagotchi::ConfigFile).to receive(:warn_duplicate_host_models).and_raise(TypeError, "bad section")
       allow(Samagotchi::Log).to receive(:error)
 
       expect(hosts("fine" => { "host" => "h" })).to eq({})

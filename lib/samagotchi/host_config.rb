@@ -33,7 +33,7 @@ module Samagotchi
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
     end
 
-    # A hosts: entry as written (YAML, or a SAMAGOTCHI_HOSTS_JSON override),
+    # A hosts: entry as written in config.yml,
     # or nil when it is disabled (enabled: false) or invalid. An invalid
     # one warns once, naming the entry, the way each reader of a setting
     # does for a bad value (that value is then unset).

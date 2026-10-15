@@ -51,7 +51,7 @@ Each task × arm × sample is a run in `ROOT/runs/<task>-<arm>-s<n>/`:
    in `config/` (the model's host copied from `--hosts-config`, default the user's config.yml; `turn.max_iterations:
    150`; `recap: false`; `llm_context.apply: payoff`, no `stale_edits`). State goes in `state/`, and it runs `chi
    bundle install loop-guard`. Every chi and rspec command gets `SAMAGOTCHI_ENV=test`, the run's `XDG_STATE_HOME`
-   and `XDG_CONFIG_HOME`, and no inherited `SAMAGOTCHI_HOSTS_JSON` (the smoke-run isolation).
+   and `XDG_CONFIG_HOME` (the smoke-run isolation).
 2. **run (Driver):** `chi send --new --wait --format json --dir repo --model M --llm-context <arm>
    --llm-context-budget <N|off>` with the first turn, then each later turn into the same session. The arms are
    `none`, `stale` and `stale_forget` (`stale,forget`). The tasks use two turns, because forget is offered at turn

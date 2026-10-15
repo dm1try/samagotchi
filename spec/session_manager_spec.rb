@@ -778,19 +778,6 @@ RSpec.describe Samagotchi::SessionManager do
                                           "SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_THINKING_LEVEL")
         end
       end
-
-      # hosts: too: a delegate sees a host added to config.yml after its
-      # parent's worker started, even one whose env has its start-time hosts.
-      it "unsets SAMAGOTCHI_HOSTS_JSON, so the worker reads config.yml's hosts:" do
-        Dir.mktmpdir("chi-config") do |dir|
-          FileUtils.mkdir_p(File.join(dir, "samagotchi"))
-          File.write(File.join(dir, "samagotchi", "config.yml"), "hosts:\n  main:\n    host: localhost\n    port: 8080\n")
-          stale = JSON.generate("old" => { "host" => "localhost", "port" => 9090 })
-          stub_const("ENV", ENV.to_h.merge("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_HOSTS_JSON" => stale))
-
-          expect(spawned_env).to include("SAMAGOTCHI_HOSTS_JSON" => nil)
-        end
-      end
     end
 
     # The spawner's environment must not switch the worker's guardrails off

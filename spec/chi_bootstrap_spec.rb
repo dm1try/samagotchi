@@ -19,7 +19,7 @@ RSpec.describe "chi bootstrap" do
   let(:config) { File.join(home, "config", "samagotchi", "config.yml") }
   let(:env) do
     { "HOME" => home, "XDG_CONFIG_HOME" => File.join(home, "config"), "XDG_STATE_HOME" => File.join(home, "state"),
-      "SAMAGOTCHI_DEFAULT_MODEL" => nil, "SAMAGOTCHI_HOSTS_JSON" => nil, "FAKE_KEY" => nil }
+      "SAMAGOTCHI_DEFAULT_MODEL" => nil, "FAKE_KEY" => nil }
   end
   let(:server) { FakeProviderServer.start }
   let(:target) { "127.0.0.1:#{server.port}" }

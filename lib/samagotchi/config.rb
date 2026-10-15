@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "yaml"
-require "json"
 require "fileutils"
 require "uri"
 require_relative "atomic_file"
@@ -877,13 +876,13 @@ module Samagotchi
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
-    # config.yml's hosts: (or a SAMAGOTCHI_HOSTS_JSON override) by lowercased
-    # name; an entry that is disabled or invalid (warned) is left out. No
-    # entry left: "default", from server.host/port/transport.
+    # config.yml's hosts: by lowercased name; an entry that is disabled or
+    # invalid (warned) is left out. No entry left: "default", from
+    # server.host/port/transport.
     # @return [Hash{String => HostConfig}]
     def hosts_config(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
-      raw_hosts = hosts_source(data, env)
+      raw_hosts = data[HOSTS_KEY] if data.is_a?(Hash)
 
       normalized = {}
       if raw_hosts.is_a?(Hash)
@@ -933,34 +932,17 @@ module Samagotchi
     private_class_method :warn_duplicate_host_models
 
     # The names (lowercased) of the hosts entries with enabled: false, which
-    # hosts_config leaves out. Read from the same source: config.yml's
-    # hosts:, or a SAMAGOTCHI_HOSTS_JSON override.
+    # hosts_config leaves out, from config.yml's hosts:.
     # @return [Array<String>]
     def disabled_host_names(env: ENV, path: global_path(env: env))
-      raw = hosts_source(read_yaml(env: env, path: path), env)
+      data = read_yaml(env: env, path: path)
+      raw = data[HOSTS_KEY] if data.is_a?(Hash)
       return [] unless raw.is_a?(Hash)
 
       raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && HostConfig.disabled?(cfg) }
     rescue StandardError
       []
     end
-
-    # config.yml's hosts: as written, or the SAMAGOTCHI_HOSTS_JSON override
-    # set on this process (specs; SessionManager.spawn_options unsets it for
-    # a worker, which reads the file).
-    def hosts_source(data, env)
-      raw = data[HOSTS_KEY] if data.is_a?(Hash)
-      env_json = env["SAMAGOTCHI_HOSTS_JSON"].to_s.strip
-      return raw if env_json.empty?
-
-      parsed = begin
-        JSON.parse(env_json)
-      rescue StandardError
-        nil
-      end
-      parsed.is_a?(Hash) ? parsed : raw
-    end
-    private_class_method :hosts_source
 
     # Resolve the `recap:` section through the Config registry so scalar
     # recap settings share the single precedence path (CLI > ENV > file >

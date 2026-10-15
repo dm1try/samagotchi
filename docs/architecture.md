@@ -490,7 +490,7 @@ server (`/props`), then the host's model list, then config.
 **Keys.** A host's API key comes from the environment variable its
 `api_key_env:` names, else, on macOS, the login Keychain's item for that name (`HostKeys`, read through
 `/usr/bin/security` with a deadline; hits cached per process; `SAMAGOTCHI_KEYCHAIN=off` skips it); it never
-reaches config.yml, `SAMAGOTCHI_HOSTS_JSON`, `chi self`, logs or events.
+reaches config.yml, `chi self`, logs or events.
 
 ## Other components
 
