@@ -229,7 +229,7 @@ RSpec.describe "Peer bundle goldens" do
         nil
       end
       yield
-      sleep 0.05 until received.size.positive? || !thread.alive?
+      wait_until!("a message on the inbox socket", timeout: 10) { received.size.positive? || !thread.alive? }
       server.close
       thread.join(2)
       File.unlink(socket)

@@ -255,7 +255,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     it "gives up on a reply whose body never ends" do
       Thread.new do
-        sleep 0.05 until held.any?
+        wait_until!("the post's connection", timeout: 10) { held.any? }
         held.first.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\n\r\n{")
       end
       expect { client.post_command(line: "/model x") }.to raise_error(Errno::ETIMEDOUT)

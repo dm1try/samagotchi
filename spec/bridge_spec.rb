@@ -481,7 +481,7 @@ RSpec.describe Samagotchi::Bridge do
     it "answers 409 not_running, with its status, for a task that already ended" do
       id = start("true")
       allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: created_by_tool(id) }])
-      sleep 0.05 while Samagotchi::Tools::TaskRuntime.get_record(id).first.status == "running"
+      wait_until!("task #{id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(id).first.status != "running" }
 
       expect(stop(id).drop(1)).to eq([409, { error: "not_running", status: "completed", task_id: id }])
     end

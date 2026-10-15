@@ -90,7 +90,7 @@ RSpec.describe Samagotchi::AnswerCommand do
   # The worker takes the answer: the question goes, a reply comes.
   def replies_after_answer(session, text)
     threads << Thread.new do
-      sleep(0.02) until posted.any?
+      wait_until!("the answer to be posted", timeout: 10) { posted.any? }
       sleep(0.05)
       update(session, pending_question: nil)
       write_reply(session, text)
@@ -124,7 +124,7 @@ RSpec.describe Samagotchi::AnswerCommand do
   it "comes back with exit 3 and the next question, not the one it answered" do
     s = asking(question)
     threads << Thread.new do
-      sleep(0.02) until posted.any?
+      wait_until!("the answer to be posted", timeout: 10) { posted.any? }
       sleep(0.1)
       update(s, pending_question: { id: "q2", question: "And then?", options: %w[Stop Go] })
     end
@@ -399,7 +399,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       s = asking(question)
       running(s, "x1")
       threads << Thread.new do
-        sleep(0.02) until posted.any?
+        wait_until!("the answer to be posted", timeout: 10) { posted.any? }
         sleep(0.05)
         turn_reply(s, "x1 answer", "x1")
         end_turn(s, "x1")
@@ -422,7 +422,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       t.save(state_dir: tmpdir)
       Samagotchi::WorkerSidecar.new(port: 1, features: %w[delivery turn_ids]).write(session_dir(s))
       threads << Thread.new do
-        sleep(0.02) until posted.any?
+        wait_until!("the answer to be posted", timeout: 10) { posted.any? }
         turn_reply(s, "queued answer", "q1")
         t = Samagotchi::Session.load(s.id, state_dir: tmpdir)
         t.pending_question = nil
@@ -476,7 +476,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     it "stops it with a reason" do
       s = asking(limit_question, status: "idle")
       threads << Thread.new do
-        sleep(0.02) until posted.any?
+        wait_until!("the answer to be posted", timeout: 10) { posted.any? }
         t = Samagotchi::Session.load(s.id, state_dir: tmpdir)
         t.pending_question = nil
         t.last_turn = { "outcome" => "not_continued", "ended_at" => "2026-10-03T12:00:00.000+00:00" }

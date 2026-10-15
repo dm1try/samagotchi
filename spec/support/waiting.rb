@@ -25,6 +25,16 @@ module SpecWaiting
     value
   end
 
+  # wait_until, raising when the time runs out: for a wait with no check of
+  # its own after it (a setup step, a stub, a helper thread), where a falsy
+  # return would go unseen and an unbounded loop would hang the suite.
+  # +what+ names the condition in the failure message.
+  # @return the block's truthy value.
+  def wait_until!(what, timeout: 5, interval: 0.01, &)
+    wait_until(timeout: timeout, interval: interval, &) ||
+      raise("timed out after #{timeout} s waiting for #{what}")
+  end
+
   # Whether no process +pid+ is left. A killed grandchild is reparented and
   # reaped by init a moment later (a zombie answers signal 0 until then):
   # wait_until { process_gone?(pid) }, not an immediate check.

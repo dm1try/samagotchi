@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::Broadcast::Triage do
             peak[0] = [peak[0], running.size].max
             gate = gates[c.id]
             if gate
-              sleep 0.01 until cancel.cancelled? || !gate.empty?
+              SpecWaiting.wait_until!("the gate or a cancel", timeout: 30) { cancel.cancelled? || !gate.empty? }
               raise Samagotchi::LLM::RequestCancelled, "cancelled" if cancel.cancelled?
             end
             Samagotchi::Broadcast::Triage::Verdict.new(relevant: false, p: 0.0, reason: "model: no", by: "model")

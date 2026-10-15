@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
         next Samagotchi::Broadcast::Triage.unchecked(why) if why
 
         if slow.any? { |word| card.recent.to_s.include?(word) }
-          sleep 0.01 until cancel.cancelled?
+          SpecWaiting.wait_until!("the triage to be canceled", timeout: 30) { cancel.cancelled? }
         end
         relevant = yes.any? { |word| card.recent.to_s.include?(word) }
         Samagotchi::Broadcast::Triage::Verdict.new(relevant: relevant, p: relevant ? 1.0 : 0.0,

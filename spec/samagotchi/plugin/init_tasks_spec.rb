@@ -207,7 +207,7 @@ RSpec.describe "Plugin init tasks" do
     stopped = Queue.new
     engine.add_init_task(bundle: "slowb", label: "Downloading", plugin_label: "x", provides_tools: true, quiet: false,
                          timeout: 30) do
-      sleep(0.01) until ctx.cancelled?
+      SpecWaiting.wait_until!("the init task to be cancelled", timeout: 30) { ctx.cancelled? }
       stopped << :cancelled
       raise "cancelled"
     end
