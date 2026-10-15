@@ -3,6 +3,7 @@
 require_relative "../events"
 require_relative "../kernel_loop"
 require_relative "../steer"
+require_relative "../tool_output_cut"
 require_relative "../tool_row_fields"
 require_relative "turn_notice"
 
@@ -294,7 +295,7 @@ module Samagotchi
           capped = output.length > @max_output_chars
           tool[:status] = (event.dig(:activity, :status) || "ok").to_s
           tool[:no_match] = true if event.dig(:activity, :no_match)
-          tool[:output] = capped ? output[0, @max_output_chars] : output.dup
+          tool[:output] = capped ? ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool]) : output.dup
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
           tool[:diff] = event[:diff] if event[:diff]

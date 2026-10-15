@@ -31,6 +31,11 @@ and commands may change between minor versions. How releases are made:
   names the child's reply file. New setting
   `execute.cut_head_chars` (default 1000): how much of the start such a result keeps.
 
+### Fixed
+
+- Web: a long tool output's hover text after a reload (or a mid-turn reconnect) keeps its end too, not only its
+  first 2000 chars, so an `execute`'s test summary and exit line stay visible; a `read` still shows its start.
+
 ## [0.69.0] - 2026-10-14
 
 ### Added

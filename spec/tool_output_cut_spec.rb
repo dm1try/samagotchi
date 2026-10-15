@@ -12,6 +12,23 @@ RSpec.describe Samagotchi::ToolOutputCut do
     end
   end
 
+  describe ".preview (a web row's output)" do
+    let(:long) { "#{(1..300).map { |i| "line #{i}" }.join("\n")}\nexit: 0" }
+
+    it "keeps a read's head, any other tool's head and tail, a short output whole" do
+      expect(described_class.preview(long, cap: 500, tool: "read")).to eq(long[0, 500])
+      text = described_class.preview(long, cap: 500, tool: "execute")
+      expect(text).to start_with("line 1\n").and end_with("\nexit: 0")
+      expect(text).to match(/^\[cut: \d+ of #{long.length} chars not shown\]$/)
+      expect(text.length).to be <= 500
+      expect(described_class.preview("short", cap: 500, tool: "execute")).to eq("short")
+    end
+
+    it "keeps the head when the cap leaves no room for a tail" do
+      expect(described_class.preview(long, cap: 100, tool: "execute")).to eq(long[0, 100])
+    end
+  end
+
   describe "HEAD_CUT" do
     # LLMContextStale marks a partial read by it.
     it "matches the line head_line writes" do

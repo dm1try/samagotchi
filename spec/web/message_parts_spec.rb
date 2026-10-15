@@ -57,6 +57,17 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(part[:output_truncated]).to be(true)
     end
 
+    it "keeps a long execute output's tail too: its verdict and exit line" do
+      output = "[execute]\nstdout:\n#{(1..400).map { |i| "line #{i}" }.join("\n")}\n12 examples, 0 failures\nexit: 0"
+      part = described_class.for_message({ content: qwen_call("execute", command: "rspec") }, [{ content: output }])[:tools].first
+
+      expect(part[:output]).to start_with("[execute]\nstdout:\nline 1\n")
+      expect(part[:output]).to end_with("12 examples, 0 failures\nexit: 0")
+      expect(part[:output]).to match(/^\[cut: \d+ of #{output.length} chars not shown\]$/)
+      expect(part[:output].length).to be <= described_class::OUTPUT_MAX
+      expect(part[:output_truncated]).to be(true)
+    end
+
     it "leaves the output out when there is no tool_response (a canceled turn)" do
       expect(described_class.for_message({ content: qwen_call("execute", command: "sleep 9") }, [])).to eq(
         tools: [{ tool: "execute", params: 'command="sleep 9"', title: "sleep 9", view: { command: "sleep 9", steps: [{ text: "sleep 9" }] } }]

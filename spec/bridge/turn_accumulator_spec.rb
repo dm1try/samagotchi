@@ -225,6 +225,18 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(tool).to include(status: "ok", output_truncated: true)
   end
 
+  it "keeps the head and the tail of any other tool's output past the cap" do
+    output = "#{"x\n" * 10_000}exit: 1"
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: output, activity: {} })
+
+    tool = acc.current_turn[:parts].last
+    expect(tool[:output]).to start_with("x\n").and end_with("x\nexit: 1")
+    expect(tool[:output]).to include("\n[cut: ")
+    expect(tool[:output].size).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+  end
+
   it "tracks the pending question until it is answered or cancelled" do
     question = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }
     feed({ type: :turn_started, prompt: "hi" }, { type: :question_requested, pending_question: question })

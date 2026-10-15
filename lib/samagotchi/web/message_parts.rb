@@ -10,6 +10,7 @@ require_relative "../image_store"
 require_relative "../llm_context_edit"
 require_relative "../token_usage"
 require_relative "../row_refs"
+require_relative "../tool_output_cut"
 
 module Samagotchi
   module Web
@@ -50,7 +51,8 @@ module Samagotchi
       # so an output that holds the joiner itself stays whole.
       JOINER_BEFORE_TAG = /\n\n---\n\n(?=\[)/
       # The row shows 300 chars and the rest on hover; a read of a big file
-      # would otherwise ride along with every reload.
+      # would otherwise ride along with every reload. A longer one keeps its
+      # head and tail (ToolOutputCut.preview).
       OUTPUT_MAX = 2000
 
       QWEN_THINK = %r{<think>(.*?)</think>}m
@@ -246,7 +248,7 @@ module Samagotchi
         part.merge!(ToolRowFields.for(name, call, cwd: cwd))
         part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?
-          part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
+          part[:output] = ToolOutputCut.preview(output, cap: OUTPUT_MAX, tool: name)
           part[:output_truncated] = true if output.length > OUTPUT_MAX
         end
         shots = Array(images).select { |image| image.is_a?(Hash) }

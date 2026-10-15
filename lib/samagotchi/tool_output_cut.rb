@@ -112,6 +112,18 @@ module Samagotchi
 
     def unfinished?(output) = output.match?(UNFINISHED) || !output.match?(EXIT_LINE)
 
+    # +output+ as a web row keeps it, at most +cap+ chars (a reload's
+    # MessageParts, the Bridge's snapshot): a read's head (its view numbers
+    # the lines from the first), any other tool's head and tail with a gap
+    # line, as the model's cut keeps a test run's verdict and exit line.
+    def preview(output, cap:, tool:)
+      return output if output.length <= cap
+      return output[0, cap] if tool.to_s == "read"
+
+      head_tail(output, cap: cap, blocks: [Block.new(from: 0, length: output.length)], head_chars: HEAD_CHARS,
+                                  gap: RefGap.new(output, nil, nil)) || output[0, cap]
+    end
+
     # +output+ cut to +cap+ chars, the cut line included: the model knows
     # what it didn't get. A cap smaller than the line keeps +cap+ chars and
     # the line goes past it.
