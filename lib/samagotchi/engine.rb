@@ -1599,12 +1599,8 @@ module Samagotchi
     # The hook routes (see #initialize for when).
     def build_hook_routes
       HookRoutes.new(
-        extension_load: -> { @extension_load },
+        event_routes: @event_routes,
         in_turn_sink: -> { @turn_state.in_turn_sink },
-        anytime_thread: -> { anytime_thread? },
-        announce_anytime: ->(event) { announce_anytime(event) },
-        init_task: -> { current_init_task },
-        announce: ->(event) { announce(event) },
         announce_or_hold: ->(event) { announce_or_hold(event) },
         emit: ->(sink, event) { emit_event(sink, event) },
         question_desk: -> { @question_desk },

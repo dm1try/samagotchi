@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "event_routes"
 require_relative "hooks"
 require_relative "log"
 
@@ -9,30 +10,22 @@ module Samagotchi
   # a question (#ask_user), stopping the turn or cutting its generation,
   # and a steer; also the guardrails' line after load (#guardrail_notify).
   #
-  # What it needs from the Engine comes through lookups, called at use.
+  # What it needs from the Engine comes through lookups, called at use, and
+  # the Engine's EventRoutes.
   class HookRoutes
     # What a notice may stand in for (#notify's fallback_for:).
     NOTICE_FALLBACKS = %i[display editor].freeze
 
-    # @param extension_load    [#call] → ExtensionLoad (#loading?, #hold)
+    # @param event_routes      [EventRoutes] where a notice goes
     # @param in_turn_sink      [#call] → [Boolean, sink] (TurnState#in_turn_sink)
-    # @param anytime_thread    [#call] → whether this thread runs an anytime command
-    # @param announce_anytime  [#call] (event) → announces an anytime command's event
-    # @param init_task         [#call] → the init task running on this thread, nil
-    # @param announce          [#call] (event) → announces an event
     # @param announce_or_hold  [#call] (event) → announces it, or holds it for the caller
     # @param emit              [#call] (sink, event) → emits to a turn's sink + observers
     # @param question_desk     [#call] → QuestionDesk
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
     # @param steer             [#call] (text, source) → steers the running turn
-    def initialize(extension_load:, in_turn_sink:, anytime_thread:, announce_anytime:, init_task:, announce:,
-                   announce_or_hold:, emit:, question_desk:, cancel_controller:, steer:)
-      @extension_load = extension_load
+    def initialize(event_routes:, in_turn_sink:, announce_or_hold:, emit:, question_desk:, cancel_controller:, steer:)
+      @event_routes = event_routes
       @in_turn_sink = in_turn_sink
-      @anytime_thread = anytime_thread
-      @announce_anytime = announce_anytime
-      @init_task = init_task
-      @announce = announce
       @announce_or_hold = announce_or_hold
       @emit = emit
       @question_desk = question_desk
@@ -63,7 +56,9 @@ module Samagotchi
     # One line to the user (:hook_notice). During a turn it is a turn
     # event: the turn's sink (the REPL) and the observers (bridge, log).
     # Outside one (a plugin's command at the prompt) it is announced with
-    # between_turns: true, which every UI shows as cards are shown.
+    # between_turns: true, which every UI shows as cards are shown. While the
+    # plugins load it is held; on an anytime command's thread or an init task
+    # it is announced (EventRoutes#route).
     #
     # +fallback_for+ names what the line stands in for (NOTICE_FALLBACKS):
     # :display, the answer's display (AnswerDisplay), for a UI that doesn't
@@ -77,19 +72,7 @@ module Samagotchi
       level = :info unless %i[info warn].include?(level)
       notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level,
                  fallback_for: notice_fallback(fallback_for, hook) }.compact.merge(extra)
-      extension_load = @extension_load.call
-      return extension_load.hold(notice) && nil if extension_load.loading?
-
-      in_turn, sink = @in_turn_sink.call
-      if @anytime_thread.call
-        @announce_anytime.call(notice.merge(between_turns: true))
-      elsif @init_task.call
-        @announce.call(notice.merge(between_turns: true))
-      elsif in_turn
-        @emit.call(sink, notice)
-      else
-        @announce_or_hold.call(notice.merge(between_turns: true))
-      end
+      @event_routes.route(notice, **EventRoutes::NOTICE_MARKS)
       nil
     end
 
