@@ -272,3 +272,14 @@ test("the popover flips below a chip near the top and caps its height to the roo
   assert.equal(c.pop.style.maxHeight, "576px");
   c.done();
 });
+
+test("a failed view text or detach says what failed and why in a toast", async () => {
+  const c = chipsControl({ list: async () => ({ sources: [row()], can_add_url: false }),
+                           show: async () => { throw new Error("no source pr-1 (404)"); } });
+  await c.ctl.load("s1");
+  c.el.querySelector('[data-name="pr-1"]').click();
+  c.pop.querySelector('[data-act="view"]').click();
+  await c.settle();
+  assert.deepEqual(c.toasts, ["Can't read pr-1: no source pr-1"]);
+  c.done();
+});
