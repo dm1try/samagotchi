@@ -113,7 +113,7 @@ module Samagotchi
         output = "#{changed}\n#{output}"
       end
       truncated = !max_tool_output_chars.nil? && output.length > max_tool_output_chars
-      capped, saved = truncated ? cut(call, output, max_tool_output_chars, ref: result[:ref_path]) : output
+      capped, saved = truncated ? cut(call, output, max_tool_output_chars, result) : output
       output_file = saved.path if saved.is_a?(ToolOutputFiles::Saved)
 
       # The call's outcome as its activity line has it (worked out from the
@@ -150,12 +150,14 @@ module Samagotchi
     # +output+ cut to +cap+ by its tool's policy (ToolOutputCut); an
     # execute result keeps its tail too, its whole output saved in the
     # session's folder.
-    # @param ref [String, nil] the file the whole text is in (a task's log,
-    #   a child's reply: Tools::RefText), for task_wait and delegate
+    # @param result [Hash] the dispatch's: its ref_path is the file the
+    #   whole text is in (a task's log, a child's reply: Tools::RefText),
+    #   for task_wait and delegate; ref_stderr_path, a task's stderr log
     # @return [Array(String, Object)] the text, and the saved file (or why
     #   there is none) when it was cut that way
-    def cut(call, output, cap, ref: nil)
-      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text, dry: false) { save_output(call, text, dry: dry) }, ref: ref,
+    def cut(call, output, cap, result)
+      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text, dry: false) { save_output(call, text, dry: dry) },
+                                  ref: result[:ref_path], ref_stderr: result[:ref_stderr_path],
                                   head_chars: Tools::OutputGuardrails.config_positive_int("execute.cut_head_chars",
                                                                                           ToolOutputCut::HEAD_CHARS))
     end

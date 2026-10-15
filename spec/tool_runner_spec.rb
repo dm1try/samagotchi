@@ -436,6 +436,19 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(text.length).to be <= 3000
       expect(result[:output_file]).to be_nil
     end
+
+    it "names a handed-over execute's stderr log too" do
+      allow(kernel).to receive(:dispatch_tool_call) do
+        { output: full, activity: { tool: "task_wait", status: "ok" }, ref_path: "/tasks/t1.log",
+          ref_stderr_path: "/tasks/t1.err" }
+      end
+
+      text = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+                              max_tool_output_chars: 3000)[:capped_output]
+
+      expect(text).to match(%r{^\[cut: \d+ of #{full.length} chars not shown; the task's whole output is in /tasks/t1\.log \(its stderr in /tasks/t1\.err\): read it with start_line/end_line or rg it\]$})
+      expect(text.length).to be <= 3000
+    end
   end
 
   describe "sticky verdict" do

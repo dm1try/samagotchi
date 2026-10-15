@@ -84,13 +84,15 @@ module Samagotchi
     # @return [Array(String, Object)] the text the model gets, and what
     #   +save+ returned (nil when it wasn't called)
     # @param ref [String, nil] :head_tail_ref: the file the whole text is in
-    def apply(output, cap:, tool:, save: nil, ref: nil, head_chars: HEAD_CHARS)
+    # @param ref_stderr [String, nil] :head_tail_ref: its stderr's file, if apart
+    def apply(output, cap:, tool:, save: nil, ref: nil, ref_stderr: nil, head_chars: HEAD_CHARS)
       kind = policy(tool)
       return [head(output, cap), nil] if kind == :head || cap < MIN_TAIL * 3
 
       if kind == :head_tail_ref
         text = head_tail(output, cap: cap, blocks: [Block.new(from: 0, length: output.length)], head_chars: head_chars,
-                                 gap: RefGap.new(output, ref, REF_WHAT.fetch(tool.to_s, "the whole output")))
+                                 gap: RefGap.new(output, ref, REF_WHAT.fetch(tool.to_s, "the whole output"),
+                                                 stderr: ref_stderr))
         return [text || head(output, cap), nil]
       end
 
@@ -213,14 +215,16 @@ module Samagotchi
 
     # The gap line of a :head_tail_ref cut: the file the whole text is in.
     class RefGap
-      def initialize(output, ref, what)
+      def initialize(output, ref, what, stderr: nil)
         @output = output
         @ref = ref.to_s
         @what = what
+        @stderr = stderr.to_s
       end
 
       def line(left_out)
-        where = @ref.empty? ? "" : "; #{@what} is in #{@ref}: read it with start_line/end_line or rg it"
+        also = @stderr.empty? ? "" : " (its stderr in #{@stderr})"
+        where = @ref.empty? ? "" : "; #{@what} is in #{@ref}#{also}: read it with start_line/end_line or rg it"
         "[cut: #{left_out.length} of #{@output.length} chars not shown#{where}]"
       end
 

@@ -100,7 +100,8 @@ output sent to a file (cmd > /tmp/out.txt 2>&1) and read that]`. The turn goes o
 `Tools::RefText` whose `ref_path` is the file the whole of it is in (a reply's file holds only the reply, not the
 `session:`/`status:` header) (`KernelLoop#dispatch` passes it on as the
 result's `ref_path:`), and the gap line names it: `[cut: N of M chars not shown; the task's whole output is in
-<output_path>: read it with start_line/end_line or rg it]`.
+<output_path>: read it with start_line/end_line or rg it]`. A handed-over execute's task has a stderr log of its
+own: `RefText#stderr_path` (passed on as `ref_stderr_path:`) adds `(its stderr in <stderr_path>)` after the path.
 
 The model, the `:tool_call_completed` event and the `after_tool_call` hook get the same cut text; the event and
 the runner's result carry the saved file's path as `output_file:`, and the log's `tool_call_completed` line has

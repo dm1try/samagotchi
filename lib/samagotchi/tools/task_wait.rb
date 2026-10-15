@@ -122,8 +122,9 @@ module Samagotchi
         lines << output_tail.rstrip unless output_tail.empty?
         stderr_tail = stderr_tail(record, tail_lines)
         lines.concat(["stderr_tail:", stderr_tail.rstrip]) unless stderr_tail.empty?
-        # The whole log is at output_path: a cut of this text names it.
-        RefText.wrap(lines.join("\n"), record.output_path)
+        # The whole log is at output_path (stderr at stderr_path): a cut of
+        # this text names them.
+        RefText.wrap(lines.join("\n"), record.output_path, stderr_path: record.stderr_path)
       end
       private_class_method :format_response
 

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "samagotchi/kernel_loop"
 require "samagotchi/process_group"
+require "samagotchi/reminder_store"
 require "samagotchi/tools/builtins"
 require "samagotchi/tools/execute"
 require "samagotchi/tools/task_create"
@@ -474,6 +476,10 @@ RSpec.describe "task tools" do
 
       expect(result).to end_with("output_tail:\no1\no2\nstderr_tail:\n#{(11..20).map { |n| "e#{n}" }.join("\n")}")
       expect(result).to include("stderr_path: #{File.join(dir, "err.log")}")
+      expect(result).to have_attributes(ref_path: File.join(dir, "out.log"), stderr_path: File.join(dir, "err.log"))
+      dispatched = Samagotchi::KernelLoop.new(client: nil, reminder_store: Samagotchi::ReminderStore.new)
+                                         .dispatch_tool_call(name: "task_wait", content: record.id, timeout: "0")
+      expect(dispatched).to include(ref_path: File.join(dir, "out.log"), ref_stderr_path: File.join(dir, "err.log"))
       File.write(File.join(dir, "err.log"), "")
       expect(described_class.call(record.id, timeout: 0)).to end_with("output_tail:\no1\no2")
     end
