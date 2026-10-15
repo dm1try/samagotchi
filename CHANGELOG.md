@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Web: a tool row whose call the guardrails corrected shows its output without the `ran as: …` line inline (it
+  stays on hover).
 - `task_wait` on a task that finished now returns the last lines of its log too (`output_tail:`, `tail_lines` of
   them, 10 by default), as a timed-out wait does: a test run's summary or an error is there without reading the
   log; its web row shows them.

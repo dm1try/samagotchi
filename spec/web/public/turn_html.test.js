@@ -294,8 +294,12 @@ test("inlineOutput: no output, a bare exit: 0 and a whitespace-only stdout stay 
   assert.equal(inlineOutput("execute", "exit: 1"), "exit: 1");
 });
 
-test("inlineOutput: a ran-as line stays, so the stdout label isn't leading and stays too", () => {
-  assert.equal(inlineOutput("execute", "ran as: execute ls\n[execute]\nstdout:\nok\n\nexit: 0"), "ran as: execute ls\n[execute]\nstdout:\nok");
+test("inlineOutput: a gate-corrected call's ran-as line and tag show on hover only", () => {
+  assert.equal(inlineOutput("execute", "ran as: execute ls\n[execute]\nstdout:\nok\n\nexit: 0"), "ok");
+  assert.equal(inlineOutput("read", 'ran as: read path="a"\n[read]\nx'), "x");
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "ls",
+    output: "ran as: execute ls\n[execute]\nstdout:\nok\n\nexit: 0" });
+  assert.match(html, /<div class="activity-output tail" title="ran as: execute ls\n\[execute\]\nstdout:\nok\n\nexit: 0">ok<\/div>/);
 });
 
 test("inlineOutput: a cut gap line before a short tail is kept like any other line", () => {
