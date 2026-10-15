@@ -896,9 +896,9 @@ module Samagotchi
       # session part is what the page reads of it (id, status, used memory
       # names, the model notes its prompt carried: the first turn's build or
       # a /model records them). ?turn_id=: that turn's answer (a queued
-      # turn's page re-reads after the next one started). ?recent=1 (the page since this
-      # release): the timing's records are the newest turn's (#recent_timing),
-      # which the page merges by id; without it, the whole timing as before.
+      # turn's page re-reads after the next one started). The timing's records
+      # are the newest turn's (#recent_timing), which the page merges by id
+      # (the page still sends ?recent=1, which is accepted and not needed).
       def handle_tail_read(req, id)
         return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
 
@@ -919,9 +919,7 @@ module Samagotchi
         end
         session_json = { id: id, status: status, used_memory_names: Array(used), prompt_notes: Array(notes) }
         live_metrics = state && state["metrics"]
-        # Without recent=1: a tab opened before this release (it replaces its
-        # timing with the reply's). Remove this branch after the next release.
-        timing = req.params["recent"] == "1" ? recent_timing(id, live_metrics) : timing_payload(id, live_metrics: live_metrics)
+        timing = recent_timing(id, live_metrics)
         json_response(200, {
           tail: true,
           session: session_json,
@@ -1703,7 +1701,7 @@ module Samagotchi
                                                                  turn_count: (live && turn_count(live_metrics)) || turns.size)
       end
 
-      # The timing a ?tail=1&recent=1 read sends: a live worker's recent
+      # The timing a ?tail=1 read sends: a live worker's recent
       # records as its metrics hold them (the newest finished turn's and
       # the unsaved ones, the running turn's finished calls), no
       # analytics.json read; with no worker the disk's, trimmed to the

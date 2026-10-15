@@ -337,7 +337,7 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   alone (no session file parsed, no `analytics.json`); `timing` carries the worker's recent records
   and `turn_count` (finished turns). The page merges the records by id (`timing.js mergeTiming`) and
   finishes the ended turn's own line by its `turn_id` (sent as `&turn_id=`, which also picks that
-  turn's answer). A plain `?tail=1` (a tab opened before this) gets the whole timing.
+  turn's answer). A tail read's timing is always the newest turn's; `recent=1` is accepted and not needed.
   The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
   read's re-render) and pairs them with the bubble's links and text before the `path:line` scan.
   A plugin tool's row refs (`refs`, `RowRefs`) ride its tool events and, on a reload, its part (saved as
@@ -349,7 +349,7 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
 
 A worker without `/tail` (an older chi; `404 not_found`) is read through `/snapshot` in the same
 shape; any other failure (no worker, a 500, a timeout) reads the disk, trimmed to the newest
-turn's records with `recent=1`.
+turn's records.
 
 Every route goes through `Bridge#dispatch`: an id other than the bridge's own session is
 `404 unknown_session`, and a handler that raises answers `500 bridge_error` (logged as

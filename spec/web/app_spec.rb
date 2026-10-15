@@ -1680,11 +1680,11 @@ RSpec.describe Samagotchi::Web::App do
       def timing(query = "") = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first).fetch("timing")
       def ids(records) = records.map { |r| r["id"] }
 
-      it "appends the live turn the file doesn't hold yet, in order (show and ?tail=1)" do
+      it "appends the live turn the file doesn't hold yet, in order (show and ?timing=1)" do
         save([1, 2])
         live_with([3])
 
-        ["", "?tail=1"].each do |query|
+        ["", "?timing=1"].each do |query|
           expect(timing(query)["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2 t3])
           expect(timing(query)["tool_records"].map { |r| r["id"] })
             .to eq(%w[t1:1:1 t1:1:2 t2:1:1 t2:1:2 t3:1:1 t3:1:2])
@@ -1719,7 +1719,7 @@ RSpec.describe Samagotchi::Web::App do
                                  tool_records: [tool(1, 1), tool(3, 1)]))
         live_with([2], count: 2, "active_turn" => { "id" => "t3", "started_at" => "2026-10-03T10:09:00.000Z" })
 
-        ["", "?tail=1", "?timing=1"].each do |query|
+        ["", "?timing=1"].each do |query|
           expect(ids(timing(query)["turn_records"])).to eq(%w[t1 t2]), query
           # The running turn's finished calls stay (the live ones carry them too).
           expect(ids(timing(query)["tool_records"])).to include("t3:1:1"), query
@@ -1740,7 +1740,7 @@ RSpec.describe Samagotchi::Web::App do
         ["", "?tail=1", "?tail=1&recent=1", "?timing=1"].each { |query| expect(timing(query)["turn_count"]).to eq(2), query }
       end
 
-      describe "?tail=1&recent=1 (the page since this release: it merges by id)" do
+      describe "?tail=1 (with or without recent=1: the page merges by id)" do
         it "sends the worker's recent records only (the newest turn's) and the count, without reading analytics.json" do
           save([1, 2])
           live_with([3])
@@ -1779,11 +1779,13 @@ RSpec.describe Samagotchi::Web::App do
           expect(t["turn_count"]).to eq(2)
         end
 
-        it "a tail without recent=1 (a tab opened before) keeps the whole timing" do
+        it "a tail read without recent=1 sends the recent records too (recent=1 is accepted, not needed)" do
           save([1, 2])
           live_with([3])
+          expect(app).not_to receive(:read_analytics)
 
-          expect(ids(timing("?tail=1")["turn_records"])).to eq(%w[t1 t2 t3])
+          expect(ids(timing("?tail=1")["turn_records"])).to eq(%w[t3])
+          expect(timing("?tail=1")).to eq(timing("?tail=1&recent=1"))
         end
       end
 
