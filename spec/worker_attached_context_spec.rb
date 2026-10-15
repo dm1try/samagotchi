@@ -302,7 +302,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn&.last&.dig(:content)).to include("your peer agent Codex agreed with what you sent it (VERDICT OK)")
 
         answer("v2")
-        expect(wake_turn&.last&.dig(:content)).to include("After 1 such turns in a row")
+        expect(wake_turn&.last&.dig(:content)).to include("After 1 such turn in a row,")
         expect(peer_notices).to be_empty
       end
 

@@ -308,6 +308,11 @@ RSpec.describe Samagotchi::ContextAbsorber do
       expect(delivery.wake_note[:text]).to end_with(described_class.peer_line("Codex", "codex-outbox", 3, agreed: true))
     end
 
+    it "counts the turns in the peer line in the singular for one" do
+      expect(described_class.peer_line("Codex", "codex-outbox", 1)).to end_with("After 1 such turn in a row, stop and " \
+                                                                                "tell your user what changed.")
+    end
+
     it "takes the last verdict token" do
       expect(described_class.peer_agrees?("a: VERDICT OK")).to be(true)
       expect(described_class.peer_agrees?("VERDICT OK|CHANGES|UNSURE")).to be(false)
