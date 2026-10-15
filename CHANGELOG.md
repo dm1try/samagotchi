@@ -29,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   that one: it no longer marks it as held by a terminal, puts the failure in its history or follows its worker,
   and a card's action button no longer follows it either; an after-turn hook's answer re-read no longer lands in it.
 - Web: a stop the server refuses (the stop button in the session bar) now says why in a toast instead of nothing.
+- Web: a failure the server explains (a refused `/model`, send, archive, attach…) shows its words alone, without an
+  HTTP status after them (`a terminal chi holds it`, not `… (409)`); the status shows only when the server gave no words.
 - Web: opening another session right as a finished turn slides into the history no longer shows that turn in the
   new session's history, and its "Loading…" line stays until the session is drawn.
 - Web: opening a chip's popover (llm ctx, thinking, reasoning history, attached context) closes the one already

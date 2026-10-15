@@ -175,7 +175,7 @@ test("Submit with nothing chosen says so; with a pick it sends the answer to the
 });
 
 test("a send to a stopped session says to restart it", async () => {
-  const { cards } = setup({ fail: { message: "no live bridge for session s1 (503)", status: 503, code: "not_live" } });
+  const { cards } = setup({ fail: { message: "no live bridge for session s1", status: 503, code: "not_live" } });
   cards.renderQuestion(PQ);
   const card = cards.questionCard();
   card.querySelectorAll(".question-option input")[0].checked = true;
@@ -189,23 +189,23 @@ test("a send to a stopped session says to restart it", async () => {
 // 4.27: a live worker that failed the request (the server's 502 bridge_error)
 // is not a session that isn't running: the card shows what the worker said.
 test("a send the worker failed shows its detail, not the restart line", async () => {
-  const { cards } = setup({ fail: "the question desk raised (502)" });
+  const { cards } = setup({ fail: "the question desk raised" });
   cards.renderQuestion(PQ);
   const card = cards.questionCard();
   card.querySelectorAll(".question-option input")[0].checked = true;
   card.querySelector(".question-submit").click();
   await flush();
-  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised (502)");
+  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised");
   assert.equal(card.querySelector(".question-submit").disabled, false);
 });
 
 test("a dismissal the worker failed shows its detail too", async () => {
-  const { cards } = setup({ fail: "the question desk raised (502)" });
+  const { cards } = setup({ fail: "the question desk raised" });
   cards.renderQuestion(PQ);
   const card = cards.questionCard();
   card.querySelector(".question-dismiss").click();
   await flush();
-  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised (502)");
+  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised");
   assert.equal(card.querySelector(".question-dismiss").disabled, false);
 });
 

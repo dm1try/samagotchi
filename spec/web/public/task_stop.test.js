@@ -106,8 +106,8 @@ test("a declined confirm posts nothing", async () => {
 });
 
 test("a failed stop frees the button; 409/503 quietly, anything else alerts", async () => {
-  const fail = (status) => () => Promise.reject(Object.assign(new Error(`boom (${status})`), { status }));
-  for (const [status, said] of [[409, []], [503, []], [502, ["boom (502)"]]]) {
+  const fail = (status) => () => Promise.reject(Object.assign(new Error("boom"), { status }));
+  for (const [status, said] of [[409, []], [503, []], [502, ["boom"]]]) {
     const { s, alerts } = stopper({ stopTask: fail(status) });
     assert.equal(await s.stop(ID), false);
     assert.equal(s.busy(ID), false);
@@ -115,7 +115,7 @@ test("a failed stop frees the button; 409/503 quietly, anything else alerts", as
   }
 });
 
-const failStop = () => () => Promise.reject(Object.assign(new Error("boom (502)"), { status: 502 }));
+const failStop = () => () => Promise.reject(Object.assign(new Error("boom"), { status: 502 }));
 
 test("a declined confirm neither posts nor touches the watchers", async () => {
   const { s, calls } = stopper({ confirm: () => false });

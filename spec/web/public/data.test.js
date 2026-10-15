@@ -48,15 +48,26 @@ test("api raises on non-ok status", async () => {
       api("/api/sessions/1/stream", {
         fetchImpl: () => Promise.resolve(okResponse(body, 503)),
       }),
-    /not_live \(503\)/,
+    (e) => e.message === "not_live",
   );
 });
 
 test("api errors carry the HTTP status (a 404 means the session is gone)", async () => {
   await assert.rejects(
     () => api("/api/sessions/nope", { fetchImpl: () => Promise.resolve(okResponse({ error: "not_found" }, 404)) }),
-    (e) => e.status === 404 && /not_found \(404\)/.test(e.message),
+    (e) => e.status === 404 && e.message === "not_found",
   );
+});
+
+// The message is what the page shows the user: the server's words alone
+// ("/model x: a terminal chi holds it", not "… (409)"); the status only
+// when the server sent no words, where it is all there is to go on.
+test("api error messages: the server's words without the status, else the status text and status", async () => {
+  const fail = (body, status, statusText) => api("/api/x", { fetchImpl: () => Promise.resolve({ ...okResponse(body, status), statusText }) });
+  await assert.rejects(() => fail({ error: "owned_by_tui", detail: "a terminal chi holds it" }, 409, "Conflict"),
+    (e) => e.message === "a terminal chi holds it" && e.status === 409);
+  await assert.rejects(() => fail({}, 502, "Bad Gateway"), (e) => e.message === "Bad Gateway (502)");
+  await assert.rejects(() => fail({}, 500, ""), (e) => e.message === "HTTP error (500)");
 });
 
 // The page matches on the code, never on the message's words: a turn's
@@ -64,7 +75,7 @@ test("api errors carry the HTTP status (a 404 means the session is gone)", async
 test("api errors carry the server's error code", async () => {
   const fail = (body, status) => api("/api/sessions/1/turn", { fetchImpl: () => Promise.resolve(okResponse(body, status)) });
   await assert.rejects(() => fail({ error: "bad_images", detail: "unknown image ref" }, 400),
-    (e) => e.code === "bad_images" && e.status === 400 && e.message === "unknown image ref (400)");
+    (e) => e.code === "bad_images" && e.status === 400 && e.message === "unknown image ref");
   await assert.rejects(() => fail({ error: "owned_by_tui", detail: "open in a chi REPL" }, 409), (e) => e.code === "owned_by_tui");
   await assert.rejects(() => fail({}, 500), (e) => e.code === null);
 });

@@ -172,7 +172,7 @@ test("chainRowsTemplate lists the other links newest first: day, date, recap's f
   assert.match(chainRowsHtml(g), /&lt;b&gt;x&lt;\/b&gt;/);
 });
 
-const refused = (code, body, message = "refused (409)") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });
+const refused = (code, body, message = "refused") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });
 
 test("continueRefusal: continued already opens the next link", () => {
   assert.deepEqual(continueRefusal(refused("continued", { next_id: "d4" })), { kind: "open", id: "d4" });
@@ -185,7 +185,7 @@ test("continueRefusal: open delegates are named with their preview and state", (
   ];
   const detail = "d3 has delegates still open that can't move to the next link: aaaaaaaa (older chi worker 0.46.1; restart it), cccccccc (open in a chi REPL; close it there); then continue (or wait for them, stop them or archive them)";
   const r = continueRefusal(refused("open_children", { ids: ["aaaaaaaa-1", "bbbbbbbb-2", "cccccccc-3", "dddddddd-4"] },
-    `${detail} (409)`), kids);
+    detail), kids);
   assert.equal(r.kind, "children");
   assert.equal(r.text, detail);
   // Why: the server's word, else the state here; the preview when the list has it.
@@ -239,7 +239,7 @@ test("freshLink: a chain link with no turn yet, not running, not a terminal's, n
 });
 
 test("continueRefusal: anything else is the server's words", () => {
-  assert.deepEqual(continueRefusal(refused("busy", {}, "d3 is running a turn (409)")), { kind: "error", text: "d3 is running a turn" });
+  assert.deepEqual(continueRefusal(refused("busy", {}, "d3 is running a turn")), { kind: "error", text: "d3 is running a turn" });
   // A continued answer without its next_id (an older server) is words too.
   assert.equal(continueRefusal(refused("continued", {})).kind, "error");
   assert.deepEqual(continueRefusal(new Error("Failed to fetch")), { kind: "error", text: "Failed to fetch" });

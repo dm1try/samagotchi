@@ -312,8 +312,10 @@ test("firstPreview: the first message, whitespace collapsed, cut at 80 with an e
 
 import { cantText } from "../../../lib/samagotchi/web/public/format.js";
 
-test("cantText: what failed and why, without the HTTP status data.js appends", () => {
-  assert.equal(cantText("stop", new Error("owned_by_tui (409)")), "Can't stop: owned_by_tui");
+test("cantText: what failed and why", () => {
+  assert.equal(cantText("stop", new Error("owned_by_tui")), "Can't stop: owned_by_tui");
   assert.equal(cantText("restart", new Error("Failed to fetch")), "Can't restart: Failed to fetch");
-  assert.equal(cantText("detach notes", { message: "gone (404)" }), "Can't detach notes: gone");
+  assert.equal(cantText("detach notes", { message: "gone" }), "Can't detach notes: gone");
+  // A server that sent no words: its status is all there is (api()'s message keeps it).
+  assert.equal(cantText("stop 1234abcd", new Error("Bad Gateway (502)")), "Can't stop 1234abcd: Bad Gateway (502)");
 });

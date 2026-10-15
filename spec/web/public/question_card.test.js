@@ -105,14 +105,14 @@ test("resultText: a question closed in a non-interactive run says no one could a
 // other failure shows what the server or the worker said.
 test("answerErrorText: 503 says restart, anything else shows the detail", () => {
   const err = (message, status, code) => Object.assign(new Error(message), status ? { status } : {}, code ? { code } : {});
-  assert.equal(answerErrorText(err("no live bridge for session s1 (503)", 503)), "Session is not running — restart it to answer.");
+  assert.equal(answerErrorText(err("no live bridge for session s1", 503)), "Session is not running — restart it to answer.");
   // The status alone is enough: the message needn't spell it out.
   assert.equal(answerErrorText(err("no live bridge for session s1", 503)), "Session is not running — restart it to answer.");
   // The server's code says it too; the message's words don't.
   assert.equal(answerErrorText(err("gone", null, "not_live")), "Session is not running — restart it to answer.");
-  assert.equal(answerErrorText(err("not_live here (502)", 502)), "not_live here (502)");
-  assert.equal(answerErrorText(err("the question desk raised (502)", 502)), "the question desk raised (502)");
-  assert.equal(answerErrorText(err("question already answered (409)", 409)), "question already answered (409)");
+  assert.equal(answerErrorText(err("not_live here", 502)), "not_live here");
+  assert.equal(answerErrorText(err("the question desk raised", 502)), "the question desk raised");
+  assert.equal(answerErrorText(err("question already answered", 409)), "question already answered");
   assert.equal(answerErrorText(err("Failed to fetch")), "Failed to fetch");
 });
 

@@ -277,7 +277,7 @@ test("runBatch: one at a time, a delegate a parent's answer covered is not sent 
 
 test("runBatch: a refusal mid-batch is skipped with its reason and the rest goes on", async () => {
   const act = async (id) => (id === "b"
-    ? { ok: false, error: refusal("busy", "session b has a turn running (409)") }
+    ? { ok: false, error: refusal("busy", "session b has a turn running") }
     : { ok: true, result: { archived: [id] } });
   const out = await runBatch(["a", "b", "c"], act);
   assert.deepEqual(out.done, ["a", "c"]);
@@ -286,7 +286,7 @@ test("runBatch: a refusal mid-batch is skipped with its reason and the rest goes
 });
 
 test("runBatch: a 404 is gone, not skipped", async () => {
-  const act = async (id) => (id === "a" ? { ok: false, error: refusal("not_found", "no session a (404)", 404) } : { ok: true, result: { unarchived: [id] } });
+  const act = async (id) => (id === "a" ? { ok: false, error: refusal("not_found", "no session a", 404) } : { ok: true, result: { unarchived: [id] } });
   const out = await runBatch(["a", "b"], act);
   assert.deepEqual(out.gone, ["a"]);
   assert.deepEqual(out.skipped, []);

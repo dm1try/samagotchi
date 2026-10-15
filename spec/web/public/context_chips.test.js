@@ -127,7 +127,7 @@ function chipsControl({ list, add = async () => ({ name: "pr-9" }), show = async
 test("a failed attach keeps the form: the typed URL and why stay in the same fields, the URL has focus, Attach works again", async () => {
   let fail = true;
   const c = chipsControl({ list: async () => ({ sources: [], can_add_url: true }),
-                           add: async () => { if (fail) throw new Error("no installed bundle resolves it (422)"); return { name: "pr-9" }; } });
+                           add: async () => { if (fail) throw new Error("no installed bundle resolves it"); return { name: "pr-9" }; } });
   await c.ctl.load("s1");
   c.el.querySelector(".ctx-add").click();
   const form = c.pop.querySelector("form");
@@ -275,7 +275,7 @@ test("the popover flips below a chip near the top and caps its height to the roo
 
 test("a failed view text or detach says what failed and why in a toast", async () => {
   const c = chipsControl({ list: async () => ({ sources: [row()], can_add_url: false }),
-                           show: async () => { throw new Error("no source pr-1 (404)"); } });
+                           show: async () => { throw new Error("no source pr-1"); } });
   await c.ctl.load("s1");
   c.el.querySelector('[data-name="pr-1"]').click();
   c.pop.querySelector('[data-act="view"]').click();
