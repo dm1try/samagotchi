@@ -306,6 +306,19 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(peer_notices).to be_empty
       end
 
+      it "holds an agreeing answer as a note, with the notice, once context.peer_turns is spent" do
+        config["context.peer_turns"] = 1
+        start_worker
+        answer("v1")
+        expect(wake_turn).not_to be_nil
+
+        answer("v2", summary: "step 2: VERDICT OK")
+        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
+        expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
+                                                         "message (1 wake turn in a row, context.peer_turns)"])
+      end
+
       it "counts an agreeing answer's wake toward session.max_wakes" do
         config["session.max_wakes"] = 1
         start_worker
