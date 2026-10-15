@@ -84,3 +84,36 @@ test("a refresh for another session, or with no summary, closes it", () => {
   assert.equal(none.ctl.isOpen(), false);
   none.done();
 });
+
+// Two shells: on one el (the session bar's chips share #infoText) and on
+// sibling els (the start page's chips). +make(el, n)+ adds the nth.
+function twoShells(sameEl) {
+  const make = (el, n) => {
+    el.insertAdjacentHTML("beforeend", `<button class="chip-${n}">chip ${n}</button>`);
+    const ctl = createChipPopover({
+      id: `pop${n}`, className: "ctx-popover", width: 300, el, anchor: `.chip-${n}`,
+      summary: () => ({}), win: { innerWidth: 1000, innerHeight: 800 }, show: () => {}, onSubmit: () => {},
+    });
+    return { ctl, chip: el.querySelector(`.chip-${n}`) };
+  };
+  const els = [document.createElement("div"), sameEl ? null : document.createElement("div")].filter(Boolean);
+  document.body.append(...els);
+  const a = make(els[0], 1);
+  const b = make(els.at(-1), 2);
+  return { a, b, done: () => { els.forEach((el) => el.remove()); a.ctl.pop.remove(); b.ctl.pop.remove(); } };
+}
+
+for (const sameEl of [true, false]) {
+  test(`one chip popover open at a time (${sameEl ? "chips on one el" : "chips on sibling els"})`, () => {
+    const { a, b, done } = twoShells(sameEl);
+    a.chip.click();
+    assert.equal(a.ctl.isOpen(), true);
+    b.chip.click();
+    assert.equal(b.ctl.isOpen(), true);
+    assert.equal(a.ctl.isOpen(), false);
+    a.chip.click();
+    assert.equal(a.ctl.isOpen(), true);
+    assert.equal(b.ctl.isOpen(), false);
+    done();
+  });
+}

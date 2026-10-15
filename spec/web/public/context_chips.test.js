@@ -213,3 +213,27 @@ test("a source inserted before the focused chip: the focus stays on the same sou
   assert.notEqual(document.activeElement?.dataset?.name, "a");
   c.done();
 });
+
+test("the context popover and a session-bar chip's popover close each other", async () => {
+  const { createChipPopover } = await import("../../../lib/samagotchi/web/public/chip_popover.js");
+  const c = chipsControl({ list: async () => ({ sources: [row()], can_add_url: true }) });
+  await c.ctl.load("s1");
+  const bar = document.createElement("div");
+  bar.innerHTML = '<button class="level-chip">thinking</button>';
+  document.body.append(bar);
+  const level = createChipPopover({
+    id: "levelPop", className: "ctx-popover", width: 300, el: bar, anchor: ".level-chip",
+    summary: () => ({}), win: { innerWidth: 1000, innerHeight: 800 }, show: () => {}, onSubmit: () => {},
+  });
+  c.el.querySelector(".ctx-add").click();
+  assert.equal(c.pop.hidden, false);
+  bar.querySelector(".level-chip").click();
+  assert.equal(level.isOpen(), true);
+  assert.equal(c.pop.hidden, true);
+  c.el.querySelector(".ctx-add").click();
+  assert.equal(c.pop.hidden, false);
+  assert.equal(level.isOpen(), false);
+  bar.remove();
+  level.pop.remove();
+  c.done();
+});

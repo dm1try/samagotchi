@@ -31,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a stop the server refuses (the stop button in the session bar) now says why in a toast instead of nothing.
 - Web: opening another session right as a finished turn slides into the history no longer shows that turn in the
   new session's history, and its "Loading…" line stays until the session is drawn.
+- Web: opening a chip's popover (llm ctx, thinking, reasoning history, attached context) closes the one already
+  open, instead of leaving both open.
 
 ## [0.71.0] - 2026-10-15
 
