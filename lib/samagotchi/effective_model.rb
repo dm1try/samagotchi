@@ -30,7 +30,7 @@ module Samagotchi
   #
   # Each setting reader rescues its own failure and gives the fallback the
   # Engine has always given (Unresolved); building one raises as
-  # HostRegistry#resolve does (the Engine's #model_setting gives the
+  # HostRegistry#resolve does (SessionModelSettings#model_setting gives the
   # fallback then).
   EffectiveModel = Data.define(:registry, :name, :typed, :target, :names) do
     # @param registry [HostRegistry]

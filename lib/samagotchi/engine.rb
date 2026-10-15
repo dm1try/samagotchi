@@ -1195,7 +1195,7 @@ module Samagotchi
       # One resolve for the model's fields; nil when it doesn't resolve (the
       # Bridge's /state and reset frames rely on this never raising): those
       # fields are nil then, as their own rescues always gave.
-      model = model_setting(nil) { |resolved| resolved }
+      model = @model_settings.model_setting(nil) { |resolved| resolved }
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
@@ -1587,8 +1587,8 @@ module Samagotchi
     def system_prompt(model = nil)
       model ||= effective_model
       chat = model.chat?
-      level = chat ? nil : thinking_level(model)
-      prompt = @prompt_builder.build(chat: chat, thinking: level, layers: model.llm_context_layers(llm_context_session_args))
+      level = chat ? nil : @model_settings.thinking_level(model)
+      prompt = @prompt_builder.build(chat: chat, thinking: level, layers: model.llm_context_layers(@model_settings.llm_context_session_args))
       # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
       @metrics.memory_index = @prompt_builder.memory_index
       # The model notes it carries: the session records them (/stats, /model, the web).
@@ -1932,10 +1932,10 @@ module Samagotchi
       model = effective_model
       vision = turn_vision(session, model)
       sampling = model.sampling
-      level = thinking_level(model)
+      level = @model_settings.thinking_level(model)
       @thinking_notices.turn_started(level, model.target)
       LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: level,
-                            reasoning_history: reasoning_history_level(model), model_name: nil,
+                            reasoning_history: @model_settings.reasoning_history_level(model), model_name: nil,
                             window_setting: nil, llm_context: nil, price: nil)
     end
     private :turn_settings
@@ -1965,7 +1965,7 @@ module Samagotchi
       messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(model) })
       # Under the next turn's strategy (a /model switch may have changed it);
       # the last turn's when it can't be resolved.
-      prompt, images = @kernel.warmup_prompt(messages, llm_context: turn_llm_context || @kernel.turn_settings&.llm_context)
+      prompt, images = @kernel.warmup_prompt(messages, llm_context: @model_settings.turn_llm_context || @kernel.turn_settings&.llm_context)
       return unless prompt
 
       started = @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
@@ -2031,7 +2031,7 @@ module Samagotchi
       # The turn's settings, set once here. The chat loop dispatches tools
       # through the kernel without its #run: tag those dumps with this
       # turn's model, not the last native one.
-      explained = model.llm_context_explained(llm_context_session_args)
+      explained = model.llm_context_explained(@model_settings.llm_context_session_args)
       @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
                                                  llm_context: explained&.resolved, price: model.price)
       log_llm_context(explained)
@@ -2260,19 +2260,10 @@ module Samagotchi
                         capability: -> { model.vision_support(profile) })
     end
 
-    # The effective model's request parameters (hosts: and models:
-    # sampling), read per turn: /model can change the model between turns.
-    def turn_sampling = model_setting(SamplingSettings::EMPTY, &:sampling)
-
-    # The effective model's thinking level (Thinking.resolve), read each turn.
-    def turn_thinking = model_setting(Thinking::DEFAULT) { |model| thinking_level(model) }
-
-    # +model+'s ReasoningHistory level, the session's own first; the
-    # default when it can't be resolved.
-    def reasoning_history_level(model) = model.reasoning_history(own: reasoning_history_override)
-
-    # +model+'s thinking level (Thinking.resolve), the session's own first.
-    def thinking_level(model) = model.thinking(own: thinking_override)
+    # The effective model's sampling and thinking level as the next turn
+    # reads them (SessionModelSettings).
+    def turn_sampling = @model_settings.turn_sampling
+    def turn_thinking = @model_settings.turn_thinking
 
     # A model known not to see images fails a turn with images up front.
     def refuse_images!(vision)
@@ -2683,24 +2674,10 @@ module Samagotchi
       emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names, read_names: read_names })
     end
 
-    # The effective model's models:/hosts: window_tokens, read per turn
-    # (after the hooks that may switch the model).
-    def turn_window_setting = model_setting(nil, &:window_setting)
-
-    # The effective model's price on its host (hosts.<name>.models.<id>.price),
-    # by the requested id, never the served one; read per turn as the window is.
-    def turn_price = model_setting(nil, &:price)
-
-    # The LLM context strategy the next turn runs under: the session's own
-    # (Session#llm_context), else the effective model's (models:/hosts:
-    # llm_context_strategy), else llm_context.strategy; read per turn as
-    # the window is.
-    def turn_llm_context
-      llm_context_explained&.resolved
-    end
-
-    def llm_context_session_args = @session&.llm_context&.resolve_args || {}
-    private :llm_context_session_args
+    # The effective model's window_tokens and price, read per turn
+    # (SessionModelSettings).
+    def turn_window_setting = @model_settings.turn_window_setting
+    def turn_price = @model_settings.turn_price
 
     # See #served_model. A report for another name (before a /model switch)
     # doesn't count. Without a model (EffectiveModel), no probe. A remote
@@ -2727,26 +2704,10 @@ module Samagotchi
       settings.to_h { |setting| [setting.key, setting.model? ? setting.chip_for(model, @session) : toolkit_summary] }
     end
 
-    # The effective model now (EffectiveModel.of): resolved on each call,
-    # never kept (config.yml, a model listing and another process's saved
-    # lists all move a resolve). Raises as HostRegistry#resolve does.
+    # The effective model now, resolved on each call, never kept
+    # (SessionModelSettings#effective_model). Raises as HostRegistry#resolve does.
     # @return [EffectiveModel]
-    def effective_model(choice = @model_choice) = EffectiveModel.of(@host_registry, choice)
-
-    # The block's answer for the effective model, or +fallback+ when the
-    # model doesn't resolve: the readers whose rescue always covered the
-    # resolve too. Each setting's own failure is the EffectiveModel's.
-    def model_setting(fallback)
-      # One read: the log line names the model that failed, even if a
-      # /model switched it meanwhile.
-      choice = @model_choice
-      model = begin
-        effective_model(choice)
-      rescue StandardError => e
-        return EffectiveModel::Unresolved.fallback(:effective_model_unresolved, choice.name, e, fallback)
-      end
-      yield model
-    end
+    def effective_model(choice = @model_choice) = @model_settings.effective_model(choice)
 
     # ── Prompt profile ─────────────────────────────────────────────────────────
 
