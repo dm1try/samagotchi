@@ -53,7 +53,7 @@ module Samagotchi
       # The row shows 300 chars and the rest on hover; a read of a big file
       # would otherwise ride along with every reload. A longer one keeps its
       # head and tail (ToolOutputCut.preview).
-      OUTPUT_MAX = 2000
+      OUTPUT_MAX = ToolOutputCut::WEB_PREVIEW_CHARS
 
       QWEN_THINK = %r{<think>(.*?)</think>}m
       QWEN_OPEN_THINK = %r{\A(.*?)</think>}m # the template opened the block

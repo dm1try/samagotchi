@@ -37,6 +37,12 @@ module Samagotchi
     # partial read by it. Kept in sync with head_line by its spec.
     HEAD_CUT = /\[cut: \d+ of \d+ chars; read it in parts\]\z/
 
+    # What a web row keeps of a tool's output, on a reload
+    # (Web::MessageParts) and a mid-turn join (Bridge::TurnAccumulator): the
+    # row shows 300 chars and the rest on hover. A longer one keeps its head
+    # and tail (preview).
+    WEB_PREVIEW_CHARS = 2000
+
     # The head's chars at most (execute.cut_head_chars): never more than a
     # quarter of the room; the tail gets the rest.
     HEAD_CHARS = 1000

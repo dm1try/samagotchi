@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - Web: an `execute` row, and a `task_wait` row showing its log's last lines, now shows the end of its output (a
   test run's summary, a failing exit line) instead of the start, without the success `exit: 0` line or a lone
   `stdout:` label; the whole output stays on hover.
+- Web: a page opened mid-turn (or reconnecting) gets each tool's output cut as a reload does (2000 characters),
+  so a joined row matches the reloaded one and the snapshot is smaller.
 
 ## [0.70.0] - 2026-10-15
 

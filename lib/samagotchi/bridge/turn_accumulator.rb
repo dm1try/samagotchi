@@ -18,8 +18,11 @@ module Samagotchi
     # its terminal event, the same event that brings its messages into the
     # session, so a snapshot shows a turn in exactly one of the two.
     class TurnAccumulator
+      # @param max_output_chars [Integer] a tool part's output past this keeps
+      #   its head and tail: a reload's cap, so a joined row is the row a
+      #   reload draws
       # @param clock [#call] monotonic seconds: a tool call's duration
-      def initialize(max_output_chars: KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS,
+      def initialize(max_output_chars: ToolOutputCut::WEB_PREVIEW_CHARS,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @max_output_chars = max_output_chars
         @clock = clock

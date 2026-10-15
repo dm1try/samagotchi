@@ -3,6 +3,7 @@
 require "json"
 require "samagotchi/bridge/turn_accumulator"
 require "samagotchi/terminal_ui/event_renderer"
+require "samagotchi/tools/task_runtime"
 
 RSpec.describe Samagotchi::Bridge::TurnAccumulator do
   # Monotonic seconds, moved by the examples that time a tool call.
@@ -215,13 +216,13 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts]).to eq([])
   end
 
-  it "caps a tool's output at the event cap" do
+  it "caps a tool's output at the web preview cap, as a reload does" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read" },
          { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", output: "x" * 20_000, activity: {} })
 
     tool = acc.current_turn[:parts].last
-    expect(tool[:output].size).to eq(Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS)
+    expect(tool[:output].size).to eq(Samagotchi::ToolOutputCut::WEB_PREVIEW_CHARS)
     expect(tool).to include(status: "ok", output_truncated: true)
   end
 
@@ -234,7 +235,36 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     tool = acc.current_turn[:parts].last
     expect(tool[:output]).to start_with("x\n").and end_with("x\nexit: 1")
     expect(tool[:output]).to include("\n[cut: ")
-    expect(tool[:output].size).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+    expect(tool[:output].size).to be <= Samagotchi::ToolOutputCut::WEB_PREVIEW_CHARS
+  end
+
+  it "flags an execute output past the web preview cap as cut, and keeps a shorter one whole" do
+    long = "#{"y" * 3000}
+exit: 0"
+    short = "#{"z" * 1500}
+exit: 0"
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: long, activity: {} },
+         { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute" },
+         { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute", output: short, activity: {} })
+
+    cut, whole = acc.current_turn[:parts].last(2)
+    expect(cut[:output].size).to be <= Samagotchi::ToolOutputCut::WEB_PREVIEW_CHARS
+    expect(cut).to include(output_truncated: true)
+    expect(whole).to include(output: short, output_truncated: false)
+  end
+
+  it "keeps a long hand-over's task id in its part, for the Bridge's own tasks" do
+    output = "[execute]\nStill running at the 120s limit: moved to a background task, not killed.\n" \
+             "task_id: t-hand\nWait for it with task_wait.\nstdout (so far, tail):\n#{"o\n" * 3000}"
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: output, activity: {} })
+
+    tool = acc.current_turn[:parts].last
+    expect(tool[:output_truncated]).to be(true)
+    expect(Samagotchi::Tools::TaskRuntime.created_id("execute", tool[:output])).to eq("t-hand")
   end
 
   it "tracks the pending question until it is answered or cancelled" do
