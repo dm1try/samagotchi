@@ -5,6 +5,7 @@ require "json"
 require "open3"
 require "tempfile"
 require "time"
+require_relative "../paths"
 
 module Samagotchi
   module Plugin
@@ -361,10 +362,7 @@ module Samagotchi
         "(diff isn't there to show how)"
       end
 
-      def tilde(path)
-        home = Dir.home
-        path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
-      end
+      def tilde(path) = Paths.tilde(path)
 
       def follow_up(kind)
         case kind

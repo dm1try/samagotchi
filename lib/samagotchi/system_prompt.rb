@@ -4,6 +4,7 @@ require_relative "config"
 require_relative "log"
 require_relative "log_path"
 require_relative "memory_paths"
+require_relative "paths"
 require_relative "tool_declarations"
 require_relative "tools/memory"
 require_relative "muted_memories"
@@ -600,17 +601,10 @@ module Samagotchi
       home = Dir.home
       lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?
       lines << "Project memories folder (your notes about the project, not its files; never work or run commands there):"
-      lines << home_relative(Tools::MemoryRead.memories_dir("project"))
+      lines << Paths.tilde(Tools::MemoryRead.memories_dir("project"))
       lines.join("\n")
     rescue StandardError
       nil
-    end
-
-    def home_relative(path)
-      home = Dir.home
-      path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
-    rescue ArgumentError
-      path
     end
 
     # The model this session runs on. A model guesses its name from

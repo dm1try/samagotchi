@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "memory_paths"
+require_relative "paths"
 
 module Samagotchi
   # The files whose text goes into the system prompt as they are
@@ -76,10 +77,7 @@ module Samagotchi
       rel = top && relative_dir(path, top)
       return rel if rel && rel != "."
 
-      home = Dir.home
-      path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
-    rescue ArgumentError
-      path
+      Paths.tilde(path)
     end
 
     # A chi --append-system-prompt value: [absolute path, nil], or

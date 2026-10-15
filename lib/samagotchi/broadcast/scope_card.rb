@@ -2,7 +2,7 @@
 
 require "pathname"
 require_relative "../session"
-require_relative "../context_note"
+require_relative "../paths"
 require_relative "../context_sources"
 require_relative "../git_head"
 require_relative "../recap_store"
@@ -78,7 +78,7 @@ module Samagotchi
       # back resolved (/private/tmp/… on macOS) while the session's folder
       # may go through a symlink (/tmp/…).
       def folder(cwd, project)
-        return ContextNote.home_relative(cwd) if project.nil?
+        return Paths.tilde(cwd) if project.nil?
 
         cwd = real(cwd)
         project = real(project)

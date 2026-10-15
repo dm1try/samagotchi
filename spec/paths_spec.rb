@@ -39,4 +39,20 @@ RSpec.describe Samagotchi::Paths do
     expect(Samagotchi::LogPath.default_path(env: env)).to eq("/s/samagotchi/samagotchi.log")
     expect(Samagotchi::ConfigFile.config_dir(env: env)).to eq("/c/samagotchi")
   end
+
+  describe ".tilde" do
+    it "shows the home folder as ~, a path in it as ~/…, any other as it is" do
+      home = Dir.home
+      expect(described_class.tilde(home)).to eq("~")
+      expect(described_class.tilde("#{home}/a/b")).to eq("~/a/b")
+      expect(described_class.tilde("#{home}x/a")).to eq("#{home}x/a")
+      expect(described_class.tilde("/etc/a")).to eq("/etc/a")
+      expect(described_class.tilde(nil)).to eq("")
+    end
+
+    it "leaves the path as it is when there's no home" do
+      allow(Dir).to receive(:home).and_raise(ArgumentError, "couldn't find login name")
+      expect(described_class.tilde("/u/a")).to eq("/u/a")
+    end
+  end
 end

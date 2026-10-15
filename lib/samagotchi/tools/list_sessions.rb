@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../context_note"
+require_relative "../paths"
 require_relative "../project_scope"
 require_relative "../session"
 require_relative "peers"
@@ -46,7 +46,7 @@ module Samagotchi
                      elsif own&.parent_id && s[:id] == own.parent_id then "  parent"
                      else ""
                      end
-          "#{s[:short_id]}  #{state}  #{s[:busy] ? "running" : "idle"}#{relation}  #{ContextNote.home_relative(s[:cwd])}  #{s[:preview].inspect}"
+          "#{s[:short_id]}  #{state}  #{s[:busy] ? "running" : "idle"}#{relation}  #{Paths.tilde(s[:cwd])}  #{s[:preview].inspect}"
         end
         scope = project ? " in this project (#{File.basename(project)}; cwd \"/\" for every project)" : ""
         <<~TEXT.chomp

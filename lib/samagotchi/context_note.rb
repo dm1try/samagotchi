@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "paths"
 
 module Samagotchi
   # A context note: background text pushed into a session from outside (the
@@ -39,7 +40,7 @@ module Samagotchi
     def label(source:, from_session: nil, from_cwd: nil)
       return source.to_s unless from_session
 
-      "session #{from_session.to_s[0, 6]}#{" (#{home_relative(from_cwd)})" if from_cwd}"
+      "session #{from_session.to_s[0, 6]}#{" (#{Paths.tilde(from_cwd)})" if from_cwd}"
     end
 
     def label_of(message)
@@ -77,11 +78,6 @@ module Samagotchi
       created_at && Time.iso8601(created_at.to_s).localtime.strftime("%H:%M")
     rescue ArgumentError
       nil
-    end
-
-    def home_relative(path)
-      home = Dir.home
-      path.to_s.start_with?("#{home}/") || path.to_s == home ? path.to_s.sub(home, "~") : path.to_s
     end
   end
 end

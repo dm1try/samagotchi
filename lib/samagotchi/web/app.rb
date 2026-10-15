@@ -46,6 +46,7 @@ require_relative "editor"
 require_relative "message_parts"
 require_relative "session_summary"
 require_relative "../log"
+require_relative "../paths"
 require_relative "../redacted_inspect"
 
 module Samagotchi
@@ -2005,12 +2006,7 @@ module Samagotchi
         home_label(File.expand_path(default_state_dir))
       end
 
-      def home_label(dir)
-        home = Dir.home
-        return "~" if dir == home
-
-        dir.start_with?("#{home}/") ? "~#{dir.delete_prefix(home)}" : dir
-      end
+      def home_label(dir) = Paths.tilde(dir)
 
       # <body> data for the page: where sessions are stored, where an
       # all-view new chat starts (the server's cwd), and, when ?dir names a

@@ -28,5 +28,18 @@ module Samagotchi
       xdg = env.fetch("XDG_CONFIG_HOME", "").to_s.strip
       xdg.empty? ? File.expand_path("~/.config") : xdg
     end
+
+    # +path+ as chi shows it: ~ for the home folder (~/a for one in it),
+    # else as it is; as it is too when there's no home (HOME unset).
+    # @return [String]
+    def tilde(path)
+      path = path.to_s
+      home = Dir.home
+      return "~" if path == home
+
+      path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
+    rescue ArgumentError
+      path
+    end
   end
 end
