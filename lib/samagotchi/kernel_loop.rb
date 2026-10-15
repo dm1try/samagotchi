@@ -178,6 +178,10 @@ module Samagotchi
     # a plugin tool's row refs resolve their files against (ToolRunner,
     # RowRefs); the Engine sets it. nil: the process's own (Dir.pwd).
     attr_accessor :session_cwd
+    # The session's folder (a callable → String or nil), where ToolRunner
+    # saves a cut output whole (ToolOutputFiles); the Engine sets it. nil:
+    # none (a bare kernel), the cut says the output wasn't saved.
+    attr_accessor :session_dir
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers

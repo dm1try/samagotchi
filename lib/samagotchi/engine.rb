@@ -321,6 +321,8 @@ module Samagotchi
       # A plugin tool's row refs resolve against the session's folder, as
       # answer refs do (AnswerRefs), not the process's.
       @kernel.session_cwd = -> { @session&.working_directory }
+      # A cut tool output is saved whole in the session's folder.
+      @kernel.session_dir = -> { @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir) }
       @kernel.guardrail_gate = @guardrail_wiring.gate
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
