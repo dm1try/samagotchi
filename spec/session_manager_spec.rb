@@ -501,7 +501,7 @@ RSpec.describe Samagotchi::SessionManager do
   describe ".spawn_session" do
     it "refuses a model qualified with a host config.yml doesn't have, before anything is saved or spawned" do
       allow(Process).to receive(:spawn).and_return(12_345)
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
 
       expect { described_class.spawn_session(prompt: "hi", model_name: "nosuch:org/model", state_dir: tmpdir) }
         .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch'.*configured hosts are main/)
@@ -515,8 +515,7 @@ RSpec.describe Samagotchi::SessionManager do
       before do
         require "samagotchi/model_list_store"
         require "samagotchi/host_registry"
-        stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" =>
-          JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+        stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
         Samagotchi::ModelListStore.save("main", %w[gemma-small qwen3])
         allow(Process).to receive(:spawn).and_return(12_345)
         # A miss re-lists the host once (ModelProfile.model_warning). No host

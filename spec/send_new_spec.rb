@@ -169,7 +169,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
 
     it "refuses a --model whose host config.yml doesn't have, archiving nothing" do
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
 
       expect(run("--new", "--continues", previous.id, "--model", "gone:org/model", "-m", "x")).to eq(1)
       expect(err.string).to start_with("chi send: could not start a session: unknown host 'gone'")
@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
 
     it "warns when the previous link's host is gone and the link starts on the default model" do
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
 
@@ -196,7 +196,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(err.string).to include("chi send: refused: main:blind can't take images (text only)")
       expect(described_class).to have_received(:vision_answer).with("main:blind", typed: nil)
 
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
       expect(run("--new", "--continues", previous.id, "--image", png, "-m", "x")).to eq(1)

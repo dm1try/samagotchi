@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "tmpdir"
+require "yaml"
 
 # Set ENV for the block and put the previous values back after it (a nil
 # value unsets the variable). Included in every example group by spec_helper.
@@ -27,6 +29,27 @@ module SpecEnv
     config = File.join(dir, "samagotchi", "config.yml")
     FileUtils.cp(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), config) unless File.exist?(config)
     with_env("XDG_CONFIG_HOME" => dir, &)
+  end
+end
+
+module SpecEnv
+  # Point config.yml at a fixture holding +hosts+ (the suite's fixture
+  # config plus hosts:) for the rest of the example: ENV is stubbed with
+  # XDG_CONFIG_HOME at a temp dir, removed after the example
+  # (remove_hosts_config_homes). Memory folders follow XDG_CONFIG_HOME too.
+  #
+  #   stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
+  def stub_hosts_config(hosts)
+    dir = Dir.mktmpdir("chi-hosts-config")
+    (@spec_hosts_config_homes ||= []) << dir
+    FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+    data = YAML.safe_load_file(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml")) || {}
+    File.write(File.join(dir, "samagotchi", "config.yml"), YAML.dump(data.merge("hosts" => hosts)))
+    stub_const("ENV", ENV.to_h.merge("XDG_CONFIG_HOME" => dir))
+  end
+
+  def remove_hosts_config_homes
+    @spec_hosts_config_homes&.each { |dir| FileUtils.rm_rf(dir) }
   end
 end
 

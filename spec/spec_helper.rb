@@ -130,6 +130,7 @@ RSpec.configure do |config|
   # A spec's allow_net_connect! ends with its example: back to no net.
   config.after { WebMock.disable_net_connect! }
   config.after { remove_git_repo }
+  config.after { remove_hosts_config_homes }
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.

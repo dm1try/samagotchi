@@ -409,12 +409,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect_nothing_started(previous)
     end
 
-    def hosts_env(hosts)
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate(hosts)))
-    end
-
     it "refuses a model given for the new link whose host config.yml doesn't have, before the archive stops anything" do
-      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous = make
       allow(manager).to receive(:archive_session).and_call_original
 
@@ -425,7 +421,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
 
     it "refuses a fallback when no default model is configured, before the archive stops anything" do
-      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous = make
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
@@ -464,10 +460,6 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
   end
 
   describe "the new link's model" do
-    def hosts_env(hosts)
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate(hosts)))
-    end
-
     it "runs on a model given for it, with the previous link's setup and the same note" do
       previous = make
       previous.thinking = :low
@@ -485,7 +477,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
 
     it "falls back to the default model with a warning when the previous link's host is gone" do
-      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous = make
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
@@ -498,8 +490,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
 
     it "falls back for a disabled host too, and keeps spawn's own warning after its own" do
-      hosts_env("main" => { "host" => "localhost", "port" => 8080 },
-                "box" => { "host" => "box.local", "port" => 8080, "enabled" => false })
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 },
+                        "box" => { "host" => "box.local", "port" => 8080, "enabled" => false })
       previous = make
       previous.model_name = "box:gemma"
       previous.save(state_dir: tmpdir)
@@ -512,7 +504,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
 
     it "picks a given model, else the inherited one, else the default with a warning (model_for)" do
-      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
       previous = make
       expect(described_class.model_for(previous, "main:x")).to have_attributes(model: "main:x", warning: nil)
       expect(described_class.model_for(previous, " ")).to have_attributes(model: "main:gemma-small", warning: nil)

@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
 
   context "with config.yml's hosts" do
     before do
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
     end
 
     it "answers 400 invalid_model for a given model whose host config.yml doesn't have, archiving nothing" do
