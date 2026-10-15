@@ -36,7 +36,8 @@ RSpec.describe "chi sessions (CLI)" do
         archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
-        clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+        clean [--dry-run] [--days N] [--all]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+             --all: every session, not only test and scratch ones (by the age and count limits, as prune)
         stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
              a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
@@ -213,11 +214,16 @@ RSpec.describe "chi sessions (CLI)" do
     expect([exists?(idle), exists?(completed)]).to eq([true, false])
   end
 
-  # quirk: --days=abc is 0, and 0 days turns the age limit off
-  it "prune --days=abc keeps an aged session that --days=1 deletes" do
+  it "refuses a --days, --keep or --limit that isn't a whole number (usage error), deleting nothing" do
     old = make("old", days_old: 30)
 
-    expect(run_chi("prune", "--days=abc")).to eq(["Deleted 0 sessions (kept 1, skipped 0)\n", "", 0])
+    expect(run_chi("prune", "--days=abc"))
+      .to eq(["", "chi sessions prune: --days takes a whole number, got \"abc\"\n#{usage}", 2])
+    expect(run_chi("clean", "--all", "--days", "1.5"))
+      .to eq(["", "chi sessions clean: --days takes a whole number, got \"1.5\"\n#{usage}", 2])
+    expect(run_chi("prune", "--keep=")).to eq(["", "chi sessions prune: --keep takes a whole number, got \"\"\n#{usage}", 2])
+    expect(run_chi("list", "--limit=abc"))
+      .to eq(["", "chi sessions list: --limit takes a whole number, got \"abc\"\n#{usage}", 2])
     expect(exists?(old)).to be(true)
     expect(run_chi("prune", "--days=1")).to eq(["Deleted 1 sessions (kept 0, skipped 0)\n  #{old.id}\n", "", 0])
   end

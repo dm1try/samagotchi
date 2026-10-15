@@ -37,7 +37,8 @@ module Samagotchi
         archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
-        clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+        clean [--dry-run] [--days N] [--all]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+             --all: every session, not only test and scratch ones (by the age and count limits, as prune)
         stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
              a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
@@ -107,6 +108,8 @@ module Samagotchi
       return parsed if parsed.is_a?(Integer)
 
       @opts = integers(parsed.options)
+      return usage_error(@opts) if @opts.is_a?(String)
+
       case @sub
       when "list" then list
       when "stop" then stop(parsed.args)
@@ -121,9 +124,15 @@ module Samagotchi
     def command_name = @sub && SUBCOMMANDS.include?(@sub) ? "chi sessions #{@sub}" : "chi sessions"
     def usage_text = { "stop" => STOP_USAGE, "restart" => RESTART_USAGE, "stats" => STATS_USAGE }.fetch(@sub, USAGE)
 
-    # quirk: a number that isn't one is 0 (--days=abc turns the age limit off)
+    # The options with --days, --keep and --limit as integers, or the usage
+    # error's message for one that isn't a whole number (--days=abc must not
+    # turn the age limit off).
+    # @return [Hash, String]
     def integers(options)
-      options.to_h { |key, value| [key, INTEGER_OPTIONS.include?(key) ? value.to_i : value] }
+      bad = options.find { |key, value| INTEGER_OPTIONS.include?(key) && !value.to_s.match?(/\A-?\d+\z/) }
+      return "--#{bad[0]} takes a whole number, got #{bad[1].to_s.inspect}" if bad
+
+      options.to_h { |key, value| [key, INTEGER_OPTIONS.include?(key) ? Integer(value, 10) : value] }
     end
 
     # The flags a list row carries: a chi scratch session, a test run, an

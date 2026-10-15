@@ -45,7 +45,7 @@ chi sessions archive ID...                            # hide from every list, ke
 chi sessions list --archived                          # archived sessions too, marked [archived]
 chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
-chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
+chi sessions clean [--dry-run] [--days N] [--all]     # test sessions: all, or older than N days; --all: every kind, as prune
 chi sessions stats ID [--format text|json]            # cost, tokens and progress, without a model turn
 ```
 

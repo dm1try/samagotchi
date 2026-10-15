@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi sessions`: a `--days`, `--keep` or `--limit` that isn't a whole number (`--days=abc`) is now a usage error
+  (exit 2) instead of being read as 0, which turned `prune`'s age limit off; the usage now lists `clean --all`.
 - `full` with `--no-tool call_tool` (or `find_tools`) and no MCP server no longer adds a "Not loaded in this
   session" line to the system prompt nor a web toolkit chip: there call_tool reaches nothing, so nothing is left
   out.
