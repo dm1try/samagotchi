@@ -193,12 +193,13 @@ RSpec.describe Samagotchi::ToolRunner do
     expect(dispatched).to eq([call])
   end
 
-  describe "the output cap" do
-    let(:full) { "[execute]\n#{"x" * 300}" }
+  describe "the output cap (a head cut: read)" do
+    let(:call) { { name: "read", path: "big.txt" } }
+    let(:full) { "[read]\n#{"x" * 303}" }
     let(:outputs) { [] }
 
     before do
-      allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "execute", status: "ok" } } }
+      allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "read", status: "ok" } } }
       hooks.register(:after_tool_call) { |event| outputs << event[:output] }
     end
 
@@ -233,6 +234,162 @@ RSpec.describe Samagotchi::ToolRunner do
       result = capped_run(310)
       expect(result[:capped_output]).to eq(full)
       expect(result[:truncated]).to be(false)
+    end
+  end
+
+  describe "the output cap on an execute result (head, tail, saved file)" do
+    around do |example|
+      Dir.mktmpdir("chi-session") do |dir|
+        @session_dir = dir
+        example.run
+      end
+    end
+
+    let(:session_dir) { -> { @session_dir } }
+    let(:kernel) do
+      k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate, :session_dir, :output) do
+        def dispatch_tool_call(_call) = { output: output, activity: { tool: "execute", status: "ok" } }
+      end
+      k.new(hooks, dispatched, nil, nil, session_dir, full)
+    end
+    let(:filler) { (1..400).map { |i| "  example #{i} passed .........................." }.join("\n") }
+    let(:full) { "[execute]\nstdout:\n#{filler}\n744 examples, 0 failures\nexit: 0" }
+    let(:outputs) { [] }
+
+    before { hooks.register(:after_tool_call) { |event| outputs << event[:output] } }
+
+    def capped_run(cap = 10_000)
+      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
+                       max_tool_output_chars: cap)
+    end
+
+    def saved_files = Dir.glob(File.join(@session_dir, "tool_output", "*"))
+
+    def saved_file
+      expect(saved_files.size).to eq(1)
+      saved_files.first
+    end
+
+    it "keeps the end (the verdict and the exit line) as well as the start, within the cap" do
+      result = capped_run(5000)
+      text = result[:capped_output]
+
+      expect(text).to start_with("[execute]\nstdout:\n  example 1 passed")
+      expect(text).to end_with("\n744 examples, 0 failures\nexit: 0")
+      expect(text.length).to be <= 5000
+      expect(result[:truncated]).to be(true)
+    end
+
+    it "saves the whole output and names the file and the lines left out of it in the gap line" do
+      text = capped_run(5000)[:capped_output]
+      path = saved_file
+      lines = File.read(path).lines
+      gap = text.lines.find { |l| l.start_with?("[cut: ") }
+      first, last = gap.match(/lines (\d+)-(\d+) of the saved file/).captures.map(&:to_i)
+
+      expect(File.read(path)).to eq(full)
+      expect(gap).to include("the whole output is saved in #{path} (#{full.bytesize} bytes, #{lines.size} lines)")
+      expect(gap).to include("(#{lines[(first - 1)..(last - 1)].join.length} of #{full.length} chars)")
+      expect(gap.chomp).to end_with("read it with start_line/end_line or rg it; don't rerun the command]")
+      # Whole lines: the line before the gap and the one after it are the file's.
+      shown = text.lines
+      at = shown.index(gap)
+      expect(shown[at - 1]).to eq(lines[first - 2])
+      expect(shown[at + 1]).to eq(lines[last])
+    end
+
+    it "gives the event, the hook and the run the same text, and the saved file's path" do
+      result = capped_run(5000)
+      completed = events.find { |e| e[:type] == :tool_call_completed }
+
+      expect(completed[:output]).to eq(result[:capped_output])
+      expect(outputs).to eq([result[:capped_output]])
+      expect(result[:output]).to eq(full)
+      expect(completed[:output_file]).to eq(saved_file)
+      expect(result[:output_file]).to eq(saved_file)
+    end
+
+    it "cuts the same output to the same text, one file (loop-guard's repeat check)" do
+      first = capped_run(5000)[:capped_output]
+      expect(capped_run(5000)[:capped_output]).to eq(first)
+      expect(saved_files.size).to eq(1)
+    end
+
+    it "keeps stdout's summary under a long stderr (each block cut on its own)" do
+      warnings = (1..300).map { |i| "warning: deprecated thing #{i}" }.join("\n")
+      kernel.output = "[execute]\nstdout:\n#{filler}\n744 examples, 0 failures\nstderr:\n#{warnings}\nexit: 1"
+      text = capped_run[:capped_output]
+
+      expect(text).to include("\n744 examples, 0 failures\nstderr:\n")
+      expect(text).to end_with("warning: deprecated thing 300\nexit: 1")
+      expect(text.scan(/^\[cut: /).size).to eq(2)
+      expect(text.length).to be <= 10_000
+    end
+
+    it "says a preview is all that was saved (execute's own cut above 64 KB), and not to rely on it" do
+      kernel.output = "[execute]\nstdout:\ntruncated=true\n[TRUNCATED_PREVIEW_HEAD]\n#{filler}\nexit: 0"
+      text = capped_run(5000)[:capped_output]
+
+      expect(text).to include("this preview is saved in #{saved_file}")
+      expect(text).to include("the full output wasn't kept")
+      expect(text).not_to include("don't rerun")
+    end
+
+    it "doesn't say not to rerun a command that didn't finish (killed at the limit)" do
+      kernel.output = "[execute]\nError: command timed out after 120s\nstdout:\n#{filler}"
+      text = capped_run(5000)[:capped_output]
+
+      expect(text).to include("the output it printed is saved in #{saved_file}")
+      expect(text).not_to include("don't rerun")
+    end
+
+    it "says the output wasn't saved with no session, and how to see the rest" do
+      kernel.session_dir = nil
+      text = capped_run(5000)[:capped_output]
+
+      expect(text).to end_with("exit: 0")
+      expect(text).to include("the whole output wasn't saved (no session); to look past this, rerun with the output " \
+                              "sent to a file (cmd > /tmp/out.txt 2>&1) and read that]")
+      expect(saved_files).to be_empty
+    end
+
+    it "says why when the file can't be written, and logs it" do
+      allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::ENOSPC)
+      allow(Samagotchi::Log).to receive(:warn)
+      text = capped_run(5000)[:capped_output]
+
+      expect(text).to include("the whole output wasn't saved (Errno::ENOSPC)")
+      expect(text).to end_with("exit: 0")
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "tool_output_save_failed", tool: "execute",
+                                                                                              error: "Errno::ENOSPC")
+    end
+
+    it "falls back to no session when the session's folder can't be looked up" do
+      kernel.session_dir = -> { raise "gone" }
+      expect(capped_run(5000)[:capped_output]).to include("wasn't saved (no session)")
+    end
+
+    it "gets the head cut, nothing saved, under a cap too small for a tail" do
+      text = capped_run(300)[:capped_output]
+
+      expect(text).to eq(Samagotchi::ToolOutputCut.head(full, 300))
+      expect(saved_files).to be_empty
+    end
+
+    it "keeps execute.cut_head_chars of the head at most" do
+      with_env("SAMAGOTCHI_EXECUTE_CUT_HEAD_CHARS" => "200") do
+        text = capped_run(5000)[:capped_output]
+        expect(text.index("\n[cut: ")).to be <= "[execute]\nstdout:\n".length + 200
+      end
+    end
+
+    it "leaves a read over the cap to the head cut, nothing saved" do
+      read = { name: "read", path: "big.txt" }
+      result = runner.run(read, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+                                max_tool_output_chars: 5000)
+
+      expect(result[:capped_output]).to eq(Samagotchi::ToolOutputCut.head(full, 5000))
+      expect(saved_files).to be_empty
     end
   end
 

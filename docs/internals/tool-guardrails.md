@@ -45,4 +45,54 @@ Configuration (config.yml `execute.*` keys and CLI flags too, as for `read`):
 Implementation note:
 
 - Shared logic lives in `lib/samagotchi/tools/output_guardrails.rb` and is used by `read` and `execute`, and by `edit` (its env switches) and `delegate_wait` (the head+tail preview of a child's long reply).
-- Additional tools that can emit large payloads should rely on this shared helper for consistent behavior.
+
+## The runner's cut (`max_tool_output_chars`)
+
+After a tool's own limits, `ToolRunner` caps every result at `max_tool_output_chars` (default `10000`
+characters, both loops). How a longer one is cut is the tool's policy, `ToolOutputCut::POLICIES` (by the
+built-in name; a tool with none gets `:head`):
+
+| Tool | Policy | What the model gets |
+| --- | --- | --- |
+| `execute` | `:head_tail_file` | a short head, a long tail, one gap line between them; the whole output saved in the session's folder |
+| `read` and every other tool (`task_*`, `web_fetch`, `memory_read`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
+
+`:head_tail_file` is for output whose end matters: a test run's summary, an error, the `exit:` line. The head is
+`execute.cut_head_chars` at most (default `1000`) and never more than a quarter of the room; the tail gets
+everything else the cap leaves, so a larger `max_tool_output_chars` keeps a longer tail. Both are snapped to whole
+lines when that keeps at least half of each. execute's stdout and stderr blocks are cut each on its own (stdout gets
+about two thirds of the room when both are long, a block that needs less gives the rest to the other); the `exit:`
+line is always kept. The whole stays within the cap; a cap too small for a tail of `ToolOutputCut::MIN_TAIL` (200)
+characters gets the `:head` cut.
+
+The gap line says what was left out and where the whole output is:
+
+```
+[cut: lines 24-1871 of the saved file not shown (41230 of 48211 chars); the whole output is saved in /…/sessions/<id>/tool_output/execute-3f9a1c2b7d10.txt (48211 bytes, 1902 lines): read it with start_line/end_line or rg it; don't rerun the command]
+```
+
+A second cut block (stderr) gets a short line, `[cut: lines A-B of the saved file not shown (N chars)]`. The line
+numbers are the saved file's. When the output was already a preview (execute's own head+tail above
+`execute.truncate_at_bytes`), the line says the preview is what's saved and the full output wasn't kept; for a
+command that didn't finish (killed at the limit, stopped) it says the output it printed is saved, and neither says
+not to rerun.
+
+**The saved file** (`ToolOutputFiles`): `sessions/<id>/tool_output/<tool>-<sha256[0,12]>.txt`, the output exactly as
+the runner had it (its `[execute]` lead and a `ran as:` line included). Not `output/`, the session's reply outbox
+(`chi send --wait` and `delegate` take the newest file there as the reply). The name comes from the content, and the
+cut text from the content alone (no clock): the same output gives the same text, for the prompt cache and for
+loop-guard's repeat check (which still catches fewer exact repeats than a head cut did, since a tail carries
+timings). The file goes with the session's folder (deleting the session, the retention sweep); a session keeps its
+newest 50 (`ToolOutputFiles::MAX_FILES`, by mtime), so a pruned file named in an old result is "file not found". A
+fork or a continue doesn't copy them: its results point at the parent's folder. The whole output, secrets included,
+sits on disk as long as the session does. Reading it (`read`, `rg`, `sed -n`) asks no approval: sessions aren't among
+the guardrails' chi dirs (keep the folder's name off `context`, which `shell-touches-chi` matches).
+
+**When it can't be saved** (no session: a bare kernel; a write that fails: the error's class, logged as
+`tool_output_save_failed`; a session-folder lookup that raises: `no session`), the gap line says so and how to see the
+rest: `[cut: N of M chars not shown; the whole output wasn't saved (Errno::ENOSPC); to look past this, rerun with the
+output sent to a file (cmd > /tmp/out.txt 2>&1) and read that]`. The turn goes on.
+
+The model, the `:tool_call_completed` event and the `after_tool_call` hook get the same cut text; the event and
+the runner's result carry the saved file's path as `output_file:`, and the log's `tool_call_completed` line has
+`saved=true`.

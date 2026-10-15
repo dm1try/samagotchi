@@ -8,6 +8,8 @@ require_relative "vision_context"
 require_relative "log"
 require_relative "edit_preview"
 require_relative "tool_output_cut"
+require_relative "tool_output_files"
+require_relative "tools/output_guardrails"
 require_relative "tools/tool_path"
 require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
@@ -39,6 +41,7 @@ module Samagotchi
 
     # @param call_index [Integer] 1-based position of the call in its batch
     # @return [Hash] output:, capped_output:, truncated:, activity:,
+    #   output_file: (the saved whole output of a cut execute result),
     #   images: (refs) when the tool returned images the model gets to see, and
     #   shown_params: the params line the live row showed, and shown_label:
     #   its label ("chrome: screenshot"), only for a tool that isn't built in
@@ -110,7 +113,8 @@ module Samagotchi
         output = "#{changed}\n#{output}"
       end
       truncated = !max_tool_output_chars.nil? && output.length > max_tool_output_chars
-      capped = truncated ? ToolOutputCut.apply(output, cap: max_tool_output_chars, tool: call[:name]) : output
+      capped, saved = truncated ? cut(call, output, max_tool_output_chars) : output
+      output_file = saved.path if saved.is_a?(ToolOutputFiles::Saved)
 
       # The call's outcome as its activity line has it (worked out from the
       # full output: ok, error, blocked, stopped); a dispatcher that raised
@@ -121,6 +125,7 @@ module Samagotchi
       completed[:images] = images if images&.any?
       completed[:diff] = diff if diff
       completed[:waited_ms] = waited_ms if waited_ms
+      completed[:output_file] = output_file if output_file
       # Also here: a UI that missed the start (a replay gap) builds its row
       # from this event (its title is in the activity).
       completed.merge!(fields.slice(*ToolRowFields::EVENT_KEYS))
@@ -136,10 +141,45 @@ module Samagotchi
       run[:shown_label] = label if label
       run[:refs] = refs unless refs.empty?
       run[:diff] = diff if diff
+      run[:output_file] = output_file if output_file
       run
     end
 
     private
+
+    # +output+ cut to +cap+ by its tool's policy (ToolOutputCut); an
+    # execute result keeps its tail too, its whole output saved in the
+    # session's folder.
+    # @return [Array(String, Object)] the text, and the saved file (or why
+    #   there is none) when it was cut that way
+    def cut(call, output, cap)
+      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text) { save_output(call, text) },
+                                  head_chars: Tools::OutputGuardrails.config_positive_int("execute.cut_head_chars",
+                                                                                          ToolOutputCut::HEAD_CHARS))
+    end
+
+    # The whole output in the session's tool_output folder
+    # (ToolOutputFiles), or why it isn't saved: no session (a bare kernel)
+    # or the error's class. Never fails the call.
+    # @return [ToolOutputFiles::Saved, String]
+    def save_output(call, text)
+      dir = session_dir
+      return "no session" if dir.to_s.empty?
+
+      ToolOutputFiles.save(dir, text, tool: call[:name])
+    rescue SystemCallError => e
+      Log.warn(:turn, "tool_output_save_failed", tool: call[:name], error: e.class.name)
+      e.class.name
+    end
+
+    # The session's folder (KernelLoop#session_dir), nil for a bare kernel
+    # or a lookup that failed.
+    def session_dir
+      @kernel.respond_to?(:session_dir) ? @kernel.session_dir&.call : nil
+    rescue StandardError => e
+      Log.warn(:turn, "tool_output_save_failed", error: e.class.name)
+      nil
+    end
 
     # edit/write only: the file just before the call runs. The row diffs it
     # with the file after, whatever the result says, so an edit that fails

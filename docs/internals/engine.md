@@ -304,11 +304,16 @@ One iteration with tool calls:
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
-- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars`: a longer one is cut and ends
-  with `[cut: N of M chars; read it in parts]` (N kept of M, the whole within the cap unless the cap is shorter
-  than that line). The model (both loops), the event and the after_tool_call hook get that text.
-- Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
-  images, diff, waited_ms, view, ref}, then fires `:after_tool_call` {iteration, tool, output, status}.
+- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars` by the tool's `ToolOutputCut`
+  policy: `read` and most tools are cut to their head and end with `[cut: N of M chars; read it in parts]` (N
+  kept of M, the whole within the cap unless the cap is shorter than that line); an `execute` result keeps a head
+  and a long tail with a gap line between them, its whole output saved in `sessions/<id>/tool_output/`
+  (`ToolOutputFiles`, through `KernelLoop#session_dir`, which the Engine sets). See
+  [Tool output guardrails](tool-guardrails.md#the-runners-cut-max_tool_output_chars). The model (both loops), the
+  event and the after_tool_call hook get that text.
+- Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, output_file,
+  activity, images, diff, waited_ms, view, ref}, then fires `:after_tool_call` {iteration, tool, output, status}.
+  `output_file` (the saved whole output) is also on the run hash; the session doesn't keep it (the cut text names it).
 - The activity's status (`ToolActivity#tool_activity_status`): `error` for an `Error:` result and for an
   execute that exited non-zero, except a grep-family search that found nothing (`ToolActivity.no_match?`:
   exit 1, no stderr block, the last step is grep/egrep/fgrep/rg/ag/pgrep, no `&&` after a step that can fail

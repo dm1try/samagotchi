@@ -263,6 +263,9 @@ module Samagotchi
 
       Entry.new(key: "execute.truncate_at_bytes",       yaml_path: %w[execute truncate_at_bytes],       type: :integer, default: 65_536, expose: %i[env config cli]),
       Entry.new(key: "execute.preview_bytes",           yaml_path: %w[execute preview_bytes],           type: :integer, default: 12_288, expose: %i[env config cli]),
+      # The head an execute result over max_tool_output_chars keeps (ToolOutputCut): at most this, and a quarter of
+      # the room; the tail gets the rest.
+      Entry.new(key: "execute.cut_head_chars",          yaml_path: %w[execute cut_head_chars],          type: :integer, default: 1000,   expose: %i[env config cli]),
       Entry.new(key: "execute.telemetry_threshold_pct", yaml_path: %w[execute telemetry_threshold_pct], type: :integer, default: 80,     expose: %i[env config cli]),
       # Seconds one execute command may run before execute.on_timeout applies (Tools::Execute::TIMEOUT_SEC).
       Entry.new(key: "execute.timeout_sec",             yaml_path: %w[execute timeout_sec],             type: :integer, default: 120,    expose: %i[env config cli]),

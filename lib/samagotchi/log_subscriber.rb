@@ -138,6 +138,7 @@ module Samagotchi
       log(:info, :tool_call_completed, iteration: event[:iteration], tool: event[:tool],
                                        ms: ms, waited_ms: (waited if waited.positive?),
                                        output_chars: output.length, truncated: event[:output_truncated] || nil,
+                                       saved: (true if event[:output_file]),
                                        error: tool_error?(output) || nil)
     end
 

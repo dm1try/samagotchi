@@ -239,6 +239,21 @@ RSpec.describe "The guardrails bundle's rules" do
     end
   end
 
+  # The whole output of a cut execute result (ToolOutputFiles): the cut
+  # line tells the model to read or rg it there, so neither asks.
+  %w[auto strict].each do |each_mode|
+    context "a saved tool output, in #{each_mode} mode" do
+      let(:mode) { each_mode }
+      let(:saved) { "#{ENV.fetch("XDG_STATE_HOME")}/samagotchi/sessions/0123abcd/tool_output/execute-3f9a1c2b7d10.txt" }
+
+      it "lets a read of it, rg on it and sed -n of it through" do
+        expect(verdict_for({ name: "read", path: saved, start_line: 1, end_line: 40 })).to be_allow
+        expect(shell("rg -n 'failures' #{saved}")).to be_allow
+        expect(shell("sed -n '120,180p' #{saved}")).to be_allow
+      end
+    end
+  end
+
   it "lets git rebase through in auto mode" do
     expect(shell("git rebase main")).to be_allow
   end

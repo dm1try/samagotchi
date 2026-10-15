@@ -31,14 +31,15 @@ RSpec.describe "Tool call wrapper parity" do
 
   # ── Native (raw-prompt KernelLoop) ────────────────────────────────────────
 
-  def run_native(max_tool_output_chars: nil, prompts: [])
+  def run_native(max_tool_output_chars: nil, prompts: [], call: %(call:read{path: "#{file}"}), session_dir: nil)
     client = double("client", context_window: nil)
-    replies = [%(<|tool_call>call:read{path: "#{file}"}<tool_call|>), "done"]
+    replies = [%(<|tool_call>#{call}<tool_call|>), "done"]
     allow(client).to receive(:complete) do |prompt, *|
       prompts << prompt
       replies.shift
     end
     kernel = Samagotchi::KernelLoop.new(client: client, hooks: hooks, profile: "gemma4")
+    kernel.session_dir = session_dir
     result = kernel.run([{ role: "user", content: "read it" }], on_stream_event: on_event,
                         max_tool_output_chars: max_tool_output_chars)
     tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
@@ -47,9 +48,10 @@ RSpec.describe "Tool call wrapper parity" do
 
   # ── Chat loop ─────────────────────────────────────────────────────────────
 
-  def run_chat(max_tool_output_chars: nil)
+  def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil)
     kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: nil), hooks: hooks, profile: "gemma4")
-    adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]), FakeChatAdapter.text("done"))
+    kernel.session_dir = session_dir
+    adapter = FakeChatAdapter.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
     backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
     result = backend.complete(messages: [{ role: "user", content: "read it" }], on_stream_event: on_event,
                               max_tool_output_chars: max_tool_output_chars)
@@ -145,6 +147,21 @@ RSpec.describe "Tool call wrapper parity" do
       expect(completed[:output_truncated]).to be(true)
       expect(seen).to eq(completed[:output])
       expect(fired.last).to eq([:after_tool_call, completed[:output]])
+    end
+
+    it "an execute result: both loops give the model the same head, tail and saved file" do
+      long = "stdout:\n#{(1..500).map { |i| "line #{i}" }.join("\n")}\n9 examples, 0 failures\nexit: 0"
+      allow(Samagotchi::Tools::Execute).to receive(:call).and_return(long)
+      session = -> { dir }
+      _result, native = run_native(max_tool_output_chars: 2000, call: %(call:execute{command: "rspec"}), session_dir: session)
+      events.clear
+      _result, chat = run_chat(max_tool_output_chars: 2000, call: ["c1", "execute", { "command" => "rspec" }],
+                               session_dir: session)
+
+      expect(chat).to eq(native)
+      expect(native).to end_with("9 examples, 0 failures\nexit: 0")
+      expect(native).to include("the whole output is saved in #{dir}/tool_output/execute-")
+      expect(completed[:output]).to eq(chat)
     end
   end
 end
