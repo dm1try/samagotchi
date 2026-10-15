@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Attached TUI: a turn of images alone sent from the web names each image once while you watch it start (or join
+  it running), not twice.
+
 ## [0.71.0] - 2026-10-15
 
 ### Changed

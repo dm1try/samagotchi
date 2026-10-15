@@ -415,6 +415,52 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines).to be_empty
     end
 
+    describe "a turn's images" do
+      let(:image) { { file: "images/0123456789abcdef.png", mime: "image/png", width: 1280, height: 800, name: "shot.png" } }
+      let(:image_line) { "[image shot.png 1280×800 · ~1.3k tokens]" }
+
+      def plain_lines = screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }
+
+      # The web sends "[image: name]" as an image-only turn's text: its
+      # prompt line names the image already.
+      it "names another client's image-only turn once" do
+        feed({ type: :turn_enqueued, enqueued_id: "e1", client_id: "web:tab1", prompt: "[image: shot.png]" },
+             { type: :turn_started, prompt: "[image: shot.png]", origin: { client_id: "web:tab1", enqueued_id: "e1" },
+               images: [image] })
+
+        expect(plain_lines).to eq(["web> [image: shot.png]"])
+      end
+
+      it "names an unannounced image-only turn once" do
+        feed({ type: :turn_started, prompt: "[image: shot.png]", origin: { client_id: "web:tab1" }, images: [image] })
+
+        expect(plain_lines).to eq(["web> [image: shot.png]"])
+      end
+
+      it "names a joined running image-only turn once" do
+        screen.lines.clear
+        turn = { prompt: "[image: shot.png]", origin: { client_id: "web:tab1" }, parts: [], images: [image] }
+        feed(snapshot(current_turn: turn, type: :reset))
+
+        expect(plain_lines).to include("web> [image: shot.png]")
+        expect(plain_lines).not_to include(image_line)
+      end
+
+      it "still shows the image lines of another client's turn with words" do
+        feed({ type: :turn_started, prompt: "what is it?", origin: { client_id: "web:tab1" }, images: [image] })
+
+        expect(plain_lines).to eq(["web> what is it?", image_line])
+      end
+
+      # Its own send prints no prompt line: the image lines are its echo.
+      it "keeps the image lines of its own image-only turn" do
+        feed({ type: :turn_started, prompt: "[image: shot.png]", origin: { client_id: "tui:1", enqueued_id: "e1" },
+               images: [image] })
+
+        expect(plain_lines).to eq([image_line])
+      end
+    end
+
     it "shows a turn that was never announced (reminders, initial prompt)" do
       feed({ type: :turn_started, prompt: "[SYSTEM: reminders due]", origin: { client_id: "system:reminder", enqueued_id: "r1" } },
            { type: :turn_started, prompt: "first", origin: nil })
