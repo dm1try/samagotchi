@@ -82,7 +82,7 @@ index: `message_start` (served model, usage), `content_block_start` (text, think
 `content_block_delta` (`text_delta`, `thinking_delta`, `signature_delta`, `input_json_delta`), `message_delta`
 (stop reason, `stop_details`, usage). `AnthropicMessages#chat_streamed` passes every event but `ping` to `on_delta`,
 `message_start` and `message_delta` with the usage so far attached (`#with_usage`); a block's start or delta counts as shown for the first-token limit
-(`.shows?`). A 200 whose body is a JSON error instead of a stream raises that error (`#raise_plain_error`).
+(`.shows?`). A 200 whose body is a JSON error instead of a stream raises that error (`LLM::AdapterCommon#raise_plain_error`, shared with the OpenAI adapter).
 
 `#response` is a `ChatResponse`:
 
