@@ -226,7 +226,7 @@ The differences from the native loop:
   merges (a person's line, a plugin's steer, a Continue's text) don't move it, as natively (nothing re-sanitizes
   within a run): the request after a steer extends the one before. A step-limit Continue's Run starts where the run
   it resumes did: `#complete`'s `reasoning_since:` (the Engine's `resume_from`, checked against the messages' length
-  in `#resumed_run_start`), past a user entry added after that run's last reply (a `!cmd`'s output). Without
+  in `Engine#resumed_run_start`), past a user entry added after that run's last reply (a `!cmd`'s output). Without
   `since:` (`#reasoning_chars` from outside a Run) the boundary is the last query (a `role: "user"` or `turn_start`
   entry). `Run#prompt_chars` counts it (`#reasoning_chars`).
 - On an adapter that sends its blocks back (`#replays_content?`: `AnthropicMessages`), a model turn's saved blocks
@@ -312,10 +312,17 @@ One iteration with tool calls:
   [Tool output guardrails](tool-guardrails.md#the-runners-cut-max_tool_output_chars). The model (both loops), the
   event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, output_file,
-  activity, images, diff, waited_ms, view, ref}, then fires `:after_tool_call` {iteration, tool, output, status}.
+  activity, images, diff, waited_ms, view, ref, refs}, then fires `:after_tool_call` {iteration, tool, output,
+  status, call, elapsed_ms, result}.
   `output_file` (the saved whole output) is also on the run hash; the session doesn't keep it (the cut text names it).
-- The activity's status (`ToolActivity#tool_activity_status`): `error` for an `Error:` result and for an
-  execute that exited non-zero, except a grep-family search that found nothing (`ToolActivity.no_match?`:
+- The activity's status (`ToolActivity#tool_activity_status`; a call the gate denied is `blocked`, set by
+  `ToolRunner#denied`): `stopped` for a call the turn's Stop (or a signal to chi, or the session's stop) left
+  unrun (`Tools::Execute::NOT_RUN_ON_STOP`, `NOT_RUN`) or an execute it killed (`STOPPED_BY_USER`, `STOPPED_BY`),
+  and for a `task_wait` whose header (before `output_tail:`) says `wait_result: canceled` or `status: stopped`;
+  `ok` for an execute handed over as a task (`#handed_over?`: its output tail may hold any `exit: N`); `error` for
+  any other `Error:` result, for a `task_wait` whose header says `status: failed`, and for an execute that exited
+  non-zero (a numberless `exit:` line, killed by a signal, counts), except a grep-family search that found nothing
+  (`ToolActivity.no_match?`:
   exit 1, no stderr block, the last step is grep/egrep/fgrep/rg/ag/pgrep, no `&&` after a step that can fail
   silently or sends output to /dev/null, no background `&`, no earlier exit/return or `set -e`; when unsure,
   not a no-match). That one stays `ok` with `no_match: true` on the activity, which SessionMetrics keeps on the tool
@@ -492,16 +499,20 @@ Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
   @host_registry, @model_choice (ModelChoice: the name and the name as typed); @client = effective_model.client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
+  MemoryBundle::SystemBundle.ensure! (the shipped system bundle installed; a failure is logged, not raised)
   @event_routes (EventRoutes: where a card or a notice goes: held while the plugins load, an anytime command's, an init task's, a turn event, else announced or held)
   @hook_routes (HookRoutes: notices (through @event_routes), hook questions, stop_turn/stop_generation, steer attribution)
-  @guardrail_wiring, @question_desk
-  @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
+  @guardrail_wiring, @question_desk, @relay_desk (RelayDesk: a delegate's approval relay)
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
-  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
+  @tools = Tools::Builtins.registry; @command_registry (SessionCommands' built-ins); @plugin_tasks
+  @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
+  @thinking_notices (ThinkingNotices); @tool_index = Tools::ToolIndex.new; @peer_sources = PeerSources.new
+  the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
     then (plugins or not) @tool_index.declare(@tools): find_tools + call_tool (source "index", not core),
     declared per toolkit by Registry#declared? (a source registered at load, or a reachable built-in) and
     sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'
     groups, search, call checks, the unwrap; a source runs the call with its own plugin Context)
+  @reminder_store = ReminderStore.new (the kernel gets it), @reminder_queue, @reminders
   wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
   @hooks.runtime = @hook_routes.runtime (HookRoutes, built first: what a hook or plugin does reaches the UIs)
@@ -679,6 +690,7 @@ Paths are under `lib/samagotchi/`.
 | `llm/adapters.rb` | `LLM::Adapters::BY_API`: which chat adapter a host's api gets |
 | `llm/openai_chat.rb` | `LLM::OpenAIChat`, the `/v1/chat/completions` adapter |
 | `llm/adapter_common.rb` | `LLM::AdapterCommon`: what both chat adapters share (the HTTP layer and its timeouts, the paged model list, the SSE line loop, JSON errors) |
+| `llm/refusal_memo.rb` | `LLM::RefusalMemo`: what a host refused (for one model, or the whole host), remembered for its holder's life (an adapter, or the worker's ChatLoop) |
 | `llm/anthropic_messages.rb`, `llm/anthropic_wire.rb`, `llm/anthropic_assembly.rb`, `llm/dialect.rb` | The `/v1/messages` adapter, its wire translation, its response, its dialects ([anthropic.md](anthropic.md)) |
 | `llm/prompt_cache.rb` | Cache breakpoints on the OpenAI path, and the `cache_control` both adapters send |
 | `llm/turn_settings.rb` | `LLM::TurnSettings`, what a turn runs under (vision, sampling, thinking, reasoning history, …) |
@@ -688,10 +700,14 @@ Paths are under `lib/samagotchi/`.
 | `llm/native_backend.rb` | Wraps KernelLoop as a backend (`#complete` calls `#run`) |
 | `llm/model_result.rb` | `LLM::ModelResult`, what a backend returns |
 | `tool_runner.rb` | Per-call path (gate, start/complete events, output cap, images, diffs) |
+| `tool_output_cut.rb`, `tool_output_files.rb` | `ToolOutputCut`: how a tool's output longer than `max_tool_output_chars` is cut, by the tool's policy (`POLICIES`; `:head` for a tool with none); `ToolOutputFiles`: the whole output of an execute cut that way, saved in the session's `tool_output/` folder ([tool-guardrails.md](tool-guardrails.md)) |
+| `tool_row_fields.rb`, `row_refs.rb` | `ToolRowFields`: a tool row's fields beyond its params (`ACTIVITY_KEYS`, `EVENT_KEYS`), the same live and on a reload; `RowRefs`: a plugin tool's row refs (`refs:`), checked, capped and saved with the result |
 | `tool_response.rb` | Per-batch dispatch and tool_response entries (joined for native, single for chat) |
 | `empty_answer_retry.rb` | The empty-answer and cut retry budget |
 | `prompt_warmup.rb` | The turn-end warm-up |
 | `tools/registry.rb` | The tools a session offers: schemas, handlers, order |
+| `tools/tool_index.rb` | `Tools::ToolIndex`: `find_tools` and `call_tool`, the tools a session knows but doesn't declare one by one (the sources' groups and the built-ins its toolkit leaves out), `#declare`, `#refresh!`, `#unwrap` |
+| `plugin/tool_spec.rb` | `Plugin::ToolSpec`: a checked tool declaration (`chi.tool`, a tool set, `ToolSpec.build`), what `Registry#register` gets; `#per_call` |
 | `system_prompt.rb` | System prompt construction (stable part, volatile tail) |
 | `prompt_files.rb`, `model_notes.rb` | The AGENTS.md chain and appended files; the model notes the prompt loads |
 | `toolkit.rb`, `toolkit_command.rb` | A session's toolkit (`Toolkit#resolve`, what `Registry` declares); `/toolkit` |
@@ -699,9 +715,12 @@ Paths are under `lib/samagotchi/`.
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
 | `event_routes.rb` | `EventRoutes`: where a card (`Engine#show_card`), a notice (`HookRoutes#notify`) and a guardrails line (`#guardrail_notify`, turn or between turns only) go: held while the plugins load, an anytime command's, an init task's, a running turn's event, else announced or held for `holding_announcements` |
+| `engine_peers.rb`, `peer_sources.rb` | `Engine::PeerView` (what the kernel's peer tools see of the Engine) and `Engine::RelayPeer` (a delegate's approval relay); `PeerSources`: the attached context sources a peer bundle declares as its peer's answers (`chi.peer_source`) |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
 | `events.rb` | Event type sets shared by the Worker, the Bridge, the TUI and the web |
 | `cancellation_controller.rb` | A turn's cancel signal, and a generation's child controller |
 | `session.rb` | Session model (status, messages, persistence) |
+| `turn_checkpoint.rb` | `TurnCheckpoint`: a worker's running turn saved at the loop's iteration boundaries (`Session#turn_checkpoint`), so a killed worker loses at most `INTERVAL` of it |
+| `context_status.rb` | `ContextStatus`: one turn's context tracking (the status line's value, the `:context_status` event, the model's guidance line) ([context-telemetry.md](context-telemetry.md)) |
 | `session_manager.rb` | Background session processes (workers) and their IPC |
