@@ -265,7 +265,8 @@ test("turnRowFor: the last row before the ref showing its line, else the last be
   cleanup(page.root);
 });
 
-test("showInTurn opens the steps, the row's diff at the line, scrolls to it and flashes the row and the line", () => {
+test("showInTurn opens the steps, the row's diff at the line, scrolls to it and flashes the row and the line", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const page = turnPage();
   const scrolled = [];
   const revealed = [];
@@ -287,11 +288,16 @@ test("showInTurn opens the steps, the row's diff at the line, scrolls to it and 
   assert.ok(page.readRow.querySelector(".activity-read").open);
   assert.equal(scrolled.at(-1)[0], page.readRow.querySelector('.read-line[data-line="2"]'));
   assert.equal(showInTurn({ ...refTarget(page.text), path: "/p/none.rb" }), null);
+  // The flash ends by itself.
+  t.mock.timers.tick(1600);
+  assert.ok(!row.classList.contains("ref-flash"));
+  assert.ok(!line.classList.contains("ref-flash"));
   delete window.HTMLElement.prototype.scrollIntoView;
   cleanup(page.root);
 });
 
-test("showInTurn: a view growing for the row (ref:reveal's detail.until) gets the scroll after it", async () => {
+test("showInTurn: a view growing for the row (ref:reveal's detail.until) gets the scroll after it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const page = turnPage();
   const scrolled = [];
   let grown;
@@ -360,7 +366,9 @@ test("a tap opens the menu of the ref's targets; picking one runs it; a tap on a
   cleanup(page.root);
 });
 
-test("keyboard: Enter is the main target, ↓ opens the menu on its first target, ↑/↓ move, Esc closes back to the ref", () => {
+test("keyboard: Enter is the main target, ↓ opens the menu on its first target, ↑/↓ move, Esc closes back to the ref", (t) => {
+  // The ▾'s hide timer (focus leaving a ref) is the test's, not left running.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const page = turnPage();
   const calls = installed(page.root, () => viewer);
   key(page.root, "Tab"); // the tab stops, worked out before the focus moves

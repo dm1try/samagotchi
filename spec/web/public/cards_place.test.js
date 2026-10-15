@@ -59,7 +59,8 @@ test("a turn's answer, else its timing line, else none", () => {
   assert.equal(turnAnswerEl([]), null);
 });
 
-test("a card is added once, then updated in place by its id", () => {
+test("a card is added once, then updated in place by its id", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const h = history('<div class="hint">No output yet.</div>');
   const { cards } = harness(h);
   cards.upsertCard({ id: "c1", title: "Check", body: "first" });
@@ -69,6 +70,8 @@ test("a card is added once, then updated in place by its id", () => {
   cards.upsertCard({ id: "c1", title: "Check", body: "second" });
   assert.equal(h.querySelectorAll(".plugin-card").length, 1);
   assert.ok(cards.cardElement("c1").classList.contains("card-updated"));
+  t.mock.timers.tick(900);
+  assert.ok(!cards.cardElement("c1").classList.contains("card-updated"));
   cards.upsertCard({ title: "no id" });
   assert.equal(h.querySelectorAll(".plugin-card").length, 1);
   assert.equal(cards.cardElement(null), null);

@@ -36,7 +36,10 @@ A select bound with `.value` instead reads right in both, but lit sets it before
 `npm test` runs every file in one process (`--test-isolation=none`; CI and local runs use Node 24): the files share
 `globalThis`, the shim's one happy-dom window and every module's state: a global a spec sets (stage_view's
 `ResizeObserver` stand-in) is there for the files after it, so set only harmless stand-ins and put anything else
-back (`t.mock` restores itself). One file: `node --test spec/web/public/NAME.test.js`.
+back (`t.mock` restores itself). A test that sets off a module's timer (a flash, a highlight's end) fakes it
+(`t.mock.timers.enable({ apis: ["setTimeout"] })`, then `tick`): a real one still pending after the last test keeps
+node running until it fires (a 4 s one made the run 6 s for 2 s of work). One file:
+`node --test spec/web/public/NAME.test.js`.
 
 Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both terminals) and in the web
 (`composer.js#routeComposerLine`). `spec/fixtures/composer_routes.json` holds the cases both answer: rspec
