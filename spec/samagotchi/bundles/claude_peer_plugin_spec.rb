@@ -38,13 +38,19 @@ RSpec.describe "The claude-peer plugin" do
   # What register declares: the tools and commands, by name.
   let(:fake_chi) do
     Class.new do
-      attr_reader :tools, :commands, :hooks
+      attr_reader :tools, :commands, :hooks, :annotations, :peer_sources
 
       def initialize
         @tools = {}
         @commands = {}
         @hooks = {}
+        @annotations = []
+        @peer_sources = []
       end
+
+      def annotation(label, **opts) = @annotations << [label, opts]
+
+      def peer_source(name, label:) = @peer_sources << [name, label]
 
       def tool(name, description, params:, label:, preview:, &block)
         @tools[name] = { description: description, params: params, label: label, preview: preview, block: block }
@@ -239,15 +245,9 @@ RSpec.describe "The claude-peer plugin" do
       expect(fake_chi.hooks.keys).to contain_exactly(:before_turn, :after_turn)
     end
 
-    it "adds a Confirm with Claude pill (a fill, the quote) on a chi with chi.annotation, and loads without it" do
-      annotations = []
-      newer = fake_chi.dup
-      newer.define_singleton_method(:annotation) { |label, **opts| annotations << [label, opts] }
-      plugin.register(newer)
-
-      expect(annotations).to eq([["Confirm with Claude", { command: "/claude validate" }]])
-      expect(fake_chi).not_to respond_to(:annotation)
-      expect(fake_chi.commands).to have_key("/claude")
+    it "adds a Confirm with Claude pill (a fill, the quote) and the claude-outbox peer source" do
+      expect(fake_chi.annotations).to eq([["Confirm with Claude", { command: "/claude validate" }]])
+      expect(fake_chi.peer_sources).to eq([%w[claude-outbox Claude]])
     end
 
     describe "alone: the status card" do

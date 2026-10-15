@@ -1762,8 +1762,7 @@ Claude pairs; without one the bundle costs one tool declaration.
   - In the web, selecting text offers **Confirm with Claude**
     ([`chi.annotation`](#chiannotationlabel-command-template-quote-send-false)):
     it fills the composer with `/claude validate` and the quote, for you to
-    add what needs confirming. On a chi without `chi.annotation` (0.62–0.65)
-    the bundle loads without the pill.
+    add what needs confirming.
   - `/claude last` sends the model's last completed answer as context. Mid-turn
     it is the answer before the running turn, never the turn's partial text;
     a cancelled or failed turn has no answer, so the one before it goes.

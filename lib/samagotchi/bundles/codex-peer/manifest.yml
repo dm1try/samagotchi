@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.3.0
+version: 0.3.1
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-outbox context; /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -10,14 +10,10 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as the codex-outbox context"
 plugin:
   file: plugin.rb
-  sha256: sha256:c36cba9ab4c87c1a5ec9fbb8f907286bb04410b2a85b56269e29392173160689
+  sha256: sha256:eb6888e3611b8ed42498cfecab5b430e0ef7a4c2dc7b3c090d015336aa039b11
 scripts:
   pair: sha256:251448a31959b5c916400eff7909e85c696855d5c16b6b10973ada40915c8051
   chi-peer-SKILL.md: sha256:7c392ac04c115ea1e762ad562b5c4c44c3eca71558ba5d9dfeaeabdd533b6a82
-# Codex's answer is a pushed source's first wake: true push, which wakes the
-# session from chi 0.63.0 (before, the first answer arrives as a note
-# without waking); ctx.context.list's summary: (the /codex card's last
-# answer) is 0.63.0 too.
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.

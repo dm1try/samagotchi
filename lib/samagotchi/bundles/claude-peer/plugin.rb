@@ -40,8 +40,8 @@ require "samagotchi/plugin/peer"
 # sees it. The skill is scripts/chi-peer-SKILL.md beside this file, with the
 # installed scripts/pair path and the payload folder written in.
 #
-# In the web, selecting text offers "Confirm with Claude" (chi.annotation;
-# skipped on a chi without it, 0.62–0.65): it fills the composer with
+# In the web, selecting text offers "Confirm with Claude" (chi.annotation):
+# it fills the composer with
 # `/claude validate` and the quote, for the user to add what to confirm.
 # Such a text is titled by its first quoted line, not the quote's
 # `From your thinking:` label.

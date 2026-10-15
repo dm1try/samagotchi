@@ -42,8 +42,8 @@ require "samagotchi/plugin/peer"
 # pairing and replies (its default sandbox can't write chi's state); chi
 # never edits Codex's config.
 #
-# In the web, selecting text offers "Confirm with Codex" (chi.annotation;
-# skipped on a chi without it, 0.63–0.65): it fills the composer with
+# In the web, selecting text offers "Confirm with Codex" (chi.annotation):
+# it fills the composer with
 # `/codex validate` and the quote, for the user to add what to confirm.
 # Such a text is titled by its first quoted line, not the quote's
 # `From your thinking:` label.
