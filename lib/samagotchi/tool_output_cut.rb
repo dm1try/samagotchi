@@ -19,14 +19,17 @@ module Samagotchi
   # The cut text still fits the cap, and comes from the content alone (no
   # clock): the same output gives the same text.
   #
-  # :head_tail_ref (task_wait) cuts the same way, as one block, and saves
-  # nothing: the whole is already in a file (a task's log), which the tool
+  # :head_tail_ref (task_wait, delegate, delegate_result) cuts the same
+  # way, as one block, and saves nothing: the whole is already in a file (a
+  # task's log, the child's reply in its output/ folder), which the tool
   # gave with its text (Tools::RefText) and the gap line names.
   module ToolOutputCut
-    POLICIES = { "execute" => :head_tail_file, "task_wait" => :head_tail_ref }.freeze
+    POLICIES = { "execute" => :head_tail_file, "task_wait" => :head_tail_ref, "delegate" => :head_tail_ref,
+                 "delegate_result" => :head_tail_ref }.freeze
 
     # What a :head_tail_ref tool's file holds, for its gap line.
-    REF_WHAT = { "task_wait" => "the task's whole output" }.freeze
+    REF_WHAT = { "task_wait" => "the task's whole output", "delegate" => "the child's whole reply",
+                 "delegate_result" => "the child's whole reply" }.freeze
 
     # A head cut's last line (head_line), as LLMContextStale recognizes a
     # partial read by it. Kept in sync with head_line by its spec.

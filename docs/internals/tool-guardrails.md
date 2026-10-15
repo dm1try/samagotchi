@@ -56,6 +56,7 @@ built-in name; a tool with none gets `:head`):
 | --- | --- | --- |
 | `execute` | `:head_tail_file` | a short head, a long tail, one gap line between them; the whole output saved in the session's folder |
 | `task_wait` | `:head_tail_ref` | the same head and tail, the gap line naming the task's log (`output_path`, `Tools::RefText`); nothing saved |
+| `delegate`, `delegate_result` | `:head_tail_ref` | the same, the gap line naming the child's reply file (its `output/<timestamp>.txt`); nothing saved |
 | `read` and every other tool (`task_get`/`task_list`/`task_create`/`task_stop`, `web_fetch`, `memory_read`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
 
 `:head_tail_file` is for output whose end matters: a test run's summary, an error, the `exit:` line. The head is
@@ -95,7 +96,8 @@ rest: `[cut: N of M chars not shown; the whole output wasn't saved (Errno::ENOSP
 output sent to a file (cmd > /tmp/out.txt 2>&1) and read that]`. The turn goes on.
 
 `:head_tail_ref` cuts the whole text as one block, the same way, and saves nothing: the tool returns its text as a
-`Tools::RefText` whose `ref_path` is the file the whole of it is in (`KernelLoop#dispatch` passes it on as the
+`Tools::RefText` whose `ref_path` is the file the whole of it is in (a reply's file holds only the reply, not the
+`session:`/`status:` header) (`KernelLoop#dispatch` passes it on as the
 result's `ref_path:`), and the gap line names it: `[cut: N of M chars not shown; the task's whole output is in
 <output_path>: read it with start_line/end_line or rg it]`.
 

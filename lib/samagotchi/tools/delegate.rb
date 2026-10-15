@@ -66,7 +66,10 @@ module Samagotchi
         return child_id if child_id.start_with?("Error:")
 
         note = warning ? "Warning: #{warning}\n" : ""
-        return note + DelegateWait.call(child_id, peers: peers, timeout: timeout) if wait
+        if wait
+          result = DelegateWait.call(child_id, peers: peers, timeout: timeout)
+          return RefText.wrap(note + result, result.respond_to?(:ref_path) ? result.ref_path : nil)
+        end
 
         started = session.to_s.strip.empty? ? "Started a delegate session" : "Sent the follow-up to delegate #{child_id[0, 8]}"
         "#{note}session: #{child_id}\nstatus: running\n#{started}; #{running_hint(peers)} " \

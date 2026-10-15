@@ -24,6 +24,18 @@ RSpec.describe Samagotchi::ToolOutputCut do
     expect(described_class.apply("y" * 200, cap: 80, tool: "some_plugin_tool")).to eq([described_class.head("y" * 200, 80), nil])
   end
 
+  it "names a child's reply file in a long delegate result's gap line, nothing saved" do
+    reply = "session: c1\nstatus: answered\n---\n#{(1..800).map { |i| "finding #{i}" }.join("\n")}\nConclusion: ship it"
+    text, saved = described_class.apply(reply, cap: 3000, tool: "delegate_result", ref: "/s/c1/output/1.txt",
+                                               save: ->(_) { raise "not saved" })
+
+    expect(text).to start_with("session: c1\nstatus: answered\n---\n")
+    expect(text).to end_with("Conclusion: ship it")
+    expect(text).to include("the child's whole reply is in /s/c1/output/1.txt: read it with start_line/end_line or rg it]")
+    expect(saved).to be_nil
+    expect(described_class.policy("delegate")).to eq(:head_tail_ref)
+  end
+
   describe "an execute result" do
     let(:saved) { Samagotchi::ToolOutputFiles::Saved.new(path: "/state/s/tool_output/execute-abc.txt", bytes: 1, lines: 1) }
 

@@ -7,6 +7,7 @@ require_relative "output_guardrails"
 require_relative "peers"
 require_relative "delegate_relay"
 require_relative "delegate_cursor"
+require_relative "ref_text"
 
 module Samagotchi
   # Loaded on first use: child_reports requires this file (a circular
@@ -78,7 +79,8 @@ module Samagotchi
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             outcomes.concat(relayed_outcomes.delete(key) || [])
             advance(peers.session_id, child_id, wait, state_dir: sd)
-            return with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
+            text = with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
+            return RefText.wrap(text, reply_path(child_id, wait, state_dir: sd))
           end
 
           outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd, more: others&.count.to_i)
@@ -102,6 +104,15 @@ module Samagotchi
                                   on_outcome: lambda { |other, outcome|
                                     (relayed_outcomes[[parent_id, other]] ||= []) << outcome.line
                                   })
+      end
+
+      # The child's reply file a :done wait read (its output/ file), which
+      # ToolRunner's cut of a long reply names (ToolOutputCut's
+      # :head_tail_ref); nil for any other outcome.
+      def reply_path(child_id, wait, state_dir:)
+        return nil unless wait.status == :done && wait.file
+
+        File.join(ReplyWait.reply_dir(child_id, state_dir: state_dir), wait.file)
       end
 
       # The relayed approvals' outcome lines, after the status line.

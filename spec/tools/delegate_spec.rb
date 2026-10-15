@@ -163,6 +163,17 @@ RSpec.describe "delegate tools" do
       expect(session_files.size).to eq(2)
     end
 
+    it "keeps the reply file's path on a waited result with a warning in front" do
+      saved_models(%w[gemma-small qwen3])
+      allow(Samagotchi::Tools::DelegateWait).to receive(:call)
+        .and_return(Samagotchi::Tools::RefText.new("session: x\nstatus: answered\n---\nhi", "/s/x/output/1.txt"))
+
+      out = described_class.call("quick look", model: "default:gemma-smal", peers: peers)
+
+      expect(out).to start_with("Warning: host 'default'")
+      expect(out.ref_path).to eq("/s/x/output/1.txt")
+    end
+
     it "starts the child for an id the host's saved list has" do
       saved_models(%w[gemma-small])
 
@@ -563,7 +574,12 @@ RSpec.describe "delegate tools" do
       idle = make(parent_id: parent.id, prompt: "done long ago", status: "idle")
       write_reply(idle, "saved reply")
 
-      expect(described_class.call(idle.id, peers: peers, timeout: 5)).to eq("session: #{idle.id}\nstatus: answered\n---\nsaved reply")
+      out = described_class.call(idle.id, peers: peers, timeout: 5)
+      expect(out).to eq("session: #{idle.id}\nstatus: answered\n---\nsaved reply")
+      # The reply's file: ToolRunner's cut of a long reply names it.
+      reply_dir = File.join(Samagotchi::Session.session_dir(idle.id, state_dir: tmpdir), "output")
+      expect(out.ref_path).to eq(File.join(reply_dir, Dir.children(reply_dir).first))
+      expect(File.read(out.ref_path)).to eq("saved reply")
       # Given once: the next wait does not repeat it.
       expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet after 0 s")
     end
