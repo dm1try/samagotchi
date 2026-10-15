@@ -55,7 +55,8 @@ built-in name; a tool with none gets `:head`):
 | Tool | Policy | What the model gets |
 | --- | --- | --- |
 | `execute` | `:head_tail_file` | a short head, a long tail, one gap line between them; the whole output saved in the session's folder |
-| `read` and every other tool (`task_*`, `web_fetch`, `memory_read`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
+| `task_wait` | `:head_tail_ref` | the same head and tail, the gap line naming the task's log (`output_path`, `Tools::RefText`); nothing saved |
+| `read` and every other tool (`task_get`/`task_list`/`task_create`/`task_stop`, `web_fetch`, `memory_read`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
 
 `:head_tail_file` is for output whose end matters: a test run's summary, an error, the `exit:` line. The head is
 `execute.cut_head_chars` at most (default `1000`) and never more than a quarter of the room; the tail gets
@@ -92,6 +93,11 @@ the guardrails' chi dirs (keep the folder's name off `context`, which `shell-tou
 `tool_output_save_failed`; a session-folder lookup that raises: `no session`), the gap line says so and how to see the
 rest: `[cut: N of M chars not shown; the whole output wasn't saved (Errno::ENOSPC); to look past this, rerun with the
 output sent to a file (cmd > /tmp/out.txt 2>&1) and read that]`. The turn goes on.
+
+`:head_tail_ref` cuts the whole text as one block, the same way, and saves nothing: the tool returns its text as a
+`Tools::RefText` whose `ref_path` is the file the whole of it is in (`KernelLoop#dispatch` passes it on as the
+result's `ref_path:`), and the gap line names it: `[cut: N of M chars not shown; the task's whole output is in
+<output_path>: read it with start_line/end_line or rg it]`.
 
 The model, the `:tool_call_completed` event and the `after_tool_call` hook get the same cut text; the event and
 the runner's result carry the saved file's path as `output_file:`, and the log's `tool_call_completed` line has

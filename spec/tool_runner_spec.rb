@@ -393,6 +393,30 @@ RSpec.describe Samagotchi::ToolRunner do
     end
   end
 
+  describe "the output cap on a task_wait result (head, tail, the task's log)" do
+    let(:call) { { name: "task_wait", content: "t1" } }
+    let(:tail) { (1..300).map { |i| "progress #{i} ......................" }.join("\n") }
+    let(:full) { "[task_wait]\ntask_id: t1\nstatus: running\noutput_path: /tasks/t1.log\noutput_tail:\n#{tail}\nall done" }
+
+    before do
+      allow(kernel).to receive(:dispatch_tool_call) do
+        { output: full, activity: { tool: "task_wait", status: "ok" }, ref_path: "/tasks/t1.log" }
+      end
+    end
+
+    it "keeps the header and the tail's end, names the log, saves nothing" do
+      result = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+                                max_tool_output_chars: 3000)
+      text = result[:capped_output]
+
+      expect(text).to start_with("[task_wait]\ntask_id: t1\nstatus: running\noutput_path: /tasks/t1.log\n")
+      expect(text).to end_with("progress 300 ......................\nall done")
+      expect(text).to match(%r{^\[cut: \d+ of #{full.length} chars not shown; the task's whole output is in /tasks/t1\.log: read it with start_line/end_line or rg it\]$})
+      expect(text.length).to be <= 3000
+      expect(result[:output_file]).to be_nil
+    end
+  end
+
   describe "sticky verdict" do
     it "keeps a veto a later hook tries to undo" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true; e[:block_reason] = "nope" }

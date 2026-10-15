@@ -161,6 +161,20 @@ RSpec.describe "task tools" do
     end
   end
 
+  describe Samagotchi::Tools::TaskWait, "the log a cut names" do
+    # ToolRunner's cut of a long result names the log (ToolOutputCut's
+    # :head_tail_ref).
+    it "gives a result with an output tail as a RefText of the task's log" do
+      create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"ready\"; STDOUT.flush; sleep 20'")
+      task_id = extract_field(create_result, "task_id")
+
+      result = described_class.call(task_id, timeout: 10, done_pattern: "ready")
+
+      expect(result).to include("wait_result: pattern_matched")
+      expect(result.ref_path).to eq(extract_field(result, "output_path"))
+    end
+  end
+
   describe Samagotchi::Tools::TaskGet do
     it "returns full metadata for an existing task" do
       create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"get\"'")

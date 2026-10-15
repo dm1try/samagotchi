@@ -26,7 +26,8 @@ and commands may change between minor versions. How releases are made:
   `chi context rm claude-review <id>` / `chi context rm codex-review <id>`.
 - A long `execute` result now keeps its last lines (where test summaries and errors are) as well as the first, and
   the whole output is saved in the session's folder (`tool_output/`, kept as long as the session, the newest 50); the
-  model is told the file's path, so it reads that instead of running the command again. New setting
+  model is told the file's path, so it reads that instead of running the command again. A long `task_wait` result
+  keeps its end too, and names the task's log. New setting
   `execute.cut_head_chars` (default 1000): how much of the start such a result keeps.
 
 ## [0.69.0] - 2026-10-14

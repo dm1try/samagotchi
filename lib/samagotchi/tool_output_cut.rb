@@ -18,8 +18,15 @@ module Samagotchi
   # (stdout gets about two thirds of the room), its exit line always kept.
   # The cut text still fits the cap, and comes from the content alone (no
   # clock): the same output gives the same text.
+  #
+  # :head_tail_ref (task_wait) cuts the same way, as one block, and saves
+  # nothing: the whole is already in a file (a task's log), which the tool
+  # gave with its text (Tools::RefText) and the gap line names.
   module ToolOutputCut
-    POLICIES = { "execute" => :head_tail_file }.freeze
+    POLICIES = { "execute" => :head_tail_file, "task_wait" => :head_tail_ref }.freeze
+
+    # What a :head_tail_ref tool's file holds, for its gap line.
+    REF_WHAT = { "task_wait" => "the task's whole output" }.freeze
 
     # A head cut's last line (head_line), as LLMContextStale recognizes a
     # partial read by it. Kept in sync with head_line by its spec.
@@ -64,8 +71,16 @@ module Samagotchi
     # @param head_chars [Integer] execute.cut_head_chars
     # @return [Array(String, Object)] the text the model gets, and what
     #   +save+ returned (nil when it wasn't called)
-    def apply(output, cap:, tool:, save: nil, head_chars: HEAD_CHARS)
-      return [head(output, cap), nil] unless policy(tool) == :head_tail_file && cap >= MIN_TAIL * 3
+    # @param ref [String, nil] :head_tail_ref: the file the whole text is in
+    def apply(output, cap:, tool:, save: nil, ref: nil, head_chars: HEAD_CHARS)
+      kind = policy(tool)
+      return [head(output, cap), nil] if kind == :head || cap < MIN_TAIL * 3
+
+      if kind == :head_tail_ref
+        text = head_tail(output, cap: cap, blocks: [Block.new(from: 0, length: output.length)], head_chars: head_chars,
+                                 gap: RefGap.new(output, ref, REF_WHAT.fetch(tool.to_s, "the whole output")))
+        return [text || head(output, cap), nil]
+      end
 
       saved = save ? save.call(output) : "no session"
       text = head_tail(output, cap: cap, blocks: execute_blocks(output), head_chars: head_chars,
@@ -172,6 +187,24 @@ module Samagotchi
       end
       blocks << Block.new(from: stderr_at + STDERR_LABEL.length, length: ends - stderr_at - STDERR_LABEL.length) if stderr_at
       blocks.empty? ? [Block.new(from: 0, length: output.length)] : blocks
+    end
+
+    # The gap line of a :head_tail_ref cut: the file the whole text is in.
+    class RefGap
+      def initialize(output, ref, what)
+        @output = output
+        @ref = ref.to_s
+        @what = what
+      end
+
+      def line(left_out)
+        where = @ref.empty? ? "" : "; #{@what} is in #{@ref}: read it with start_line/end_line or rg it"
+        "[cut: #{left_out.length} of #{@output.length} chars not shown#{where}]"
+      end
+
+      def short(left_out) = "[cut: #{left_out.length} chars not shown]"
+      def line_max = line(Block.new(from: 0, length: @output.length))
+      def short_max = short(Block.new(from: 0, length: @output.length))
     end
 
     # The gap lines of a :head_tail_file cut: where the whole output is

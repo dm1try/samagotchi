@@ -1133,6 +1133,9 @@ module Samagotchi
       }
       # Images the tool returned (read's ImageResult, a plugin's ToolResult):
       # ToolRunner attaches them (or says why not).
+      # A text that shows part of a file (Tools::RefText): the cut of a
+      # long one names that file (ToolRunner).
+      dispatched[:ref_path] = result.ref_path if result.respond_to?(:ref_path) && result.ref_path
       if result.respond_to?(:images) && !Array(result.images).empty?
         dispatched[:images] = Array(result.images)
         dispatched[:image_only] = true if result.respond_to?(:image_only?) && result.image_only?

@@ -163,5 +163,17 @@ RSpec.describe "Tool call wrapper parity" do
       expect(native).to include("the whole output is saved in #{dir}/tool_output/execute-")
       expect(completed[:output]).to eq(chat)
     end
+
+    it "a task_wait result: both loops name the task's log in the gap line" do
+      long = "task_id: t1\noutput_path: /tasks/t1.log\noutput_tail:\n#{(1..500).map { |i| "line #{i}" }.join("\n")}"
+      allow(Samagotchi::Tools::TaskWait).to receive(:call).and_return(Samagotchi::Tools::RefText.new(long, "/tasks/t1.log"))
+      _result, native = run_native(max_tool_output_chars: 2000, call: %(call:task_wait{task_id: "t1"}))
+      events.clear
+      _result, chat = run_chat(max_tool_output_chars: 2000, call: ["c1", "task_wait", { "task_id" => "t1" }])
+
+      expect(chat).to eq(native)
+      expect(native).to end_with("line 500")
+      expect(native).to include("the task's whole output is in /tasks/t1.log")
+    end
   end
 end
