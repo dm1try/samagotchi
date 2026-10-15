@@ -56,8 +56,8 @@ script/affected-specs A..B            # another range (A...B: from their merge-b
 A builder runs these while working, not the full suite: the specs the change touched, the specs named after the
 files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…), the specs that read
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
-file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`), then the other name
-matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
+file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `turn_flow.rb` and `turn_note.rb`, whose
+words the REPL prints, pick it by a rule), then the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
 `spec/guardrails/context_spec.rb`), then the specs that name a changed file's class. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
 The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" and a

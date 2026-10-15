@@ -10,10 +10,11 @@ module AffectedSpecs
   # matched (shown with --why).
   Result = Data.define(:ruby, :node, :hints, :unmatched)
 
-  # Specs that read docs or source as text, which no name points at: a
-  # changed path matching one of +match+ (File.fnmatch, ** spans folders)
-  # picks +specs+. Keep it short; a rule earns its place when a full run
-  # caught what the names missed.
+  # Specs that read docs or source as text, or print a file's words through
+  # another layer (the REPL golden), which no name points at: a changed path
+  # matching one of +match+ (File.fnmatch, ** spans folders) picks +specs+.
+  # Keep it short; a rule earns its place when a full run caught what the
+  # names missed.
   RULES = [
     { match: %w[docs/configuration.md lib/samagotchi/config.rb],
       specs: %w[spec/docs_configuration_spec.rb], why: "reads docs/configuration.md against Config::ENTRIES" },
@@ -33,7 +34,9 @@ module AffectedSpecs
     { match: %w[samagotchi.gemspec],
       specs: %w[spec/gem_contents_spec.rb], why: "builds the gem and lists its files" },
     { match: %w[bin/chi],
-      specs: %w[spec/cli_parsing_spec.rb spec/chi_help_spec.rb], why: "runs bin/chi" }
+      specs: %w[spec/cli_parsing_spec.rb spec/chi_help_spec.rb], why: "runs bin/chi" },
+    { match: %w[lib/samagotchi/turn_flow.rb lib/samagotchi/turn_note.rb],
+      specs: %w[spec/terminal_ui_golden_spec.rb], why: "the REPL golden prints their turn-end and continue words" }
   ].freeze
 
   # A constant named in more spec files than this is a hub: listing them
