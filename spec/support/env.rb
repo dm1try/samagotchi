@@ -29,3 +29,17 @@ module SpecEnv
     with_env("XDG_CONFIG_HOME" => dir, &)
   end
 end
+
+# The process ENV holds real API keys, so a spec never hands ENV itself to a
+# matcher: a failing one inspects its actual (and a failing `with(...)` its
+# arguments), printing the whole ENV. Check a key with
+# `expect(ENV.fetch(key, nil)).to be_nil`; check that a value *is* ENV with
+# this matcher, whose messages leave the contents out.
+#
+#   expect(kwargs[:env]).to be_the_process_env
+RSpec::Matchers.define :be_the_process_env do
+  match { |actual| actual.equal?(ENV) }
+  failure_message { |actual| "expected the process ENV, got a #{actual.class} (contents not shown)" }
+  failure_message_when_negated { "expected something other than the process ENV" }
+  description { "be the process ENV" }
+end

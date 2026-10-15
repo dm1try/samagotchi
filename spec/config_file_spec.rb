@@ -117,8 +117,8 @@ RSpec.describe Samagotchi::ConfigFile do
 
         expect(described_class.load!).to be(true)
         expect(Samagotchi::ModelProfile.from_model_name(Samagotchi::ModelProfile.required_model_name).name).to eq("qwen36")
-        expect(ENV).not_to have_key("SAMAGOTCHI_DEFAULT_MODEL")
-        expect(ENV).not_to have_key("SAMAGOTCHI_SERVER_HOST")
+        expect(ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)).to be_nil
+        expect(ENV.fetch("SAMAGOTCHI_SERVER_HOST", nil)).to be_nil
         expect(Samagotchi::Config.get_with_origin("default.model")).to eq(["Qwen3-14B-Instruct", :file])
         expect(Samagotchi::Config.get_with_origin("server.port")).to eq([9090, :env])
 
@@ -142,7 +142,7 @@ RSpec.describe Samagotchi::ConfigFile do
 
         expect(Samagotchi::Config.get_with_origin("recap.sentences")).to eq(["4-6", :file])
         expect(Samagotchi::Config.get_with_origin("session.idle_exit_minutes")).to eq([7.0, :file])
-        expect(ENV).not_to have_key("SAMAGOTCHI_RECAP_SENTENCES")
+        expect(ENV.fetch("SAMAGOTCHI_RECAP_SENTENCES", nil)).to be_nil
       end
     end
 
@@ -171,7 +171,7 @@ RSpec.describe Samagotchi::ConfigFile do
 
         expect(described_class.load!).to be(true)
         expect(Samagotchi::Config.get("default.model")).to eq("Qwen3-14B-Instruct")
-        expect(ENV).not_to have_key("hooks")
+        expect(ENV.fetch("hooks", nil)).to be_nil
       end
     end
 

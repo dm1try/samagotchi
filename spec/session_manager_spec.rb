@@ -1280,7 +1280,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       ENV[described_class::WORKER_PROCESS_ENV] = "1"
       described_class.run_session_loop(session.id, state_dir: tmpdir)
-      expect(ENV).not_to have_key(described_class::WORKER_PROCESS_ENV)
+      expect(ENV.fetch(described_class::WORKER_PROCESS_ENV, nil)).to be_nil
       expect(installed.size).to eq(1)
       expect(given.last).to be(installed.first)
     ensure
@@ -1305,7 +1305,7 @@ RSpec.describe Samagotchi::SessionManager do
       ENV[described_class::WORKER_DETACH_ENV] = "1"
       described_class.run_session_loop(session.id, state_dir: tmpdir)
       expect(order).to eq(%i[lock detach lock])
-      expect(ENV).not_to have_key(described_class::WORKER_DETACH_ENV)
+      expect(ENV.fetch(described_class::WORKER_DETACH_ENV, nil)).to be_nil
     ensure
       ENV.delete(described_class::WORKER_DETACH_ENV)
     end

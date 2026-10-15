@@ -236,13 +236,19 @@ RSpec.describe Samagotchi::IdleClient do
     it "builds its adapter for the target's api, url, key and auth" do
       target = Samagotchi::IdleTarget.new(base_url: "http://x/v1", api_key_env: "X_KEY", model: "m", label: "m",
                                           auth: :x_api_key)
-      allow(Samagotchi::LLM::Adapters).to receive(:build).and_call_original
+      built = nil
+      allow(Samagotchi::LLM::Adapters).to receive(:build).and_wrap_original do |original, **kwargs|
+        built = kwargs
+        original.call(**kwargs)
+      end
 
       described_class.for(target, timeout: 3, purpose: "broadcast")
 
-      expect(Samagotchi::LLM::Adapters).to have_received(:build)
-        .with(api: :openai, base_url: "http://x/v1", host_name: "broadcast", api_key_env: "X_KEY", auth: :x_api_key,
-              stream: false, retries: false, timeout: 3, env: ENV, purpose: "broadcast")
+      # env checked apart: a failing `with(..., env: ENV)` prints the real ENV.
+      expect(built.except(:env))
+        .to eq(api: :openai, base_url: "http://x/v1", host_name: "broadcast", api_key_env: "X_KEY", auth: :x_api_key,
+               stream: false, retries: false, timeout: 3, purpose: "broadcast")
+      expect(built[:env]).to be_the_process_env
     end
   end
 
