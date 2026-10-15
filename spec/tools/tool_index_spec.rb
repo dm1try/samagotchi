@@ -96,6 +96,15 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(calls).to be_empty
     end
 
+    it "answers a call whose group a publish dropped meanwhile with an error, not a crash" do
+      allow(index).to receive(:inner_args).and_wrap_original do |original, *args|
+        fs.publish([])
+        original.call(*args)
+      end
+      expect(index.call("mcp_fs_echo", {})).to eq("Error: the tool list changed and fs is gone; search with find_tools")
+      expect(calls).to be_empty
+    end
+
     describe "a plugin tool's paths, as call_tool always had them" do
       let(:call) { { name: call_name, args: { "tool" => "fs/echo", "args" => { "n" => 3 } } } }
 
@@ -248,6 +257,16 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     index.groups
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "chi")).once
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "fs")).once
+  end
+
+  # A source without a prefix: guardrails can't name a bare acts_as before
+  # its tool is listed, so call_tool takes only <group>/<tool> from it, and
+  # says so instead of blaming a change while the call waited.
+  it "asks for <group>/<tool> on a bare acts_as of a source with no prefix" do
+    added(prefix: nil).publish([described_class::Group.new(name: "fs", tools: [echo])])
+    index.declare(registry)
+    expect(index.call("mcp_fs_echo", {})).to eq("Error: call mcp_fs_echo as fs/echo")
+    expect(index.call("fs/echo", {})).to eq("ran echo")
   end
 
   it "takes only Group values in a publish" do

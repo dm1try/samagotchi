@@ -645,9 +645,10 @@ index = Samagotchi::Tools::ToolIndex
   ([acts_as:](#guardrails)), even when another bundle has a tool of that
   name (only the core-tool drop applies). A call made before its tool is published is
   named by `acts_as` from the names alone; a bare name with `prefix` is
-  taken as an `acts_as` as given. The `acts_as:` hook must give exactly the
+  taken as an `acts_as` as given (without `prefix`, a bare name is refused:
+  call it as `<group>/<tool>`). The `acts_as:` hook must give exactly the
   `acts_as` the source publishes for that tool: a call whose tool isn't the
-  one guardrails were given is refused ("the MCP tools changed while the call
+  one guardrails were given is refused ("the tool list changed while the call
   waited"), so a hook that disagrees refuses every call.
 - **The row** shows `label` (default: the bundle's name) and
   `<group>/<tool> args…`. `@source.declared_names` and `declared_tokens` say

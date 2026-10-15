@@ -301,8 +301,14 @@ module Samagotchi
       def call(name, args)
         tool = lookup(name)
         return tool if tool.is_a?(String)
+
         unless claimed(name.strip)&.first == tool.acts_as
-          return "Error: the MCP tools changed while the call waited for its server; call #{tool.full_name} again"
+          # A bare acts_as of a source with no prefix: guardrails can't
+          # name it before its tool is listed (#claimed), so only
+          # <group>/<tool> is taken.
+          return "Error: call #{name.strip} as #{tool.full_name}" if name.strip == tool.acts_as
+
+          return "Error: the tool list changed while the call waited for its server; call #{tool.full_name} again"
         end
         return "Error: #{tool.full_name} can't be called: #{tool.refusal}" if tool.refusal
 
@@ -310,7 +316,11 @@ module Samagotchi
         return "Error: args must be an object.#{ToolIndex.schema_note(tool)}" unless inner
         return "Error: #{tool.full_name} can't be called through #{CALL_NAME} here" if tool.entry
 
-        source_of(tool.group).run(tool, inner)
+        # A publish may drop the group after the lookup.
+        source = source_of(tool.group)
+        return "Error: the tool list changed and #{tool.group} is gone; search with #{FIND_NAME}" unless source
+
+        source.run(tool, inner)
       end
 
       # The built-in a call_tool +call+ names, as the call that runs in its
