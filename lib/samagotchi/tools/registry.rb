@@ -186,7 +186,7 @@ module Samagotchi
       # removed or not: a source registered at load, or a built-in the
       # toolkit leaves out without removing it.
       def index_reaches?(toolkit)
-        @index.sourced || @entries.each_value.any? { |entry| soft?(entry, [], toolkit) }
+        @index.sourced || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
       end
 
       # Not declared by +toolkit+ under +layers+. An index tool counts only

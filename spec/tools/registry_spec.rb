@@ -255,6 +255,25 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.names(toolkit: kit(remove: %w[call_tool]))).to include("find_tools") # MCP's, as on main
       end
 
+      # A Bridge thread reads the declared tools (setting chips) while the
+      # turn thread registers a plugin's replaced tools: the walk is over a
+      # snapshot, so a register mid-walk doesn't raise "can't add a new key
+      # into hash during iteration". The register runs inside the walk here,
+      # which makes the interleaving deterministic.
+      it "walks a snapshot, so a tool registered meanwhile doesn't raise" do
+        registry.index = registry.index.with(sourced: false)
+        registered = false
+        allow(registry).to receive(:soft?).and_wrap_original do |original, *args|
+          unless registered
+            registered = true
+            registry.register("late", schema: schema.merge(name: "late"), handler: ->(*) { "" }, source: "plugin")
+          end
+          original.call(*args)
+        end
+        expect(registry.names(toolkit: kit("full"))).not_to include("call_tool")
+        expect(registry["late"]).not_to be_nil
+      end
+
       it "is nothing when the toolkit removes call_tool, or on full" do
         registry.toolkit = kit(remove: %w[call_tool])
         expect(registry.reachable_names).to eq([])
