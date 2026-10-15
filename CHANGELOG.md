@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: an `execute` row, and a `task_wait` row showing its log's last lines, now shows the end of its output (a
+  test run's summary, a failing exit line) instead of the start, without the success `exit: 0` line or a lone
+  `stdout:` label; the whole output stays on hover.
+
 ## [0.70.0] - 2026-10-15
 
 ### Added

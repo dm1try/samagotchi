@@ -766,7 +766,9 @@ tool rows), the earlier ones stack above it collapsed to one line each
 (their narration's first line, else their first call's title such as
 `edit lib/a.rb`, and a call count), expandable for inspection. A tool row
 says what the call did: a file's path relative to the session's folder, a
-command without its leading `cd … &&` (the full parameters on hover). The live thinking is one line: the
+command without its leading `cd … &&` (the full parameters on hover). Under it a done row shows its
+output's first 300 characters; an `execute` and a `task_wait` with its log's tail show the last ones (a test
+run's summary, a failing exit line), without the success `exit: 0` line; all of it on hover. The live thinking is one line: the
 newest complete sentence, changing at most once per 1.5 s. Click it for the
 full text; a peek is per step (the next step's thinking starts closed
 again). When a step ends its thinking closes to a plain `thinking` line

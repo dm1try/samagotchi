@@ -250,3 +250,98 @@ test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge'
   assert.match(out, /<span class="state-badge">after this turn<\/span>/);
   assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });
+
+import { inlineOutput } from "../../../lib/samagotchi/web/public/turn_html.js";
+
+const lines = (n, width = 9) => Array.from({ length: n }, (_, i) => `line ${String(i + 1).padStart(width - 5, "0")}`).join("\n");
+
+test("inlineOutput: a long execute shows its end from a line start, without the success exit line", () => {
+  const full = `stdout:\n${lines(80)}\n\nexit: 0`;
+  const shown = inlineOutput("execute", full);
+  assert.ok(shown.startsWith("…line "), shown);
+  assert.ok(shown.endsWith("line 0080"), shown);
+  assert.ok(shown.length <= 301);
+  assert.doesNotMatch(shown, /exit: 0|stdout:/);
+});
+
+test("toolRowTemplate: a failed long execute shows its tail and exit line next to the red mark (its div scrolled to the end), all of it on hover", () => {
+  const out = `[execute]\nstdout:\n${lines(80)}\n\nexit: 1`;
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "error", title: "rspec", output: out });
+  assert.match(html, /<span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
+  assert.match(html, /<span class="activity-state error">error<\/span>/);
+  assert.match(html, /<div class="activity-output tail" title="stdout:\nline 0001\n[^"]*exit: 1">…line [^<]*line 0080\n\nexit: 1<\/div>/);
+});
+
+test("inlineOutput: a short execute drops the lone stdout label and exit: 0; with stderr both labels stay", () => {
+  assert.equal(inlineOutput("execute", "stdout:\nok\n\nexit: 0"), "ok");
+  assert.equal(inlineOutput("execute", "stdout:\nok\n\nstderr:\nwarn\n\nexit: 0"), "stdout:\nok\n\nstderr:\nwarn");
+  assert.equal(inlineOutput("execute", "stderr:\nboom\n\nexit: 2"), "stderr:\nboom\n\nexit: 2");
+});
+
+test("inlineOutput: a long stdout and stderr keep the stderr label and the exit line", () => {
+  const full = `stdout:\n${lines(40)}\n\nstderr:\n${lines(20)}\n\nexit: 1`;
+  const shown = inlineOutput("execute", full);
+  assert.match(shown, /^…/);
+  assert.match(shown, /\nstderr:\n/);
+  assert.ok(shown.endsWith("line 0020\n\nexit: 1"), shown);
+});
+
+test("inlineOutput: no output, a bare exit: 0 and a whitespace-only stdout stay as they are; a hint after exit: 0 stays", () => {
+  assert.equal(inlineOutput("execute", "exit: 0 (no output)"), "exit: 0 (no output)");
+  assert.equal(inlineOutput("execute", "exit: 0"), "exit: 0");
+  assert.equal(inlineOutput("execute", "stdout:\n  \n\nexit: 0"), "stdout:\n  \n\nexit: 0");
+  assert.equal(inlineOutput("execute", "stdout:\nok\n\nexit: 0\n(started in the background)"), "ok\n\n(started in the background)");
+  assert.equal(inlineOutput("execute", "exit: 1"), "exit: 1");
+});
+
+test("inlineOutput: a ran-as line stays, so the stdout label isn't leading and stays too", () => {
+  assert.equal(inlineOutput("execute", "ran as: execute ls\n[execute]\nstdout:\nok\n\nexit: 0"), "ran as: execute ls\n[execute]\nstdout:\nok");
+});
+
+test("inlineOutput: a cut gap line before a short tail is kept like any other line", () => {
+  const full = `stdout:\n${lines(30)}\n[cut: lines 31-900 not shown]\nsummary: 3 failures\n\nexit: 1`;
+  const shown = inlineOutput("execute", full);
+  assert.ok(shown.endsWith("[cut: lines 31-900 not shown]\nsummary: 3 failures\n\nexit: 1"), shown);
+});
+
+test("inlineOutput: tail mode mirrors clip's length: 301 chars whole, 302 cut to … and the last 300, from a line start", () => {
+  const body = (n) => `stdout:\n${"z".repeat(n - "\n\nexit: 1".length)}\n\nexit: 1`;
+  assert.equal(inlineOutput("execute", body(301)), body(301).slice("stdout:\n".length));
+  assert.equal(inlineOutput("execute", body(302)), `…${body(302).slice(-300)}`);
+  const lined = `stderr:\n${"z".repeat(100)}\n${"w".repeat(200)}\n\nexit: 1`;
+  assert.equal(inlineOutput("execute", lined), `…${"w".repeat(200)}\n\nexit: 1`);
+});
+
+test("inlineOutput: one long line is cut mid-line; an emoji at the cut isn't split", () => {
+  const long = `stdout:\n${"a".repeat(400)}\n\nexit: 1`;
+  assert.equal(inlineOutput("execute", long), `…${long.slice(-300)}`);
+  const text = `stdout:\n${"b".repeat(200)}😀${"c".repeat(290)}\n\nexit: 1`;
+  const cutAt = text.length - 300;
+  assert.equal(text.charCodeAt(cutAt) >= 0xdc00 && text.charCodeAt(cutAt) <= 0xdfff, true);
+  assert.equal(inlineOutput("execute", text), `…${text.slice(cutAt + 1)}`);
+});
+
+test("inlineOutput: a hand-over, a guardrail deny and an error keep their head", () => {
+  const handOver = `Still running at the 120s limit: moved to a background task, not killed.\ntask_id: t1\nWait for it with task_wait.\nstdout (so far, tail):\n${lines(60)}`;
+  assert.equal(inlineOutput("execute", handOver), `${handOver.slice(0, 300)}…`);
+  const denied = `Error: denied by guardrail (rm -rf): ${"reason ".repeat(60)}Do not retry it.`;
+  assert.equal(inlineOutput("execute", denied), `${denied.slice(0, 300).trimEnd()}…`);
+  const error = `Error: ${"boom ".repeat(80)}`;
+  assert.equal(inlineOutput("execute", error), `${error.slice(0, 300).trimEnd()}…`);
+});
+
+test("inlineOutput: a task_wait with its log's tail shows the end; one with its record lines only, read and other tools the start", () => {
+  const waited = `task_id: t1\nstatus: running\nexit_code:\nwait_result: timeout\noutput_tail:\n${lines(60)}\n`;
+  const shown = inlineOutput("task_wait", waited);
+  assert.ok(shown.startsWith("…") && shown.endsWith("line 0060"), shown);
+  const record = `task_id: t1\nstatus: completed\nexit_code: 0\nstop_reason:\noutput_path: /${"p".repeat(300)}/out.log`;
+  assert.equal(inlineOutput("task_wait", record), `${record.slice(0, 300)}…`);
+  const other = `stdout:\n${lines(60)}\n\nexit: 0`;
+  assert.equal(inlineOutput("read", other), `${other.slice(0, 300)}…`);
+  assert.equal(inlineOutput("delegate", other), `${other.slice(0, 300)}…`);
+});
+
+test("toolRowTemplate: a head-mode output has no tail class", () => {
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "blocked", output: "[execute] Error: denied by guardrail (rm): no" });
+  assert.match(html, /<div class="activity-output" title="Error: denied by guardrail \(rm\): no">/);
+});
