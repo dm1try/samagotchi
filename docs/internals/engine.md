@@ -492,7 +492,8 @@ Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
   @host_registry, @model_choice (ModelChoice: the name and the name as typed); @client = effective_model.client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
-  @hook_routes (HookRoutes: notices, hook questions, stop_turn/stop_generation, steer attribution)
+  @event_routes (EventRoutes: where a card or a notice goes: held while the plugins load, an anytime command's, an init task's, a turn event, else announced or held)
+  @hook_routes (HookRoutes: notices (through @event_routes), hook questions, stop_turn/stop_generation, steer attribution)
   @guardrail_wiring, @question_desk
   @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
@@ -555,7 +556,9 @@ them across turns. `Web::App#messages_for_display` sends `display_refs` re-valid
 - Order of a fire: bundle hooks (by priority, bundle, hook name), then config hooks, then turn-scoped hooks.
 - A hook that raises is logged; it never breaks the turn.
 - A notice from a hook goes to the running turn's sink and the observers. Outside a turn it is announced with
-  `between_turns: true`; while the plugins load it is held and announced after.
+  `between_turns: true`; while the plugins load it is held and announced after. `EventRoutes#route` decides it, the
+  same routes as a card's (`Engine#show_card`), with their own marks (`NOTICE_MARKS`, `CARD_MARKS`); a guardrails
+  line after load takes only the turn / between-turns routes (`#route_by_turn`).
 - Plugin init tasks (`chi.init`, slow setup such as an MCP server's first start): a turn waits for the ones that
   provide tools before it builds its messages, and a Stop or Ctrl-C ends the wait.
 
@@ -695,6 +698,7 @@ Paths are under `lib/samagotchi/`.
 | `toolkit_binding.rb` | `ToolkitBinding`: the Engine's toolkit seam (the kits, `#explained`, `ctx.use_toolkit`, the turn-start `#apply!` behind `Engine#apply_toolkit!`) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
+| `event_routes.rb` | `EventRoutes`: where a card (`Engine#show_card`), a notice (`HookRoutes#notify`) and a guardrails line (`#guardrail_notify`, turn or between turns only) go: held while the plugins load, an anytime command's, an init task's, a running turn's event, else announced or held for `holding_announcements` |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
 | `events.rb` | Event type sets shared by the Worker, the Bridge, the TUI and the web |
