@@ -1799,7 +1799,9 @@ RSpec.describe Samagotchi::Web::App do
           expect(app).not_to receive(:read_analytics)
 
           expect(ids(timing("?tail=1")["turn_records"])).to eq(%w[t3])
-          expect(timing("?tail=1")).to eq(timing("?tail=1&recent=1"))
+          # session_duration_ms runs to now: the two reads may be 1 ms apart.
+          expect(timing("?tail=1").except("session_duration_ms"))
+            .to eq(timing("?tail=1&recent=1").except("session_duration_ms"))
         end
       end
 
