@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Attached TUI: a turn of images alone sent from the web names each image once while you watch it start (or join
   it running), not twice.
+- Attached TUI: joining a session shows a call the guardrails denied as `blocked`, as it showed live and as the
+  web shows it, instead of `error`.
 
 ## [0.71.0] - 2026-10-15
 

@@ -368,6 +368,32 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                    "Still searching."])
       end
 
+      describe "a guardrail-denied call" do
+        let(:messages) do
+          [{ role: "user", content: "clean up", turn_id: "t1" },
+           { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "rm -rf build" } }] },
+           { role: "tool_response", tool_call_id: "c1", content: "[execute] Error: denied by guardrail (rm): not here" },
+           { role: "model", content: "It was denied." }]
+        end
+
+        # The web reloads it from the same record: blocked, as live.
+        it "takes its status from the saved tool record" do
+          save_analytics(tool_records: [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "execute",
+                                          "status" => "blocked", "duration_ms" => 1200 }])
+          feed(snapshot(messages: messages))
+
+          expect(plain_lines).to eq(["user> clean up", 'tool> running command (execute command="rm -rf build"): blocked (1.2s)',
+                                     "It was denied."])
+        end
+
+        it "reads it from the saved text when the session has no record of it" do
+          feed(snapshot(messages: messages))
+
+          expect(plain_lines).to eq(["user> clean up", 'tool> running command (execute command="rm -rf build"): error',
+                                     "It was denied."])
+        end
+      end
+
       it "leaves a completed turn's answer as it was" do
         save_analytics(turn_records: [{ "id" => "t1", "status" => "completed", "duration_ms" => 2000 }])
         feed(snapshot(messages: messages))

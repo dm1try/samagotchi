@@ -1275,7 +1275,10 @@ module Samagotchi
           elsif %w[model assistant].include?(m[:role].to_s)
             responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
             Array(Web::MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
-              @screen.commit(join_tool_line(part, duration_ms: join_duration(records, part)))
+              record = join_record(records, part)
+              duration = record&.dig("duration_ms")
+              @screen.commit(join_tool_line(part, duration_ms: duration.is_a?(Numeric) ? duration : nil,
+                                                  saved_status: record&.dig("status")))
             end
           end
         end
@@ -1307,29 +1310,32 @@ module Samagotchi
         nil
       end
 
-      # The duration of +part+'s call: the next record of its tool, in call
-      # order, consumed with the ones it skipped. By tool and order, not by
-      # iteration: an empty retry spends an iteration that left no message.
-      # nil (no duration shown) for a call that left none: it never
-      # finished, or a worker before turn ids saved it.
-      def join_duration(records, part)
+      # The saved record of +part+'s call (its duration and status): the
+      # next record of its tool, in call order, consumed with the ones it
+      # skipped. By tool and order, not by iteration: an empty retry spends
+      # an iteration that left no message (as the web's timing.js
+      # takeRecord). nil for a call that left none: it never finished, or a
+      # worker before turn ids saved it.
+      def join_record(records, part)
         return nil if part[:output].nil?
 
         at = records.index { |r| r["tool"].to_s == part[:tool].to_s }
         return nil unless at
 
-        duration = records[at]["duration_ms"]
-        records.shift(at + 1)
-        duration.is_a?(Numeric) ? duration : nil
+        records.shift(at + 1).last
       end
 
       # A saved call's row; "no result" for a call the turn never answered
-      # (it ended first).
-      def join_tool_line(part, duration_ms: nil)
+      # (it ended first). Its status is the saved record's, as live and the
+      # web's reload (a guardrail's "blocked" is no error), else read from
+      # its result.
+      def join_tool_line(part, duration_ms: nil, saved_status: nil)
         output = part[:output]
         command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
         status = if output.nil?
                    "no result"
+                 elsif !saved_status.to_s.empty?
+                   saved_status.to_s
                  else
                    ToolActivity.tool_activity_status(ToolActivity.saved_result_text(output), part[:tool],
                                                      command: command)
