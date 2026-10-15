@@ -309,3 +309,11 @@ test("firstPreview: the first message, whitespace collapsed, cut at 80 with an e
   assert.equal(firstPreview(""), "");
   assert.equal(firstPreview(null), "");
 });
+
+import { cantText } from "../../../lib/samagotchi/web/public/format.js";
+
+test("cantText: what failed and why, without the HTTP status data.js appends", () => {
+  assert.equal(cantText("stop", new Error("owned_by_tui (409)")), "Can't stop: owned_by_tui");
+  assert.equal(cantText("restart", new Error("Failed to fetch")), "Can't restart: Failed to fetch");
+  assert.equal(cantText("detach notes", { message: "gone (404)" }), "Can't detach notes: gone");
+});
