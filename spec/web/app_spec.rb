@@ -1188,6 +1188,20 @@ RSpec.describe Samagotchi::Web::App do
         expect(live_read("?parts=1").last["display_refs"]).to eq([jira])
       end
 
+      # The live tail reads no session file: the folder is the hub's (its
+      # session list entry), as the card shows it.
+      it "drops one from the live tail too, the folder taken from the hub's session list" do
+        outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
+        live["snapshot"]["messages"].last["display_refs"] = [jira, file, outside]
+        hub = instance_double(Samagotchi::Web::SessionHub, working_directory: Dir.pwd)
+        app = build_app(state_dir: Dir.mktmpdir, hub: hub)
+        stub_worker(app, live)
+        expect(StubSessionLoader).not_to receive(:load)
+
+        expect(read(app, "?tail=1").last["display_refs"]).to eq([jira, file])
+        expect(hub).to have_received(:working_directory).with("s1")
+      end
+
       it "still shows the conversation when the stored refs are junk (no refs on that message)" do
         ["junk", [42, { "kind" => nil }]].each do |junk|
           live["snapshot"]["messages"].last["display_refs"] = junk

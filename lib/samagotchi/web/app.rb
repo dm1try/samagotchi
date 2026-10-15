@@ -909,7 +909,10 @@ module Samagotchi
         state = nil unless state.is_a?(Hash)
         if state
           status, used, notes = state.values_at("status", "used_memory_names", "prompt_notes")
-          messages = last_assistant_for_display([tail["answer"]].compact)
+          # No session file read here: the folder the answer's file refs
+          # must stay under is the hub's session list entry's (nil without
+          # a hub or before it saw the session: refs aren't checked then).
+          messages = last_assistant_for_display([tail["answer"]].compact, cwd: @hub&.working_directory(id))
         else
           session = @session_class.load(id, state_dir: default_state_dir)
           status = displayed_status(session)

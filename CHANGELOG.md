@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   it running), not twice.
 - Attached TUI: joining a session shows a call the guardrails denied as `blocked`, as it showed live and as the
   web shows it, instead of `error`.
+- Web: an answer's file ref outside the session's folder is dropped from the end-of-turn re-read of a running
+  session too, as a reload drops it, instead of showing until the reload.
 
 ## [0.71.0] - 2026-10-15
 

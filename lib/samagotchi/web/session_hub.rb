@@ -172,6 +172,14 @@ module Samagotchi
         end
       end
 
+      # A session's folder as the projection holds it (its file's, read at
+      # the last scan or touch): what a live read that loads no session
+      # file checks refs against. nil for a session the hub hasn't seen.
+      # @return [String, nil]
+      def working_directory(id)
+        @monitor.synchronize { @sessions[id]&.session&.working_directory }
+      end
+
       # Register a sink (#call(event)). With +snapshot:+ the current
       # projection comes back with the handle, taken in the same step, so
       # every event after it is newer than it.

@@ -269,6 +269,18 @@ RSpec.describe Samagotchi::Web::SessionHub do
     end
   end
 
+  describe "#working_directory" do
+    it "is a scanned session's folder, from the projection: nil for one it hasn't seen" do
+      session = save_session(working_directory: "/tmp/proj-a")
+      expect(hub.working_directory(session.id)).to be_nil
+
+      hub.scan
+
+      expect(hub.working_directory(session.id)).to eq("/tmp/proj-a")
+      expect(hub.working_directory("0123456789abcdef")).to be_nil
+    end
+  end
+
   describe "#snapshot" do
     it "sorts by updated_at desc like Session.list, and takes sort and order" do
       old = save_session(prompt: "old")
