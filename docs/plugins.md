@@ -1752,7 +1752,8 @@ Claude pairs; without one the bundle costs one tool declaration.
     file is there (it goes when that Claude session ends), the last send, and
     Claude's last answer (the `claude-outbox` summary). When Claude's installed
     chi-peer skill differs from what `/claude install-skill` would write (an
-    older bundle's, or your edit), it says so: install it again (Replace),
+    older bundle's, or your edit; a skill installed by a chi with another state
+    dir or bundle path differs too), it says so: install it again (Replace),
     then pair again.
   - `/claude validate <text>` and `/claude context <text>` send the text as it
     is, titled by its first line (past a web quote's `From …:` label and a
@@ -1886,7 +1887,8 @@ skill install card) works the same.
   guardrails rule with `tool: codex_send` (see the claude-peer section).
 - **The peer loop** works as claude-peer's: `codex-outbox` is declared a
   peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
-  and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0.
+  and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0 (the closing
+  wake: the chi released with this bundle).
 
 ## Shutdown
 
