@@ -82,6 +82,15 @@ RSpec.describe Samagotchi::Toolkit do
     expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit", "toolkit.kits.odd: expected {base:, add:, remove:}"])
   end
 
+  it "loads a config kit with an unknown key and warns about the key (a typo, not a broken kit)" do
+    errors = []
+    kits = described_class.kits(config: { "review" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
+                                errors: errors)
+    expect(kits["review"].base).to eq("lean")
+    expect(errors).to eq(["toolkit.kits.review: unknown key tools (a kit takes base:, add:, remove:)",
+                          "toolkit.kits.review: unknown key remvoe (a kit takes base:, add:, remove:)"])
+  end
+
   it "doesn't let a plugin kit replace one already known" do
     plugin = described_class::Kit.new(name: "lean", tools: :all, source: "mine")
     expect(described_class.kits(plugins: [plugin])["lean"].source).to eq("core")

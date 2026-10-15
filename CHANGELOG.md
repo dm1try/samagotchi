@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `toolkit.kits` entry with a key other than `base:`, `add:` and `remove:` (a typo, a `tools:` list) now warns
+  (once, as the toolkit's other config warnings) instead of being ignored silently; the kit still loads.
 - Attached terminal: a session's reloaded tool rows read each result as the live row did: a command handed over
   as a task is no longer shown failed because its output so far had `exit: 1`, and a failed `execute`
   (`Error: …`) is no longer shown done.

@@ -1340,8 +1340,8 @@ toolkit:
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions` (declared by the coordinator bundle) |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
-  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:` and `remove:`; it can't reuse a
-  built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove-)).
+  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:` and `remove:` (any other key, a typo
+  or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove-)).
 - **Saved at creation, never re-resolved from config.** A session stores its toolkit as named
   (`"toolkit": {"name": "lean", "add": [], "remove": []}`) when it is created: `toolkit.default`, `toolkit.child`
   for a delegate child, or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`

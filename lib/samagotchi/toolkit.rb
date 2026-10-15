@@ -230,13 +230,17 @@ module Samagotchi
       base.changed(add: kit.add, remove: kit.remove).with(name: name)
     end
 
+    # The keys a config kit entry takes.
+    KIT_KEYS = %w[base add remove].freeze
+
     # The kits known: the built-ins, then config's toolkit.kits, then the
     # plugins' (chi.toolkit). A config kit with a built-in's name is left
     # out (one it can't redefine) with a line in +errors+, and so is one
-    # that isn't a {base:, add:, remove:} map.
+    # that isn't a {base:, add:, remove:} map. One with another key (a
+    # typo, a tools: list) still loads, with a line naming the key.
     # @param config [Hash, nil] toolkit.kits
     # @param plugins [Array<Kit>]
-    # @param errors [Array<String>] gets a line per kit left out
+    # @param errors [Array<String>] gets a line per kit left out or unknown key
     # @return [Hash{String => Kit}]
     def self.kits(config: nil, plugins: [], errors: [])
       kits = BUILTIN_KITS.dup
@@ -248,6 +252,9 @@ module Samagotchi
           errors << "toolkit.kits.#{name}: expected {base:, add:, remove:}"
         else
           spec = spec.transform_keys(&:to_s)
+          (spec.keys - KIT_KEYS).each do |key|
+            errors << "toolkit.kits.#{name}: unknown key #{key} (a kit takes base:, add:, remove:)"
+          end
           kits[name] = Kit.new(name: name, base: spec["base"] || FULL, add: spec["add"], remove: spec["remove"],
                                source: "config")
         end
