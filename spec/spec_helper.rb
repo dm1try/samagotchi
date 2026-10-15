@@ -3,6 +3,7 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
 require "fileutils"
+require "timeout"
 require "tmpdir"
 
 # No spec reaches the network, localhost included: an unstubbed request
@@ -36,6 +37,11 @@ require_relative "support/integration_server"
 SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
 SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
 SPEC_ENV_CLEAR.call
+
+# The per-example time limit (config.around below): its error, and the opt-in
+# live tags it leaves alone.
+class SpecExampleTimeout < StandardError; end
+SPEC_UNTIMED_TAGS = %i[integration macos_build warmup recap].freeze
 
 # Isolate specs from the developer's ~/.config/samagotchi/config.yml (hosts,
 # memories, aliases...) with a minimal fixture config. :integration examples
@@ -188,6 +194,25 @@ RSpec.configure do |config|
   rescue SystemExit => e
     raise "exit(#{e.status}) escaped the example (its own code, or a thread from it or an earlier example): " \
           "#{e.backtrace&.first(8)&.join("\n  ")}"
+  end
+
+  # A hung example fails instead of hanging the run. The slowest examples take
+  # ~15 s alone and ~31 s under a loaded parallel run (the peer pair specs),
+  # so 120 s only fires on a real hang: an unbounded wait, a Queue#pop or a
+  # join nothing ends. It wraps the example's own hooks (an after's join too).
+  # The opt-in live tags run real models and builds and keep no limit;
+  # SPEC_EXAMPLE_TIMEOUT=0 turns it off (a debugger session), another number
+  # sets it.
+  example_timeout = Float(ENV.fetch("SPEC_EXAMPLE_TIMEOUT", "120"))
+  config.around do |example|
+    if example_timeout.zero? || example.metadata.values_at(*SPEC_UNTIMED_TAGS).any?
+      example.run
+    else
+      Timeout.timeout(example_timeout, SpecExampleTimeout,
+                      "example still running after #{example_timeout.to_i} s (SPEC_EXAMPLE_TIMEOUT): a hang?") do
+        example.run
+      end
+    end
   end
 
   # Every example that was to run ran. A run that stopped early on purpose
