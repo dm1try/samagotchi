@@ -8,7 +8,7 @@ const ME = "tab-me";
 // A page with recording hooks: every hook and view method pushes its name
 // and arguments onto +calls+; the open session and its fields can change
 // between events (page.open), as a session switch does.
-function fakePage({ selected = "s1", running = false } = {}) {
+function fakePage({ selected = "s1", running = false, read = null } = {}) {
   const calls = [];
   const rec = (name, ret) => (...args) => {
     calls.push([name, ...args]);
@@ -66,7 +66,7 @@ function fakePage({ selected = "s1", running = false } = {}) {
       refill: rec("composer.refill", (text) => { page.composerText = text; }),
       setChips: rec("composer.setChips"),
     },
-    getSession: rec("getSession", async () => ({ messages: [] })),
+    getSession: rec("getSession", read || (async () => ({ messages: [] }))),
     commandBubble: rec("commandBubble", null),
     findInTurnRoots: rec("findInTurnRoots", []),
     applyPromptOps: rec("applyPromptOps", "bubble"),
@@ -276,6 +276,25 @@ test("answer_display re-reads the session open at that moment", async () => {
   const read = page.calls.find((c) => c[0] === "getSession");
   assert.equal(read[1], "s7");
   assert.ok(page.names().includes("applyFinalMarkdown"));
+  assert.ok(page.names().includes("liveTurn.releaseDisplay"));
+});
+
+test("answer_display: a switch during the re-read leaves the open session's answers alone", async () => {
+  let fake;
+  fake = fakePage({ read: async () => { fake.page.open("s8"); return { messages: [] }; } });
+  fake.page.open("s7");
+  await fake.handlers.answer_display({ display: true });
+  assert.equal(fake.page.calls.find((c) => c[0] === "getSession")[1], "s7");
+  assert.equal(fake.page.names().includes("applyFinalMarkdown"), false);
+  assert.ok(fake.page.names().includes("liveTurn.releaseDisplay"));
+});
+
+test("answer_display: a switch while the turn's end was read re-reads nothing", async () => {
+  const { page, handlers, liveTurn } = fakePage();
+  page.open("s7");
+  liveTurn.endRead = Promise.resolve().then(() => page.open("s8"));
+  await handlers.answer_display({ display: true });
+  assert.equal(page.calls.some((c) => c[0] === "getSession"), false);
   assert.ok(page.names().includes("liveTurn.releaseDisplay"));
 });
 

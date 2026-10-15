@@ -127,18 +127,22 @@ test("routeSessionLine routes the created session's line by its commands", () =>
 
 // ── Commands sent from the composer and from controls ────────────────────
 
-function harness({ session = "s1", fail = null } = {}) {
+// +switchTo+: the page opens that session while the command is in flight.
+function harness({ session = "s1", fail = null, switchTo = undefined } = {}) {
   const calls = [];
+  let open = session;
   const deps = {
-    session: () => session,
+    session: () => open,
     clientId: "c1",
     sendCommand: async (id, line, opts) => {
       calls.push(["send", id, line, opts]);
+      if (switchTo !== undefined) open = switchTo;
       if (fail) throw fail;
     },
     followWokenWorker: () => calls.push(["follow"]),
     refreshHistory: () => calls.push(["refresh"]),
     failed: (line, text) => calls.push(["failed", line, text]),
+    failedElsewhere: (line, text) => calls.push(["elsewhere", line, text]),
     ownedByTui: () => calls.push(["tui"]),
     composer: {
       busy: () => calls.push(["busy"]),
@@ -183,4 +187,38 @@ test("run: a failure is a failed bubble; no session, nothing sent", async () => 
   const none = harness({ session: null });
   assert.equal(await none.commands.run("/thinking high"), false);
   assert.deepEqual(none.calls, []);
+});
+
+// A switch while the command was in flight: what follows is about the
+// session it went to, not the one open now.
+test("send: a switch mid-send clears the composer but follows no worker", async () => {
+  const { calls, commands } = harness({ switchTo: "s2" });
+  await commands.send("/model x");
+  assert.deepEqual(calls, [
+    ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear"], ["refresh"], ["done"],
+  ]);
+});
+
+test("send: after a switch, a refusal or a terminal's hold is said elsewhere, not marked on the open session", async () => {
+  const tui = harness({ switchTo: "s2", fail: Object.assign(new Error("tui"), { code: "owned_by_tui" }) });
+  await tui.commands.send("!ls");
+  assert.deepEqual(tui.calls.map((c) => c[0]), ["busy", "send", "elsewhere", "done"]);
+  const bad = harness({ switchTo: "s2", fail: new Error("nope") });
+  await bad.commands.send("/model x");
+  assert.deepEqual(bad.calls.slice(1), [["send", "s1", "/model x", { clientId: "c1" }], ["elsewhere", "/model x", "nope"], ["done"]]);
+});
+
+test("run: after a switch, no follow; a failure is said elsewhere", async () => {
+  const ok = harness({ switchTo: "s2" });
+  assert.equal(await ok.commands.run("/thinking high"), true);
+  assert.deepEqual(ok.calls.map((c) => c[0]), ["send"]);
+  const failing = harness({ switchTo: "s2", fail: new Error("down") });
+  assert.equal(await failing.commands.run("/thinking high"), false);
+  assert.deepEqual(failing.calls.map((c) => c[0]), ["send", "elsewhere"]);
+});
+
+test("send and run: a switch away and back again is still the same session", async () => {
+  const { calls, commands } = harness({ switchTo: "s1" });
+  await commands.send("/model x");
+  assert.ok(calls.some((c) => c[0] === "follow"));
 });

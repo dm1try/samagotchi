@@ -14,14 +14,14 @@ function history(markup = "") {
 
 // The page's wiring over a bare history (no stage; a running turn's card
 // goes into +turnCard+'s step when it returns true).
-function harness(historyEl, { turnCard = () => false, questionCards = null, api = {} } = {}) {
+function harness(historyEl, { turnCard = () => false, questionCards = null, api = {}, selected = () => "s1" } = {}) {
   const findInTurnRoots = (selector) => [...historyEl.querySelectorAll(selector)];
   const common = {
     historyEl,
     appendToHistory: (el) => historyEl.appendChild(el),
     isNearBottom: () => true,
     findInTurnRoots,
-    selected: () => "s1",
+    selected,
     clientId: "me",
   };
   const bubbles = createBubbles({
@@ -146,4 +146,17 @@ test("a card's action runs its command and follows the woken worker; a failure s
   cards.onCardAction({ target: bad });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(h.querySelector(".card-error").textContent, "nope");
+});
+
+test("a card's action follows no worker when another session opened meanwhile", async () => {
+  const h = history();
+  let open = "s1";
+  const { cards, woke } = harness(h, {
+    selected: () => open,
+    api: { sendCommand: async () => { open = "s2"; } },
+  });
+  cards.upsertCard({ id: "c1", title: "Check", body: "b", actions: [{ label: "Go", command: "/go" }] });
+  cards.onCardAction({ target: h.querySelector(".card-action") });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(woke.length, 0);
 });
