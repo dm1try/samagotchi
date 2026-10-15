@@ -8,18 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-10-15
+
 ### Changed
 
-- Web: a tool row whose call the guardrails corrected shows its output without the `ran as: …` line inline (it
-  stays on hover).
-- `task_wait` on a task that finished now returns the last lines of its log too (`output_tail:`, `tail_lines` of
-  them, 10 by default), as a timed-out wait does: a test run's summary or an error is there without reading the
-  log; its web row shows them.
 - Web: an `execute` row, and a `task_wait` row showing its log's last lines, now shows the end of its output (a
   test run's summary, a failing exit line) instead of the start, without the success `exit: 0` line or a lone
   `stdout:` label; the whole output stays on hover.
+- `task_wait` on a task that finished now returns the last lines of its log too (`output_tail:`, `tail_lines` of
+  them, 10 by default), as a timed-out wait does: a test run's summary or an error is there without reading the
+  log; its web row shows them.
 - Web: a page opened mid-turn (or reconnecting) gets each tool's output cut as a reload does (2000 characters),
   so a joined row matches the reloaded one and the snapshot is smaller.
+- Web: a tool row whose call the guardrails corrected shows its output without the `ran as: …` line inline (it
+  stays on hover).
 
 ### Fixed
 
@@ -40,6 +42,8 @@ and commands may change between minor versions. How releases are made:
   log printed.
 - A `task_wait` whose task failed (exited non-zero, or without an exit code) is now marked failed in the web and
   terminal rows and counted in the turn's "(N failed)", as a failing `execute` is.
+
+Update with `chi update` (the system bundle 0.71.0), then restart `chi web`.
 
 ## [0.70.0] - 2026-10-15
 
@@ -3062,7 +3066,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.70.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.71.0...HEAD
+[0.71.0]: https://github.com/dm1try/samagotchi/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/dm1try/samagotchi/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/dm1try/samagotchi/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/dm1try/samagotchi/compare/v0.67.0...v0.68.0
