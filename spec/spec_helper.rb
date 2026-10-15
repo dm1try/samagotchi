@@ -77,6 +77,16 @@ SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
 
+# And keep the peer bundles (claude-peer, codex-peer) off the developer's
+# Claude Code and Codex config folders: their status card and install-skill
+# read (and --yes writes) <dir>/skills/chi-peer/SKILL.md. Empty dirs, as the
+# CLIs' own CLAUDE_CONFIG_DIR / CODEX_HOME; a spec that needs the ~ default
+# unsets them and points HOME at a temp dir.
+SPEC_PEER_HOME = Dir.mktmpdir("samagotchi-spec-peer-home")
+ENV["CLAUDE_CONFIG_DIR"] = File.join(SPEC_PEER_HOME, "claude")
+ENV["CODEX_HOME"] = File.join(SPEC_PEER_HOME, "codex")
+at_exit { FileUtils.remove_entry(SPEC_PEER_HOME) if File.directory?(SPEC_PEER_HOME) }
+
 # An exit between examples (a thread's `exit` raised again in the main thread
 # while the reporter runs, a before(:context) hook's) unwinds the whole run
 # with the exit's status, 0 for `exit` or `exit(0)`. RSpec itself exits only

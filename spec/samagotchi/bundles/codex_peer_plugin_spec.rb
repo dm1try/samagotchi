@@ -429,9 +429,10 @@ RSpec.describe "The codex-peer plugin" do
       end
 
       it "defaults to ~/.codex without CODEX_HOME" do
-        with_env("CODEX_HOME" => nil) { run("install-skill") }
+        home = File.join(tmpdir, "home")
+        with_env("CODEX_HOME" => nil, "HOME" => home) { run("install-skill") }
 
-        expect(cards.last[:body]).to include("target: `#{File.join(Dir.home, ".codex", "skills", "chi-peer", "SKILL.md")}`")
+        expect(cards.last[:body]).to include("target: `#{File.join(home, ".codex", "skills", "chi-peer", "SKILL.md")}`")
       end
     end
   end
