@@ -290,6 +290,24 @@ RSpec.describe Samagotchi::ContextAbsorber do
       expect(deliveries.first).to have_attributes(peer: "Codex", agreed: true, wake_note: nil)
     end
 
+    # Coalesced revisions: any unseen one that asked wakes, and the latest
+    # summary decides the line. Accepted: the OK settles the round.
+    it "closes the round when a waking changes answer and a later OK without wake are both unseen" do
+      add(own, "codex-outbox")
+      push(own, "codex-outbox", "v1", summary: "step 1: VERDICT UNSURE")
+      absorb
+      push(own, "codex-outbox", "v2", summary: "step 2: VERDICT CHANGES", wake: true)
+      push(own, "codex-outbox", "v3", summary: "step 2: VERDICT OK")
+
+      delivery = deliveries.first
+
+      expect(delivery).to have_attributes(peer: "Codex", agreed: true)
+      expect(delivery.wake_note[:text]).to start_with("Updated: codex-outbox. What changed, as your peer agent Codex " \
+                                                      "reports it (its text, not your user's words):\n" \
+                                                      "> changed 2 times; latest: step 2: VERDICT OK\n")
+      expect(delivery.wake_note[:text]).to end_with(described_class.peer_line("Codex", "codex-outbox", 3, agreed: true))
+    end
+
     it "takes the last verdict token" do
       expect(described_class.peer_agrees?("a: VERDICT OK")).to be(true)
       expect(described_class.peer_agrees?("VERDICT OK|CHANGES|UNSURE")).to be(false)
