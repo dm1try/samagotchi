@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "passes a source's ToolResult on, images and all" do
       result = Samagotchi::Plugin::ToolResult.new("shot", images: [{ path: "/tmp/a.png", name: "a.png" }])
-      index.sources.first.instance_variable_set(:@call, ->(*) { result })
+      index.instance_variable_get(:@sources).first.instance_variable_set(:@call, ->(*) { result })
       expect(call_entry.handler.call({ name: call_name, args: { "tool" => "fs/echo" } }, nil)).to be(result)
     end
 
@@ -307,10 +307,10 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     it "adds the source when the plugin's register returns, once per plugin" do
       chi = api
       chi.tool_source(call: ->(*) { "" }, acts_as: ->(*) { "" })
-      expect(index.sources).to be_empty
+      expect(index.instance_variable_get(:@sources)).to be_empty
       expect { chi.tool_source(call: ->(*) { "" }, acts_as: ->(*) { "" }) }.to raise_error(ArgumentError, /twice/)
       chi.commit!
-      expect(index.sources.size).to eq(1)
+      expect(index.instance_variable_get(:@sources).size).to eq(1)
       expect(chi.counts[:tool_sources]).to eq(1)
     end
 

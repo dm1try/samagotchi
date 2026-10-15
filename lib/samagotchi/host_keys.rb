@@ -131,8 +131,6 @@ module Samagotchi
       # The command that stores the key for +name+ (prompting for it).
       def store_command(name) = "security add-generic-password -s #{SERVICE} -a #{name} -w"
 
-      def clear_cache! = @mutex.synchronize { @cache.clear }
-
       # Names only: the cache holds keys.
       def inspect = "#<#{name} cached=#{@mutex.synchronize { @cache.keys }.inspect}>"
 

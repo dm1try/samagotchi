@@ -194,8 +194,6 @@ module Samagotchi
         nil
       end
 
-      def sources = @sources.dup
-
       # Every group, now: the index's own (#registry_groups), then the
       # sources'. A source group with a reserved name, or one an earlier
       # group has, is left out of search, lookup and the description (said

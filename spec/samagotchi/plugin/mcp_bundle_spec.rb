@@ -489,7 +489,7 @@ RSpec.describe "The mcp bundle" do
   end
 
   it "/mcp says the model can't reach the tools when chi's tool index declared neither (names taken)" do
-    engine.instance_variable_get(:@tool_index).sources.first.declared!([], 0)
+    engine.instance_variable_get(:@tool_index).instance_variable_get(:@sources).first.declared!([], 0)
     commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
                                                default_model: "Gemma-4B-it", registry: engine.command_registry)
     cards = []
