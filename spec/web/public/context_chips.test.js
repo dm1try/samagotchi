@@ -113,11 +113,11 @@ test("addFormTemplate: a URL field, an optional why, Attach; an error line when 
 
 // The chips on the shim's document: +el+ in the body, a stub api and
 // window (no timers: the minute's tick is a spec's own call).
-function chipsControl({ list, add = async () => ({ name: "pr-9" }), show = async () => ({ text: "the text" }) }) {
+function chipsControl({ list, add = async () => ({ name: "pr-9" }), show = async () => ({ text: "the text" }), size = {} }) {
   const el = document.createElement("div");
   document.body.append(el);
   const toasts = [];
-  const win = { innerWidth: 1000, innerHeight: 800, addEventListener() {}, setInterval() {}, confirm: () => true };
+  const win = { innerWidth: 1000, innerHeight: 800, ...size, addEventListener() {}, setInterval() {}, confirm: () => true };
   const ctl = createContextChips({ el, api: { list, add, show, detach: async () => {} }, toast: (t) => toasts.push(t), win });
   const pop = document.getElementById("contextPopover");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -235,5 +235,40 @@ test("the context popover and a session-bar chip's popover close each other", as
   assert.equal(level.isOpen(), false);
   bar.remove();
   level.pop.remove();
+  c.done();
+});
+
+// The popover is placed as the session bar's chips place theirs
+// (chip_popover.js popoverPlace): a chip near the window's top opens it
+// below, and one with little room either side caps its height (it scrolls)
+// instead of running past the window's edge. The text "view text" shows
+// places it again.
+test("the popover flips below a chip near the top and caps its height to the room", async () => {
+  let height = 300;
+  const c = chipsControl({ list: async () => ({ sources: [row()], can_add_url: false }), show: async () => ({ text: "long" }),
+                           size: { innerWidth: 390, innerHeight: 700 } });
+  Object.defineProperty(c.pop, "offsetHeight", { configurable: true, get: () => height });
+  await c.ctl.load("s1");
+  const chip = c.el.querySelector('[data-name="pr-1"]');
+  chip.getBoundingClientRect = () => ({ left: 40, top: 100, bottom: 124, right: 120, width: 80, height: 24 });
+  chip.click();
+  assert.equal(c.pop.style.top, "132px");
+  assert.equal(c.pop.style.bottom, "");
+  assert.equal(c.pop.style.left, "16px");
+  assert.equal(c.pop.style.width, "358px");
+  assert.equal(c.pop.style.maxHeight, "");
+  height = 900;
+  c.pop.querySelector('[data-act="view"]').click();
+  await c.settle();
+  assert.equal(c.pop.querySelector(".ctx-pop-text").textContent, "long");
+  assert.equal(c.pop.style.top, "132px");
+  assert.equal(c.pop.style.maxHeight, "552px");
+  c.ctl.close();
+  // Low on the window: above it, capped to the room above.
+  chip.getBoundingClientRect = () => ({ left: 40, top: 600, bottom: 624, right: 120, width: 80, height: 24 });
+  chip.click();
+  assert.equal(c.pop.style.top, "");
+  assert.equal(c.pop.style.bottom, "108px");
+  assert.equal(c.pop.style.maxHeight, "576px");
   c.done();
 });
