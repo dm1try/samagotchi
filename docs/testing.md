@@ -44,6 +44,12 @@ Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both term
 either router adds its row there; a row where a UI differs on purpose (or a found divergence) carries a `web` or
 `repl` override and a `note`.
 
+A spec that waits for something uses `wait_until(timeout:)`, or `wait_until!(what, timeout:)` where no check
+follows (stubs, helper threads: it raises "timed out after N s waiting for <what>") — never a loop with no deadline.
+Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integration`, `macos_build`, `warmup` and
+`recap` examples are exempt), so a hang fails its example instead of the run. `SPEC_EXAMPLE_TIMEOUT=N` changes the
+limit, `0` turns it off (a debugger session).
+
 ## While you work: affected specs
 
 ```sh
