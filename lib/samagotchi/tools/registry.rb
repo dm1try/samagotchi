@@ -179,13 +179,24 @@ module Samagotchi
         return true if @index.sourced
         return false if toolkit&.removed&.include?(@index.call_name)
 
-        @entries.each_value.any? { |entry| soft?(entry, [], toolkit) }
+        index_reaches?(toolkit)
       end
 
+      # Whether the index's tools would reach something under +toolkit+,
+      # removed or not: a source registered at load, or a built-in the
+      # toolkit leaves out without removing it.
+      def index_reaches?(toolkit)
+        @index.sourced || @entries.each_value.any? { |entry| soft?(entry, [], toolkit) }
+      end
+
+      # Not declared by +toolkit+ under +layers+. An index tool counts only
+      # when the toolkit removes it and it would reach something (full with
+      # --no-tool call_tool and no MCP server leaves nothing out).
       def left_out?(entry, layers, toolkit)
         return false unless entry.offered?(layers) && !declared?(entry, toolkit)
+        return true unless index_entry?(entry)
 
-        !index_entry?(entry) || toolkit&.removed&.include?(entry.name) == true
+        toolkit&.removed&.include?(entry.name) == true && index_reaches?(toolkit)
       end
 
       # A built-in +toolkit+ leaves out of a turn under +layers+ without

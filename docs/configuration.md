@@ -1355,7 +1355,7 @@ toolkit:
   call_tool can't reach it (`child` removes `memory_write`, `delegate` and `delegate_result`, so a child on it
   starts no children). To keep a built-in away from the model, name it under `remove:`. `find_tools` and `call_tool`
   are declared when a toolkit has a reachable built-in (or an MCP server is configured); `full` with no MCP server
-  declares neither.
+  declares neither, and removing them there (`--no-tool call_tool`) leaves nothing out: no prompt line, no chip.
 - **The prompt line.** One line after the base prompt names them: `Not declared in this session (toolkit lean): ….
   Search them with find_tools; call one with call_tool.`, then `Removed (toolkit child): memory_write, …. Only the
   user can load one (/toolkit add <name>).` With `find_tools` removed, the first sentence ends `Call one with

@@ -23,6 +23,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `full` with `--no-tool call_tool` (or `find_tools`) and no MCP server no longer adds a "Not loaded in this
+  session" line to the system prompt nor a web toolkit chip: there call_tool reaches nothing, so nothing is left
+  out.
 - A `toolkit.kits` entry with a key other than `base:`, `add:` and `remove:` (a typo, a `tools:` list) now warns
   (once, as the toolkit's other config warnings) instead of being ignored silently; the kit still loads.
 - Attached terminal: a session's reloaded tool rows read each result as the live row did: a command handed over

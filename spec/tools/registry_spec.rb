@@ -246,6 +246,8 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.names(toolkit: kit(remove: %w[call_tool]))).not_to include("find_tools", "call_tool")
         expect(registry.left_out_names(toolkit: kit(remove: %w[call_tool]))).to include("call_tool")
         expect(registry.left_out_names(toolkit: kit(remove: %w[call_tool]))).not_to include("find_tools")
+        # full declares every built-in: call_tool would reach nothing, so removing it leaves nothing out.
+        expect(registry.left_out_names(toolkit: kit("full", remove: %w[call_tool]))).to eq([])
 
         registry.index = registry.index.with(sourced: true) # an MCP server at load: every toolkit
         expect(registry.names).to include("find_tools", "call_tool")
