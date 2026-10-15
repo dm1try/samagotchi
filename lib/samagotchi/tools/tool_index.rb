@@ -544,6 +544,9 @@ module Samagotchi
         return same.first if same.size == 1
         return "Error: #{name} names #{same.map(&:full_name).join(" and ")}; call one as <group>/<tool>" if same.size > 1
 
+        # A built-in the session declares is no starting server's tool.
+        return "Error: #{name} is declared; call it directly" if @registry&.offered(name)&.core?
+
         # A name with a group's <group>/ waits for that group only; any
         # other name (an acts_as) for every one starting.
         named = all.select { |group| name.start_with?("#{group.name}/") }

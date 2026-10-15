@@ -269,6 +269,16 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     expect(index.call("fs/echo", {})).to eq("ran echo")
   end
 
+  it "answers a declared built-in's bare name at once, without waiting for a starting server" do
+    waited = []
+    added(wait: ->(group) { waited << group }).publish([described_class::Group.new(name: "slow", state: :starting)])
+    index.declare(registry)
+    expect(index.call("read", {})).to eq("Error: read is declared; call it directly")
+    expect(waited).to eq([])
+    expect(index.call("nope", {})).to start_with("Error: no tool nope")
+    expect(waited).to eq(["slow"])
+  end
+
   it "takes only Group values in a publish" do
     expect { source.publish([{ name: "fs" }]) }.to raise_error(ArgumentError, /ToolIndex::Group/)
   end

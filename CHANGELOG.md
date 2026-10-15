@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   session too, as a reload drops it, instead of showing until the reload.
 - Plugins: a turn no longer fails with "can't add a new key into hash during iteration" when a plugin's
   `replace_tools` registers a tool while a page reads the session's settings (no MCP server loaded).
+- `call_tool` given the bare name of a tool the session declares (`read`) answers at once that it's declared and
+  should be called directly, instead of first waiting for every MCP server still starting.
 
 ## [0.71.0] - 2026-10-15
 
