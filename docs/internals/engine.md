@@ -122,7 +122,7 @@ A worker's TERM, HUP or INT (WorkerSignals, trapped by a spawned worker only):
   → run_session_loop: exit 0, no discard; input queued behind the stopped turn wakes a new worker
 
 The effective model doesn't resolve (a broken host config, HostRegistry#resolve raising):
-  → the rescued readers give their fallback (Engine#model_setting) and log effective_model_unresolved;
+  → the rescued readers give their fallback (SessionModelSettings#model_setting) and log effective_model_unresolved;
      a setting that fails on a resolved model gives its fallback and logs <setting>_unresolved
      (sampling, thinking, reasoning_history, steer_cut_after, llm_context, window, price, served,
      vision_adapter); served_probe_failed when asking the server for its served model fails;
@@ -365,7 +365,7 @@ read live, a model listing can move a bare id to another host, and another proce
 what a resolve gives, all without a `/model`. Frozen, so any thread may hold one.
 
 - The Engine's readers take one (`Engine#effective_model`); those whose fallback always covered the resolve go
-  through `#model_setting`. A turn takes one in `turn_settings` (before the hooks) and one in `generate` (after
+  through `SessionModelSettings#model_setting` (`session_model_settings.rb`: the Engine forwards its readers of the session's settings there). A turn takes one in `turn_settings` (before the hooks) and one in `generate` (after
   them); `system_prompt`, `steer_cut_after` (at `:turn_started`) and the turn-end warm-up take their own;
   `stats_snapshot` and `session_state_snapshot` take one each (the latter nil-tolerant).
 - Never resolved (they hold on a broken resolve): `effective_model_ref`, `bare_model_name`,
@@ -497,7 +497,7 @@ hook registry (`@hooks.fire`), not on the sink or the observers. The other hook 
 ```
 Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
-  @host_registry, @model_choice (ModelChoice: the name and the name as typed); @client = effective_model.client
+  @host_registry, @model_choice (ModelChoice: the name and the name as typed); @model_settings (SessionModelSettings: the choice and the session read at use); @client = effective_model.client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   MemoryBundle::SystemBundle.ensure! (the shipped system bundle installed; a failure is logged, not raised)
   @event_routes (EventRoutes: where a card or a notice goes: held while the plugins load, an anytime command's, an init task's, a turn event, else announced or held)
@@ -681,6 +681,7 @@ Paths are under `lib/samagotchi/`.
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
 | `effective_model.rb` | `EffectiveModel` (the effective model's settings, a snapshot per read; `.of_session`), `ModelChoice`, the fallbacks' log lines (`Unresolved`) |
 | `session_setting.rb` | `SessionSetting`: the per-session settings' descriptors (own value, chips, the web's fallback) |
+| `session_model_settings.rb` | `SessionModelSettings`: the session's settings on its effective model (its own thinking, reasoning_history and llm_context over the model's, the `/model` and `/stats` summaries, what a turn resolves, `#model_setting`'s fallbacks); the Engine forwards its readers there |
 | `level_setting_command.rb`, `thinking_command.rb`, `reasoning_history_command.rb` | `/thinking` and `/reasoning-history` (`LevelSettingCommand` and its two Specs) |
 | `thinking_notices.rb` | `ThinkingNotices`: the notices a turn's thinking level leads to |
 | `steer_cut_after.rb`, `cut_policy.rb` | The model's cut wait (`SteerCutAfter.resolve`); the loops' cut path (`CutPolicy`) |
