@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `task_wait` on a task that finished now returns the last lines of its log too (`output_tail:`, `tail_lines` of
+  them, 10 by default), as a timed-out wait does: a test run's summary or an error is there without reading the
+  log; its web row shows them.
 - Web: an `execute` row, and a `task_wait` row showing its log's last lines, now shows the end of its output (a
   test run's summary, a failing exit line) instead of the start, without the success `exit: 0` line or a lone
   `stdout:` label; the whole output stays on hover.

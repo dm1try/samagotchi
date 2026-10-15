@@ -80,13 +80,11 @@ module Samagotchi
       end
       private_class_method :cancelled_response
 
-      # A task the user stopped also says so, with the tail of its output:
-      # the model sees where the job was cut off.
+      # Always give the log's last lines: a test run's summary, an error. A
+      # task the user stopped also says so.
       def self.finished_response(record, tail_lines)
-        return format_response(record) unless record.stopped_by_user?
-
-        format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines,
-                               extra: [TaskRuntime::USER_STOP_NOTE])
+        extra = record.stopped_by_user? ? [TaskRuntime::USER_STOP_NOTE] : []
+        format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines, extra: extra)
       end
       private_class_method :finished_response
 

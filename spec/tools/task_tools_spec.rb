@@ -500,6 +500,19 @@ RSpec.describe "task tools" do
       expect(result).to include("status: completed")
       expect(result).to include("exit_code: 0")
       expect(result).to include("output_path:")
+      expect(result).to end_with("output_tail:\nhello")
+      expect(result.ref_path).to eq(extract_field(result, "output_path"))
+    end
+
+    it "gives a finished task's last log lines, tail_lines of them" do
+      create_result = Samagotchi::Tools::TaskCreate.call("for i in $(seq 0 14); do echo l$i; done; exit 3")
+      task_id = extract_field(create_result, "task_id")
+
+      result = described_class.call(task_id, timeout: 10)
+
+      expect(result).to include("status: failed", "exit_code: 3")
+      expect(result).to end_with("output_tail:\n#{(5..14).map { |i| "l#{i}" }.join("\n")}")
+      expect(described_class.call(task_id, tail_lines: 2)).to end_with("output_tail:\nl13\nl14")
     end
 
     it "returns a bounded output tail when task is still in progress" do
@@ -557,6 +570,8 @@ RSpec.describe "task tools" do
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: stopped")
       expect(result).to include("stop_reason: stopped_by_model")
+      expect(result).to include("output_tail:")
+      expect(result).not_to include(Samagotchi::Tools::TaskRuntime::USER_STOP_NOTE)
     end
 
     it "returns with a note and the output tail when the user stops the task" do
@@ -778,6 +793,7 @@ RSpec.describe "task tools" do
       expect(result).to include("status: failed", "exit_code: 3", "output_path: #{paths[:output_path]}",
                                 "stderr_path: #{paths[:stderr_path]}")
       expect(Samagotchi::Tools::TaskGet.call(id)).to include("stderr_path: #{paths[:stderr_path]}")
+      expect(result).to include("output_tail:\nout", "stderr_tail:\nerr")
     end
 
     it "refuses a bad id, an existing task, a relative path or a pid chi can't stop, and writes nothing" do
