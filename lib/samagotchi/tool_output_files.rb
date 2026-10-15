@@ -29,9 +29,9 @@ module Samagotchi
     # @return [Saved]
     # @raise [SystemCallError] when it can't be written
     def save(session_dir, text, tool:)
-      dir = File.join(session_dir, DIR)
+      path = planned(session_dir, text, tool: tool).path
+      dir = File.dirname(path)
       FileUtils.mkdir_p(dir)
-      path = File.join(dir, "#{file_tool(tool)}-#{Digest::SHA256.hexdigest(text)[0, 12]}.txt")
       # Already there (the same output again): newest now, not rewritten.
       # An empty one (cut short) is written again.
       if File.size?(path)
@@ -40,6 +40,14 @@ module Samagotchi
         AtomicFile.write(path, text)
       end
       prune(dir)
+      planned(session_dir, text, tool: tool)
+    end
+
+    # Where #save would put +text+, and its size, with nothing written: the
+    # cut checks its gap line fits before anything is saved.
+    # @return [Saved]
+    def planned(session_dir, text, tool:)
+      path = File.join(session_dir, DIR, "#{file_tool(tool)}-#{Digest::SHA256.hexdigest(text)[0, 12]}.txt")
       Saved.new(path: path, bytes: text.bytesize, lines: line_count(text))
     end
 

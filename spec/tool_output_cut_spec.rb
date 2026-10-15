@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::ToolOutputCut do
 
     it "gives a short stderr all it needs and stdout the rest" do
       output = "[execute]\nstdout:\n#{lines("out", 2000)}\nstderr:\n#{lines("err", 3)}\nexit: 0"
-      text, = described_class.apply(output, cap: 4000, tool: "execute", save: ->(_) { saved })
+      text, = described_class.apply(output, cap: 4000, tool: "execute", save: ->(_, **) { saved })
 
       expect(text).to end_with("out 2000\nstderr:\nerr 1\nerr 2\nerr 3\nexit: 0")
       expect(text.scan(/^\[cut: /).size).to eq(1)
@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::ToolOutputCut do
 
     it "cuts a text with no stdout/stderr blocks (a hand-over) as one" do
       output = "[execute]\nStill running at the 120s limit\n#{lines("x", 2000)}"
-      text, = described_class.apply(output, cap: 3000, tool: "execute", save: ->(_) { saved })
+      text, = described_class.apply(output, cap: 3000, tool: "execute", save: ->(_, **) { saved })
 
       expect(text).to start_with("[execute]\nStill running")
       expect(text).to end_with("x 2000")
@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::ToolOutputCut do
 
     it "counts the lines left out in the whole output, the first line 1" do
       output = "[execute]\nstdout:\n#{lines("l", 1000)}\nexit: 0"
-      text, = described_class.apply(output, cap: 2000, tool: "execute", save: ->(_) { saved })
+      text, = described_class.apply(output, cap: 2000, tool: "execute", save: ->(_, **) { saved })
       first, last = text.match(/lines (\d+)-(\d+) of the saved file/).captures.map(&:to_i)
       shown = text.lines
 

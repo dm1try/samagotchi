@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "tool_output_files"
+
 module Samagotchi
   # How ToolRunner cuts a tool's output that is longer than
   # max_tool_output_chars, by the tool's policy (POLICIES, by its built-in
@@ -42,6 +44,11 @@ module Samagotchi
     # the output gets the head cut.
     MIN_TAIL = 200
 
+    # An execute that didn't finish: stopped, killed at the limit or
+    # handed over (its result starts with an "Error:" or a "Still running"
+    # line after the lead), or with no exit line last.
+    UNFINISHED = /\A(?:ran as: [^\n]*\n)?\[execute\]\n(?:Error: |Still running at the )/
+
     # The marks of a text that is already a head-and-tail preview (execute's
     # own above execute.truncate_at_bytes): its saved copy isn't the whole
     # output.
@@ -68,9 +75,11 @@ module Samagotchi
     def policy(tool) = POLICIES.fetch(tool.to_s, :head)
 
     # +output+ cut to +cap+ chars by +tool+'s policy.
-    # @param save [#call, nil] (text) → ToolOutputFiles::Saved, or a String
-    #   saying why it wasn't saved ("no session", "Errno::ENOSPC"); called
-    #   only when the output is cut head-and-tail
+    # @param save [#call, nil] (text, dry:) → ToolOutputFiles::Saved, or a
+    #   String saying why it wasn't saved ("no session", "Errno::ENOSPC");
+    #   dry: true only says where it would go. It writes only once the
+    #   head-and-tail cut is known to fit the cap with that file's gap
+    #   line: a cut that falls back to the head cut saves nothing.
     # @param head_chars [Integer] execute.cut_head_chars
     # @return [Array(String, Object)] the text the model gets, and what
     #   +save+ returned (nil when it wasn't called)
@@ -85,11 +94,21 @@ module Samagotchi
         return [text || head(output, cap), nil]
       end
 
-      saved = save ? save.call(output) : "no session"
-      text = head_tail(output, cap: cap, blocks: execute_blocks(output), head_chars: head_chars,
-                               gap: FileGap.new(output, saved))
-      [text || head(output, cap), saved]
+      blocks = execute_blocks(output)
+      planned = save ? save.call(output, dry: true) : "no session"
+      text = head_tail(output, cap: cap, blocks: blocks, head_chars: head_chars, gap: FileGap.new(output, planned))
+      return [head(output, cap), nil] unless text
+      return [text, planned] unless planned.is_a?(ToolOutputFiles::Saved)
+
+      saved = save.call(output)
+      return [text, saved] if saved.is_a?(ToolOutputFiles::Saved)
+
+      # The write failed: the line says so instead, if that still fits.
+      text = head_tail(output, cap: cap, blocks: blocks, head_chars: head_chars, gap: FileGap.new(output, saved))
+      [text || head(output, cap), text ? saved : nil]
     end
+
+    def unfinished?(output) = output.match?(UNFINISHED) || !output.match?(EXIT_LINE)
 
     # +output+ cut to +cap+ chars, the cut line included: the model knows
     # what it didn't get. A cap smaller than the line keeps +cap+ chars and
@@ -261,7 +280,7 @@ module Samagotchi
         if @output.include?(PREVIEW_MARK)
           "this preview is saved in #{where}; the full output wasn't kept: read the preview with " \
             "start_line/end_line or rg it"
-        elsif !@output.match?(EXIT_LINE)
+        elsif ToolOutputCut.unfinished?(@output)
           "the output it printed is saved in #{where}: read it with start_line/end_line or rg it"
         else
           "the whole output is saved in #{where}: read it with start_line/end_line or rg it; don't rerun the command"

@@ -364,6 +364,27 @@ RSpec.describe Samagotchi::ToolRunner do
                                                                                               error: "Errno::ENOSPC")
     end
 
+    it "saves nothing when the head-and-tail cut doesn't fit and the head cut is used (no orphaned file)" do
+      # Long stdout and stderr under a small cap: stderr's share leaves no room for a tail.
+      kernel.output = "[execute]\nstdout:\n#{filler}\nstderr:\n#{filler}\nexit: 1"
+      result = capped_run(700)
+      completed = events.find { |e| e[:type] == :tool_call_completed }
+
+      expect(result[:capped_output]).to eq(Samagotchi::ToolOutputCut.head(kernel.output, 700))
+      expect(saved_files).to be_empty
+      expect(completed).not_to have_key(:output_file)
+      expect(result).not_to have_key(:output_file)
+    end
+
+    it "doesn't say not to rerun a stopped command whose own last line looks like an exit line" do
+      kernel.output = "[execute]\nError: command stopped by the user after 3s (killed; rerun it if still needed)\n" \
+                      "stdout:\n#{filler}\nexit: 0"
+      text = capped_run(5000)[:capped_output]
+
+      expect(text).to include("the output it printed is saved in #{saved_file}")
+      expect(text).not_to include("don't rerun")
+    end
+
     it "falls back to no session when the session's folder can't be looked up" do
       kernel.session_dir = -> { raise "gone" }
       expect(capped_run(5000)[:capped_output]).to include("wasn't saved (no session)")

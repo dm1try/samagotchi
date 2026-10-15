@@ -65,7 +65,8 @@ everything else the cap leaves, so a larger `max_tool_output_chars` keeps a long
 lines when that keeps at least half of each. execute's stdout and stderr blocks are cut each on its own (stdout gets
 about two thirds of the room when both are long, a block that needs less gives the rest to the other); the `exit:`
 line is always kept. The whole stays within the cap; a cap too small for a tail of `ToolOutputCut::MIN_TAIL` (200)
-characters gets the `:head` cut.
+characters gets the `:head` cut, and so does one whose gap lines leave no room for that tail (checked with the
+file's planned path before anything is written): nothing is saved then, and the event has no `output_file:`.
 
 The gap line says what was left out and where the whole output is:
 

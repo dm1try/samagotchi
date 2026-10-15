@@ -155,18 +155,20 @@ module Samagotchi
     # @return [Array(String, Object)] the text, and the saved file (or why
     #   there is none) when it was cut that way
     def cut(call, output, cap, ref: nil)
-      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text) { save_output(call, text) }, ref: ref,
+      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text, dry: false) { save_output(call, text, dry: dry) }, ref: ref,
                                   head_chars: Tools::OutputGuardrails.config_positive_int("execute.cut_head_chars",
                                                                                           ToolOutputCut::HEAD_CHARS))
     end
 
     # The whole output in the session's tool_output folder
     # (ToolOutputFiles), or why it isn't saved: no session (a bare kernel)
-    # or the error's class. Never fails the call.
+    # or the error's class. Never fails the call. +dry+: where it would go,
+    # nothing written (ToolOutputFiles.planned).
     # @return [ToolOutputFiles::Saved, String]
-    def save_output(call, text)
+    def save_output(call, text, dry: false)
       dir = session_dir
       return "no session" if dir.to_s.empty?
+      return ToolOutputFiles.planned(dir, text, tool: call[:name]) if dry
 
       ToolOutputFiles.save(dir, text, tool: call[:name])
     rescue SystemCallError => e
