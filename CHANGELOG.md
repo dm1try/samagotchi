@@ -16,6 +16,11 @@ and commands may change between minor versions. How releases are made:
 - Web: a page opened mid-turn (or reconnecting) gets each tool's output cut as a reload does (2000 characters),
   so a joined row matches the reloaded one and the snapshot is smaller.
 
+### Fixed
+
+- A `task_wait` whose task failed (exited non-zero, or without an exit code) is now marked failed in the web and
+  terminal rows and counted in the turn's "(N failed)", as a failing `execute` is.
+
 ## [0.70.0] - 2026-10-15
 
 ### Added

@@ -211,6 +211,8 @@ module Samagotchi
     # exited non-zero (its last "exit: N" line; no number: killed by a
     # signal), so the turn tally's "(N failed)" counts it; but not a grep
     # that found nothing (no_match?, given the +command+): that stays "ok".
+    # Also for a task_wait whose task failed (exited non-zero or without an
+    # exit code): its header's status, never a line of the log's tail.
     # "stopped" for a
     # task_wait the user's Stop ended (the task itself runs on), for one
     # whose task was stopped (the stop-task button, or the model's task_stop),
@@ -230,7 +232,12 @@ module Samagotchi
       if tool_name == Tools::Execute::NAME && execute_failed?(text)
         return no_match?(text, command) ? "ok" : "error"
       end
-      return "stopped" if tool_name == Tools::TaskWait::NAME && text.match?(/^(wait_result: canceled|status: stopped)$/)
+
+      if tool_name == Tools::TaskWait::NAME
+        return "stopped" if text.match?(/^(wait_result: canceled|status: stopped)$/)
+        # The first "status:" line is the header's: the tail comes after it.
+        return "error" if text[/^status: (\S+)$/, 1] == "failed"
+      end
 
       "ok"
     end

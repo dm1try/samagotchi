@@ -150,6 +150,15 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status(stopped.sub("status: stopped", "status: completed"), "task_wait")).to eq("ok")
     end
 
+    it "calls a task_wait whose task failed an error, by its header's status only" do
+      failed = "task_id: t1\nstatus: failed\nexit_code: 3\nstop_reason: \noutput_path: x"
+      expect(described_class.tool_activity_status(failed, "task_wait")).to eq("error")
+      expect(described_class.tool_activity_status(failed.sub("exit_code: 3", "exit_code: "), "task_wait")).to eq("error")
+      expect(described_class.tool_activity_status(failed.sub("status: failed", "status: completed"), "task_wait")).to eq("ok")
+      timeout = "task_id: t1\nstatus: running\nexit_code: \nwait_result: timeout\noutput_tail:\nstatus: failed\nstep 2"
+      expect(described_class.tool_activity_status(timeout, "task_wait")).to eq("ok")
+    end
+
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")
