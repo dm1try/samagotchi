@@ -251,7 +251,7 @@ test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge'
   assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });
 
-import { inlineOutput } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { inlineOutput, tailMode } from "../../../lib/samagotchi/web/public/turn_html.js";
 
 const lines = (n, width = 9) => Array.from({ length: n }, (_, i) => `line ${String(i + 1).padStart(width - 5, "0")}`).join("\n");
 
@@ -292,6 +292,12 @@ test("inlineOutput: no output, a bare exit: 0 and a whitespace-only stdout stay 
   assert.equal(inlineOutput("execute", "stdout:\n  \n\nexit: 0"), "stdout:\n  \n\nexit: 0");
   assert.equal(inlineOutput("execute", "stdout:\nok\n\nexit: 0\n(started in the background)"), "ok\n\n(started in the background)");
   assert.equal(inlineOutput("execute", "exit: 1"), "exit: 1");
+});
+
+test("tailMode: a signal-killed execute's exit line (\"exit: \" with no number) takes the tail path as exit: 1 does", () => {
+  assert.equal(tailMode("execute", "[execute]\nexit: "), true);
+  assert.equal(tailMode("execute", "[execute]\nexit: 1"), true);
+  assert.equal(tailMode("execute", "[execute]\nsome text"), false);
 });
 
 test("inlineOutput: a gate-corrected call's ran-as line and tag show on hover only", () => {

@@ -23,6 +23,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A command a signal ended (a segfault, an OOM kill: its result ends `exit: ` with no number) is read as finished:
+  a long output's cut keeps its exit line apart and tells the model not to rerun it (the saved file is the whole
+  output), and its web row shows the output's end as other failed commands' do.
 - `chi sessions`: a `--days`, `--keep` or `--limit` that isn't a whole number (`--days=abc`) is now a usage error
   (exit 2) instead of being read as 0, which turned `prune`'s age limit off; the usage now lists `clean --all`.
 - `full` with `--no-tool call_tool` (or `find_tools`) and no MCP server no longer adds a "Not loaded in this

@@ -76,6 +76,18 @@ RSpec.describe Samagotchi::ToolOutputCut do
       expect(text).to include("the output it printed is saved in /state/s/tool_output/execute-abc.txt")
     end
 
+    it "reads a signal-killed command's exit line (\"exit: \" with no number) as its exit line" do
+      expect(described_class.unfinished?("[execute]\nstdout:\nx\nexit: ")).to be(false)
+      expect(described_class.unfinished?("[execute]\nexit:  (no output)")).to be(false)
+      expect(described_class.unfinished?("[execute]\nstdout:\nx")).to be(true)
+
+      output = "[execute]\nstdout:\n#{lines("out", 2000)}\nexit: "
+      expect(described_class.execute_blocks(output).last.to).to eq(output.length - "\nexit: ".length)
+      text, = described_class.apply(output, cap: 3000, tool: "execute", save: ->(_, **) { saved })
+      expect(text).to end_with("out 2000\nexit: ")
+      expect(text).to include("don't rerun the command")
+    end
+
     it "counts the lines left out in the whole output, the first line 1" do
       output = "[execute]\nstdout:\n#{lines("l", 1000)}\nexit: 0"
       text, = described_class.apply(output, cap: 2000, tool: "execute", save: ->(_, **) { saved })
