@@ -49,6 +49,7 @@ require_relative "recap_setup"
 require_relative "idle_reminders"
 require_relative "idle_scheduler"
 require_relative "hooks"
+require_relative "event_routes"
 require_relative "hook_routes"
 require_relative "guardrails"
 require_relative "reminder_store"
@@ -159,7 +160,9 @@ module Samagotchi
       end
       # What hooks and plugins do beyond reading their event (a notice, a
       # question, a stop, a steer), routed to the UIs. Built before anything
-      # that may notify.
+      # that may notify. Where a card or a notice goes (EventRoutes) first:
+      # the hook routes use it.
+      @event_routes = build_event_routes
       @hook_routes = build_hook_routes
       # Load hooks from config (plugins) and create the registry; what fails
       # to load is announced, and a required guardrail's failure denies
@@ -772,9 +775,10 @@ module Samagotchi
 
     # Show a card in every UI (docs/plugins.md, Cards): {type: :card, id:,
     # source:, title:, body:, level:, actions: [{label:, command:}], in_turn:}.
-    # During a turn it is a turn event (the turn's sink and the observers),
-    # else it is announced. A card with the id of an earlier one replaces it
-    # (btw's "thinking…" → the answer).
+    # Where it goes (held while the plugins load, an anytime command's, an
+    # init task's, a turn event, else announced) is EventRoutes#route's,
+    # marked in_turn: (CARD_MARKS). A card with the id of an earlier one
+    # replaces it (btw's "thinking…" → the answer).
     # @param source [String] who shows it (a bundle's name)
     # @param actions [Array<Hash>] {label:, command:}; a command is a line
     #   the session runs, as typed (D3)
@@ -782,18 +786,7 @@ module Samagotchi
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
       card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
-      return @extension_load.hold(card.merge(in_turn: true))[:id] if @extension_load.loading?
-      return announce_anytime(card.merge(in_turn: false))[:id] if anytime_thread?
-      # A plugin's init task (chi.init): never a running turn's event.
-      return announce(card.merge(in_turn: false)) && card[:id] if current_init_task
-
-      in_turn, sink = @turn_state.in_turn_sink
-      card[:in_turn] = in_turn ? true : false
-      if in_turn
-        emit_event(sink, card)
-      else
-        announce_or_hold(card)
-      end
+      @event_routes.route(card, **EventRoutes::CARD_MARKS)
       card[:id]
     end
 
@@ -1586,6 +1579,22 @@ module Samagotchi
     # @return [Boolean] true when a streaming generation was cut now
     def hook_stop_generation(reason, hook) = @hook_routes.stop_generation(reason, hook)
     private :hook_stop_generation
+
+    # Where cards and notices go (see #initialize for when). Each lookup
+    # calls the Engine method the routes used before EventRoutes, at use.
+    def build_event_routes
+      EventRoutes.new(
+        extension_load: -> { @extension_load },
+        in_turn_sink: -> { @turn_state.in_turn_sink },
+        anytime_thread: -> { anytime_thread? },
+        init_task: -> { current_init_task },
+        announce: ->(event) { announce(event) },
+        announce_anytime: ->(event) { announce_anytime(event) },
+        announce_or_hold: ->(event) { announce_or_hold(event) },
+        emit: ->(sink, event) { emit_event(sink, event) }
+      )
+    end
+    private :build_event_routes
 
     # The hook routes (see #initialize for when).
     def build_hook_routes
