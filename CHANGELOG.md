@@ -29,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   that one: it no longer marks it as held by a terminal, puts the failure in its history or follows its worker,
   and a card's action button no longer follows it either; an after-turn hook's answer re-read no longer lands in it.
 - Web: a stop the server refuses (the stop button in the session bar) now says why in a toast instead of nothing.
+- Web: opening another session right as a finished turn slides into the history no longer shows that turn in the
+  new session's history, and its "Loading…" line stays until the session is drawn.
 
 ## [0.71.0] - 2026-10-15
 

@@ -84,6 +84,23 @@ test("a ref's show-in-turn on a row of a turn sliding away finishes the slide; t
   assert.ok(historyEl.querySelector(".bubble.user"));
 });
 
+test("a reset while the turn slides away (another session opens) drops the turn: it never reaches the new history", () => {
+  const { historyEl, view } = page();
+  const prompt = endedTurn(view);
+  view.handOff();
+  assert.ok(view.root.classList.contains("leaving"));
+  // select(): "Loading…" first, then closeStream's reset.
+  historyEl.replaceChildren(Object.assign(document.createElement("div"), { className: "hint", textContent: "Loading…" }));
+  view.reset();
+  assert.equal(historyEl.contains(prompt), false);
+  assert.equal(historyEl.querySelector(":scope > .hint")?.textContent, "Loading…");
+  assert.ok(view.root.hidden);
+  assert.ok(!view.root.classList.contains("leaving"));
+  // The fold's timer is gone with it: nothing arrives later.
+  view.settleFold();
+  assert.equal(historyEl.contains(prompt), false);
+});
+
 // Two lines queued for after a turn (delivery queue): the first one's
 // turn_started hands the ended turn off (both queued lines go into the
 // history with it), then the stage takes the first as its prompt. The
