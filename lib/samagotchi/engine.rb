@@ -1600,9 +1600,6 @@ module Samagotchi
     def build_hook_routes
       HookRoutes.new(
         event_routes: @event_routes,
-        in_turn_sink: -> { @turn_state.in_turn_sink },
-        announce_or_hold: ->(event) { announce_or_hold(event) },
-        emit: ->(sink, event) { emit_event(sink, event) },
         question_desk: -> { @question_desk },
         cancel_controller: -> { active_cancel_controller },
         steer: ->(text, source) { steer(text, source: source) }

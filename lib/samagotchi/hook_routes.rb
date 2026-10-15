@@ -9,6 +9,8 @@ module Samagotchi
   # reading its event (Hooks::Runtime, Plugin::Host): a notice (#notify),
   # a question (#ask_user), stopping the turn or cutting its generation,
   # and a steer; also the guardrails' line after load (#guardrail_notify).
+  # Where a notice goes (held, anytime, init task, turn, between turns) is
+  # EventRoutes'.
   #
   # What it needs from the Engine comes through lookups, called at use, and
   # the Engine's EventRoutes.
@@ -17,17 +19,11 @@ module Samagotchi
     NOTICE_FALLBACKS = %i[display editor].freeze
 
     # @param event_routes      [EventRoutes] where a notice goes
-    # @param in_turn_sink      [#call] → [Boolean, sink] (TurnState#in_turn_sink)
-    # @param announce_or_hold  [#call] (event) → announces it, or holds it for the caller
-    # @param emit              [#call] (sink, event) → emits to a turn's sink + observers
     # @param question_desk     [#call] → QuestionDesk
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
     # @param steer             [#call] (text, source) → steers the running turn
-    def initialize(event_routes:, in_turn_sink:, announce_or_hold:, emit:, question_desk:, cancel_controller:, steer:)
+    def initialize(event_routes:, question_desk:, cancel_controller:, steer:)
       @event_routes = event_routes
-      @in_turn_sink = in_turn_sink
-      @announce_or_hold = announce_or_hold
-      @emit = emit
       @question_desk = question_desk
       @cancel_controller = cancel_controller
       @steer = steer
@@ -77,11 +73,11 @@ module Samagotchi
     end
 
     # A guardrails line to the user after load (:guardrail_warning, as the
-    # load failures show): a running turn's event, else announced.
+    # load failures show): a running turn's event, else announced or held for
+    # the caller (EventRoutes#route_by_turn: never held while the plugins
+    # load, never an anytime command's, unmarked).
     def guardrail_notify(message)
-      event = { type: :guardrail_warning, message: message.to_s }
-      in_turn, sink = @in_turn_sink.call
-      in_turn ? @emit.call(sink, event) : @announce_or_hold.call(event)
+      @event_routes.route_by_turn({ type: :guardrail_warning, message: message.to_s })
       nil
     end
 
