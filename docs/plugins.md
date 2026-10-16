@@ -508,7 +508,8 @@ end
 - A plugin whose load fails after it started services has them stopped.
 - `kill -9` runs nothing: a child process is orphaned then. Most stdio
   servers leave when their stdin closes, which it does as chi's process
-  ends.
+  ends. The mcp bundle also stops a server that doesn't (see
+  [The mcp bundle](#the-mcp-bundle), Stop).
 
 ### `chi.init(label, provides_tools: false, quiet: false, timeout: nil, failed: nil) { |ctx| … }`
 
@@ -1150,7 +1151,13 @@ bundles:
   the notice says so, and its calls fail at once until chi restarts (a new
   session, or the worker's next start).
 - **Stop.** The servers stop with chi ([Shutdown](#shutdown)): stdin is
-  closed, then TERM and KILL go to the server's process group.
+  closed, then TERM and KILL go to the server's process group. A chi
+  killed with `kill -9` (or crashing past Ruby) stops nothing itself; a
+  server that ignores its stdin's EOF would live on then. So each server's
+  group also holds a watchdog, a `/bin/sh` waiting on a pipe only chi
+  holds: when that pipe closes without chi letting it go, it gives the
+  server a second, then TERMs and KILLs its group (the server's helpers
+  too). A server that leaves its group (`setsid`) is out of its reach.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached
   (not started), running with its pid, failed with its count, stopped) and
   their tools as `<server>/<tool>`, the name `call_tool` takes.

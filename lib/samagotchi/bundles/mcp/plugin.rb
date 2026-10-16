@@ -76,6 +76,15 @@ class Plugin
     # How long close waits for the server after closing its stdin, after
     # TERM, and after KILL.
     STOP_GRACE_SECONDS = 1
+    # The server's watchdog (#start_watchdog), a shell in its process group
+    # whose stdin is a pipe only chi holds. A line on it (#close) lets it
+    # go; EOF means chi ended without closing the server (kill -9, a crash
+    # past Ruby), whose stdin then hit EOF too: a grace for the server to
+    # leave by itself, then TERM and KILL to the group, the way #close stops
+    # it. `kill 0` signals the shell's own group: while it runs, that group
+    # (and so its id) can't be anyone else's.
+    WATCHDOG = "trap '' TERM; read -r _ && exit 0; sleep #{STOP_GRACE_SECONDS}; " \
+               "kill -TERM 0; sleep #{STOP_GRACE_SECONDS}; kill -KILL 0".freeze
 
     attr_reader :pid
 
@@ -101,6 +110,7 @@ class Plugin
       @stdin, @stdout, @stderr, @wait = Open3.popen3(env.to_h { |k, v| [k.to_s, v.to_s] }, *command,
                                                      chdir: cwd, pgroup: true)
       @pid = @wait.pid
+      start_watchdog
       @reader = Thread.new { read_loop }
       @err_reader = Thread.new { stderr_loop }
     rescue SystemCallError => e
@@ -154,7 +164,7 @@ class Plugin
 
     # End the process: stdin closed first (most servers leave then), then
     # TERM and KILL to its process group (chi's ProcessGroup), a second's
-    # grace each.
+    # grace each. Then the watchdog is let go.
     def close
       @mutex.synchronize { @closing = true }
       [@stdin].each { |io| io.close unless io.closed? }
@@ -163,6 +173,7 @@ class Plugin
                                             stopped: -> { !@wait.alive? }, wait: ->(seconds) { @wait.join(seconds) })
         @wait.join(STOP_GRACE_SECONDS)
       end
+      release_watchdog
       [@stdout, @stderr].each { |io| io.close unless io.closed? }
       [@reader, @err_reader].each { |t| t.join(1) }
       nil
@@ -171,6 +182,35 @@ class Plugin
     end
 
     private
+
+    # A server outlives a chi killed without #close when it ignores its
+    # stdin's EOF (a Node server with another live handle does): the
+    # watchdog (WATCHDOG) stops its group then. One that can't start (the
+    # server already left its group) is logged and skipped.
+    def start_watchdog
+      reader, @watchdog_pipe = IO.pipe
+      watchdog = Process.spawn("/bin/sh", "-c", WATCHDOG, in: reader, out: File::NULL, err: File::NULL, pgroup: @pid)
+      @watchdog = Process.detach(watchdog)
+    rescue SystemCallError => e
+      @log.call("watchdog_failed", error: e.class.name)
+      @watchdog_pipe&.close
+      @watchdog_pipe = nil
+    ensure
+      reader&.close
+    end
+
+    # A line tells the watchdog chi stopped the server itself.
+    def release_watchdog
+      return unless @watchdog_pipe
+
+      begin
+        @watchdog_pipe.write("\n")
+      rescue IOError, SystemCallError # gone already: the group's KILL reached it
+        nil
+      end
+      @watchdog_pipe.close unless @watchdog_pipe.closed?
+      @watchdog&.join(STOP_GRACE_SECONDS)
+    end
 
     def write(message)
       line = JSON.generate(message)

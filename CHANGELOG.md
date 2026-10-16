@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- mcp bundle 0.7.1: an MCP server that ignores its stdin's EOF no longer outlives a chi killed with `kill -9` (or
+  crashing past Ruby): a watchdog in the server's process group stops the group when chi's end of its pipe closes.
+
 ## [0.73.0] - 2026-10-16
 
 ### Added

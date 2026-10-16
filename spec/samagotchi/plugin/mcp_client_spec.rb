@@ -105,6 +105,54 @@ RSpec.describe "The mcp bundle's client" do
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
   end
 
+  it "leaves nothing in the server's process group after close (its watchdog goes too)" do
+    initialize!
+    pid = client.pid
+    client.close
+    group_alive = lambda do
+      Process.kill(0, -pid)
+      true
+    rescue Errno::ESRCH
+      false
+    end
+    Timeout.timeout(2) { sleep(0.05) while group_alive.call }
+    expect(group_alive.call).to be(false)
+  end
+
+  # kill -9 of chi runs no close: the server's stdin hits EOF, which a server
+  # that ignores it (TERM too) outlives, reparented to init. The watchdog in
+  # its process group stops the group then.
+  it "stops a server that ignores stdin EOF and TERM when chi is killed without closing it" do
+    lib = File.expand_path("../../../lib", __dir__)
+    holder = <<~RUBY
+      mod = Module.new
+      mod.module_eval(File.read(#{File.join(MCP_SHIPPED, "plugin.rb").dump}), "plugin.rb", 1)
+      client = mod::Plugin::Client.new([#{RbConfig.ruby.dump}, "--disable-gems", "-e", "trap('TERM') {}; $stdin.read; sleep 10"])
+      puts client.pid
+      $stdout.flush
+      sleep
+    RUBY
+    out, writer = IO.pipe
+    holder_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", holder, out: writer)
+    writer.close
+    server = Timeout.timeout(10) { Integer(out.gets) }
+    expect(alive?(server)).to be(true)
+    Process.kill("KILL", holder_pid)
+    Process.wait(holder_pid)
+    Timeout.timeout(6) { sleep(0.1) while alive?(server) }
+    expect(alive?(server)).to be(false)
+  ensure
+    out&.close
+    if holder_pid
+      begin
+        Process.kill("KILL", holder_pid)
+        Process.wait(holder_pid)
+      rescue Errno::ESRCH, Errno::ECHILD
+        nil
+      end
+    end
+  end
+
   it "raises Dead for a command that doesn't exist" do
     expect { client_class.new(["/nonexistent/mcp-server"]) }.to raise_error(client_class::Dead, /can't start/)
   end
