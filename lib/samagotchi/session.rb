@@ -91,7 +91,7 @@ module Samagotchi
     # one): see #delegate?.
     attr_writer :delegate
     # The session this one continues (SessionManager.continue_session): the
-    # previous link of a chain, "the next day of the same routine", else
+    # previous link of a chain, "the next run of the same routine", else
     # nil. Not a parent: archiving one link leaves the next alone. The chain
     # itself is derived (SessionChain), never stored.
     attr_accessor :continues

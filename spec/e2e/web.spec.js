@@ -828,19 +828,20 @@ async function continueAndCheck(page, first, kid) {
   await expect(page.locator(`#familyPop .family-row[data-id="${kid}"]`)).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // The previous link is archived: its card is folded into the new one's day chip.
+  // The previous link is archived: its card is folded into the new one's #N chip.
   await expect(page.locator(`#topStrip .card[data-id="${first}"]`)).toHaveCount(0);
   const chip = page.locator(`#topStrip .card[data-id="${second}"] .chain-chip`);
-  await expect(chip).toHaveText("↩day 2");
+  await expect(chip).toHaveText("↩#2");
   const back = page.locator("#infoBar a.chain-link");
-  await expect(back).toHaveText(/^← \d{4}-\d{2}-\d{2}$/);
+  // Both links made in this run: the time (the date across a midnight).
+  await expect(back).toHaveText(/^← (\d{2}:\d{2}|\d{4}-\d{2}-\d{2})$/);
   await expect(back).toHaveAttribute("href", `#/s/${first}`);
   await expect(page.locator("#infoContinueBtn")).toBeVisible();
 
   // The chip's popover lists the earlier link; a click opens it.
   await chip.click();
   const row = page.locator(`#chainPop .chain-row[data-id="${first}"]`);
-  await expect(row).toContainText("day 1");
+  await expect(row.locator(".cr-day")).toHaveText("#1");
   await expect(row.locator(".archived-badge")).toHaveText("archived");
   await row.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
@@ -850,7 +851,7 @@ async function continueAndCheck(page, first, kid) {
   await expect(page.locator("#infoContinueBtn")).toBeHidden();
   await expect(pick).toBeHidden();
   const forward = page.locator("#infoBar a.chain-link");
-  await expect(forward).toHaveText(/^\d{4}-\d{2}-\d{2} →$/);
+  await expect(forward).toHaveText(/^(\d{2}:\d{2}|\d{4}-\d{2}-\d{2}) →$/);
   await forward.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");

@@ -32,7 +32,7 @@ test("infoBarHtml: a bare session's line, as the string builder wrote it", () =>
 test("infoBarHtml: every part, in the bar's order", () => {
   const full = {
     ...bare, copied: true, status: "running", model: { text: "qwen", title: "served other", mismatch: true },
-    chain: { prev: { id: "aaaaaaaa1", date: "10-09", preview: "first", archived: true }, next: { id: "bbbbbbbb2", date: "", preview: "" } },
+    chain: { prev: { id: "aaaaaaaa1", date: "10-09", stamp: "2026-10-09 14:32", preview: "first", archived: true }, next: { id: "bbbbbbbb2", date: "", preview: "" } },
     parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
     kids: { text: "2 delegates", title: "2 delegates", waitingText: "1 waiting" },
     llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
@@ -57,7 +57,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");
   const [prev, next] = div.querySelectorAll(".chain-link");
   assert.equal(prev.textContent, "← 10-09");
-  assert.equal(prev.title, "The previous link of this chain: aaaaaaaa · first (archived)");
+  assert.equal(prev.title, "The previous link of this chain: aaaaaaaa · 2026-10-09 14:32 · first (archived)");
   assert.equal(prev.getAttribute("href"), "#/s/aaaaaaaa1");
   assert.equal(next.textContent, "bbbbbbbb →");
   assert.equal(div.querySelector(".parent").textContent, "delegated by pppppppp");

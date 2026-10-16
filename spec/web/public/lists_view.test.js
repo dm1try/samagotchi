@@ -212,10 +212,10 @@ test("cardTemplate: a family's card: its chip, members, rows when open in all se
   assert.doesNotMatch(picking, /data-arch="c1"/);
 });
 
-test("cardTemplate: a chain's card carries its day chip and its links as members", () => {
+test("cardTemplate: a chain's card carries its #N chip and its links as members", () => {
   const list = [sess("d2", { continues: "d1" }), sess("d1")];
   const [fam] = stripOrder(list, list);
   const html = markupOf(cardTemplate(fam.head, { family: fam }, { title: "T", chainOpen: true }));
   assert.match(html, /data-members="d1"/);
-  assert.match(html, /<button type="button" class="chain-chip" aria-expanded="true"[^>]*><span class="cc-arrow" aria-hidden="true">↩<\/span>day 2<\/button>/);
+  assert.match(html, /<button type="button" class="chain-chip" aria-expanded="true"[^>]*><span class="cc-arrow" aria-hidden="true">↩<\/span>#2<\/button>/);
 });

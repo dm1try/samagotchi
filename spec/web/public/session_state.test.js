@@ -7,6 +7,7 @@ test("starts every field empty", () => {
   const s = emptySessionState();
   assert.equal(s.parentId, null);
   assert.equal(s.continues, null);
+  assert.equal(s.createdAt, null);
   assert.equal(s.toolkit, null);
   assert.equal(s.owner, null);
   assert.equal(s.ctxPct, null);
@@ -57,6 +58,7 @@ test("sessionStateFrom reads the session's fields, with the empty defaults for m
   assert.equal(st.toolkit, null);
   assert.equal(st.parentId, null);
   assert.equal(st.continues, null);
+  assert.equal(st.createdAt, null);
   assert.deepEqual(st.usedMemories, []);
   assert.deepEqual(st.preloadedMemories, []);
   assert.deepEqual(st.mutedMemories, []);
@@ -74,6 +76,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
       used_memory_names: ["a"], preloaded_memory_names: ["b"], muted_memory_names: ["c"],
       prompt_notes: notes, llm_context: { strategy: "none" }, thinking: { level: "high" }, reasoning_history: { level: "drop" },
       toolkit: { name: "lean", label: "lean" }, parent_id: "p1", continues: "c1",
+      created_at: "2026-10-17T09:12:00Z",
     },
     commands: [{ name: "/x" }],
   }));
@@ -89,6 +92,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
   assert.deepEqual(st.toolkit, { name: "lean", label: "lean" });
   assert.equal(st.parentId, "p1");
   assert.equal(st.continues, "c1");
+  assert.equal(st.createdAt, "2026-10-17T09:12:00Z");
   assert.deepEqual(st.commands, [{ name: "/x" }]);
 });
 

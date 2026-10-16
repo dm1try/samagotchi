@@ -56,10 +56,38 @@ test("a chain link: ← its previous, → its next (no continue then); the links
   assert.equal(bar.chain.prev.preview, "title of prev0000");
   assert.equal(bar.chain.prev.archived, true);
   assert.match(bar.chain.prev.date, /^2026-10-0[12]$/);
+  assert.match(bar.chain.prev.stamp, /^2026-10-0[12] \d{2}:\d{2}$/);
   assert.equal(bar.chain.next.id, "next0000");
   assert.equal(buttons.continue.shown, false);
   assert.equal(chainLinkView(null, title), null);
-  assert.deepEqual(chainLinkView({ id: "x" }, title), { id: "x", date: "", preview: "", archived: false });
+  assert.deepEqual(chainLinkView({ id: "x" }, title), { id: "x", date: "", stamp: "", preview: "", archived: false });
+});
+
+test("a chain link's ← / → read its HH:MM when it started on the open link's day, else its date; the stamp is always both", () => {
+  const local = (d, h, m) => new Date(2026, 9, d, h, m).toISOString();
+  const link = (iso) => ({ id: "l", session: { id: "l", created_at: iso } });
+  const same = chainLinkView(link(local(17, 14, 32)), title, local(17, 9, 12));
+  assert.equal(same.date, "14:32");
+  assert.equal(same.stamp, "2026-10-17 14:32");
+  const other = chainLinkView(link(local(8, 14, 32)), title, local(17, 9, 12));
+  assert.equal(other.date, "2026-10-08");
+  assert.equal(other.stamp, "2026-10-08 14:32");
+  // The open link's start unknown: its date, as before.
+  assert.equal(chainLinkView(link(local(17, 14, 32)), title, null).date, "2026-10-17");
+});
+
+test("the info bar's links measure their day against the open session's created_at, its list entry's when the state has none", () => {
+  const local = (d, h, m) => new Date(2026, 9, d, h, m).toISOString();
+  const sessions = [
+    { id: "prev0000", created_at: local(17, 9, 12) },
+    { id: ID, continues: "prev0000", created_at: local(18, 8, 0) },
+  ];
+  // The open session's own created_at (the payload's) wins over the list's.
+  const state = { ...emptySessionState(), createdAt: local(17, 15, 0) };
+  assert.equal(sessionBar(args({ sessions, state })).bar.chain.prev.date, "09:12");
+  // No createdAt in the state: the list's entry.
+  assert.equal(sessionBar(args({ sessions })).bar.chain.prev.date, "2026-10-17");
+  assert.equal(sessionBar(args({ sessions: [sessions[0], { ...sessions[1], created_at: local(17, 20, 0) }] })).bar.chain.prev.date, "09:12");
 });
 
 test("a delegate names its parent; a parent its delegates", () => {

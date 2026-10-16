@@ -6,7 +6,7 @@ require_relative "recap_store"
 
 module Samagotchi
   # Session chains: a session that continues an earlier one (Session#continues),
-  # "the next day of the same routine". The chain is derived, never stored:
+  # "the next run of the same routine". The chain is derived, never stored:
   # follow +continues+ back for the earlier links, forward (the session whose
   # +continues+ names this one) for the later ones. A link is continued at
   # most once (SessionManager.continue_session refuses a second), so the
@@ -69,7 +69,7 @@ module Samagotchi
     # @param recap [Hash, nil] RecapStore.read's
     # @return [String]
     def note_text(previous, recap:)
-      head = "This session continues #{previous.id[0, 8]} (#{day(previous.created_at)}), the previous link of its chain."
+      head = "This session continues #{previous.id[0, 8]} (#{clock(previous.created_at) || previous.created_at}), the previous link of its chain."
       text = recap && recap[:text].to_s.strip
       return "#{head} It left no recap." if text.nil? || text.empty?
 
@@ -100,12 +100,6 @@ module Samagotchi
         return text.strip
       end
       nil
-    end
-
-    def day(iso)
-      Time.iso8601(iso.to_s).localtime.strftime("%Y-%m-%d")
-    rescue ArgumentError
-      iso.to_s
     end
 
     def clock(iso)

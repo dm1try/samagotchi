@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: a session chain's links are numbered `#N` instead of `day N` (the chip `↩ #3`, `#2 of 3`; its popover's rows),
+  since a chain may be continued several times a day. The info bar's ← / → show the neighbour's time (`← 09:12`) when
+  it started on the open link's day, else its date, with its full start in the tooltip; a popover row adds its time
+  when another link of the chain started the same day. The carry note names the previous link's start with its time
+  (`This session continues 3fa2c1d0 (2026-10-17 09:12), …`).
+
 ### Fixed
 
 - `chi bundle install` / `upgrade` no longer make a bundle repo's README, CHANGELOG, LICENSE, CONTRIBUTING,

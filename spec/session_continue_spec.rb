@@ -87,7 +87,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     note = note_of(link.id)
     expect(note[:source]).to eq("session chain")
     as_of = Time.iso8601("2026-10-08T17:30:00Z").localtime.strftime("%Y-%m-%d %H:%M")
-    expect(note[:text]).to eq("This session continues #{previous.id[0, 8]} (2026-10-08), the previous link of its chain. " \
+    started = Time.iso8601("2026-10-08T09:00:00+02:00").localtime.strftime("%Y-%m-%d %H:%M")
+    expect(note[:text]).to eq("This session continues #{previous.id[0, 8]} (#{started}), the previous link of its chain. " \
                               "Its recap, as of #{as_of}:\nThe user reviewed three PRs and merged two.")
   end
 
