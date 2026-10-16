@@ -698,7 +698,9 @@ web:
 ```
 
 Only finalized assistant messages are rendered; user messages and live streaming
-chunks remain escaped text. Generated HTML is sanitized, raw HTML in model output
+chunks remain escaped text. A text the page already shows and renders later
+goes through `POST /api/render` (`{text}` → `{html}`, up to 64 KB; `html`
+is null with markdown off), the same renderer and sanitizer. Generated HTML is sanitized, raw HTML in model output
 is not trusted, and unsafe links are removed. If Markdown is enabled without
 commonmarker installed, Chi Web keeps the normal escaped-text display and shows a
 warning explaining how to install the optional gem.

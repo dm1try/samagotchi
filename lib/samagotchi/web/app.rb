@@ -66,6 +66,9 @@ module Samagotchi
       BRIDGE_WAIT_TIMEOUT = 10.0
       # An uploaded image may be this big before it is downscaled.
       MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+      # A POST /api/render body may be this big: a decision message is a few
+      # KB, and the cap bounds the work a page can ask for.
+      MAX_RENDER_BYTES = 64 * 1024
       SESSION_ID_RE = /\A[0-9A-Za-z-]{1,64}\z/
       IMAGE_NAME_RE = /\A[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z/
       IMAGE_TYPES = { "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "gif" => "image/gif",
@@ -158,6 +161,7 @@ module Samagotchi
         ["GET", %r{\A/api/models\z}, :handle_models],
         ["GET", %r{\A/api/history\z}, :handle_history],
         ["GET", %r{\A/api/events\z}, :handle_events],
+        ["POST", %r{\A/api/render\z}, :handle_render],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
@@ -1006,6 +1010,24 @@ module Samagotchi
 
         html = @markdown_renderer.render(body) if @markdown_renderer.available?
         html || "<pre>#{CGI.escapeHTML(body)}</pre>"
+      end
+
+      # POST /api/render {text}: the page's markdown read for a text it
+      # already shows (the stage's asking text, a resolved question card's
+      # reply), session-free. {html: nil} when markdown is off or
+      # commonmarker is missing: the page keeps the raw text.
+      def handle_render(req)
+        too_large = error_response(413, "too_large", "a text to render may be up to #{MAX_RENDER_BYTES / 1024} KB")
+        return too_large if req.content_length.to_i > MAX_RENDER_BYTES
+
+        raw = request_body(req, MAX_RENDER_BYTES + 1).to_s
+        return too_large if raw.bytesize > MAX_RENDER_BYTES
+
+        body = parse_json(raw)
+        return error_response(400, "invalid_json", "give {text}") unless body.is_a?(Hash) && body["text"].is_a?(String)
+
+        html = @markdown_renderer.render(body["text"]) if @markdown_renderer.available?
+        json_response(200, { html: html })
       end
 
       def handle_question_answer(req, id)

@@ -126,6 +126,13 @@ RSpec.describe Samagotchi::Web::App, "cross-site gate" do
       expect(manager.deleted).to be_empty
     end
 
+    it "refuses a cross-site render (POST /api/render)" do
+      status, = call("/api/render", method: "POST", body: JSON.generate(text: "# hi"),
+                                    headers: { "CONTENT_TYPE" => "text/plain", "HTTP_ORIGIN" => "https://evil.example",
+                                               "HTTP_SEC_FETCH_SITE" => "cross-site" })
+      expect(status).to eq(403)
+    end
+
     it "refuses a cross-site multipart image upload" do
       status, = call("/api/sessions/0123456789abcdef/images?name=a.png", method: "POST", body: "--x\r\n\r\n--x--\r\n",
                                                                           headers: { "CONTENT_TYPE" => "multipart/form-data; boundary=x",

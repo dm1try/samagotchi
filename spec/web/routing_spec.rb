@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     %i[serve_index handle_list handle_create handle_info handle_models handle_events handle_stream
        handle_output handle_cancel handle_stop handle_archive handle_unarchive handle_turn
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
-       handle_show handle_delete handle_context_list handle_context_show handle_context_delete]
+       handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render]
   end
 
   before do
@@ -85,6 +85,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["GET", "/api/info"] => ["handle_info"],
       ["GET", "/api/models"] => ["handle_models"],
       ["GET", "/api/events"] => ["handle_events"],
+      ["POST", "/api/render"] => ["handle_render"],
       ["GET", "/api/sessions/s1/stream"] => %w[handle_stream s1],
       ["GET", "/api/sessions/s1/output"] => %w[handle_output s1],
       ["POST", "/api/sessions/s1/cancel"] => %w[handle_cancel s1],
@@ -110,7 +111,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
 
   it "answers a wrong method on a known path with the not-found JSON" do
     [
-      ["POST", "/"], ["PUT", "/api/sessions"], ["DELETE", "/api/info"], ["POST", "/api/events"],
+      ["POST", "/"], ["PUT", "/api/sessions"], ["DELETE", "/api/info"], ["POST", "/api/events"], ["GET", "/api/render"],
       ["GET", "/api/sessions/s1/turn"], ["POST", "/api/sessions/s1/stream"], ["GET", "/api/sessions/s1/archive"],
       ["GET", "/api/sessions/s1/question/dismiss"], ["POST", "/api/sessions/s1"], ["PUT", "/api/sessions/s1"],
       ["DELETE", "/api/sessions/s1/images/abc.png"]
