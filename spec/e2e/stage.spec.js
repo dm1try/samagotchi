@@ -168,6 +168,9 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
   expect((await frames(page)).filter((f) => f.waits !== f.asking)).toEqual([]);
+  // With web.markdown on, it reads as markdown: its heading, and its link opens a new tab.
+  await expect(asking.locator("h2")).toHaveText("Two files");
+  await expect(asking.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
   // The card's arrival grows the stage, briefly; the top bar stays (the
   // hidden strip's pill gains "· 1 waiting" and must not wrap to a row).
   const marks = await stageMarks(page);

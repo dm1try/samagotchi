@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: the stage's asking text (a question's or approval's reply) renders as markdown with clickable links when
+  `web.markdown` is on; its `path:line` refs are links with markdown off too.
+
 ### Changed
 
 - Web: `continue →` fills the new link's composer with the previous link's own first message when that link was a

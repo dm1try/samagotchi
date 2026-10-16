@@ -13,7 +13,7 @@
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
-- `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
+- `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply
 - `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
 - `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). `stats ID` prints a session's cost, tokens and progress (a live worker's `GET stats`, else its saved `analytics.json`; `--format json` one object) without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`, a `--days`, `--keep` or `--limit` that isn't a whole number) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
@@ -698,10 +698,13 @@ web:
 ```
 
 Only finalized assistant messages are rendered; user messages and live streaming
-chunks remain escaped text. A text the page already shows and renders later
-goes through `POST /api/render` (`{text}` → `{html}`, up to 64 KB; `html`
-is null with markdown off), the same renderer and sanitizer. Generated HTML is sanitized, raw HTML in model output
-is not trusted, and unsafe links are removed. If Markdown is enabled without
+chunks remain escaped text. The stage's asking text (the whole reply that asked
+a waiting question or approval) shows raw at once, then as markdown, its links
+opening in a new tab. A text the page already shows and renders later goes
+through `POST /api/render` (`{text}` → `{html}`, up to 64 KB; `html` is null
+with markdown off), the same renderer and sanitizer. Generated HTML is
+sanitized, raw HTML in model output is not trusted, and unsafe links are
+removed. If Markdown is enabled without
 commonmarker installed, Chi Web keeps the normal escaped-text display and shows a
 warning explaining how to install the optional gem.
 

@@ -16,6 +16,7 @@ import {
   dismissQuestion,
   listModels,
   fetchHistory,
+  renderText,
 } from "../../../lib/samagotchi/web/public/data.js";
 
 function okResponse(body, status = 200) {
@@ -316,6 +317,18 @@ test("dismissQuestion posts the question id to the dismiss route", async () => {
     "POST",
     JSON.stringify({ id: "q1" }),
   ]);
+});
+
+test("renderText posts the text to the session-free render read", async () => {
+  const calls = [];
+  const out = await renderText("## Hi", {
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method, opts.body]);
+      return Promise.resolve(okResponse({ html: "<h2>Hi</h2>" }));
+    },
+  });
+  assert.deepEqual(calls, [["/api/render", "POST", JSON.stringify({ text: "## Hi" })]]);
+  assert.deepEqual(out, { html: "<h2>Hi</h2>" });
 });
 
 test("cancelTurn posts a user reason", async () => {

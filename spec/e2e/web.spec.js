@@ -344,7 +344,7 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   await page.locator("#history .bubble.question summary").click();
   await expect(said).toBeHidden();
   await expect(page.locator("#history .bubble.question .question-said-full")).toHaveText(
-    "I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions.");
+    "## Two files I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions ([why](https://example.com/files)).");
 });
 
 // The step limit asks as a question (kind continue) between turns: its card,

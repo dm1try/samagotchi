@@ -710,9 +710,28 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
 .ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
 .ts-headline.fresh{animation:ts-fade .3s ease}
-/* While a question or approval waits: the whole reply that asked it, raw as a closed step's text, in the headline's
-   place; capped so the card keeps its room, read from the top (stage_view.js drawAsking). */
+/* While a question or approval waits: the whole reply that asked it, in the headline's place; raw as a closed step's
+   text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
+   its room, read from the top. */
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
+/* Its markdown, compact: about the raw text's metrics, so the swap barely moves the slot. */
+.ts-asking.markdown{white-space:normal}
+.ts-asking.markdown :is(h1,h2,h3,h4,h5,h6){font-size:14.5px;font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--text-bright)}
+.ts-asking.markdown :is(h4,h5,h6){font-size:14px;color:var(--text-2)}
+.ts-asking.markdown :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
+.ts-asking.markdown>:first-child{margin-top:0}
+.ts-asking.markdown>:last-child{margin-bottom:0}
+.ts-asking.markdown :is(ul,ol){padding-left:1.3em}
+.ts-asking.markdown li>:is(ul,ol){margin:0}
+.ts-asking.markdown strong{color:var(--text-bright)}
+.ts-asking.markdown hr{border:0;border-top:1px solid var(--border);margin:8px 0}
+.ts-asking.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-muted)}
+.ts-asking.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+.ts-asking.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px;color:var(--text)}
+.ts-asking.markdown pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:12.5px;line-height:1.45;white-space:pre}
+.ts-asking.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
+.ts-asking.markdown :is(th,td){border:1px solid var(--border-strong);padding:3px 7px;font-size:13px}
+.ts-asking.markdown th{background:var(--bg-inset);font-weight:600}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
