@@ -22,6 +22,11 @@ and commands may change between minor versions. How releases are made:
 - Web: http(s) URLs in a hook's notice line (source-links' `sources:` line with markdown off) are links; they open
   in a new tab.
 
+### Fixed
+
+- A `task_create` task given a `cwd`, or running `cd`, recorded `failed` / `process_ended_without_exit_code` even
+  when it succeeded (its exit code was written relative to the shell's directory).
+
 ## [0.72.0] - 2026-10-16
 
 ### Added

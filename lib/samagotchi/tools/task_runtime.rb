@@ -55,7 +55,9 @@ module Samagotchi
         task_id = generate_task_id
         task_dir = task_dir_for(task_id)
         output_path = File.join(task_dir, OUTPUT_FILENAME)
-        exit_code_path = File.join(task_dir, EXIT_CODE_FILENAME)
+        # Absolute: the trap writes it wherever the shell is when it exits
+        # (a +cwd+, or a cd in the command). Ruby opens output_path here.
+        exit_code_path = File.expand_path(File.join(task_dir, EXIT_CODE_FILENAME))
 
         FileUtils.mkdir_p(task_dir)
 

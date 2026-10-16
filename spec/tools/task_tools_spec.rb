@@ -830,6 +830,37 @@ RSpec.describe "task tools" do
 
       expect(Samagotchi::Tools::TaskWait.call(record.id, timeout: 10)).to include("status: failed")
     end
+
+    # The trap runs wherever the shell is when it exits: a cwd or a cd
+    # moved it away from the worker's tmp/tasks.
+    describe "from another directory" do
+      before { FileUtils.mkdir_p("sub") }
+
+      {
+        ["echo done", "sub"] => ["completed", 0],
+        ["cd sub && echo done", nil] => ["completed", 0],
+        ["echo done; exit 3", "sub"] => ["failed", 3]
+      }.each do |(command, cwd), (status, code)|
+        it "records #{status} / #{code} for #{command.inspect} with cwd #{cwd.inspect}" do
+          record, = Samagotchi::Tools::TaskRuntime.create_task(command, cwd: cwd)
+
+          expect(finished_record(record.id)).to have_attributes(status: status, exit_code: code, stop_reason: nil)
+          expect(File.read(record.output_path)).to eq("done\n")
+          expect(File.absolute_path?(record.exit_code_path)).to be(true)
+        end
+      end
+    end
+  end
+
+  # The record once it no longer runs (each poll is a refresh).
+  def finished_record(task_id, timeout: 10.0)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    loop do
+      record, = Samagotchi::Tools::TaskRuntime.get_record(task_id)
+      return record unless record.running? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+
+      sleep(0.05)
+    end
   end
 
   it "writes command output that can be read from output_path" do
