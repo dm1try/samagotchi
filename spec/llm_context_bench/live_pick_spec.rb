@@ -123,7 +123,8 @@ RSpec.describe LLMContextBench::LivePick do
 
   it "refuses a host that isn't a chat host" do
     registry = instance_double(Samagotchi::HostRegistry, host_for_model: [double(name: "local", chat?: false), "m"])
-    expect { described_class.chat_adapter("local:m", registry: registry) }.to raise_error(ArgumentError, /isn't a chat host/)
+    expect { described_class.chat_adapter("local:m", registry: registry) }
+      .to raise_error(ArgumentError, "local:m: host local isn't a chat host (api: openai or anthropic)")
   end
 
   describe "the CLI's --live" do

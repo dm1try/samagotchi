@@ -112,10 +112,14 @@ module LLMContextBench
     end
 
     # The adapter and bare model chi would use for +model_ref+ (a chat host
-    # only: the request is chat-shaped).
+    # only: the request is chat-shaped). The error names every api with a
+    # chat adapter (LLM::Adapters::BY_API).
     def self.chat_adapter(model_ref, registry: Samagotchi::HostRegistry.new)
       entry, bare = registry.host_for_model(model_ref)
-      raise ArgumentError, "#{model_ref}: host #{entry.name} isn't a chat host (api: openai)" unless entry.chat?
+      unless entry.chat?
+        apis = Samagotchi::LLM::Adapters::BY_API.keys.join(" or ")
+        raise ArgumentError, "#{model_ref}: host #{entry.name} isn't a chat host (api: #{apis})"
+      end
 
       [registry.adapter_for(entry), bare]
     end
