@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, plainHeadline, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -203,30 +203,6 @@ test("placeKind: a queued prompt (delivery queue) and a queued command are queue
 test("handOffOrder: the lines queued for after the turn come last, after its end", () => {
   const order = handOffOrder({ prompt: "P", block: "B", extras: ["x"], answer: ["A"], timing: "T", end: "E", kept: ["k"], queued: ["q1", "q2"] });
   assert.deepEqual(order, ["P", "B", "x", "A", "T", "E", "k", "q1", "q2"]);
-});
-
-test("plainHeadline: markdown syntax out of a headline, the words kept", () => {
-  assert.equal(plainHeadline("## Plan"), "Plan");
-  assert.equal(plainHeadline("###### Deep"), "Deep");
-  assert.equal(plainHeadline("| file | change |"), "file · change");
-  assert.equal(plainHeadline("| settings.conf | **beta** to 3 |"), "settings.conf · beta to 3");
-  assert.equal(plainHeadline("|---|---|"), "");
-  assert.equal(plainHeadline("| :--- | ---: |"), "");
-  assert.equal(plainHeadline("```ruby"), "");
-  assert.equal(plainHeadline("~~~"), "");
-  assert.equal(plainHeadline("---"), "");
-  assert.equal(plainHeadline("I check **two files** and the `config` key, per [the docs](https://example.com/docs)."),
-    "I check two files and the config key, per the docs.");
-  assert.equal(plainHeadline("> - [x] done _now_, *really*"), "done now, really");
-  assert.equal(plainHeadline("![a chart](chart.png) and <https://example.com/x>"), "a chart and https://example.com/x");
-});
-
-test("plainHeadline: mid-stream leftovers go, code-ish text stays", () => {
-  assert.equal(plainHeadline("**Bold start"), "Bold start");
-  assert.equal(plainHeadline("see [the docs](https://exa"), "see the docs");
-  assert.equal(plainHeadline("snake_case_name and `__init__.py`, `**kwargs`"), "snake_case_name and __init__.py, **kwargs");
-  assert.equal(plainHeadline("2 * 3 * 4 is 24"), "2 * 3 * 4 is 24");
-  assert.equal(plainHeadline("use a || b here"), "use a || b here");
 });
 
 test("headlineOf: the newest sentence as plain text, syntax-only lines skipped", () => {

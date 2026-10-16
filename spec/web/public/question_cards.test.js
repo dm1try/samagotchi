@@ -591,6 +591,8 @@ test("a card drawn already answered (the history replay) does not take the focus
 // The reply that asked (P2): kept by the answered card, a muted line under
 // its summary (CSS clamps it to two lines; whole when the card is open).
 const SAID = "I found two config files.\nThey disagree on the port.";
+// The summary's copy: one plain line (plain_line.js plainText).
+const SAID_LINE = "I found two config files. They disagree on the port.";
 const said = (card) => card.querySelector("summary").querySelector(".question-said");
 
 test("an answered question keeps the reply that asked it under its summary; a pending one shows none yet", () => {
@@ -599,7 +601,7 @@ test("an answered question keeps the reply that asked it under its summary; a pe
   const card = cards.questionCard();
   assert.equal(said(card), null);
   cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
-  assert.equal(said(card).textContent, SAID);
+  assert.equal(said(card).textContent, SAID_LINE);
   assert.equal(card.querySelector("summary").textContent, "Which one? → a");
   // The summary's copy is the closed card's clamp (hidden from screen
   // readers: not the toggle's label); the whole text, selectable, is in the
@@ -610,15 +612,26 @@ test("an answered question keeps the reply that asked it under its summary; a pe
   assert.equal(card.children.indexOf(full), 1);
 });
 
+test("the summary's kept line is the reply as plain text (no markdown syntax); the body's copy is the reply as written", () => {
+  const md = "## Decision needed\n\nThe `port` differs:\n- **A**: keep [8080](https://x.test)";
+  const { cards } = setup({ asking: md });
+  cards.renderQuestion(PQ);
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  const card = cards.questionCard();
+  assert.equal(said(card).textContent, "Decision needed · The port differs: A: keep 8080");
+  const full = card.children.find((el) => el.classes.has("question-said-full"));
+  assert.equal(full.textContent, md);
+});
+
 test("a dismissed question and an own approval keep it too", () => {
   const dismissed = setup({ asking: SAID });
   dismissed.cards.renderQuestion(PQ);
   dismissed.cards.resolveQuestion("q1", { cancelled: true });
-  assert.equal(said(dismissed.cards.questionCard()).textContent, SAID);
+  assert.equal(said(dismissed.cards.questionCard()).textContent, SAID_LINE);
   const own = setup({ asking: SAID });
   own.cards.renderQuestion(APPROVAL);
   own.cards.resolveQuestion("a1", { answer: { selected: ["Allow once"] } });
-  assert.equal(said(own.cards.questionCard()).textContent, SAID);
+  assert.equal(said(own.cards.questionCard()).textContent, SAID_LINE);
 });
 
 test("no kept text for a relayed approval, a hook's question, the step limit, or an empty reply", () => {
@@ -640,7 +653,7 @@ test("a reloaded card takes the text it is given (its step's), not the running t
   const { cards } = setup({ asking: "the running turn's text" });
   cards.renderQuestion(PQ, { said: SAID });
   cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
-  assert.equal(said(cards.questionCard()).textContent, SAID);
+  assert.equal(said(cards.questionCard()).textContent, SAID_LINE);
   const none = setup({ asking: "the running turn's text" });
   none.cards.renderQuestion(PQ, { said: "" });
   none.cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
@@ -679,7 +692,7 @@ test("a resolved card's kept reply: no render until it is opened, then once, as 
   assert.ok(full.classes.has("markdown"));
   assert.deepEqual(linked, [full]);
   // The summary's clamped line stays plain text.
-  assert.equal(said(card).textContent, SAID);
+  assert.equal(said(card).textContent, SAID_LINE);
   assert.ok(!said(card).classes.has("markdown"));
   toggle(card, false);
   toggle(card, true);

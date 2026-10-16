@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: a closed step's title and an answered question card's two-line copy of the reply that asked it show that
+  reply's text without its markdown syntax ("## Decision needed", "**A**", `` `port` ``, `[text](url)` read as plain
+  words); the step's body and the card's open copy stay as written.
+
 ### Fixed
 
 - mcp bundle 0.7.1: an MCP server that ignores its stdin's EOF no longer outlives a chi killed with `kill -9` (or

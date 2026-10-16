@@ -184,6 +184,14 @@ test("genLabelParts: the head repeats the body's first words when it is the narr
   assert.deepEqual(genLabelParts(gen({ thinking: "t" })), { head: "thinking", calls: "", repeats: false });
 });
 
+test("genLabel: the narration's first line without its markdown; a syntax-only line gives way to the next", () => {
+  const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
+  assert.equal(genLabel(gen({ text: "## Decision needed\n\nPick one.", tools: [{ tool: "read" }] })), "Decision needed · 1 tool call");
+  assert.equal(genLabel(gen({ text: "1. **Check** the `port` in [config](https://x.test)" })), "Check the port in config");
+  assert.equal(genLabel(gen({ text: "---\n> Next I run it." })), "Next I run it.");
+  assert.deepEqual(genLabelParts(gen({ text: "## Plan\nMore.", tools: [{ tool: "read" }] })), { head: "Plan", calls: "1 tool call", repeats: true });
+});
+
 test("genLabel: a plugin's verb label is the head, not \"working with echoing\"", () => {
   const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
   assert.equal(genLabel(gen({ tools: [{ tool: "echo", label: "echoing" }] })), "echoing · 1 tool call");

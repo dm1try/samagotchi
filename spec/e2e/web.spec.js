@@ -334,9 +334,10 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   await expect(answer(page)).toHaveText("Read the file you picked. Done.");
   await turnEnded(page, 1);
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
-  // The answered card keeps the reply that asked it, under its "Q → A" line; after a reload too.
+  // The answered card keeps the reply that asked it, under its "Q → A" line, as plain text (no
+  // "##", its heading set off by " · "); after a reload too.
   const said = page.locator("#history .bubble.question .question-said");
-  await expect(said).toContainText("I can start from either file: README.md describes the project");
+  await expect(said).toContainText("Two files · I can start from either file: README.md describes the project");
   await page.reload();
   await expect(page.locator("#history .bubble.question summary")).toContainText("Which file should I read? → README.md");
   await expect(said).toContainText("I can start from either file: README.md describes the project");
