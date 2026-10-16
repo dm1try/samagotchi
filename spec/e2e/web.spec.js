@@ -863,6 +863,14 @@ async function continueAndCheck(page, first, kid) {
   await expect(page).not.toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue(CHAIN_OPENER);
   await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
+  // Sent, the link's title (the tab, the top bar) is still its chain's, as its card's,
+  // after a reload too (its snapshot's first user message is the opener now).
+  await page.locator("#actionBtn").click();
+  await turnEnded(page, 1);
+  await expect(page).toHaveTitle(/^Chain day one · Chi/);
+  await page.reload();
+  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(1);
+  await expect(page).toHaveTitle(/^Chain day one · Chi/);
   // The start page: its own remembered model came back.
   await page.locator("#newBtn").click();
   await expect(pick).toBeVisible();

@@ -1,7 +1,7 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate, openerText } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate, openerText, openTitle } from "../../../lib/samagotchi/web/public/chains.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template's markup as the page gets it (lit's marker comments dropped).
@@ -274,6 +274,17 @@ test("foldChains over 4000 sessions in chains of ten stays well under a frame bu
 
 // The user's choice (b): a link titled with the opener shows its chain's
 // first link's title, display only.
+test("openTitle: a chain link's top bar reads its card's title whatever its first message; else the first message, the opener its card's", () => {
+  const cardTitle = (s) => `card of ${s.id}`;
+  const link = { id: "b", continues: "a" };
+  assert.equal(openTitle({ shown: link, first: "Chain opener: check the queue", cardTitle }), "card of b");
+  assert.equal(openTitle({ shown: link, first: "", cardTitle }), "card of b");
+  assert.equal(openTitle({ shown: { id: "c" }, first: "fix X", cardTitle }), "fix X");
+  assert.equal(openTitle({ shown: { id: "c" }, first: CONTINUE_OPENER, cardTitle }), "card of c");
+  // Not listed (yet): its first message.
+  assert.equal(openTitle({ shown: null, first: CONTINUE_OPENER, cardTitle }), CONTINUE_OPENER);
+});
+
 test("chainTitle: a link titled with the opener reads its chain's first link's title; anything else keeps its own", () => {
   const first = link("c1", 5, { first_preview: "/coordinate the daily review" });
   const mid = link("c2", 6, { continues: "c1", first_preview: "  Continue where we left off. " });
