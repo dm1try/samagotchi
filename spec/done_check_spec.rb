@@ -40,7 +40,8 @@ RSpec.describe Samagotchi::DoneCheck do
     expect(described_class.done_reply?("  **DONE.**\n")).to be(true)
     expect(described_class.done_reply?("")).to be(true)
     expect(described_class.done_reply?("All steps are complete. DONE")).to be(true)
-    expect(described_class.done_reply?("## Report\n#{"x" * 400}\nDONE")).to be(false)
+    expect(described_class.done_reply?("- [x] spec\n#{"- [x] step\n" * 40}\nDONE.")).to be(true)
+    expect(described_class.done_reply?("## Report\n#{"x" * 400}\nDONE with the fix.")).to be(false)
     expect(described_class.done_reply?("I still need to commit.")).to be(false)
   end
 end

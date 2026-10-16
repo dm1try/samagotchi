@@ -30,10 +30,14 @@ module Samagotchi
       "off"
     end
 
-    # The check's reply means "all done": empty, or short and saying DONE.
+    # The check's reply means "all done": empty, short and saying DONE, or
+    # ending on a DONE line (a checklist of what was done, then DONE: the
+    # first answer, the full report, stays).
     def self.done_reply?(text)
       text = text.to_s.strip
-      text.empty? || (text.length <= DONE_CHARS && text.match?(/\bDONE\b/))
+      return true if text.empty? || (text.length <= DONE_CHARS && text.match?(/\bDONE\b/))
+
+      text.lines.last.to_s.strip.match?(/\A\W*DONE\W*\z/)
     end
 
     def initialize(mode: self.class.mode)
