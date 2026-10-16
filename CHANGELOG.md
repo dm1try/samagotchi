@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   `XDG_CONFIG_HOME` made absolute: a relative one no longer points it at another state or config dir.
 - `chi desktop install` / `upgrade` bake a relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` into the helper's launch
   file made absolute: launchd starts the helper in `/`, where it pointed at `/<dir>`.
+- `execute` and `task_create` pass a relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` on to their commands made
+  absolute: a `chi send` run in another `cwd` no longer reads another state or config dir.
 
 ## [0.73.0] - 2026-10-16
 

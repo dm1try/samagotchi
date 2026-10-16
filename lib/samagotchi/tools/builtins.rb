@@ -2,6 +2,7 @@
 
 require_relative "registry"
 require_relative "../tool_declarations"
+require_relative "../paths"
 require_relative "execute"
 require_relative "read"
 require_relative "write"
@@ -127,6 +128,8 @@ module Samagotchi
       # level (SAMAGOTCHI_SESSION_REASONING_HISTORY, the same way). A
       # worker's `chi --model X` default (ModelProfile::MODEL_FROM_CLI_ENV)
       # is unset: it was that run's, not the default of a chi run here.
+      # A set XDG_STATE_HOME / XDG_CONFIG_HOME goes in absolute (Paths), so
+      # a chi run in another cwd (chi send) reads this chi's dirs.
       def parent_env(kctx, env: ENV)
         peers = kctx.peers
         id = peers.respond_to?(:session_id) ? peers.session_id.to_s : ""
@@ -136,7 +139,16 @@ module Samagotchi
         { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id,
           SESSION_MODEL_ENV => model.empty? ? nil : model,
           SESSION_THINKING_ENV => thinking,
-          SESSION_REASONING_HISTORY_ENV => history }.merge(cli_model_unset(env))
+          SESSION_REASONING_HISTORY_ENV => history }.merge(cli_model_unset(env)).merge(xdg_absolute(env))
+      end
+
+      # The XDG dirs set in +env+, made absolute (nothing for an unset one).
+      def xdg_absolute(env = ENV)
+        set = ->(key) { !env.fetch(key, "").to_s.strip.empty? }
+        dirs = {}
+        dirs["XDG_STATE_HOME"] = Paths.state_home(env: env) if set.call("XDG_STATE_HOME")
+        dirs["XDG_CONFIG_HOME"] = Paths.config_home(env: env) if set.call("XDG_CONFIG_HOME")
+        dirs
       end
 
       # The unsets that keep a `chi --model X` worker's default from passing
@@ -151,11 +163,12 @@ module Samagotchi
       SESSION_THINKING_ENV = "SAMAGOTCHI_SESSION_THINKING"
       SESSION_REASONING_HISTORY_ENV = "SAMAGOTCHI_SESSION_REASONING_HISTORY"
 
-      # task_create's parent_env, less the unsets of a variable the model
-      # set in its env (a SAMAGOTCHI_DEFAULT_MODEL it asked for stays).
+      # task_create's parent_env, less what the model set in its env (a
+      # SAMAGOTCHI_DEFAULT_MODEL or an XDG dir it asked for stays; chi's own
+      # markers are reserved, the model's env can't set them).
       def task_marker_env(kctx, env)
         given = env.is_a?(Hash) ? env.keys.map(&:to_s) : []
-        parent_env(kctx).reject { |key, value| value.nil? && given.include?(key) }
+        parent_env(kctx).reject { |key, _| given.include?(key) }
       end
 
       # Stop flips the turn's controller, seen through the Engine's PeerView

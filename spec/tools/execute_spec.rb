@@ -75,6 +75,21 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
+    # A chi the command runs in another cwd (chi send) reads the same dirs.
+    it "passes a relative XDG_STATE_HOME / XDG_CONFIG_HOME on made absolute, for a command run in another cwd" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          cwd = Dir.pwd
+          with_env("XDG_STATE_HOME" => "rel/state", "XDG_CONFIG_HOME" => "rel/config") do
+            output = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+                                                          .call({ content: 'echo "[$XDG_STATE_HOME|$XDG_CONFIG_HOME]"',
+                                                                  cwd: Dir.tmpdir }, Struct.new(:peers).new(nil))
+            expect(output).to include("[#{cwd}/rel/state|#{cwd}/rel/config]")
+          end
+        end
+      end
+    end
+
     it "exports SAMAGOTCHI_SESSION_MODEL, the session's model ref, and unsets an inherited one without it" do
       require "samagotchi/tools/builtins"
       peers = Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "splash:qwen", cancelled: false)

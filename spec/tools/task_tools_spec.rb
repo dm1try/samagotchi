@@ -121,6 +121,23 @@ RSpec.describe "task tools" do
         .to eq("Error: env key is reserved: SAMAGOTCHI_SESSION_THINKING")
     end
 
+    # A chi the task runs in another cwd (chi send) reads the same dirs; an
+    # XDG dir the model set in its env stays its own.
+    it "passes a relative XDG_STATE_HOME / XDG_CONFIG_HOME on made absolute, unless the model's env sets one" do
+      cwd = Dir.pwd
+      kctx = Struct.new(:peers).new(nil)
+      task_create = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create")
+      with_env("XDG_STATE_HOME" => "rel/state", "XDG_CONFIG_HOME" => "rel/config") do
+        created = task_create.call({ content: 'echo "[$XDG_STATE_HOME|$XDG_CONFIG_HOME]"', cwd: Dir.tmpdir }, kctx)
+        result = wait_for_task(extract_field(created, "task_id"))
+        expect(File.read(extract_field(result, "output_path"))).to eq("[#{cwd}/rel/state|#{cwd}/rel/config]\n")
+
+        created = task_create.call({ content: 'echo "$XDG_CONFIG_HOME"', env: { "XDG_CONFIG_HOME" => "/asked" } }, kctx)
+        result = wait_for_task(extract_field(created, "task_id"))
+        expect(File.read(extract_field(result, "output_path"))).to eq("/asked\n")
+      end
+    end
+
     # A worker started by `chi --model X` has SAMAGOTCHI_DEFAULT_MODEL=X for
     # its own run (SessionManager.spawn_options); a chi its commands run
     # must not take X for the default.
