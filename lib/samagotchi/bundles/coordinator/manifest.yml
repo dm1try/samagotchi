@@ -14,5 +14,4 @@ plugin:
 # the coordinator toolkit needs chi.toolkit and ctx.use_toolkit (0.66.0); the
 # coding toolkit (chi.toolkit prompt:) and the skill's delegate toolkit: need
 # the next chi.
-requires_chi: ">= 0.66.0"
-requires_chi_next: true
+requires_chi: ">= 0.72.0"

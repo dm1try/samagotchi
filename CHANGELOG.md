@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-10-16
+
 ### Added
 
 - A toolkit can carry a prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`): the sessions on it
@@ -45,6 +47,9 @@ and commands may change between minor versions. How releases are made:
   open, instead of leaving both open.
 - The empty-answer retry note asks the model to continue the task (its next tool call) or answer if it is done,
   instead of "answer the user's last message now, briefly", which made a mid-task model stop before its last steps.
+
+Update with `chi update` (the system bundle 0.72.0, coordinator 0.5.0, claude-peer 0.4.1, codex-peer 0.3.1), then
+restart `chi web`.
 
 ## [0.71.0] - 2026-10-15
 
@@ -3104,7 +3109,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.71.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.72.0...HEAD
+[0.72.0]: https://github.com/dm1try/samagotchi/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/dm1try/samagotchi/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/dm1try/samagotchi/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/dm1try/samagotchi/compare/v0.68.0...v0.69.0
