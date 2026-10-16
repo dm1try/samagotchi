@@ -568,6 +568,15 @@ next start.
 The system prompt names the home directory once, with the advice to write
 it as `~` or `$HOME`, so the model rarely has to spell it.
 
+## An external guard: chi-nah
+
+[chi-nah](https://github.com/dm1try/chi-nah) is a bundle kept in its own repo (`chi bundle install
+https://github.com/dm1try/chi-nah`). Its `before_tool_call` hook asks
+[nah](https://github.com/manuelschipper/nah)'s deterministic guards about every `execute`, `task_create`,
+`read`, `write` and `edit`: a call nah blocks (secret exfiltration, `rm -rf ~`, `git reset --hard`,
+`curl | sh`…) is denied with the guard's name and how the user pauses it (`nah nap <guard>`); everything
+else goes to chi's own rules. It needs nah installed; see its README for the settings.
+
 ## Failing closed
 
 - A config hook with `required: true`, or a bundle `before_tool_call` hook with

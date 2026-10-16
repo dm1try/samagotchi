@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Docs: an external guard bundle, [chi-nah](https://github.com/dm1try/chi-nah) (nah's deterministic guards on
+  chi's shell and file calls), in docs/guardrails.md.
+
 ## [0.75.0] - 2026-10-17
 
 ### Changed
