@@ -377,6 +377,10 @@ module Samagotchi
               type: "string",
               description: "The new child's working folder: a worktree or subfolder of this session's repository (create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
             },
+            toolkit: {
+              type: "string",
+              description: "The new child's toolkit, by name (default: the configured child toolkit); not with session"
+            },
             wait: {
               type: "boolean",
               description: "true (default): this call waits for the reply; pick it only when this turn needs the reply to go on. false: returns at once and the reply comes later as a delegate report (also when you are idle); pick it for work that takes minutes, several children side by side, or to keep talking with your user"

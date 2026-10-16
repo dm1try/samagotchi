@@ -526,7 +526,7 @@ stripped of surrounding whitespace, except file text, an edit's
 | `list_sessions` | — | — | `cwd` |
 | `send_note` | `text` | — | `session` |
 | `context_read` | `name` | — | `offset`, `limit` |
-| `delegate` | `task` | — | `model`, `session`, `cwd`, `wait`, `timeout` |
+| `delegate` | `task` | — | `model`, `session`, `cwd`, `toolkit`, `wait`, `timeout` |
 | `delegate_result` | — | — | `session`, `timeout` |
 | `ask_user_question` | `question` | — | `question`, `options`, `header`, `multi_select`, `allow_freeform` |
 | `forget_outputs` | `note` | — | `ids`, `note`, `keep`, `restore` |

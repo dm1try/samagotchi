@@ -592,7 +592,7 @@ RSpec.describe Samagotchi::SessionManager do
         expect(stored(session)).to eq(Samagotchi::Toolkit.new(name: "full"))
       end
 
-      it "is toolkit.default, or toolkit.child for a delegate child, whatever its setup says" do
+      it "is toolkit.default, or toolkit.child for a delegate child without a setup toolkit" do
         allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
         allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("my-child")
 
@@ -601,6 +601,14 @@ RSpec.describe Samagotchi::SessionManager do
                                               parent_id: "parent-1234")
         expect(stored(plain)).to eq(Samagotchi::Toolkit.new(name: "lean"))
         expect(stored(child)).to eq(Samagotchi::Toolkit.new(name: "my-child"))
+      end
+
+      it "is the delegate call's for a delegate child whose setup names one" do
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("my-child")
+        child = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
+                                              parent_id: "parent-1234",
+                                              setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "coding")))
+        expect(stored(child)).to eq(Samagotchi::Toolkit.new(name: "coding"))
       end
 
       it "is the setup's own when it has one" do

@@ -19,8 +19,9 @@ module Samagotchi
     # worker, started in this session's folder (or cwd:, a worktree or
     # subfolder of the same repository) with the task as its first
     # user message and the `delegated` system memory preloaded. It shows in
-    # every list as a child of this one and the user can attach to it. With
-    # session:, a follow-up to a child that exists. Only the child's final
+    # every list as a child of this one and the user can attach to it, on
+    # toolkit: (a kit's name) or config's toolkit.child. With session:, a
+    # follow-up to a child that exists. Only the child's final
     # reply comes back (DelegateWait), never its trace.
     class Delegate
       NAME = "delegate"
@@ -41,10 +42,12 @@ module Samagotchi
       # @param model [String, nil] the child's model (an alias works); the parent's by default
       # @param session [String, nil] a child's id or prefix: send the task there instead
       # @param cwd [String, nil] the new child's folder (child_cwd checks it); the parent's by default
+      # @param toolkit [String, nil] the new child's toolkit, a kit's name (checked against the parent's
+      #   kits, Peers#toolkit_names); config's toolkit.child by default
       # @param wait [Boolean, String, nil] wait for the reply (default true)
       # @param timeout [Integer, String, nil] seconds to wait (default DelegateWait::TIMEOUT_DEFAULT)
       # @param peers [Peers, nil]
-      def self.call(content, model: nil, session: nil, cwd: nil, wait: nil, timeout: nil, peers: nil)
+      def self.call(content, model: nil, session: nil, cwd: nil, toolkit: nil, wait: nil, timeout: nil, peers: nil)
         return "Error: this session's id is not known here" unless peers&.session_id
 
         task = content.to_s.strip
@@ -56,10 +59,14 @@ module Samagotchi
         timeout = parse_timeout(timeout)
 
         cwd = cwd.to_s.strip
+        toolkit = toolkit.to_s.strip
         child_id, warning = if session.to_s.strip.empty?
-                              start_child(task, parent: parent, model: model, cwd: cwd, state_dir: sd, peers: peers)
+                              start_child(task, parent: parent, model: model, cwd: cwd, toolkit: toolkit, state_dir: sd,
+                                                peers: peers)
                             elsif !cwd.empty?
                               "Error: cwd starts a new child; a follow-up with session keeps the child's folder"
+                            elsif !toolkit.empty?
+                              "Error: toolkit starts a new child; a follow-up keeps the child's toolkit"
                             else
                               follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
                             end
@@ -106,14 +113,18 @@ module Samagotchi
       end
       private_class_method :full_hint
 
+      # @param toolkit [String] a kit's name, "" for config's toolkit.child
       # @return [String] the new child's id, or an Error: line
-      def self.start_child(task, parent:, model:, cwd:, state_dir:, peers:)
+      def self.start_child(task, parent:, model:, cwd:, toolkit:, state_dir:, peers:)
         if parent.parent_id
           return "Error: this session is a delegate of #{parent.parent_id}; delegated sessions don't delegate further"
         end
 
         folder = child_cwd(cwd, parent)
         return folder if folder.start_with?("Error:")
+
+        unknown = unknown_toolkit(toolkit, peers)
+        return unknown if unknown
 
         running = running_children(parent.id, state_dir: state_dir)
         max = max_children
@@ -123,13 +134,28 @@ module Samagotchi
                  "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. #{full_hint(peers)}"
         end
 
+        setup = toolkit.empty? ? SessionSetup.new : SessionSetup.new(toolkit: Toolkit.new(name: toolkit))
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
-                                             parent_id: parent.id, delegate: true, state_dir: state_dir)
+                                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir)
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         [child.id, child.model_warning]
       end
       private_class_method :start_child
+
+      # The Error: line for a toolkit name the parent doesn't know
+      # (Peers#toolkit_names: its built-in, config and plugin kits), nil
+      # when it knows it, none was given, or the peers can't tell (a bare
+      # kernel: the child's worker resolves it, full when it can't).
+      def self.unknown_toolkit(toolkit, peers)
+        return nil if toolkit.empty? || !peers.respond_to?(:toolkit_names)
+
+        names = peers.toolkit_names
+        return nil if names.nil? || names.include?(toolkit)
+
+        "Error: no toolkit named #{toolkit} (toolkits: #{names.join(", ")})"
+      end
+      private_class_method :unknown_toolkit
 
       # The new child's folder: the parent's, or +cwd+ (relative to the
       # parent's) when it is a folder of the parent's repository, in any of

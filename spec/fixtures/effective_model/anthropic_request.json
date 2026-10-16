@@ -56,7 +56,7 @@
       "delegate_result",
       "ask_user_question"
     ],
-    "digest": "sha256:cf97e5ec056b8d681a4ba94872faeb7f262519052c93b6f6a086c7133dddc15f"
+    "digest": "sha256:51177ad25edbda162e9ee73713e0090c87beb07b93b9b7e50cd3ae8bc91b6115"
   },
   "tool_choice": {
     "type": "auto"

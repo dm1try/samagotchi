@@ -189,7 +189,8 @@ module Samagotchi
     # which is on Toolkit::FULL (Toolkit.of). Saved and never resolved
     # again from config, so a respawned worker declares the same tools; a
     # continue and a fork copy it (SessionSetup.of), a delegate child gets
-    # toolkit.child (SessionManager.spawn_session).
+    # the one its delegate call named, else toolkit.child
+    # (SessionManager.spawn_session).
     attr_reader :toolkit
 
     # @param value [Toolkit, Hash, String, nil] the session file's form too

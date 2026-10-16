@@ -19,7 +19,8 @@ module Samagotchi
   #
   # It doesn't save itself: the session keeps each setting in its own field
   # and file key, and resolves it on its own. A delegate child starts
-  # without one; a continue and a fork copy their session's (.of).
+  # without one (but the toolkit its delegate call named); a continue and a
+  # fork copy their session's (.of).
   SessionSetup = Data.define(:llm_context, :thinking, :reasoning_history, :appended_prompt_files, :toolkit) do
     def initialize(llm_context: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [], toolkit: nil)
       super(llm_context: llm_context, thinking: thinking, reasoning_history: reasoning_history,

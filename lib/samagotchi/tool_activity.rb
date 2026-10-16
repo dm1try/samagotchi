@@ -405,6 +405,7 @@ module Samagotchi
         parts = []
         parts << "session=#{preview_tool_param(call[:session])}" unless call[:session].to_s.strip.empty?
         parts << "model=#{preview_tool_param(call[:model])}" unless call[:model].to_s.strip.empty?
+        parts << "toolkit=#{preview_tool_param(call[:toolkit])}" unless call[:toolkit].to_s.strip.empty?
         parts << "task=#{preview_tool_param(call[:content])}"
         parts << "wait=#{preview_tool_param(call[:wait])}" unless call[:wait].nil? || call[:wait].to_s.strip.empty?
         parts.join(" ")

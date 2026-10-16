@@ -90,6 +90,14 @@ RSpec.describe Samagotchi::ToolActivity do
       .to eq('query="bug" labels="[\\"a\\"]" opts="{\\"x\\":1}"')
   end
 
+  it "previews a delegate call with its model and toolkit when given" do
+    call = { name: "delegate", content: "build it", model: "tiny", toolkit: "coding", wait: "false" }
+    expect(described_class.tool_activity_params("delegate", call, registry: registry))
+      .to eq('model="tiny" toolkit="coding" task="build it" wait="false"')
+    expect(described_class.tool_activity_params("delegate", { name: "delegate", content: "look" }, registry: registry))
+      .to eq('task="look"')
+  end
+
   it "falls back to key=value when the preview raises" do
     tools = registry(preview: ->(_call) { raise "boom" })
     call = { name: "jira_search", args: { "query" => "bug" } }

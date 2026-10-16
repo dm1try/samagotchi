@@ -146,6 +146,51 @@ RSpec.describe "delegate tools" do
       expect([child.model_name, child.model_typed]).to eq(%w[box:gemma-small tiny])
     end
 
+    describe "a toolkit of its own (toolkit:)" do
+      let(:kit_peers) { worker_peers.dup.tap { |p| p.toolkit_names = %w[full lean child coding] } }
+
+      def child_of_parent = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+
+      it "starts the child on the toolkit the call names, stored by name in its file" do
+        out = described_class.call("build it", toolkit: " coding ", wait: false, peers: kit_peers)
+
+        expect(out).to include("status: running")
+        child = child_of_parent
+        expect(child.toolkit).to eq(Samagotchi::Toolkit.new(name: "coding"))
+        file = JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))
+        expect(file["toolkit"]).to eq({ "name" => "coding", "add" => [], "remove" => [] })
+      end
+
+      it "gets the name from the delegate call's own toolkit argument (the built-in's dispatch)" do
+        call = { content: "build it", toolkit: "coding", wait: "false" }
+        Samagotchi::Tools::Builtins::HANDLERS.fetch("delegate").call(call, Struct.new(:peers).new(kit_peers))
+        expect(child_of_parent.toolkit).to eq(Samagotchi::Toolkit.new(name: "coding"))
+      end
+
+      it "starts it on toolkit.child without one (a blank one too)" do
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("child")
+        described_class.call("look", toolkit: " ", wait: false, peers: kit_peers)
+        expect(child_of_parent.toolkit).to eq(Samagotchi::Toolkit.new(name: "child"))
+      end
+
+      it "refuses a name the parent doesn't know, starting nothing" do
+        expect(described_class.call("build it", toolkit: "nope", wait: false, peers: kit_peers))
+          .to eq("Error: no toolkit named nope (toolkits: full, lean, child, coding)")
+        expect(session_files).to contain_exactly(parent.id)
+      end
+
+      it "takes any name when the peers can't tell the kits (no toolkit_names): the child's worker resolves it" do
+        described_class.call("build it", toolkit: "mine", wait: false, peers: worker_peers)
+        expect(child_of_parent.toolkit).to eq(Samagotchi::Toolkit.new(name: "mine"))
+      end
+
+      it "refuses toolkit with session: a follow-up keeps the child's toolkit" do
+        child = make(parent_id: parent.id)
+        expect(described_class.call("more", session: child.id, toolkit: "coding", wait: false, peers: kit_peers))
+          .to eq("Error: toolkit starts a new child; a follow-up keeps the child's toolkit")
+      end
+    end
+
     it "refuses a model whose host isn't configured, creating nothing" do
       out = described_class.call("quick look", model: "nosuch:org/model", wait: "false", peers: peers)
 

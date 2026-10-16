@@ -20,6 +20,8 @@ module Samagotchi
       def model_ref = engine.effective_model_ref
       def thinking = engine.thinking_override
       def reasoning_history = engine.reasoning_history_override
+      # The kits a delegate may start its child on (Engine#toolkit_kits).
+      def toolkit_names = engine.toolkit_kits.keys
       # The peer's name when +name+ is a source a peer bundle declared
       # (PeerSources), for context_read's header.
       def peer_label(name) = engine.peer_sources&.label_for(name)

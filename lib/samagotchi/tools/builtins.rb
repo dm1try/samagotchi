@@ -103,7 +103,8 @@ module Samagotchi
         end,
         Delegate::NAME => lambda do |call, kctx|
           Delegate.call(call[:content], model: call[:model], session: call[:session], cwd: call[:cwd],
-                                        wait: call[:wait], timeout: call[:timeout], peers: kctx.peers)
+                                        toolkit: call[:toolkit], wait: call[:wait], timeout: call[:timeout],
+                                        peers: kctx.peers)
         end,
         DelegateResult::NAME => lambda do |call, kctx|
           DelegateResult.call(call[:content], session: call[:session], timeout: call[:timeout], peers: kctx.peers)

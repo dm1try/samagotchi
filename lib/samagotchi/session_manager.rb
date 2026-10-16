@@ -140,9 +140,10 @@ module Samagotchi
     # @param title [String, nil] what the lists show before the first turn
     #   (the prompt's preview by default, else the seed's first user message)
     # @param setup [SessionSetup] the session's own settings (chi
-    #   --llm-context; a fork and a continue copy their session's); without
-    #   a toolkit the session is stored on config's toolkit.default, a
-    #   delegate child always on toolkit.child (Toolkit.configured)
+    #   --llm-context; a fork and a continue copy their session's; a delegate
+    #   child the toolkit its delegate call named); without a toolkit the
+    #   session is stored on config's toolkit.default, a delegate child on
+    #   toolkit.child (Toolkit.configured)
     # @param continues [String, nil] the session this one continues (a
     #   session field; SessionContinue)
     # @param note [String, nil] a context note the session starts with,
@@ -179,7 +180,7 @@ module Samagotchi
         setup: setup,
         continues: continues
       )
-      session.toolkit = Toolkit.configured(delegate: delegate) if delegate || session.toolkit.nil?
+      session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.
