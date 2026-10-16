@@ -79,7 +79,9 @@ RSpec.describe "The coordinator plugin" do
     tasks = inits
     kits = toolkits
     chi = Object.new
-    chi.define_singleton_method(:toolkit) { |name, base:, add: [], remove: []| kits << [name, base, add, remove] }
+    chi.define_singleton_method(:toolkit) do |name, base:, add: [], remove: [], prompt: nil|
+      kits << [name, base, add, remove, prompt]
+    end
     chi.define_singleton_method(:command) { |name, _description, anytime: false, &block| found[name] = [block, anytime] }
     chi.define_singleton_method(:init) { |label, quiet: false, **, &block| tasks << [label, quiet, block] }
     mod::Plugin.new({}).register(chi)
@@ -204,9 +206,10 @@ RSpec.describe "The coordinator plugin" do
       expect(inits).to be_empty
     end
 
-    it "declares the coordinator toolkit: lean and the tools that run children" do
+    it "declares the coordinator toolkit (lean and the tools that run children) and coding (child and pi's plain lines)" do
       commands
-      expect(toolkits).to eq([["coordinator", "lean", %w[delegate delegate_result list_sessions], []]])
+      expect(toolkits).to eq([["coordinator", "lean", %w[delegate delegate_result list_sessions], [], nil],
+                              ["coding", "child", [], [], "- Be concise in your responses\n- Show file paths clearly when working with files"]])
     end
 
     it "puts the session on the coordinator toolkit before it asks the model" do

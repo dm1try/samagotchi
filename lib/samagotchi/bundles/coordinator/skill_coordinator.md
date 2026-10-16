@@ -46,7 +46,8 @@ If the request is a new goal, say which handoffs are open (one line each) and go
    user if unsure. Split the work into independent tasks (at most session.max_children at once,
    default 4). Tell the user the split in a few lines and go on unless they object.
 2. For each task: from your own folder, `git worktree add ../<repo>-<task> -b <type>/<task>` with
-   execute; then `delegate` with `wait: false`, `cwd:` that worktree's absolute path, and a
+   execute; then `delegate` with `wait: false`, `cwd:` that worktree's absolute path, `toolkit:
+   "coding"` for a build or fix task (none for a review, research or a plan), and a
    self-contained task. The task starts with "Work only in <absolute worktree path>: every cd, read,
    write, test and commit goes there, never the project root" and says what to report (the result,
    evidence: commands and what they printed, what isn't done) and "commit on the branch, don't merge,

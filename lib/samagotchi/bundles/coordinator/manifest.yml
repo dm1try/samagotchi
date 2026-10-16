@@ -1,15 +1,18 @@
 ---
 name: coordinator
-version: 0.4.0
+version: 0.5.0
 scope: system
-description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions)"
+description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions) and the coding toolkit for build children (child + be concise)"
 trust_level: reviewed
 files:
   skill_coordinator.md:
-    sha256: sha256:2ef3faefa89cbb23ce89c76bd5d913e29dde9817edf08cd29a063aeafa698643
+    sha256: sha256:718cb76da10f9610a7582eddf1441590566836ebc6a9cb127b7f7847b17ceb92
     description: "Coordinate parallel work: split it, delegate each task wait:false in its own worktree (cwd:), check each report, ask the user before each merge; resume from a handoff_* memory"
 plugin:
   file: plugin.rb
-  sha256: sha256:caaddd24fbec2c66fa0e88937478b7ec7799bac7c98d5dc7f71ffc3fc227953a
-# the coordinator toolkit needs chi.toolkit and ctx.use_toolkit (0.66.0)
+  sha256: sha256:3b5f766ad198862243c494e4c5aec7c4a0972e7644a6388bed843c5651f5ca0d
+# the coordinator toolkit needs chi.toolkit and ctx.use_toolkit (0.66.0); the
+# coding toolkit (chi.toolkit prompt:) and the skill's delegate toolkit: need
+# the next chi.
 requires_chi: ">= 0.66.0"
+requires_chi_next: true

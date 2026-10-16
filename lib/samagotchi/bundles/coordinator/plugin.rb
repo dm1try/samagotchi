@@ -38,6 +38,13 @@
 # before the session's first model reply and outside a turn: otherwise it
 # says to run /toolkit coordinator, unless the session declares delegate
 # anyway.
+#
+# The coding toolkit is for build and fix children (the skill's delegate
+# toolkit: "coding"): child's tools plus a prompt text, pi's two plain
+# lines. In the harness evals (r5, r7: Qwen3.6-35B-A3B, lean, N=3) they cut
+# the median time by a third at the same quality. Plain wording only: a
+# scoped wording ("in this task, …") backfired (+50% thinking). Reviews,
+# research and plans stay on child (no toolkit:): they need the length.
 class Plugin
   CARD_ID = "children"
   # A card takes 6 actions: Refresh and up to 5 Stops.
@@ -56,9 +63,12 @@ class Plugin
 
   TOOLKIT = "coordinator"
   TOOLKIT_TOOLS = %w[delegate delegate_result list_sessions].freeze
+  CODING_TOOLKIT = "coding"
+  CODING_PROMPT = "- Be concise in your responses\n- Show file paths clearly when working with files"
 
   def register(chi)
     chi.toolkit TOOLKIT, base: "lean", add: TOOLKIT_TOOLS
+    chi.toolkit CODING_TOOLKIT, base: "child", prompt: CODING_PROMPT
     chi.command "/children", "this session's child sessions: state, branch, last reply; all, stop <id>",
                 anytime: true do |args, ctx|
       children_command(args.to_s.strip, ctx)
