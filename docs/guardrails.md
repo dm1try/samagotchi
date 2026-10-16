@@ -155,7 +155,8 @@ chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a
 parent's environment does choose is the config dir: `XDG_CONFIG_HOME` picks
 which config.yml chi reads, and a worker the parent starts or wakes (`chi
 send` to a stopped session) reads the one the parent's `XDG_CONFIG_HOME`
-points at. chi doesn't record the config dir per session.
+points at (a relative one made absolute from the parent's directory). chi
+doesn't record the config dir per session.
 
 The worker checks it too. `chi answer` marks its answers as a parent's
 (`client_id: "cli:answer"`), and the worker's Bridge refuses such an allow

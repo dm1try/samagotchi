@@ -25,6 +25,7 @@ require_relative "worker_sidecar"
 require_relative "worker_signals"
 require_relative "log"
 require_relative "log_path"
+require_relative "paths"
 require_relative "model_profile"
 require_relative "installed_gem"
 require_relative "installed_versions"
@@ -213,6 +214,8 @@ module Samagotchi
     # SAMAGOTCHI_GUARDRAILS_* and the session markers (SESSION_MARKER_ENV).
     # XDG_CONFIG_HOME passes: whoever starts or
     # wakes the worker picks which config.yml it reads (docs/guardrails.md).
+    # XDG_STATE_HOME and XDG_CONFIG_HOME, when set, pass made absolute
+    # (Paths): the worker starts in the session's directory.
     private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them (the worker then leaves the process
@@ -239,6 +242,10 @@ module Samagotchi
       else
         child_env["SAMAGOTCHI_LOG_DISABLE"] = "true"
       end
+      # And the spawner's XDG dirs, absolute: a relative XDG_STATE_HOME or
+      # XDG_CONFIG_HOME would otherwise be read from the session's directory.
+      child_env["XDG_STATE_HOME"] = Paths.state_home unless ENV.fetch("XDG_STATE_HOME", "").to_s.strip.empty?
+      child_env["XDG_CONFIG_HOME"] = Paths.config_home unless ENV.fetch("XDG_CONFIG_HOME", "").to_s.strip.empty?
       # The spawner's environment must not reach the worker's guardrails (a
       # parent agent starting or waking a session): Process.spawn unsets a
       # key mapped to nil. config.yml no longer reads them; this keeps an

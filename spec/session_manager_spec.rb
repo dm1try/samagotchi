@@ -788,6 +788,27 @@ RSpec.describe Samagotchi::SessionManager do
       end
     end
 
+    # The worker starts in the session's directory: a relative XDG dir
+    # would be read from there, not from the spawner's directory.
+    it "hands the worker the spawner's XDG_STATE_HOME and XDG_CONFIG_HOME, made absolute" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |*args, **_opts|
+        spawned_env = args.first if args.first.is_a?(Hash)
+        12_345
+      end
+
+      Dir.chdir(tmpdir) do
+        FileUtils.mkdir_p(File.join("rel-config", "samagotchi"))
+        FileUtils.cp(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), File.join("rel-config", "samagotchi"))
+        stub_const("ENV", ENV.to_h.merge("XDG_STATE_HOME" => "rel-state", "XDG_CONFIG_HOME" => "rel-config"))
+
+        described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+        expect(spawned_env).to include("XDG_STATE_HOME" => File.join(Dir.pwd, "rel-state"),
+                                       "XDG_CONFIG_HOME" => File.join(Dir.pwd, "rel-config"))
+      end
+    end
+
     # The spawner's environment must not switch the worker's guardrails off
     # (a parent agent starting or waking a session).
     it "unsets every SAMAGOTCHI_GUARDRAILS_* variable for the worker" do

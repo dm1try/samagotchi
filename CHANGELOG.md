@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   crashing past Ruby): a watchdog in the server's process group stops the group when chi's end of its pipe closes.
 - A relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` is taken from the current directory: with a relative state dir,
   an `execute` still running at its limit was killed instead of handed over as a task.
+- A worker started in a session's folder (by `chi`, `chi web` or `chi send`) gets the starter's `XDG_STATE_HOME` and
+  `XDG_CONFIG_HOME` made absolute: a relative one no longer points it at another state or config dir.
 
 ## [0.73.0] - 2026-10-16
 
