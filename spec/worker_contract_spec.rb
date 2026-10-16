@@ -24,6 +24,9 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::SessionManager::BOOT_FALLBACK_ENV).to eq("SAMAGOTCHI_BOOT_FALLBACK")
     expect(Samagotchi::SessionManager::WORKER_PROCESS_ENV).to eq("SAMAGOTCHI_WORKER_PROCESS")
     expect(Samagotchi::SessionManager::WORKER_DETACH_ENV).to eq("SAMAGOTCHI_WORKER_DETACH")
+    # The spawner's state and config dirs (spawn_options sets them absolute).
+    expect(Samagotchi::Paths.state_home(env: { "XDG_STATE_HOME" => "/spawner/state" })).to eq("/spawner/state")
+    expect(Samagotchi::Paths.config_home(env: { "XDG_CONFIG_HOME" => "/spawner/config" })).to eq("/spawner/config")
   end
 
   it "reads the input/ files an older chi writes (INPUT_FORMAT 3)" do
