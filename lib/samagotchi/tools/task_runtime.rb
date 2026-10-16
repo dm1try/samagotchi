@@ -6,6 +6,7 @@ require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
+require_relative "../log"
 require_relative "../process_group"
 require_relative "shell"
 require_relative "task_record"
@@ -74,7 +75,7 @@ module Samagotchi
           out: output_io,
           err: output_io
         )
-        Process.detach(pid)
+        waiter = Process.detach(pid)
         # Read now, compared before each signal: a pid reused later is not this task.
         pid_started = ProcessGroup.start_time(pid)
 
@@ -83,11 +84,66 @@ module Samagotchi
                                     output_path: output_path, exit_code_path: exit_code_path)
 
         write_record(record)
+        record_exit_status(waiter, exit_code_path, task_id: task_id)
         [record, nil]
       rescue StandardError => e
         [nil, "Error: #{e.message}"]
       ensure
         output_io&.close
+      end
+
+      # The shell's status from chi's waiter (+waiter+, a Process.detach
+      # thread), for a shell whose EXIT trap wrote nothing: one killed by a
+      # signal (zsh's sh mode skips the trap on TERM, INT and KILL) gets
+      # 128 + the signal, one whose command replaced the trap gets its exit
+      # status. Only while this chi runs. A record a refresh finished in
+      # between (failed, no exit code) is corrected; a stopped task (its
+      # stop flag on disk) is left as task_stop records it.
+      # @return [Thread]
+      def record_exit_status(waiter, path, task_id:)
+        # Absolute now: safe against a later chdir.
+        record_path = File.expand_path(metadata_path(task_id))
+        path = File.expand_path(path)
+        Thread.new do
+          Thread.current.report_on_exception = false
+          code = status_code(waiter.value)
+          next if code.nil? || record_at(record_path)&.stop_requested_by
+
+          File.write(path, code.to_s) if !File.exist?(path) && Dir.exist?(File.dirname(path))
+          correct_finished_record(record_path, read_exit_code(path))
+        rescue StandardError => e
+          Log.debug(:turn, "task_exit_code_failed", id: task_id, error: e.class.name, msg: e.message)
+        end
+      end
+
+      # A Process::Status as a shell reports one: its exit status, or
+      # 128 + the signal that killed it.
+      def status_code(status)
+        return nil unless status
+
+        status.exitstatus || (status.termsig && (128 + status.termsig))
+      end
+
+      # Reasons a refresh finishes a record with when it read no exit code.
+      MISSING_CODE_REASONS = ["process_ended_without_exit_code", NOT_CHIS_PROCESS].freeze
+
+      # A record a refresh finished before the exit code was there (failed,
+      # exit_code nil, no stop) gets +code+; finished_at is kept.
+      def correct_finished_record(record_path, code)
+        record = record_at(record_path)
+        return unless code && record && !record.running? && record.exit_code.nil? && !record.stop_requested_by
+        return unless MISSING_CODE_REASONS.include?(record.stop_reason)
+
+        status = code.zero? ? "completed" : "failed"
+        AtomicFile.write(record_path, record_json(record.with(status: status, exit_code: code, stop_reason: nil)))
+      end
+
+      def record_at(path)
+        return nil unless File.file?(path)
+
+        TaskRecord.from_file(JSON.parse(File.read(path)))
+      rescue JSON::ParserError
+        nil
       end
 
       # A record for a command chi already runs: an execute still running at
@@ -323,8 +379,10 @@ module Samagotchi
         FileUtils.mkdir_p(dir)
 
         path = File.join(dir, METADATA_FILENAME)
-        AtomicFile.write(path, JSON.pretty_generate(record.to_file) + "\n")
+        AtomicFile.write(path, record_json(record))
       end
+
+      def record_json(record) = JSON.pretty_generate(record.to_file) + "\n"
 
       def metadata_path(task_id)
         File.join(task_dir_for(task_id), METADATA_FILENAME)
@@ -354,9 +412,12 @@ module Samagotchi
       # exit status to +exit_code_path+. A prefix, not lines after the
       # command: a trailing "\\" or "|" in the command would swallow those,
       # and an `exit N` or a `set -e` failure would skip them. A command that
-      # sets its own EXIT trap replaces this one: no exit_code file then
-      # (the task ends failed with process_ended_without_exit_code, unless
-      # its starter's waiter writes the code: Execute's hand-over).
+      # sets its own EXIT trap replaces this one, and a shell killed by a
+      # signal skips it (zsh's sh mode, on TERM, INT and KILL): no exit_code
+      # file from the shell then. The waiter of the chi that started it
+      # writes the code instead (record_exit_status: the status, or
+      # 128 + the signal); with that chi gone too, the task ends failed with
+      # process_ended_without_exit_code.
       def wrapped_shell_command(command, exit_code_path)
         write = %(printf "%s" "$?" > #{Shellwords.escape(exit_code_path)})
         "trap #{Shellwords.escape(write)} EXIT\n#{command}\n"

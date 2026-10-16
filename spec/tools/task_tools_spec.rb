@@ -425,7 +425,7 @@ RSpec.describe "task tools" do
         Process.kill("KILL", other)
         Process.wait(other)
       end
-      Process.kill("KILL", -record.pid) if record && Samagotchi::ProcessGroup.leader?(record.pid)
+      kill_awaiting_waiter(record) if record && Samagotchi::ProcessGroup.leader?(record.pid)
     end
 
     it "lists and reads a task whose pid a later group leader reused as exited, before any task_stop" do
@@ -445,7 +445,7 @@ RSpec.describe "task tools" do
         Process.kill("KILL", other)
         Process.wait(other)
       end
-      Process.kill("KILL", -record.pid) if record && Samagotchi::ProcessGroup.leader?(record.pid)
+      kill_awaiting_waiter(record) if record && Samagotchi::ProcessGroup.leader?(record.pid)
     end
 
     it "keeps a stop that already finished on disk when a stale copy is refreshed" do
@@ -850,6 +850,159 @@ RSpec.describe "task tools" do
         end
       end
     end
+  end
+
+  describe "the exit code from chi's waiter (a shell that wrote none)" do
+    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+
+    def wait_for_file(path, timeout: 10.0)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      sleep(0.05) until File.exist?(path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    end
+
+    def wait_until(timeout: 10.0)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      sleep(0.05) until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    end
+
+    it "records 128 + the signal for a shell killed by one, with no stop_reason" do
+      record, = runtime.create_task("kill -TERM $$; sleep 5")
+
+      # Never task_wait here: each poll is a refresh.
+      wait_for_file(record.exit_code_path)
+
+      expect(File.read(record.exit_code_path)).to eq("143")
+      expect(finished_record(record.id)).to have_attributes(status: "failed", exit_code: 143, stop_reason: nil)
+    end
+
+    describe "after a refresh finished the record without one" do
+      # The waiter's value waits for the gate: the refresh comes first.
+      before do
+        @gate = Queue.new
+        gate = @gate
+        allow(runtime).to receive(:record_exit_status).and_wrap_original do |original, waiter, path, **args|
+          gated = Struct.new(:value).new(nil)
+          gated.define_singleton_method(:value) { gate.pop && waiter.value }
+          original.call(gated, path, **args)
+        end
+      end
+
+      {
+        "kill -TERM $$; sleep 5" => ["failed", 143],
+        "trap 'echo mine' EXIT; exit 0" => ["completed", 0]
+      }.each do |command, (status, code)|
+        it "corrects it to #{status} / #{code} for #{command.inspect}, keeping finished_at" do
+          record, = runtime.create_task(command)
+          wait_until { !Samagotchi::ProcessGroup.alive?(record.pid) }
+
+          early, = runtime.get_record(record.id)
+          expect(early).to have_attributes(status: "failed", exit_code: nil, stop_reason: "process_ended_without_exit_code")
+
+          @gate << true
+          wait_until { runtime.load_record(record.id).exit_code }
+
+          expect(runtime.load_record(record.id)).to have_attributes(status: status, exit_code: code, stop_reason: nil,
+                                                                    finished_at: early.finished_at)
+        end
+      end
+    end
+
+    describe "TaskRuntime.record_exit_status" do
+      def status(exitstatus: nil, termsig: nil) = instance_double(Process::Status, exitstatus: exitstatus, termsig: termsig)
+
+      def waiter_for(value) = Struct.new(:value).new(value)
+
+      # A finished record as a refresh writes one that read no exit code.
+      def finished_without_code(**fields)
+        id = runtime.generate_task_id
+        dir = File.expand_path(runtime.task_dir_for(id))
+        FileUtils.mkdir_p(dir)
+        record = Samagotchi::Tools::TaskRecord.running(id: id, command: "x", cwd: Dir.pwd, pid: 999_999,
+                                                       started_at: "2026-10-16T10:00:00Z",
+                                                       output_path: File.join(dir, "output.log"),
+                                                       exit_code_path: File.join(dir, "exit_code"))
+        record = record.with(status: "failed", stop_reason: "process_ended_without_exit_code",
+                             finished_at: "2026-10-16T10:00:05Z", **fields)
+        runtime.write_record(record)
+        record
+      end
+
+      it "corrects a handed-over record from the status (as execute's hand-over calls it)" do
+        record = finished_without_code(handed_over_by: "execute")
+
+        runtime.record_exit_status(waiter_for(status(exitstatus: 4)), record.exit_code_path, task_id: record.id).join
+
+        expect(File.read(record.exit_code_path)).to eq("4")
+        expect(runtime.load_record(record.id)).to have_attributes(status: "failed", exit_code: 4, stop_reason: nil,
+                                                                  finished_at: "2026-10-16T10:00:05Z")
+      end
+
+      it "corrects a record a refresh found isn't chi's process any more" do
+        record = finished_without_code(stop_reason: Samagotchi::Tools::TaskRuntime::NOT_CHIS_PROCESS)
+
+        runtime.record_exit_status(waiter_for(status(exitstatus: 0)), record.exit_code_path, task_id: record.id).join
+
+        expect(runtime.load_record(record.id)).to have_attributes(status: "completed", exit_code: 0, stop_reason: nil)
+      end
+
+      it "keeps an exit code the shell wrote" do
+        record = finished_without_code
+        File.write(record.exit_code_path, "2")
+
+        runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id).join
+
+        expect(File.read(record.exit_code_path)).to eq("2")
+        expect(runtime.load_record(record.id)).to have_attributes(status: "failed", exit_code: 2)
+      end
+
+      it "never touches a stopped task's record or exit code" do
+        record = finished_without_code(status: "stopped", stop_requested_by: "model", stop_reason: "stopped_by_model")
+
+        runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id).join
+
+        expect(File.exist?(record.exit_code_path)).to be(false)
+        expect(runtime.load_record(record.id)).to eq(record)
+      end
+
+      it "leaves a record finished for another reason, and a running one, as they are" do
+        other = finished_without_code(stop_reason: "something_else")
+        running = finished_without_code(status: "running", stop_reason: nil, finished_at: nil)
+
+        [other, running].each do |record|
+          runtime.record_exit_status(waiter_for(status(termsig: 9)), record.exit_code_path, task_id: record.id).join
+
+          expect(File.read(record.exit_code_path)).to eq("137")
+          expect(runtime.load_record(record.id)).to eq(record)
+        end
+      end
+
+      it "survives a chdir after it starts" do
+        record = finished_without_code
+        gate = Queue.new
+        waiter = Struct.new(:value).new(nil)
+        waiter.define_singleton_method(:value) { gate.pop && Struct.new(:exitstatus, :termsig).new(nil, 2) }
+        thread = runtime.record_exit_status(waiter, record.exit_code_path, task_id: record.id)
+
+        Dir.mktmpdir do |elsewhere|
+          Dir.chdir(elsewhere) do
+            gate << true
+            thread.join
+          end
+        end
+
+        expect(runtime.load_record(record.id)).to have_attributes(status: "failed", exit_code: 130)
+      end
+    end
+  end
+
+  # Kills a task's group outside chi. chi's waiter then writes 137 into
+  # its record (one a refresh already finished without a code): wait for
+  # that before mktmpdir removes the dir.
+  def kill_awaiting_waiter(record, timeout: 5.0)
+    Process.kill("KILL", -record.pid)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    runtime = Samagotchi::Tools::TaskRuntime
+    sleep(0.02) until runtime.load_record(record.id)&.exit_code || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
   end
 
   # The record once it no longer runs (each poll is a refresh).

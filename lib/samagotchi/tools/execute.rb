@@ -350,7 +350,7 @@ module Samagotchi
         return nil if error
 
         File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record.id)))
-        write_missing_exit_code(waiter, record.exit_code_path)
+        TaskRuntime.record_exit_status(waiter, record.exit_code_path, task_id: record.id)
         # Ended between the deadline and the adopt: the record says how.
         TaskRuntime.get_record(record.id) unless waiter.alive?
         lines = [handed_over_line(timeout_sec), "task_id: #{record.id}",
@@ -362,20 +362,6 @@ module Samagotchi
         lines.join("\n")
       end
       private_class_method :hand_over
-
-      # A command that set its own EXIT trap replaced the wrapper's, so it
-      # writes no exit_code: while this chi lives, the waiter's status fills
-      # it in (a refresh in between may still read "no exit code").
-      def self.write_missing_exit_code(waiter, path)
-        Thread.new do
-          Thread.current.report_on_exception = false
-          code = waiter.value&.exitstatus
-          File.write(path, code.to_s) if code && !File.exist?(path) && Dir.exist?(File.dirname(path))
-        rescue StandardError => e
-          Log.debug(:turn, "execute_exit_code_failed", error: e.class.name, msg: e.message)
-        end
-      end
-      private_class_method :write_missing_exit_code
 
       # <state dir>/execute: every command's dir (LOGS_DIRNAME).
       def self.logs_root = File.join(Paths.state_dir, LOGS_DIRNAME)

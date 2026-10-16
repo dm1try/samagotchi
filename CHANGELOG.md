@@ -25,7 +25,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - A `task_create` task given a `cwd`, or running `cd`, recorded `failed` / `process_ended_without_exit_code` even
-  when it succeeded (its exit code was written relative to the shell's directory).
+  when it succeeded (its exit code was written relative to the shell's directory); a task killed by a signal now
+  records 128 + the signal.
 
 ## [0.72.0] - 2026-10-16
 
