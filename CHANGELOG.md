@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - mcp bundle 0.7.1: an MCP server that ignores its stdin's EOF no longer outlives a chi killed with `kill -9` (or
   crashing past Ruby): a watchdog in the server's process group stops the group when chi's end of its pipe closes.
+- A relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` is taken from the current directory: with a relative state dir,
+  an `execute` still running at its limit was killed instead of handed over as a task.
 
 ## [0.73.0] - 2026-10-16
 

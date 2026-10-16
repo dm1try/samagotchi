@@ -639,6 +639,20 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(running?("sleep 31.61")).to be(false)
       end
 
+      # A relative XDG_STATE_HOME used to give relative log and exit_code
+      # paths: adopt refused them, so the command was killed at the limit.
+      it "hands over a command run in another cwd under a relative XDG_STATE_HOME, its paths absolute" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        FileUtils.mkdir_p("sub")
+
+        result = with_env("XDG_STATE_HOME" => "rel-state") { described_class.call("echo before; sleep 1.5", cwd: "sub") }
+
+        expect(result).to start_with("#{described_class.handed_over_line(1)}\ntask_id: ")
+        record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
+        expect(record.exit_code_path).to eq(File.join(Dir.pwd, "rel-state", "samagotchi", "execute", record.id, "exit_code"))
+        expect(Samagotchi::Tools::TaskWait.call(record.id, timeout: 10)).to include("status: completed", "exit_code: 0")
+      end
+
       it "logs the hand-over" do
         ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
         lines = []

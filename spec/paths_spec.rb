@@ -18,6 +18,14 @@ RSpec.describe Samagotchi::Paths do
     it "reads ENV on every call" do
       expect(described_class.state_home).to eq(ENV.fetch("XDG_STATE_HOME"))
     end
+
+    # A relative one is taken from the current directory, once: a command
+    # run in another cwd (execute's logs, its exit_code file) still finds it.
+    it "makes a relative XDG_STATE_HOME absolute, from the current directory, with no ~ expansion" do
+      expect(described_class.state_home(env: { "XDG_STATE_HOME" => "rel/state" })).to eq(File.join(Dir.pwd, "rel", "state"))
+      expect(described_class.state_home(env: { "XDG_STATE_HOME" => "~/s" })).to eq(File.join(Dir.pwd, "~", "s"))
+      expect(described_class.state_dir(env: { "XDG_STATE_HOME" => "./s" })).to eq(File.join(Dir.pwd, "s", "samagotchi"))
+    end
   end
 
   describe ".state_dir" do
@@ -30,6 +38,11 @@ RSpec.describe Samagotchi::Paths do
     it "is XDG_CONFIG_HOME when set, else ~/.config" do
       expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "/c" })).to eq("/c")
       expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "" })).to eq(File.expand_path("~/.config"))
+    end
+
+    it "makes a relative XDG_CONFIG_HOME absolute, from the current directory" do
+      expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "rel/config" })).to eq(File.join(Dir.pwd, "rel", "config"))
+      expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "~/c" })).to eq(File.join(Dir.pwd, "~", "c"))
     end
   end
 
