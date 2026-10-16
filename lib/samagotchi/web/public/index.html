@@ -326,6 +326,22 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .bubble.question>summary .question-said{max-width:72ch;margin:2px 0 1px 1.05em;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .bubble.question[open]>summary .question-said{display:none}
 .question-said-full{margin:4px 0 6px;font-size:13px;line-height:1.55;color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere}
+/* Its markdown once the card is first opened (question_cards.js renderSaidOnOpen), as compact as the stage's. */
+.question-said-full.markdown{white-space:normal}
+.question-said-full.markdown :is(h1,h2,h3,h4,h5,h6){font-size:13.5px;font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--text-2)}
+.question-said-full.markdown :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
+.question-said-full.markdown>:first-child{margin-top:0}
+.question-said-full.markdown>:last-child{margin-bottom:0}
+.question-said-full.markdown :is(ul,ol){padding-left:1.3em}
+.question-said-full.markdown li>:is(ul,ol){margin:0}
+.question-said-full.markdown hr{border:0;border-top:1px solid var(--border);margin:8px 0}
+.question-said-full.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:10px}
+.question-said-full.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+.question-said-full.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px}
+.question-said-full.markdown pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:12px;line-height:1.45;white-space:pre}
+.question-said-full.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
+.question-said-full.markdown :is(th,td){border:1px solid var(--border-strong);padding:3px 7px;font-size:12.5px}
+.question-said-full.markdown th{background:var(--bg-inset);font-weight:600}
 .bubble.command{border-left:3px solid var(--text-faint);background:var(--bg-panel);font-size:13px}
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}
 .note-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-faint);margin-bottom:2px}

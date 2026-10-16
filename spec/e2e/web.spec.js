@@ -343,8 +343,12 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   // Opened, the whole reply is in the card's body (selectable), not in its summary.
   await page.locator("#history .bubble.question summary").click();
   await expect(said).toBeHidden();
-  await expect(page.locator("#history .bubble.question .question-said-full")).toHaveText(
-    "## Two files I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions ([why](https://example.com/files)).");
+  // With web.markdown on, rendered at that first open: its heading, its link in a new tab.
+  const full = page.locator("#history .bubble.question .question-said-full");
+  await expect(full.locator("h2")).toHaveText("Two files");
+  await expect(full).toHaveText(
+    "Two files I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions (why).");
+  await expect(full.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
 });
 
 // The step limit asks as a question (kind continue) between turns: its card,

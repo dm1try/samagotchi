@@ -11,7 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - Web: the stage's asking text (a question's or approval's reply) renders as markdown with clickable links when
-  `web.markdown` is on; its `path:line` refs are links with markdown off too.
+  `web.markdown` is on, and so does a resolved question card's copy of it once the card is opened; their
+  `path:line` refs are links with markdown off too.
 
 ### Changed
 

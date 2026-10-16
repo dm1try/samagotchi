@@ -700,7 +700,8 @@ web:
 Only finalized assistant messages are rendered; user messages and live streaming
 chunks remain escaped text. The stage's asking text (the whole reply that asked
 a waiting question or approval) shows raw at once, then as markdown, its links
-opening in a new tab. A text the page already shows and renders later goes
+opening in a new tab; a resolved question card's copy of that reply renders when
+the card is first opened (its summary line stays plain). A text the page already shows and renders later goes
 through `POST /api/render` (`{text}` → `{html}`, up to 64 KB; `html` is null
 with markdown off), the same renderer and sanitizer. Generated HTML is
 sanitized, raw HTML in model output is not trusted, and unsafe links are

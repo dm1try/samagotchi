@@ -84,7 +84,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "" } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -103,6 +103,8 @@ function setup({ near = true, fail = null, page = {}, asking = "" } = {}) {
     scrollToEnd: () => { scrolled += 1; },
     removeHintIfEmpty: () => { hintDrops += 1; },
     askingText: () => asking,
+    renderMarkdown,
+    linkRefs,
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
     doc: {
       createElement: (tag) => new FakeEl(tag),
@@ -643,4 +645,85 @@ test("a reloaded card takes the text it is given (its step's), not the running t
   none.cards.renderQuestion(PQ, { said: "" });
   none.cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
   assert.equal(said(none.cards.questionCard()), null);
+});
+
+// The kept reply's body copy as markdown (P2 of stage-asking-markdown):
+// rendered lazily, on the card's first open, so a reload of many cards
+// asks nothing until one is opened.
+function markdownSetup(answers) {
+  const asked = [];
+  const linked = [];
+  const t = setup({
+    asking: SAID,
+    renderMarkdown: (text) => { asked.push(text); return Promise.resolve(answers.shift() ?? null); },
+    linkRefs: (el) => linked.push(el),
+  });
+  const toggle = (card, open) => { card.open = open; (card.listeners.toggle || []).forEach((fn) => fn({})); };
+  const fullOf = (card) => card.children.find((el) => el.classes.has("question-said-full"));
+  return { ...t, asked, linked, toggle, fullOf };
+}
+
+test("a resolved card's kept reply: no render until it is opened, then once, as markdown with refs linked", async () => {
+  const { cards, asked, linked, toggle, fullOf } = markdownSetup(["<p>I found <strong>two</strong>.</p>"]);
+  cards.renderQuestion(PQ, { said: SAID });
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  const card = cards.questionCard();
+  await flush();
+  assert.deepEqual(asked, []);
+  const full = fullOf(card);
+  assert.equal(full.textContent, SAID);
+  toggle(card, true);
+  await flush();
+  assert.deepEqual(asked, [SAID]);
+  assert.equal(full.innerHTML, "<p>I found <strong>two</strong>.</p>");
+  assert.ok(full.classes.has("markdown"));
+  assert.deepEqual(linked, [full]);
+  // The summary's clamped line stays plain text.
+  assert.equal(said(card).textContent, SAID);
+  assert.ok(!said(card).classes.has("markdown"));
+  toggle(card, false);
+  toggle(card, true);
+  await flush();
+  assert.equal(asked.length, 1);
+});
+
+test("a resolved card already open (a hand toggle) renders its kept reply at once", async () => {
+  const { cards, asked, fullOf } = markdownSetup(["<p>x</p>"]);
+  cards.renderQuestion(PQ, { said: SAID });
+  const card = cards.questionCard();
+  card.dataset.toggled = "1";
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  await flush();
+  assert.deepEqual(asked, [SAID]);
+  assert.ok(fullOf(card).classes.has("markdown"));
+});
+
+test("a null render keeps the kept reply raw, and the next open asks again", async () => {
+  const { cards, asked, toggle, fullOf } = markdownSetup([null, "<p>ok</p>"]);
+  cards.renderQuestion(PQ, { said: SAID });
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  const card = cards.questionCard();
+  toggle(card, true);
+  await flush();
+  const full = fullOf(card);
+  assert.equal(full.textContent, SAID);
+  assert.ok(!full.classes.has("markdown"));
+  assert.equal(full.innerHTML, undefined);
+  toggle(card, false);
+  toggle(card, true);
+  await flush();
+  assert.equal(asked.length, 2);
+  assert.ok(full.classes.has("markdown"));
+});
+
+test("an open while a render is in flight asks no second time", async () => {
+  const { cards, asked, toggle } = markdownSetup(["<p>x</p>"]);
+  cards.renderQuestion(PQ, { said: SAID });
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  const card = cards.questionCard();
+  toggle(card, true);
+  toggle(card, false);
+  toggle(card, true);
+  await flush();
+  assert.equal(asked.length, 1);
 });
