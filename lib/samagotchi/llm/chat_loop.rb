@@ -580,16 +580,11 @@ module Samagotchi
         private
 
         # The done check's generation (DoneCheck): tool calls go on as any
-        # step (nil); DONE or an empty reply returns the saved answer's text;
-        # another text is kept as the answer and returned.
+        # step (nil); a text reply returns the saved answer's text.
         def resolve_done_check(iteration, response, text)
-          calls = !response.tool_calls.empty?
-          outcome, answer = @done_check.resolve!(@conversation, text, tool_calls: calls, emit: method(:emit),
-                                                                      iteration: iteration)
-          return nil if outcome == :tools
-
-          @conversation << with_thinking({ role: "model", content: answer }, response) if outcome == :replaced
-          answer
+          answer = @done_check.resolve!(@conversation, text, tool_calls: !response.tool_calls.empty?,
+                                                             emit: method(:emit), iteration: iteration)
+          answer == :tools ? nil : answer
         end
 
         # A provider's refusal as ModelResult#refusal ({category:} when its

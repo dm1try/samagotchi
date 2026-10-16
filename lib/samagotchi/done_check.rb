@@ -12,7 +12,10 @@ module Samagotchi
   #   stands, the note goes;
   # - tool calls: the turn goes on (the note stays in the history), and the
   #   next text-only answer ends it as usual;
-  # - another full text: it replaces the first answer (the note goes too).
+  # - any other text: the saved answer stands too, the reply and the note
+  #   go. Replays showed done models re-emitting a shorter checklist in place
+  #   of their full report; a model that wasn't done and only said so (no
+  #   tool call) loses nothing.
   # Small models end a coding task with a full report but no commit (the
   # harness-eval no-commit runs); this asks them once before the turn ends.
   # execute doesn't count as a change: most execute-only turns only look
@@ -69,25 +72,20 @@ module Samagotchi
                   answer_chars: @answer[:content].to_s.length })
     end
 
-    # The check's generation returned: :tools (the turn goes on), :done
-    # (the saved answer's text is returned and the note leaves) or
-    # :replaced (+text+ is the answer; the first one and the note leave;
-    # the caller appends the new answer). Returns [outcome, answer text].
+    # The check's generation returned: :tools (the turn goes on), or the
+    # saved answer's text (DONE or any other text: the note leaves, the
+    # reply isn't kept). Logged as tools, done or text.
     def resolve!(conversation, text, tool_calls:, emit:, iteration:)
       @state = :spent
       outcome = if tool_calls then "tools"
                 elsif self.class.done_reply?(text) then "done"
-                else "replaced"
+                else "text"
                 end
       emit.call({ type: :done_check, iteration: iteration, outcome: outcome, reply_chars: text.to_s.length })
-      return [:tools, nil] if outcome == "tools"
+      return :tools if outcome == "tools"
 
       remove_note(conversation)
-      return [:done, @answer[:content].to_s] if outcome == "done"
-
-      index = conversation.rindex { |entry| entry.equal?(@answer) }
-      conversation.delete_at(index) if index
-      [:replaced, text]
+      @answer[:content].to_s
     end
 
     # A cancel while the check runs: the note goes, the answer stays.

@@ -1129,16 +1129,16 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       end
     end
 
-    it "lets a new full answer replace the first one" do
+    it "keeps the first answer when the check replies with other text (a checklist must not replace the report)" do
       with_done_check do
-        report = "Not done yet: I never committed. #{"x" * 400}"
-        backend.adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text(report))
+        checklist = "All task steps completed:\n#{"- [x] step\n" * 30}"
+        backend.adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text(checklist))
         result = run
 
-        expect(result.text).to eq(report)
+        expect(result.text).to eq("the report")
         expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response model])
-        expect(result.conversation.last[:content]).to eq(report)
-        expect(outcomes).to eq(%w[asked replaced])
+        expect(result.conversation.last[:content]).to eq("the report")
+        expect(outcomes).to eq(%w[asked text])
       end
     end
 
