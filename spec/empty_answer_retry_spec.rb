@@ -121,7 +121,8 @@ RSpec.describe Samagotchi::EmptyAnswerRetry do
   it "nudges with a hidden turn note" do
     expect(Samagotchi::TurnNote.empty_retry).to eq(
       role: "system", kind: "turn_note", retry_nudge: true,
-      content: "[SYSTEM: your last reply had no visible answer. Answer the user's last message now, briefly.]"
+      content: "[SYSTEM: your last reply had no visible answer. Continue the task with your next tool call, " \
+               "or answer if it is done.]"
     )
   end
 end

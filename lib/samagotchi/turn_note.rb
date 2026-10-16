@@ -198,8 +198,11 @@ module Samagotchi
 
     # The hidden nudge before a retry of an empty answer (EmptyAnswerRetry):
     # the model never sees its empty generation, so it is told what happened.
+    # It asks to go on with the task, like cut_retry: "answer now" made a
+    # mid-task model stop and report before its last steps.
     def empty_retry
-      retry_nudge(message("your last reply had no visible answer. Answer the user's last message now, briefly."))
+      retry_nudge(message("your last reply had no visible answer. Continue the task with your next tool call, " \
+                          "or answer if it is done."))
     end
 
     # The hidden nudge before a retry of a generation a plugin cut

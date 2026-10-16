@@ -35,6 +35,8 @@ and commands may change between minor versions. How releases are made:
   new session's history, and its "Loading…" line stays until the session is drawn.
 - Web: opening a chip's popover (llm ctx, thinking, reasoning history, attached context) closes the one already
   open, instead of leaving both open.
+- The empty-answer retry note asks the model to continue the task (its next tool call) or answer if it is done,
+  instead of "answer the user's last message now, briefly", which made a mid-task model stop before its last steps.
 
 ## [0.71.0] - 2026-10-15
 
