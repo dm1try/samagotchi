@@ -613,6 +613,9 @@ RSpec.describe Samagotchi::Tools::Execute do
             Samagotchi::Tools::TaskRuntime.list_records.each do |record|
               Samagotchi::Tools::TaskRuntime.stop_task(record.id, by: "model")
             end
+            # Then chi's exit-status recorders (TaskRuntime.record_exit_status),
+            # which may still write exit_code or the record into dir.
+            Thread.list.select { |t| t.name == Samagotchi::Tools::TaskRuntime::EXIT_STATUS_THREAD }.each { |t| t.join(5) }
           end
         end
       end

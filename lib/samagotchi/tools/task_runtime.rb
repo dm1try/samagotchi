@@ -99,6 +99,8 @@ module Samagotchi
       # status. Only while this chi runs. A record a refresh finished in
       # between (failed, no exit code) is corrected; a stopped task (its
       # stop flag on disk) is left as task_stop records it.
+      # The thread is named EXIT_STATUS_THREAD (a spec joins them before it
+      # removes the tasks' folder).
       # @return [Thread]
       def record_exit_status(waiter, path, task_id:)
         # Absolute now: safe against a later chdir.
@@ -106,6 +108,7 @@ module Samagotchi
         path = File.expand_path(path)
         Thread.new do
           Thread.current.report_on_exception = false
+          Thread.current.name = EXIT_STATUS_THREAD
           code = status_code(waiter.value)
           next if code.nil? || record_at(record_path)&.stop_requested_by
 
@@ -123,6 +126,9 @@ module Samagotchi
 
         status.exitstatus || (status.termsig && (128 + status.termsig))
       end
+
+      # record_exit_status's threads' name.
+      EXIT_STATUS_THREAD = "task_exit_status"
 
       # Reasons a refresh finishes a record with when it read no exit code.
       MISSING_CODE_REASONS = ["process_ended_without_exit_code", NOT_CHIS_PROCESS].freeze
