@@ -117,6 +117,19 @@ module ReleaseTools
     end
   end
 
+  # A shipped bundle's top-level *.md that its files: doesn't list: an
+  # install takes only the listed ones (MemoryBundle::MemoryFiles), and a
+  # listed file gets its sha line (rake bundles:sha).
+  def unlisted_memories(root)
+    bundle_dirs(root).flat_map do |dir|
+      parsed = YAML.safe_load_file(File.join(dir, "manifest.yml")) || {}
+      listed = parsed["files"].is_a?(Hash) ? parsed["files"].keys.map(&:to_s) : []
+      (Dir.glob(File.join(dir, "*.md")).map { |f| File.basename(f) }.sort - listed).map do |file|
+        "#{File.basename(dir)}: ships #{file}, which files: doesn't list (an install leaves it out; add it, then rake bundles:sha)"
+      end
+    end
+  end
+
   # --- git --------------------------------------------------------------
 
   def git(root, *)
@@ -248,7 +261,7 @@ module ReleaseTools
   # `rake release:bump`, so it is changed and unbumped between releases.
   # The sha lines stay strict for every bundle.
   def bundles_check(root, ci: false)
-    problems = stale_shas(root) + requires_chi_next_problems(root)
+    problems = stale_shas(root) + unlisted_memories(root) + requires_chi_next_problems(root)
     notes = []
     marked = requires_chi_next(root).keys.map { |dir| File.basename(dir) }
     if (tag = last_tag(root))

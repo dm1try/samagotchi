@@ -55,7 +55,7 @@ as the GitHub release body.
 | Task | What it does |
 | --- | --- |
 | `rake bundles:sha` | Recomputes the sha256 lines of every shipped bundle manifest (`files:`, `hooks:`, `plugin:`). |
-| `rake bundles:check` | Sha lines match; a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: mark it `requires_chi_next` if the change uses anything new. Notes a bundle marked `requires_chi_next`. The release workflow and `release:check` run it in full. |
+| `rake bundles:check` | Sha lines match; every top-level `*.md` of a bundle is listed in its `files:` (an install takes only the listed ones); a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: mark it `requires_chi_next` if the change uses anything new. Notes a bundle marked `requires_chi_next`. The release workflow and `release:check` run it in full. |
 | `rake 'bundles:check[ci]'` | The CI workflow's (every push and PR): the same, except the version check leaves out the system bundle, which is changed and unbumped between releases (`release:bump` moves its version with VERSION). A task argument, not `CI=1`: GitHub sets `CI` in the release workflow too. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
 | `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped). No commit. |

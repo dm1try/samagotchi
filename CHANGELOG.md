@@ -14,7 +14,7 @@ and commands may change between minor versions. How releases are made:
   CODE_OF_CONDUCT or SECURITY file a memory, and a manifest whose `files:` lists memories installs only those (an
   unshipped name warns). An upgrade moves such a file an older install made a memory to the trash. Older chi still
   installs every top-level `*.md` (`requires_chi` doesn't gate memories): a bundle for it too names its readme
-  `README.markdown`.
+  `README.markdown`. `rake bundles:check` fails a shipped bundle's `*.md` that its `files:` doesn't list.
 
 ## [0.74.0] - 2026-10-17
 

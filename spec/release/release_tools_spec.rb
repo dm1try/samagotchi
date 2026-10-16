@@ -147,6 +147,15 @@ RSpec.describe ReleaseTools do
       expect(described_class.stale_shas(tmp)).to eq([])
     end
 
+    # An install takes only the files: a non-empty list names
+    # (MemoryBundle::MemoryFiles), so an unlisted memory would never install.
+    it "unlisted_memories names a shipped *.md that files: leaves out; bundles_check fails on it" do
+      write("#{bundle}/b.md", "other")
+      expect(described_class.unlisted_memories(tmp))
+        .to eq(["b: ships b.md, which files: doesn't list (an install leaves it out; add it, then rake bundles:sha)"])
+      expect(described_class.bundles_check(tmp).first).to include(a_string_matching(/b: ships b\.md/))
+    end
+
     it "skips the version check, with a note, before the first v* tag" do
       expect(described_class.bundles_check(tmp)).to eq([[], ["No v* tag yet: skipped the changed-bundle version check."]])
     end
