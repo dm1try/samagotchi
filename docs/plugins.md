@@ -15,6 +15,7 @@ my-bundle/
   manifest.yml
   plugin.rb
   identity.md        # optional, like any bundle's memories, hooks/ and guardrails/
+  README.md          # never a memory (nor CHANGELOG, LICENSE, ...): see memory.md#what-a-bundle-owns
 ```
 
 ```yaml

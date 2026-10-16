@@ -199,7 +199,7 @@ step instead of fixing the skill.
 ## What a bundle owns
 
 A bundle owns the memory files it wrote, nothing else. `chi bundle install`
-copies each of its `*.md` files into the scope dir; a file of the same name
+copies each of its memories into the scope dir; a file of the same name
 that is already there is left as it is and reported `Skipped` (`--force`
 overwrites it, and then the bundle owns it). A skipped file stays yours: the
 bundle doesn't record it, so `chi bundle upgrade` never merges into it and
@@ -207,6 +207,19 @@ bundle doesn't record it, so `chi bundle upgrade` never merges into it and
 for `chi bundle build` then installing the result on the same machine, and
 for a file another bundle installed.
 
+- **Which files are memories.** A manifest whose `files:` lists any: exactly
+  those (a listed name the bundle doesn't ship gets a warning). Without a
+  list (no `files:`, or `files: {}`): every top-level `*.md` except a repo's
+  meta files: README, CHANGELOG, LICENSE (or LICENCE), CONTRIBUTING,
+  CODE_OF_CONDUCT and SECURITY, in any case. So a bundle kept in its own git
+  repo can have a `README.md` without it becoming a memory. A listed file is
+  installed whatever its name (`chi bundle build` of your own `security.md`
+  lists it). Since chi 0.75.0. Older chi installs every top-level `*.md`
+  whatever `requires_chi` says (it gates hooks, rules and the plugin, not
+  memories), so a bundle for older chi too names its readme
+  `README.markdown` (or puts docs in a subdirectory).
+  `chi bundle upgrade` moves a README an older install made a memory to the
+  trash (unless you edited it, like any file a bundle stops shipping).
 - **The index says where a memory came from.** The `index.md` line of a file
   a bundle installed ends in `· from <bundle>`, before the description:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —

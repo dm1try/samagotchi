@@ -11,6 +11,7 @@ require_relative "index_updater"
 require_relative "merger"
 require_relative "trash"
 require_relative "asset_installer"
+require_relative "memory_files"
 require_relative "../bundle_needs"
 require_relative "../model_overlay"
 
@@ -167,7 +168,8 @@ module Samagotchi
         [scope, dir]
       end
 
-      # Copies the bundle's *.md files into the target dir and refreshes
+      # Copies the bundle's memories (MemoryFiles: the files: list, else
+      # every *.md but README and the like) into the target dir and refreshes
       # their index lines: an upgrade merges (merge_memory), a dry run only
       # classifies (preview_memory), a plain install writes the new ones.
       # Sets @bundle_md (every file the bundle ships) and @owned: the bundle
@@ -178,8 +180,9 @@ module Samagotchi
         owned_before = @existing ? @existing.files.keys : []
         @bundle_md = []
         @owned = []
-        Dir.glob(File.join(@bundle_dir, "*.md")).each do |file_path|
-          file_key = File.basename(file_path)
+        warn_unshipped_files
+        memory_files.each do |file_key|
+          file_path = File.join(@bundle_dir, file_key)
           @bundle_md << file_key
           note_overlay(file_key, @target_dir)
           target_path = File.join(@target_dir, file_key)
@@ -204,6 +207,17 @@ module Samagotchi
             update_target_index(@target_scope, target_path, file_key)
           end
         end
+      end
+
+      # The bundle's memories' basenames (MemoryFiles.select), once.
+      def memory_files
+        @memory_files ||= MemoryFiles.select(@bundle_dir, @manifest)
+      end
+
+      # A files: entry with no such *.md in the bundle installs nothing.
+      def warn_unshipped_files
+        missing = MemoryFiles.unshipped(@bundle_dir, @manifest)
+        @warnings << "files: names #{missing.join(", ")}, which the bundle doesn't ship (not installed)" unless missing.empty?
       end
 
       # An upgrade's 3-way merge of one file (Merger.classify against the
@@ -431,7 +445,7 @@ module Samagotchi
       # An overlay-looking name with no base anywhere is an overlay too,
       # with a warning (a dry run warns as well).
       def note_overlay(file_key, target_dir)
-        @bundle_files ||= Dir.glob(File.join(@bundle_dir, "*.md")).map { |f| File.basename(f) }
+        @bundle_files ||= memory_files
         return unless ModelOverlay.bundle_overlay?(file_key, bundle_files: @bundle_files, target_dir: target_dir)
 
         @overlays << file_key

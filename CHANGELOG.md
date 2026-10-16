@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle install` / `upgrade` no longer make a bundle repo's README, CHANGELOG, LICENSE, CONTRIBUTING,
+  CODE_OF_CONDUCT or SECURITY file a memory, and a manifest whose `files:` lists memories installs only those (an
+  unshipped name warns). An upgrade moves such a file an older install made a memory to the trash. Older chi still
+  installs every top-level `*.md` (`requires_chi` doesn't gate memories): a bundle for it too names its readme
+  `README.markdown`.
+
 ## [0.74.0] - 2026-10-17
 
 ### Changed

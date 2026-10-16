@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "yaml"
 require "json"
+require "digest"
 
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/status"
@@ -896,6 +897,79 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       plain = write_bundle(tmpdir, { "gh_helper.md" => "# gh helper\n" }, name: "sample-needs")
       installer_for(source: plain, name: "sample-needs", scope: "system", force: true).run
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "sample-needs").read).not_to have_key(:needs)
+    end
+  end
+
+  describe "which of a bundle's *.md files are memories" do
+    # A bundle dir with +md+ (name => content) and a manifest listing +listed+
+    # (nil: no files: key, {}: an empty map).
+    def raw_bundle(md, listed:, name: "repo-bundle")
+      dir = File.join(tmpdir, name)
+      FileUtils.mkdir_p(dir)
+      md.each { |f, c| File.write(File.join(dir, f), c) }
+      manifest = { "name" => name, "version" => "1.0.0" }
+      manifest["files"] = listed.to_h { |f| [f, "sha256:#{Digest::SHA256.hexdigest(md.fetch(f, ""))}"] } unless listed.nil?
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+      dir
+    end
+
+    let(:repo_files) do
+      { "real.md" => "# Real\n", "README.md" => "# Readme\n", "LICENSE.md" => "MIT\n",
+        "changelog.md" => "# Changes\n", "Contributing.md" => "x\n", "CODE_OF_CONDUCT.md" => "x\n",
+        "SECURITY.md" => "x\n", "notes.md" => "# Notes\n" }
+    end
+
+    def index_text = File.read(File.join(system_memories_dir, "index.md"))
+
+    it "installs only the files a non-empty files: lists" do
+      dir = raw_bundle(repo_files, listed: ["real.md"])
+      installer = installer_for(source: dir, name: "repo-bundle", scope: "system").tap(&:run)
+
+      expect(installer.results.keys).to eq(["real.md"])
+      expect(Dir.children(system_memories_dir).grep(/\.md\z/).sort).to eq(%w[index.md real.md])
+      expect(index_text).not_to include("**README**")
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s)).to eq(["real.md"])
+    end
+
+    it "installs a listed file even with a repo-meta name (a built bundle of a user's security memory)" do
+      dir = raw_bundle({ "security.md" => "# My security notes\n" }, listed: ["security.md"])
+      installer_for(source: dir, name: "repo-bundle", scope: "system").run
+
+      expect(File.exist?(File.join(system_memories_dir, "security.md"))).to be true
+    end
+
+    it "warns about a files: entry the bundle doesn't ship" do
+      dir = raw_bundle({ "real.md" => "# Real\n" }, listed: %w[real.md gone.md])
+      installer = installer_for(source: dir, name: "repo-bundle", scope: "system").tap(&:run)
+
+      expect(installer.warnings).to include(a_string_matching(/files: names gone\.md, which the bundle doesn't ship/))
+    end
+
+    [nil, []].each do |listed|
+      it "without a list (files: #{listed.nil? ? "absent" : "{}"}) installs every *.md but the repo-meta ones" do
+        dir = raw_bundle(repo_files, listed: listed)
+        installer = described_class.new(source: dir, name: "repo-bundle", scope: "system", strict: true).tap(&:run)
+
+        expect(installer.results.keys.sort).to eq(%w[notes.md real.md])
+        expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be false
+        expect(index_text).not_to match(/\*\*(README|LICENSE|changelog)\*\*/)
+      end
+    end
+
+    it "an upgrade moves a README an older install made a memory to the trash" do
+      # chi 0.74.0 and earlier installed every *.md; an old install that owns
+      # README.md is set up here by listing it.
+      old = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: %w[real.md README.md])
+      installer_for(source: old, name: "repo-bundle", scope: "system").run
+      expect(index_text).to include("**README**")
+
+      new_dir = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: nil, name: "repo-bundle")
+      up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
+
+      expect(up.results["README.md"]).to include(status: "removed")
+      expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be false
+      expect(index_text).not_to include("**README**")
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s)).to eq(["real.md"])
     end
   end
 end

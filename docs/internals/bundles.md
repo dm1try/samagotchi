@@ -49,7 +49,8 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 
 1. `load_source`: normalize, read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
 2. `resolve_target`: scope = CLI > manifest > `system`.
-3. `install_memories`, per `*.md`: an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
+3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
+   README, CHANGELOG, LICENSE and the like; a listed name not shipped warns): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
    classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`). A
    same-name file the bundle didn't write is the user's: skipped and never recorded (`@owned`). Model overlays
    (`<name>.<key>.md`) get no index line (`note_overlay`).
