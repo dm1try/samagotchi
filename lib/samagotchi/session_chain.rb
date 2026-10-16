@@ -78,6 +78,30 @@ module Samagotchi
       "#{head} Its recap#{", as of #{as_of}" if as_of}:\n#{text}"
     end
 
+    # What web `continue →` prefills in +previous+'s next link: +previous+'s
+    # own first typed message when +previous+ is itself a continuation (so a
+    # chain's opener comes back on every link, edited once for all later
+    # ones), else nil (a chain's first link's first message is its task; the
+    # page falls back to its constant). Typed means a user message with text
+    # and no kind: Engine#turn_messages' (turn_id), or a checkpointed prompt
+    # (none); a stored `!shell` line ("!(cmd)\n<output>", no turn_id) is not.
+    # @param previous [Session]
+    # @return [String, nil]
+    def opener_for(previous)
+      return nil unless previous.continues
+
+      previous.messages.each do |msg|
+        next unless msg[:role] == "user" && msg[:kind].nil?
+
+        text = msg[:content]
+        next unless text.is_a?(String) && !text.strip.empty?
+        next if msg[:turn_id].nil? && text.start_with?("!(")
+
+        return text.strip
+      end
+      nil
+    end
+
     def day(iso)
       Time.iso8601(iso.to_s).localtime.strftime("%Y-%m-%d")
     rescue ArgumentError

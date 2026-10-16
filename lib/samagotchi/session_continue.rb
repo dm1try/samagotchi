@@ -86,7 +86,8 @@ module Samagotchi
     # @param title [String, nil] what the lists show before the first turn;
     #   by default the prompt, else the previous link's preview
     # @return [Session] the new link (#model_warning as spawn_session's,
-    #   #moved_children: the delegates it took over)
+    #   #moved_children: the delegates it took over, #opener:
+    #   SessionChain.opener_for the previous link)
     # @raise [ArgumentError] no such session (Session::AmbiguousId for a prefix of several)
     # @raise [Refused] continued already, delegates open that can't
     #   move, or its folder is gone
@@ -208,6 +209,7 @@ module Samagotchi
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
       )
       link.moved_children = move
+      link.opener = SessionChain.opener_for(previous)
       # The fallback's warning first: spawn_session set its own.
       warnings = [choice.warning, link.model_warning].compact
       link.model_warning = warnings.join("; ") unless warnings.empty?

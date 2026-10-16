@@ -679,8 +679,9 @@ module Samagotchi
       # refused beside it (a create takes no reasoning_history). It runs on
       # model (or model_name) when given, else on the previous link's: one
       # whose host is gone falls back to the default, and the 201's
-      # model_warning (null when none) says so. A model it can't start on is
-      # 400 invalid_model, nothing archived.
+      # model_warning (null when none) says so. Its opener is the text the
+      # page prefills (SessionChain.opener_for; null: the page's constant).
+      # A model it can't start on is 400 invalid_model, nothing archived.
       # 409 continued (with next_id, the link that continues it already: the
       # page opens that one), open_children (ids), folder_gone, busy, scratch
       # or owned_by_tui.
@@ -707,7 +708,8 @@ module Samagotchi
         [session.continues, session.id, *moved].each { |sid| @hub&.touch(sid) }
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
-                                                          model_warning: session.model_warning))
+                                                          model_warning: session.model_warning,
+                                                          opener: session.opener))
       end
 
       # SessionManager.continue_session, its refusals as responses: [session,

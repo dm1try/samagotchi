@@ -91,6 +91,20 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                               "Its recap, as of #{as_of}:\nThe user reviewed three PRs and merged two.")
   end
 
+  it "sets the new link's opener (not saved) from a previous link that is itself a continuation, nil from a first link" do
+    first = make
+    second = continue(first.id)
+    expect(second.opener).to be_nil
+    saved = load(second.id)
+    saved.messages += [{ role: "user", content: "check the queue", turn_id: "t1" }, { role: "assistant", content: "ok" }]
+    saved.save(state_dir: tmpdir)
+
+    third = continue(second.id)
+
+    expect(third.opener).to eq("check the queue")
+    expect(load(third.id).opener).to be_nil
+  end
+
   it "carries only the link when the previous one has no recap, and runs a first message it was given" do
     previous = make
 

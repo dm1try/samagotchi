@@ -220,6 +220,11 @@ module Samagotchi
     # SessionManager.continue_session sets it); not saved.
     attr_accessor :moved_children
 
+    # The text web `continue →` prefills in this new link
+    # (SessionChain.opener_for; SessionManager.continue_session sets it); not
+    # saved.
+    attr_accessor :opener
+
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,

@@ -172,6 +172,19 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     [previous.id, body["id"], child.id].each { |sid| expect(hub).to have_received(:touch).with(sid) }
   end
 
+  it "answers the opener the page prefills: the previous link's first typed message when it continues one, else null" do
+    first = previous_link
+    status, body = create(continues: first.id, idle: true)
+    expect([status, body["opener"]]).to eq([201, nil])
+    second = Samagotchi::Session.load(body["id"], state_dir: state_dir)
+    second.messages += [{ role: "user", content: "check the queue", turn_id: "t1" }]
+    second.save(state_dir: state_dir)
+
+    status, body = create(continues: second.id, idle: true)
+
+    expect([status, body["opener"]]).to eq([201, "check the queue"])
+  end
+
   it "answers moved: [] when nothing moved" do
     status, body = create(continues: previous_link.id, idle: true)
     expect([status, body["moved"]]).to eq([201, []])
