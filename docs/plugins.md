@@ -568,19 +568,25 @@ end
 - Each task runs once per session start. A `-p … --non-interactive` run
   starts them with its turn and shows nothing but the answer.
 
-### `chi.toolkit(name, base:, add: [], remove: [])`
+### `chi.toolkit(name, base:, add: [], remove: [], prompt: nil)`
 
 A toolkit sessions can be put on: `base`'s tools (`full`, `lean`, `child`, a
-config or bundle toolkit) with `add` declared and `remove` left out. Users pick
+config or bundle toolkit) with `add` declared and `remove` left out, and
+`prompt`: text the sessions on it get in their system prompt, verbatim (nil
+inherits the base's, `""` clears it; at most 2000 characters, and one that
+isn't a String or is longer is a load error). Users pick
 it like chi's own (`chi --toolkit NAME`, `toolkit.default`, `/toolkit NAME`),
 and the plugin with `ctx.use_toolkit` (below). Names are `a-z`, `0-9`, `_` and
 `-`; one chi has (`full`, `lean`, `child`) or another bundle declared is a
 load error. A session saved on a toolkit whose bundle is gone declares every
 tool (full) until it comes back, with a warning at its first turn. See
-[Toolkits](configuration.md#toolkits).
+[Toolkits](configuration.md#toolkits). `prompt:` needs chi 0.72.0 (an older
+chi refuses the keyword, a load error: a bundle that passes it sets
+`requires_chi: ">= 0.72.0"`).
 
 ```ruby
 chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
+chi.toolkit "coding", base: "child", prompt: "- Be concise in your responses"
 ```
 
 ### `chi.tool_source(call:, acts_as:, label:, wait:, prefix:)`
@@ -1673,6 +1679,11 @@ by themselves there.
   or a turn already there) and the session's toolkit has no `delegate`, the
   reply says to run `/toolkit coordinator`. A continue of a coordinator link
   keeps the toolkit.
+- **The coding toolkit.** The bundle (0.5.0) also declares `coding`: `child`
+  with the prompt text `- Be concise in your responses` / `- Show file paths
+  clearly when working with files`. The skill starts build and fix children
+  on it (`delegate` with `toolkit: "coding"`); reviews, research and plans
+  stay on `toolkit.child`, as they need the length.
 - **`/children [all]`** shows the session's children as a card, newest first,
   one line each: `` `ab12cd34` · running · fix/flaky · "fix the flaky spec" ``,
   `` `9a8b7c6d` · done · feat/x · reported · "All 12 specs pass" `` (`not

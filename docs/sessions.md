@@ -226,7 +226,9 @@ A session file's `toolkit` (`{"name", "add", "remove"}`) is the toolkit it was c
 `toolkit.default`, `toolkit.child` for a delegate child, or `chi --toolkit` / `chi send --new --toolkit` (with
 `--tool` / `--no-tool`). It is never resolved again from config: a respawned or woken worker declares the same
 tools. `null` (a session from before toolkits) is `full`. A continue (`continue →`, `chi send --new --continues`)
-and a fork (`ctx.sessions.fork`) keep it, as they keep the thinking level; a delegate child gets `toolkit.child`.
+and a fork (`ctx.sessions.fork`) keep it, as they keep the thinking level; a delegate child gets the kit its
+`delegate` call names (`toolkit:`, any kit the parent knows) or `toolkit.child`; one its worker can't resolve
+declares every tool (full). The file stores only the name: a kit's tools and prompt text come from its definition.
 `/toolkit` changes it, saved at once, from the next turn's start. See
 [Toolkits](configuration.md#toolkits).
 

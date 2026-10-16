@@ -208,7 +208,8 @@ engine.session           # current session (Engine owns create/resume)
 The system prompt (`SystemPrompt#build`, assembled in `#system_prompt_with_index`) is the
 base prompt, then the toolkit's "Not loaded in this session" line (only when the toolkit
 leaves tools out), rg guidance, the identity, the model notes, the preloaded memories,
-AGENTS.md (root → cwd), the appended files (`--append-system-prompt`), the memory
+AGENTS.md (root → cwd), the appended files (`--append-system-prompt`), the toolkit's
+kit prompt (a kit's `prompt:` text, only when it has one), the memory
 indexes, and last **the model** (`Model: this session runs on <ref> (host …; model key …)` and a line telling
 the model to answer "which model are you" from it, not from training), the working
 directory and the session id and log (Gemma's native tool declarations still follow).
@@ -517,7 +518,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Session chains | `session_continue.rb` (`SessionContinue`), `session_chain.rb` (`SessionChain`) | A session that continues an earlier one. |
 | Analytics | `analytics_file.rb` (`AnalyticsFile`) | A session's `analytics.json` (`SessionMetrics#persist`). |
 | Images / vision | `image_store.rb` (`ImageStore`), `vision_support.rb`, `vision_context.rb` | Stored prompt images and whether a model takes them. |
-| Toolkits | `toolkit.rb` (`Toolkit`), `toolkit_binding.rb` (`ToolkitBinding`, the Engine's seam), `toolkit_command.rb` (`/toolkit`), `tools/registry.rb` (`Registry#toolkit`, `#left_out_names`), `web/public/toolkit_chip.js` | Which registered tools a session's prompts declare: saved in the session, resolved at a turn's start (`Engine#apply_toolkit!`), named in the prompt's not-loaded line; `chi.toolkit` and `ctx.use_toolkit` for plugins ([configuration.md](configuration.md#toolkits)). |
+| Toolkits | `toolkit.rb` (`Toolkit`), `toolkit_binding.rb` (`ToolkitBinding`, the Engine's seam), `toolkit_command.rb` (`/toolkit`), `tools/registry.rb` (`Registry#toolkit`, `#left_out_names`), `web/public/toolkit_chip.js` | Which registered tools a session's prompts declare: saved in the session, resolved at a turn's start (`Engine#apply_toolkit!`), named in the prompt's not-loaded line, a kit's prompt text after the appended files; `chi.toolkit` and `ctx.use_toolkit` for plugins ([configuration.md](configuration.md#toolkits)). |
 | Tool index | `tools/tool_index.rb` (`Tools::ToolIndex`) | `find_tools` and `call_tool`: the tools a session knows but doesn't declare one by one (an mcp bundle's servers through `chi.tool_source`, the built-ins its toolkit leaves out), searched and called by name ([plugins.md](plugins.md)). |
 | Tool output cut | `tool_output_cut.rb` (`ToolOutputCut`), `tool_output_files.rb` (`ToolOutputFiles`) | A tool's output over `max_tool_output_chars`, cut by the tool's policy; an execute's whole output saved in the session's `tool_output/` folder ([internals/tool-guardrails.md](internals/tool-guardrails.md)). |
 | Steer delivery | `steer.rb` (`Steer`), `delivery.rb` (`Delivery`), `steer_cut.rb` (`SteerCut`), `generation_phase.rb`, `waiting_steer.rb`, `steer_cut_after.rb` (`SteerCutAfter`), `cut_policy.rb` (`CutPolicy`) | A message for a running turn: at the next boundary, cutting a thinking-only generation, or queued for the turn's end ([internals/engine.md](internals/engine.md)). |

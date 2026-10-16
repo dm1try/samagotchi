@@ -1329,6 +1329,7 @@ toolkit:
   child: child         # delegate children (unset: full)
   kits:                # your own, on a base
     review: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
+    terse: { base: lean, prompt: "- Be concise in your responses" }
 ```
 
 | toolkit | declares |
@@ -1337,15 +1338,25 @@ toolkit:
 | `lean` | `execute`, `read`, `write`, `edit`, `memory_read`, `memory_write`, `task_create`, `task_wait`, `task_get`, `task_list`, `task_stop`, `ask_user_question`, `web_fetch`, `context_read` |
 | `child` | `lean` plus `send_note`, without `memory_write`, `delegate`, `delegate_result` |
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions` (declared by the coordinator bundle) |
+| `coding` | `child`, with the prompt text `- Be concise in your responses` / `- Show file paths clearly when working with files` (declared by the coordinator bundle, for build and fix children) |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
-  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:` and `remove:` (any other key, a typo
-  or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove-)).
+  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:` and `prompt:` (any other
+  key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil)).
+- **A kit's prompt text.** `prompt:` (text, several lines allowed) goes into the system prompt of the sessions on
+  that kit, verbatim, with no header: after AGENTS.md and the appended files, before the memory indexes. A kit
+  without one inherits its base's (`review: {base: terse, add: [web_fetch]}` stays concise); `prompt: ""` clears
+  it; a session's own `--tool` / `/toolkit add` never touch it. Sessions on the same kit share it in the prompt
+  cache; `full` and every kit without a prompt send the bytes they sent before. Keep it to a line or two that
+  fits the kit's work (the coordinator bundle's `coding`: be concise): one that isn't text or is over 2000
+  characters is left out with a warning, and long text belongs in `append_system_prompt:`. `/toolkit` shows it
+  (`prompt: …`), `/stats` its kit and size (`kit prompt:`), the web's tools chip in its tooltip.
 - **Saved at creation, never re-resolved from config.** A session stores its toolkit as named
   (`"toolkit": {"name": "lean", "add": [], "remove": []}`) when it is created: `toolkit.default`, `toolkit.child`
-  for a delegate child, or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
+  for a delegate child (or the kit its `delegate` call names), or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
   doesn't move existing sessions, not even when their worker is woken again; a session from before toolkits is on
-  `full`. A continue and a fork keep the toolkit. `/toolkit` shows and changes it.
+  `full`. A continue and a fork keep the toolkit. `/toolkit` shows and changes it. The prompt text is part of the
+  kit, not of the session file: it follows the name.
 - **Left out: reachable or removed.** A built-in missing from a kit's base list (`lean` has no `delegate`; a
   `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, with its inputSchema) beside
   the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate` itself, through the
@@ -1367,13 +1378,13 @@ toolkit:
   loaded in this session (toolkit child) and can't be loaded from here; only the user can (/toolkit add
   memory_write).` `/toolkit` lists both kinds, and the web's toolkit chip says them in its tooltip.
 - **Applied at a turn's start.** A change (`/toolkit`, a plugin's `ctx.use_toolkit`) is saved at once and the next
-  turn declares it; once the session has a model reply, `/toolkit` asks first ("Changes that restart the prompt
-  cache").
+  turn declares it, with its kit's prompt text; once the session has a model reply, `/toolkit` asks first
+  ("Changes that restart the prompt cache"), also for a kit with the same tools and another prompt text.
 - **A name that doesn't resolve** (a typo, a bundle that was uninstalled) declares every tool for that process,
   with one `toolkit>` warning at the first turn; the saved name stays, so the bundle's return brings it back.
-- **Versions.** A toolkit's definition can change with chi or a bundle, which changes what saved sessions on it
-  declare after an upgrade: the next request reads the prompt again once, as a tool's schema change does. So can
-  an edit to `toolkit.kits`: a session's worker reads the kits once when it starts, so a running session keeps its
+- **Versions.** A toolkit's definition (its tools and its prompt text) can change with chi or a bundle, which
+  changes what saved sessions on it send after an upgrade: the next request reads the prompt again once, as a
+  tool's schema change does. So can an edit to `toolkit.kits`: a session's worker reads the kits once when it starts, so a running session keeps its
   tools and the edit reaches it at its next worker start (after an idle exit, `chi sessions restart`).
 
 ## LLM context: the forget layer
@@ -1585,7 +1596,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, a peer source up to `context.peer_turns` in a row, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's outbox source, such as `codex-outbox`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` wakes once to close the round, counted toward `session.max_wakes` only. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
-| `toolkit.child` | `full` | | A delegate child's toolkit. See "Toolkits". |
+| `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), below a session's own level (`/reasoning-history`), above the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |

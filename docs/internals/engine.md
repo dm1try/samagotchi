@@ -666,7 +666,8 @@ prompt starts with what the server has cached).
    `[chat, thinking, layers]` (chat/native, the thinking level, the turn's LLM context layers), and is reset
    only on a model switch, a tools change, a profile change or a toolkit change (`Engine#apply_toolkit!`). The
    stable part (base prompt, the toolkit's not-loaded line, rg guidance, identity, model notes, preloaded memories,
-   AGENTS.md, appended files, memory indexes) comes before the volatile tail (model, working directory, session).
+   AGENTS.md, appended files, the toolkit's kit prompt, memory indexes) comes before the volatile tail (model,
+   working directory, session).
    prompt-caching.md covers this in detail.
 
 ## Key files

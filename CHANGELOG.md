@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A toolkit can carry a prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`): the sessions on it
+  get it in their system prompt, others don't; `/toolkit`, `/stats` and the web's tools chip show it. `delegate`
+  can start a child on a named toolkit (`toolkit:`). The coordinator bundle (0.5.0) declares a `coding` toolkit
+  (`child`'s tools plus "Be concise in your responses" and "Show file paths clearly when working with files"),
+  and its skill starts build and fix children on it.
+
 ### Removed
 
 - `SAMAGOTCHI_HOSTS_JSON`: chi no longer reads it (workers stopped inheriting it in 0.64.0). Hosts come only from

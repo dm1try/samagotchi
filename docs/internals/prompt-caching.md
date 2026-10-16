@@ -39,6 +39,7 @@ right-hand column happens.
 │   explicit (preloaded) memories                                          │
 │   AGENTS.md (root → cwd)                                                 │  (picked up by a new
 │   appended files (append_system_prompt:, --append-system-prompt)         │  process or a rebuild)
+│   kit prompt (per toolkit: its kit's prompt: text, only when it has one) │
 │   project + system memory indexes                                        │
 │                ◄── remote Claude / Messages: cache_control breakpoint #1 │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -71,6 +72,11 @@ right-hand column happens.
   beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request, so a mid-turn change
   would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
   they were before toolkits.
+- A kit's prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`) sits after the appended files and
+  before the memory indexes (`SystemPrompt#kit_prompt_section`): one prefix per kit, never per-session text, so
+  sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the
+  `Toolkit::Resolved` the Registry holds, so a switch that changes only the text is a toolkit change
+  (`apply_toolkit!` → `reset!`). `full` and kits without one send the bytes they sent before.
 - find_tools' description is a function of the toolkit and the source groups **at load**: `ToolIndex#declare`
   snapshots the MCP groups' lines (name, summary, callable count) and `ToolIndex#refresh!` (from
   `ToolkitBinding#apply!`) rebuilds only the `chi` line, the built-ins the toolkit reaches. An MCP server that

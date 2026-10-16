@@ -459,7 +459,7 @@ request (with the cached tokens, the cache writes, the re-prefilled tokens and t
 reports them),
 the decode speed, generation latency, cancellations, retries (the network's),
 thinking cuts (generations a plugin such as loop-guard cut) and output cap hits
-(generations that ended at the provider's cap), context used and window (the used figure is counted against the smaller of the window and the session's LLM context budget, and says so: `context used:     16000 tokens (25.0% of the 64000 budget)`), the memory indexes the session's prompt holds ([Memory](memory.md#the-indexs-size)), the model notes it carried (`model notes:      model_notes_deepseek (system, 612 chars)`, none without any; [Memory](memory.md#model-notes)), the prompt profile and the model the server says it ran, and the
+(generations that ended at the provider's cap), context used and window (the used figure is counted against the smaller of the window and the session's LLM context budget, and says so: `context used:     16000 tokens (25.0% of the 64000 budget)`), the memory indexes the session's prompt holds ([Memory](memory.md#the-indexs-size)), the model notes it carried (`model notes:      model_notes_deepseek (system, 612 chars)`, none without any; [Memory](memory.md#model-notes)), the toolkit's prompt text (`kit prompt:       coding (~20 tokens)`, only when its kit has one; [Toolkits](configuration.md#toolkits)), the prompt profile and the model the server says it ran, and the
 cost when the provider reports one (OpenRouter's `usage.cost`), and the cost
 estimated from a price under `hosts.<name>.models` when it reports none or 0,
 marked `~` and naming the current model's host (`cost:             $0.42 reported + ~$0.12 from hosts.gw.models prices (this session only)`;
@@ -520,7 +520,8 @@ line, the web as the `reasoning` chip. See "Reasoning history" in
 tokens), the session's toolkit and the tools it leaves out: `reachable
 (find_tools): …` (built-ins the model reaches with find_tools and call_tool)
 and `removed: …` (only `/toolkit add` brings one back), or `not loaded: …` when
-the toolkit removes call_tool. `/toolkit remove TOOL` is hard: a tool the
+the toolkit removes call_tool, and its kit's prompt text when it has one (`prompt: <first line> (+N lines, ~T
+tokens)`). `/toolkit remove TOOL` is hard: a tool the
 toolkit left out reachable becomes unreachable (saved, and asked first once the
 session has a model reply), also after an add. `/toolkit NAME` puts
 the session on another toolkit (dropping its own adds and removes); `/toolkit
