@@ -49,8 +49,7 @@ module Samagotchi
       cost = Toolkit.cache_cost(before.prompt_key, after.prompt_key)
       if confirm && !yes && CacheConfirm.needed?(cost: cost, history: @engine.history?, changed: !cost.nil?)
         step = CacheConfirm.confirm(NAME, words)
-        return [[change_line(before, after), "The tools are the front of every request: the whole prompt is read " \
-                                             "again from them on.", step.text].join("\n"), false, step]
+        return [[change_line(before, after), reread_line(before, after), step.text].join("\n"), false, step]
       end
 
       session.toolkit = after.toolkit
@@ -119,8 +118,22 @@ module Samagotchi
       parts << "leaves out #{left.join(", ")}" unless left.empty?
       parts << "removes #{hard.join(", ")} (call_tool can't reach #{hard.size == 1 ? "it" : "them"})" unless hard.empty?
       parts << "lets call_tool reach #{soft.join(", ")}" unless soft.empty?
+      # The kit's prompt text (Toolkit::Kit#prompt) is in the prompt too.
+      text = after.resolved.prompt
+      parts << (text ? "sends its kit's prompt text" : "drops the kit's prompt text") if text != before.resolved.prompt
       parts << "declares the same tools under its own name" if parts.empty?
       "Switching to #{after.toolkit.label} #{parts.join("; ")}."
+    end
+
+    # What the confirm says is read again: from the tools on (the front of
+    # every request), or from the kit's prompt text on when only that
+    # changes (Explained#prompt_key's last part: a kit on full's tools).
+    def reread_line(before, after)
+      if before.prompt_key[0...-1] == after.prompt_key[0...-1]
+        "The kit's prompt text is in the system prompt: the prompt is read again from it on."
+      else
+        "The tools are the front of every request: the whole prompt is read again from them on."
+      end
     end
 
     def names(explained) = explained.declared.map(&:name)

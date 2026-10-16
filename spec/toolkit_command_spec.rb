@@ -74,6 +74,29 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(output).to start_with("Switching to mykit declares the same tools under its own name.")
   end
 
+  it "asks first for a kit with the same tools and another prompt text, and says so; the same text is no change" do
+    allow(Samagotchi::Toolkit).to receive(:config_kits)
+      .and_return("terse" => { "base" => "lean", "prompt" => "- Be concise" },
+                  "brief" => { "base" => "lean", "prompt" => "- Be brief" },
+                  "terse2" => { "base" => "terse" },
+                  "loud" => { "prompt" => "- Say more" }, "loud2" => { "base" => "loud" })
+    session.toolkit = Samagotchi::Toolkit.new(name: "terse")
+    allow(engine).to receive(:history?).and_return(true)
+    output, changed, ask = command.run("brief")
+    expect(changed).to be(false)
+    expect(ask&.line).to eq("/toolkit brief --yes")
+    # The not-loaded line names the kit, right after the base prompt.
+    expect(output).to start_with("Switching to brief sends its kit's prompt text.\nThe tools are the front of every request")
+    expect(command.run("lean")[0]).to start_with("Switching to lean drops the kit's prompt text.")
+    expect(command.run("terse2")[0]).to start_with("Switching to terse2 declares the same tools under its own name.")
+    expect(session.toolkit).to eq(Samagotchi::Toolkit.new(name: "terse"))
+    # On full's tools only the text differs: the prompt is read again from it on.
+    session.toolkit = Samagotchi::Toolkit.new(name: "loud")
+    expect(command.run("full")[0]).to start_with("Switching to full drops the kit's prompt text.\n" \
+                                                 "The kit's prompt text is in the system prompt: the prompt is read again from it on.")
+    expect(command.run("loud2")[0]).to end_with("(no change to what the next turn declares)")
+  end
+
   # D12: what the prompt carries includes the reachable and the removed
   # tools, so a remove of a tool lean leaves out (reachable) is a change.
   it "saves a remove of a tool the toolkit leaves out (it becomes unreachable), and an add after it declares it" do

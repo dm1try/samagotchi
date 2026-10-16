@@ -51,7 +51,9 @@ module Samagotchi
     end
 
     # The session's toolkit resolved (Toolkit::Resolved): what its next
-    # turn declares. A plain full toolkit is nil, the Registry's "every tool".
+    # turn declares. A plain full toolkit is nil, the Registry's "every
+    # tool"; a kit on full's tools with a prompt text is not (its text
+    # reaches the prompt).
     def resolved(session, errors = [])
       resolved = Toolkit.of(session&.toolkit).resolve(kits(errors))
       resolved.everything? ? nil : resolved
@@ -106,10 +108,10 @@ module Samagotchi
 
     # Resolve the session's toolkit into the Registry, on the turn thread at
     # a turn's start (before its prompt is built), and build the prompts
-    # again when what it declares changed. A name that doesn't resolve (a
-    # typo, an uninstalled bundle) declares everything for now and says so
-    # once; the saved toolkit stays as it is.
-    # @return [Boolean] whether the declared tools changed
+    # again when what it declares (or its kit's prompt text) changed. A
+    # name that doesn't resolve (a typo, an uninstalled bundle) declares
+    # everything for now and says so once; the saved toolkit stays as it is.
+    # @return [Boolean] whether the declared tools (or the kit's prompt text) changed
     def apply!(session, on_event = nil)
       errors = []
       resolved = Toolkit.of(session&.toolkit).resolve(kits(errors))

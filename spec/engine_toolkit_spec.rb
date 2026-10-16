@@ -114,6 +114,60 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
                                             "Removed (toolkit lean): find_tools. Only the user can load it")
   end
 
+  describe "a kit's prompt text" do
+    let(:kits) do
+      { "terse" => { "base" => "lean", "prompt" => "- Be concise in your responses" },
+        "brief" => { "base" => "lean", "prompt" => "- Be brief" },
+        "loud" => { "prompt" => "- Say more" } }
+    end
+
+    before do
+      allow(Samagotchi::Toolkit).to receive(:config_kits) { kits }
+      allow(kernel).to receive(:run).and_return(result)
+    end
+
+    it "sits after the appended files, right before the memory indexes, from the session's first turn" do
+      turn(session(Samagotchi::Toolkit.new(name: "terse")))
+      prompt = engine.system_prompt
+      expect(prompt).to include("\n- Be concise in your responses\nProject memories:")
+      expect(prompt.index("- Be concise")).to be > prompt.index("Not declared in this session (toolkit terse)")
+    end
+
+    it "is absent on a kit without one, and on full" do
+      turn(session(Samagotchi::Toolkit.new(name: "lean")))
+      expect(engine.system_prompt).not_to include("- Be concise", "- Be brief")
+    end
+
+    it "changes with /toolkit at the next turn's start, not mid-turn, also when the tools stay the same" do
+      sess = session(Samagotchi::Toolkit.new(name: "terse"))
+      seen = []
+      allow(kernel).to receive(:run) do
+        seen << engine.system_prompt
+        sess.toolkit = Samagotchi::Toolkit.new(name: "brief") if seen.size == 1
+        seen << engine.system_prompt
+        result
+      end
+
+      turn(sess)
+      tools = kernel.tools.names
+      turn(sess)
+
+      expect(seen[0]).to include("- Be concise in your responses")
+      expect(seen[1]).to eq(seen[0])
+      expect(seen[2]).to include("- Be brief")
+      expect(seen[2]).not_to include("- Be concise")
+      expect(kernel.tools.names).to eq(tools)
+    end
+
+    it "keeps a kit on full's tools with a prompt declaring what full does, with no not-loaded line" do
+      turn(session(Samagotchi::Toolkit.new(name: "loud")))
+      expect(kernel.tools.toolkit&.name).to eq("loud")
+      expect(kernel.tools.names).to eq(Samagotchi::Tools::Builtins.default.names)
+      expect(engine.system_prompt).to include("\n- Say more\nProject memories:")
+      expect(engine.system_prompt).not_to include("Not loaded", "Not declared")
+    end
+  end
+
   it "declares find_tools and call_tool on lean, with the plugins loaded and no MCP" do
     allow(kernel).to receive(:run).and_return(result)
     turn(session(Samagotchi::Toolkit.new(name: "lean")))

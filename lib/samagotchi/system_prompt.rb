@@ -306,10 +306,11 @@ module Samagotchi
     # Ordered for the servers' prompt caches (they reuse only an exact token
     # prefix): what every session shares first, what changes least before
     # what changes more, and the per-session lines last. The global parts
-    # (identity, preloads) come before the project's AGENTS.md, the memory
-    # indexes (a memory write changes them) after both; the model, the
-    # location and the session close the prompt (Gemma's tool declarations
-    # still follow them).
+    # (identity, preloads) come before the project's AGENTS.md, the
+    # toolkit's prompt text after the appended files, the memory indexes (a
+    # memory write changes them) after all of them; the model, the location
+    # and the session close the prompt (Gemma's tool declarations still
+    # follow them).
     def system_prompt_with_index(base, chat: false, thinking: nil, layers: [])
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       indexes = { project: read_memory_index("project"), system: read_memory_index("system") }
@@ -319,7 +320,7 @@ module Samagotchi
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
       stable = [thinking_token + base, not_loaded_line(layers), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
-                project_specific_description, appended_section, memory_sections]
+                project_specific_description, appended_section, kit_prompt_section, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [current_model, project_location, current_session].compact
       return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
@@ -358,6 +359,16 @@ module Samagotchi
 
       "#{line} Removed #{toolkit}: #{removed.join(", ")}. Only the user can load #{removed.size == 1 ? "it" : "one"} " \
         "(/toolkit add <name>)."
+    end
+
+    # The session's toolkit's prompt text (a kit's prompt:, Toolkit::Kit),
+    # verbatim, after the appended files and before the memory indexes:
+    # sessions on that kit share it, and a memory write doesn't move it.
+    # nil on a kit without one and on full: the prompt is what it was
+    # before kit prompts.
+    def kit_prompt_section
+      registry = @tools_lookup.call
+      registry.respond_to?(:toolkit) ? registry.toolkit&.prompt : nil
     end
 
     def with_tail_declarations(prompt, chat:, layers:)

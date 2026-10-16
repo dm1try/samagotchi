@@ -79,6 +79,23 @@ RSpec.describe "Engine#system_prompt names the model" do
     expect(e.instance_variable_get(:@prompt_builder).stable_length("#{prompt} ")).to be_nil
   end
 
+  # A kit's prompt text (Toolkit::Kit#prompt) is shared by the sessions on
+  # that kit: it sits in the stable part, before the memory indexes.
+  it "puts the toolkit's prompt text in a chat prompt's stable part, after the appended files, before the memory indexes" do
+    Dir.mktmpdir("kit-prompt") do |dir|
+      extra = File.join(dir, "extra.md")
+      File.write(extra, "EXTRA RULES")
+      e = Samagotchi::Engine.new(host_registry: registry, model_name: "oai:m", profile: "qwen36", appended_prompt_files: [extra])
+      e.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+      e.tools.toolkit = Samagotchi::Toolkit::Resolved.new(name: "terse", all_core: true, prompt: "- Be concise")
+      prompt = e.system_prompt
+      split = e.instance_variable_get(:@prompt_builder).stable_length(prompt)
+
+      expect(prompt[0, split]).to include("EXTRA RULES\n- Be concise\nProject memories:\n(index)")
+      expect(prompt[split..]).not_to include("- Be concise")
+    end
+  end
+
   it "is the same text across builds and changes after a model switch" do
     e = engine("box:gemma-small")
     first = model_lines(e.system_prompt)
