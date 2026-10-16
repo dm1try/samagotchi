@@ -1,0 +1,22 @@
+{
+  "about": [
+    "An execute result's exit line: the cases ToolOutputCut::EXIT_LINE (tool_output_cut.rb) and the web's",
+    "EXIT_LINE (turn_html.js) answer alike. spec/tool_output_cut_spec.rb and spec/web/public/turn_html.test.js",
+    "run every row. A row: text (a whole tool result), exit_line (whether it ends with an exit line).",
+    "Change both regexes and add a row here together."
+  ],
+  "rows": [
+    { "text": "[execute]\nstdout:\nhi\n\nexit: 0", "exit_line": true },
+    { "text": "[execute]\nexit: 1 (no output)", "exit_line": true },
+    { "text": "[execute]\nstderr:\nboom\n\nexit: 2\n(a hint in brackets)", "exit_line": true },
+    { "text": "[execute]\nstdout:\nx\nexit: ", "exit_line": true },
+    { "text": "[execute]\nstdout:\nx\nexit: -1", "exit_line": true },
+    { "text": "[execute]\nstdout:\nx\n", "exit_line": false },
+    { "text": "[execute]\nstdout:\nexit: 0\nmore", "exit_line": false },
+    { "text": "[execute]\nstdout:\nx\nexit: 0\n", "exit_line": false },
+    { "text": "[execute]\nstdout:\nx\nexit: 0\n(one)\n(two)", "exit_line": false },
+    { "text": "[execute]\nstdout:\nx\nexit: 0\nnot a hint", "exit_line": false },
+    { "text": "[execute]\nstdout:\nx\nexits: 0", "exit_line": false },
+    { "text": "exit: 0", "exit_line": false }
+  ]
+}

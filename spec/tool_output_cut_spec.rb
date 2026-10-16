@@ -1,9 +1,20 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/tool_output_cut"
 require "samagotchi/tool_output_files"
 
 RSpec.describe Samagotchi::ToolOutputCut do
+  # The shared cases (the web's turn_html.test.js runs the same file
+  # against its EXIT_LINE twin).
+  describe "EXIT_LINE" do
+    JSON.parse(File.read(File.expand_path("fixtures/exit_lines.json", __dir__)))["rows"].each do |row|
+      it "reads #{row["text"].inspect} as #{row["exit_line"] ? "ending with" : "without"} an exit line" do
+        expect(described_class::EXIT_LINE.match?(row["text"])).to be(row["exit_line"])
+      end
+    end
+  end
+
   describe ".head" do
     it "keeps the head and ends with the cut line, the whole within the cap" do
       text = described_class.head("x" * 300, 100)

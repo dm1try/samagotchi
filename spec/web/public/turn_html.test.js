@@ -251,7 +251,15 @@ test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge'
   assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });
 
-import { inlineOutput, tailMode } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { EXIT_LINE, inlineOutput, tailMode } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { readFileSync } from "node:fs";
+
+// spec/fixtures/exit_lines.json: the cases ToolOutputCut::EXIT_LINE (rspec) answers too.
+const EXIT_LINES = JSON.parse(readFileSync(new URL("../../fixtures/exit_lines.json", import.meta.url), "utf8"));
+
+test("EXIT_LINE: the shared rows read as ToolOutputCut::EXIT_LINE reads them", () => {
+  for (const row of EXIT_LINES.rows) assert.equal(EXIT_LINE.test(row.text), row.exit_line, JSON.stringify(row.text));
+});
 
 const lines = (n, width = 9) => Array.from({ length: n }, (_, i) => `line ${String(i + 1).padStart(width - 5, "0")}`).join("\n");
 

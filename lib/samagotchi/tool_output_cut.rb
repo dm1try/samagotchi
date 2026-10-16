@@ -64,7 +64,8 @@ module Samagotchi
     # command has none: its output isn't all there is. A command a signal
     # ended (a segfault, an OOM kill) has an exit line with no number
     # ("exit: "): it ended, so its output is all there is. The JS twin is
-    # turn_html.js's EXIT_LINE.
+    # turn_html.js's EXIT_LINE; spec/fixtures/exit_lines.json holds the
+    # cases both must answer alike (both specs run it).
     STDOUT_LABEL = "\nstdout:\n"
     STDERR_LABEL = "\nstderr:\n"
     EXIT_LINE = /\nexit: (?:-?\d+)?[^\n]*(?:\n\([^\n]*\))?\z/
