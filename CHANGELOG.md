@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-10-17
+
 ### Changed
 
 - Web: a closed step's title and an answered question card's two-line copy of the reply that asked it show that
@@ -26,6 +28,8 @@ and commands may change between minor versions. How releases are made:
   file made absolute: launchd starts the helper in `/`, where it pointed at `/<dir>`.
 - `execute` and `task_create` pass a relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` on to their commands made
   absolute: a `chi send` run in another `cwd` no longer reads another state or config dir.
+
+Update with `chi update` (the system bundle 0.74.0, mcp 0.7.1), then restart `chi web`.
 
 ## [0.73.0] - 2026-10-16
 
@@ -3152,7 +3156,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.73.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.74.0...HEAD
+[0.74.0]: https://github.com/dm1try/samagotchi/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/dm1try/samagotchi/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/dm1try/samagotchi/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/dm1try/samagotchi/compare/v0.70.0...v0.71.0
