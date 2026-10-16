@@ -24,6 +24,7 @@ require_relative "../tool_declarations"
 require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
+require_relative "../done_check"
 require_relative "../steer"
 require_relative "../reasoning_history"
 require_relative "../turn_note"
@@ -489,6 +490,7 @@ module Samagotchi
           @reasoning_start = ReasoningHistory.run_start(conversation, start || conversation.length)
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
+          @done_check = DoneCheck.new
           # The empty generations, never saved: the UIs draw the turn's
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
@@ -520,7 +522,14 @@ module Samagotchi
             # tool calls that came with it are not run.
             @refusal = refusal_of(response, last_text)
             stopped = @refusal || response.finish_reason.to_s == FILTERED
-            if response.tool_calls.empty? || stopped
+            if @done_check.pending? && !stopped
+              done = resolve_done_check(iteration, response, last_text)
+              if done
+                last_text = done
+                exhausted = false
+                break
+              end
+            elsif response.tool_calls.empty? || stopped
               # A refusal is no answer, never asked again; text it streamed
               # before is not kept as one. A filtered answer's text stays,
               # marked as cut by the filter.
@@ -535,10 +544,17 @@ module Samagotchi
                             @empty_retry.retry_empty?(iteration: iteration, cancelled: @cancel_controller&.cancelled?,
                                                       finish_reason: response.finish_reason,
                                                       used_tokens: response.usage&.total_tokens, window_tokens: @window&.tokens)
+              check = !empty && !stopped && @done_check.fire? && !@cancel_controller&.cancelled?
               # An empty answer that will be retried is no answer site: a
               # plugin's steer joins the retry instead of being dropped, and
               # queued input (a user's line, a steer) goes in place of the nudge.
-              next if inject_pending_input(iteration, answer: retry_empty ? nil : last_text)
+              # A done check's answer isn't one either (queued input skips it).
+              next if inject_pending_input(iteration, answer: retry_empty || check ? nil : last_text)
+
+              if check
+                @done_check.ask!(@conversation, emit: method(:emit), iteration: iteration)
+                next
+              end
 
               # An empty answer (content "" + stop, seen from a remote host)
               # ends the turn with no text: the UIs show their notice.
@@ -562,6 +578,19 @@ module Samagotchi
         end
 
         private
+
+        # The done check's generation (DoneCheck): tool calls go on as any
+        # step (nil); DONE or an empty reply returns the saved answer's text;
+        # another text is kept as the answer and returned.
+        def resolve_done_check(iteration, response, text)
+          calls = !response.tool_calls.empty?
+          outcome, answer = @done_check.resolve!(@conversation, text, tool_calls: calls, emit: method(:emit),
+                                                                      iteration: iteration)
+          return nil if outcome == :tools
+
+          @conversation << with_thinking({ role: "model", content: answer }, response) if outcome == :replaced
+          answer
+        end
 
         # A provider's refusal as ModelResult#refusal ({category:} when its
         # stop_details name one): finish reason refusal, or content_filter
@@ -877,6 +906,7 @@ module Samagotchi
         # next id (ToolIds).
         def dispatch(tool_calls, iteration, cap)
           calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
+          @done_check.saw_calls(calls.map { |call| call[:name] })
           runs = ToolResponse.run_batch(@loop.tool_runner, calls, iteration: iteration, emit: method(:emit),
                                                                   on_stream_event: @on_stream_event, cap: cap) do |run, index|
             @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id,
@@ -897,6 +927,7 @@ module Samagotchi
         # streamed rides along on the message (with_thinking's key).
         def canceled(iteration, reason, partial = "", thinking = "")
           emit(type: :generation_cancelled, iteration: iteration, reason: reason, stopped_by: @cancel_controller&.stopped_by)
+          @done_check.abandon!(@conversation)
           visible = @loop.strip_model_thought(partial.to_s).strip
           unless visible.empty?
             message = { role: "model", content: "#{visible}\n[interrupted]", interrupted: true }

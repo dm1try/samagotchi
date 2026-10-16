@@ -1073,6 +1073,90 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "done check (turn.done_check edits)" do
+    let(:note) { Samagotchi::TurnNote.done_check }
+    let(:edit_call) { ["c1", "edit", { "path" => "a.rb", "old_text" => "a", "new_text" => "b" }] }
+
+    def with_done_check(value = "edits")
+      original = ENV.fetch("SAMAGOTCHI_TURN_DONE_CHECK", nil)
+      ENV["SAMAGOTCHI_TURN_DONE_CHECK"] = value
+      yield
+    ensure
+      original.nil? ? ENV.delete("SAMAGOTCHI_TURN_DONE_CHECK") : ENV["SAMAGOTCHI_TURN_DONE_CHECK"] = original
+    end
+
+    def outcomes = events.select { |e| e[:type] == :done_check }.map { |e| e[:outcome] }
+
+    it "asks once after an editing turn's first answer; DONE keeps that answer and leaves no note" do
+      with_done_check do
+        backend.adapter = adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text("DONE"))
+        result = run
+
+        expect(result.text).to eq("the report")
+        expect(adapter.requests.length).to eq(3)
+        expect(adapter.requests.last[:messages].last).to eq(role: "system", content: note[:content])
+        expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response model])
+        expect(result.conversation.last[:content]).to eq("the report")
+        expect(outcomes).to eq(%w[asked done])
+      end
+    end
+
+    it "keeps the answer when the check's reply is empty" do
+      with_done_check do
+        backend.adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text("", reasoning: "all done"))
+        result = run
+
+        expect(result.text).to eq("the report")
+        expect(result).not_to be_empty_answer
+        expect(outcomes).to eq(%w[asked done])
+        expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+      end
+    end
+
+    it "goes on with the turn when the check calls tools, and doesn't ask again" do
+      with_done_check do
+        commit = ["c2", "execute", { "command" => "git commit -am fix" }]
+        backend.adapter = adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), tools(commit),
+                                                        text("committed: abc123"))
+        result = run
+
+        expect(result.text).to eq("committed: abc123")
+        expect(adapter.requests.length).to eq(4)
+        expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response model system model tool_response model])
+        # Saved as a plain turn note (the marker is the run's own).
+        expect(result.conversation[4]).to eq(note.except(:done_check))
+        expect(outcomes).to eq(%w[asked tools])
+      end
+    end
+
+    it "lets a new full answer replace the first one" do
+      with_done_check do
+        report = "Not done yet: I never committed. #{"x" * 400}"
+        backend.adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text(report))
+        result = run
+
+        expect(result.text).to eq(report)
+        expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response model])
+        expect(result.conversation.last[:content]).to eq(report)
+        expect(outcomes).to eq(%w[asked replaced])
+      end
+    end
+
+    it "doesn't ask in a turn that changed no file, or when off" do
+      with_done_check do
+        backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "ls" }]), text("listed"))
+        expect(run.text).to eq("listed")
+        expect(adapter.requests.length).to eq(2)
+      end
+      with_done_check("off") do
+        backend.adapter = adapter = FakeChatAdapter.new(tools(edit_call), text("the report"), text("DONE"))
+        expect(run.text).to eq("the report")
+        expect(adapter.requests.length).to eq(2)
+      end
+      expect(outcomes).to be_empty
+    end
+  end
+
   describe "empty answer retry" do
     let(:nudge) { Samagotchi::TurnNote.empty_retry }
 

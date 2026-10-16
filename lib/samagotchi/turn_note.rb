@@ -213,6 +213,20 @@ module Samagotchi
                           "again; continue the task with your next tool call, or answer if it is done."))
     end
 
+    # SPIKE (DoneCheck): the hidden note before the done check's
+    # generation, marked so the check finds it again.
+    DONE_CHECK = :done_check
+    DONE_CHECK_TEXT = "before you end: re-read the task's instructions. If a step it asked for isn't done, do it " \
+                      "now with tool calls; if all is done, reply DONE."
+
+    def done_check
+      message(DONE_CHECK_TEXT).merge(DONE_CHECK => true)
+    end
+
+    def done_check?(entry)
+      entry.respond_to?(:[]) && (entry[DONE_CHECK] || entry[DONE_CHECK.to_s]) == true
+    end
+
     # A retry nudge is marked, so the spent one is found by the mark
     # whatever its words (KernelLoop drops it when the retry fails too).
     def retry_nudge(note)

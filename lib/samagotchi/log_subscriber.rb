@@ -29,7 +29,8 @@ module Samagotchi
       question_cancelled: %i[id reason],
       question_relay: %i[id reason],
       generation_cancelled: %i[iteration],
-      empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars stopped_by malformed]
+      empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars stopped_by malformed],
+      done_check: %i[iteration outcome answer_chars reply_chars]
     }.freeze
 
     # @param session_id [#call] the session the events are about (the
