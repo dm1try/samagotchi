@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Toolkit do
     kits = described_class.kits(config: { "lean" => { "base" => "full" }, "odd" => "lean" }, errors: errors)
     expect(kits["lean"].source).to eq("core")
     expect(kits).not_to have_key("odd")
-    expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit", "toolkit.kits.odd: expected {base:, add:, remove:}"])
+    expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit", "toolkit.kits.odd: expected {base:, add:, remove:, prompt:}"])
   end
 
   it "loads a config kit with an unknown key and warns about the key (a typo, not a broken kit)" do
@@ -87,8 +87,8 @@ RSpec.describe Samagotchi::Toolkit do
     kits = described_class.kits(config: { "review" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
                                 errors: errors)
     expect(kits["review"].base).to eq("lean")
-    expect(errors).to eq(["toolkit.kits.review: unknown key tools (a kit takes base:, add:, remove:)",
-                          "toolkit.kits.review: unknown key remvoe (a kit takes base:, add:, remove:)"])
+    expect(errors).to eq(["toolkit.kits.review: unknown key tools (a kit takes base:, add:, remove:, prompt:)",
+                          "toolkit.kits.review: unknown key remvoe (a kit takes base:, add:, remove:, prompt:)"])
   end
 
   it "doesn't let a plugin kit replace one already known" do
@@ -120,6 +120,68 @@ RSpec.describe Samagotchi::Toolkit do
   it "costs a full prompt re-read when the declared names change" do
     expect(described_class.cache_cost(%w[a b], %w[a b])).to be_nil
     expect(described_class.cache_cost(%w[a b], %w[a])).to eq(:full)
+  end
+
+  describe "a kit's prompt text" do
+    let(:config) do
+      { "terse" => { "base" => "lean", "prompt" => "  - Be concise\n- Show paths  \n" },
+        "review" => { "base" => "terse", "add" => ["web_fetch"] },
+        "plain" => { "base" => "terse", "prompt" => "" },
+        "loud" => { "prompt" => "Say more." } }
+    end
+    let(:kits) { described_class.kits(config: config) }
+
+    def resolved(name, **changes) = described_class.new(name: name, **changes).resolve(kits)
+
+    it "resolves stripped, is inherited through a base, and \"\" clears it" do
+      expect(resolved("terse").prompt).to eq("- Be concise\n- Show paths")
+      expect(resolved("review").prompt).to eq("- Be concise\n- Show paths")
+      expect(resolved("plain").prompt).to be_nil
+      expect(resolved("lean").prompt).to be_nil
+      expect(resolved("nope").prompt).to be_nil
+    end
+
+    it "is kept by the session's own add and remove" do
+      expect(resolved("terse", add: ["delegate"], remove: ["web_fetch"]).prompt).to eq("- Be concise\n- Show paths")
+    end
+
+    it "keeps a kit on full's tools from reading as full (everything?), and it declares every built-in" do
+      loud = resolved("loud")
+      expect(loud.everything?).to be(false)
+      expect(loud.prompt).to eq("Say more.")
+      expect(declared(loud)).to eq(builtins)
+      expect(resolved("full").everything?).to be(true)
+    end
+
+    it "loads a config kit without a prompt that isn't text or is too long, with a line saying why" do
+      errors = []
+      kits = described_class.kits(config: { "a" => { "base" => "lean", "prompt" => ["x"] },
+                                            "b" => { "base" => "lean", "prompt" => "x" * 2001 },
+                                            "c" => { "base" => "lean", "prompt" => "x" * 2000 } }, errors: errors)
+      expect(kits["a"].prompt).to be_nil
+      expect(kits["b"].prompt).to be_nil
+      expect(kits["c"].prompt.length).to eq(2000)
+      expect(errors).to eq(["toolkit.kits.a: prompt must be text; the kit loads without it",
+                            "toolkit.kits.b: prompt is over 2000 characters; the kit loads without it"])
+    end
+
+    describe "Explained" do
+      def explained(name)
+        Samagotchi::Toolkit::Explained.new(toolkit: Samagotchi::Toolkit.new(name: name), resolved: resolved(name),
+                                           declared: [], left_out: [], pending: false)
+      end
+
+      it "has a prompt key that differs when only the text differs" do
+        expect(explained("terse").prompt_key).not_to eq(explained("lean").prompt_key)
+        expect(explained("terse").prompt_key).to eq(explained("review").prompt_key)
+      end
+
+      it "puts the text in the UIs' summary only when the kit has one" do
+        expect(explained("terse").summary).to include(name: "terse", prompt: "- Be concise\n- Show paths")
+        expect(explained("lean").summary).not_to have_key(:prompt)
+        expect(explained("full").summary).to be_nil
+      end
+    end
   end
 
   it "builds a new session's toolkit from the flags, on config's default without --toolkit" do

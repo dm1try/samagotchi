@@ -24,6 +24,17 @@ RSpec.describe "Plugin toolkits" do
       expect(chi.counts[:toolkits]).to eq(1)
     end
 
+    it "declares a toolkit with a prompt text; one that isn't text or is too long is a load error" do
+      chi = api
+      chi.toolkit("coding", base: "child", prompt: "- Be concise\n")
+      chi.commit!
+      expect(kits.last).to eq(Samagotchi::Toolkit::Kit.new(name: "coding", base: "child", prompt: "- Be concise", source: "mine"))
+      expect(kits.last.prompt).to eq("- Be concise")
+      expect { api.toolkit("odd", base: "lean", prompt: :concise) }.to raise_error(ArgumentError, "toolkit odd: prompt must be text")
+      expect { api.toolkit("long", base: "lean", prompt: "x" * 2001) }
+        .to raise_error(ArgumentError, "toolkit long: prompt is over 2000 characters")
+    end
+
     it "refuses chi's own names, another bundle's, a twice-declared one and a bad name" do
       expect { api.toolkit("lean", base: "full") }.to raise_error(ArgumentError, "toolkit lean is chi's own")
       first = api("other")

@@ -78,21 +78,25 @@ module Samagotchi
       end
 
       # What the prompt carries of it: the declared names, the reachable
-      # and removed ones (the not-loaded line, find_tools' chi line) and,
-      # when either list has any, the kit name the line gives. Two equal
-      # keys build the same prompt (/toolkit's "no change", its cost).
+      # and removed ones (the not-loaded line, find_tools' chi line), when
+      # either list has any the kit name the line gives, and the kit's
+      # prompt text. Two equal keys build the same prompt (/toolkit's "no
+      # change", its cost).
       def prompt_key
-        [declared.map(&:name), reachable, removed, reachable.empty? && removed.empty? ? nil : resolved.name]
+        [declared.map(&:name), reachable, removed, reachable.empty? && removed.empty? ? nil : resolved.name,
+         resolved.prompt]
       end
 
       # What the UIs show (the snapshot, command_ran): nil when it declares
       # every tool on full (full, full +delegate), which has no chip.
-      # +left_out+ is +reachable+ and +removed+ together.
+      # +left_out+ is +reachable+ and +removed+ together; +prompt+ (the
+      # kit's text) only when the kit has one.
       def summary
         return nil if toolkit.name == Toolkit::FULL && left_out.empty? && resolved.fallback.nil?
 
-        { name: toolkit.name, label: toolkit.label, left_out: left_out, reachable: reachable, removed: removed,
-          fallback: resolved.fallback }
+        summary = { name: toolkit.name, label: toolkit.label, left_out: left_out, reachable: reachable,
+                    removed: removed, fallback: resolved.fallback }
+        resolved.prompt ? summary.merge(prompt: resolved.prompt) : summary
       end
     end
 
@@ -102,12 +106,28 @@ module Samagotchi
     # A named list of declared tools: +tools+ (:all, every built-in; or the
     # built-in names) when it has no +base+, else its +base+'s with +add+
     # and +remove+. +source+: "core", "config", or the bundle that declared
-    # it (chi.toolkit).
-    Kit = Data.define(:name, :base, :tools, :add, :remove, :source) do
-      def initialize(name:, base: nil, tools: nil, add: [], remove: [], source: "core")
+    # it (chi.toolkit). +prompt+: text the sessions on it get in their
+    # system prompt, verbatim (stripped); nil inherits the base's, "" clears
+    # it.
+    Kit = Data.define(:name, :base, :tools, :add, :remove, :source, :prompt) do
+      def initialize(name:, base: nil, tools: nil, add: [], remove: [], source: "core", prompt: nil)
         super(name: name.to_s, base: base&.to_s, tools: tools == :all ? :all : Toolkit.tool_names(tools),
-              add: Toolkit.tool_names(add), remove: Toolkit.tool_names(remove), source: source.to_s)
+              add: Toolkit.tool_names(add), remove: Toolkit.tool_names(remove), source: source.to_s,
+              prompt: prompt.is_a?(String) ? prompt.strip.freeze : nil)
       end
+    end
+
+    # The longest kit prompt, in characters: it is a cached prefix, not a
+    # document (long text belongs in append_system_prompt:).
+    PROMPT_MAX = 2000
+
+    # Why +value+ can't be a kit's prompt (text, at most PROMPT_MAX
+    # characters once stripped), nil when it can (nil too: no prompt).
+    def self.prompt_error(value)
+      return nil if value.nil?
+      return "prompt must be text" unless value.is_a?(String)
+
+      "prompt is over #{PROMPT_MAX} characters" if value.strip.length > PROMPT_MAX
     end
 
     # The built-ins `lean` declares: the file and shell tools, memories,
@@ -133,14 +153,17 @@ module Samagotchi
     # an LLM context layer gates (forget_outputs), but for +removed+;
     # +added+ declares any registered tool. +fallback+: why the session's
     # own toolkit couldn't be resolved (this is FULL then), nil when it was.
-    Resolved = Data.define(:name, :all_core, :core, :added, :removed, :fallback) do
-      def initialize(name:, all_core: false, core: [], added: [], removed: [], fallback: nil)
+    # +prompt+: the kit's prompt text (its own or its base's), nil without.
+    Resolved = Data.define(:name, :all_core, :core, :added, :removed, :fallback, :prompt) do
+      def initialize(name:, all_core: false, core: [], added: [], removed: [], fallback: nil, prompt: nil)
         super(name: name.to_s, all_core: all_core, core: core.dup.freeze, added: added.dup.freeze,
-              removed: removed.dup.freeze, fallback: fallback)
+              removed: removed.dup.freeze, fallback: fallback, prompt: prompt)
       end
 
-      # Every built-in and nothing removed: what no toolkit declares.
-      def everything? = all_core && removed.empty?
+      # Every built-in, nothing removed and no prompt text: what no toolkit
+      # declares (the Registry's nil). A kit on full's tools with a prompt
+      # is kept, so its text reaches the system prompt.
+      def everything? = all_core && removed.empty? && prompt.nil?
 
       # @param entry [Tools::Registry::Entry]
       def declares?(entry)
@@ -216,7 +239,8 @@ module Samagotchi
     # @param after [Object] what it would carry after the change
     def self.cache_cost(before, after) = before == after ? nil : :full
 
-    # @return [Resolved] +name+'s kit through its bases
+    # @return [Resolved] +name+'s kit through its bases; its prompt is the
+    #   kit's own, else its base's ("" clears it: nil)
     # @raise [Unresolved] unknown, or a cycle
     def self.resolve_kit(name, kits, seen = [])
       raise Unresolved, "no toolkit named #{name}" unless (kit = kits[name])
@@ -227,17 +251,20 @@ module Samagotchi
              else
                Resolved.new(name: name, all_core: kit.tools == :all, core: kit.tools == :all ? [] : kit.tools)
              end
-      base.changed(add: kit.add, remove: kit.remove).with(name: name)
+      prompt = kit.prompt.nil? ? base.prompt : kit.prompt
+      base.changed(add: kit.add, remove: kit.remove).with(name: name, prompt: prompt.to_s.empty? ? nil : prompt)
     end
 
     # The keys a config kit entry takes.
-    KIT_KEYS = %w[base add remove].freeze
+    KIT_KEYS = %w[base add remove prompt].freeze
 
     # The kits known: the built-ins, then config's toolkit.kits, then the
     # plugins' (chi.toolkit). A config kit with a built-in's name is left
     # out (one it can't redefine) with a line in +errors+, and so is one
-    # that isn't a {base:, add:, remove:} map. One with another key (a
-    # typo, a tools: list) still loads, with a line naming the key.
+    # that isn't a {base:, add:, remove:, prompt:} map. One with another key
+    # (a typo, a tools: list) still loads, with a line naming the key, and
+    # so does one whose prompt isn't text or is over PROMPT_MAX characters:
+    # without the prompt, with a line saying why.
     # @param config [Hash, nil] toolkit.kits
     # @param plugins [Array<Kit>]
     # @param errors [Array<String>] gets a line per kit left out or unknown key
@@ -249,14 +276,18 @@ module Samagotchi
         if kits.key?(name)
           errors << "toolkit.kits.#{name}: #{name} is a built-in toolkit"
         elsif !spec.is_a?(Hash)
-          errors << "toolkit.kits.#{name}: expected {base:, add:, remove:}"
+          errors << "toolkit.kits.#{name}: expected {base:, add:, remove:, prompt:}"
         else
           spec = spec.transform_keys(&:to_s)
           (spec.keys - KIT_KEYS).each do |key|
-            errors << "toolkit.kits.#{name}: unknown key #{key} (a kit takes base:, add:, remove:)"
+            errors << "toolkit.kits.#{name}: unknown key #{key} (a kit takes base:, add:, remove:, prompt:)"
+          end
+          if (problem = prompt_error(spec["prompt"]))
+            errors << "toolkit.kits.#{name}: #{problem}; the kit loads without it"
+            spec.delete("prompt")
           end
           kits[name] = Kit.new(name: name, base: spec["base"] || FULL, add: spec["add"], remove: spec["remove"],
-                               source: "config")
+                               prompt: spec["prompt"], source: "config")
         end
       end
       plugins.each { |kit| kits[kit.name] ||= kit }

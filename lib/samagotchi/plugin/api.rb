@@ -279,13 +279,19 @@ module Samagotchi
 
       # A named toolkit sessions can be put on (/toolkit NAME, chi --toolkit,
       # toolkit.default, ctx.use_toolkit): +base+'s tools (a toolkit chi or
-      # a bundle has) with +add+ declared and +remove+ left out. A name chi
-      # (full, lean, child) or another bundle has is a load error; a base
-      # that doesn't resolve leaves the sessions on it with every tool
+      # a bundle has) with +add+ declared and +remove+ left out, and
+      # +prompt+: text the sessions on it get in their system prompt (nil:
+      # its base's, "" none; at most Toolkit::PROMPT_MAX characters). A
+      # name chi (full, lean, child) or another bundle has is a load error,
+      # and so is a prompt that isn't text or is too long; a base that
+      # doesn't resolve leaves the sessions on it with every tool
       # (Toolkit#resolve).
-      def toolkit(name, base:, add: [], remove: [])
+      def toolkit(name, base:, add: [], remove: [], prompt: nil)
         name = name.to_s
         raise ArgumentError, "toolkit name #{name.inspect} must be a-z, 0-9, _ and -" unless name.match?(TOOLKIT_NAME)
+
+        problem = Toolkit.prompt_error(prompt)
+        raise ArgumentError, "toolkit #{name}: #{problem}" if problem
         raise ArgumentError, "this chi has no toolkits (plugins: false)" unless @registries.toolkits
         if Toolkit::BUILTIN_KITS.key?(name)
           raise ArgumentError, "toolkit #{name} is chi's own"
@@ -294,7 +300,7 @@ module Samagotchi
         end
         raise ArgumentError, "toolkit #{name} is declared twice" if @toolkits.any? { |kit| kit.name == name }
 
-        @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, source: @bundle)
+        @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, prompt: prompt, source: @bundle)
         nil
       end
 
