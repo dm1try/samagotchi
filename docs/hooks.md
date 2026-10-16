@@ -124,7 +124,8 @@ links), for a UI that doesn't render that display. The hook never names a UI;
 each decides by what it renders. The web with markdown on (`web.markdown` and
 the commonmarker gem) leaves such a line out, live and after a reload; with
 markdown off it shows, as it does in the REPL, the attached TUI and
-`chi -p`, which print the answer as text. The log keeps the line with
+`chi -p`, which print the answer as text (in the web its http(s) URLs are
+links, as in any hook's notice line). The log keeps the line with
 `fallback_for=display`. `:editor` marks a line that names a file the viewer
 could open from a ref in its editor: the web leaves it out for a viewer on
 this machine with `web.editor` set, and every other UI and viewer (a phone,
@@ -660,7 +661,8 @@ keeps the web links. With markdown on, the web leaves the line out when the
 answer links every URL it names, since it would only repeat them as plain
 text ([`fallback_for: :display`](#what-a-hook-can-do-the-runtime)); it shows
 when it names one the answer doesn't link (a ref only in code, two sources on
-one ref) and whenever markdown is off. Bundle 0.4.0 needs chi 0.35.0 for that.
+one ref) and whenever markdown is off (its URLs are links in the web). Bundle
+0.4.0 needs chi 0.35.0 for that.
 
 Each ref the answer links is also a [ref on the
 answer](#refs-on-the-answer-display-only): kind `issue` (or the source's

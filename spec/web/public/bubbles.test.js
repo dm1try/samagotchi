@@ -49,6 +49,8 @@ test("a hook notice: a bubble, or a step's row; warn, its kind's class and title
   assert.equal(markupOf(hookNoticeTemplate({ line: "x: y" })), '<div class="bubble hook-notice">x: y</div>');
   assert.equal(markupOf(hookNoticeTemplate({ line: "x", level: "warn", cls: "llm-ctx", title: "t" }, { bubble: false })),
                '<div class="hook-notice warn llm-ctx" title="t">x</div>');
+  assert.equal(markupOf(hookNoticeTemplate({ line: "h: see https://x.com/a, ok" })),
+               '<div class="bubble hook-notice">h: see <a target="_blank" rel="noopener noreferrer" href="https://x.com/a">https://x.com/a</a>, ok</div>');
   assert.equal(hookNoticeLine({ line: "own" }), "own");
   assert.match(hookNoticeLine({ hook: "after_turn", text: "hi" }), /: hi$/);
 });

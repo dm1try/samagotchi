@@ -228,6 +228,25 @@ test("slots: a task_wait with its stop button, a flash and toned items in the tr
   }
 });
 
+test("a live notice row with a URL links it; the trail's flash stays text", async () => {
+  const { view } = slotsPage();
+  try {
+    view.notice({ hook: "source-links", text: "sources: JIRA JIRA-1 → https://x.com/JIRA-1, <b>x</b>" });
+    await frame();
+    const row = view.root.querySelector(".gen .hook-notice");
+    const a = row.querySelector("a");
+    assert.equal(a.getAttribute("href"), "https://x.com/JIRA-1");
+    assert.equal(a.getAttribute("target"), "_blank");
+    assert.equal(a.getAttribute("rel"), "noopener noreferrer");
+    assert.equal(row.querySelectorAll("a").length, 1);
+    assert.equal(row.querySelector("b"), null);
+    assert.ok(row.textContent.endsWith("https://x.com/JIRA-1, <b>x</b>"));
+    assert.equal(view.root.querySelector(".ts-trail a"), null);
+  } finally {
+    view.reset();
+  }
+});
+
 test("identity: tick nodes are kept as the list grows (their blink never restarts)", async () => {
   const { view } = slotsPage();
   try {

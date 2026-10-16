@@ -438,6 +438,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .gen .activity-body>.hook-notice:first-child{border-top:none}
 .gen .hook-notice.warn{border-left-color:var(--warn);color:var(--warn-text)}
 .hook-notice.llm-context{border-left-style:dashed;cursor:help}
+.hook-notice a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.hook-notice a:hover{text-decoration-thickness:2px}
 /* A plugin's steer (a nudge into the running turn): a row of its step, or a bubble; its text collapsed. */
 .steer-row{font-size:13px;color:var(--text-3);border-left:2px solid var(--accent-border)}
 .steer-row>summary{cursor:pointer;list-style:none;font-style:italic}

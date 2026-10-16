@@ -109,6 +109,17 @@ test("a snapshot's entries: each above the first turn after it, a turn notice in
   assert.equal(h.lastElementChild.textContent, "between");
 });
 
+test("a snapshot's turn notice with a URL: the row in its step links it", () => {
+  const h = history(TWO_TURNS);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([
+    { type: "hook_notice", in_turn: true, iteration: 1, hook: "h", text: "sources: https://x.com/JIRA-1", turns_since: 1 },
+  ]);
+  const a = h.querySelector(".turn-work .gen .activity-body .hook-notice a");
+  assert.equal(a.getAttribute("href"), "https://x.com/JIRA-1");
+  assert.equal(a.getAttribute("target"), "_blank");
+});
+
 test("a finished turn's question is drawn resolved, before the lines steered after it asked", () => {
   const h = history(TWO_TURNS);
   const calls = [];
