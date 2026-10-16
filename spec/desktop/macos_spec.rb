@@ -94,6 +94,16 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(macos.launch_config["env"]).to eq("LANG" => "en_US.UTF-8", "XDG_STATE_HOME" => "/s", "GEM_HOME" => "/g")
     end
 
+    # launchd starts the helper in /, where a relative dir means /rel.
+    it "bakes a relative XDG_CONFIG_HOME / XDG_STATE_HOME made absolute from the install's cwd" do
+      env.merge!("XDG_CONFIG_HOME" => "rel/config", "XDG_STATE_HOME" => "rel/state")
+      Dir.chdir(tmp) do
+        cwd = Dir.pwd
+        expect(macos.launch_config["env"]).to include("XDG_CONFIG_HOME" => File.join(cwd, "rel/config"),
+                                                      "XDG_STATE_HOME" => File.join(cwd, "rel/state"))
+      end
+    end
+
     it "leaves out allowlisted variables set to an empty string" do
       env["GEM_PATH"] = ""
       expect(macos.launch_config["env"]).to eq("LANG" => "en_US.UTF-8")

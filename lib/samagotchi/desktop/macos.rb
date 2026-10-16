@@ -13,6 +13,7 @@ require_relative "../installed_gem"
 require_relative "../config"
 require_relative "../host_keys"
 require_relative "../redacted_inspect"
+require_relative "../paths"
 
 module Samagotchi
   module Desktop
@@ -146,9 +147,13 @@ module Samagotchi
       # RubyGems wrapper (it activates the gem and outlives upgrades and
       # `gem cleanup`), else this checkout's bin/chi. A section per terminal
       # switched on (TERMINALS order); the broadcast timeout when given.
+      # The XDG dirs go in absolute (Paths): launchd starts the app in /,
+      # where a relative one would mean /<dir>.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
+        env["XDG_CONFIG_HOME"] = Paths.config_home(env: @env) if env.key?("XDG_CONFIG_HOME")
+        env["XDG_STATE_HOME"] = Paths.state_home(env: @env) if env.key?("XDG_STATE_HOME")
         config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
         TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
         config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout

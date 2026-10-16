@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
   an `execute` still running at its limit was killed instead of handed over as a task.
 - A worker started in a session's folder (by `chi`, `chi web` or `chi send`) gets the starter's `XDG_STATE_HOME` and
   `XDG_CONFIG_HOME` made absolute: a relative one no longer points it at another state or config dir.
+- `chi desktop install` / `upgrade` bake a relative `XDG_STATE_HOME` or `XDG_CONFIG_HOME` into the helper's launch
+  file made absolute: launchd starts the helper in `/`, where it pointed at `/<dir>`.
 
 ## [0.73.0] - 2026-10-16
 

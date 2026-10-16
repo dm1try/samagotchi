@@ -239,7 +239,8 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 - the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`);
 - `LANG=en_US.UTF-8`;
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
-  `RUBYLIB`. No tokens and no `SAMAGOTCHI_*` settings go in;
+  `RUBYLIB` (a relative `XDG_*` dir made absolute from the install's current folder: the helper starts in `/`).
+  No tokens and no `SAMAGOTCHI_*` settings go in;
 - the settings the panel needs from config.yml, as chi read them then: the `kitty:` section (when
   `kitty.listen_on` is set), the `tmux:` section (when `tmux.enabled`: the tmux binary and the socket dir resolved
   then, and the agents) and `broadcast_timeout` (`broadcast.triage_deadline` + 10 s).
