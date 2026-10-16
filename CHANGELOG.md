@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: `continue →` fills the new link's composer with the previous link's own first message when that link was a
+  continuation itself (else `Continue where we left off.`), so a chain's opener comes back on every link; a chain
+  link's top bar and tab show its card's title whatever opener it was sent.
+
 ## [0.72.0] - 2026-10-16
 
 ### Added
