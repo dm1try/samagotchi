@@ -57,9 +57,10 @@ module Samagotchi
       [[listing(after), "From the next turn's start (a running turn keeps its tools)."].join("\n"), true, nil]
     end
 
-    # The toolkit, its declared tools with tokens, and the ones left out:
-    # reachable with find_tools / call_tool, removed (only /toolkit add
-    # brings one back), or, with call_tool not declared, not loaded.
+    # The toolkit, its declared tools with tokens, its kit's prompt text
+    # (when it has one), and the ones left out: reachable with find_tools /
+    # call_tool, removed (only /toolkit add brings one back), or, with
+    # call_tool not declared, not loaded.
     def listing(explained)
       toolkit = explained.toolkit
       lines = ["toolkit: #{toolkit.label}#{" (applies at the next turn's start)" if explained.pending}"]
@@ -69,6 +70,7 @@ module Samagotchi
       declared = explained.declared
       lines << "  declared (#{declared.size}, ~#{format_tokens(declared.sum { |entry| tokens(entry) })} tokens): " \
                "#{declared.map { |entry| "#{entry.name} ~#{format_tokens(tokens(entry))}" }.join(", ")}"
+      lines << prompt_line(explained.resolved.prompt) if explained.resolved.prompt
       left_out = explained.left_out
       if explained.reachable.empty?
         lines << "  not loaded: #{left_out.empty? ? "none" : left_out.join(", ")}"
@@ -137,6 +139,14 @@ module Samagotchi
     end
 
     def names(explained) = explained.declared.map(&:name)
+
+    # The kit's prompt text (Toolkit::Kit#prompt): its first line, how many
+    # more and its estimated tokens.
+    def prompt_line(text)
+      first, *rest = text.lines.map(&:chomp)
+      more = rest.empty? ? "" : "+#{rest.size} line#{"s" if rest.size > 1}, "
+      "  prompt: #{first} (#{more}~#{format_tokens((text.length / CHARS_PER_TOKEN).ceil)} tokens)"
+    end
 
     # A tool's schema in tokens, estimated from its JSON.
     def tokens(entry) = (JSON.generate(entry.schema).length / CHARS_PER_TOKEN).round

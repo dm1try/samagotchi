@@ -159,6 +159,15 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
       expect(kernel.tools.names).to eq(tools)
     end
 
+    it "puts the next turn's kit prompt in /stats' snapshot (kit_prompt), none on a kit without one or on full" do
+      engine.session = session(Samagotchi::Toolkit.new(name: "terse"))
+      expect(engine.stats_snapshot[:kit_prompt]).to eq({ kit: "terse", tokens: 8 })
+      engine.session = session(Samagotchi::Toolkit.new(name: "lean"))
+      expect(engine.stats_snapshot).not_to have_key(:kit_prompt)
+      engine.session = session
+      expect(engine.stats_snapshot).not_to have_key(:kit_prompt)
+    end
+
     it "keeps a kit on full's tools with a prompt declaring what full does, with no not-loaded line" do
       turn(session(Samagotchi::Toolkit.new(name: "loud")))
       expect(kernel.tools.toolkit&.name).to eq("loud")

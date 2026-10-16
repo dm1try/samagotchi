@@ -1063,7 +1063,8 @@ module Samagotchi
     # profile come from the effective model's server, so this may make one
     # short /props GET; the cheap #session_state_snapshot never does.
     # price_host: the effective model's host, whose hosts.<name>.models
-    # prices the cost estimate names.
+    # prices the cost estimate names. kit_prompt: the next turn's kit
+    # prompt text ({kit:, tokens:}), only when its toolkit has one.
     # @return [Hash] @metrics.snapshot, filled in
     def stats_snapshot
       snapshot = @metrics.snapshot
@@ -1076,6 +1077,8 @@ module Samagotchi
                                 **setting_chips(SessionSetting::STATS, model),
                                 prompt_notes: prompt_notes.map(&:to_h), prompt_files: @prompt_builder.prompt_files,
                                 price_host: model.host_name)
+      kit_prompt = kit_prompt_stats
+      snapshot = snapshot.merge(kit_prompt: kit_prompt) if kit_prompt
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(model)
         if window
@@ -2693,6 +2696,15 @@ module Samagotchi
     # the probe's failure is EffectiveModel#served_from_props's.
     rescue StandardError
       [nil, nil]
+    end
+
+    # The next turn's kit prompt text for /stats: its kit and its estimated
+    # tokens (chars / 4), nil when its toolkit has none.
+    def kit_prompt_stats
+      resolved = toolkit_explained.resolved
+      return nil unless resolved.prompt
+
+      { kit: resolved.name, tokens: (resolved.prompt.length / TokenUsage::CHARS_PER_TOKEN).ceil }
     end
 
     # The window as +model+'s loop would see it (EffectiveModel#context_window).

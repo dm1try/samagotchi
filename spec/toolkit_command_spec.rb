@@ -41,6 +41,23 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(saved.size).to eq(1) # the child switch only
   end
 
+  it "lists a kit's prompt text: its first line, how many more and its tokens" do
+    allow(Samagotchi::Toolkit).to receive(:config_kits)
+      .and_return("coding" => { "base" => "child", "prompt" => "- Be concise in your responses\n- Show file paths clearly when working with files" },
+                  "terse" => { "base" => "lean", "prompt" => "- Be concise" },
+                  "steps" => { "base" => "lean", "prompt" => "- One\n- Two\n- Three" })
+    session.toolkit = Samagotchi::Toolkit.new(name: "coding")
+    lines = command.run("")[0].lines.map(&:chomp)
+    expect(lines[2]).to eq("  prompt: - Be concise in your responses (+1 line, ~20 tokens)")
+    expect(lines[3]).to start_with("  reachable (find_tools): ")
+    session.toolkit = Samagotchi::Toolkit.new(name: "terse")
+    expect(command.run("")[0].lines[2].chomp).to eq("  prompt: - Be concise (~3 tokens)")
+    session.toolkit = Samagotchi::Toolkit.new(name: "steps")
+    expect(command.run("")[0].lines[2].chomp).to eq("  prompt: - One (+2 lines, ~5 tokens)")
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean")
+    expect(command.run("")[0]).not_to include("  prompt:")
+  end
+
   it "puts the session on another toolkit, or adds and removes a tool, saved at once" do
     output, changed, = command.run("lean")
     expect(changed).to be(true)

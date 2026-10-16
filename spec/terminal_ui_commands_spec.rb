@@ -263,6 +263,12 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("prompt files")
     end
 
+    it "shows the toolkit's prompt text in /stats as its kit and tokens, nothing without one" do
+      text = agent.send(:format_session_metrics, { prompt_files: [File.join(Dir.home, "x.md")], kit_prompt: { kit: "coding", tokens: 15 } })
+      expect(text).to include("prompt files:     ~/x.md\nkit prompt:       coding (~15 tokens)")
+      expect(agent.send(:format_session_metrics, {})).not_to include("kit prompt")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

@@ -602,6 +602,10 @@ module Samagotchi
         # The files whose text is in the prompt (SystemPrompt#prompt_files).
         files = prompt_files_text(snapshot[:prompt_files])
         lines << "prompt files:     #{files}" if files
+        # The toolkit's prompt text (Engine#stats_snapshot's kit_prompt).
+        if (kit = snapshot[:kit_prompt])
+          lines << "kit prompt:       #{kit[:kit]} (~#{kit[:tokens]} tokens)"
+        end
         llm_context = llm_context_stats_text(snapshot[:llm_context])
         lines << "llm context:      #{llm_context}" if llm_context
         thinking = setting_stats_text(snapshot[:thinking])

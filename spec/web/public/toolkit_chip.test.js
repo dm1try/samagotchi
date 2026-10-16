@@ -23,6 +23,13 @@ test("chipModel: what find_tools reaches and what the toolkit removes", () => {
     /Removed|Not loaded/);
 });
 
+test("chipModel: a kit's prompt text ends the tooltip, only when the summary has one", () => {
+  const chip = chipModel({ name: "coding", label: "coding", left_out: [], reachable: [], removed: [], fallback: null,
+    prompt: "- Be concise in your responses" });
+  assert.match(chip.title, /changes them from the next turn\. Prompt: - Be concise in your responses$/);
+  assert.doesNotMatch(chipModel({ name: "lean", label: "lean", left_out: [] }).title, /Prompt:/);
+});
+
 test("chipModel: a name that didn't resolve, and the file's reading (no left_out)", () => {
   const chip = chipModel({ name: "coordinator", label: "coordinator", left_out: [], fallback: "no toolkit named coordinator" });
   assert.equal(chip.text, "tools coordinator ?");
