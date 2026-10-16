@@ -786,6 +786,9 @@ test("continue → starts the next link with the opener in the composer, unsent,
   }
 });
 
+// The opener the second link is sent with, and the third one is filled with.
+const CHAIN_OPENER = "Chain opener: check the queue";
+
 async function continueAndCheck(page, first, kid) {
   await page.locator("#infoContinueBtn").click();
   await expect(page).not.toHaveURL(new RegExp(`#/s/${first}$`));
@@ -848,12 +851,18 @@ async function continueAndCheck(page, first, kid) {
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
   await expect(pick).toHaveText("fake-b");
 
-  // Its first turn: the picker goes.
+  // Its first turn, on an opener of the user's own: the picker goes.
+  await page.locator("#prompt").fill(CHAIN_OPENER);
   await page.locator("#actionBtn").click();
   await turnEnded(page, 1);
   await expect(pick).toBeHidden();
   // The turn asked for fake-b (the fake server stamps fake-script on every answer).
   await expect(infoModel).toHaveAttribute("title", /asked for fake-b/);
+  // The next continue brings that opener back, not the constant.
+  await page.locator("#infoContinueBtn").click();
+  await expect(page).not.toHaveURL(new RegExp(`#/s/${second}$`));
+  await expect(page.locator("#prompt")).toHaveValue(CHAIN_OPENER);
+  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
   // The start page: its own remembered model came back.
   await page.locator("#newBtn").click();
   await expect(pick).toBeVisible();

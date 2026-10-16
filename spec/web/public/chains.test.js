@@ -1,7 +1,7 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate, openerText } from "../../../lib/samagotchi/web/public/chains.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template's markup as the page gets it (lit's marker comments dropped).
@@ -173,6 +173,13 @@ test("chainRowsTemplate lists the other links newest first: day, date, recap's f
 });
 
 const refused = (code, body, message = "refused") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });
+
+test("openerText: the continue's own opener (the previous link's first message), else the constant", () => {
+  assert.equal(openerText({ id: "c", opener: "You are the coordinator again." }), "You are the coordinator again.");
+  for (const created of [{ id: "c", opener: null }, { id: "c", opener: "  " }, { id: "c" }, null, undefined, { opener: 3 }]) {
+    assert.equal(openerText(created), CONTINUE_OPENER);
+  }
+});
 
 test("continueRefusal: continued already opens the next link", () => {
   assert.deepEqual(continueRefusal(refused("continued", { next_id: "d4" })), { kind: "open", id: "d4" });
