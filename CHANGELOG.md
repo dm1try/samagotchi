@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- source-links bundle 0.6.0: the web leaves out the `sources:` line with markdown off too when every ref it names is
+  a ref in the answer (shown with its **Open in …** action), as it did with markdown on; a ref the answer doesn't
+  show that way (in code only, a URL that isn't http(s)) keeps the line. Needs this chi (`fallback_for: :refs`).
+
 ### Fixed
 
 - mcp bundle 0.7.1: an MCP server that ignores its stdin's EOF no longer outlives a chi killed with `kill -9` (or

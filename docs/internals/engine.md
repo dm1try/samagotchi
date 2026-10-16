@@ -542,7 +542,7 @@ puts the hook runtime on the event: `event[:hook]` (the hook's label) and five h
 
 | Helper | What it does | Used by |
 |---|---|---|
-| `event[:notify].call(text, level:, fallback_for:)` | One line to the user (`:hook_notice`); `fallback_for: :display` marks a line that stands in for the answer's display, which a UI that renders the display's links leaves out | mcp (a server didn't start), loop-guard |
+| `event[:notify].call(text, level:, fallback_for:)` | One line to the user (`:hook_notice`); `fallback_for: :display` marks a line that stands in for the answer's display, which a UI that renders the display's links leaves out (`:refs`: the answer's refs, for a UI that binds them; `:editor`: a file the viewer could open; `Web::Capabilities` says which the web has) | mcp (a server didn't start), loop-guard |
 | `event[:ask_user].call(question:, options:, header:, allow_freeform:)` | A single-select question through the question flow; nil when there is no one to ask | known-names (a near-miss name: correct it?) |
 | `event[:stop_turn].call(reason)` | Cancel the running turn (reason `:hook`), with a warn notice | loop-guard (repeated calls), check-in (`/checkin stop`) |
 | `event[:stop_generation].call(reason)` | Cut the streaming generation; the turn goes on | loop-guard (thinking repeats itself) |

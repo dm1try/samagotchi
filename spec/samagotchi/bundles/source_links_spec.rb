@@ -777,6 +777,58 @@ RSpec.describe "The source-links bundle" do
       expect(@display).to eq("[NOTE-1](javascript:alert%28'NOTE-1) [APP-2](jira://browse/APP-2) " \
                              "[JIRA-3](https://myjira.com/browse/JIRA-3)")
     end
+
+    describe "the note's fallback_for: :refs (a UI that binds the answer's refs leaves it out, markdown or not)" do
+      def fallbacks = notices.map { |n| n[:fallback_for] }
+
+      it "marks the note when every ref it names is a ref on the answer" do
+        refs_for("See JIRA-1, then JIRA-2 and JIRA-1 again.")
+        expect(fallbacks).to eq([:refs])
+      end
+
+      it "marks it when a ref in code is a ref on the answer elsewhere in it" do
+        refs_for("See JIRA-1 and `JIRA-1`.")
+        expect(fallbacks).to eq([:refs])
+      end
+
+      it "leaves it unmarked when a ref is only in code (named, neither linked nor a ref)" do
+        refs_for("See JIRA-1 and `JIRA-2`.")
+        expect(fallbacks).to eq([nil])
+      end
+
+      it "marks it :display when a URL isn't http(s) (a markdown link, no ref)" do
+        settings["sources"] << { "name" => "App", "prefix" => "APP", "base_url" => "jira://browse/" }
+        refs_for("JIRA-1 and APP-2")
+        expect(fallbacks).to eq([:display])
+      end
+
+      it "marks it :display when the page can't find the ref as a token in the text (answer_refs.js tokenHits)" do
+        refs_for("see v.JIRA-1 and JIRA-2")
+        expect(fallbacks).to eq([:display])
+      end
+
+      it "marks it :refs when one occurrence of a ref is a token" do
+        refs_for("see v.JIRA-1, then JIRA-1")
+        expect(fallbacks).to eq([:refs])
+      end
+
+      it "marks it :display when the answer refused a ref (a cap)" do
+        messages = [user("q"), model("see JIRA-1 and JIRA-2")]
+        event = { type: :after_turn, status: "completed", messages: messages }
+        event[:present] = Samagotchi::AnswerDisplay.new(messages).presenter(event)
+        event[:refs] = ->(**ref) { ref[:match] == "JIRA-1" }
+        registry.fire(:after_turn, event)
+        expect(fallbacks).to eq([:display])
+      end
+
+      it "marks it :refs when the display rejected the links but every ref is on the answer" do
+        messages = [user("q"), model("see JIRA-1")]
+        event = { type: :after_turn, status: "completed", messages: messages, present: ->(&_block) {} }
+        event[:refs] = Samagotchi::AnswerRefs.new(messages, cwd: Dir.pwd).adder(event)
+        registry.fire(:after_turn, event)
+        expect(fallbacks).to eq([:refs])
+      end
+    end
   end
 
   it "has a manifest whose file and hook checksums match" do

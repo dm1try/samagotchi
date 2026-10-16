@@ -16,7 +16,7 @@ module Samagotchi
   # the Engine's EventRoutes.
   class HookRoutes
     # What a notice may stand in for (#notify's fallback_for:).
-    NOTICE_FALLBACKS = %i[display editor].freeze
+    NOTICE_FALLBACKS = %i[display editor refs].freeze
 
     # @param event_routes      [EventRoutes] where a notice goes
     # @param question_desk     [#call] → QuestionDesk
@@ -59,7 +59,8 @@ module Samagotchi
     # +fallback_for+ names what the line stands in for (NOTICE_FALLBACKS):
     # :display, the answer's display (AnswerDisplay), for a UI that doesn't
     # render its links; :editor, a ref the viewer could open in its editor
-    # (Web::Capabilities#editor), for a UI or a viewer that can't. A UI that
+    # (Web::Capabilities#editor), for a UI or a viewer that can't; :refs, the
+    # answer's refs (AnswerRefs), for a UI that doesn't bind them. A UI that
     # does leaves the line out; the others, the log among them, show it. An
     # unknown value is dropped, so the line shows everywhere.
     # +extra+: more fields for the UIs (a toolkit change's summary).

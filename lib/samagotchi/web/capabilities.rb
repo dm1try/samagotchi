@@ -10,13 +10,16 @@ module Samagotchi
     # are links (web.markdown on and commonmarker installed). +editor+: this
     # viewer can open a path in this machine's editor (a viewer on this
     # machine, web.editor not none); per request, the URL template goes next
-    # to it as the payload's editor_url. A later capability is a new member.
+    # to it as the payload's editor_url. +refs+: the refs a hook attaches to
+    # the answer (event[:refs], the message's display_refs) are bound in it,
+    # each with its actions on the ref menu (answer_refs.js), markdown on or
+    # off: always true here. A later capability is a new member.
     # (The member hides Object#display, which nothing calls on it.)
-    Capabilities = Data.define(:display, :editor) do # rubocop:disable Lint/DataDefineOverride
+    Capabilities = Data.define(:display, :editor, :refs) do # rubocop:disable Lint/DataDefineOverride
       # @param markdown_renderer [MarkdownRenderer]
       # @param editor [Boolean] this request's viewer can open refs
       def self.for(markdown_renderer, editor: false)
-        new(display: markdown_renderer.available? == true, editor: editor == true)
+        new(display: markdown_renderer.available? == true, editor: editor == true, refs: true)
       end
     end
   end

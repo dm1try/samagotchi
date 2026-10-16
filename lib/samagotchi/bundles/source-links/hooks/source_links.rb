@@ -9,9 +9,11 @@ require "samagotchi/ref"
 # web, each ref in the answer becomes a link (`[JIRA-123](https://…)`,
 # through event[:present]: display only, the model's text stays as it was,
 # and it survives a reload). Every UI also gets one line right after the
-# turn, the terminals' only view of the links (marked fallback_for:
+# turn, the terminals' only view of the links (marked fallback_for: :refs
+# when every URL it names is a ref on the answer the page finds in its
+# text, so the web leaves it out, markdown on or off; else fallback_for:
 # :display when the answer links every URL it names, so the web with
-# markdown on leaves it out; needs chi 0.35.0):
+# markdown on leaves it out):
 #
 #   sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → https://myjira.com/browse/JIRA-10
 #
@@ -84,6 +86,10 @@ class SourceLinks
   # Placeholders every pattern has: {match} (group 1, else the whole ref),
   # and {repo}/{host} (a named group, else the project's git remote).
   BUILTIN_PLACEHOLDERS = %w[match repo host].freeze
+  # The characters around a ref that keep the page from finding it as a
+  # token (answer_refs.js BEFORE / AFTER).
+  TOKEN_BEFORE = %r{[\w./@+~-]}
+  TOKEN_AFTER = %r{[\w/]}
   # A source's refs' kind, unless its `kind:` says another.
   DEFAULT_KIND = "issue"
   # `git remote get-url` output: a URL with a scheme, `[user[:pw]@]host[:port]/path`.
@@ -126,21 +132,32 @@ class SourceLinks
     text = last_model_text(event[:messages])
     return if text.nil? || text.empty?
 
-    hits = occurrences(text[0, MAX_SCAN])
+    head = text[0, MAX_SCAN]
+    hits = occurrences(head)
     linked = present_links(event[:present], text, hits)
-    add_refs(event[:refs], hits)
+    on_answer = add_refs(event[:refs], hits, head)
     return unless @note
 
     found = collect(hits)
     return if found.empty?
 
-    # The display links every URL the note names: the note only stands in
-    # for it, and a UI that renders the display's links leaves it out.
-    covered = linked && found.all? { |_name, _ref, url| linked.key?(url.downcase) }
-    event[:notify]&.call(line(found), level: :info, fallback_for: covered ? :display : nil)
+    event[:notify]&.call(line(found), level: :info, fallback_for: fallback_for(found, linked, on_answer))
   end
 
   private
+
+  # What the note stands in for, so a UI that shows it leaves the note out:
+  # :refs when every URL it names is a ref on the answer (a UI that binds
+  # them shows each as one, markdown or not), else :display when the
+  # display links every one (a UI that renders its links), else nil.
+  # +linked+ and +on_answer+: URLs (downcased), or nil.
+  def fallback_for(found, linked, on_answer)
+    urls = found.map { |_name, _ref, url| url.downcase }
+    return :refs if on_answer && urls.all? { |url| on_answer.key?(url) }
+    return :display if linked && urls.all? { |url| linked.key?(url) }
+
+    nil
+  end
 
   # Links the refs in the answer as shown: the model's text unless an
   # earlier hook changed it (then its offsets differ, so it is scanned
@@ -159,24 +176,43 @@ class SourceLinks
   # Each ref the answer links (#link's rule: not in code, the first source
   # on a ref) as a ref on the answer, once per text and URL. Independent of
   # the display (chi pairs it with the shown link by its URL). A URL that
-  # isn't http(s) can't be an action: that ref is left out.
-  def add_refs(refs, hits)
+  # isn't http(s) can't be an action: that ref is left out. The URLs
+  # (downcased) of the refs the answer kept that the page also finds in
+  # +text+ without a link (#token?), or nil without event[:refs].
+  def add_refs(refs, hits, text)
     return unless refs
 
-    seen = {}
+    kept = {}
+    found = {}
     pos = 0
     hits.each do |hit|
       next if hit[:quiet] || hit[:start] < pos
 
       pos = hit[:finish]
       key = [hit[:ref], hit[:url]]
-      next if seen.key?(key) || !Samagotchi::RefAction.http_url?(hit[:url])
+      next if !kept.key?(key) && !Samagotchi::RefAction.http_url?(hit[:url])
 
-      seen[key] = true
-      refs.call(match: hit[:ref], kind: hit[:kind], target: { id: hit[:ref] },
-                label: fit("#{hit[:name]} #{hit[:ref]}", Samagotchi::Ref::MAX_LABEL),
-                actions: [{ id: "open", label: fit("Open in #{hit[:name]}", Samagotchi::RefAction::MAX_LABEL), url: hit[:url] }])
+      kept[key] = add_ref(refs, hit) unless kept.key?(key)
+      found[hit[:url].downcase] = true if kept[key] == true && token?(text, hit)
     end
+    found
+  end
+
+  # One hit as a ref on the answer: true when the answer kept it.
+  def add_ref(refs, hit)
+    refs.call(match: hit[:ref], kind: hit[:kind], target: { id: hit[:ref] },
+              label: fit("#{hit[:name]} #{hit[:ref]}", Samagotchi::Ref::MAX_LABEL),
+              actions: [{ id: "open", label: fit("Open in #{hit[:name]}", Samagotchi::RefAction::MAX_LABEL), url: hit[:url] }])
+  end
+
+  # True when the page finds this occurrence of the ref as a whole token in
+  # the answer's text, so it binds the ref there without a link (web
+  # answer_refs.js tokenHits): not after a path-ish character, not before a
+  # word character or a slash.
+  def token?(text, hit)
+    before = hit[:start].positive? ? text[hit[:start] - 1] : nil
+    after = text[hit[:finish]]
+    !(before&.match?(TOKEN_BEFORE) || after&.match?(TOKEN_AFTER))
   end
 
   # +text+ cut to +max+ characters with a "…", so a long source name can't

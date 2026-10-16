@@ -95,6 +95,10 @@ test("shownElsewhere: a notice marked fallback_for a capability the page has; un
   // An editor notice: left out only for a viewer that can open refs.
   assert.equal(shownElsewhere({ ...marked, fallback_for: "editor" }, { display: true, editor: true }), true);
   assert.equal(shownElsewhere({ ...marked, fallback_for: "editor" }, { display: true, editor: false }), false);
+  // A refs notice (source-links' line when every ref is on the answer): left out with markdown off too; an
+  // older server (no refs member) shows it.
+  assert.equal(shownElsewhere({ ...marked, fallback_for: "refs" }, { display: false, editor: false, refs: true }), true);
+  assert.equal(shownElsewhere({ ...marked, fallback_for: "refs" }, { display: true, editor: false }), false);
   assert.equal(shownElsewhere(null, { display: true }), false);
 });
 

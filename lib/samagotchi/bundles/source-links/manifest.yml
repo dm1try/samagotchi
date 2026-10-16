@@ -1,15 +1,16 @@
 ---
 name: source-links
-version: 0.5.0
+version: 0.6.0
 scope: system
 description: Links source refs (JIRA tickets, GitHub issues, …) in the model's answer — inline links in the web, and a one-line note after the turn (note false turns it off); sources are configured patterns
 trust_level: reviewed
 requires_chi: ">= 0.61.0"
+requires_chi_next: "notices marked fallback_for refs (HookRoutes::NOTICE_FALLBACKS)"
 files:
-  source_links.md: sha256:ace01a0f7c308a0ae54ece714c31c0e6d7a49c372d98111030e6d268320bed3a
+  source_links.md: sha256:d72e4e994e8d374e9c01a68d108cfd9b4409fea40e8a94a89874ceb60b2fea91
 hooks:
   source_links.rb:
-    sha256: sha256:8d84c68be88972737905925bc9fc4bd941007fb945e8104e9f6b3d61a1186b89
+    sha256: sha256:23896080e2a1abf45a6ddda5e9c61beb03e05d9ef4311d121b338ea480732fca
     event: after_turn
     on_error: log
     priority: 90

@@ -571,7 +571,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(message).to include("role" => "assistant", "content" => "hi there")
       expect(message).not_to have_key("html")
       expect(JSON.parse(body.first)["markdown_warning"]).to be_nil
-      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => false, "editor" => false)
+      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => false, "editor" => false, "refs" => true)
     end
 
     it "reports a warning when Markdown is enabled without commonmarker" do
@@ -580,7 +580,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(renderer.available?).to be(false)
       expect(renderer.warning).to include("gem install commonmarker")
-      expect(Samagotchi::Web::Capabilities.for(renderer).to_h).to eq(display: false, editor: false)
+      expect(Samagotchi::Web::Capabilities.for(renderer).to_h).to eq(display: false, editor: false, refs: true)
     end
 
     it "includes sanitized Markdown HTML for assistant messages when available" do
@@ -609,7 +609,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(message["html"]).to include('href="https://example.test"')
       expect(message["html"]).to include('target="_blank"')
       expect(message["html"]).to include('rel="noopener noreferrer"')
-      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => true, "editor" => false)
+      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => true, "editor" => false, "refs" => true)
     end
 
     describe "the editor (web.editor), per viewer" do
@@ -625,7 +625,7 @@ RSpec.describe Samagotchi::Web::App do
 
       it "gives a viewer on this machine the editor and its template, on the show and the tail" do
         app = build_app(state_dir: Dir.mktmpdir, lan: lan)
-        expected = { "capabilities" => { "display" => false, "editor" => true }, "editor_url" => "vscode://file{path}:{line}" }
+        expected = { "capabilities" => { "display" => false, "editor" => true, "refs" => true }, "editor_url" => "vscode://file{path}:{line}" }
         expect(viewer(app, "127.0.0.1")).to eq(expected)
         expect(viewer(app, "::1", path: "/api/sessions/s1?tail=1")).to eq(expected)
         # This Mac on its LAN address (the LAN URL or its QR code opened here).
@@ -634,7 +634,7 @@ RSpec.describe Samagotchi::Web::App do
 
       it "gives a LAN viewer (the phone) none" do
         app = build_app(state_dir: Dir.mktmpdir, lan: lan)
-        none = { "capabilities" => { "display" => false, "editor" => false }, "editor_url" => nil }
+        none = { "capabilities" => { "display" => false, "editor" => false, "refs" => true }, "editor_url" => nil }
         expect(viewer(app, "192.168.1.20", host: "192.168.1.55:4567")).to eq(none)
         expect(viewer(app, "192.168.1.20", host: "192.168.1.55:4567", path: "/api/sessions/s1?tail=1")).to eq(none)
       end
@@ -646,14 +646,14 @@ RSpec.describe Samagotchi::Web::App do
         env["HTTP_HOST"] = "192.168.1.55:4567"
         env["REMOTE_ADDR"] = "192.168.1.20"
         expect(JSON.parse(app.call(env)[2].first).slice("capabilities", "editor_url"))
-          .to eq("capabilities" => { "display" => false, "editor" => false }, "editor_url" => nil)
+          .to eq("capabilities" => { "display" => false, "editor" => false, "refs" => true }, "editor_url" => nil)
       end
 
       it "turns into a preset's template, and none turns it off even on loopback" do
         expect(viewer(build_app(state_dir: Dir.mktmpdir, editor: "cursor"), "127.0.0.1")["editor_url"])
           .to eq("cursor://file{path}:{line}")
         expect(viewer(build_app(state_dir: Dir.mktmpdir, editor: "none"), "127.0.0.1"))
-          .to eq("capabilities" => { "display" => false, "editor" => false }, "editor_url" => nil)
+          .to eq("capabilities" => { "display" => false, "editor" => false, "refs" => true }, "editor_url" => nil)
       end
     end
 
@@ -1269,7 +1269,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "capabilities", "editor_url",
                                                 "timing")
         expect(payload["tail"]).to be(true)
-        expect(payload["capabilities"]).to eq("display" => true, "editor" => false)
+        expect(payload["capabilities"]).to eq("display" => true, "editor" => false, "refs" => true)
         expect(payload["messages"].size).to eq(1)
         expect(payload["messages"].first).to include("role" => "assistant", "content" => "see [x](https://example.test)")
         expect(payload["messages"].first["html"]).to include('href="https://example.test"')

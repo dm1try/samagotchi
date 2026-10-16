@@ -131,10 +131,16 @@ could open from a ref in its editor: the web leaves it out for a viewer on
 this machine with `web.editor` set, and every other UI and viewer (a phone,
 the terminals) shows it. Name only a file the page shows as a ref (one a
 tool row touched): a loopback viewer with `web.editor` set never sees the
-line, so a file it can't open from a ref would be lost to it. Another value,
-or none, shows the line everywhere.
+line, so a file it can't open from a ref would be lost to it. `:refs` marks a
+line that repeats the hook's [refs on the
+answer](#refs-on-the-answer-display-only) (each URL it names is one of their
+actions): the web binds those refs in the answer, markdown on or off, so it
+leaves the line out, and the terminals show it. It needs a chi newer than
+0.73.0: an older one drops the value, so the line shows everywhere. Another
+value, or none, shows the line everywhere.
 Mark a line only when the display really shows all of it (source-links marks
-its note only when the answer links every URL the note names). It needs chi
+its note only when the answer links every URL the note names, or shows each
+as a ref the page finds in the text). It needs chi
 0.35.0: an older chi's `event[:notify]` raises `ArgumentError` on the keyword,
 so a bundle that passes it sets `requires_chi: ">= 0.35.0"`.
 
@@ -657,12 +663,18 @@ text stays as it was, and the links survive a reload and a stopped worker
 apply, and a ref in code (a `` `span` `` or a fenced block) or anywhere in a
 markdown link is left as it is; past the first 20 000 characters the answer
 is unchanged. The terminals see only the line; `note: false` drops it and
-keeps the web links. With markdown on, the web leaves the line out when the
-answer links every URL it names, since it would only repeat them as plain
-text ([`fallback_for: :display`](#what-a-hook-can-do-the-runtime)); it shows
-when it names one the answer doesn't link (a ref only in code, two sources on
-one ref) and whenever markdown is off (its URLs are links in the web). Bundle
-0.4.0 needs chi 0.35.0 for that.
+keeps the web links. The web leaves the line out, markdown on or off, when
+every URL it names is a ref on the answer (below) that the page finds in the
+answer's text as a whole word: each shows as a ref with its **Open in …**
+action, so the line would only repeat them
+([`fallback_for: :refs`](#what-a-hook-can-do-the-runtime)). Else, with
+markdown on, it leaves the line out when the answer links every URL it names
+(`fallback_for: :display`: a URL that isn't http(s), or a ref glued to a
+word, such as `v.JIRA-1`). It shows when it names one the answer doesn't
+link (a ref only in code, two sources on one ref), and with markdown off
+whenever one isn't such a ref (its URLs are links in the web). Bundle 0.4.0
+needs chi 0.35.0 for that; bundle 0.6.0's `:refs`, a chi newer than 0.73.0
+(an older one shows the line everywhere).
 
 Each ref the answer links is also a [ref on the
 answer](#refs-on-the-answer-display-only): kind `issue` (or the source's
