@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-10-17
+
 ### Changed
 
 - Web: a session chain's links are numbered `#N` instead of `day N` (the chip `↩ #3`, `#2 of 3`; its popover's rows),
@@ -23,6 +25,8 @@ and commands may change between minor versions. How releases are made:
   unshipped name warns). An upgrade moves such a file an older install made a memory to the trash. Older chi still
   installs every top-level `*.md` (`requires_chi` doesn't gate memories): a bundle for it too names its readme
   `README.markdown`. `rake bundles:check` fails a shipped bundle's `*.md` that its `files:` doesn't list.
+
+Update with `chi update` (the system bundle 0.75.0), then restart `chi web`.
 
 ## [0.74.0] - 2026-10-17
 
@@ -3172,7 +3176,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.74.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.75.0...HEAD
+[0.75.0]: https://github.com/dm1try/samagotchi/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/dm1try/samagotchi/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/dm1try/samagotchi/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/dm1try/samagotchi/compare/v0.71.0...v0.72.0
