@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-10-16
+
 ### Added
 
 - Web: the stage's asking text (a question's or approval's reply) renders as markdown with clickable links when
@@ -27,6 +29,8 @@ and commands may change between minor versions. How releases are made:
 - A `task_create` task given a `cwd`, or running `cd`, recorded `failed` / `process_ended_without_exit_code` even
   when it succeeded (its exit code was written relative to the shell's directory); a task killed by a signal now
   records 128 + the signal.
+
+Update with `chi update` (the system bundle 0.73.0), then restart `chi web`.
 
 ## [0.72.0] - 2026-10-16
 
@@ -3129,7 +3133,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.72.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.73.0...HEAD
+[0.73.0]: https://github.com/dm1try/samagotchi/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/dm1try/samagotchi/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/dm1try/samagotchi/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/dm1try/samagotchi/compare/v0.69.0...v0.70.0
