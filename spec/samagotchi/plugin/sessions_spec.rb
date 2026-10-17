@@ -237,3 +237,19 @@ RSpec.describe Samagotchi::Plugin::Sessions do
     end
   end
 end
+
+RSpec.describe Samagotchi::Plugin::Context, "sessions:" do
+  let(:host) { Samagotchi::Plugin::Host.new(session_id: -> { "s1" }, cwd: -> { Dir.pwd }) }
+
+  it "returns the given sessions object instead of building one over the host" do
+    given = Object.new
+    ctx = described_class.new(bundle: "b", label: "l", settings: {}, host: host, sessions: given)
+    expect(ctx.sessions).to equal(given)
+  end
+
+  it "builds a Sessions over the host without one, once" do
+    ctx = described_class.new(bundle: "b", label: "l", settings: {}, host: host)
+    expect(ctx.sessions).to be_a(Samagotchi::Plugin::Sessions)
+    expect(ctx.sessions).to equal(ctx.sessions)
+  end
+end

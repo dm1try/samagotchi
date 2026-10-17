@@ -85,7 +85,9 @@ module Samagotchi
       # @param label [String] "<file> (bundle <name>)", what notices and
       #   questions are labelled by
       # @param host [Host]
-      def initialize(bundle:, label:, settings:, host:, env: ENV)
+      # @param sessions [Object, nil] what #sessions returns instead of a
+      #   Sessions over +host+ (the test kit's recording one)
+      def initialize(bundle:, label:, settings:, host:, env: ENV, sessions: nil)
         @bundle = bundle.to_s
         @label = label
         @settings = deep_freeze(settings.is_a?(Hash) ? settings : {})
@@ -94,6 +96,7 @@ module Samagotchi
         @log = Logger.new(@bundle)
         @git = Guardrails::GitInfo.new
         @data_dir = nil
+        @sessions = sessions
       end
 
       # The bundle, never the environment it holds (every API key in it).
