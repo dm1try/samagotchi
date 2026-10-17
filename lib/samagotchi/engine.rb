@@ -1005,12 +1005,46 @@ module Samagotchi
       sync_kernel_client!
       @client.invalidate_context_window!
       @metrics.forget_model_reports!
+      # The last turn's ctx % was the old model's window's
+      # (#announce_switched_context! sends the new one's).
+      @last_context_status = nil
       ref = effective_model_ref
       if persist_default
         ConfigFile.write_default_model!(ref)
         @default_model_name = ref
       end
       ref
+    end
+
+    # After /model: how full the context is on the new model's window,
+    # before its first turn: the last turn's count (the old model's
+    # tokenizer's, replaced at the next generation) against the new model's
+    # window (EffectiveModel#context_window: config, else one /props GET on
+    # a native host or the cached model list on a chat host) and the
+    # session's budget. Sent as a :context_status event (the web's ctx
+    # meter, the attached TUI's status row) with context_window_tokens, and
+    # kept for a client that joins later (#session_state_snapshot; the
+    # window in the metrics' context too, which a page counts from). A window
+    # that can't be resolved sends usage nil: the UIs clear the % until the
+    # next generation. Nothing before the session's first counted turn.
+    # @return [Hash, nil] the event sent
+    def announce_switched_context!
+      used = @metrics.snapshot.dig(:context, :used_tokens)
+      return nil unless used.is_a?(Integer)
+
+      window = current_context_window(effective_model)
+      display = window && saved_context_status({ used_tokens: used, window_tokens: window.tokens })
+      @last_context_status = display&.dup
+      @metrics.note_context_window(window.tokens, window.source) if window
+      usage = display && { estimated_pct: display[:est_pct], estimated_used_tokens: used, window_tokens: window.tokens,
+                           window_source: window.source.to_s, source: "switch" }
+      event = { type: :context_status, usage: usage, bucket: display&.dig(:bucket),
+                context_window_tokens: window&.tokens, context_window_source: window&.source&.to_s }
+      @session_observer.notify(event)
+      event
+    rescue StandardError => e
+      Log.warn(:model, "switched_context_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      nil
     end
 
     # ── Hooks API ──────────────────────────────────────────────────────────────

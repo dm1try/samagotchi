@@ -118,6 +118,23 @@ test("generation_started and generation_completed set the window, served model a
   assert.ok(page.names().includes("turnDom.generationCompleted"));
 });
 
+// After /model (Engine#announce_switched_context!): the new model's window
+// and its %, or usage null when the window didn't resolve.
+test("context_status after /model sets the window and the %, and usage null clears the %", () => {
+  const { page, handlers } = fakePage();
+  page.current.ctxPct = 80;
+  handlers.context_status({ usage: { estimated_pct: 10 }, bucket: "under20", context_window_tokens: 128000,
+                            context_window_source: "server" });
+  assert.equal(page.current.ctxPct, 10);
+  assert.equal(page.current.ctxWindow, 128000);
+  assert.equal(page.current.ctxWindowSource, "server");
+
+  handlers.context_status({ usage: null, bucket: null, context_window_tokens: null });
+  assert.equal(page.current.ctxPct, null);
+  assert.equal(page.current.ctxWindow, 128000);
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 2);
+});
+
 test("turn_started on a guessed stream that replays a drawn turn restarts the stream only", () => {
   const { page, handlers } = fakePage();
   page.guess = true;

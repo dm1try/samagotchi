@@ -592,6 +592,8 @@ module Samagotchi
       @engine.switch_model!(name, persist_default: persist_default)
       @default_model = @engine.default_model_name if persist_default
       persist_session_model
+      # The ctx % on the new model's window, before its first turn.
+      @engine.announce_switched_context!
     end
 
     def persist_session_model

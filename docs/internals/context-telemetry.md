@@ -34,6 +34,16 @@ Emission behavior:
   `context.status_thresholds` the top bucket reads critical, the one below it
   elevated, the next moderate, and the first bucket (and the rest below) healthy.
 
+After `/model` (`SessionCommands#switch_model`), the old model's percentage goes at once (`Engine#switch_model!`
+clears the kept status), and `Engine#announce_switched_context!` sends a `:context_status` of its own, outside any
+turn: the last turn's count (the old model's tokenizer's; the next generation replaces it) against the new model's
+window (`EffectiveModel#context_window`: config, else one `/props` GET on a native host, the cached model list on a
+chat host) and the session's budget, with `context_window_tokens` / `context_window_source` (the web takes the window
+from them) and `usage.source: "switch"`. It is kept for a client that joins later (`session_state_snapshot`'s
+`context_status`). A window that doesn't resolve sends `usage: null`: the web shows `ctx ?` and the attached TUI's
+status row drops its ctx until the next generation. Nothing is sent before the session's first counted turn. A
+hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
+
 Under an LLM context strategy (`ContextStatus.new(llm_context:)`, the turn's `LLMContextStrategy::Resolved`, given by
 both loops):
 

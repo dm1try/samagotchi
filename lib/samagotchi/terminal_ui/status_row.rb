@@ -89,7 +89,9 @@ module Samagotchi
       # hint). Other events change nothing.
       def take_event(event)
         case event[:type]
-        when :context_status then update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
+        # usage nil (a /model whose window didn't resolve) clears it.
+        when :context_status
+          update(context: event[:usage] ? { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] } : nil)
         when :used_memories_updated then update(used_memories: Array(event[:used_memory_names]))
         when :generation_completed
           update(served: [event[:served_model], event[:requested_model], event[:served_expected_by]]) if event[:served_model]

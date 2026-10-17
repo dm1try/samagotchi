@@ -132,6 +132,15 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
 
       expect(surface.slots[:status]).to eq(["status> model=ornith (served; asked m1) | ctx=40.0% (under60) | mem: notes"])
     end
+
+    # Engine#announce_switched_context!: a /model whose window didn't resolve.
+    it "clears ctx on a :context_status with usage nil" do
+      row.update(model: "m1", default_model: "m1")
+      row.take_event({ type: :context_status, usage: { estimated_pct: 40.0 }, bucket: "under60" })
+      row.take_event({ type: :context_status, usage: nil, bucket: nil, context_window_tokens: nil })
+
+      expect(surface.slots[:status]).to eq(["status> model=m1"])
+    end
   end
 
   describe "the steer hint" do

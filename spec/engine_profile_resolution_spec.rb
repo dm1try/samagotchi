@@ -243,6 +243,56 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(engine.stats_snapshot[:model_segments].map { |row| row[:model_ref] }).to eq(%w[main:a main:b])
   end
 
+  # After /model the old model's ctx % goes; announce_switched_context!
+  # counts the history against the new model's window (D4 a).
+  describe "the ctx % after /model" do
+    def counted_turn(engine, used)
+      [{ type: :turn_started, session_id: "s", prompt: "p" }, { type: :generation_started, iteration: 1 },
+       { type: :generation_chunk, iteration: 1, content: "a",
+         payload: { "usage" => { "prompt_tokens" => used - 800, "completion_tokens" => 800 } } },
+       { type: :generation_completed, iteration: 1 }, { type: :turn_completed }].each { |event| engine.metrics.call(event) }
+    end
+
+    def engine_on(windows)
+      client = FakeResolvingClient.new(nil)
+      client.define_singleton_method(:context_window) { |model: nil| windows.fetch(model) }
+      engine_with(client)
+    end
+
+    it "drops the old model's % at the switch, then sends and keeps the new window's" do
+      engine = engine_on("house-blend-35b" => 32_000, "other-blend" => 128_000)
+      engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 32_000, context_window_source: :server)
+      counted_turn(engine, 12_800)
+      engine.instance_variable_set(:@last_context_status, { est_pct: 40.0, bucket: "under60" })
+      events = []
+      engine.subscribe(observer: ->(event) { events << event if event[:type] == :context_status })
+
+      engine.switch_model!("other-blend")
+      expect(engine.session_state_snapshot[:context_status]).to be_nil
+
+      sent = engine.announce_switched_context!
+      expect(events.map { |event| event.except(:event_seq) }).to eq([sent])
+      expect(sent).to include(bucket: "under20", context_window_tokens: 128_000, context_window_source: "server")
+      expect(sent[:usage]).to include(estimated_pct: 10.0, estimated_used_tokens: 12_800, window_tokens: 128_000)
+      expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 10.0, bucket: "under20")
+      # The metrics' context names the new window too: a page loaded now
+      # counts its % from the timing's context (savedCtxPct).
+      expect(engine.metrics.snapshot[:context]).to include(used_tokens: 12_800, window_tokens: 128_000, window_source: "server")
+    end
+
+    it "sends usage nil when the new window doesn't resolve, and nothing before a counted turn" do
+      engine = engine_on("house-blend-35b" => 32_000)
+      expect(engine.announce_switched_context!).to be_nil
+
+      counted_turn(engine, 12_800)
+      engine.switch_model!("other-blend")
+      allow(engine).to receive(:current_context_window).and_return(nil)
+
+      expect(engine.announce_switched_context!).to include(usage: nil, bucket: nil, context_window_tokens: nil)
+      expect(engine.session_state_snapshot[:context_status]).to be_nil
+    end
+  end
+
   # What a turn reported belongs to the model it ran on: after /model to
   # another native model, /stats resolves the new model's profile and window.
   it "drops the profile and window a turn reported for the model before /model" do

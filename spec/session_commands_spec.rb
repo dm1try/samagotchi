@@ -216,6 +216,14 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(fresh.prompt_notes).to eq([])
     end
 
+    it "sends the ctx % on the new model's window after the switch (Engine#announce_switched_context!)" do
+      allow(engine).to receive(:announce_switched_context!).and_call_original
+
+      commands.run("/model alpha:gemma-small")
+
+      expect(engine).to have_received(:announce_switched_context!).once
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 

@@ -23,6 +23,9 @@ and commands may change between minor versions. How releases are made:
 - A plain `chi bundle install` over an installed bundle no longer forgets the files the new version stopped shipping
   (such as the README an older chi installed as a memory): they stay where they are, still the bundle's, and the
   `chi bundle upgrade` its summary suggests moves them to the trash.
+- After `/model` the ctx % no longer shows the old model's window: it is counted against the new model's window at
+  once (web info bar, attached TUI status row, a client that joins later), or cleared (`ctx ?`) when the window
+  can't be resolved, until the next generation.
 
 ## [0.75.0] - 2026-10-17
 

@@ -290,6 +290,16 @@ module Samagotchi
       end
     end
 
+    # /model's new window (Engine#announce_switched_context!), until the
+    # new model's first generation reports one: what the snapshot's context
+    # (a page's ctx % on load) counts against.
+    def note_context_window(tokens, source)
+      @mutex.synchronize do
+        @context_window_tokens = tokens
+        @context_window_source = source
+      end
+    end
+
     # The memory indexes the session's prompt holds (SystemPrompt#memory_index:
     # { system: { tokens:, lines: }, project: … }), set by the Engine when
     # it builds the prompt it sends; the snapshot and analytics.json carry it.
