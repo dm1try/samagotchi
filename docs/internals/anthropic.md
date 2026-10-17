@@ -55,7 +55,8 @@ with `tool_choice: {type: "auto"}` (when any), then the loop's options. The opti
 (`default.max_tokens`), else the model list's `max_tokens` capped at `DEFAULT_MAX_TOKENS` (64000), and never over an
 output cap a 400 named. `#with_budget_room` keeps `max_tokens` above a budget-form `budget_tokens` plus `MIN_BUDGET`.
 
-`#thinking_fields(level)` is the thinking level on this wire: `off` is `thinking: {type: "disabled"}`; `low`, `medium`
+`#thinking_fields(level)` is the thinking level on this wire: `off` is `thinking: {type: "disabled"}` (sent as `{type:
+"between_tools"}` to a model whose 400 for `disabled` names that form, Claude 5.x: see the 400 fallbacks); `low`, `medium`
 and `high` are `thinking: {type: "adaptive", display: <dialect's>}` with `output_config: {effort: <level>}`; `default`
 sends nothing. `#thinking_off_refused_fields` (low effort) is what `IdleClient` sends a side ask whose model refused
 thinking off.
@@ -210,12 +211,15 @@ thinking, nil for none), `cache_breakpoints` and `session_header`.
 
 `AnthropicMessages#chat` handles the 400s it can fix itself, once each per request, and remembers the fix for the
 adapter's life, so ChatLoop's broader paths never see them (`#refusal_fix`, logged under `http`; kept in an
-`LLM::RefusalMemo`, locked, since the turn, side-ask and recap threads share the host's adapter):
+`LLM::RefusalMemo`, locked, since the turn thread and the model-list reads share the host's adapter; `IdleClient`,
+whose recap, side answers and triage each build their own adapter (`Adapters.build`), keeps what it learned for that
+client's life only):
 
 | 400 about | Fix | Remembered |
 |---|---|---|
 | `thinking.display` (`DISPLAY_RE`) | no `display` from now on (`#without_display`), the thinking kept | per host (`thinking_display_refused`) |
 | adaptive thinking or its effort (`ADAPTIVE_REFUSED_RE`) | the budget form: `thinking: {type: "enabled", budget_tokens: BUDGETS[level]}`, no effort (`#budget_form`) | per model (`thinking_form_switched`) |
+| `thinking: {type: "disabled"}` where the 400 names `between_tools` (`THINKING_OFF_FORM_RE`; Claude 5.x) | `thinking: {type: "between_tools"}` wherever `disabled` was asked (`#thinking_between_tools`), so a recap or side answer (`IdleClient` step 0) and a `--thinking off` session never fall back to adaptive low or to no thinking fields; a model that refuses `between_tools` too raises the 400 as before | per model (`thinking_off_form_switched`) |
 | `cache_control` | no breakpoints | per host (`cache_control_refused`) |
 | `max_tokens: N > M` (`OUTPUT_CAP_RE`) | `max_tokens` capped at M | per model (`output_cap`) |
 | `block_binding` or the binding beta, on a drop_block retry (`thinking_binding_unsupported?`) | the strip instead (Preserved thinking) | per host (`binding_controls_refused`) |

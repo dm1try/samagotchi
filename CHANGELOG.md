@@ -12,6 +12,10 @@ and commands may change between minor versions. How releases are made:
 
 - Anthropic: `api: anthropic` hosts on the Claude API now read their model list, including 1M-token windows and image
   input, so `chi models` and model validation work.
+- Anthropic: on Claude 5.x models, which turn thinking off by `between_tools` and refuse `disabled`, recaps, side
+  answers and `--thinking off` sessions now send `thinking: {type: "between_tools"}` after that 400 (a recap used to
+  fall back to adaptive thinking at low effort, a `--thinking off` session to the provider's default thinking). Each
+  side-answer client learns it once for itself.
 
 ## [0.78.0] - 2026-10-17
 

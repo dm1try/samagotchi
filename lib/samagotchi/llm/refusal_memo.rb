@@ -6,8 +6,9 @@ module Samagotchi
     # host's, HostRegistry keeps one per worker; ChatLoop: the worker's): a
     # +kind+ (a Symbol) for one model, or for the whole host when the model
     # is nil, with a value (true, or what the refusal named: an output cap).
-    # The turn, side-ask and recap threads share a holder, so every read and
-    # write takes the lock.
+    # The turn thread and the model-list reads share HostRegistry's adapter
+    # (an IdleClient's adapter is its own), so every read and write takes the
+    # lock.
     class RefusalMemo
       def initialize
         @mutex = Mutex.new

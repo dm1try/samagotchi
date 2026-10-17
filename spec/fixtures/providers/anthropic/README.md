@@ -69,6 +69,7 @@ signatures and redacted data are made up; signatures are not valid.
 | `error_400_binding_beta_unknown.hand-written.json` | Anthropic docs | the binding beta header refused where it is not offered ("Unexpected value(s) … for the `anthropic-beta` header.") |
 | `error_400_budget_tokens_refused.hand-written.json` | Anthropic docs | `budget_tokens` (`"thinking.type.enabled"`) refused on a current model |
 | `error_400_disabled_refused.hand-written.json` | Anthropic docs | `thinking: {type: "disabled"}` refused on a current model |
+| `error_400_disabled_between_tools.hand-written.json` | chi's log of a recap on claude-sonnet-5-5 (2026-10-17, message as logged; the request id is made up) | `thinking: {type: "disabled"}` refused where the model turns thinking off by `between_tools` |
 | `error_401.hand-written.json` | Anthropic docs | `authentication_error` |
 | `error_429.hand-written.json` | Anthropic docs | `rate_limit_error`; the wait comes in the `retry-after` header, not the body (a spec passes it as `retry_after:`) |
 | `error_529.hand-written.json` | Anthropic docs | `overloaded_error` (retried) |

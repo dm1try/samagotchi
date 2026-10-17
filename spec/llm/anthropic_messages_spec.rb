@@ -754,6 +754,26 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(adapter.budget_form?("m")).to be(false)
     end
 
+    it "sends thinking off as between_tools to a model whose 400 names it, and keeps that for the model" do
+      server.enqueue("/v1/messages", status: 400, json: fixture("error_400_disabled_between_tools.hand-written.json"))
+      3.times { answer }
+
+      ask(:off, model: "new")
+      ask(:off, model: "new")
+      ask(:off, model: "other")
+
+      expect(bodies.map { |body| body["thinking"] }).to eq([{ "type" => "disabled" }, { "type" => "between_tools" },
+                                                            { "type" => "between_tools" }, { "type" => "disabled" }])
+    end
+
+    it "asks again only once: a model that refuses between_tools too gets the 400 (the loop's to handle)" do
+      refuse("thinking: send \"between_tools\" instead")
+      refuse("thinking.type.between_tools is not supported")
+
+      expect { ask(:off, model: "new") }.to raise_error(Samagotchi::LLM::BadRequest) { |e| expect(e.reasoning_refused?).to be(true) }
+      expect(bodies.map { |body| body["thinking"] }).to eq([{ "type" => "disabled" }, { "type" => "between_tools" }])
+    end
+
     it "leaves any other 400 to the loop (one request): off refused, a context overflow" do
       server.enqueue("/v1/messages", status: 400, json: fixture("error_400_disabled_refused.hand-written.json"))
       server.enqueue("/v1/messages", status: 400, json: fixture("error_400_prompt_too_long.hand-written.json"))

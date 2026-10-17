@@ -320,7 +320,7 @@ RSpec.describe Samagotchi::LLM::ProviderError do
 
     it "still marks the thinking configs a model refuses as refused reasoning, and sets neither predicate" do
       %w[error_400_disabled_refused.hand-written.json error_400_budget_tokens_refused.hand-written.json
-         splash_error_400_between_tools.json].each do |name|
+         splash_error_400_between_tools.json error_400_disabled_between_tools.hand-written.json].each do |name|
         error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: anthropic(name), host: "msg")
 
         expect(error).to be_reasoning_refused, name

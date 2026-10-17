@@ -316,6 +316,26 @@ RSpec.describe Samagotchi::IdleClient do
       ])
     end
 
+    # Claude 5.x turns thinking off by `between_tools`, and says so in the 400
+    # for `disabled`: the adapter sends that from then on, so the client
+    # stays at its first step (no thinking, the recap's limit) and the
+    # second answer's one request already carries it.
+    it "turns thinking off by between_tools where the 400 names it, in one request the next time" do
+      server.enqueue("/v1/messages", status: 400, json: FakeProviderServer.fixture("error_400_disabled_between_tools.hand-written.json",
+                                                                                   api: "anthropic"))
+      server.enqueue("/v1/messages", json: message("The recap."))
+      server.enqueue("/v1/messages", json: message("Again."))
+
+      expect(messages_client.summarize("summarize this").text).to eq("The recap.")
+      expect(messages_client.summarize("summarize that").text).to eq("Again.")
+
+      expect(bodies.map { |b| [b["max_tokens"], b["thinking"], b.key?("output_config")] }).to eq([
+        [described_class::MAX_TOKENS, { "type" => "disabled" }, false],
+        [described_class::MAX_TOKENS, { "type" => "between_tools" }, false],
+        [described_class::MAX_TOKENS, { "type" => "between_tools" }, false]
+      ])
+    end
+
     # A Messages model that takes no thinking fields at all refuses both.
     it "asks with no thinking fields at the normal limit after the low-effort retry is refused too, and keeps that" do
       refuse_off

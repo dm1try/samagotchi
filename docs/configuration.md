@@ -644,8 +644,10 @@ What each backend gets:
 | Messages host, `dialect: fireworks` | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive"}` and `output_config: {effort: <level>}` (no `display`) |
 
 On a Messages host `default` sends nothing: the provider's own default, which differs by model (some Claude models
-think adaptively but show no thinking text, their blocks still going back; others, and Splash, don't think at all). A model that refuses `disabled` (current
-Claude models) gets the request again without it, as on any chat host. A model that refuses adaptive thinking
+think adaptively but show no thinking text, their blocks still going back; others, and Splash, don't think at all). A model that refuses `disabled` and names `between_tools` in the 400 (Claude 5.x) gets `thinking: {type:
+"between_tools"}` wherever `off` asked for `disabled`, from then on: the adapter keeps that per model for as long as it
+lives, so a worker's turns keep it, and each side-answer client (recap, `ctx.ask_model`, a broadcast's triage) learns it
+once for itself. One that refuses `disabled` without naming it gets the request again without it, as on any chat host. A model that refuses adaptive thinking
 (older Claude: Haiku 4.5) is switched, once and for the worker's life, to the budget form: `thinking: {type:
 "enabled", budget_tokens: B}` with B 2048 / 8192 / 24576 for low / medium / high and no effort; `max_tokens` always
 stays above the budget (the budget is lowered to leave 1024 for the answer, or `max_tokens` raised to 2048). A

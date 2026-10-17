@@ -37,6 +37,9 @@ module Samagotchi
     # broader refusal paths never see them:
     # - adaptive thinking (or output_config.effort) refused: the model gets
     #   the budget form instead (#budget_form), per model;
+    # - thinking off refused for the `between_tools` form (Claude 5.x:
+    #   `thinking: {type: "disabled"}` is refused, the 400 names
+    #   `between_tools`): that form from then on, per model;
     # - thinking.display refused (a provider whose thinking schema has no
     #   such field, e.g. Fireworks without its dialect): no display for the
     #   host, the thinking itself kept;
@@ -61,6 +64,10 @@ module Samagotchi
       # A 400 refusing adaptive thinking or its effort.
       ADAPTIVE_REFUSED_RE = /adaptive|output_config|effort/i
       CACHE_CONTROL_RE = /cache_control/i
+      # A 400 refusing `thinking: disabled` and naming the form that model
+      # takes for off: "To turn thinking off on this model, send "thinking":
+      # {"type": "between_tools"} instead of {"type": "disabled"}" (Claude 5.x).
+      THINKING_OFF_FORM_RE = /between_tools/i
       # A 400 refusing the thinking display field: its path (pydantic:
       # "thinking.adaptive.display"), or the field named as unknown or not
       # permitted. Not an error that only echoes the input
@@ -213,6 +220,7 @@ module Samagotchi
       def request_body(messages, tools, model, options)
         options = (options || {}).to_h.transform_keys(&:to_sym).except(*DROPPED_OPTIONS)
         options = budget_form(options) if budget_form?(model)
+        options = thinking_between_tools(options) if @refusals.refused?(:thinking_off_form, model.to_s)
         options = without_display(options) if @refusals.refused?(:thinking_display)
         cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@refusals.refused?(:cache_control)
         translated = AnthropicWire.translate(messages, cache: cache)
@@ -243,6 +251,16 @@ module Samagotchi
         config = config.except(:effort)
         options.merge(thinking: { type: "enabled", budget_tokens: budget, display: thinking[:display] }.compact,
                       output_config: config.empty? ? nil : config)
+      end
+
+      # +options+ with thinking off as the form such a model takes:
+      # `thinking: {type: "between_tools"}` where `disabled` was asked (a
+      # model that refused `disabled`).
+      def thinking_between_tools(options)
+        thinking = options[:thinking]
+        return options unless thinking.is_a?(Hash) && thinking.transform_keys(&:to_sym)[:type].to_s == "disabled"
+
+        options.merge(thinking: thinking.transform_keys(&:to_sym).merge(type: "between_tools"))
       end
 
       # +options+ with no thinking.display (the host refused the field).
@@ -293,6 +311,11 @@ module Samagotchi
           @refusals.remember(:thinking_form, model.to_s)
           Log.info(:http, "thinking_form_switched", host: @host_name, model: model.to_s, to: "budget", detail: detail[0, 200])
           :thinking_form
+        elsif body.dig(:thinking, :type) == "disabled" && THINKING_OFF_FORM_RE.match?(detail)
+          @refusals.remember(:thinking_off_form, model.to_s)
+          Log.info(:http, "thinking_off_form_switched", host: @host_name, model: model.to_s, to: "between_tools",
+                                                        detail: detail[0, 200])
+          :thinking_off_form
         elsif !@refusals.refused?(:cache_control) && CACHE_CONTROL_RE.match?(detail) && cache_summary(body)
           @refusals.remember(:cache_control)
           Log.info(:http, "cache_control_refused", host: @host_name, detail: detail[0, 200])
