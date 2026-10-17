@@ -25,6 +25,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
 | `PreparedSource` (source.rb) | one source normalized once (dir, owned, git commit): `BundleCommand` reads the bundle's name from its `manifest.yml` (the name for every kind of source, a git URL too) and hands it to the Installer (`prepared:`), so a source is cloned or extracted once per command |
+| `MemoryFiles` | which top-level `*.md` files of a bundle are its memories (`.select`: the `files:` list, else all but README/LICENSE and the like), `.unshipped` (listed, not shipped) and `.symlinks` (skipped: a symlink is never a memory) |
 | `Manifest` | parses/validates `manifest.yml` (YAML that doesn't parse or isn't a mapping is a `ValidationError` too; files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers) and writes it (`Manifest.write`, for Builder). It ignores `requires_chi_next`, a shipped bundle's release-time marker (`script/release/release_tools.rb`, docs/releasing.md) |
 | `Installer` | one install/upgrade/dry run of one bundle (below) |
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps) |
@@ -51,12 +52,14 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
 2. `resolve_target`: scope = CLI > manifest > `system`.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
-   README, CHANGELOG, LICENSE and the like; a listed name not shipped warns): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
+   README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
    classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`). A
    same-name file the bundle didn't write is the user's: skipped and never recorded (`@owned`). Model overlays
    (`<name>.<key>.md`) get no index line (`note_overlay`).
 4. `AssetInstaller#run`: hooks (manifest-listed, else every `hooks/*.rb`), prune dropped hooks, hook checksums,
-   guardrails, plugin, scripts; each set replaces the previous version's. requires_chi warnings for hooks/rules.
+   guardrails, plugin, scripts; each set replaces the previous version's. requires_chi warnings for hooks/rules. A
+   file that is a symlink or resolves outside the bundle dir (`AssetInstaller#linked?`, a linked `hooks/` too) is
+   skipped with a warning (a hook or rule) or raises `InstallError` (the plugin, a script).
 5. An upgrade's `prune_dropped_files`: unchanged → trash; edited → kept (`kept_pruned`); owned by another bundle → kept.
 6. `verify_memory_checksums` (strict), `warn_missing_needs`.
 7. `write_provenance` (manifest, not a dry run): bases come from the incoming file, except where the user's edit was

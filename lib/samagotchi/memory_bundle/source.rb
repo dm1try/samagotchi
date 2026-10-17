@@ -128,6 +128,9 @@ module Samagotchi
       # Copies the contents of `src_dir` into a new permanent directory, stripping
       # one level of nesting if there's a single top-level entry.
       # The returned path survives after `src_dir` is cleaned up.
+      # A symlink stays a symlink, at the top level too (cp_r dereferences
+      # its root by default): the Installer then skips it (MemoryFiles,
+      # AssetInstaller#linked?) instead of installing what it points at.
       def self.clean_copy_of(src_dir)
         contents = Dir.entries(src_dir).reject { |e| e.start_with?(".") }
         # Zip-slip check: reject entries with ".." path components.
@@ -139,16 +142,16 @@ module Samagotchi
 
         if contents.size == 1
           entry_path = File.join(src_dir, contents.first)
-          if File.directory?(entry_path) && !Dir.empty?(entry_path)
+          if File.directory?(entry_path) && !File.symlink?(entry_path) && !Dir.empty?(entry_path)
             dst = Dir.mktmpdir("samagotchi-bundle-")
-            FileUtils.cp_r("#{entry_path}/.", dst)
+            FileUtils.cp_r("#{entry_path}/.", dst, dereference_root: false)
             return [dst, true]
           end
         end
 
         dst = Dir.mktmpdir("samagotchi-bundle-")
         contents.each do |entry|
-          FileUtils.cp_r(File.join(src_dir, entry), dst)
+          FileUtils.cp_r(File.join(src_dir, entry), dst, dereference_root: false)
         end
         [dst, true]
       end

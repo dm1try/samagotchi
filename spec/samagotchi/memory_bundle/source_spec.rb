@@ -167,6 +167,28 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
   end
 end
 
+RSpec.describe "SourceNormalizer: an archive's symlinks" do
+  around { |example| Dir.mktmpdir("srcnorm-links-") { |dir| @tmp = dir; example.run } }
+
+  it "keeps a lone top-level link to a dir a link, rather than extracting the dir it points at" do
+    outside = File.join(@tmp, "outside")
+    FileUtils.mkdir_p(outside)
+    File.write(File.join(outside, "manifest.yml"), "name: x\nversion: 1.0.0\n")
+    staging = File.join(@tmp, "staging")
+    FileUtils.mkdir_p(staging)
+    File.symlink(outside, File.join(staging, "bundle"))
+    tar = File.join(@tmp, "lone.tar")
+    expect(system("tar", "-cf", tar, "-C", staging, "bundle")).to be(true)
+
+    dir, owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(tar)
+    expect(owned).to be(true)
+    expect(File.symlink?(File.join(dir, "bundle"))).to be(true)
+    expect(File.exist?(File.join(dir, "manifest.yml"))).to be(false)
+  ensure
+    Samagotchi::MemoryBundle::SourceNormalizer.cleanup(dir)
+  end
+end
+
 RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer, ".shipped_bundle_dir" do
   it "resolves a bare name to a bundle shipped with chi" do
     Dir.mktmpdir do |cwd|

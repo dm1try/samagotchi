@@ -47,6 +47,10 @@ and commands may change between minor versions. How releases are made:
   normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
   bundle installed by URL before this under a repo name that differs from its manifest's: `chi bundle uninstall
   <repo name>` first, then install it again.
+- A bundle's memory that is a symlink is no longer installed: `chi bundle install` of a tar, zip, git repo or dir
+  whose `notes.md` links to another file (`~/.ssh/…`, an API key) copied that file into the memories, where the
+  model reads it. It is skipped with `notes.md is a symlink (not installed)`; a hook or guardrail rule that is a
+  symlink (or lives in a linked dir) is skipped the same way, and a plugin or script that is one fails the install.
 - A bundle manifest whose `name:` is a path (`../x`, `a/b`, `.`, `..`) is refused (`Install failed: name: …`): the
   name is a directory under `.bundles/`, and a git URL bundle is now named by its manifest.
 - Web: a session with requests but no ctx % (`ctx ?`: a `/model` whose new window can't be resolved, or a window lookup

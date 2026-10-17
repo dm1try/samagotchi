@@ -55,6 +55,7 @@ module Samagotchi
         prune_dropped_hooks if @upgrade && @existing && !@dry_run
         verify_hook_checksums if @manifest && @strict
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
+                            .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
         guardrail_files = install_guardrails(incoming_rules)
         plugin_file = install_plugin
         script_files = install_scripts
@@ -81,11 +82,14 @@ module Samagotchi
         if hook_entries.empty?
           Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each { |p| hook_entries[File.basename(p)] = BundleHook.new }
         end
-        hook_entries.each_key do |basename|
+        hook_entries.keys.each do |basename|
           next unless basename.is_a?(String) && !basename.empty?
 
-          @bundle_hooks << basename
           src = File.join(@bundle_dir, "hooks", basename)
+          # A linked hook isn't the bundle's: not installed, counted or recorded.
+          next hook_entries.delete(basename) if (File.symlink?(src) || File.exist?(src)) && linked_out?(src, "hooks/#{basename}")
+
+          @bundle_hooks << basename
           install_hook(basename, src) if File.exist?(src)
         end
       end
@@ -120,6 +124,8 @@ module Samagotchi
       def install_unlisted_hooks
         Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each do |src|
           basename = File.basename(src)
+          next if linked_out?(src, "hooks/#{basename}")
+
           @bundle_hooks << basename
           if @dry_run
             @results[basename] = { status: "would_install" }
@@ -207,6 +213,7 @@ module Samagotchi
 
         src = File.join(@bundle_dir, plugin[:file])
         raise Installer::InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
+        raise Installer::InstallError, "plugin #{plugin[:file]} is a symlink (not installed)" if linked?(src)
 
         if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, Samagotchi::VERSION))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
@@ -243,9 +250,9 @@ module Samagotchi
       def install_scripts
         scripts = @manifest&.scripts || {}
         scripts.each_key do |file|
-          next if File.file?(File.join(@bundle_dir, "scripts", file))
-
-          raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have"
+          src = File.join(@bundle_dir, "scripts", file)
+          raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have" unless File.file?(src)
+          raise Installer::InstallError, "scripts/#{file} is a symlink (not installed)" if linked?(src)
         end
         return {} if @dry_run
 
@@ -272,6 +279,28 @@ module Samagotchi
           end
           [file, dest]
         end
+      end
+
+      # Whether the bundle file +src+ reads through a symlink: it is one, or
+      # it (or its dir, hooks/ say) resolves outside the bundle dir. A tar,
+      # zip or git repo keeps links; copying through one would install any
+      # file the user can read. MemoryFiles skips linked memories the same
+      # way.
+      def linked?(src)
+        return true if File.symlink?(src)
+
+        root = File.realpath(@bundle_dir)
+        !File.realpath(src).start_with?("#{root}/")
+      rescue SystemCallError
+        true
+      end
+
+      # linked? with a "<label> is a symlink (not installed)" warning.
+      def linked_out?(src, label)
+        return false unless linked?(src)
+
+        @warnings << "#{label} is a symlink (not installed)"
+        true
       end
 
       # The hook loader skips every hook of a bundle whose requires_chi this

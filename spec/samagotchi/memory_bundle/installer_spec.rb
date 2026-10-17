@@ -920,6 +920,107 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  # A tar, zip or git repo keeps symlinks; copying through one would put any
+  # file the user can read into a memory, a hook or the plugin.
+  describe "symlinks in a bundle" do
+    let(:secret) { File.join(tmpdir, "secret.txt").tap { |p| File.write(p, "SECRET-TOKEN-123\n") } }
+
+    def config_home_mentions?(text)
+      Dir.glob(File.join(tmpdir, "config", "**", "*"), File::FNM_DOTMATCH).any? do |path|
+        File.file?(path) && !File.symlink?(path) && File.binread(path).include?(text)
+      end
+    end
+
+    def linky_dir(manifest_extra = {})
+      dir = File.join(tmpdir, "linky")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "manifest.yml"), YAML.dump({ "name" => "linky", "version" => "1.0.0" }.merge(manifest_extra)))
+      dir
+    end
+
+    it "a tar whose memory links outside installs nothing for it, warns, and copies the target nowhere" do
+      dir = linky_dir
+      File.symlink(secret, File.join(dir, "notes.md"))
+      tar = File.join(tmpdir, "linky.tar.gz")
+      Dir.chdir(tmpdir) { system("tar", "-czf", tar, "linky") }
+
+      installer = installer_for(source: tar, name: "linky", scope: "system").tap(&:run)
+
+      expect(installer.results).not_to have_key("notes.md")
+      expect(installer.summary).to include("notes.md is a symlink (not installed)")
+      expect(File.exist?(File.join(system_memories_dir, "notes.md"))).to be false
+      expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "linky").read[:files]).to eq({})
+    end
+
+    # A flat archive or a git repo puts the links at the extract's top
+    # level; copying them must keep them links (not copies of their target).
+    it "a flat tar with a top-level memory link, a link to that link and a linked hooks dir installs none of them" do
+      dir = linky_dir
+      File.symlink(secret, File.join(dir, "notes.md"))
+      File.symlink("notes.md", File.join(dir, "chain.md"))
+      outside_hooks = File.join(tmpdir, "outside-hooks")
+      FileUtils.mkdir_p(outside_hooks)
+      File.write(File.join(outside_hooks, "evil.rb"), "# SECRET-TOKEN-123\n")
+      File.symlink(outside_hooks, File.join(dir, "hooks"))
+      tar = File.join(tmpdir, "flat.tar.gz")
+      expect(system("tar", "-czf", tar, "-C", dir, ".")).to be(true)
+
+      installer = installer_for(source: tar, name: "linky", scope: "system").tap(&:run)
+
+      expect(installer.warnings).to include("chain.md is a symlink (not installed)", "notes.md is a symlink (not installed)")
+      expect(installer.results.keys).to be_empty
+      expect(Dir.exist?(File.join(bundles_dir, "linky", "hooks"))).to be false
+      expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
+    end
+
+    it "a git repo (file:// URL) with a top-level memory link installs nothing for it" do
+      dir = linky_dir
+      File.symlink(secret, File.join(dir, "notes.md"))
+      git = ->(*args) { system("git", "-C", dir, *args, out: File::NULL, err: File::NULL) }
+      expect(git.call("init", "-q") && git.call("add", ".") &&
+             git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v1")).to be(true)
+
+      installer = installer_for(source: "file://#{dir}", name: "linky", scope: "system").tap(&:run)
+
+      expect(installer.warnings).to include("notes.md is a symlink (not installed)")
+      expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
+    end
+
+    it "skips a linked hook and a linked guardrails dir with a warning; the real ones install" do
+      dir = linky_dir("hooks" => { "real.rb" => { "event" => "before_tool_call" }, "evil.rb" => { "event" => "before_tool_call" } })
+      FileUtils.mkdir_p(File.join(dir, "hooks"))
+      File.write(File.join(dir, "hooks", "real.rb"), "# real\n")
+      File.symlink(secret, File.join(dir, "hooks", "evil.rb"))
+      outside_rules = File.join(tmpdir, "rules")
+      FileUtils.mkdir_p(outside_rules)
+      File.write(File.join(outside_rules, "r.yml"), "SECRET-TOKEN-123\n")
+      File.symlink(outside_rules, File.join(dir, "guardrails"))
+
+      installer = installer_for(source: dir, name: "linky", scope: "system")
+      _dir, manifest = installer.run
+
+      expect(installer.warnings).to include("hooks/evil.rb is a symlink (not installed)",
+                                            "guardrails/r.yml is a symlink (not installed)")
+      # Not counted (the CLI's "Hooks: N hook(s)") nor recorded.
+      expect(manifest.hooks.keys).to eq(["real.rb"])
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "linky").read[:hooks].keys).to eq([:"real.rb"])
+      expect(File.exist?(File.join(bundles_dir, "linky", "hooks", "real.rb"))).to be true
+      expect(File.exist?(File.join(bundles_dir, "linky", "hooks", "evil.rb"))).to be false
+      expect(Dir.exist?(File.join(bundles_dir, "linky", "guardrails"))).to be false
+      expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
+    end
+
+    it "refuses a plugin file that is a symlink" do
+      dir = linky_dir("plugin" => { "file" => "plugin.rb", "sha256" => "" })
+      File.symlink(secret, File.join(dir, "plugin.rb"))
+
+      expect { installer_for(source: dir, name: "linky", scope: "system").run }
+        .to raise_error(described_class::InstallError, "plugin plugin.rb is a symlink (not installed)")
+      expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
+    end
+  end
+
   describe "which of a bundle's *.md files are memories" do
     # A bundle dir with +md+ (name => content) and a manifest listing +listed+
     # (nil: no files: key, {}: an empty map).

@@ -186,6 +186,7 @@ module Samagotchi
         @bundle_md = []
         @owned = []
         warn_unshipped_files
+        warn_symlinked_files
         memory_files.each do |file_key|
           file_path = File.join(@bundle_dir, file_key)
           @bundle_md << file_key
@@ -223,6 +224,11 @@ module Samagotchi
       def warn_unshipped_files
         missing = MemoryFiles.unshipped(@bundle_dir, @manifest)
         @warnings << "files: names #{missing.join(", ")}, which the bundle doesn't ship (not installed)" unless missing.empty?
+      end
+
+      # A memory that is a symlink isn't installed (MemoryFiles.symlinks).
+      def warn_symlinked_files
+        MemoryFiles.symlinks(@bundle_dir, @manifest).each { |name| @warnings << "#{name} is a symlink (not installed)" }
       end
 
       # An upgrade's 3-way merge of one file (Merger.classify against the

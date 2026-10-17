@@ -220,6 +220,12 @@ for a file another bundle installed.
   `README.markdown` (or puts docs in a subdirectory).
   `chi bundle upgrade` moves a README an older install made a memory to the
   trash (unless you edited it, like any file a bundle stops shipping).
+- **A symlink is never installed.** A memory that is a symlink is skipped
+  with `notes.md is a symlink (not installed)`, and so is a hook or guardrail
+  rule that is one or lives in a linked dir (`hooks/x.rb is a symlink (not
+  installed)`); a plugin or script that is one fails the install. A tar, zip
+  or git repo keeps links, and copying through one would install whatever
+  file it points at (`~/.ssh/…`, an API key) as a memory the model reads.
 - **The index says where a memory came from.** The `index.md` line of a file
   a bundle installed ends in `· from <bundle>`, before the description:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —
