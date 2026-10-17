@@ -8,13 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-17
+
 ### Added
 
 - Web: the message box has an image button next to Start / Send that opens a file picker (on a phone, the camera or
   the photo library); the picked images are added like pasted ones. A message now takes at most 20 images of up to
   20 MB each as you add them, pasted, dropped or picked, and a toast names the files left out, instead of the send
   failing.
-
 - Bundles: `samagotchi/testing` (experimental), a test kit for bundles: load a bundle in a sandbox, fire its hooks, run its commands and tools, record steers, notices and cards (RSpec `:bundle` groups or Minitest `Testing::Case`; docs/plugins.md "Testing a bundle"). The shipped bundles' specs now live in each bundle's own `spec/` and use it; a boundary spec keeps bundles on the stable surface.
 - Plugins: `ctx.http`, an HTTP client for calling services (`get`, `post_json`, `request`): short default timeouts, one error type (`Samagotchi::Plugin::HttpError`), a 4xx/5xx returned as a Response, one INFO `http` log line per call without query, headers or body (`purpose=plugin`, `bundle=`), and a call made for the turn stops when the turn is stopped (docs/plugins.md "Calling services"; experimental until 1.0). The test kit fakes it: `bundle.http.stub(…)`, `requests`, `unmatched`, and a request no stub answered fails the test.
 - `chi bootstrap` sets up Anthropic Messages hosts: a server that refuses the OpenAI model list but lists Anthropic's
@@ -32,6 +33,8 @@ and commands may change between minor versions. How releases are made:
   down or a click shows it, Enter/Space on the focused grip toggles, and the choice is remembered): the tile's `hide ▴`
   and the top bar's `▴ hide` are gone, and while the strip is hidden its pill — now only its status — opens All
   sessions in one click instead of showing the strip first.
+
+Update with `chi update` (the system bundle 0.80.0), then restart `chi web`.
 
 ## [0.79.0] - 2026-10-17
 
@@ -3307,7 +3310,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.79.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.80.0...HEAD
+[0.80.0]: https://github.com/dm1try/samagotchi/compare/v0.79.0...v0.80.0
 [0.79.0]: https://github.com/dm1try/samagotchi/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/dm1try/samagotchi/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/dm1try/samagotchi/compare/v0.76.0...v0.77.0
