@@ -125,6 +125,24 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect { described_class.read(dir: tmpdir) }
         .to raise_error(Samagotchi::MemoryBundle::Manifest::ValidationError, /not found/)
     end
+
+    # Every manifest problem is a ValidationError (the CLI prints it as
+    # "<word> failed: …"), never a Psych error with a backtrace.
+    it "raises a ValidationError for a manifest.yml that isn't valid YAML or isn't a mapping" do
+      path = File.join(tmpdir, "manifest.yml")
+      error = Samagotchi::MemoryBundle::Manifest::ValidationError
+
+      File.write(path, "name: [x\n")
+      expect { described_class.read(dir: tmpdir) }
+        .to raise_error(error, "manifest.yml is not valid YAML in #{tmpdir}: line 1, column 7: did not find expected ',' or ']'")
+      File.write(path, "name: &n x\nversion: *n\n")
+      expect { described_class.read(dir: tmpdir) }
+        .to raise_error(error, /\Amanifest\.yml is not valid YAML in #{Regexp.escape(tmpdir)}: Alias parsing was not enabled/)
+      File.write(path, "- name\n- version\n")
+      expect { described_class.read(dir: tmpdir) }.to raise_error(error, "manifest.yml is not a YAML mapping in #{tmpdir}")
+      File.write(path, "")
+      expect { described_class.read(dir: tmpdir) }.to raise_error(error, "manifest missing required field: name")
+    end
   end
 
   describe ".write" do

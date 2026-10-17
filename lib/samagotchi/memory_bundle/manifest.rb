@@ -64,7 +64,7 @@ module Samagotchi
 
       def initialize(path:)
         @path = path
-        raw = YAML.load_file(path) || {}
+        raw = load_mapping(path)
         @name     = require_str(raw, "name")
         @version  = require_str(raw, "version")
         @scope    = normalize_scope(raw["scope"])
@@ -187,6 +187,20 @@ module Samagotchi
       private_class_method :optional_text
 
       private
+
+      # The manifest.yml's top-level mapping ({} for an empty file); YAML that
+      # doesn't parse, or isn't a mapping, raises ValidationError, as every
+      # other manifest problem does.
+      def load_mapping(path)
+        raw = YAML.load_file(path) || {}
+        raise ValidationError, "manifest.yml is not a YAML mapping in #{File.dirname(path)}" unless raw.is_a?(Hash)
+
+        raw
+      rescue Psych::SyntaxError => e
+        raise ValidationError, "manifest.yml is not valid YAML in #{File.dirname(path)}: line #{e.line}, column #{e.column}: #{e.problem}"
+      rescue Psych::Exception => e
+        raise ValidationError, "manifest.yml is not valid YAML in #{File.dirname(path)}: #{e.message}"
+      end
 
       def require_str(hash, key)
         val = hash[key]

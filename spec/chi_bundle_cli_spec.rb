@@ -205,6 +205,18 @@ RSpec.describe "chi bundle (CLI)" do
       expect(Dir.exist?(File.join(memories, ".bundles"))).to be(false)
     end
 
+    it "fails an install or upgrade of a source whose manifest.yml isn't valid YAML, with no backtrace" do
+      broken = File.join(@root, "broken")
+      FileUtils.mkdir_p(broken)
+      File.write(File.join(broken, "manifest.yml"), "name: [x\n")
+      error = "manifest.yml is not valid YAML in #{broken}: line 1, column 7: did not find expected ',' or ']'\n"
+
+      expect(chi("install", broken)).to eq(["", "Install failed: #{error}", 1])
+      expect(chi("upgrade", broken)).to eq(["", "Upgrade failed: #{error}", 1])
+      expect(Dir.exist?(File.join(memories, ".bundles"))).to be(false)
+      expect(File.read(File.join(broken, "manifest.yml"))).to eq("name: [x\n")
+    end
+
     it "writes nothing on a dry-run upgrade of a bundle that isn't installed" do
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
 
