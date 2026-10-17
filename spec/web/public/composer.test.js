@@ -145,7 +145,7 @@ function harness({ session = "s1", fail = null, switchTo = undefined, draft = un
     followWokenWorker: () => calls.push(["follow"]),
     refreshHistory: () => calls.push(["refresh"]),
     failed: (line, text) => calls.push(["failed", line, text]),
-    failedElsewhere: (line, text) => calls.push(["elsewhere", line, text]),
+    failedElsewhere: (line, text, id) => calls.push(["elsewhere", line, text, id]),
     ownedByTui: () => calls.push(["tui"]),
     composer: {
       busy: () => calls.push(["busy"]),
@@ -217,7 +217,7 @@ test("send: after a switch, a refusal or a terminal's hold is said elsewhere, no
   assert.deepEqual(tui.calls.map((c) => c[0]), ["busy", "send", "elsewhere", "done"]);
   const bad = harness({ switchTo: "s2", fail: new Error("nope") });
   await bad.commands.send("/model x");
-  assert.deepEqual(bad.calls.slice(1), [["send", "s1", "/model x", { clientId: "c1" }], ["elsewhere", "/model x", "nope"], ["done"]]);
+  assert.deepEqual(bad.calls.slice(1), [["send", "s1", "/model x", { clientId: "c1" }], ["elsewhere", "/model x", "nope", "s1"], ["done"]]);
 });
 
 test("run: after a switch, no follow; a failure is said elsewhere", async () => {
