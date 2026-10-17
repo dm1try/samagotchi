@@ -8,74 +8,50 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-10-17
+
+### Security
+
+- A bundle can no longer replace an installed one by taking its name. `chi bundle install` over a bundle from another
+  source is refused (`--force` too): `chi bundle upgrade <new source>` switches the source and says
+  `Source changes: <old> → <new>`. A name chi ships (`guardrails`, `samagotchi-system`, …, in any letter case)
+  installs only from chi's own copy unless `--force`, and a name that differs from an installed one only in case is
+  refused.
+- A bundle's symlinked memory is no longer installed: a tar, zip or git repo whose `notes.md` linked to another file
+  (`~/.ssh/…`, an API key) copied that file into the memories the model reads. It is skipped with
+  `notes.md is a symlink (not installed)`; a linked hook or guardrail rule is skipped too, and a linked plugin or
+  script fails the install.
+
 ### Added
 
-- `/stats` and `chi sessions stats` split the session's tokens, cost and speed per model after a `/model` switch: a
-  `models:` block with a row per run of turns on one model, in order (A → B → A is three rows), with each switch's
-  prefill on the new model under its row (`└ switch prefill 58.0k uncached prompt ≈$0.01`, the cost estimated from
-  the configured price) and a total. With one model the output is unchanged. The web's ctx tooltip (info bar) gets the same rows
-  under `per model:`. Turn records in `analytics.json` name
-  their model (`model_ref`) and a switch's prefill (`switch_prefill_tokens`, `switch_prefill_cost_estimate`).
-- Docs: an external guard bundle, [chi-nah](https://github.com/dm1try/chi-nah) (nah's deterministic guards on
-  chi's shell and file calls), in docs/guardrails.md.
+- `/stats`, `chi sessions stats` and the web's ctx tooltip split tokens, cost and speed per model after a `/model`
+  switch: a row per run of turns on one model, each switch's prefill under it, and a total.
+- Docs: [chi-nah](https://github.com/dm1try/chi-nah), an external guard bundle, in docs/guardrails.md.
+
+### Changed
+
+- A bundle installed from a git URL is named by its manifest's `name:` (it took the repo's name), so a URL install and
+  a local copy are one bundle. One installed by URL before this under a different repo name: `chi bundle uninstall
+  <repo name>`, then install it again (chi says so).
+- The `core` and `dev` profiles require the chi their members need (0.60.0 and 0.72.0).
 
 ### Fixed
 
-- codex-peer 0.3.2: a send no longer hangs when `codex queue` exits but leaves a process holding its output: it is
-  stopped after 10 s like a hung queue, and says the message may already be queued (check Codex before resending).
-- A plain `chi bundle install` over an installed bundle no longer forgets the files the new version stopped shipping
-  (such as the README an older chi installed as a memory): they stay where they are, still the bundle's, and the
-  `chi bundle upgrade` its summary suggests moves them to the trash.
-- After `/model` the ctx % no longer shows the old model's window: it is counted against the new model's window at
-  once (web info bar, attached TUI status row, a client that joins later), or cleared (`ctx ?`) when the window
-  can't be resolved, until the next generation.
-- `chi bundle upgrade` of a source with no `manifest.yml` (or an invalid one) fails with `Upgrade failed: <the
-  manifest error>`, instead of first saying the bundle isn't installed and falling back to an install that then
-  failed as `Install failed: …`.
-- `chi bundle upgrade` with no source prints the same usage line as `--help` (it left out `[--agent|--no-agent]`).
-- `/stats` no longer counts a `/model` switch to the same model id on another host as re-prefilled tokens too: that
-  prefill is the switch's (`switch prefill`) only.
-- A session loaded on another model than its last turn ran on (`--resume` with `--model`, a worker woken after a
-  `/model` with no turn since) no longer shows the old model's ctx %: it is counted on the new model's configured
-  window at once (`window_tokens`), else shown as `ctx ?` until the first generation.
-- A bundle's `manifest.yml` that isn't valid YAML (or isn't a mapping) makes `chi bundle install|upgrade` fail with
-  `Install failed: manifest.yml is not valid YAML in <dir>: line N, column M: …` (`Upgrade failed: …` for an
-  upgrade; exit 1), not a Psych backtrace.
-- A bundle installed from a git URL is named by its `manifest.yml` `name:`, as a local copy or an archive of it
-  already was (it took the repo's name), so installing it by URL and upgrading it from a local copy (or the other
-  way round) is one bundle with one record, not a second bundle beside it (its memory files skipped, its hooks and
-  plugin installed again); a git, zip or tar source is cloned or extracted once per `chi bundle install|upgrade`,
-  not twice. A git URL that doesn't clone says `Install failed: git clone failed for <url>` (no `Source
-  normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
-  bundle installed by URL before this under a repo name that differs from its manifest's isn't installed a second
-  time beside it: `chi bundle install|upgrade <url>` fails with `<url> is installed as <repo name>: chi bundle
-  uninstall <repo name>, then install it again` (it fell back to a second install, both copies' plugin and hooks
-  loaded).
-- A bundle can no longer be replaced silently by another source whose manifest takes its name: `chi bundle install
-  <dir>` with `name: btw` deleted the installed btw's plugin and hooks and rewrote its record, while the summary said
-  `btw is already installed`. Now an install over a bundle from another source is refused, `--force` too (`btw is
-  installed from <source>; chi bundle upgrade <new source> switches its source, or chi bundle uninstall btw
-  first`); an upgrade may switch the source and its output starts with `Source changes: <old> → <new>`; a name
-  chi ships (`guardrails`, `samagotchi-system`, …, in any case) installs or upgrades only from chi's own copy unless
-  `--force`; and a name that differs from an installed bundle's only in case is refused (on macOS it is the same
-  dir). `chi bundle install BTW` no longer finds the shipped btw on a case-insensitive file system.
-- A bundle's memory that is a symlink is no longer installed: `chi bundle install` of a tar, zip, git repo or dir
-  whose `notes.md` links to another file (`~/.ssh/…`, an API key) copied that file into the memories, where the
-  model reads it. It is skipped with `notes.md is a symlink (not installed)`; a hook or guardrail rule that is a
-  symlink (or lives in a linked dir) is skipped the same way, and a plugin or script that is one fails the install.
-- A bundle manifest whose `name:` is a path (`../x`, `a/b`, `.`, `..`) is refused (`Install failed: name: …`): the
-  name is a directory under `.bundles/`, and a git URL bundle is now named by its manifest.
-- Web: a session with requests but no ctx % (`ctx ?`: a `/model` whose new window can't be resolved, or a window lookup
-  that fails) has a ctx tooltip that says `Context window unknown` (`… until the next request` right after
-  such a `/model`) over the session's tokens and per-model rows, instead of `No request in this session yet`.
-- Web: opening another session while a `!cmd` (or a turn that failed and was rolled back) re-read its own no longer
-  draws that command's output, or the failed prompt and its line, in the session just opened.
-- Web: a session command's answer (`/model x`, `!ls`) no longer clears what you typed meanwhile in another session's
-  composer; a command that fails after you switched sessions, and a turn that can't be sent, are said in a toast you
-  dismiss (✕), not a blocking alert.
-- The `core` and `dev` profiles name the chi their members need: `core` 0.3.1 `requires_chi: ">= 0.60.0"` (was
-  `>= 0.8.0`), `dev` 0.5.1 `">= 0.72.0"` (was `>= 0.34.0`). Installing a profile already skipped a member this chi
-  is too old for; now the profile's own floor says so too.
+- After `/model` the ctx % no longer shows the old model's window: it uses the new model's window at once, or shows
+  `ctx ?` (tooltip `Context window unknown until the next request`) until the window is known. The same for a session
+  resumed or woken on another model.
+- `/stats` no longer counts a `/model` to the same model on another host as a re-prefill.
+- Web: switching sessions while a command or a restored prompt re-reads no longer draws it in the session just
+  opened; a command's answer no longer clears another session's draft; such failures are a toast, not an alert.
+- `chi bundle install|upgrade`: an invalid or missing `manifest.yml` fails with one clear line (no backtrace, no
+  "falling back to install"); a manifest `name:` that is a path is refused; a plain re-install keeps the record of
+  files the bundle stopped shipping, so the upgrade it suggests trashes them; `chi bundle upgrade` with no source
+  prints the full usage line.
+- codex-peer: a send no longer hangs when `codex queue` exits but leaves a process holding its output; it stops
+  after 10 s and says the message may already be queued.
+
+Update with `chi update` (the system bundle 0.76.0, `core` 0.3.1, `dev` 0.5.1, `codex-peer` 0.3.2), then restart
+`chi web`.
 
 ## [0.75.0] - 2026-10-17
 
@@ -3245,7 +3221,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.75.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.76.0...HEAD
+[0.76.0]: https://github.com/dm1try/samagotchi/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/dm1try/samagotchi/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/dm1try/samagotchi/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/dm1try/samagotchi/compare/v0.72.0...v0.73.0
