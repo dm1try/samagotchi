@@ -115,6 +115,11 @@ test("generation_started and generation_completed set the window, served model a
   assert.equal(page.current.ctxWindowSource, "server");
   handlers.generation_completed({ served_model: "q2", requested_model: "q" });
   assert.deepEqual(page.current.served, ["q2", "q", null]);
+  assert.equal(page.current.timing.modelSegments, undefined);
+  // The server's whole list of rows per model replaces the page's.
+  const rows = [{ model_ref: "a:one" }, { model_ref: "b:two" }];
+  handlers.generation_completed({ tokens: { prompt_sum: 1 }, model_segments: rows });
+  assert.deepEqual(page.current.timing.modelSegments, rows);
   assert.ok(page.names().includes("turnDom.generationCompleted"));
 });
 

@@ -13,7 +13,8 @@ and commands may change between minor versions. How releases are made:
 - `/stats` and `chi sessions stats` split the session's tokens, cost and speed per model after a `/model` switch: a
   `models:` block with a row per run of turns on one model, in order (A → B → A is three rows), with each switch's
   prefill on the new model under its row (`└ switch prefill 58.0k uncached prompt ≈$0.01`, the cost estimated from
-  the configured price) and a total. With one model the output is unchanged. Turn records in `analytics.json` name
+  the configured price) and a total. With one model the output is unchanged. The web's ctx tooltip (info bar) gets the same rows
+  under `per model:`. Turn records in `analytics.json` name
   their model (`model_ref`) and a switch's prefill (`switch_prefill_tokens`, `switch_prefill_cost_estimate`).
 - Docs: an external guard bundle, [chi-nah](https://github.com/dm1try/chi-nah) (nah's deterministic guards on
   chi's shell and file calls), in docs/guardrails.md.

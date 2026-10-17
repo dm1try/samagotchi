@@ -11,7 +11,9 @@ import { steerRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.j
 
 const steerRowHtml = (s) => markupOf(steerRowTemplate(s));
 import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
-import { costText, memoryIndexText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
+import {
+  costText, memoryIndexText, modelSegmentCostText, modelSegmentLabel, modelSegmentPrefillText, modelSegmentTokensText, speedText,
+} from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
 // TUI put on the same event. spec/labels_matrix_spec.rb reads the same file;
@@ -104,6 +106,16 @@ test("speeds per the shared labels matrix", () => {
 test("costs per the shared labels matrix", () => {
   for (const entry of cases("costs")) {
     assert.equal(costText(entry.cost, { estimate: entry.estimate === true }), expected(entry), `cost ${entry.cost}`);
+  }
+});
+
+test("per-model rows per the shared labels matrix", () => {
+  for (const entry of cases("model_segments")) {
+    const row = entry.row;
+    assert.deepEqual({
+      label: modelSegmentLabel(row), tokens: modelSegmentTokensText(row), cost: modelSegmentCostText(row),
+      prefill: modelSegmentPrefillText(row),
+    }, expected(entry), `row ${JSON.stringify(row)}`);
   }
 });
 

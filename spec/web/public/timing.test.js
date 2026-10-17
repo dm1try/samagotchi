@@ -376,6 +376,21 @@ test("mergeTiming appends the newest turn and its tool records; the count matche
   assert.equal(short, false);
 });
 
+// The rows per model: a reply with the key is authoritative (an empty list
+// too: one model now), one without it keeps the page's.
+test("mergeTiming takes the reply's model_segments when it has the key, else keeps the page's", () => {
+  const rows = [{ model_ref: "a:one", turns: 1 }, { model_ref: "b:two", turns: 1 }];
+  const withRows = normalizeTiming({ turn_records: [T("t1", 1)], model_segments: rows });
+  assert.deepEqual(withRows.modelSegments, rows);
+  assert.deepEqual(normalizeTiming({}).modelSegments, []);
+
+  const reply = { turn_records: [T("t2", 2)], turn_count: 2 };
+  assert.deepEqual(mergeTiming(withRows, reply).timing.modelSegments, rows);
+  assert.deepEqual(mergeTiming(withRows, { ...reply, model_segments: [] }).timing.modelSegments, []);
+  const fresh = [...rows, { model_ref: "a:one", turns: 1 }];
+  assert.deepEqual(mergeTiming(withRows, { ...reply, model_segments: fresh }).timing.modelSegments, fresh);
+});
+
 test("mergeTiming replaces a known record in place: a duplicate read doesn't grow the lists", () => {
   const before = page([T("t1", 1), T("t2", 2)], [{ id: "t2:1:1", turn_id: "t2", duration_ms: 1 }]);
   const reply = { turn_records: [T("t2", 2, { duration_ms: 2500 })], tool_records: [{ id: "t2:1:1", turn_id: "t2", duration_ms: 5 }], turn_count: 2 };

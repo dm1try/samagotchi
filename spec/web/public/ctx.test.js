@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxBarTip, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
+  modelSegmentLabel,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -96,6 +97,34 @@ test("tokensTipText: in with its cached share, out with reasoning, the cost; thi
     "cost: $0.0012",
     "this session only, all requests",
   ].join("\n"));
+});
+
+// After /model: the rows per model (the timing's modelSegments) above the
+// totals; one model (or none) keeps the tooltip as it was.
+test("tokensTipText: rows per model with two or more, a switch's prefill under its row", () => {
+  const tokens = { prompt_sum: 278000, completion_sum: 30000, cost_sum: 0.041, cost_estimate_sum: 0.018 };
+  const rows = [
+    { model_ref: "deepseek:v4.1-flash", turns: 14, prompt_sum: 182000, completion_sum: 21000, cost_sum: 0.041, prefill_tokens: 0 },
+    { model_ref: "splash:qwen3-35b", turns: 1, prompt_sum: 96000, completion_sum: 9000, cost_estimate_sum: 0.018,
+      prefill_tokens: 58000, prefill_cost_estimate: 0.012 },
+  ];
+  assert.deepEqual(tokensTipText(tokens, "ctx", null, null, rows).split("\n").slice(0, 6), [
+    "ctx",
+    "per model:",
+    "  deepseek:v4.1-flash · 14 turns · 182.0k in / 21.0k out · $0.04",
+    "  splash:qwen3-35b · 1 turn · 96.0k in / 9.0k out · ~$0.02",
+    "    └ switch prefill 58.0k uncached prompt ≈$0.01",
+    "tokens: in 278,000 · out 30,000",
+  ]);
+  assert.equal(tokensTipText(tokens, "ctx", null, null, [rows[0]]), tokensTipText(tokens, "ctx"));
+  assert.equal(tokensTipText(tokens, "ctx", null, null, []), tokensTipText(tokens, "ctx"));
+  assert.ok(ctxBarTip(tokens, null, { pct: 10 }, rows).includes("per model:"));
+});
+
+test("modelSegmentLabel: a folded row by folded_segments, a legacy row with no ref \"earlier turns\"", () => {
+  assert.equal(modelSegmentLabel({ model_ref: null, folded_segments: 3 }), "3 earlier segments");
+  assert.equal(modelSegmentLabel({ model_ref: null }), "earlier turns");
+  assert.equal(modelSegmentLabel({ model_ref: "a:one" }), "a:one");
 });
 
 test("tokensTipText: an estimated cost (hosts.<name>.models prices) shows with ~, apart from a reported one", () => {
