@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   so Stop no longer cancels the service's startup `ctx.http` calls (as docs/plugins.md says).
 - Bundles: the test kit's sandbox also points `XDG_DATA_HOME` and `XDG_CACHE_HOME` at its temp folder, so a bundle
   test no longer writes to your own data or cache home when you set them.
+- `chi bootstrap`: re-running it against a server the config already has says so, without the misleading "saved as …"
+  line before it.
 
 ## [0.80.0] - 2026-10-17
 

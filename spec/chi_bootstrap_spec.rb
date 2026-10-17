@@ -231,6 +231,7 @@ RSpec.describe "chi bootstrap" do
 
     expect(status).to eq(0)
     expect(out).to include("already has this server as 'box'; nothing written", "chi --model box:m")
+    expect(out).not_to include("saved as")
     expect(Dir["#{config}.bak-*"]).to be_empty
   end
 

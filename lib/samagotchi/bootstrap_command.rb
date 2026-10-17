@@ -337,8 +337,8 @@ module Samagotchi
         @exit = usage_error(e.message)
         return nil
       end
-      explain_name(base, name, reason)
       outcome = writer.write(name: name, fields: fields, model: model, dry_run: options[:dry_run])
+      explain_name(base, name, reason) unless outcome.kind == :exists
       code = report(outcome, model)
       return code unless INSTALLS_BUNDLES.include?(outcome.kind)
 
