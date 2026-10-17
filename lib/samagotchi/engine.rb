@@ -1697,7 +1697,8 @@ module Samagotchi
     def model_switched_since_last_turn?
       last = @metrics.last_model_ref
       !last.nil? && last != effective_model_ref
-    rescue StandardError
+    rescue StandardError => e
+      Log.warn(:model, "switch_check_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       false
     end
     private :model_switched_since_last_turn?
