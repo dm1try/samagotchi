@@ -150,11 +150,12 @@ test("drawAsking with markdown: the raw text at once, then the HTML swapped in w
   slots.drawAsking("## Pick\n\n- a");
   assert.equal(asking.textContent, "## Pick\n\n- a");
   assert.ok(!asking.classList.contains("markdown"));
+  assert.ok(!asking.classList.contains("md-compact"));
   assert.deepEqual(r.calls, ["## Pick\n\n- a"]);
   assert.deepEqual(linked, ["## Pick\n\n- a"]);
   asking.scrollTop = 30;
   await r.settle(0, "<h2>Pick</h2><ul><li>a</li></ul>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown"><h2>Pick</h2><ul><li>a</li></ul></div>');
+  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><h2>Pick</h2><ul><li>a</li></ul></div>');
   assert.equal(asking.scrollTop, 0);
   assert.deepEqual(linked, ["## Pick\n\n- a", "<h2>Pick</h2><ul><li>a</li></ul>"]);
 });
@@ -167,7 +168,7 @@ test("drawAsking with markdown: a render for a text no longer shown is dropped",
   await r.settle(0, "<p>first</p>");
   assert.equal(htmlOf(asking), '<div class="ts-asking">second</div>');
   await r.settle(1, "<p>second</p>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown"><p>second</p></div>');
+  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>second</p></div>');
 });
 
 test("drawAsking with markdown: a null render (markdown off, a failed read) leaves the raw text, and isn't kept", async () => {
@@ -191,7 +192,7 @@ test("drawAsking with markdown: the same text again asks once, in flight or done
   slots.drawAsking("Go on?");
   assert.equal(r.calls.length, 1);
   await r.settle(0, "<p>Go on?</p>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown"><p>Go on?</p></div>');
+  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>Go on?</p></div>');
   const p = asking.firstChild;
   slots.drawAsking("Go on?");
   assert.ok(asking.firstChild === p);
@@ -199,7 +200,7 @@ test("drawAsking with markdown: the same text again asks once, in flight or done
   slots.drawAsking("Go on?");
   await new Promise((done) => setTimeout(done, 0));
   assert.equal(r.calls.length, 1);
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown"><p>Go on?</p></div>');
+  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>Go on?</p></div>');
 });
 
 test("drawAsking with markdown: a new text, the empty one included, drops the class; reset drops it too", async () => {
@@ -208,11 +209,14 @@ test("drawAsking with markdown: a new text, the empty one included, drops the cl
   slots.drawAsking("one");
   await r.settle(0, "<p>one</p>");
   assert.ok(asking.classList.contains("markdown"));
+  assert.ok(asking.classList.contains("md-compact"));
   slots.drawAsking("");
   assert.ok(!asking.classList.contains("markdown"));
+  assert.ok(!asking.classList.contains("md-compact"));
   assert.equal(asking.hidden, true);
   slots.drawAsking("two");
   await r.settle(1, "<p>two</p>");
   slots.reset();
+  assert.ok(!asking.classList.contains("md-compact"));
   assert.equal(htmlOf(asking), '<div class="ts-asking" hidden=""></div>');
 });

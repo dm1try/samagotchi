@@ -326,22 +326,35 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .bubble.question>summary .question-said{max-width:72ch;margin:2px 0 1px 1.05em;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .bubble.question[open]>summary .question-said{display:none}
 .question-said-full{margin:4px 0 6px;font-size:13px;line-height:1.55;color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere}
-/* Its markdown once the card is first opened (question_cards.js renderSaidOnOpen), as compact as the stage's. */
-.question-said-full.markdown{white-space:normal}
-.question-said-full.markdown :is(h1,h2,h3,h4,h5,h6){font-size:13.5px;font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--text-2)}
-.question-said-full.markdown :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
-.question-said-full.markdown>:first-child{margin-top:0}
-.question-said-full.markdown>:last-child{margin-bottom:0}
-.question-said-full.markdown :is(ul,ol){padding-left:1.3em}
-.question-said-full.markdown li>:is(ul,ol){margin:0}
-.question-said-full.markdown hr{border:0;border-top:1px solid var(--border);margin:8px 0}
-.question-said-full.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:10px}
-.question-said-full.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-.question-said-full.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px}
-.question-said-full.markdown pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:12px;line-height:1.45;white-space:pre}
-.question-said-full.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
-.question-said-full.markdown :is(th,td){border:1px solid var(--border-strong);padding:3px 7px;font-size:12.5px}
-.question-said-full.markdown th{background:var(--bg-inset);font-weight:600}
+.question-said-full.md-compact{
+  --md-heading-size:13.5px;--md-heading-color:var(--text-2);
+  --md-subheading-size:13.5px;--md-subheading-color:var(--text-2);
+  --md-strong-color:currentColor;--md-blockquote-color:currentColor;--md-code-color:currentColor;
+  --md-pre-size:12px;--md-cell-size:12.5px
+}
+.ts-asking.md-compact{
+  --md-heading-size:14.5px;--md-heading-color:var(--text-bright);
+  --md-subheading-size:14px;--md-subheading-color:var(--text-2);
+  --md-strong-color:var(--text-bright);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
+  --md-pre-size:12.5px;--md-cell-size:13px
+}
+.md-compact:is(.ts-asking,.question-said-full){white-space:normal}
+.md-compact :is(h1,h2,h3,h4,h5,h6){font-size:var(--md-heading-size);font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--md-heading-color)}
+.md-compact :is(h4,h5,h6){font-size:var(--md-subheading-size);color:var(--md-subheading-color)}
+.md-compact :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
+.md-compact>:first-child{margin-top:0}
+.md-compact>:last-child{margin-bottom:0}
+.md-compact :is(ul,ol){padding-left:1.3em}
+.md-compact li>:is(ul,ol){margin:0}
+.md-compact hr{border:0;border-top:1px solid var(--border);margin:8px 0}
+.md-compact blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--md-blockquote-color)}
+.md-compact code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+.md-compact :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px;color:var(--md-code-color)}
+.md-compact strong{color:var(--md-strong-color)}
+.md-compact pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:var(--md-pre-size);line-height:1.45;white-space:pre}
+.md-compact table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
+.md-compact :is(th,td){border:1px solid var(--border-strong);padding:3px 7px;font-size:var(--md-cell-size)}
+.md-compact th{background:var(--bg-inset);font-weight:600}
 .bubble.command{border-left:3px solid var(--text-faint);background:var(--bg-panel);font-size:13px}
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}
 .note-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-faint);margin-bottom:2px}
@@ -730,24 +743,6 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
    its room, read from the top. */
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
-/* Its markdown, compact: about the raw text's metrics, so the swap barely moves the slot. */
-.ts-asking.markdown{white-space:normal}
-.ts-asking.markdown :is(h1,h2,h3,h4,h5,h6){font-size:14.5px;font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--text-bright)}
-.ts-asking.markdown :is(h4,h5,h6){font-size:14px;color:var(--text-2)}
-.ts-asking.markdown :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
-.ts-asking.markdown>:first-child{margin-top:0}
-.ts-asking.markdown>:last-child{margin-bottom:0}
-.ts-asking.markdown :is(ul,ol){padding-left:1.3em}
-.ts-asking.markdown li>:is(ul,ol){margin:0}
-.ts-asking.markdown strong{color:var(--text-bright)}
-.ts-asking.markdown hr{border:0;border-top:1px solid var(--border);margin:8px 0}
-.ts-asking.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-muted)}
-.ts-asking.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-.ts-asking.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px;color:var(--text)}
-.ts-asking.markdown pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:12.5px;line-height:1.45;white-space:pre}
-.ts-asking.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
-.ts-asking.markdown :is(th,td){border:1px solid var(--border-strong);padding:3px 7px;font-size:13px}
-.ts-asking.markdown th{background:var(--bg-inset);font-weight:600}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}

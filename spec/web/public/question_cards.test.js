@@ -690,6 +690,7 @@ test("a resolved card's kept reply: no render until it is opened, then once, as 
   assert.deepEqual(asked, [SAID]);
   assert.equal(full.innerHTML, "<p>I found <strong>two</strong>.</p>");
   assert.ok(full.classes.has("markdown"));
+  assert.ok(full.classes.has("md-compact"));
   assert.deepEqual(linked, [full]);
   // The summary's clamped line stays plain text.
   assert.equal(said(card).textContent, SAID_LINE);
