@@ -149,7 +149,8 @@ is prefilled once. The native and the chat loop use the same plan.
 
 - The debug log's `generation_completed` line: `prompt=` (the request's prompt tokens), `cached=` (read from the
   server's cache), `cache_write=` (written to it, where the provider reports writes) and `reprefill=` (of the last
-  request's prompt on the same model, what was prefilled again). The `http` line of a
+  request's prompt on the same model through the same host, what was prefilled again; a `/model` to the same bare
+  model on another host is the switch's prefill, not a re-prefill). The `http` line of a
   remote Claude or Messages request shows `cache=on` (or `cache=1h`) when it carried breakpoints.
 - The warm-up logs `model warmup` with `cached=`, `prefilled=` and `prefill_ms=`.
 - `/stats`: "cached N (P%)", "cache writes" and "re-prefilled" for the session.

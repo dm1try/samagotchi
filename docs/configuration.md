@@ -836,9 +836,10 @@ cache:
 ```
  Each request's own counts are in the debug log's `generation_completed` line:
 `prompt=` (its prompt tokens), `cached=` (read from the server's cache), `cache_write=` (written to it, when the
-server reports writes) and `reprefill=` (of the previous request's prompt on the same model, what the server
-prefilled again: an `llm_context` edit's cache break, or anything else that rewrote the prompt's middle; only when the
-server reports a cached count, and not on the first request after a warm-up); recap and side requests log theirs as `recap request_usage`.
+server reports writes) and `reprefill=` (of the previous request's prompt on the same model through the same host,
+what the server prefilled again: an `llm_context` edit's cache break, or anything else that rewrote the prompt's
+middle; only when the server reports a cached count, and not on the first request after a warm-up; a `/model` to the
+same model on another host is the switch's prefill, not a re-prefill); recap and side requests log theirs as `recap request_usage`.
 
 ## Llama Model Routing
 
