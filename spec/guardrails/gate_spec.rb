@@ -38,6 +38,16 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     expect(asked).to be(false)
   end
 
+  it "has the hooks vote on a given verdict, a deny already in it shown as blocked" do
+    seen = nil
+    hooks.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
+    given = Samagotchi::Guardrails::Verdict.new(call: { name: "other" }).deny!("earlier")
+    verdict = gate.evaluate(call, iteration: 1, params: "", verdict: given)
+    expect(verdict).to be(given)
+    expect(verdict.call).to eq(call)
+    expect(seen).to eq(blocked: true, block_reason: "earlier")
+  end
+
   it "allows when there is no registry" do
     expect(described_class.new(-> {}).evaluate(call, iteration: 1, params: "")).to be_allow
   end

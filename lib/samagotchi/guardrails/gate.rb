@@ -49,10 +49,14 @@ module Samagotchi
       # @param call [Hash] the parsed tool call
       # @param iteration [Integer]
       # @param params [String] the call's one-line preview
+      # @param verdict [Verdict, nil] the one the voters vote on (the test
+      #   kit's recording one, maybe with a vote already in); default a new
+      #   one for +call+
       # @return [Verdict]
-      def evaluate(call, iteration:, params:)
+      def evaluate(call, iteration:, params:, verdict: nil)
         context = @context_lookup.call
-        verdict = Verdict.new(call: call)
+        verdict ||= Verdict.new(call: call)
+        verdict.call = call
         if @cancelled_lookup.call
           verdict.deny!("the turn was stopped", decided_by: "core")
           verdict.context = context
@@ -60,7 +64,7 @@ module Samagotchi
           return verdict
         end
         before = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params,
-                   blocked: false, block_reason: nil, guardrail: verdict,
+                   blocked: verdict.deny?, block_reason: (verdict.reason if verdict.deny?), guardrail: verdict,
                    context: context.to_h, targets: targets_for(call, context).to_h }
         fire_each(:before_tool_call, before) do |event|
           verdict.legacy_deny!(event[:block_reason]) if event[:blocked]
