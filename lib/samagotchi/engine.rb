@@ -242,10 +242,7 @@ module Samagotchi
       wire_kernel(kernel, muted_memories)
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
-      @prompt_builder = SystemPrompt.new(profile: -> { self.profile }, tools: -> { @tools }, session: -> { @session },
-                                         thinking: -> { turn_thinking }, model: -> { model_identity },
-                                         model_notes: -> { model_notes }, memories: memories,
-                                         muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files)
+      @prompt_builder = build_system_prompt(memories, appended_prompt_files)
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -268,10 +265,7 @@ module Samagotchi
       # One shared poller for the whole idle layer (reminders + optional
       # recap). Both jobs read the activity seam above; the scheduler owns
       # the single background thread and isolates per-job failures.
-      @idle_scheduler = IdleScheduler.new(
-        engine: self,
-        jobs: [@reminders, @recap].compact
-      )
+      @idle_scheduler = build_idle_scheduler
       subscribe_session_observers
     end
 
@@ -387,6 +381,21 @@ module Samagotchi
       )
     end
     private :build_plugin_tasks
+
+    # The system prompt's live sources and this session's fixed inputs.
+    def build_system_prompt(memories, appended_prompt_files)
+      SystemPrompt.new(profile: -> { profile }, tools: -> { @tools }, session: -> { @session },
+                       thinking: -> { turn_thinking }, model: -> { model_identity },
+                       model_notes: -> { model_notes }, memories: memories,
+                       muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files)
+    end
+    private :build_system_prompt
+
+    # The idle layer's shared scheduler (see #initialize for when).
+    def build_idle_scheduler
+      IdleScheduler.new(engine: self, jobs: [@reminders, @recap].compact)
+    end
+    private :build_idle_scheduler
 
     # A monotonically-increasing clock (wall clock can jump backwards; the idle
     # detector must never treat a jump as "activity"). Injectable for specs.
