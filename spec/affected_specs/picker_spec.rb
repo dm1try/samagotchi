@@ -30,6 +30,7 @@ RSpec.describe AffectedSpecs::Picker do
       "spec/bare_mention_spec.rb" => "CLI",
       "spec/support/fake_executables.rb" => "",
       "spec/uses_fakes_spec.rb" => 'require_relative "support/fake_executables"',
+      "spec/samagotchi/memory_bundle/shipped_profiles_spec.rb" => "",
       "spec/web/public/activity.test.js" => "",
       "spec/web/public/tally.test.js" => 'import { x } from "../../../lib/samagotchi/web/public/activity.js";',
       "spec/samagotchi/plugin/loop_guard_bundle_spec.rb" => ""
@@ -103,6 +104,17 @@ RSpec.describe AffectedSpecs::Picker do
 
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
+  end
+
+  it "picks the bundle CLI spec when a shipped bundle manifest changes" do
+    files["spec/chi_bundle_cli_spec.rb"] = ""
+    result = pick("lib/samagotchi/bundles/core/manifest.yml")
+
+    expect(paths(result.ruby)).to eq(%w[
+      spec/samagotchi/memory_bundle/shipped_profiles_spec.rb
+      spec/chi_bundle_cli_spec.rb
+    ])
+    expect(result.ruby.last.reason).to start_with("rule: ")
   end
 
   it "greps a short class name with its parent" do
