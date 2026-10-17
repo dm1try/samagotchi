@@ -1669,6 +1669,21 @@ RSpec.describe Samagotchi::Bridge do
       end
     end
 
+    it "answers 200 with the answer as an object (id, selected, freeform, selected_indices)" do
+      start_bridge
+      thread = Thread.new { @engine.open_question(question: "Pick", options: %w[Cats Dogs], multi_select: false) }
+      thread.report_on_exception = false
+      wait_until { @engine.pending_question }
+      qid = @engine.pending_question.id
+
+      status, resp, = post_answer(JSON.generate(id: qid, selected: ["Dogs"]))
+
+      expect(status).to eq(200)
+      expect(resp).to include("status" => "answered", "session_id" => @session.id)
+      expect(resp["answer"]).to eq("id" => qid, "selected" => ["Dogs"], "freeform" => nil, "selected_indices" => [1])
+      thread.join(2)
+    end
+
     it "answers 409 Conflict when the question is no longer pending (another client won)" do
       start_bridge
       status, resp, reason = post_answer(JSON.generate(id: "q-gone", selected: ["Cats"]))
@@ -1701,7 +1716,7 @@ RSpec.describe Samagotchi::Bridge do
       status, = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"]))
       expect(status).to eq(200)
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [1])
+      expect(result[:answer].to_h).to include(selected_indices: [1])
     end
 
     it "reads only id, selected and freeform (no question_id, selection or nested answer alias)" do
@@ -1733,7 +1748,8 @@ RSpec.describe Samagotchi::Bridge do
 
       it "takes an answer before its deadline, or with none" do
         start_bridge
-        allow(@engine).to receive(:answer_question).and_return({ id: "q1" })
+        allow(@engine).to receive(:answer_question)
+          .and_return(Samagotchi::QuestionAnswer.new(id: "q1", selected: ["A"]))
 
         expect(post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: Time.now.to_f + 25)).first).to eq(200)
         expect(post_answer(JSON.generate(id: "q1", selected: ["A"])).first).to eq(200)

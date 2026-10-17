@@ -658,7 +658,7 @@ module Samagotchi
 
       begin
         result = @engine.answer_question(id: qid, selected: selected, freeform: freeform, client_id: client_id)
-        [{}, 200, { status: "answered", session_id: session_id, answer: result }]
+        [{}, 200, { status: "answered", session_id: session_id, answer: result.to_h }]
       rescue Engine::QuestionNotPending => e
         # Another client answered first, or the question was cancelled.
         [{}, 409, { error: "question_not_pending", detail: e.message }]

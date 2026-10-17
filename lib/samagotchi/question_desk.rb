@@ -8,6 +8,7 @@ require "time"
 require_relative "client_id"
 require_relative "log"
 require_relative "pending_question"
+require_relative "question_answer"
 require_relative "tools/ask_user_question"
 require_relative "guardrails/parent_approvals"
 require_relative "guardrails/parent_continue"
@@ -124,7 +125,7 @@ module Samagotchi
         result = { dismissed: true, id: result[:id], note: note }
       end
       # Who answered is for the relay, not the model's tool result.
-      result = result.except(:by) if result.is_a?(Hash)
+      result = result.to_h.except(:by) if result.is_a?(QuestionAnswer)
       result.is_a?(String) ? result : JSON.generate(result)
     end
 
@@ -139,8 +140,8 @@ module Samagotchi
     #   question waits (outside the lock): a String closes the question with
     #   that reason, announced and returned as a cancel; nil keeps waiting.
     #   An answer recorded first wins. Not on the sync-handler path.
-    # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
-    #   or {error:, …}; a String when a sync handler returned text itself
+    # @return [QuestionAnswer, Hash, String] the answer, or {error:, …}; a
+    #   String when a sync handler returned text itself
     def open_question(fields, watch: nil)
       supersede_standing
       ask(fields, watch)
@@ -156,7 +157,7 @@ module Samagotchi
     # close (as a superseded one does). A standing one already up is
     # replaced (withdrawn, reason "replaced").
     # @param fields [Hash] as for #open_question
-    # @param on_answer [#call] (answer, client_id:)
+    # @param on_answer [#call] (answer [QuestionAnswer], client_id:)
     # @param on_superseded_close [#call, nil] called when a question that
     #   superseded it closes (its poster posts it again if it still
     #   stands); nil: posted again as it was
@@ -220,14 +221,16 @@ module Samagotchi
               @answer
             elsif sync_res.is_a?(Hash) && sync_res[:selected]
               # Treat returned hash as answer (handler rendered and parsed)
-              @answer = sync_res
+              @answer = QuestionAnswer.new(id: id.to_s, selected: Array(sync_res[:selected]),
+                                           freeform: sync_res[:freeform],
+                                           selected_indices: Array(sync_res[:selected_indices]))
               @pending = nil
-              sync_res
+              @answer
             end
           end
           if ans
             clear_saved_question
-            emit({ type: :question_answered, id: id, answer: ans })
+            emit({ type: :question_answered, id: id, answer: ans.to_h })
             return ans
           end
           if sync_res.is_a?(String) && !sync_res.strip.empty?
@@ -274,7 +277,7 @@ module Samagotchi
       end
 
       if answer
-        emit({ type: :question_answered, id: id, answer: answer })
+        emit({ type: :question_answered, id: id, answer: answer.to_h })
         answer
       else
         { error: "no answer", id: id }
@@ -289,7 +292,7 @@ module Samagotchi
     # @param parent_agent [Boolean, nil] the answer is a parent agent's, so
     #   it is held to guardrails.parent_approvals on an approval and doesn't
     #   bring the session back to the lists; nil: chi answer's client id says so
-    # @return [Hash] normalized answer; a parent agent's carries by: "parent_agent"
+    # @return [QuestionAnswer] the answer; a parent agent's carries by: "parent_agent"
     # @raise [NotPending, ArgumentError, Refused]
     def answer(id:, selected:, freeform: nil, client_id: nil, parent_agent: nil)
       sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
@@ -398,7 +401,8 @@ module Samagotchi
     # web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
-    # @return [Hash, nil] {selected:, freeform:, selected_indices:}
+    # @return [Hash, nil] {selected:, freeform:, selected_indices:} (a plain
+    #   Hash: the bundle boundary)
     def ask_for_hook(question, options, header, allow_freeform, hook)
       return nil if @interface_lookup.call == :non_interactive
 
@@ -411,11 +415,9 @@ module Samagotchi
       fields = { question: question.to_s, options: opts, header: header, multi_select: false,
                  allow_freeform: !!allow_freeform, kind: "hook", hook: hook.to_s }.compact
       answer = open_question(fields)
-      return nil unless answer.is_a?(Hash) && answer[:selected]
+      return nil unless answer.is_a?(QuestionAnswer)
 
-      result = { selected: Array(answer[:selected]), freeform: answer[:freeform] }
-      result[:selected_indices] = answer[:selected_indices] if answer.key?(:selected_indices)
-      result
+      { selected: answer.selected, freeform: answer.freeform, selected_indices: answer.selected_indices }
     end
 
     private
@@ -483,7 +485,7 @@ module Samagotchi
     # handed to its poster with who answered.
     def settle_standing(standing, answer, client_id)
       clear_saved_question
-      emit({ type: :question_answered, id: answer[:id], answer: answer })
+      emit({ type: :question_answered, id: answer.id, answer: answer.to_h })
       standing[:on_answer].call(answer, client_id: client_id)
     rescue StandardError => e
       Log.warn(:turn, "standing_answer_failed", error: e.class.name, message: e.message)
@@ -493,7 +495,7 @@ module Samagotchi
     # == label in v1), one for a single-select, one or a text when required,
     # and a parent agent's within guardrails.parent_approvals. Under the
     # question lock: checked against the question pending now.
-    # @return [Hash] {id:, selected:, freeform:, selected_indices:, by:}
+    # @return [QuestionAnswer]
     # @raise [ArgumentError, Refused]
     def validated_answer(pending, sel, fm, parent_agent:, parent_setting:)
       opts = Array(pending.options)
@@ -508,9 +510,8 @@ module Samagotchi
         reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
         raise Refused, reason if reason
       end
-      answer = { id: pending.id.to_s, selected: sel, freeform: fm, selected_indices: indices.compact }
-      answer[:by] = "parent_agent" if parent_agent
-      answer
+      QuestionAnswer.new(id: pending.id.to_s, selected: sel, freeform: fm, selected_indices: indices.compact,
+                         by: parent_agent ? "parent_agent" : nil)
     end
 
     # Wait until the question is answered, cancelled or closed by +watch+.

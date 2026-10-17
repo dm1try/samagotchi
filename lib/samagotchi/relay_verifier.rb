@@ -54,7 +54,7 @@ module Samagotchi
       result = @engine.answer_question(id: question_id, selected: selected, freeform: answer["freeform"],
                                        client_id: client_id, parent_agent: parent_agent)
       log("relay_answered", relay_id, id: question_id, by: relay["by"])
-      [{}, 200, { status: "answered", question_id: question_id, answer: result }]
+      [{}, 200, { status: "answered", question_id: question_id, answer: result.to_h }]
     rescue QuestionDesk::NotPending
       not_pending(question_id)
     rescue QuestionDesk::Refused => e

@@ -2,6 +2,8 @@
 
 require "json"
 
+require_relative "../question_answer"
+
 module Samagotchi
   module Guardrails
     # An ask as a question for the user (Engine#open_question), and the
@@ -67,22 +69,22 @@ module Samagotchi
       end
 
       # Settle +verdict+ from open_question's result.
-      # @param answer [Hash, String] {selected_indices:, freeform:} or {error:}
+      # @param answer [QuestionAnswer, Hash, String] the answer, or {error:} (anything else is a cancel)
       # @param scopes [Array<String>] the offered scopes, in option order
       # @return [Verdict]
       def settle(verdict, answer, scopes)
-        unless answer.is_a?(Hash) && !answer[:error]
+        unless answer.is_a?(QuestionAnswer)
           return verdict.settle!(:deny, decided_by: "user", note: "The approval was cancelled.")
         end
 
-        index = Array(answer[:selected_indices]).first
+        index = answer.selected_indices.first
         if index && index < scopes.size
           verdict.settle!(:allow, decided_by: "user")
           verdict.scope = scopes[index]
           return verdict
         end
 
-        freeform = answer[:freeform].to_s.strip
+        freeform = answer.freeform.to_s.strip
         note = freeform.empty? ? "The user declined this call." : "The user declined this call: #{freeform.inspect}."
         verdict.settle!(:deny, decided_by: "user", note: note)
       end

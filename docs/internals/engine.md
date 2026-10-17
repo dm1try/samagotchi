@@ -728,6 +728,7 @@ Paths are under `lib/samagotchi/`.
 | `toolkit_binding.rb` | `ToolkitBinding`: the Engine's toolkit seam (the kits, `#explained`, `ctx.use_toolkit`, the turn-start `#apply!` behind `Engine#apply_toolkit!`) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
+| `question_desk.rb`, `pending_question.rb`, `question_answer.rb` | `QuestionDesk`: the one open question (ask, post, answer, cancel, relay mark); `PendingQuestion` and `QuestionAnswer`, its values (Hashes only in events, Bridge JSON, the session file and the hook/plugin `ask_user` result) |
 | `event_routes.rb` | `EventRoutes`: where a card (`Engine#show_card`), a notice (`HookRoutes#notify`) and a guardrails line (`#guardrail_notify`, turn or between turns only) go: held while the plugins load, an anytime command's, an init task's, a running turn's event, else announced or held for `holding_announcements` |
 | `engine_peers.rb`, `peer_sources.rb` | `Engine::PeerView` (what the kernel's peer tools see of the Engine) and `Engine::RelayPeer` (a delegate's approval relay); `PeerSources`: the attached context sources a peer bundle declares as its peer's answers (`chi.peer_source`) |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |

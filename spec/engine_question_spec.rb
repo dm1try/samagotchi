@@ -305,7 +305,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(pending).to have_attributes(kind: "approval", approval: { tool: "execute" }, status: "pending")
       engine.answer_question(id: pending.id, selected: ["No"])
       thread.join(2)
-      expect(result).to include(id: pending.id, selected: ["No"], selected_indices: [1])
+      expect(result.to_h).to include(id: pending.id, selected: ["No"], selected_indices: [1])
     end
 
     it "shows the question text as given (no wire-token stripping)" do
@@ -377,7 +377,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       engine.answer_question(id: qid, selected: ["Allow this call for the session"])
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [1])
+      expect(result[:answer].to_h).to include(selected_indices: [1])
     end
 
     it "takes a deny from a parent: the Deny option, text alone" do
@@ -386,12 +386,12 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       thread, result, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: [], freeform: "no", client_id: parent)
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [], freeform: "no")
+      expect(result[:answer].to_h).to include(selected_indices: [], freeform: "no")
 
       thread, result, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: ["Deny"], client_id: parent)
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [2])
+      expect(result[:answer].to_h).to include(selected_indices: [2])
     end
 
     it "with once takes Allow once by its scope, never a wider one" do
@@ -402,7 +402,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:once_only) }
       engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent)
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [0])
+      expect(result[:answer].to_h).to include(selected_indices: [0])
     end
 
     it "refuses even Allow once with once on chi's own config (the user's alone)" do
@@ -414,7 +414,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:protected) }
       engine.answer_question(id: qid, selected: ["Allow once"])
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [0])
+      expect(result[:answer].to_h).to include(selected_indices: [0])
     end
 
     it "fails closed on an approval without scopes: only Deny" do
@@ -425,7 +425,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         .to raise_error(Samagotchi::QuestionDesk::Refused)
       engine.answer_question(id: qid, selected: ["Deny"], client_id: parent)
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [2])
+      expect(result[:answer].to_h).to include(selected_indices: [2])
     end
 
     it "leaves the model's and hooks' questions, and other clients, alone" do
@@ -434,12 +434,12 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       thread, result, qid = open_approval(engine, payload.merge(kind: "hook"))
       engine.answer_question(id: qid, selected: ["Cats"], client_id: parent)
       thread.join(2)
-      expect(result[:answer]).to include(selected: ["Cats"])
+      expect(result[:answer].to_h).to include(selected: ["Cats"])
 
       thread, result, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: ["Allow this call for the session"], client_id: "web:tab1")
       thread.join(2)
-      expect(result[:answer]).to include(selected_indices: [1])
+      expect(result[:answer].to_h).to include(selected_indices: [1])
     end
 
     it "checks the question pending now: a stale id is not pending, whatever it asked" do
@@ -453,7 +453,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         .to raise_error(Samagotchi::Engine::QuestionNotPending)
       engine.cancel_question("user")
       thread.join(2)
-      expect(result[:answer]).to include(error: "no answer")
+      expect(result[:answer].to_h).to include(error: "no answer")
     end
   end
 

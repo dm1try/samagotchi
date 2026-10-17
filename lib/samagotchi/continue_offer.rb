@@ -211,13 +211,13 @@ module Samagotchi
     def answered(answer, client_id:)
       # The /continue line takes the text on one line; the steer keeps its
       # line breaks.
-      text = answer[:freeform].to_s.gsub(/\s+/, " ").strip
+      text = answer.freeform.to_s.gsub(/\s+/, " ").strip
       @continue_steer = nil
-      if Array(answer[:selected]).include?(CONTINUE) && !text.empty?
-        @continue_steer = { text: answer[:freeform].to_s.strip,
-                            source: answer[:by] == "parent_agent" ? "parent_agent" : "user" }
+      if answer.selected.include?(CONTINUE) && !text.empty?
+        @continue_steer = { text: answer.freeform.to_s.strip,
+                            source: answer.parent_agent? ? "parent_agent" : "user" }
       end
-      line = if Array(answer[:selected]).include?(CONTINUE) then "/continue yes"
+      line = if answer.selected.include?(CONTINUE) then "/continue yes"
              elsif text.empty? then "/continue no"
              else "/continue no, #{text}"
              end

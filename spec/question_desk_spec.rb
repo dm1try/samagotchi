@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       desk.answer(id: id, selected: ["Yes"])
       thread.join(2)
 
-      expect(box[:answer]).to include(selected: ["Yes"])
+      expect(box[:answer].to_h).to include(selected: ["Yes"])
       expect(calls).to be_between(2, 4)
     end
 
@@ -74,7 +74,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       gate << :go
       thread.join(2)
 
-      expect(box[:answer]).to include(selected: ["No"], selected_indices: [1])
+      expect(box[:answer].to_h).to include(selected: ["No"], selected_indices: [1])
       expect(events.map { |e| e[:type] }).not_to include(:question_cancelled)
     end
 
@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       sleep(0.1)
       desk.answer(id: id, selected: ["Yes"])
       thread.join(2)
-      expect(box[:answer]).to include(selected: ["Yes"])
+      expect(box[:answer].to_h).to include(selected: ["Yes"])
     end
 
     it "without a watch waits as before, and a Stop still cancels with its reason" do
@@ -114,7 +114,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       desk.answer(id: id, selected: ["Deny"], client_id: "relay:ab12cd34", parent_agent: true)
       thread.join(2)
-      expect(box[:answer]).to include(selected: ["Deny"], by: "parent_agent")
+      expect(box[:answer].to_h).to include(selected: ["Deny"], by: "parent_agent")
       # A parent agent's answer doesn't bring the session back to the lists.
       expect(inputs).to be_empty
     end
@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       answer = desk.answer(id: id, selected: ["Allow once"], client_id: "relay:ab12cd34", parent_agent: false)
       thread.join(2)
-      expect(answer).to eq(id: id, selected: ["Allow once"], freeform: nil, selected_indices: [0])
+      expect(answer.to_h).to eq(id: id, selected: ["Allow once"], freeform: nil, selected_indices: [0])
       expect(inputs).to eq([session.id])
     end
   end
@@ -149,6 +149,58 @@ RSpec.describe Samagotchi::QuestionDesk do
       id = events.first[:pending_question][:id]
       expect(events.last).to eq(type: :question_answered, id: id,
                                 answer: { id: id, selected: [], freeform: "answered inline", selected_indices: [] })
+    end
+  end
+
+  describe "a sync handler that returns a Hash with :selected" do
+    it "settles it as a QuestionAnswer for the question, and announces its Hash" do
+      desk.sync_handler = ->(_pending) { { selected: ["Yes"] } }
+      answer = desk.open_question(fields)
+
+      id = events.first[:pending_question][:id]
+      expect(answer).to eq(Samagotchi::QuestionAnswer.new(id: id, selected: ["Yes"]))
+      expect(events.last).to eq(type: :question_answered, id: id,
+                                answer: { id: id, selected: ["Yes"], freeform: nil, selected_indices: [] })
+      expect(desk.pending).to be_nil
+    end
+  end
+
+  describe "#request (the ask_user_question tool result)" do
+    it "gives a parent agent's answer without :by, as a user's" do
+      box = {}
+      thread = Thread.new { box[:result] = desk.request(question: "Run it?", options: %w[Yes No]) }
+      thread.report_on_exception = false
+      wait_until(timeout: 2) { desk.pending }
+      id = desk.pending.id
+
+      answer = desk.answer(id: id, selected: ["Yes"], client_id: "cli:answer")
+      thread.join(2)
+
+      expect(answer.by).to eq("parent_agent")
+      expect(box[:result]).to eq(%({"id":"#{id}","selected":["Yes"],"freeform":null,"selected_indices":[0]}))
+    end
+  end
+
+  describe "the :question_answered event" do
+    def answered_event = events.reverse.find { |event| event[:type] == :question_answered }
+
+    it "carries the answer as a Hash of the same keys as before, without :by for a user" do
+      id = desk.post(fields.merge(kind: "continue", options: %w[Continue Stop]), on_answer: ->(*, **) {}).id
+      desk.answer(id: id, selected: ["Stop"], client_id: "web:1")
+
+      expect(answered_event[:answer]).to be_a(Hash)
+      expect(answered_event[:answer]).to eq(id: id, selected: ["Stop"], freeform: nil, selected_indices: [1])
+    end
+
+    it "carries a parent agent's :by last, on a blocking question too" do
+      thread, box, id = open_in_background
+      desk.answer(id: id, selected: ["Yes"], client_id: "cli:answer")
+      thread.join
+
+      expect(answered_event[:answer])
+        .to eq(id: id, selected: ["Yes"], freeform: nil, selected_indices: [0], by: "parent_agent")
+      expect(answered_event[:answer].keys.last).to eq(:by)
+      expect(box[:answer]).to be_a(Samagotchi::QuestionAnswer)
     end
   end
 
@@ -217,7 +269,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       result = desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
 
-      expect(result).to include(selected: ["Stop"], freeform: "enough")
+      expect(result.to_h).to include(selected: ["Stop"], freeform: "enough")
       expect(answers).to eq([[result, "web:1", nil, :question_answered]])
       expect(saved).to be_nil
       expect(inputs).to eq([session.id])
@@ -256,8 +308,8 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       answer = desk.answer(id: id, selected: ["Continue"], freeform: "  and also check X ", client_id: "web:1")
 
-      expect(answer).to include(selected: ["Continue"], freeform: "and also check X")
-      expect(answers.first.first).to include(selected: ["Continue"], freeform: "and also check X")
+      expect(answer.to_h).to include(selected: ["Continue"], freeform: "and also check X")
+      expect(answers.first.first.to_h).to include(selected: ["Continue"], freeform: "and also check X")
       expect(desk.pending).to be_nil
     end
 
@@ -266,7 +318,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       desk.answer(id: id, selected: ["Continue"], freeform: "and also", client_id: "cli:answer")
 
-      expect(answers.first.first).to include(freeform: "and also", by: "parent_agent")
+      expect(answers.first.first.to_h).to include(freeform: "and also", by: "parent_agent")
     end
 
     it "still takes Stop with a text" do
@@ -274,7 +326,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
 
-      expect(answers.first.first).to include(selected: ["Stop"], freeform: "enough")
+      expect(answers.first.first.to_h).to include(selected: ["Stop"], freeform: "enough")
     end
 
     it "can't be dismissed: a UI's dismiss raises, a cancel with no id leaves it" do
@@ -307,7 +359,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
       desk.answer(id: other, selected: ["Yes"])
       thread.join(2)
-      expect(box[:answer]).to include(selected: ["Yes"])
+      expect(box[:answer].to_h).to include(selected: ["Yes"])
       expect(reposts).to eq([nil])
     end
 

@@ -163,12 +163,14 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     let(:scopes) { %w[once session] }
 
     it "allows with the scope at the picked index" do
-      v = described_class.settle(ask, { selected_indices: [1], selected: ["x"] }, scopes)
+      answer = Samagotchi::QuestionAnswer.new(id: "q", selected: ["x"], selected_indices: [1])
+      v = described_class.settle(ask, answer, scopes)
       expect([v.decision, v.scope, v.decided_by]).to eq([:allow, "session", "user"])
     end
 
     it "denies on Deny, with the user's reason when given" do
-      v = described_class.settle(ask, { selected_indices: [2], freeform: "use a PR" }, scopes)
+      answer = Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], freeform: "use a PR", selected_indices: [2])
+      v = described_class.settle(ask, answer, scopes)
       expect(v).to be_deny
       expect(v.deny_text).to eq('The user declined this call: "use a PR". It needed approval (rule git-push, bundle guardrails): ' \
                                 "git push publishes commits. Do not retry it or reach the same result another way; " \
@@ -177,12 +179,14 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     end
 
     it "says the user declined, without a reason when none was given" do
-      v = described_class.settle(ask, { selected_indices: [2] }, scopes)
+      answer = Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], selected_indices: [2])
+      v = described_class.settle(ask, answer, scopes)
       expect(v.deny_text).to start_with("The user declined this call. It needed approval (rule git-push, bundle guardrails):")
     end
 
     it "denies a freeform-only answer with that reason" do
-      v = described_class.settle(ask, { selected_indices: [], freeform: "not now" }, scopes)
+      answer = Samagotchi::QuestionAnswer.new(id: "q", selected: [], freeform: "not now")
+      v = described_class.settle(ask, answer, scopes)
       expect(v.deny_text).to start_with('The user declined this call: "not now". It needed approval')
     end
 

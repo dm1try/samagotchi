@@ -1582,7 +1582,8 @@ module Samagotchi
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
     #   (as a Hash or as keywords)
     # @param watch [#call, nil] closes the question with the reason it returns
-    # @return [Hash, String] the answer, or {error:, …}
+    # @return [QuestionAnswer, Hash, String] the answer, or {error:, …}, or a
+    #   sync handler's text
     def open_question(fields = nil, watch: nil, **more)
       @question_desk.open_question({ **fields.to_h, **more }, watch: watch)
     end
@@ -1601,7 +1602,7 @@ module Samagotchi
     end
 
     # Answer the pending question (called from UI thread; QuestionDesk#answer).
-    # @return [Hash] normalized answer
+    # @return [QuestionAnswer]
     def answer_question(id:, selected:, freeform: nil, client_id: nil, parent_agent: nil)
       @question_desk.answer(id: id, selected: selected, freeform: freeform, client_id: client_id,
                             parent_agent: parent_agent)

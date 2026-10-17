@@ -94,7 +94,7 @@ RSpec.describe "approval relay, two hops" do
     top_engine.answer_question(id: card.id, selected: [card.options[0]])
 
     wait_until(timeout: 5) { leaf_answer.key?(:value) }
-    expect(leaf_answer[:value]).to include(selected: ["Allow once"], selected_indices: [0])
+    expect(leaf_answer[:value].to_h).to include(selected: ["Allow once"], selected_indices: [0])
     wait_until(timeout: 5) { top_outcome.key?(:value) && middle_outcome.key?(:value) }
     expect(middle_outcome[:value].line).to eq("approval relayed to your user: execute: git push --tags → allowed once")
     expect(top_outcome[:value].line).to eq("approval relayed to your user: execute: git push --tags → allowed once")

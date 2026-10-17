@@ -102,7 +102,8 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   def wait(timeout: 5) = Timeout.timeout(10) { described_class.call(child.id, peers: peers, timeout: timeout, owner_grace: 0.3) }
 
   def user_answers(label, index, freeform: nil)
-    relay.answer = ->(_fields, _watch) { { id: "pq", selected: [label], freeform: freeform, selected_indices: [index] } }
+    answer = Samagotchi::QuestionAnswer.new(id: "pq", selected: [label], freeform: freeform, selected_indices: [index])
+    relay.answer = ->(_fields, _watch) { answer }
   end
 
   it "keeps waiting on the follow-up's turn (DelegateCursor#turn) through the relay, and clears it at the end" do
@@ -159,7 +160,8 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
 
   it "records a parent agent's answer as one, so the child holds it to its own setting" do
     update(child, pending_question: approval)
-    relay.answer = ->(_f, _w) { { id: "pq", selected: ["Allow once"], selected_indices: [0], by: "parent_agent" } }
+    answer = Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0], by: "parent_agent")
+    relay.answer = ->(_f, _w) { answer }
     client.status = 403
     client.on_answered = -> { finish_child }
     expect(wait).to include("→ refused by the child (a parent agent may not allow it); it waits for the user there")
@@ -252,7 +254,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
       # The card is open longer than the whole timeout (the time passing is
       # the point, not a wait for something); the child replies at once.
       sleep(1.3)
-      { id: "pq", selected: ["Allow once"], selected_indices: [0] }
+      Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0])
     end
     client.on_answered = -> { finish_child }
     expect(wait(timeout: 1)).to include("status: answered\napproval relayed to your user: execute: git push → allowed once\n---\npushed")
@@ -275,7 +277,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     end
     relay.answer = lambda do |_f, _w|
       sleep(0.5)
-      { id: "pq", selected: ["Allow once"], selected_indices: [0] }
+      Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0])
     end
     client.on_answered = -> { update(child, pending_question: nil) }
 

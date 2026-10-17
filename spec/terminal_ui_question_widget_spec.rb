@@ -326,7 +326,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     it "takes a deny from piped input" do
       answer, = open_with("n; no thanks\n")
-      expect(answer).to include(selected_indices: [2], freeform: "no thanks")
+      expect(answer.to_h).to include(selected_indices: [2], freeform: "no thanks")
     end
   end
 

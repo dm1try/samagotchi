@@ -177,20 +177,23 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       response = relay("answered", relay_id, qid)
       expect(response.status).to eq(200)
       @threads.last.join(2)
-      expect(box[:answer]).to include(selected: ["Allow this call for the session"], selected_indices: [1])
-      expect(box[:answer]).not_to have_key(:by)
+      expect(box[:answer].to_h).to include(selected: ["Allow this call for the session"], selected_indices: [1])
+      expect(box[:answer].by).to be_nil
+      # The 200 body carries the answer object, not an inspect string.
+      expect(response.json["answer"]).to eq("id" => qid, "selected" => ["Allow this call for the session"],
+                                            "freeform" => nil, "selected_indices" => [1])
     end
 
     it "takes a deny with the user's reason, and a dismiss as a cancel (the approval denied)" do
       box, qid = ask_child
       expect(relay("answered", parent_relay(qid, indices: [2], freeform: "not on main"), qid).status).to eq(200)
       @threads.last.join(2)
-      expect(box[:answer]).to include(selected: ["Deny"], freeform: "not on main")
+      expect(box[:answer].to_h).to include(selected: ["Deny"], freeform: "not on main")
 
       box, qid = ask_child
       expect(relay("answered", parent_relay(qid, indices: [], dismissed: true), qid).status).to eq(200)
       @threads.last.join(2)
-      expect(box[:answer]).to include(error: "no answer")
+      expect(box[:answer].to_h).to include(error: "no answer")
     end
 
     it "holds a parent agent's answer to the child's own guardrails.parent_approvals (403, still open)" do
@@ -229,7 +232,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       relay_id = parent_relay(qid)
       child_engine.answer_question(id: qid, selected: ["Deny"])
       @threads.last.join(2)
-      expect(box[:answer]).to include(selected: ["Deny"])
+      expect(box[:answer].to_h).to include(selected: ["Deny"])
 
       _box, _next_qid = ask_child
       expect(relay("answered", relay_id, qid).status).to eq(409)

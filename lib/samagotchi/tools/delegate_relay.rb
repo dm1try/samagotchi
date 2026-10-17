@@ -5,6 +5,7 @@ require_relative "../bridge_client"
 require_relative "../relay"
 require_relative "../guardrails/approval"
 require_relative "../log"
+require_relative "../question_answer"
 
 module Samagotchi
   # Loaded on first use (a require cycle otherwise; see delegate.rb).
@@ -84,10 +85,10 @@ module Samagotchi
           return closed(answer[:reason].to_s, what, client: client, relay_id: relay_id, qid: qid)
         end
 
-        dismissed = !(answer.is_a?(Hash) && answer[:selected])
-        by = answer.is_a?(Hash) && answer[:by] == "parent_agent" ? "parent_agent" : "user"
-        desk.record(relay_id, selected_indices: dismissed ? [] : Array(answer[:selected_indices]),
-                              freeform: dismissed ? nil : answer[:freeform], dismissed: dismissed, by: by)
+        dismissed = !answer.is_a?(QuestionAnswer)
+        by = answer.is_a?(QuestionAnswer) && answer.parent_agent? ? "parent_agent" : "user"
+        desk.record(relay_id, selected_indices: dismissed ? [] : answer.selected_indices,
+                              freeform: dismissed ? nil : answer.freeform, dismissed: dismissed, by: by)
         response = post(client, "answered", relay_id, qid)
         Outcome.new(line: line(what, delivered(response, answer, fields, dismissed)), stopped: false)
       end
@@ -118,7 +119,7 @@ module Samagotchi
       # allowed once / allowed for its session / denied ("why")
       def verdict(answer, fields)
         scopes = Array(fields.dig(:approval, :scopes))
-        index = Array(answer[:selected_indices]).first
+        index = answer.selected_indices.first
         if index && index < scopes.size
           return case scopes[index].to_s
                  when "once" then "allowed once"
@@ -129,7 +130,7 @@ module Samagotchi
                  end
         end
 
-        why = answer[:freeform].to_s.strip
+        why = answer.freeform.to_s.strip
         why.empty? ? "denied" : "denied (#{why.inspect})"
       end
 
