@@ -1471,6 +1471,17 @@ Need to inspect the filesystem first.
       expect(kernel.reprefilled_tokens("other", prompt: 1_800, cached: 100)).to be_nil
     end
 
+    # Two hosts can serve the same bare model id: a host switch (the Engine
+    # points the kernel at the new host's client) is a model switch too, whose
+    # prefill SessionMetrics counts as the switch's, never as a re-prefill.
+    it "starts the re-prefill count over when the kernel's client (the host) changes, the bare model the same" do
+      expect(kernel.reprefilled_tokens("m", prompt: 5_000, cached: 4_000)).to be_nil
+      expect(kernel.reprefilled_tokens("m", prompt: 5_200, cached: 1_000)).to eq(4_000)
+      kernel.client = instance_double(Samagotchi::Client)
+      expect(kernel.reprefilled_tokens("m", prompt: 5_400, cached: 1_000)).to be_nil
+      expect(kernel.reprefilled_tokens("m", prompt: 5_600, cached: 1_000)).to eq(4_400)
+    end
+
     it "counts the generation's thinking in :generation_completed (Gemma: its thought blocks)" do
       events = []
       allow(client).to receive(:complete) do |_prompt, **kwargs|

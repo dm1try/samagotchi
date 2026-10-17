@@ -31,6 +31,8 @@ and commands may change between minor versions. How releases are made:
   manifest error>`, instead of first saying the bundle isn't installed and falling back to an install that then
   failed as `Install failed: …`.
 - `chi bundle upgrade` with no source prints the same usage line as `--help` (it left out `[--agent|--no-agent]`).
+- `/stats` no longer counts a `/model` switch to the same model id on another host as re-prefilled tokens too: that
+  prefill is the switch's (`switch prefill`) only.
 
 ## [0.75.0] - 2026-10-17
 

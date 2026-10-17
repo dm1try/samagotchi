@@ -333,6 +333,23 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       .to eq([nil, 3_000])
   end
 
+  # The Engine keeps one kernel and makes a chat loop per host: after a host
+  # switch to the same bare model (the kernel's client changed), the first
+  # request's prefill is the switch's, not a re-prefill.
+  it "counts no re-prefill on the first request after the kernel's client (the host) changed" do
+    usage = ->(prompt, cached) { Samagotchi::LLM::Usage.new(prompt_tokens: prompt, completion_tokens: 3, source: :server, cached_tokens: cached) }
+    kernel = test_kernel
+    first = described_class.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(10_000, 0))))
+    second = described_class.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(12_000, 7_000))))
+
+    first.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+    kernel.client = test_client
+    second.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+
+    expect(events.select { |event| event[:type] == :generation_completed }.map { |event| event[:reprefill_tokens] })
+      .to eq([nil, nil])
+  end
+
   it "names the provider the adapter reports in :generation_completed, nil when it says none" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1", provider: "Fireworks")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))
