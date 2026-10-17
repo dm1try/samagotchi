@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMPOSER_FOLD_KEY, composerFolded, foldButton, opensOnKey } from "../../../lib/samagotchi/web/public/composer_fold.js";
+import { COMPOSER_FOLD_KEY, composerFolded, foldButton, foldHandle, opensOnKey } from "../../../lib/samagotchi/web/public/composer_fold.js";
 
 test("COMPOSER_FOLD_KEY: the per-browser key", () => {
   assert.equal(COMPOSER_FOLD_KEY, "chi_composer_collapsed");
@@ -50,6 +50,31 @@ test("foldButton: a session waiting on the user marks the folded button and says
 test("foldButton: on a phone (an icon) the draft is in the title too", () => {
   assert.equal(foldButton({ folded: true, draft: true, waiting: false, phone: true }).title, "Show the message box · a draft is in it");
   assert.equal(foldButton({ folded: true, draft: false, waiting: false, phone: true }).title, "Show the message box");
+});
+
+test("foldHandle: expanded is unmarked, whatever the draft or a wait, and says how to hide", () => {
+  const h = foldHandle({ folded: false, draft: true, waiting: true });
+  assert.equal(h.folded, false);
+  assert.equal(h.draft, false);
+  assert.equal(h.waiting, false);
+  assert.match(h.title, /down to hide it/);
+  assert.deepEqual(Object.keys(h).sort(), ["draft", "folded", "title", "waiting"]);
+});
+
+test("foldHandle: folded says to pull up or click; a draft marks it and is in the title", () => {
+  assert.deepEqual(foldHandle({ folded: true, draft: false, waiting: false }),
+                   { title: "Pull up or click to write", folded: true, draft: false, waiting: false });
+  const d = foldHandle({ folded: true, draft: true, waiting: false });
+  assert.equal(d.draft, true);
+  assert.equal(d.title, "Pull up or click to write · a draft is in it");
+});
+
+test("foldHandle: a session waiting on the user marks the folded handle and says so", () => {
+  const w = foldHandle({ folded: true, draft: false, waiting: true });
+  assert.equal(w.waiting, true);
+  assert.equal(w.draft, false);
+  assert.equal(w.title, "Pull up or click to write · the session waits on you");
+  assert.equal(foldHandle({ folded: true, draft: true, waiting: true }).title, "Pull up or click to write · a draft is in it · the session waits on you");
 });
 
 const key = (k, extra = {}) => ({ key: k, defaultPrevented: false, isComposing: false, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });

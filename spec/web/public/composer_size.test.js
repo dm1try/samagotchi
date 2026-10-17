@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PROMPT_LINE_PX, gripFloor, promptHeight } from "../../../lib/samagotchi/web/public/composer_size.js";
+import { GRIP_FOLD_PX, GRIP_OPEN_PX, PROMPT_LINE_PX, gripFolds, gripFloor, promptHeight } from "../../../lib/samagotchi/web/public/composer_size.js";
 
 test("short text keeps the three-line minimum", () => {
   assert.deepEqual(promptHeight({ contentPx: 30, viewportPx: 800 }), { height: 72, scrolls: false });
@@ -38,4 +38,22 @@ test("in a session the cap stays 35% of the window", () => {
 test("in a session a grip drag can go down to one line", () => {
   assert.equal(gripFloor(10, 800, PROMPT_LINE_PX), 26);
   assert.equal(gripFloor(2000, 800, PROMPT_LINE_PX), 400);
+});
+
+test("the grip's thresholds: 32 px past the box folds, 8 px up from the handle opens", () => {
+  assert.equal(GRIP_FOLD_PX, 32);
+  assert.equal(GRIP_OPEN_PX, 8);
+});
+
+test("gripFolds: a drag asking 32 px or more under what the box shows folds", () => {
+  assert.equal(gripFolds({ requestedPx: 26, shownPx: 58 }), true);
+  assert.equal(gripFolds({ requestedPx: 26, shownPx: 57 }), false);
+  assert.equal(gripFolds({ requestedPx: -40, shownPx: 26 }), true);
+  assert.equal(gripFolds({ requestedPx: 200, shownPx: 26 }), false);
+});
+
+test("gripFolds: measured against the box shown, not the floor: a tall draft folds on a long pull only", () => {
+  // A 150 px box (its text): the floor may be at the minimum already.
+  assert.equal(gripFolds({ requestedPx: 130, shownPx: 150 }), false);
+  assert.equal(gripFolds({ requestedPx: 118, shownPx: 150 }), true);
 });
