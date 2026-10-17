@@ -9,52 +9,20 @@ require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/guardrails"
-require "support/plugin_handler_ctx"
+require "samagotchi/testing/rspec"
 require "support/test_kernel"
 
 # The shipped skills bundle (lib/samagotchi/bundles/skills): the plugin on its
-# own with a recording chi and ctx, then installed as a user would and loaded
+# own through the bundle test kit, then installed as a user would and loaded
 # by an Engine.
-RSpec.describe "The skills plugin" do
-  let(:source) { File.expand_path("../../../lib/samagotchi/bundles/skills/plugin.rb", __dir__) }
+RSpec.describe "The skills plugin", :bundle do
   let(:tmpdir) { Dir.mktmpdir("skills-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   # MemoryRead takes the project override as the project's own dir,
   # IndexUpdater as the base the project key goes under: this one path is
   # both.
   let(:project_dir) { Samagotchi::MemoryPaths.project_dir }
-  let(:ctx) do
-    Class.new do
-      prepend PluginHandlerCtx
-
-      attr_reader :notices, :sent, :data_dir
-      attr_accessor :session_id, :send_error
-
-      def initialize(data_dir)
-        @notices = []
-        @sent = []
-        @data_dir = data_dir
-        @session_id = "sess-1"
-      end
-
-      def notify(text, level: :info) = @notices << [text, level]
-      def log = Logger.new(nil)
-
-      def sessions
-        ctx = self
-        Object.new.tap do |sessions|
-          sessions.define_singleton_method(:send) do |id, text|
-            raise Samagotchi::Plugin::Sessions::Error, ctx.send_error if ctx.send_error
-
-            ctx.sent << [id, text]
-            id
-          end
-        end
-      end
-    end.new(File.join(tmpdir, "state"))
-  end
-
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+  let(:loaded) { [] }
 
   before do
     FileUtils.mkdir_p([system_dir, project_dir])
@@ -64,26 +32,33 @@ RSpec.describe "The skills plugin" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  # The plugin as the loader builds it: its file in a module of its own,
-  # register(chi) collecting the chi.on blocks and the command.
+  # The plugin as chi loads it, for session sess-1. Each call is a new load
+  # in the same sandbox (one data dir); what they all did is read together.
   def plugin(settings = {})
-    mod = Module.new
-    mod.module_eval(File.read(source), source)
-    hooks = Hash.new { |h, k| h[k] = [] }
-    commands = {}
-    chi = Object.new
-    chi.define_singleton_method(:on) { |event, priority: 100, &block| hooks[event] << block }
-    chi.define_singleton_method(:command) { |name, _description, anytime: false, &block| commands[name] = [block, anytime] }
-    mod::Plugin.new(settings).register(chi)
-    { hooks: hooks, commands: commands }
+    shipped_bundle("skills", settings: settings, host: { session_id: "sess-1" }).tap do |bundle|
+      bundle.sessions.on(:send) do |id, _text, delivery:|
+        raise Samagotchi::Plugin::Sessions::Error, @send_error if @send_error
+
+        id
+      end
+      loaded << bundle
+    end
   end
 
-  def skill(p, args = "") = p[:commands]["/skill"].first.call(args, ctx)
+  def skill(p, args = "") = p.command("/skill #{args}")
+
+  # The notices of every plugin loaded, as [text, level].
+  def notices = loaded.flat_map(&:notices).map { |notice| [notice.text, notice.level] }
+
+  # The texts every plugin steered.
+  def steered = loaded.flat_map(&:steers).map(&:text)
+
+  # What ctx.sessions.send took: [id, text] (nothing while sends fail).
+  def sent = @send_error ? [] : loaded.flat_map { |bundle| bundle.sessions.calls_to(:send).map(&:args) }
 
   it "is one anytime command, /skill, with a usage line" do
     p = plugin
-    expect(p[:commands].keys).to eq(["/skill"])
-    expect(p[:commands]["/skill"].last).to be(true)
+    expect(p.bundle_commands.map { |entry| [entry.name, entry.anytime] }).to eq([["/skill", true]])
     expect(skill(p)).to start_with("usage: /skill save")
     expect(skill(p, "frobnicate")).to start_with("usage: /skill save")
   end
@@ -127,16 +102,11 @@ RSpec.describe "The skills plugin" do
     fire(p, :after_tool_call, tool: tool, output: denied ? "[#{tool}] Error: denied" : "ok")
   end
 
-  def fire(p, type, **event)
-    p[:hooks][type].each do |block|
-      fired = { type: type, **event }
-      ctx.with_event(fired) { block.call(fired, ctx) }
-    end
-  end
+  def fire(p, type, **event) = p.fire(type, **event)
 
   def history(scope, name)
     key = scope == "system" ? "system" : "project-#{File.basename(project_dir)}"
-    Dir.glob(File.join(ctx.data_dir, "history", key, name, "*.md")).sort
+    Dir.glob(File.join(loaded.first.ctx.data_dir, "history", key, name, "*.md")).sort
   end
 
   describe "history and the change notice" do
@@ -147,11 +117,11 @@ RSpec.describe "The skills plugin" do
     it "says a new skill was saved, keeps the old version before an update and says what changed" do
       p = plugin
       write_call(p, "memory_write", path, v1)
-      expect(ctx.notices.last).to eq(["skill release saved (project, 5 lines)", :info])
+      expect(notices.last).to eq(["skill release saved (project, 5 lines)", :info])
       expect(history("project", "release")).to be_empty
 
       write_call(p, "edit", path, v2)
-      expect(ctx.notices.last.first)
+      expect(notices.last.first)
         .to eq("skill release updated (+2 −1): 1. Run `scripts/verify.sh`; stop if it fails. · /skill diff release")
       expect(history("project", "release").map { |f| File.read(f) }).to eq([v1])
     end
@@ -161,7 +131,7 @@ RSpec.describe "The skills plugin" do
       sys = File.join(system_dir, "skill_deploy.md")
       File.write(sys, "a\n")
       write_call(p, "write", sys, "a\n#{"x" * 100}\n")
-      expect(ctx.notices.last.first).to eq("skill deploy updated (+1 −0): #{"x" * 59}… · /skill diff deploy")
+      expect(notices.last.first).to eq("skill deploy updated (+1 −0): #{"x" * 59}… · /skill diff deploy")
       expect(history("system", "deploy").size).to eq(1)
     end
 
@@ -170,7 +140,7 @@ RSpec.describe "The skills plugin" do
       File.write(path, v1)
       write_call(p, "memory_write", path, v1, denied: true)
       write_call(p, "memory_write", path, v1)
-      expect(ctx.notices).to be_empty
+      expect(notices).to be_empty
       expect(history("project", "release").size).to eq(1)
     end
 
@@ -194,7 +164,7 @@ RSpec.describe "The skills plugin" do
       fire(p, :after_tool_call, tool: "execute", output: "exit: 0")
       fire(p, :after_tool_call, tool: "edit", output: "ok")
       fire(p, :after_tool_call, tool: "memory_read", output: "x")
-      expect(ctx.notices).to be_empty
+      expect(notices).to be_empty
     end
   end
 
@@ -258,19 +228,17 @@ RSpec.describe "The skills plugin" do
   end
 
   describe "the nudge" do
-    let(:steered) { [] }
     let(:path) { File.join(project_dir, "skill_release.md") }
-    let(:steer) { ->(text) { (steered << text) && true } }
 
     def read_skill(p, names = "skill_release")
       fire(p, :before_tool_call, call: { name: "memory_read", content: names }, targets: { paths: [] })
-      fire(p, :after_tool_call, tool: "memory_read", output: "# Skill: release", steer: steer)
+      fire(p, :after_tool_call, tool: "memory_read", output: "# Skill: release")
     end
 
     # +status+ as core sends it (ToolRunner: the call's activity status).
     def run(p, tool, output, status = "ok")
       fire(p, :before_tool_call, call: { name: tool }, targets: { paths: [] })
-      fire(p, :after_tool_call, tool: tool, output: output, status: status, steer: steer)
+      fire(p, :after_tool_call, tool: tool, output: output, status: status)
     end
 
     it "steers once at the first failing step after a skill was read, and notes it at the turn's end" do
@@ -286,20 +254,20 @@ RSpec.describe "The skills plugin" do
                              "date, fix it now: edit the step that changed in its file (or memory_write the whole " \
                              "skill) and add a Changelog line."])
       fire(p, :after_turn, status: "completed")
-      expect(ctx.notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :info]])
+      expect(notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :info]])
     end
 
     it "is quiet when the skill was updated, or nothing failed, and starts over each turn" do
       p = plugin
       fire(p, :before_turn, prompt: "go")
       fire(p, :before_tool_call, call: { name: "read" }, targets: { paths: [path] })
-      fire(p, :after_tool_call, tool: "read", output: "x", status: "ok", steer: steer)
+      fire(p, :after_tool_call, tool: "read", output: "x", status: "ok")
       run(p, "execute", "[execute]\nError: command timed out after 60s", "error")
       File.write(path, "old\n")
       write_call(p, "memory_write", path, "new\n")
       fire(p, :after_turn, status: "completed")
       expect(steered.size).to eq(1)
-      expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): new · /skill diff release"])
+      expect(notices.map(&:first)).to eq(["skill release updated (+1 −1): new · /skill diff release"])
 
       fire(p, :before_turn, prompt: "again")
       run(p, "execute", "[execute]\nexit: 2 (no output)", "error")
@@ -307,7 +275,7 @@ RSpec.describe "The skills plugin" do
       run(p, "execute", "[execute]\nexit: 0 (no output)")
       fire(p, :after_turn, status: "completed")
       expect(steered.size).to eq(1)
-      expect(ctx.notices.size).to eq(1)
+      expect(notices.size).to eq(1)
     end
 
     it "goes by the call's status, not its output: an Error: line in an ok call is no failure, a stopped wait neither" do
@@ -332,7 +300,7 @@ RSpec.describe "The skills plugin" do
       run(p, "read", "[read] Error: file not found", "error")
       expect(steered.size).to eq(1)
       fire(p, :after_turn, status: "completed")
-      expect(ctx.notices.map(&:first)).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
+      expect(notices.map(&:first)).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
     end
 
     describe "a skill changed by another tool (an execute's sed)" do
@@ -346,14 +314,14 @@ RSpec.describe "The skills plugin" do
         read_skill(p)
         File.write(path, v2) # the execute's own write
         run(p, "execute", "[execute]\nexit: 0 (no output)")
-        expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
+        expect(notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
                                                 "/skill diff release"])
         expect(history("project", "release").map { |f| File.read(f) }).to eq([v1])
 
         run(p, "execute", "[execute]\nexit: 1 (no output)")
         fire(p, :after_turn, status: "completed")
         expect(steered).to be_empty
-        expect(ctx.notices.size).to eq(1)
+        expect(notices.size).to eq(1)
         expect(skill(p, "diff release")).to include("-1. Run `scripts/check.sh`.", "+1. Run `scripts/verify.sh`.")
       end
 
@@ -365,7 +333,7 @@ RSpec.describe "The skills plugin" do
         run(p, "execute", "[execute]\nexit: 0 (no output)")
         File.write(path, v2)
         fire(p, :after_turn, status: "completed")
-        expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
+        expect(notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
                                                 "/skill diff release"])
       end
 
@@ -376,7 +344,7 @@ RSpec.describe "The skills plugin" do
         write_call(p, "edit", path, v2)
         File.write(path, "#{v2}2. Tag it.\n")
         run(p, "execute", "[execute]\nexit: 0 (no output)")
-        expect(ctx.notices.map(&:first)).to eq(
+        expect(notices.map(&:first)).to eq(
           ["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · /skill diff release",
            "skill release updated (+1 −0): 2. Tag it. · /skill diff release"]
         )
@@ -390,13 +358,13 @@ RSpec.describe "The skills plugin" do
         p = plugin
         fire(p, :before_tool_call, call: { name: "memory_read", content: "skill_release", scope: "system" },
                                    targets: { paths: [] })
-        fire(p, :after_tool_call, tool: "memory_read", output: v1, steer: steer)
+        fire(p, :after_tool_call, tool: "memory_read", output: v1)
         File.write(path, v2) # the project one: not what was read
         run(p, "execute", "[execute]\nexit: 0 (no output)")
-        expect(ctx.notices).to be_empty
+        expect(notices).to be_empty
         File.write(system_path, v2)
         run(p, "execute", "[execute]\nexit: 0 (no output)")
-        expect(ctx.notices.size).to eq(1)
+        expect(notices.size).to eq(1)
         expect(history("system", "release").size).to eq(1)
         expect(history("project", "release")).to be_empty
       end
@@ -409,7 +377,7 @@ RSpec.describe "The skills plugin" do
         run(p, "execute", "[execute]\nexit: 1 (no output)")
         fire(p, :after_turn, status: "completed")
         expect(steered).to be_empty
-        expect(ctx.notices.map(&:first)).to eq(["skill release saved (project, 4 lines)"])
+        expect(notices.map(&:first)).to eq(["skill release saved (project, 4 lines)"])
         expect(history("project", "release")).to be_empty
       end
 
@@ -432,7 +400,7 @@ RSpec.describe "The skills plugin" do
       run(p, "execute", "[execute]\nexit: 1 (no output)")
       fire(p, :after_turn, status: "completed")
       expect(steered).to be_empty
-      expect(ctx.notices).to be_empty
+      expect(notices).to be_empty
     end
   end
 
@@ -441,7 +409,7 @@ RSpec.describe "The skills plugin" do
       reply = skill(plugin, "save Release")
 
       expect(reply).to eq("asked chi to save skill release (project scope); a running turn gets it at its next step")
-      id, text = ctx.sent.first
+      id, text = sent.first
       expect(id).to eq("sess-1")
       expect(text).to start_with("Save what we just did as skill `skill_release` with memory_write, scope project.")
       expect(text).to include("finish it first", "no frontmatter", "# Skill: release", "## Steps", "## Gotchas",
@@ -451,23 +419,23 @@ RSpec.describe "The skills plugin" do
 
     it "lets the model pick the name, takes --system, and says so when the skill exists" do
       skill(plugin, "save --system")
-      expect(ctx.sent.last.last).to start_with("Save what we just did as a skill named `skill_<name>`")
-      expect(ctx.sent.last.last).to include("scope system.")
+      expect(sent.last.last).to start_with("Save what we just did as a skill named `skill_<name>`")
+      expect(sent.last.last).to include("scope system.")
 
       File.write(File.join(project_dir, "skill_deploy.md"), "# Skill: deploy\n")
       expect(skill(plugin, "save skill_deploy")).to include("skill deploy (project scope)")
-      expect(ctx.sent.last.last).to include("It exists already: read it, keep what still holds")
+      expect(sent.last.last).to include("It exists already: read it, keep what still holds")
     end
 
     it "refuses a bad name or extra words, sending nothing" do
       expect(skill(plugin, "save ../x")).to eq("/skill save: a name is letters, digits, _ and - (got ../x)")
       expect(skill(plugin, "save a b")).to start_with("usage:")
       expect(skill(plugin, "save --project")).to start_with("usage:")
-      expect(ctx.sent).to be_empty
+      expect(sent).to be_empty
     end
 
     it "shows the request for the user to send when the session takes no messages (a REPL)" do
-      ctx.send_error = "session sess-1 is open in a chi REPL, which takes no messages from others"
+      @send_error = "session sess-1 is open in a chi REPL, which takes no messages from others"
       reply = skill(plugin, "save release")
       expect(reply).to start_with("/skill save: session sess-1 is open in a chi REPL, which takes no messages from others. " \
                                   "Send this yourself:\n\nSave what we just did as skill `skill_release`")
