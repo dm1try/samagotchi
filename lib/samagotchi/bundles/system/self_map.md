@@ -48,7 +48,7 @@
   approvals (I see only how each was answered); see `docs/sessions.md` "Delegating".
 - Bundles extend me: memories, `hooks/*.rb`, `guardrails/*.yml`, and a `plugin.rb` that adds slash
   commands (`anytime:` ones run mid-turn), model tools (they can return images I see), hooks,
-  cards, side answers (`ask_model`),
+  cards, side answers (`ask_model`), HTTP calls (`ctx.http`),
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
   `mcp` (MCP server tools, searched with find_tools and called with call_tool; a screenshot comes as a picture; a toolkit's undeclared built-ins too, as chi/<tool>), `guardrails` (rules), `known-names` (typo guard), `source-links`
   (turns source refs like JIRA-123 in an answer into links in the web, and a one-line note), `loop-guard`

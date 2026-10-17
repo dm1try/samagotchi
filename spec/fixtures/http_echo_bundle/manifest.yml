@@ -1,0 +1,8 @@
+name: http-echo
+version: 1.0.0
+description: "Sample bundle that calls an HTTP service with ctx.http: the ask_service tool posts its question and returns the JSON answer"
+files: {}
+plugin:
+  file: plugin.rb
+  sha256: sha256:6cadbc3ed398badfa9c6233151412d944415d3b8dfaf547895f3d1305b827751
+trust_level: reviewed

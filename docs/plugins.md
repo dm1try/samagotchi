@@ -857,19 +857,34 @@ llama.cpp serves on a native host too.
 ## Calling services: `ctx.http`
 
 ```ruby
-chi.tool("classify", "Label a text as safe or risky", params: { text: "String" }) do |args, ctx|
-  res = ctx.http.post_json("http://127.0.0.1:9000/classify", { text: args[:text] },
-                           headers: { "Authorization" => "Bearer #{ENV["CLS_KEY"]}" }, timeout: 5)
-  if res.ok?
-    res.json["label"]
-  else
-    ctx.log.warn(:classify_failed, status: res.status)
-    "the classifier answered #{res.status}"
+# The http-echo bundle (spec fixture, docs/plugins.md "Calling services"):
+# one tool that asks a local HTTP service and returns its answer.
+class Plugin
+  def initialize(settings)
+    @url = settings.fetch("url", "http://127.0.0.1:9000/ask")
   end
-rescue Samagotchi::Plugin::HttpError => e
-  "the classifier is not reachable: #{e.message}"
+
+  def register(chi)
+    chi.tool "ask_service", "Ask the local question service and return its answer",
+             params: { question: { type: "string", description: "What to ask", required: true } },
+             label: "asking" do |args, ctx|
+      res = ctx.http.post_json(@url, { question: args["question"] }, timeout: 5)
+      if res.ok?
+        res.json["answer"].to_s
+      else
+        ctx.log.warn(:ask_failed, status: res.status)
+        "the service answered #{res.status}"
+      end
+    rescue Samagotchi::Plugin::HttpError => e
+      "the service is not reachable: #{e.message}"
+    end
+  end
 end
 ```
+
+That is `spec/fixtures/http_echo_bundle` (a spec keeps the two the same; `chi bundle install` it to try it): the
+shape to copy for a plugin that calls a service, tested on `bundle.http` as in
+`spec/samagotchi/plugin/http_echo_bundle_spec.rb`.
 
 One way to call an HTTP service, with timeouts, errors, logging and Stop handled the same for every bundle.
 `Net::HTTP` stays available for what this doesn't do (streaming, multipart, redirects, connection reuse).
