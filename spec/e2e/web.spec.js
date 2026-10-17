@@ -736,12 +736,39 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   // The title shows once: in the card while the strip shows it, in the top bar when hidden.
   const title = page.locator("#sessionTitle");
   await expect(title).toBeHidden();
-  await page.locator("#stripHide").click();
+  // The strip's grip (the handle on the chat's top edge) hides the strip with
+  // a drag up and shows it with a tap (the keyboard and the other directions
+  // are unit-tested).
+  const dragGrip = async (dy) => {
+    const box = await page.locator("#stripGrip").boundingBox(); // re-queried: the grip moves with the strip
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + dy, { steps: 8 });
+    await expect(page.locator("#stripGrip")).toHaveClass(/will-toggle/);
+    await page.mouse.up();
+  };
+  await dragGrip(-60);
+  await expect(page.locator("#topStrip")).toBeHidden();
+  await expect(page.locator("#stripGrip")).toHaveAttribute("aria-expanded", "false");
   await expect(title).toBeVisible();
   await expect(title).toHaveText("Say pong");
   await expect(page).toHaveTitle(/^Say pong · Chi/);
-  await page.locator("#stripShow").click();
+  await page.locator("#stripGrip").click();
+  await expect(page.locator("#topStrip")).toBeVisible();
+  await expect(page.locator("#stripGrip")).toHaveAttribute("aria-expanded", "true");
   await expect(title).toBeHidden();
+  // Hidden again (a tap), the status pill is the strip's other way out: a
+  // click opens All sessions, Esc leaves it.
+  await page.locator("#stripGrip").click();
+  await expect(page.locator("#topStrip")).toBeHidden();
+  await expect(page.locator("#stripStatus")).toBeVisible();
+  await page.locator("#stripStatus").click();
+  await expect(page.locator("#filter")).toBeVisible();
+  await expect(page).toHaveURL(/#\/sessions$/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#filter")).toBeHidden();
+  await page.locator("#stripGrip").click();
+  await expect(stripCard).toBeVisible();
 
   await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
   // Dragging the composer's grip down folds the composer away (the info bar
