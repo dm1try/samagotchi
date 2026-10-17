@@ -594,7 +594,7 @@ body.has-session #composer{flex-wrap:wrap;row-gap:6px}
 #composeGrip::after{content:"";position:absolute;left:50%;top:3px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--border-strong);opacity:0;transition:opacity .12s ease}
 #composeGrip:hover::after,#composeGrip:has(+ #composer:hover)::after,#composeGrip.dragging::after{opacity:1}
 #composeGrip:hover::after,#composeGrip.dragging::after{background:var(--accent)}
-/* Folded (app.js, composer_fold.js): the grip is the handle on the info bar's top edge, drawn always, wider so it reads as a control;
+/* Folded (composer_grip.js, composer_fold.js): the grip is the handle on the info bar's top edge, drawn always, wider so it reads as a control;
    draft = the accent, waiting = the attention colour; .will-fold = a drag past the fold threshold (released it hides the box). */
 body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin-left:-24px}
 #composeGrip.draft::after{background:var(--accent)}
@@ -866,7 +866,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
-/* The composer folded away (composer_fold.js, the fold button): the info bar is the page's bottom edge.
+/* The composer folded away (composer_grip.js: the grip dragged down, Enter/Space on it): the info bar is the page's bottom edge.
    Stop turn comes into the bar while folded and a turn runs. */
 body.has-session.composer-folded #composer,body.has-session.composer-folded #initRow{display:none}
 body.has-session.composer-folded #infoBar{border-top-color:transparent}
