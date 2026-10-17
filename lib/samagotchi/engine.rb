@@ -27,6 +27,7 @@ require_relative "tools/tool_index"
 require_relative "peer_sources"
 require_relative "session_commands"
 require_relative "plugin/loader"
+require_relative "plugin/card"
 require_relative "extension_load"
 require_relative "log"
 require_relative "log_subscriber"
@@ -784,9 +785,6 @@ module Samagotchi
 
     # ── Cards ───────────────────────────────────────────────────────────────
 
-    CARD_LEVELS = %i[info warn].freeze
-    MAX_CARD_ACTIONS = 6
-
     # Show a card in every UI (docs/plugins.md, Cards): {type: :card, id:,
     # source:, title:, body:, level:, actions: [{label:, command:}], in_turn:}.
     # Where it goes (held while the plugins load, an anytime command's, an
@@ -799,7 +797,7 @@ module Samagotchi
     # @return [String] the card's id
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
-      card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
+      card = Plugin::Card.build(source: source, title: title, body: body, actions: actions, level: level, id: id)
       @event_routes.route(card, **EventRoutes::CARD_MARKS)
       card[:id]
     end
@@ -962,32 +960,6 @@ module Samagotchi
       held ? held << event : announce(event)
     end
     private :announce_or_hold
-
-    def build_card(source:, title:, body:, actions:, level:, id:)
-      title = title.to_s.strip
-      raise ArgumentError, "a card needs a title" if title.empty?
-
-      level = level.to_s.to_sym
-      raise ArgumentError, "card level must be one of #{CARD_LEVELS.join(", ")}" unless CARD_LEVELS.include?(level)
-
-      actions = Array(actions)
-      raise ArgumentError, "a card has at most #{MAX_CARD_ACTIONS} actions" if actions.size > MAX_CARD_ACTIONS
-
-      actions = actions.map do |action|
-        raise ArgumentError, "a card action is a Hash {label:, command:}" unless action.is_a?(Hash)
-
-        action = action.transform_keys(&:to_sym)
-        command = action[:command].to_s.strip
-        raise ArgumentError, "a card action needs a command" if command.empty? || command.include?("\n")
-
-        label = action[:label].to_s.strip
-        { label: label.empty? ? command : label, command: command }
-      end
-      id = id.to_s.strip
-      { type: :card, id: id.empty? ? SecureRandom.hex(4) : id, source: source.to_s, title: title, body: body.to_s,
-        level: level, actions: actions }
-    end
-    private :build_card
 
     # ── Model switching ────────────────────────────────────────────────────────
 
