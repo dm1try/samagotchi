@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-17
+
 ### Added
 
 - Web: dragging the message box's top-edge grip down folds the box away for room to read; the info bar stays at the
@@ -27,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   changed (a resume or respawn after memory or AGENTS.md edits, `/model`, `/thinking`, `/toolkit`) no longer fails the
   turn. chi asks again with Anthropic's binding controls (or without those thinking blocks), drops that thinking from
   the session, and `/stats` counts it as `thinking dropped`.
+
+Update with `chi update` (the system bundle 0.78.0), then restart `chi web`.
 
 ## [0.77.0] - 2026-10-17
 
@@ -3265,7 +3269,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.77.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.78.0...HEAD
+[0.78.0]: https://github.com/dm1try/samagotchi/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/dm1try/samagotchi/compare/v0.76.0...v0.77.0
 [0.76.0]: https://github.com/dm1try/samagotchi/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/dm1try/samagotchi/compare/v0.74.0...v0.75.0
