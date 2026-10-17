@@ -37,9 +37,10 @@ module Samagotchi
     # USD for one generation, OpenAI usage semantics: +prompt_tokens+ holds
     # the cached reads and the cache writes (OpenRouter keeps that for
     # Anthropic models), and reasoning is inside +completion_tokens+.
-    # llama.cpp's native timings.prompt_n leaves its cache_n out, so the
-    # uncached part is clamped at 0: an undercount, harmless because priced
-    # models are remote.
+    # llama.cpp's native stream ends with tokens_evaluated, the whole prompt
+    # (SessionMetrics keeps the largest count, so not timings.prompt_n,
+    # which leaves cache_n out); the uncached part is clamped at 0 for a
+    # report that has prompt_n alone.
     def cost(prompt_tokens:, cached_tokens:, cache_write_tokens:, completion_tokens:)
       uncached = (prompt_tokens - cached_tokens - cache_write_tokens).clamp(0..)
       ((uncached * input) + (cached_tokens * cache_read) + (cache_write_tokens * cache_write) +
