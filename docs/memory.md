@@ -226,6 +226,29 @@ for a file another bundle installed.
   installed)`); a plugin or script that is one fails the install. A tar, zip
   or git repo keeps links, and copying through one would install whatever
   file it points at (`~/.ssh/…`, an API key) as a memory the model reads.
+- **A bundle is its name and its source.** A bundle's name is its
+  manifest's `name:`, for every kind of source (a git URL too), and a
+  manifest can take any name, so the source decides who installs under it:
+  - `chi bundle install` of a source whose manifest names a bundle
+    installed from another source is refused, `--force` too (`btw is
+    installed from <source>; chi bundle upgrade <new source> switches its
+    source, or chi bundle uninstall btw first`);
+  - `chi bundle upgrade` may switch the source (a git URL and a local copy
+    of it are one bundle; an archive's file name carries its version), and
+    its output starts with `Source changes: <old> → <new>` (`--dry-run`
+    too);
+  - a name chi ships (`guardrails`, `btw`, `samagotchi-system`, …, in any
+    case) installs or upgrades only from chi's own copy (a dir in the
+    running chi's shipped bundles, not a fork's `lib/samagotchi/bundles/`),
+    unless `--force` (`guardrails is a bundle shipped with chi; <source>
+    isn't chi's copy of it`);
+  - a name that differs from an installed bundle's only in case is refused,
+    `--force` too (`BTW differs only in case from the installed btw`): on a
+    case-insensitive file system (macOS) it is that bundle's dir.
+
+  Sources compare as a git URL without its `#ref` (or a trailing `/` or
+  `.git`), a shipped bundle by its dir in any chi version, and a path with
+  symlinks resolved.
 - **The index says where a memory came from.** The `index.md` line of a file
   a bundle installed ends in `· from <bundle>`, before the description:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —

@@ -24,6 +24,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 |---|---|
 | `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
+| `SourceIdentity` (source.rb) | what a source is, for comparing two installs of one name: `shipped:<dir>` (any gem or checkout), `git:<url>` (no `#ref`, trailing `/` or `.git`), `path:<realpath>`; nil when it can't place one |
 | `PreparedSource` (source.rb) | one source normalized once (dir, owned, git commit): `BundleCommand` reads the bundle's name from its `manifest.yml` (the name for every kind of source, a git URL too) and hands it to the Installer (`prepared:`), so a source is cloned or extracted once per command |
 | `MemoryFiles` | which top-level `*.md` files of a bundle are its memories (`.select`: the `files:` list, else all but README/LICENSE and the like), `.unshipped` (listed, not shipped) and `.symlinks` (skipped: a symlink is never a memory) |
 | `Manifest` | parses/validates `manifest.yml` (YAML that doesn't parse or isn't a mapping is a `ValidationError` too; files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers) and writes it (`Manifest.write`, for Builder). It ignores `requires_chi_next`, a shipped bundle's release-time marker (`script/release/release_tools.rb`, docs/releasing.md) |
@@ -50,7 +51,14 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 `InstallError` after the memories are already copied.
 
 1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
-2. `resolve_target`: scope = CLI > manifest > `system`.
+2. `resolve_target`: scope = CLI > manifest > `system`; then `check_source` against the existing record
+   (`SourceIdentity`, source.rb): a name differing from an installed one only in case raises (`force` too); a
+   shipped name (any case) from a source that isn't a dir in the Installer's `shipped_dir:` (default `SHIPPED_DIR`;
+   ShippedUpdate, Profile and SystemBundle pass theirs) raises unless `force` (a recorded source is matched by the
+   `SHIPPED_SOURCE` path pattern instead, for older gems); a plain install
+   over a record from another source raises (`force` too); an upgrade may switch sources and sets
+   `#source_change` (the summary's first line, `Source changes: old → new`). A source `SourceIdentity` can't place
+   (an older record's relative path) never refuses.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
    README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
    classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`). A

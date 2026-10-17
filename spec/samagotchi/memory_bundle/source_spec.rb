@@ -204,7 +204,40 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer, ".shipped_bundle_dir"
       expect(described_class.shipped_bundle_dir("guardrails", cwd: cwd)).to be_nil
       expect(described_class.shipped_bundle_dir("./guardrails", cwd: "/")).to be_nil
       expect(described_class.shipped_bundle_dir("no-such-bundle", cwd: "/")).to be_nil
+      # Exact case only: on a case-insensitive file system BTW found btw's
+      # dir, and the record then named …/bundles/BTW.
+      expect(described_class.shipped_bundle_dir("BTW", cwd: "/")).to be_nil
       expect(described_class.shipped_bundle_dir("../bundles/system", cwd: "/")).to be_nil
     end
+  end
+end
+
+RSpec.describe Samagotchi::MemoryBundle::SourceIdentity do
+  def id(source) = described_class.of(source)&.key
+
+  it "takes a git URL without its #ref, a trailing slash or .git" do
+    expect([id("https://github.com/x/y.git#v1"), id("https://github.com/x/y/"), id("https://github.com/x/y")].uniq)
+      .to eq(["git:https://github.com/x/y"])
+    expect(id("git@github.com:x/y.git")).to eq("git:git@github.com:x/y")
+  end
+
+  it "takes a shipped dir by its name, in any gem or checkout" do
+    gem_dir = "/gems/samagotchi-0.23.0/lib/samagotchi/bundles/btw"
+    expect(id(gem_dir)).to eq(id("/src/samagotchi/lib/samagotchi/bundles/btw/"))
+    expect(described_class.of(gem_dir)).to be_shipped
+    expect(described_class.of("/x/btw")).not_to be_shipped
+  end
+
+  it "takes an absolute path with symlinks resolved" do
+    Dir.mktmpdir do |dir|
+      File.symlink(dir, "#{dir}-link")
+      expect(id("#{dir}-link")).to eq(id(dir))
+    ensure
+      FileUtils.rm_f("#{dir}-link")
+    end
+  end
+
+  it "can't place an empty source or a relative path (an older record's): nil" do
+    expect([id(nil), id(""), id("rel/bundle"), id("btw")]).to all(be_nil)
   end
 end

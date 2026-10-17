@@ -47,6 +47,14 @@ and commands may change between minor versions. How releases are made:
   normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
   bundle installed by URL before this under a repo name that differs from its manifest's: `chi bundle uninstall
   <repo name>` first, then install it again.
+- A bundle can no longer be replaced silently by another source whose manifest takes its name: `chi bundle install
+  <dir>` with `name: btw` deleted the installed btw's plugin and hooks and rewrote its record, while the summary said
+  `btw is already installed`. Now an install over a bundle from another source is refused, `--force` too (`btw is
+  installed from <source>; chi bundle upgrade <new source> switches its source, or chi bundle uninstall btw
+  first`); an upgrade may switch the source and its output starts with `Source changes: <old> → <new>`; a name
+  chi ships (`guardrails`, `samagotchi-system`, …, in any case) installs or upgrades only from chi's own copy unless
+  `--force`; and a name that differs from an installed bundle's only in case is refused (on macOS it is the same
+  dir). `chi bundle install BTW` no longer finds the shipped btw on a case-insensitive file system.
 - A bundle's memory that is a symlink is no longer installed: `chi bundle install` of a tar, zip, git repo or dir
   whose `notes.md` links to another file (`~/.ssh/…`, an API key) copied that file into the memories, where the
   model reads it. It is skipped with `notes.md is a symlink (not installed)`; a hook or guardrail rule that is a

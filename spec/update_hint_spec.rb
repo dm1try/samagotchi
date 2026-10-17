@@ -23,7 +23,8 @@ RSpec.describe Samagotchi::UpdateHint do
     FileUtils.cp_r(File.join(shipped, dir), dest)
     data = YAML.load_file(File.join(dest, "manifest.yml")).merge("version" => "0.0.1")
     File.write(File.join(dest, "manifest.yml"), YAML.dump(data))
-    Samagotchi::MemoryBundle::Installer.new(source: dest, name: data["name"], scope: "system").run
+    # The older chi installed it from its own shipped dir.
+    Samagotchi::MemoryBundle::Installer.new(source: dest, name: data["name"], scope: "system", shipped_dir: File.dirname(dest)).run
   end
 
   def show(version: "9.0.0") = described_class.show(io: io, env: env, version: version, helper: helper, shipped_dir: shipped)

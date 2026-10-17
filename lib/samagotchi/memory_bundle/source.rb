@@ -50,6 +50,10 @@ module Samagotchi
         return nil unless name.match?(/\A[A-Za-z0-9][A-Za-z0-9_-]*\z/)
         return nil if File.exist?(File.join(cwd, name))
 
+        # Dir.children, not File.file? alone: the name in its exact case
+        # (a case-insensitive file system finds btw's dir for BTW).
+        return nil unless File.directory?(SHIPPED_DIR) && Dir.children(SHIPPED_DIR).include?(name)
+
         dir = File.join(SHIPPED_DIR, name)
         File.file?(File.join(dir, "manifest.yml")) ? dir : nil
       end
@@ -157,6 +161,45 @@ module Samagotchi
       end
 
       private_class_method :normalize_zip, :normalize_tar, :clean_copy_of
+    end
+
+    # What a bundle's source is, for telling whether two installs of one
+    # name come from the same place (Installer: a bundle from elsewhere
+    # doesn't silently replace an installed one). key is
+    #   shipped:<dir>  a shipped dir (SHIPPED_SOURCE), in any gem or checkout,
+    #                  so `chi update` and a newer chi upgrade it
+    #   git:<url>      a git URL without its #ref, a trailing / or .git
+    #   path:<path>    an absolute path, symlinks resolved when it exists
+    # .of is nil for a source it can't place (empty, or a relative path an
+    # older record may hold): unknown never refuses.
+    SourceIdentity = Data.define(:key) do
+      def self.of(source)
+        s = source.to_s.strip
+        return nil if s.empty?
+
+        if SourceNormalizer.git_url?(s)
+          url = SourceNormalizer.strip_git_ref(s).first.sub(%r{/+\z}, "").delete_suffix(".git")
+          new(key: "git:#{url}")
+        elsif s.match?(SourceNormalizer::SHIPPED_SOURCE)
+          new(key: "shipped:#{File.basename(s.chomp("/"))}")
+        elsif s.start_with?("/")
+          new(key: "path:#{real(s)}")
+        end
+      end
+
+      # +source+ as a path:<realpath>, whatever it looks like.
+      def self.path(source) = new(key: "path:#{real(source.to_s)}")
+
+      def self.real(path)
+        File.realpath(path)
+      rescue SystemCallError
+        File.expand_path(path)
+      end
+      private_class_method :real
+
+      def shipped? = key.start_with?("shipped:")
+
+      def to_s = key
     end
 
     # A source normalized once to a local dir (SourceNormalizer.normalize):

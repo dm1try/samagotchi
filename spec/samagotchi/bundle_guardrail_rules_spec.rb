@@ -36,7 +36,10 @@ RSpec.describe "Bundle guardrail rule files" do
   end
 
   def write_bundle(name, rules, version: "1.0.0", requires_chi: nil)
-    src = File.join(tmpdir, "src_#{name}_#{rand(100_000)}")
+    # One dir per bundle: each version replaces the last (an install from
+    # another source is refused).
+    src = File.join(tmpdir, "src_#{name}")
+    FileUtils.rm_rf(src)
     FileUtils.mkdir_p(File.join(src, "guardrails"))
     File.write(File.join(src, "guide.md"), "# Guide\n")
     rules.each { |file, doc| File.write(File.join(src, "guardrails", file), YAML.dump(doc)) }

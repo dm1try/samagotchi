@@ -54,7 +54,9 @@ RSpec.describe Samagotchi::UpdateCommand do
     FileUtils.cp_r(File.join(shipped, "btw"), dest)
     data = YAML.load_file(File.join(dest, "manifest.yml")).merge("version" => version)
     File.write(File.join(dest, "manifest.yml"), YAML.dump(data))
-    Samagotchi::MemoryBundle::Installer.new(source: dest, name: "btw", scope: "system", strict: true).run
+    # The older chi installed it from its own shipped dir.
+    Samagotchi::MemoryBundle::Installer.new(source: dest, name: "btw", scope: "system", strict: true,
+                                            shipped_dir: File.dirname(dest)).run
   end
 
   def btw_version = Samagotchi::MemoryBundle::Provenance.new(name: "btw").read[:version]

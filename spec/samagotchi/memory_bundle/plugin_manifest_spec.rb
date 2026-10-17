@@ -220,7 +220,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
     it "has no hooks failure when the bundle has no hooks or this chi meets requires_chi" do
       install(write_source(requires_chi: ">= 99.0"))
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:hooks_requires_failure]).to be_nil
-      install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"), force: true)
+      install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"), force: true, upgrade: true)
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:hooks_requires_failure]).to be_nil
     end
 

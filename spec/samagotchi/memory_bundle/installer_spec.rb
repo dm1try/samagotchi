@@ -915,8 +915,146 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     it "drops the stored needs when a reinstall's manifest has none" do
       installer_for(source: fixture, name: "sample-needs", scope: "system").run
       plain = write_bundle(tmpdir, { "gh_helper.md" => "# gh helper\n" }, name: "sample-needs")
-      installer_for(source: plain, name: "sample-needs", scope: "system", force: true).run
+      described_class.new(source: plain, name: "sample-needs", scope: "system", force: true, upgrade: true).run
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "sample-needs").read).not_to have_key(:needs)
+    end
+  end
+
+  # A manifest can take any name; the source decides who may install under it.
+  describe "a bundle of the same name from another source" do
+    let(:plugin_fixture) { File.expand_path("../../fixtures/sample_plugin_bundle", __dir__) }
+    let(:record) { -> { Samagotchi::MemoryBundle::Provenance.new(name: "sample-plugin").read } }
+    let(:plugin_path) { File.join(bundles_dir, "sample-plugin", "plugin", "plugin.rb") }
+
+    def squatter(name: "sample-plugin", version: "9.9.9")
+      write_bundle(File.join(tmpdir, "squat"), { "evil_note.md" => "# evil\n" }, name: name, version: version)
+    end
+
+    def run(source, name: "sample-plugin", **opts)
+      described_class.new(source: source, name: name, scope: "system", strict: true, **opts).tap(&:run)
+    end
+
+    before { run(plugin_fixture) }
+
+    it "refuses a plain install, --force too, and leaves the plugin and the record as they were" do
+      src = squatter
+      [{}, { force: true }, { dry_run: true }].each do |opts|
+        expect { run(src, **opts) }.to raise_error(
+          described_class::InstallError,
+          "sample-plugin is installed from #{plugin_fixture}; `chi bundle upgrade #{src}` switches its source, " \
+          "or `chi bundle uninstall sample-plugin` first"
+        )
+      end
+      expect(File.exist?(plugin_path)).to be true
+      expect(record.call).to include(source: plugin_fixture, version: "1.0.0")
+      expect(File.exist?(File.join(system_memories_dir, "evil_note.md"))).to be false
+    end
+
+    it "lets an upgrade switch the source, and says so first in the summary (a dry run too)" do
+      src = squatter
+      dry = run(src, upgrade: true, dry_run: true)
+      expect(dry.summary.lines.first).to eq("Source changes: #{plugin_fixture} → #{src}\n")
+      expect(record.call[:source]).to eq(plugin_fixture)
+
+      up = run(src, upgrade: true)
+      expect(up.source_change).to eq([plugin_fixture, src])
+      expect(up.summary.lines.first).to eq("Source changes: #{plugin_fixture} → #{src}\n")
+      expect(record.call).to include(source: src, version: "9.9.9")
+      expect(File.exist?(plugin_path)).to be false
+    end
+
+    it "changes nothing for a reinstall or an upgrade from the same source" do
+      again = run(plugin_fixture)
+      expect(again.summary).to include("sample-plugin is already installed")
+      up = run(plugin_fixture, upgrade: true)
+      expect(up.source_change).to be_nil
+      expect(up.summary).not_to include("Source changes")
+    end
+
+    it "takes a git URL with another #ref, or an older record's relative path, as the same source" do
+      url = "https://example.com/x/sample-plugin.git"
+      prepared = lambda do
+        extract = File.join(tmpdir, "extract-#{rand(100_000)}")
+        FileUtils.cp_r(plugin_fixture, extract)
+        Samagotchi::MemoryBundle::PreparedSource.new(dir: extract, owned: true, commit: "abc")
+      end
+      run(url, upgrade: true, force: true, prepared: prepared.call)
+      expect(run("#{url}#v2", prepared: prepared.call).source_change).to be_nil
+      expect(run("#{url}/", upgrade: true, prepared: prepared.call).source_change).to be_nil
+
+      manifest = File.join(bundles_dir, "sample-plugin", "manifest.json")
+      File.write(manifest, JSON.generate(JSON.parse(File.read(manifest)).merge("source" => "./sample_plugin_bundle")))
+      expect { run(squatter) }.not_to raise_error
+    end
+  end
+
+  describe "a name chi ships" do
+    let(:shipped_btw) { File.join(Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR, "btw") }
+
+    def run(source, **opts)
+      described_class.new(source: source, name: "btw", scope: "system", strict: true, **opts).tap(&:run)
+    end
+
+    def fake_btw = write_bundle(File.join(tmpdir, "fake"), { "evil_note.md" => "# evil\n" }, name: "btw", version: "9.9.9")
+
+    it "is refused from a source that isn't chi's, installed or not, install or upgrade, unless --force" do
+      message = "btw is a bundle shipped with chi; #{fake_btw} isn't chi's copy of it (--force to install it anyway)"
+      expect { run(fake_btw) }.to raise_error(described_class::InstallError, message)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read).to be_nil
+
+      run(shipped_btw)
+      expect { run(fake_btw, upgrade: true) }.to raise_error(described_class::InstallError, message)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read[:source]).to eq(shipped_btw)
+
+      expect(run(fake_btw, upgrade: true, force: true).source_change).to eq([shipped_btw, fake_btw])
+    end
+
+    it "takes a fork's lib/samagotchi/bundles/btw (or an archive there) as not chi's copy" do
+      fork = File.join(tmpdir, "fork", "lib", "samagotchi", "bundles", "btw")
+      FileUtils.mkdir_p(File.dirname(fork))
+      FileUtils.cp_r(shipped_btw, fork)
+      expect { run(fork) }.to raise_error(described_class::InstallError, /\Abtw is a bundle shipped with chi; #{Regexp.escape(fork)} isn't/)
+      tar = File.join(File.dirname(fork), "btw.tar.gz")
+      expect(system("tar", "-czf", tar, "-C", fork, ".")).to be(true)
+      expect { run(tar) }.to raise_error(described_class::InstallError, /\Abtw is a bundle shipped with chi; #{Regexp.escape(tar)} isn't/)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read).to be_nil
+    end
+
+    # --force passes the shipped-name rule, not the plain-install one: a
+    # fork's dir looks like a shipped dir by its path, but isn't chi's btw.
+    it "a fork's lib/samagotchi/bundles/btw is another source than chi's btw, --force or not" do
+      fork = File.join(tmpdir, "fork", "lib", "samagotchi", "bundles", "btw")
+      FileUtils.mkdir_p(File.dirname(fork))
+      FileUtils.cp_r(shipped_btw, fork)
+      run(shipped_btw)
+
+      expect { run(fork, force: true) }.to raise_error(described_class::InstallError, /\Abtw is installed from #{Regexp.escape(shipped_btw)};/)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read[:source]).to eq(shipped_btw)
+      expect(run(fork, upgrade: true, force: true).summary.lines.first).to eq("Source changes: #{shipped_btw} → #{fork}\n")
+    end
+
+    # .bundles/BTW is .bundles/btw on a case-insensitive file system (macOS).
+    it "is a shipped name in any case, and a name differing from an installed one only in case is refused" do
+      upper = write_bundle(File.join(tmpdir, "upper"), { "evil_note.md" => "# evil\n" }, name: "BTW", version: "9.9.9")
+      install_upper = -> { described_class.new(source: upper, name: "BTW", scope: "system", strict: true, upgrade: true, force: true).run }
+      expect { described_class.new(source: upper, name: "BTW", scope: "system", strict: true).run }
+        .to raise_error(described_class::InstallError, "BTW is btw, a bundle shipped with chi; #{upper} isn't chi's copy of it " \
+                                                       "(--force to install it anyway)")
+
+      run(shipped_btw)
+      expect { install_upper.call }.to raise_error(described_class::InstallError, "BTW differs only in case from the installed btw")
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read).to include(source: shipped_btw)
+      expect(File.exist?(File.join(system_memories_dir, "evil_note.md"))).to be false
+    end
+
+    it "upgrades from chi's dir over a record of an older gem's, with no source change" do
+      run(shipped_btw)
+      manifest = File.join(bundles_dir, "btw", "manifest.json")
+      old = "/gems/samagotchi-0.23.0/lib/samagotchi/bundles/btw"
+      File.write(manifest, JSON.generate(JSON.parse(File.read(manifest)).merge("source" => old)))
+
+      expect(run(shipped_btw, upgrade: true).source_change).to be_nil
+      expect(run(shipped_btw).summary).to include("btw is already installed")
     end
   end
 

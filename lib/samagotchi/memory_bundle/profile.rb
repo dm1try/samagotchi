@@ -109,7 +109,7 @@ module Samagotchi
         return result.skipped[member] = failure if failure
         return result.installed << member if dry_run
 
-        Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true).run
+        Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true, shipped_dir: shipped_dir).run
         result.installed << member
       rescue StandardError => e
         result.failed[member] = e.message.lines.first.to_s.strip

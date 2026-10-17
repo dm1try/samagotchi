@@ -36,8 +36,13 @@ module Samagotchi
 
       # prepared: the source already normalized (a PreparedSource, which the
       # Installer then owns and cleans up as its own); nil normalizes source.
-      def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil)
+      # shipped_dir: the bundles this chi ships (a bundle of their names
+      # installs from a dir in it only, unless force); ShippedUpdate,
+      # Profile and SystemBundle pass the one they install from.
+      def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil,
+                     shipped_dir: SourceNormalizer::SHIPPED_DIR)
         @source = source
+        @shipped_dir = shipped_dir
         @prepared = prepared
         @name = name
         @scope = scope&.to_s&.strip&.downcase || ""
@@ -52,6 +57,10 @@ module Samagotchi
         @overlays = []
         @trash = Trash.new(name)
       end
+
+      # [recorded source, this source] when an upgrade switches the bundle's
+      # source (Installer#check_source), else nil.
+      attr_reader :source_change
 
       # Where an upgrade moved the files the bundle no longer ships (nil:
       # none moved).
@@ -81,6 +90,7 @@ module Samagotchi
         @file_descriptions = @manifest&.file_descriptions || {}
         @provenance = Provenance.new(name: @name)
         @existing = @provenance.record
+        check_source
         # A plain install over an installed bundle: summary points at upgrade.
         @reinstall = @existing && !@upgrade && !@force && !@dry_run
         install_memories
@@ -117,6 +127,7 @@ module Samagotchi
 
       def summary
         lines = []
+        lines << "Source changes: #{@source_change.join(" → ")}" if @source_change
         installed = @results.select { |_, r| r[:status].to_s == "installed" }.keys
         updated = @results.select { |_, r| r[:status].to_s == "updated" }.keys
         kept = @results.select { |_, r| %w[kept kept_pruned].include?(r[:status].to_s) }.keys
@@ -144,6 +155,82 @@ module Samagotchi
       end
 
       private
+
+      # Who may install under this name (a manifest can take any name: a
+      # repo calling itself guardrails). Sources compare by SourceIdentity
+      # (a shipped dir by name, in any gem or checkout; a git URL without
+      # #ref; a path resolved); one it can't place (an older record's
+      # relative path) never refuses.
+      #   - a name chi ships comes from a shipped dir only, unless --force
+      #     (install and upgrade): the plugin and hooks it replaces are chi's;
+      #   - a plain install over a bundle from another source is refused,
+      #     --force too (that overwrites files, it doesn't switch sources):
+      #     it would delete the plugin and hooks and rewrite the record;
+      #   - an upgrade may switch sources (a URL and a local copy of it are
+      #     one bundle, an archive's file name has its version), and
+      #     #source_change says so (the summary's first line).
+      def check_source
+        refuse_case_twin
+        refuse_shipped_name
+        now = incoming_identity
+        return if now.nil?
+
+        was = @existing && SourceIdentity.of(@existing.source)
+        return if was.nil? || was == now
+        return @source_change = [@existing.source, @source.to_s] if @upgrade
+
+        raise InstallError, "#{@name} is installed from #{@existing.source}; `chi bundle upgrade #{@source}` " \
+                            "switches its source, or `chi bundle uninstall #{@name}` first"
+      end
+
+      # A name that differs from an installed bundle's only in case is that
+      # bundle's dir on a case-insensitive file system (macOS): BTW would
+      # replace btw. Refused, --force too.
+      def refuse_case_twin
+        twin, = Provenance.each_installed.find { |name, _| name != @name && name.casecmp?(@name) }
+        raise InstallError, "#{@name} differs only in case from the installed #{twin}" if twin
+      end
+
+      # A shipped name (in any case) from anything but this chi's own
+      # shipped dir. A recorded source may be an older gem's (SourceIdentity
+      # matches the path); an incoming one must be a dir in SHIPPED_DIR, so
+      # a fork's lib/samagotchi/bundles/btw isn't chi's.
+      def refuse_shipped_name
+        return if @force || chi_copy?(@source)
+
+        shipped = shipped_names.find { |name| name.casecmp?(@name) }
+        return unless shipped
+
+        what = shipped == @name ? "#{@name} is a bundle shipped with chi" : "#{@name} is #{shipped}, a bundle shipped with chi"
+        raise InstallError, "#{what}; #{@source} isn't chi's copy of it (--force to install it anyway)"
+      end
+
+      # This source's SourceIdentity; one that looks shipped by its path (a
+      # fork's lib/samagotchi/bundles/btw) but isn't a dir in the shipped
+      # dir is its path, so it isn't taken for chi's btw. A recorded source
+      # keeps the path match (older gems).
+      def incoming_identity
+        identity = SourceIdentity.of(@source)
+        identity&.shipped? && !chi_copy?(@source) ? SourceIdentity.path(@source) : identity
+      end
+
+      # Whether +source+ is a dir in the shipped dir.
+      def chi_copy?(source)
+        path = File.realpath(source.to_s)
+        File.directory?(path) && File.dirname(path) == File.realpath(@shipped_dir)
+      rescue SystemCallError
+        false
+      end
+
+      # The names of the bundles shipped with chi (their manifests'),
+      # samagotchi-system and profiles included.
+      def shipped_names
+        Dir.glob(File.join(@shipped_dir, "*", "manifest.yml")).filter_map do |path|
+          Manifest.read(dir: File.dirname(path)).name
+        rescue Manifest::ValidationError
+          nil
+        end
+      end
 
       # The source normalized to a dir (@bundle_dir; an owned one, extracted
       # from git/zip/tar, is cleaned up after #run) and its manifest.yml

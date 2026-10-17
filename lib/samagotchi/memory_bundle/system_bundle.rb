@@ -141,7 +141,8 @@ module Samagotchi
           name: BUNDLE_NAME,
           scope: SCOPE,
           force: false,
-          strict: true
+          strict: true,
+          shipped_dir: File.dirname(GEM_BUNDLE_DIR)
         )
         installer.run
         result(:installed, to: to, warnings: installer.warnings)
@@ -182,7 +183,8 @@ module Samagotchi
       end
 
       def upgrade_installer
-        Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true)
+        Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true,
+                      shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
       private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present,
                            :upgrade_installer, :result, :conflicting

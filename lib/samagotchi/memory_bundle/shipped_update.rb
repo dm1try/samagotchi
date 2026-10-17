@@ -65,7 +65,8 @@ module Samagotchi
           next row unless row.status == :would_update
           next apply_profile(row) if row.adds
 
-          installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true)
+          installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true,
+                                    shipped_dir: File.dirname(row.source_dir))
           installer.run
           row.dup.tap do |r|
             r.status = :updated

@@ -40,8 +40,11 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     dest
   end
 
-  def install(source, name)
-    Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: "system", strict: true).run
+  def install(source, name, force: false)
+    # An old copy is installed as the older chi that shipped it did, from
+    # its own shipped dir.
+    Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: "system", strict: true, force: force,
+                                            shipped_dir: File.dirname(source)).run
   end
 
   def version_of(name) = Samagotchi::MemoryBundle::Provenance.new(name: name).read[:version]
@@ -121,7 +124,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   it "skips a same-named bundle that wasn't installed from chi" do
     zipped = File.join(tmp, "unpacked-btw")
     FileUtils.cp_r(old_copy("btw"), zipped)
-    install(zipped, "btw")
+    install(zipped, "btw", force: true) # a shipped name from elsewhere takes --force
     expect(described_class.plan.first).to have_attributes(status: :skipped, note: "not from chi", to: nil)
   end
 

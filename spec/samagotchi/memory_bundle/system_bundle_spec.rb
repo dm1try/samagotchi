@@ -57,7 +57,8 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     end
 
     def ship(version, identity)
-      dir = File.join(@tmp, "gem-#{version}")
+      # A gem's (or a checkout's) shipped dir: …/lib/samagotchi/bundles/system.
+      dir = File.join(@tmp, "gem-#{version}", "lib", "samagotchi", "bundles", "system")
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "identity.md"), identity)
       Samagotchi::MemoryBundle::Manifest.write(

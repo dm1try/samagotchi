@@ -183,9 +183,27 @@ RSpec.describe "chi bundle (CLI)" do
 
       expect(chi("upgrade", v1))
         .to eq(["Installed: a.md\n#{provenance_line("demo")}", "Bundle 'demo' not installed — falling back to install\n", 0])
-      expect(chi("upgrade", v2, "--dry-run")).to eq(["Fast-forward: a.md\n(dry-run: no changes written)\n", "", 0])
-      expect(chi("upgrade", v2)).to eq(["Updated: a.md\n#{provenance_line("demo")}", "", 0])
+      # v2 is another dir: the upgrade switches the bundle's source, and says so.
+      change = "Source changes: #{v1} → #{v2}\n"
+      expect(chi("upgrade", v2, "--dry-run")).to eq(["#{change}Fast-forward: a.md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", v2)).to eq(["#{change}Updated: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(chi("upgrade", v2)).to eq(["Skipped: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
+    end
+
+    # A manifest can take an installed bundle's name: an install from another
+    # source is refused (--force too), an upgrade switches sources and says so.
+    it "refuses an install of a same-named bundle from another source, with --force too" do
+      mine = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
+      other = self.class.make_bundle(File.join(@root, "other"), name: "demo", version: "9.9.9", content: "evil\n")
+      chi("install", mine)
+
+      refusal = "Install failed: demo is installed from #{mine}; `chi bundle upgrade #{other}` switches its source, " \
+                "or `chi bundle uninstall demo` first\n"
+      expect(chi("install", other)).to eq(["", refusal, 1])
+      expect(chi("install", other, "--force")).to eq(["", refusal, 1])
+      expect(File.read(File.join(memories, "a.md"))).to eq("one\n")
+      expect(JSON.parse(File.read(File.join(memories, ".bundles", "demo", "manifest.json")))["source"]).to eq(mine)
     end
 
     # The source's manifest is read once, for the bundle's name: a missing or
@@ -232,7 +250,7 @@ RSpec.describe "chi bundle (CLI)" do
       record = JSON.parse(File.read(File.join(memories, ".bundles", "other-name", "manifest.json")))
       expect(record.values_at("source", "source_commit")).to eq([url, `git -C #{repo} rev-parse HEAD`.strip])
       expect(chi("upgrade", url, "--dry-run")).to eq(["Skipped: a.md\n(dry-run: no changes written)\n", "", 0])
-      expect(chi("upgrade", copy)).to eq(["Updated: a.md\n#{provenance_line("other-name")}", "", 0])
+      expect(chi("upgrade", copy)).to eq(["Source changes: #{url} → #{copy}\nUpdated: a.md\n#{provenance_line("other-name")}", "", 0])
       expect(Dir.children(File.join(memories, ".bundles"))).to eq(["other-name"])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
@@ -445,9 +463,10 @@ Hooks removed: 1\n\z})
     before do
       @root = self.class.sandbox
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
-      @v3 = self.class.make_bundle(File.join(@root, "b3"), name: "demo", version: "3.0.0", content: "three\n")
       chi("install", v1)
       File.write(File.join(memories, "a.md"), "edited\n")
+      # The next version, in the same dir (an upgrade from elsewhere also says "Source changes:").
+      @v3 = self.class.make_bundle(v1, name: "demo", version: "3.0.0", content: "three\n")
     end
 
     after { FileUtils.rm_rf(@root) }
