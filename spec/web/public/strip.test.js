@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STRIP_HIDE_PX, SHORT_WINDOW_QUERY, stripAutoHidden, stripColumns, stripGripAction, stripGripTitle, stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
+import { STRIP_HIDE_PX, SHORT_WINDOW_QUERY, stripAutoHidden, stripColumns, stripGripAction, stripGripTitle, stripStatusParts } from "../../../lib/samagotchi/web/public/strip.js";
 
 test("stripColumns: 3 cards up to about 1650 px of strip, then one per 372 px, at most 6", () => {
   assert.equal(stripColumns(600), 3);
@@ -17,28 +17,28 @@ test("stripColumns: a hidden strip (0 px) or a bad width still gets 3", () => {
   assert.equal(stripColumns(undefined), 3);
 });
 
-test("stripShowParts: the count of the list, singular for one, bare label for none", () => {
-  assert.deepEqual(stripShowParts([]), { count: "sessions", live: "", waiting: "" });
-  assert.deepEqual(stripShowParts(undefined), { count: "sessions", live: "", waiting: "" });
-  assert.deepEqual(stripShowParts([{ owner: null }]), { count: "1 session", live: "", waiting: "" });
-  assert.deepEqual(stripShowParts([{}, {}, {}, {}, {}]), { count: "5 sessions", live: "", waiting: "" });
+test("stripStatusParts: the count of the list, singular for one, bare label for none", () => {
+  assert.deepEqual(stripStatusParts([]), { count: "sessions", live: "", waiting: "" });
+  assert.deepEqual(stripStatusParts(undefined), { count: "sessions", live: "", waiting: "" });
+  assert.deepEqual(stripStatusParts([{ owner: null }]), { count: "1 session", live: "", waiting: "" });
+  assert.deepEqual(stripStatusParts([{}, {}, {}, {}, {}]), { count: "5 sessions", live: "", waiting: "" });
 });
 
-test("stripShowParts: counts the sessions a worker runs as live, not terminal ones", () => {
+test("stripStatusParts: counts the sessions a worker runs as live, not terminal ones", () => {
   const list = [{ owner: "worker" }, { owner: "tui" }, {}, { owner: "worker" }];
-  assert.deepEqual(stripShowParts(list), { count: "4 sessions", live: "2 live", waiting: "" });
-  assert.equal(stripShowParts([{ owner: "worker" }]).live, "1 live");
+  assert.deepEqual(stripStatusParts(list), { count: "4 sessions", live: "2 live", waiting: "" });
+  assert.equal(stripStatusParts([{ owner: "worker" }]).live, "1 live");
 });
 
-test("stripShowParts: counts the sessions that wait on the user (a question, an approval, a card)", () => {
+test("stripStatusParts: counts the sessions that wait on the user (a question, an approval, a card)", () => {
   const list = [
     { owner: "worker", pending_question: { id: "q1", kind: "question" } },
     { owner: "worker", pending_card: { id: "c1" } },
     { owner: "worker" },
     { pending_question: { id: null } },
   ];
-  assert.deepEqual(stripShowParts(list), { count: "4 sessions", live: "3 live", waiting: "2 waiting" });
-  assert.equal(stripShowParts([{ pending_card: { id: "c" } }]).waiting, "1 waiting");
+  assert.deepEqual(stripStatusParts(list), { count: "4 sessions", live: "3 live", waiting: "2 waiting" });
+  assert.equal(stripStatusParts([{ pending_card: { id: "c" } }]).waiting, "1 waiting");
 });
 
 test("stripAutoHidden: a short window hides the strip until the pill shows it; the user's hide always holds", () => {

@@ -983,7 +983,6 @@ body.has-session #notice{display:none}
 #newBtn .brand-new{font-size:12px;color:var(--text-muted);display:none}
 body.has-session #newBtn .brand-new{display:inline}
 #newBtn:hover .brand-new{color:var(--text-2)}
-.strip-side{display:flex;flex-direction:column;gap:6px;min-width:0}
 /* The scope chip: "<project> · all", or "all projects" and where a new session starts (start page only). */
 #scope{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted)}
 #scope[hidden]{display:none}
@@ -1006,11 +1005,9 @@ body.has-session #scope .scope-where{display:none}
   #newBtn .brand-new-word{display:none}
   #newBtn .brand-new,#scope .scope-back{white-space:nowrap}
   #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis}
-  #stripShow{padding:3px 8px}
+  #stripStatus{padding:3px 8px}
   #newBtn .brand-new{font-size:16px}
 }
-/* The ▾ glyph draws tiny at the pill's 11 px: at 20 px it is about as tall
-   as the pill text's capitals (phone and desktop alike). */
 /* The bell (notifications): quiet at the top bar's right end; filled in the accent when on, struck through when the browser blocks it. */
 /* The open session's title, when no strip card in sight shows it (session_title.js): the bar's middle, cut with an ellipsis; the whole first message in its tooltip. */
 #sessionTitle{flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1022,10 +1019,10 @@ body.has-session #scope .scope-where{display:none}
 @media(max-width:600px){
   #topBar{flex-wrap:wrap;row-gap:2px}
   #sessionTitle{flex-basis:100%;order:10;font-size:12px}
-  #scope,#stripShow{flex:1 1 0;min-width:0;max-width:max-content}
-  #stripShow{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
+  #scope,#stripStatus{flex:1 1 0;min-width:0;max-width:max-content}
+  #stripStatus{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
   #scope .scope-name{flex-shrink:1;min-width:0}
-  #stripShow:has(.live,.waiting) .pill-count{display:none}
+  #stripStatus:has(.live,.waiting) .pill-count{display:none}
 }
 #notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
 #notifyBtn[hidden]{display:none}
@@ -1036,7 +1033,6 @@ body.has-session #scope .scope-where{display:none}
 #notifyBtn[data-state="on"] .bell{fill:currentColor;fill-opacity:.22}
 #notifyBtn[data-state="denied"]{color:var(--text-faint)}
 #notifyBtn[data-state="denied"] .slash{display:inline}
-#stripShow .pill-arrow{font-size:20px;line-height:0;vertical-align:-3px}
 .card .folder{font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--text-3)}
 .card .parent{font-family:ui-monospace,monospace;white-space:nowrap;color:var(--text-3)}
 #infoBar .meta a.parent{text-decoration:none}
@@ -1106,22 +1102,17 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .scope-error{grid-column:1/-1;font-size:13px;color:var(--warn-text)}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
 .strip-toggle:hover{color:var(--text-2);border-color:var(--border-strong)}
-#stripShow{display:none;white-space:nowrap;flex-shrink:0}
-#stripShow .live{color:var(--ok-text);white-space:nowrap}
-#stripShow .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
-#stripShow .waiting{color:var(--warn-text);white-space:nowrap}
-#stripShow .waiting-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:4px;vertical-align:1px}
-#stripHide{align-self:flex-end;border:0;padding:0 2px;border-radius:4px}
-#stripHide:hover{text-decoration:underline;color:var(--text-2)}
-/* A narrow window's strip scrolls sideways, which puts its own "hide ▴" out of sight: the top bar has it instead, where the pill comes back, with a finger-sized target. */
-#stripHideTop{display:none;white-space:nowrap;flex-shrink:0}
+#stripStatus{display:none;white-space:nowrap;flex-shrink:0}
+#stripStatus .live{color:var(--ok-text);white-space:nowrap}
+#stripStatus .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
+#stripStatus .waiting{color:var(--warn-text);white-space:nowrap}
+#stripStatus .waiting-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:4px;vertical-align:1px}
+/* A narrow window's strip scrolls sideways, and the grip's own target there is thin: the status pill gets a finger-sized one. */
 @media(max-width:900px){
-  body:not(.strip-hidden):not(.all-view) #stripHideTop{display:block}
-  #stripHide{display:none}
-  #stripHideTop,#stripShow{min-height:30px;padding:4px 12px;font-size:12px}
+  #stripStatus{min-height:30px;padding:4px 12px;font-size:12px}
 }
-body.strip-hidden #stripShow{display:block}
-body.strip-hidden #topStrip, body.all-view #stripShow{display:none}
+body.strip-hidden #stripStatus{display:block}
+body.strip-hidden #topStrip, body.all-view #stripStatus{display:none}
 /* The strip's grip (strip_grip.js, app.js): the handle on the edge between the
    strip and the chat, the composer's twin (the shared .edge-grip look, its own
    10 px box). Its box is centred on #center's top edge: main's 16 px gap stands
@@ -1248,8 +1239,7 @@ a{color:var(--accent)}
   <div id="topBar">
     <button type="button" id="newBtn" class="brand" title="New session"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new session</span></span></button>
     <div id="scope" hidden></div>
-    <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions"><span class="pill-arrow" aria-hidden="true">▾</span> sessions</button>
-    <button type="button" class="strip-toggle" id="stripHideTop" title="Hide the latest sessions"><span class="pill-arrow" aria-hidden="true">▴</span> hide</button>
+    <button type="button" class="strip-toggle" id="stripStatus" title="All sessions, with search"><span class="pill-count">sessions</span></button>
     <span id="sessionTitle" hidden></span>
     <button type="button" id="notifyBtn" aria-label="Notifications" aria-pressed="false" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path class="bell" d="M8 1.75a4 4 0 0 0-4 4v2.6L2.75 10.6v.9h10.5v-.9L12 8.35v-2.6a4 4 0 0 0-4-4Z"/><path class="clapper" d="M6.5 13a1.5 1.5 0 0 0 3 0"/><path class="slash" d="M2.5 2.5l11 11"/></svg></button>
   </div>

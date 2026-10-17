@@ -5,7 +5,7 @@ import {
   CARD_FADE_MS, DOT_PULSE_MS, allCountText, allViewFamilies, cardAnimStyle, cardTemplate, enteringCards, matchesFilter, stripCountText, stripOrder, stripPillTemplate, stripTileTemplate,
 } from "../../../lib/samagotchi/web/public/lists_view.js";
 import { families } from "../../../lib/samagotchi/web/public/sessions_list.js";
-import { stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
+import { stripStatusParts } from "../../../lib/samagotchi/web/public/strip.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A builder's markup as the DOM holds it: a string parsed, a lit template
@@ -137,13 +137,13 @@ test("cardTemplate and stripTileTemplate: entering and anim", () => {
 
 test("stripTileTemplate and stripPillTemplate", () => {
   assert.equal(markupOf(stripTileTemplate("3 sessions")), canon(
-    `<div class="strip-side"><button type="button" class="card" id="allTile" title="All sessions, with search">All sessions →<span class="count">3 sessions</span></button><button type="button" class="strip-toggle" id="stripHide" title="Hide the latest sessions">hide ▴</button></div>`,
+    `<button type="button" class="card" id="allTile" title="All sessions, with search">All sessions →<span class="count">3 sessions</span></button>`,
   ));
   const list = [sess("a", { owner: "worker" }), sess("b", { pending_question: { id: "q", kind: "question" } })];
-  assert.equal(markupOf(stripPillTemplate(stripShowParts(list))), canon(
-    `<span class="pill-arrow" aria-hidden="true">▾</span> <span class="pill-count">2 sessions · </span><span class="live"><span class="live-dot" aria-hidden="true"></span>1 live</span> · <span class="waiting"><span class="waiting-dot" aria-hidden="true"></span>1 waiting</span>`,
+  assert.equal(markupOf(stripPillTemplate(stripStatusParts(list))), canon(
+    `<span class="pill-count">2 sessions · </span><span class="live"><span class="live-dot" aria-hidden="true"></span>1 live</span> · <span class="waiting"><span class="waiting-dot" aria-hidden="true"></span>1 waiting</span>`,
   ));
-  assert.equal(markupOf(stripPillTemplate(stripShowParts([]))), canon(`<span class="pill-arrow" aria-hidden="true">▾</span> <span class="pill-count">sessions</span>`));
+  assert.equal(markupOf(stripPillTemplate(stripStatusParts([]))), canon(`<span class="pill-count">sessions</span>`));
 });
 
 test("cardTemplate: a bare strip card", () => {

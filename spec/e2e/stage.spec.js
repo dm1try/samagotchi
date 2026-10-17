@@ -8,7 +8,7 @@ import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, s
 
 const stageEl = (page) => page.locator("#turnStage");
 // A shift's source in the top bar, or the session panel it pushes down.
-const TOP_BAR = /#topBar|#sessionTitle|#stripShow|#notifyBtn|section#center$/;
+const TOP_BAR = /#topBar|#sessionTitle|#stripStatus|#stripGrip|#notifyBtn|section#center$/;
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
 
 async function send(page, prompt) {
