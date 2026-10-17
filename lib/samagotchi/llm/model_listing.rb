@@ -53,7 +53,9 @@ module Samagotchi
 
       def init_model_listing(models_ttl)
         @models_ttl = models_ttl
+        @models_failure_ttl = [models_ttl, 60].min
         @models_mutex = Mutex.new
+        @models_failure_at = nil
         @models_failure_logged_at = nil
       end
 
@@ -96,17 +98,23 @@ module Samagotchi
       end
 
       def cached_models
+        now = monotonic
         @models_mutex.synchronize do
-          fresh = @models_at && (monotonic - @models_at) < @models_ttl
+          fresh = @models_at && (now - @models_at) < @models_ttl
           return @models if fresh
+
+          failed_recently = @models_failure_at && (now - @models_failure_at) < @models_failure_ttl
+          return [] if failed_recently
         end
         models = list_models
         @models_mutex.synchronize do
           @models = models
           @models_at = monotonic
+          @models_failure_at = nil
         end
         models
       rescue StandardError => e
+        @models_mutex.synchronize { @models_failure_at = monotonic }
         log_model_listing_failure(e)
         raise
       end
