@@ -57,6 +57,18 @@ module Samagotchi
         with(**sums)
       end
 
+      # These totals with a later segment's counts and newest speeds.
+      # @param later [Totals]
+      # @return [Totals]
+      def merge(later)
+        sums = RECORD_SUMS.keys.to_h { |key| [key, public_send(key) + later.public_send(key)] }
+        with(**sums, cancellations: cancellations + later.cancellations,
+                     token_sources: (token_sources | later.token_sources).freeze,
+                     last_decode_tps: later.last_decode_tps || last_decode_tps,
+                     tps_source: later.last_decode_tps ? later.tps_source : tps_source,
+                     last_prefill_tps: later.last_prefill_tps || last_prefill_tps)
+      end
+
       # These totals with the running turn's counters so far (its finished
       # generations, calls and iterations) added; the last speeds are the
       # newest a generation reported. nil: these totals.

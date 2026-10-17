@@ -8,6 +8,22 @@ require "samagotchi/token_usage"
 RSpec.describe Samagotchi::SessionMetrics do
   let(:metrics) { described_class.new }
 
+  describe Samagotchi::SessionMetrics::Totals do
+    it "merges counts, cancellations, token sources and the latest speeds" do
+      record_counts = described_class::RECORD_SUMS.values.to_h { |key| [key, 1] }
+      earlier = described_class.zero.add(record_counts.merge(status: "canceled", decode_tps: 11, tps_source: "estimate",
+                                                             prefill_tps: 101, token_source: "estimate"))
+      later = described_class.zero.add(record_counts.transform_values { 2 }.merge(status: "completed", decode_tps: 22,
+                                                                                  tps_source: "server", prefill_tps: 202,
+                                                                                  token_source: "server"))
+
+      expected = described_class.zero.with(**described_class::RECORD_SUMS.keys.to_h { |key| [key, 3] },
+                                           cancellations: 1, last_decode_tps: 22, tps_source: "server",
+                                           last_prefill_tps: 202, token_sources: %w[estimate server].freeze)
+      expect(earlier.merge(later)).to eq(expected)
+    end
+  end
+
   def feed(events)
     events.each { |e| metrics.call(e) }
   end

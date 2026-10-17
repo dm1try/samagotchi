@@ -100,14 +100,8 @@ module Samagotchi
       # This segment and a later one as one row (the folded older ones).
       # @return [ModelSegment]
       def merge(later)
-        sums = Totals::RECORD_SUMS.keys.to_h { |key| [key, totals.public_send(key) + later.totals.public_send(key)] }
-        merged = totals.with(**sums, cancellations: totals.cancellations + later.totals.cancellations,
-                                     token_sources: (totals.token_sources | later.totals.token_sources).freeze,
-                                     last_decode_tps: later.totals.last_decode_tps || totals.last_decode_tps,
-                                     tps_source: later.totals.last_decode_tps ? later.totals.tps_source : totals.tps_source,
-                                     last_prefill_tps: later.totals.last_prefill_tps || totals.last_prefill_tps)
         estimate = [prefill_cost_estimate, later.prefill_cost_estimate].compact
-        with(ended_at: later.ended_at, turns: turns + later.turns, totals: merged,
+        with(ended_at: later.ended_at, turns: turns + later.turns, totals: totals.merge(later.totals),
              prefill_tokens: prefill_tokens + later.prefill_tokens, prefill_cost_estimate: estimate.empty? ? nil : estimate.sum)
       end
     end
