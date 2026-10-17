@@ -65,20 +65,39 @@ module Samagotchi
         reason = bundle.error || unloadable_reason(file, bundle)
         return failed(bundle_name, basename, reason, failures) if reason
 
-        api = nil
-        plugin = instantiate(bundle_name, file, settings)
-        plugin_label = label(bundle_name, basename)
-        api = Api.new(bundle: bundle_name, label: plugin_label, registries: registries,
-                      context: registries.context_for&.call(bundle_name, settings, plugin_label))
-        plugin.register(api)
-        api.commit!
+        api = register_file(bundle_name, file, registries, settings: settings)
         Log.info(TAG, "plugin_loaded", bundle: bundle_name, file: basename, **api.counts)
         true
       rescue Exception => e # rubocop:disable Lint/RescueException -- a plugin's SyntaxError or exit must not stop chi
-        api&.abort!
         raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 
         failed(bundle_name, basename, "#{e.class}: #{e.message}", failures)
+      end
+
+      # Build +file+'s plugin with +settings+ and commit what its #register
+      # staged into +registries+ (no sha or requires_chi check: #load_bundle
+      # makes them; the test kit loads a bundle's source this way).
+      # @param namespace [Module, nil] the module the file is evaluated in
+      #   (default: a fresh one, #fresh_namespace)
+      # @param api_class [Class] what #register gets (Api; the test kit's
+      #   recording subclass)
+      # @yieldparam plugin [Object] the built plugin, before #register
+      # @return [Api] the committed Api (#counts)
+      # @raise [Exception] whatever the file, #register or #commit! raised,
+      #   after stopping the services it started; nothing is registered
+      def register_file(bundle_name, file, registries, settings: {}, namespace: nil, api_class: Api)
+        api = nil
+        plugin = instantiate(bundle_name, file, settings, namespace: namespace)
+        yield plugin if block_given?
+        plugin_label = label(bundle_name, File.basename(file))
+        api = api_class.new(bundle: bundle_name, label: plugin_label, registries: registries,
+                            context: registries.context_for&.call(bundle_name, settings, plugin_label))
+        plugin.register(api)
+        api.commit!
+        api
+      rescue Exception # rubocop:disable Lint/RescueException -- stop its services whatever it raised
+        api&.abort!
+        raise
       end
 
       # What a plugin's hooks, notices and failures are named by.
@@ -98,8 +117,8 @@ module Samagotchi
       # classes, not the last load's reopened) and build its class
       # (plugin.rb → Plugin; my_plugin.rb → MyPlugin) as hooks are built:
       # an initialize that takes an argument gets the settings.
-      def instantiate(bundle_name, file, settings)
-        namespace = fresh_namespace(bundle_name)
+      def instantiate(bundle_name, file, settings, namespace: nil)
+        namespace ||= fresh_namespace(bundle_name)
         namespace.module_eval(File.read(file), file, 1)
         klass = Hooks.class_for(file, namespace)
         plugin = Hooks.build_plugin(klass, settings)
