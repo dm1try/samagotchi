@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - Web: toasts stack instead of replacing one another, so later notices cannot hide a sticky error.
 - Web: the context chip and tooltip redraw at generation start when context-window state changes.
 - REPL: the status row clears the old context % after `/model` when the new window is unknown.
+- Web: a session's card drops the old model's context % right after `/model` (the new window's %, or none while it is
+  unknown), in every tab and after a reload, instead of keeping it until the next turn ends.
 - `chi bundle build` skips a symlinked memory (`notes.md is a symlink (not included)`) instead of copying the file it
   links to into the bundle.
 - source-links: terminal URL spans trim trailing punctuation and an unmatched `]`, matching the web.

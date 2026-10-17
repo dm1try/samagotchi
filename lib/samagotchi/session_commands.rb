@@ -592,8 +592,11 @@ module Samagotchi
       @engine.switch_model!(name, persist_default: persist_default)
       @default_model = @engine.default_model_name if persist_default
       persist_session_model
-      # The ctx % on the new model's window, before its first turn.
+      # The ctx % on the new model's window, before its first turn; saved
+      # too, so the session's card (the hub's summary reads analytics.json)
+      # stops showing the old model's % before a turn ends.
       @engine.announce_switched_context!
+      @engine.metrics.persist(state_dir: @engine.session_state_dir)
     end
 
     def persist_session_model

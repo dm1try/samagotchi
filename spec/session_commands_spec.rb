@@ -224,6 +224,16 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(engine).to have_received(:announce_switched_context!).once
     end
 
+    it "saves the metrics after the switch, so the session's card drops the old model's %" do
+      allow(engine).to receive(:announce_switched_context!).and_call_original
+      allow(engine.metrics).to receive(:persist).and_call_original
+
+      commands.run("/model alpha:gemma-small")
+
+      expect(engine).to have_received(:announce_switched_context!).ordered
+      expect(engine.metrics).to have_received(:persist).with(state_dir: engine.session_state_dir).ordered
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 
