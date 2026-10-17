@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../log"
+
 module Samagotchi
   module LLM
     # A model a host lists. Unknown fields are nil.
@@ -52,6 +54,7 @@ module Samagotchi
       def init_model_listing(models_ttl)
         @models_ttl = models_ttl
         @models_mutex = Mutex.new
+        @models_failure_logged_at = nil
       end
 
       # +model+'s entry in the cached list: its exact id, else any case.
@@ -103,6 +106,23 @@ module Samagotchi
           @models_at = monotonic
         end
         models
+      rescue StandardError => e
+        log_model_listing_failure(e)
+        raise
+      end
+
+      def log_model_listing_failure(error)
+        now = monotonic
+        should_log = @models_mutex.synchronize do
+          next false if @models_failure_logged_at && (now - @models_failure_logged_at) < @models_ttl
+
+          @models_failure_logged_at = now
+          true
+        end
+        return unless should_log
+
+        host = @host_name.to_s.empty? ? @base_url : @host_name
+        Log.warn(:model, "list_failed", host: host, error: error.class.name, msg: error.message.to_s[0, 500])
       end
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

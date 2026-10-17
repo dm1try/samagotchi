@@ -595,6 +595,17 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
         .with(headers: { "anthropic-version" => described_class::API_VERSION }).once
     end
 
+    it "logs a failed list once per models_ttl while context and image lookups stay nil" do
+      server.default("/v1/models", status: 500, json: { error: { message: "down" } })
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      expect(adapter.context_window(model: "m")).to be_nil
+      expect(adapter.image_input(model: "m")).to be_nil
+
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:model, "list_failed", hash_including(host: "msg")).once
+    end
+
     it "reads Splash's OpenAI-shaped list (context_length, input_modalities), and answers the window and vision" do
       server.default("/v1/models", json: fixture("splash_models.json"))
       id = "mlx-community/Qwen3.6-35B-A3B-4bit"
