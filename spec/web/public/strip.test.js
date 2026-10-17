@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SHORT_WINDOW_QUERY, stripAutoHidden, stripColumns, stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
+import { STRIP_HIDE_PX, SHORT_WINDOW_QUERY, stripAutoHidden, stripColumns, stripGripAction, stripGripTitle, stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
 
 test("stripColumns: 3 cards up to about 1650 px of strip, then one per 372 px, at most 6", () => {
   assert.equal(stripColumns(600), 3);
@@ -48,4 +48,36 @@ test("stripAutoHidden: a short window hides the strip until the pill shows it; t
   assert.equal(stripAutoHidden({ saved: true, short: false, shownWhileShort: false }), true);
   assert.equal(stripAutoHidden({ saved: true, short: true, shownWhileShort: true }), true);
   assert.match(SHORT_WINDOW_QUERY, /max-height: 700px/);
+});
+
+// The grip's gesture (strip_grip.js): on release, from press y.
+test("stripGripAction: a tap (|dy| < 8) toggles the strip either way", () => {
+  assert.equal(stripGripAction({ hidden: false, dy: 0 }), "hide");
+  assert.equal(stripGripAction({ hidden: true, dy: 0 }), "show");
+  assert.equal(stripGripAction({ hidden: false, dy: 7 }), "hide");
+  assert.equal(stripGripAction({ hidden: false, dy: -7 }), "hide");
+  assert.equal(stripGripAction({ hidden: true, dy: 7 }), "show");
+  assert.equal(stripGripAction({ hidden: true, dy: -7 }), "show");
+});
+
+test("stripGripAction: shown, a drag up past 32 hides it; 31 or a drag down does nothing", () => {
+  assert.equal(stripGripAction({ hidden: false, dy: -STRIP_HIDE_PX }), "hide");
+  assert.equal(stripGripAction({ hidden: false, dy: -60 }), "hide");
+  assert.equal(stripGripAction({ hidden: false, dy: -32.5 }), "hide"); // the boundary is compared as it is, not rounded
+  assert.equal(stripGripAction({ hidden: false, dy: STRIP_HIDE_PX }), null);
+  assert.equal(stripGripAction({ hidden: false, dy: -8 }), null); // a drag, not a tap, and short of the threshold
+  assert.equal(stripGripAction({ hidden: false, dy: -31 }), null);
+});
+
+test("stripGripAction: hidden, a drag down past 8 shows it; a drag up does nothing", () => {
+  assert.equal(stripGripAction({ hidden: true, dy: 8 }), "show");
+  assert.equal(stripGripAction({ hidden: true, dy: 200 }), "show");
+  assert.equal(stripGripAction({ hidden: true, dy: -32 }), null);
+});
+
+test("stripGripTitle: the resting title says both ways (drag and click); a drag past the threshold promises", () => {
+  assert.equal(stripGripTitle({ hidden: false, willToggle: false }), "Drag up or click to hide the latest sessions");
+  assert.equal(stripGripTitle({ hidden: true, willToggle: false }), "Drag down or click to show the latest sessions");
+  assert.equal(stripGripTitle({ hidden: false, willToggle: true }), "Release to hide the latest sessions");
+  assert.equal(stripGripTitle({ hidden: true, willToggle: true }), "Release to show the latest sessions");
 });
