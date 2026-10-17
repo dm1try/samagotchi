@@ -1,20 +1,19 @@
 # frozen_string_literal: true
 
-require "spec_helper"
 require "tmpdir"
 require "json"
-require "samagotchi/plugin/context"
+require "samagotchi/testing/rspec"
 require "samagotchi/context_sources"
-require_relative "../../support/fake_executables"
 
 # The codex-peer bundle's plugin (lib/samagotchi/bundles/codex-peer):
 # codex_send runs `codex queue --thread <uuid> --message <text>` for the
 # paired Codex session (the codex-inbox context's hint). Here `codex` is a
 # fake (CODEX=), which records its arguments; never the real Codex CLI.
-RSpec.describe "The codex-peer plugin" do
-  let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/codex-peer", __dir__) }
+RSpec.describe "The codex-peer plugin", :bundle do
+  let(:shipped) { File.expand_path("..", __dir__) }
   let(:tmpdir) { File.realpath(Dir.mktmpdir("codex-peer")) }
-  let(:state_home) { File.join(tmpdir, "state") }
+  # The sandbox's state home: ctx.data_dir and the sessions are under it.
+  let(:state_home) { File.dirname(sandbox.state_dir) }
   let(:state_dir) { File.join(state_home, "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
@@ -22,60 +21,29 @@ RSpec.describe "The codex-peer plugin" do
   end
   let(:session_id) { session.id }
   let(:short) { session.id[0, 8] }
-  let(:cards) { [] }
   let(:messages) { [] }
-  let(:host) do
-    Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                 messages: -> { messages }, card: ->(**card) { cards << card and card[:id] })
+  # The plugin as chi loads it, for this session.
+  let(:bundle) do
+    shipped_bundle("codex-peer", host: { session_id: session_id, cwd: tmpdir, state_dir: state_dir, messages: messages })
   end
-  let(:ctx) do
-    Samagotchi::Plugin::Context.new(bundle: "codex-peer", label: "plugin.rb (bundle codex-peer)", settings: {},
-                                    host: host, env: { "XDG_STATE_HOME" => state_home })
-  end
-  let(:namespace) { Module.new.tap { |n| n.module_eval(File.read(File.join(shipped, "plugin.rb")), File.join(shipped, "plugin.rb"), 1) } }
-  let(:plugin_class) { namespace.const_get(:Plugin) }
-  let(:plugin) { plugin_class.new({}) }
-  # What register declares: the tools and commands, by name.
-  let(:fake_chi) do
-    Class.new do
-      attr_reader :tools, :commands, :hooks, :annotations, :peer_sources
-
-      def initialize
-        @tools = {}
-        @commands = {}
-        @hooks = {}
-        @annotations = []
-        @peer_sources = []
-      end
-
-      def annotation(label, **opts) = @annotations << [label, opts]
-
-      def peer_source(name, label:) = @peer_sources << [name, label]
-
-      def tool(name, description, params:, label:, preview:, &block)
-        @tools[name] = { description: description, params: params, label: label, preview: preview, block: block }
-      end
-
-      def command(name, _description, anytime: false, &block)
-        @commands[name] = [anytime, block]
-      end
-
-      def on(event, priority: 100, &block)
-        @hooks[event] = [priority, block]
-      end
-    end.new.tap { |chi| plugin.register(chi) }
-  end
+  let(:plugin_class) { bundle.namespace::Plugin }
   let(:thread_id) { "019a1b2c-3d4e-7f80-9abc-def012345678" }
   let(:data_dir) { File.join(state_home, "samagotchi", "plugins", "codex-peer") }
-  let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
   let(:args_file) { File.join(tmpdir, "codex-args") }
   # A `codex` that keeps its arguments (NUL-separated) and says it queued.
   let(:codex_body) do
     "printf '%s\\0' \"$@\" > '#{args_file}'\necho \"Queued message 42 for thread $3.\"\n"
   end
-  let(:codex) { FakeExecutables.fake_executable(bin, "codex", codex_body) }
+  let(:codex) { sandbox.fake_executable("codex", codex_body) }
 
-  around { |example| with_env("CODEX" => codex) { example.run } }
+  # Every UI's events of the session: from the plugin, they are cards.
+  def cards = bundle.cards
+
+  # The hook events the plugin registered for.
+  def hooked_events = %i[session_start before_turn before_generation generation_progress after_generation
+                         before_tool_call after_tool_call after_turn session_end].select { |event| bundle.hook_names(event).any? }
+
+  before { ENV["CODEX"] = codex } # the sandbox puts ENV back
   after { FileUtils.rm_rf(tmpdir) }
 
   def own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
@@ -87,7 +55,7 @@ RSpec.describe "The codex-peer plugin" do
   end
 
   def send_part(**args)
-    fake_chi.tools.fetch("codex_send")[:block].call(args.transform_keys(&:to_s).freeze, ctx)
+    bundle.tool("codex_send", args)
   end
 
   # The arguments the fake codex was run with; nil when it wasn't.
@@ -97,13 +65,14 @@ RSpec.describe "The codex-peer plugin" do
   def queued_message = queued&.last
 
   it "declares codex_send whether or not Codex is paired, with a fixed label and the title as its preview" do
-    tool = fake_chi.tools.fetch("codex_send")
+    tool = bundle.tools["codex_send"]
+    params = tool.schema[:parameters][:properties]
 
-    expect(tool[:label]).to eq("sent to Codex")
-    expect(tool[:params].keys).to eq(%i[kind title text])
-    expect(tool[:params][:kind][:enum]).to eq(%w[validate context question])
-    expect(tool[:preview].call("kind" => "validate", "title" => "cache step 2")).to eq("validate: cache step 2")
-    expect(tool[:description]).to include("Only when the user asks", "codex-outbox")
+    expect(tool.label).to eq("sent to Codex")
+    expect(params.keys).to eq(%i[kind title text])
+    expect(params[:kind][:enum]).to eq(%w[validate context question])
+    expect(tool.preview.call({ name: "codex_send", args: { "kind" => "validate", "title" => "cache step 2" } })).to eq("validate: cache step 2")
+    expect(tool.schema[:description]).to include("Only when the user asks", "codex-outbox")
   end
 
   it "runs codex queue for the paired thread: the header, then a short text inline" do
@@ -166,17 +135,16 @@ RSpec.describe "The codex-peer plugin" do
     it "says how to point chi at Codex when codex isn't there" do
       pair
 
-      with_env("CODEX" => File.join(tmpdir, "no-codex")) do
-        expect(send_part(kind: "validate", title: "t", text: "x"))
-          .to start_with("Error: no Codex CLI at #{File.join(tmpdir, "no-codex")}: install Codex CLI, or set CODEX=")
-      end
+      ENV["CODEX"] = File.join(tmpdir, "no-codex")
+      expect(send_part(kind: "validate", title: "t", text: "x"))
+        .to start_with("Error: no Codex CLI at #{File.join(tmpdir, "no-codex")}: install Codex CLI, or set CODEX=")
     end
 
     it "says the Codex session is gone when codex queue has no record of the thread (Codex 0.162.1's error)" do
       pair
       error = "Error: failed to queue session message: thread/queue/add failed: failed to read thread: invalid " \
               "thread-store request: no rollout found for thread id #{thread_id} (code -32603)"
-      FakeExecutables.fake_executable(bin, "codex", "echo '#{error}' >&2\nexit 1")
+      sandbox.fake_executable("codex", "echo '#{error}' >&2\nexit 1")
 
       expect(send_part(kind: "validate", title: "t", text: "x"))
         .to eq("Error: that Codex session is gone (codex queue: #{error}): pair again from Codex")
@@ -184,7 +152,7 @@ RSpec.describe "The codex-peer plugin" do
 
     it "says an ephemeral Codex session can't take queued messages" do
       pair
-      FakeExecutables.fake_executable(bin, "codex", "echo 'Error: ephemeral thread does not support queued submissions' >&2\nexit 1")
+      sandbox.fake_executable("codex", "echo 'Error: ephemeral thread does not support queued submissions' >&2\nexit 1")
 
       expect(send_part(kind: "validate", title: "t", text: "x"))
         .to eq("Error: that Codex session is ephemeral and can't take queued messages: pair from an interactive Codex session")
@@ -192,7 +160,7 @@ RSpec.describe "The codex-peer plugin" do
 
     it "gives codex queue's first error line for any other failure, and records no send" do
       pair
-      FakeExecutables.fake_executable(bin, "codex", "echo 'boom: the daemon is down' >&2\necho more >&2\nexit 3")
+      sandbox.fake_executable("codex", "echo 'boom: the daemon is down' >&2\necho more >&2\nexit 3")
 
       expect(send_part(kind: "validate", title: "t", text: "x"))
         .to eq("Error: codex queue failed (exit 3): boom: the daemon is down")
@@ -204,7 +172,7 @@ RSpec.describe "The codex-peer plugin" do
       plugin_class.send(:remove_const, :QUEUE_SECONDS)
       plugin_class.const_set(:QUEUE_SECONDS, 0.3)
       pid_file = File.join(tmpdir, "sleep.pid")
-      FakeExecutables.fake_executable(bin, "codex", "sleep 30 &\necho $! > '#{pid_file}'\nwait")
+      sandbox.fake_executable("codex", "sleep 30 &\necho $! > '#{pid_file}'\nwait")
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = send_part(kind: "validate", title: "t", text: "x")
@@ -221,7 +189,7 @@ RSpec.describe "The codex-peer plugin" do
       plugin_class.send(:remove_const, :QUEUE_SECONDS)
       plugin_class.const_set(:QUEUE_SECONDS, 0.3)
       pid_file = File.join(tmpdir, "sleep.pid")
-      FakeExecutables.fake_executable(bin, "codex", "sleep 4 &\necho $! > '#{pid_file}'\necho queued\nexit 0")
+      sandbox.fake_executable("codex", "sleep 4 &\necho $! > '#{pid_file}'\necho queued\nexit 0")
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = send_part(kind: "validate", title: "t", text: "x")
@@ -258,15 +226,15 @@ RSpec.describe "The codex-peer plugin" do
       it "finds no Codex paired, in the tool and the card" do
         expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: no codex-inbox: pair from Codex")
 
-        fake_chi.commands.fetch("/codex").last.call("", ctx)
+        bundle.command("/codex")
         expect(cards.last[:title]).to eq("codex-peer: not paired")
       end
     end
   end
 
   describe "/codex" do
-    def run(args = "") = fake_chi.commands.fetch("/codex").last.call(args, ctx)
-    def hook(event, payload) = fake_chi.hooks.fetch(event).last.call(payload)
+    def run(args = "") = bundle.command("/codex #{args}")
+    def hook(event, payload) = bundle.fire(event, **payload)
 
     def review(text, summary)
       own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: "answers",
@@ -277,8 +245,8 @@ RSpec.describe "The codex-peer plugin" do
     end
 
     it "is an anytime command, and the plugin watches turns start and end" do
-      expect(fake_chi.commands.fetch("/codex").first).to be(true)
-      expect(fake_chi.hooks.keys).to contain_exactly(:before_turn, :after_turn)
+      expect(bundle.commands.lookup("/codex").anytime).to be(true)
+      expect(hooked_events).to contain_exactly(:before_turn, :after_turn)
     end
 
     describe "alone: the status card" do
@@ -318,8 +286,8 @@ RSpec.describe "The codex-peer plugin" do
     end
 
     it "adds a Confirm with Codex pill (a fill, the quote) and the codex-outbox peer source" do
-      expect(fake_chi.annotations).to eq([["Confirm with Codex", { command: "/codex validate" }]])
-      expect(fake_chi.peer_sources).to eq([%w[codex-outbox Codex]])
+      expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Codex", { command: "/codex validate" }]])
+      expect(bundle.peer_sources.names.map { |name| [name, bundle.peer_sources.label_for(name)] }).to eq([%w[codex-outbox Codex]])
     end
 
     it "titles a pill's quote by its first quoted line, not the From …: label" do
@@ -380,7 +348,7 @@ RSpec.describe "The codex-peer plugin" do
       let(:target) { File.join(codex_dir, "skills", "chi-peer", "SKILL.md") }
       let(:roots) { "writable_roots = [\"#{File.join(state_home, "samagotchi", "context")}\"]" }
 
-      around { |example| with_env("CODEX_HOME" => codex_dir) { example.run } }
+      before { ENV["CODEX_HOME"] = codex_dir }
 
       it "shows a card with the target, an Install action and the writable_roots line to add, writing nothing" do
         expect(run("install-skill")).to be_nil
@@ -447,7 +415,9 @@ RSpec.describe "The codex-peer plugin" do
 
       it "defaults to ~/.codex without CODEX_HOME" do
         home = File.join(tmpdir, "home")
-        with_env("CODEX_HOME" => nil, "HOME" => home) { run("install-skill") }
+        ENV.delete("CODEX_HOME")
+        ENV["HOME"] = home
+        run("install-skill")
 
         expect(cards.last[:body]).to include("target: `#{File.join(home, ".codex", "skills", "chi-peer", "SKILL.md")}`")
       end
