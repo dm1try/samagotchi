@@ -373,7 +373,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         })
 
         zip_path = File.join(tmpdir, "bundle.zip")
-        Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
+        system("zip", "-r", zip_path, ".", chdir: bundle_dir)
 
         installer = installer_for(source: zip_path, name: "zip-bundle", scope: "system")
         installer.run
@@ -386,7 +386,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           "identity.md" => "# Identity\n"
         })
         zip_path = File.join(tmpdir, "bundle.zip")
-        Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
+        system("zip", "-r", zip_path, ".", chdir: bundle_dir)
 
         normalized = nil
         allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_wrap_original do |original, *args|
@@ -408,7 +408,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         })
 
         tar_path = File.join(tmpdir, "bundle.tar.gz")
-        Dir.chdir(tmpdir) { system("tar", "-czf", tar_path, File.basename(bundle_dir)) }
+        system("tar", "-czf", tar_path, File.basename(bundle_dir), chdir: tmpdir)
 
         installer = installer_for(source: tar_path, name: "tar-bundle", scope: "system")
         installer.run
@@ -637,7 +637,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     # until the agent step is done.
     def zip_of(dir, path)
       FileUtils.rm_f(path)
-      Dir.chdir(dir) { system("zip", "-r", path, ".") }
+      system("zip", "-r", path, ".", chdir: dir)
       path
     end
 
@@ -1080,7 +1080,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       dir = linky_dir
       File.symlink(secret, File.join(dir, "notes.md"))
       tar = File.join(tmpdir, "linky.tar.gz")
-      Dir.chdir(tmpdir) { system("tar", "-czf", tar, "linky") }
+      system("tar", "-czf", tar, "linky", chdir: tmpdir)
 
       installer = installer_for(source: tar, name: "linky", scope: "system").tap(&:run)
 

@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
                                       "identity.md" => "# Identity\n",
                                       "commit_preferences.md" => "# Commit Preferences\n")
         zip_path = File.join(tmpdir, "bundle.zip")
-        Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
+        system("zip", "-r", zip_path, ".", chdir: bundle_dir)
         path, owned = described_class.normalize(zip_path)
         expect(File.exist?(File.join(path, "identity.md"))).to be true
         expect(File.exist?(File.join(path, "commit_preferences.md"))).to be true
@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
         bundle_dir = write_bundle_dir(tmpdir,
                                       "identity.md" => "# Identity\n")
         zip_path = File.join(tmpdir, "bundle2.zip")
-        Dir.chdir(tmpdir) { system("zip", "-r", zip_path, File.basename(bundle_dir)) }
+        system("zip", "-r", zip_path, File.basename(bundle_dir), chdir: tmpdir)
         path, owned = described_class.normalize(zip_path)
         expect(File.exist?(File.join(path, "identity.md"))).to be true
         expect(owned).to be true
@@ -80,7 +80,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
                                       "identity.md" => "# Identity\n",
                                       "commit_preferences.md" => "# Commit Preferences\n")
         tar_path = File.join(tmpdir, "bundle.tar.gz")
-        Dir.chdir(tmpdir) { system("tar", "-czf", tar_path, File.basename(bundle_dir)) }
+        system("tar", "-czf", tar_path, File.basename(bundle_dir), chdir: tmpdir)
         path, owned = described_class.normalize(tar_path)
         expect(File.exist?(File.join(path, "identity.md"))).to be true
         expect(File.exist?(File.join(path, "commit_preferences.md"))).to be true
@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
         bundle_dir = write_bundle_dir(tmpdir,
                                       "test.md" => "# Test\n")
         tgz_path = File.join(tmpdir, "bundle.tgz")
-        Dir.chdir(tmpdir) { system("tar", "-czf", tgz_path, File.basename(bundle_dir)) }
+        system("tar", "-czf", tgz_path, File.basename(bundle_dir), chdir: tmpdir)
         path, owned = described_class.normalize(tgz_path)
         expect(File.exist?(File.join(path, "test.md"))).to be true
         expect(owned).to be true
@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
     it "returns owned=true for archive sources" do
       bundle_dir = write_bundle_dir(tmpdir, "identity.md" => "# Identity\n")
       zip_path = File.join(tmpdir, "bundle.zip")
-      Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
+      system("zip", "-r", zip_path, ".", chdir: bundle_dir)
       _, owned = described_class.normalize(zip_path)
       expect(owned).to be true
     end

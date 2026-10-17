@@ -42,7 +42,7 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
 
     v2 = make_bundle(File.join(tmpdir, "v2"), name: "demo", version: "2.0.0", content: "two\n")
     zip = File.join(tmpdir, "v2.zip")
-    Dir.chdir(v2) { system("zip", "-r", zip, ".") }
+    system("zip", "-r", zip, ".", chdir: v2)
 
     seen = {}
     fake = Class.new do
@@ -74,7 +74,7 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
 
     v2 = make_bundle(File.join(tmpdir, "v2"), name: "demo", version: "2.0.0", content: "two\n")
     zip = File.join(tmpdir, "v2.zip")
-    Dir.chdir(v2) { system("zip", "-r", zip, ".") }
+    system("zip", "-r", zip, ".", chdir: v2)
 
     extracted = []
     allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_wrap_original do |original, *args|

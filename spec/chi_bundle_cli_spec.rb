@@ -286,7 +286,7 @@ RSpec.describe "chi bundle (CLI)" do
     it "extracts an archive source once per install or upgrade" do
       dir = self.class.make_bundle(File.join(@root, "zipped"), name: "zipped", version: "1.0.0", content: "one\n")
       zip = File.join(@root, "zipped.zip")
-      expect(Dir.chdir(dir) { system("zip", "-qr", zip, ".") }).to be(true)
+      expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
       allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_call_original
 
       expect(chi("upgrade", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "Bundle 'zipped' not installed — falling back to install\n", 0])
@@ -304,7 +304,7 @@ RSpec.describe "chi bundle (CLI)" do
       FileUtils.mkdir_p(broken)
       File.write(File.join(broken, "manifest.yml"), "version: 1.0.0\n")
       zip = File.join(@root, "nameless.zip")
-      expect(Dir.chdir(broken) { system("zip", "-qr", zip, ".") }).to be(true)
+      expect(system("zip", "-qr", zip, ".", chdir: broken)).to be(true)
       prepared = []
       record = ->(original, source) { original.call(source).tap { |p| prepared << p } }
       allow(Samagotchi::MemoryBundle::PreparedSource).to receive(:prepare).and_wrap_original(&record)
