@@ -140,6 +140,16 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
   assert.equal(bar.speed, null);
 });
 
+// The ctx tooltip's side requests line, from the open session's timing.
+test("the ctx tooltip carries the side requests line from the timing's side block", () => {
+  const side = { requests: 2, prompt_sum: 9100, completion_sum: 210, by_kind: { recap: { requests: 2 } } };
+  const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 }, side };
+  const bar = infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ctxPct: 50, ctxWindow: 1000 }, sessions: [],
+                             chain: { prev: null, next: null }, cardTitle: title, badge: null, restarting: false, running: false,
+                             now: Date.now() });
+  assert.ok(bar.ctx.tip.includes("\nside requests: 2 (recap) · 9.1k in / 210 out\n"), bar.ctx.tip);
+});
+
 // The ctx tooltip waits for the next request only right after a /model
 // whose new window didn't resolve (session_state.js ctxUnknownAfterSwitch).
 test("the ctx tooltip says the window is unknown, until the next request right after such a /model", () => {

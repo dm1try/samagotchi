@@ -154,6 +154,14 @@ test("cardTemplate: a bare strip card", () => {
   ));
 });
 
+// The card's ctx tooltip has the session's side requests' line (the list
+// row's saved side block).
+test("cardTemplate: the ctx tooltip carries the side requests line", () => {
+  const side = { requests: 1, prompt_sum: 300, completion_sum: 3, cost_sum: 0.0012, cost_estimate_sum: 0, by_kind: { btw: { requests: 1 } } };
+  const out = markupOf(cardTemplate(sess("0123456789", { ctx_pct: 12, tokens: { prompt_sum: 500, completion_sum: 50 }, side }), {}, { title: "T" }));
+  assert.ok(out.includes("side requests: 1 (btw) · 300 in / 3 out · $0.0012"));
+});
+
 test("cardTemplate: an all-sessions card with its tools, owner, recap, memories, folder and archived badge", () => {
   const s = sess("0123456789", {
     owner: "worker", archived: true, recap: "did it", used_memory_names: ["a", "b"], working_directory: "/w/other",

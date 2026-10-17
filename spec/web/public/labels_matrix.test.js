@@ -12,7 +12,8 @@ import { steerRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.j
 const steerRowHtml = (s) => markupOf(steerRowTemplate(s));
 import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
 import {
-  costText, memoryIndexText, modelSegmentCostText, modelSegmentLabel, modelSegmentPrefillText, modelSegmentTokensText, speedText,
+  costText, memoryIndexText, modelSegmentCostText, modelSegmentLabel, modelSegmentPrefillText, modelSegmentTokensText, sideRequestsText,
+  speedText,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
@@ -116,6 +117,12 @@ test("per-model rows per the shared labels matrix", () => {
       label: modelSegmentLabel(row), tokens: modelSegmentTokensText(row), cost: modelSegmentCostText(row),
       prefill: modelSegmentPrefillText(row),
     }, expected(entry), `row ${JSON.stringify(row)}`);
+  }
+});
+
+test("side requests per the shared labels matrix", () => {
+  for (const entry of cases("side_requests")) {
+    assert.equal(sideRequestsText(entry.side), expected(entry), `side ${JSON.stringify(entry.side)}`);
   }
 });
 

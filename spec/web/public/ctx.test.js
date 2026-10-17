@@ -4,6 +4,7 @@ import {
   extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxBarTip, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
   modelSegmentLabel,
   shortRef,
+  sideRequestsText,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -185,6 +186,31 @@ test("ctxBarText: the percent; ~ when the window is chi's default guess; ? when 
   assert.equal(ctxBarText(null, "server"), "ctx ?");
   assert.equal(ctxBarText(null, "default"), "ctx ?");
   assert.equal(ctxBarText(null, null), "ctx ?");
+});
+
+// The side requests (recap, /btw, ctx.ask_model): their own line after the
+// cost, never in the tokens or cost above it; kept when the session has no
+// turn tokens yet (both early returns).
+test("tokensTipText / ctxBarTip: the side requests line after the cost, apart from the totals", () => {
+  const side = { requests: 3, prompt_sum: 14210, completion_sum: 380, cost_sum: null, cost_estimate_sum: 0.0021,
+                 by_kind: { recap: { requests: 2 }, btw: { requests: 1 } } };
+  const line = "side requests: 3 (recap 2, btw 1) · 14.2k in / 380 out · ~$0.0021";
+  const memoryIndex = { system: { tokens: 1000, lines: 10 } };
+  const memoryLine = "memory index: ~1.0k tokens in this session's prompt (system 1.0k)";
+  const tokens = { prompt_sum: 300, completion_sum: 56, cost_sum: 0.42 };
+  assert.equal(tokensTipText(tokens, "ctx", memoryIndex, null, null, side),
+    `ctx\ntokens: in 300 · out 56\ncost: $0.42\n${line}\nthis session only, all requests\n${memoryLine}`);
+  assert.equal(tokensTipText(tokens, "ctx", null, null, null, null),
+    "ctx\ntokens: in 300 · out 56\ncost: $0.42\nthis session only, all requests");
+  // A side request before any turn's tokens: still there.
+  assert.equal(tokensTipText(null, "ctx", memoryIndex, null, null, side), `ctx\n${line}\n${memoryLine}`);
+  assert.equal(ctxBarTip(null, null, { pct: null }, null, side), `No request in this session yet\n${line}`);
+  assert.equal(ctxBarTip(tokens, null, { pct: 60 }, null, side), tokensTipText(tokens, undefined, null, { pct: 60 }, null, side));
+  assert.equal(ctxBarTip(tokens, null, { pct: null }, null, side),
+    tokensTipText(tokens, "Context window unknown", null, null, null, side));
+  // None, or 0 requests: no line.
+  assert.equal(ctxBarTip(null, null, { pct: null }, null, { requests: 0 }), "No request in this session yet");
+  assert.equal(sideRequestsText(null), "");
 });
 
 test("ctxBarTip: the window line when there's a number, why there's none when there's not", () => {

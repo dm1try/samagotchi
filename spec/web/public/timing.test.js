@@ -441,6 +441,16 @@ test("normalizeTiming / mergeTiming keep the memory indexes; a reply without the
   assert.deepEqual(mergeTiming(normalizeTiming({ memory_index: memoryIndex }), { turn_count: 0 }).timing.memoryIndex, memoryIndex);
 });
 
+test("normalizeTiming / mergeTiming keep the side requests' block; a reply without it keeps the page's", () => {
+  const side = { requests: 1, by_kind: { recap: { requests: 1 } } };
+  assert.deepEqual(normalizeTiming({ side }).side, side);
+  assert.equal(normalizeTiming({}).side, null);
+  assert.equal(normalizeTiming({ side: "x" }).side, null);
+  const newer = { requests: 2, by_kind: { recap: { requests: 1 }, btw: { requests: 1 } } };
+  assert.deepEqual(mergeTiming(normalizeTiming({ side }), { side: newer, turn_count: 0 }).timing.side, newer);
+  assert.deepEqual(mergeTiming(normalizeTiming({ side }), { turn_count: 0 }).timing.side, side);
+});
+
 test("normalizeTiming / mergeTiming keep the session's tokens; a reply without them keeps the page's", () => {
   const tokens = { prompt_sum: 10, completion_sum: 2, last_decode_tps: 50, tps_source: "server" };
   assert.deepEqual(normalizeTiming({ tokens }).tokens, tokens);

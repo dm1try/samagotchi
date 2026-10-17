@@ -89,7 +89,7 @@ test("every stream event type has its handler", () => {
     "generation_started", "guardrail_warning", "hook_notice", "input_merged", "llm_context_edited", "merged_input",
     "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
-    "reset", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
+    "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
     "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated",
   ]);
 });
@@ -325,6 +325,18 @@ test("hook_notice: one the page shows elsewhere (by its capabilities then) isn't
   page.capabilities = { source_links: true };
   handlers.hook_notice({ line: "links", fallback_for: "source_links" });
   assert.deepEqual(page.names(), ["turnDom.notice"]);
+});
+
+// A side request (recap, /btw) counted: the ctx tooltip's side line at once.
+test("side_usage puts the side block on the open session's timing and re-renders the info bar", () => {
+  const { page, handlers } = fakePage();
+  const side = { requests: 1, by_kind: { btw: { requests: 1 } } };
+  handlers.side_usage({ kind: "btw", side });
+  assert.deepEqual(page.current.timing.side, side);
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 1);
+  handlers.side_usage({ kind: "btw" });
+  assert.deepEqual(page.current.timing.side, side);
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 1);
 });
 
 test("recap_ready shows the recap only with no turn running", () => {
