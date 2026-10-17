@@ -3,7 +3,6 @@
 require "net/http"
 require "uri"
 require "ipaddr"
-require "nokogiri"
 require_relative "../version"
 
 module Samagotchi
@@ -127,6 +126,9 @@ module Samagotchi
 
       def self.extract_text_from_html(html)
         return "Error: empty HTML response" if html.nil? || html.empty?
+
+        # Load lazily so workers don't pay for Nokogiri on every start.
+        require "nokogiri"
 
         doc = Nokogiri::HTML(html)
 

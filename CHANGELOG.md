@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Workers load Nokogiri only when `web_fetch` first parses an HTML page (about 60 ms off worker start).
+
 ### Fixed
 
 - Web: toasts stack instead of replacing one another, so later notices cannot hide a sticky error.

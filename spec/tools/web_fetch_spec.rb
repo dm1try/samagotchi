@@ -1,9 +1,20 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/web_fetch"
+require "open3"
+require "rbconfig"
 
 RSpec.describe Samagotchi::Tools::WebFetch do
   subject(:web_fetch) { described_class }
+
+  it "does not load Nokogiri when a worker starts" do
+    lib = File.expand_path("../../lib", __dir__)
+    script = 'require "samagotchi/worker"; abort "nokogiri loaded" if defined?(Nokogiri)'
+
+    _out, err, status = Open3.capture3(RbConfig.ruby, "-I", lib, "-e", script)
+
+    expect(status).to be_success, err
+  end
 
   describe ".name" do
     it "returns 'web_fetch'" do
