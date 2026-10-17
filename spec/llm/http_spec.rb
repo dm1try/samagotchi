@@ -570,6 +570,30 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(http.fetch(models, Net::HTTP::Get.new(models), check_status: false).code).to eq("401")
     end
 
+    describe "a diagnosis header" do
+      let(:models) { URI("#{server.base_url}/models") }
+
+      def serve_400
+        server.default("/v1/models", status: 400, json: { error: { message: "bad" } }, headers: { "x-diag" => "d1" })
+      end
+
+      it "is kept as the ProviderError's diagnosis when the adapter names it" do
+        serve_400
+        named = described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                                    sleeper: ->(seconds) { sleeps << seconds }, diagnosis_header: "x-diag")
+
+        expect { named.fetch(models, Net::HTTP::Get.new(models)) }
+          .to raise_error(Samagotchi::LLM::ProviderError) { |error| expect(error.diagnosis).to eq("d1") }
+      end
+
+      it "is not read when no header is named" do
+        serve_400
+
+        expect { http.fetch(models, Net::HTTP::Get.new(models)) }
+          .to raise_error(Samagotchi::LLM::ProviderError) { |error| expect(error.diagnosis).to be_nil }
+      end
+    end
+
     it "makes one attempt with retries: false" do
       dead = URI("http://127.0.0.1:#{closed_port}/props")
 

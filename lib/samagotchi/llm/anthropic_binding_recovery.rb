@@ -27,6 +27,9 @@ module Samagotchi
       # The only drop the loop settles: a model_binding_mismatch (a /model
       # downgrade) keeps its blocks, a switch back reads them again.
       PREFIX_DROP = "prefix_binding_mismatch"
+      # The 400's undocumented diagnosis header, kept on the ProviderError and
+      # logged as `diagnosis`.
+      DIAGNOSIS_HEADER = "anthropic-thinking-prefix-mismatch"
 
       # One request's binding recovery (#advance): the step taken
       # (nil, :drop_block or :strip), the steps tried, where a strip starts

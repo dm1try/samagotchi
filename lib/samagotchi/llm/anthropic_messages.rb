@@ -116,7 +116,8 @@ module Samagotchi
         @binding = AnthropicBindingRecovery.new(refusals: @refusals, host_name: @host_name, budget_form: method(:budget_form?))
         @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
                            sleeper: sleeper, first_token_timeout: first_token_timeout,
-                           api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth))
+                           api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth),
+                           diagnosis_header: AnthropicBindingRecovery::DIAGNOSIS_HEADER)
       end
 
       # The same contract as OpenAIChat#chat; +messages+ are ChatLoop's

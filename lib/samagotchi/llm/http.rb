@@ -103,10 +103,13 @@ module Samagotchi
       #   show something (see #stream_lines); nil: no limit
       # @param api_key [ApiKey, nil] sent on every request; nil: no
       #   Authorization header (a local server)
+      # @param diagnosis_header [String, nil] a response header the adapter
+      #   wants kept on a ProviderError as its diagnosis; nil: none
       def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil, first_token_timeout: nil,
-                     api_key: nil)
+                     api_key: nil, diagnosis_header: nil)
         @label = label
         @api_key = api_key
+        @diagnosis_header = diagnosis_header
         @open_timeout = open_timeout
         @read_timeout = read_timeout
         @first_token_timeout = first_token_timeout&.positive? ? first_token_timeout : nil
@@ -418,7 +421,7 @@ module Samagotchi
 
         error = ProviderErrors.from_response(status: status, body: response.body.to_s, host: @label,
                                              retry_after: response["Retry-After"],
-                                             diagnosis: response["anthropic-thinking-prefix-mismatch"])
+                                             diagnosis: @diagnosis_header && response[@diagnosis_header])
         error.hint ||= @api_key ? @api_key.hint : ApiKey.missing_hint(@label) if error.is_a?(AuthError)
         raise error
       end
