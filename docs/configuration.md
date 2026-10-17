@@ -10,8 +10,8 @@ Chi reads its settings from three places; the first that sets a value wins:
 
 then the built-in default. [All settings](#all-settings) lists them.
 
-`chi bootstrap HOST[:PORT]` writes a first config for a model server, or adds
-it to this file as a `hosts:` entry (see [First setup](cli.md#first-setup)).
+`chi bootstrap HOST[:PORT]` writes a first config for a model server (llama.cpp, OpenAI-compatible or Anthropic
+Messages), or adds it to this file as a `hosts:` entry (see [First setup](cli.md#first-setup)).
 
 Default path:
 
@@ -342,6 +342,9 @@ hosts:
 ```
 
 `auth:` works on any host (`bearer` is the default everywhere but `api: anthropic`).
+
+`chi bootstrap https://api.anthropic.com --key-env ANTHROPIC_API_KEY` writes such an entry (a gateway: its url;
+`--api anthropic` / `--dialect fireworks` when the detection can't tell, see [First setup](cli.md#first-setup)).
 
 **Claude 5.x preserved thinking:** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) bind each thinking
 block to everything before it: the system prompt, the tools and the earlier messages. chi keeps the history

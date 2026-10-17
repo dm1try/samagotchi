@@ -69,10 +69,12 @@ Point chi at your model server; it works out the rest and writes
 chi bootstrap 192.168.1.29:8081          # llama.cpp on another machine
 chi bootstrap localhost:11434            # any OpenAI-compatible server
 chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
+chi bootstrap https://api.anthropic.com --key-env ANTHROPIC_API_KEY
 chi bootstrap                            # look on this machine's usual ports
 ```
 
-It finds out whether the server is llama.cpp or OpenAI-compatible, picks the
+It finds out whether the server is llama.cpp, OpenAI-compatible or Anthropic's
+Messages API, picks the
 model (or asks, when there are several), sends one test request and writes
 the config. With a config already there, it adds a `hosts:` entry and keeps
 the rest of the file. Then it installs the `core` bundles (loop-guard,

@@ -2,7 +2,7 @@
 
 ## Commands
 
-- `chi bootstrap [HOST[:PORT]|URL]` — first setup: find the model server (llama.cpp or OpenAI-compatible), pick the model, send a test request and write config.yml, or add a `hosts:` entry to an existing one (see [First setup](#first-setup))
+- `chi bootstrap [HOST[:PORT]|URL]` — first setup: find the model server (llama.cpp, OpenAI-compatible or Anthropic Messages), pick the model, send a test request and write config.yml, or add a `hosts:` entry to an existing one (see [First setup](#first-setup))
 - `chi` — start a session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it (see [Sharing a session](#sharing-a-session))
 - `chi -p "your prompt"` — run a prompt, then stay attached
 - `chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
@@ -33,12 +33,23 @@
 ```sh
 chi bootstrap 192.168.1.29:8081          # host:port (an IP or localhost: port 8080 when none; a domain: https 443, then http 80)
 chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
+chi bootstrap https://api.anthropic.com --key-env ANTHROPIC_API_KEY
 chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
 ```
 
 - **What it is.** llama.cpp's `/props` answering means the native API (no
   `api:`); otherwise `GET /v1/models` answering means an OpenAI-compatible
-  server (`api: openai`). A URL with a path is the API base as given
+  server (`api: openai`). Only when that list is refused with 400, 401 or 403
+  does chi ask Anthropic's way (`anthropic-version`, the key in `x-api-key`,
+  once more as Bearer after a 401/403): a list there means Anthropic's
+  Messages API (`api: anthropic`, the url without `/v1`; `auth: bearer` when
+  only Bearer worked). A server that serves both, such as Splash, stays
+  `api: openai`. Fireworks (its host, or model ids under `accounts/fireworks/`)
+  on the Messages API gets `dialect: fireworks`; direct Fireworks is found as
+  OpenAI-compatible first and stays `api: openai`, with a line saying
+  `--api anthropic` takes its Messages API instead. `--api openai|anthropic`
+  and `--dialect standard|fireworks` (which implies `--api anthropic`) skip the
+  detection. A URL with a path is the API base as given
   (`…/api/v1`); a domain without a scheme is tried over https, then http.
   Each request is tried once, with 5 s timeouts, so a refused port answers
   at once.
@@ -51,8 +62,11 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   (a terminal gets a numbered list, a script the ids and exit 2). A llama.cpp
   server also shows its context size and the prompt profile its chat template
   matches.
-- **The test.** One short chat request ("test: answered in 1.1 s"); `--no-test`
-  skips it. A failed test still writes the config, says so and exits 1.
+- **The test.** One short chat request ("test: answered in 1.1 s"; `POST /v1/messages`
+  on `api: anthropic`); `--no-test` skips it. A failed test still writes the config,
+  says so and exits 1. A server found as OpenAI-compatible whose `/chat/completions`
+  answers 404 gets the hint `try --api anthropic` (a gateway's Messages url that also
+  lists the OpenAI way).
 - **The file.** With no config.yml it writes a small commented one:
   `default.model` as `<host>:<model>` and one `hosts:` entry named `local`
   (localhost), `lan` (an IP) or after the domain (`openrouter`); `--name`
