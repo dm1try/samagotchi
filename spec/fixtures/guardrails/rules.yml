@@ -1,0 +1,23 @@
+# The corpus's own rules (spec/guardrails/cases_corpus_spec.rb). Change one only together with the
+# cases that name it.
+rules:
+  - id: package-publish
+    tool: shell
+    command: 'rake\s+release\b'
+    verdict: ask
+    reason: publishes a release
+  - id: git-push
+    tool: shell
+    command: '\bgit\s+push\b'
+    verdict: ask
+    reason: publishes commits
+  - id: rm-rf
+    tool: shell
+    command: '\brm\s+-[a-zA-Z]*r[a-zA-Z]*f'
+    verdict: ask
+    reason: removes recursively
+  - id: gem-push
+    tool: shell
+    command: '\bgem\s+push\b'
+    verdict: deny
+    reason: publishes a gem
