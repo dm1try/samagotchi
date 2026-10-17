@@ -15,6 +15,10 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - Web: the start page says "+ new session" (and "new session in …") instead of "+ new chat", matching the rest of the UI.
+- Web: the latest-sessions strip hides and shows with the same edge grip as the composer's (a drag up hides it, a drag
+  down or a click shows it, Enter/Space on the focused grip toggles, and the choice is remembered): the tile's `hide ▴`
+  and the top bar's `▴ hide` are gone, and while the strip is hidden its pill — now only its status — opens All
+  sessions in one click instead of showing the strip first.
 
 ## [0.79.0] - 2026-10-17
 
