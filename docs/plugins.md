@@ -20,7 +20,7 @@ my-bundle/
 
 ```yaml
 # manifest.yml
-name: my-bundle
+name: my-bundle               # the bundle's name for every source (a git URL too): a plain name, no / (not . or ..)
 version: 1.0.0
 plugin:
   file: plugin.rb
