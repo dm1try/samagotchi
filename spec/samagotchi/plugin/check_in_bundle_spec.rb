@@ -8,74 +8,33 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
-require "support/plugin_handler_ctx"
+require "samagotchi/testing/rspec"
 require "support/test_kernel"
 
 # The shipped check-in bundle (lib/samagotchi/bundles/check-in): the plugin
-# on its own with a recording chi and ctx, then installed as a user would
+# on its own through the bundle test kit, then installed as a user would
 # and loaded by an Engine that runs real turns.
-RSpec.describe "The check-in plugin" do
-  let(:source) { File.expand_path("../../../lib/samagotchi/bundles/check-in/plugin.rb", __dir__) }
-  let(:ctx) do
-    Class.new do
-      prepend PluginHandlerCtx
+RSpec.describe "The check-in plugin", :bundle do
+  # The plugin as chi loads it, for session s1. Each call is a new load (a
+  # worker's restart): the same sandbox, so the same data dir.
+  def plugin(settings = {}) = shipped_bundle("check-in", settings: settings, host: { session_id: "s1" })
 
-      attr_reader :notices, :cards, :steers, :stops
-      attr_accessor :running, :session_id, :data_dir
-
-      def initialize
-        @session_id = "s1"
-        @data_dir = Dir.mktmpdir("check-in-data-")
-        @notices = []
-        @cards = []
-        @steers = []
-        @stops = []
-        @running = true
-      end
-
-      def notify(text, level: :info) = @notices << [text, level]
-      def card(**card) = @cards << card
-      def steer(text) = @running && (@steers << text) && true
-      def stop_turn(reason) = @running && (@stops << reason) && true
-    end.new
-  end
-  let(:steered) { [] }
-
-  after { FileUtils.rm_rf(ctx.data_dir) }
-
-  # The plugin as the loader builds it: its file in a module of its own,
-  # register(chi) collecting the chi.on blocks and the command.
-  def plugin(settings = {})
-    mod = Module.new
-    mod.module_eval(File.read(source), source)
-    hooks = Hash.new { |h, k| h[k] = [] }
-    commands = {}
-    chi = Object.new
-    chi.define_singleton_method(:on) { |event, priority: 100, &block| hooks[event] << block }
-    chi.define_singleton_method(:command) { |name, _description, anytime: false, &block| commands[name] = [block, anytime] }
-    mod::Plugin.new(settings).register(chi)
-    { hooks: hooks, commands: commands }
-  end
-
-  def fire(p, type, **event)
-    p[:hooks][type].each do |block|
-      fired = { type: type, **event }
-      ctx.with_event(fired) { block.call(fired, ctx) }
-    end
-  end
+  def fire(p, type, **event) = p.fire(type, **event)
 
   def turn(p) = fire(p, :before_turn, prompt: "go")
 
   def tools(p, *names)
-    names.each do |name|
-      fire(p, :after_tool_call, tool: name, output: "x", steer: ->(text) { (steered << text) && true })
-    end
+    names.each { |name| fire(p, :after_tool_call, tool: name, output: "x") }
   end
 
-  def checkin(p, args = "") = p[:commands]["/checkin"].first.call(args, ctx)
+  def checkin(p, args = "") = p.command("/checkin #{args}")
+
+  def notices(p) = p.notices.map { |notice| [notice.text, notice.level] }
+
+  def steers(p) = p.steers.map(&:text)
 
   it "is an anytime command" do
-    expect(plugin[:commands]["/checkin"].last).to be(true)
+    expect(plugin.bundle_commands.map { |entry| [entry.name, entry.anytime] }).to eq([["/checkin", true]])
   end
 
   describe "mode ask (the default)" do
@@ -83,13 +42,13 @@ RSpec.describe "The check-in plugin" do
       p = plugin("after" => 3, "every" => 2)
       turn(p)
       tools(p, "read", "read")
-      expect(ctx.cards).to be_empty
+      expect(p.cards).to be_empty
 
       tools(p, "execute")
       tools(p, "read", "grep")
 
-      expect(ctx.cards.size).to eq(2)
-      first, second = ctx.cards
+      expect(p.cards.size).to eq(2)
+      first, second = p.cards
       expect(first[:title]).to eq("3 tool calls, no answer yet")
       expect(second[:title]).to eq("5 tool calls, no answer yet")
       expect(second[:id]).to eq(first[:id])
@@ -97,19 +56,19 @@ RSpec.describe "The check-in plugin" do
       expect(second[:actions]).to eq([{ label: "Nudge", command: "/checkin nudge" },
                                       { label: "Keep going", command: "/checkin later" },
                                       { label: "Stop", command: "/checkin stop" }])
-      expect(steered).to be_empty
+      expect(p.steers).to be_empty
     end
 
     it "doesn't count ignore_tools (task_wait, task_get, delegate_result by default)" do
       p = plugin("after" => 2)
       turn(p)
       tools(p, "task_wait", "task_get", "delegate_result", "read")
-      expect(ctx.cards).to be_empty
+      expect(p.cards).to be_empty
 
       p2 = plugin("after" => 2, "ignore_tools" => ["read"])
       turn(p2)
       tools(p2, "read", "read", "task_wait", "task_wait")
-      expect(ctx.cards.size).to eq(1)
+      expect(p2.cards.size).to eq(1)
     end
 
     it "replaces the open card with one without actions when the turn ends" do
@@ -118,9 +77,9 @@ RSpec.describe "The check-in plugin" do
       tools(p, "read")
       fire(p, :after_turn, status: "completed")
 
-      closed = ctx.cards.last
-      expect(closed).to include(id: ctx.cards.first[:id], title: "check-in", body: "The turn ended after 1 tool calls.")
-      expect(closed).not_to have_key(:actions)
+      closed = p.cards.last
+      expect(closed).to include(id: p.cards.first[:id], title: "check-in", body: "The turn ended after 1 tool calls.")
+      expect(closed[:actions]).to eq([])
     end
 
     it "closes a card a failed turn left open at the next before_turn, and starts counting from zero" do
@@ -129,9 +88,9 @@ RSpec.describe "The check-in plugin" do
       tools(p, "read", "read")
       turn(p)
 
-      expect(ctx.cards.last).to include(title: "check-in", body: "The turn ended after 2 tool calls.")
+      expect(p.cards.last).to include(title: "check-in", body: "The turn ended after 2 tool calls.")
       tools(p, "read")
-      expect(ctx.cards.size).to eq(2)
+      expect(p.cards.size).to eq(2)
       expect(checkin(p)).to end_with("this turn: 1 tool calls")
     end
 
@@ -140,7 +99,7 @@ RSpec.describe "The check-in plugin" do
       turn(p)
       tools(p, "read")
       fire(p, :after_turn, status: "completed")
-      expect(ctx.cards).to be_empty
+      expect(p.cards).to be_empty
     end
   end
 
@@ -150,84 +109,84 @@ RSpec.describe "The check-in plugin" do
     it "Nudge steers the message with the count and closes the card" do
       expect(checkin(p, "nudge")).to be_nil
 
-      expect(ctx.steers).to eq(["You've made 2 tool calls in this turn without answering. Say briefly what you've found " \
-                                "so far and what's left, then answer now or continue."])
-      expect(ctx.cards.last).to include(title: "check-in", body: "Nudged the model at 2 tool calls.")
+      expect(steers(p)).to eq(["You've made 2 tool calls in this turn without answering. Say briefly what you've found " \
+                               "so far and what's left, then answer now or continue."])
+      expect(p.cards.last).to include(title: "check-in", body: "Nudged the model at 2 tool calls.")
     end
 
     it "Nudge says at the turn's end that the nudge wasn't sent when the answer came first" do
       checkin(p, "nudge")
       fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, { role: "model", content: "done" }])
 
-      expect(ctx.cards.last).to include(id: ctx.cards.first[:id], title: "check-in", body: "The answer came first; nudge not sent.")
+      expect(p.cards.last).to include(id: p.cards.first[:id], title: "check-in", body: "The answer came first; nudge not sent.")
     end
 
     it "Nudge keeps its card when the steer joined the turn" do
       checkin(p, "nudge")
-      steer = { role: "user", kind: "steer", source: "check-in", content: ctx.steers.last }
+      steer = { role: "user", kind: "steer", source: "check-in", content: steers(p).last }
       fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, steer, { role: "model", content: "done" }])
 
-      expect(ctx.cards.last[:body]).to eq("Nudged the model at 2 tool calls.")
+      expect(p.cards.last[:body]).to eq("Nudged the model at 2 tool calls.")
     end
 
     it "Nudge says the turn ended first when it was stopped before the nudge joined" do
       checkin(p, "nudge")
       fire(p, :after_turn, status: "canceled", messages: [{ role: "user", content: "go" }])
 
-      expect(ctx.cards.last[:body]).to eq("The turn ended first; nudge not sent.")
+      expect(p.cards.last[:body]).to eq("The turn ended first; nudge not sent.")
     end
 
     it "Keep going closes the card and names the next check-in; the card comes back there" do
       expect(checkin(p, "later")).to be_nil
-      expect(ctx.cards.last[:body]).to eq("Kept going; the next check-in is at 5 tool calls.")
+      expect(p.cards.last[:body]).to eq("Kept going; the next check-in is at 5 tool calls.")
       expect(checkin(p, "later")).to eq("check-in: no check-in open")
 
       tools(p, "read", "read", "read")
-      expect(ctx.cards.last).to include(title: "5 tool calls, no answer yet", id: ctx.cards.first[:id])
+      expect(p.cards.last).to include(title: "5 tool calls, no answer yet", id: p.cards.first[:id])
     end
 
     it "Stop stops the turn and closes the card" do
       expect(checkin(p, "stop")).to be_nil
-      expect(ctx.stops).to eq(["stopped from check-in"])
-      expect(ctx.cards.last[:body]).to eq("Stopped the turn at 2 tool calls.")
+      expect(p.stops.map(&:reason)).to eq(["stopped from check-in"])
+      expect(p.cards.last[:body]).to eq("Stopped the turn at 2 tool calls.")
     end
 
     it "steers once for 12 Nudge clicks on the same check-in; the next check-in can be nudged again" do
       results = Array.new(12) { checkin(p, "nudge") }
 
-      expect(ctx.steers.size).to eq(1)
+      expect(p.steers.size).to eq(1)
       expect(results.first).to be_nil
       expect(results.drop(1).uniq).to eq(["check-in: already nudged at 2 tool calls"])
 
       tools(p, "read", "read", "read")
       expect(checkin(p, "nudge")).to be_nil
       expect(checkin(p, "nudge")).to eq("check-in: already nudged at 5 tool calls")
-      expect(ctx.steers.size).to eq(2)
+      expect(p.steers.size).to eq(2)
     end
 
     it "lets a Nudge that found no turn be clicked again once one runs" do
-      ctx.running = false
+      p.set(running: false)
       expect(checkin(p, "nudge")).to eq("check-in: no turn running")
-      ctx.running = true
+      p.set(running: true)
       expect(checkin(p, "nudge")).to be_nil
-      expect(ctx.steers.size).to eq(1)
+      expect(p.steers.size).to eq(1)
     end
 
     it "steers once for a fresh worker's plugin clicked from a stale card (no check-in this turn)" do
       fresh = plugin("after" => 50).tap { |pl| turn(pl) && tools(pl, "read") }
       results = Array.new(5) { checkin(fresh, "nudge") }
 
-      expect(ctx.steers.size).to eq(1)
+      expect(fresh.steers.size).to eq(1)
       expect(results.drop(1).uniq).to eq(["check-in: already nudged at 1 tool calls"])
     end
 
     it "with no turn running, Nudge and Stop say so and leave the card" do
-      ctx.running = false
-      cards = ctx.cards.size
+      p.set(running: false)
+      cards = p.cards.size
 
       expect(checkin(p, "nudge")).to eq("check-in: no turn running")
       expect(checkin(p, "stop")).to eq("check-in: no turn running")
-      expect(ctx.cards.size).to eq(cards)
+      expect(p.cards.size).to eq(cards)
     end
   end
 
@@ -237,9 +196,9 @@ RSpec.describe "The check-in plugin" do
       turn(p)
       tools(p, "read", "read")
 
-      expect(steered).to eq(["2 calls: status?"])
-      expect(ctx.notices).to eq([["nudged the model after 2 tool calls", :info]])
-      expect(ctx.cards).to be_empty
+      expect(steers(p)).to eq(["2 calls: status?"])
+      expect(notices(p)).to eq([["nudged the model after 2 tool calls", :info]])
+      expect(p.cards).to be_empty
     end
 
     it "notify only says so" do
@@ -247,9 +206,9 @@ RSpec.describe "The check-in plugin" do
       turn(p)
       tools(p, "read", "read")
 
-      expect(ctx.notices.map(&:first)).to eq(["1 tool calls in this turn, no answer yet", "2 tool calls in this turn, no answer yet"])
-      expect(steered).to be_empty
-      expect(ctx.cards).to be_empty
+      expect(notices(p).map(&:first)).to eq(["1 tool calls in this turn, no answer yet", "2 tool calls in this turn, no answer yet"])
+      expect(p.steers).to be_empty
+      expect(p.cards).to be_empty
     end
 
     it "a Nudge click after the mode's own nudge for that check-in is a repeat" do
@@ -258,7 +217,8 @@ RSpec.describe "The check-in plugin" do
       tools(p, "read", "read")
 
       expect(checkin(p, "nudge")).to eq("check-in: already nudged at 2 tool calls")
-      expect(ctx.steers).to be_empty
+      # Only the mode's own nudge: the click steered nothing.
+      expect(steers(p)).to eq([p.namespace::Plugin::DEFAULT_MESSAGE.gsub("{calls}", "2")])
     end
 
     it "nudge says at the turn's end that the nudge wasn't sent when the answer came first" do
@@ -267,29 +227,29 @@ RSpec.describe "The check-in plugin" do
       tools(p, "read", "read")
       fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, { role: "model", content: "done" }])
 
-      expect(ctx.notices.last).to eq(["The answer came first; nudge not sent.", :warn])
+      expect(notices(p).last).to eq(["The answer came first; nudge not sent.", :warn])
     end
 
     it "nudge says nothing at the turn's end when the steer joined the turn" do
       p = plugin("after" => 2, "mode" => "nudge")
       turn(p)
       tools(p, "read", "read")
-      steer = { role: "user", kind: "steer", source: "check-in", content: steered.last }
+      steer = { role: "user", kind: "steer", source: "check-in", content: steers(p).last }
       fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, steer, { role: "model", content: "done" }])
 
-      expect(ctx.notices.map(&:first)).to eq(["nudged the model after 2 tool calls"])
+      expect(notices(p).map(&:first)).to eq(["nudged the model after 2 tool calls"])
     end
 
     it "nudge says nothing at the turn's end when a user line was merged after the steer" do
       p = plugin("after" => 2, "mode" => "nudge")
       turn(p)
       tools(p, "read", "read")
-      steer = { role: "user", kind: "steer", source: "check-in", content: steered.last }
+      steer = { role: "user", kind: "steer", source: "check-in", content: steers(p).last }
       merged = { role: "user", kind: "input", content: "also this" }
       fire(p, :after_turn, status: "completed",
                            messages: [{ role: "user", content: "go" }, steer, merged, { role: "model", content: "done" }])
 
-      expect(ctx.notices.map(&:first)).to eq(["nudged the model after 2 tool calls"])
+      expect(notices(p).map(&:first)).to eq(["nudged the model after 2 tool calls"])
     end
   end
 
@@ -314,13 +274,13 @@ RSpec.describe "The check-in plugin" do
       restarted = plugin
       expect(checkin(restarted)).to eq("check-in is off: mode nudge, after 30 tool calls, then every 30; this turn: 0 tool calls")
 
-      ctx.session_id = "s2"
+      restarted.set(session_id: "s2")
       expect(checkin(restarted)).to eq("check-in is on: mode ask, after 50 tool calls, then every 50; this turn: 0 tool calls")
       turn(restarted)
-      ctx.session_id = "s1"
+      restarted.set(session_id: "s1")
       turn(restarted)
       expect(checkin(restarted)).to start_with("check-in is off: mode nudge, after 30 tool calls")
-      expect(Dir.children(File.join(ctx.data_dir, "sessions"))).to eq(["s1.json"])
+      expect(Dir.children(File.join(p.ctx.data_dir, "sessions"))).to eq(["s1.json"])
     end
 
     it "a restored threshold counts from the session's next turn" do
@@ -328,7 +288,7 @@ RSpec.describe "The check-in plugin" do
       restarted = plugin
       turn(restarted)
       tools(restarted, "a", "b")
-      expect(ctx.cards.last[:title]).to eq("2 tool calls, no answer yet")
+      expect(restarted.cards.last[:title]).to eq("2 tool calls, no answer yet")
     end
 
     it "off stops the check-ins; on brings them back" do
@@ -336,11 +296,11 @@ RSpec.describe "The check-in plugin" do
       checkin(p, "off")
       turn(p)
       tools(p, "a", "b", "c")
-      expect(ctx.cards).to be_empty
+      expect(p.cards).to be_empty
 
       checkin(p, "on")
       tools(p, "d")
-      expect(ctx.cards.size).to eq(1)
+      expect(p.cards.size).to eq(1)
     end
 
     it "a threshold a running turn is already past checks in that many calls from now" do
@@ -349,9 +309,9 @@ RSpec.describe "The check-in plugin" do
       checkin(p, "4")
 
       tools(p, "a", "b", "c")
-      expect(ctx.cards).to be_empty
+      expect(p.cards).to be_empty
       tools(p, "d")
-      expect(ctx.cards.last[:title]).to eq("14 tool calls, no answer yet")
+      expect(p.cards.last[:title]).to eq("14 tool calls, no answer yet")
     end
   end
 end
