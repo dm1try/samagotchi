@@ -356,13 +356,32 @@ module Samagotchi
       # for a local edit: keep the installed base, so the next upgrade still
       # sees the edit (not a fast-forward over it).
       def install_provenance_files
-        @owned.each_with_object({}) do |file_key, files|
+        files = @owned.each_with_object({}) do |file_key, map|
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)
 
           base_path = @provenance.base_path(file_key)
           kept = @existing && @results.dig(file_key, :reason) == "already exists" && File.exist?(base_path)
-          files[file_key] = kept ? base_path : target_path
+          map[file_key] = kept ? base_path : target_path
+        end
+        files.merge(dropped_owned_files)
+      end
+
+      # file key => its base, for each file an earlier install owned that
+      # this version doesn't ship and that is still on disk. A plain
+      # install leaves such a file where it is, and keeps its record, so the
+      # upgrade the summary points at still moves it to the trash
+      # (prune_dropped_files); dropping the record orphaned it as a memory.
+      def dropped_owned_files
+        return {} unless @existing
+
+        @existing.files.each_key.with_object({}) do |key, files|
+          file_key = key.to_s
+          next if @bundle_md.include?(file_key)
+          next unless File.exist?(File.join(@target_dir, file_key))
+
+          base_path = @provenance.base_path(file_key)
+          files[file_key] = base_path if File.exist?(base_path)
         end
       end
 

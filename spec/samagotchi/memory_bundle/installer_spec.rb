@@ -971,5 +971,48 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(index_text).not_to include("**README**")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s)).to eq(["real.md"])
     end
+
+    # A plain re-install leaves the files alone (the summary points at
+    # upgrade), but it keeps the record of the ones it no longer ships, so
+    # that upgrade still moves them to the trash.
+    it "a plain re-install keeps owning a README an older install made a memory, so the upgrade removes it" do
+      old = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: %w[real.md README.md])
+      installer_for(source: old, name: "repo-bundle", scope: "system").run
+
+      new_dir = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: nil, name: "repo-bundle")
+      reinstall = installer_for(source: new_dir, name: "repo-bundle", scope: "system").tap(&:run)
+      expect(reinstall.results.keys).to eq(["real.md"])
+      expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be true
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s))
+        .to contain_exactly("real.md", "README.md")
+
+      up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
+      expect(up.results["README.md"]).to include(status: "removed")
+      expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be false
+      expect(index_text).not_to include("**README**")
+    end
+
+    # The record a plain re-install keeps is the old base: a dropped file the
+    # user edited stays theirs (the upgrade keeps it), one the user deleted
+    # isn't recorded, and a file this version ships keeps its own record.
+    it "a plain re-install keeps a dropped file's old base, and no record of one the user deleted" do
+      old = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n", "LICENSE.md" => "MIT\n" },
+                       listed: %w[real.md README.md LICENSE.md])
+      installer_for(source: old, name: "repo-bundle", scope: "system").run
+      File.write(File.join(system_memories_dir, "README.md"), "# Readme, my notes\n")
+      FileUtils.rm(File.join(system_memories_dir, "LICENSE.md"))
+      FileUtils.rm(File.join(system_memories_dir, "real.md"))
+
+      new_dir = raw_bundle({ "real.md" => "# Real v2\n", "README.md" => "# Readme\n", "LICENSE.md" => "MIT\n" }, listed: nil)
+      installer_for(source: new_dir, name: "repo-bundle", scope: "system").run
+      files = Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files]
+      expect(files.keys.map(&:to_s)).to contain_exactly("real.md", "README.md")
+      expect(files[:"real.md"][:checksum]).to eq(Digest::SHA256.hexdigest("# Real v2\n"))
+      expect(files[:"README.md"][:checksum]).to eq(Digest::SHA256.hexdigest("# Readme\n"))
+
+      up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
+      expect(up.results["README.md"]).to include(status: "kept_pruned")
+      expect(File.read(File.join(system_memories_dir, "README.md"))).to eq("# Readme, my notes\n")
+    end
   end
 end

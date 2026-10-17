@@ -13,6 +13,12 @@ and commands may change between minor versions. How releases are made:
 - Docs: an external guard bundle, [chi-nah](https://github.com/dm1try/chi-nah) (nah's deterministic guards on
   chi's shell and file calls), in docs/guardrails.md.
 
+### Fixed
+
+- A plain `chi bundle install` over an installed bundle no longer forgets the files the new version stopped shipping
+  (such as the README an older chi installed as a memory): they stay where they are, still the bundle's, and the
+  `chi bundle upgrade` its summary suggests moves them to the trash.
+
 ## [0.75.0] - 2026-10-17
 
 ### Changed

@@ -60,7 +60,8 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 6. `verify_memory_checksums` (strict), `warn_missing_needs`.
 7. `write_provenance` (manifest, not a dry run): bases come from the incoming file, except where the user's edit was
    kept (kept/noop/conflict/kept_pruned, or a re-install's skipped edit): those keep the old base, so the next
-   upgrade still sees the edit.
+   upgrade still sees the edit. A plain install also keeps the record (the old base) of a file an earlier install
+   owned and this version doesn't ship, while it is on disk (`dropped_owned_files`), so the next upgrade prunes it.
 8. `detect_placeholders`.
 
 Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`. An upgrade with conflicts keeps an
