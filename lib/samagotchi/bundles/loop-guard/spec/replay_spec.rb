@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-require "spec_helper"
 require "json"
-require "samagotchi/guardrails"
 require "samagotchi/llm/native_tool_normalizer"
 require "samagotchi/testing/rspec"
 
@@ -13,7 +11,7 @@ require "samagotchi/testing/rspec"
 # the key sees the real call shape, and goes through a real Guardrails::Gate
 # (the bundle test kit's tool_call).
 RSpec.describe "The loop-guard plugin, replayed", :bundle do
-  let(:fixture) { JSON.parse(File.read(File.expand_path("../../fixtures/loop_guard/b7089279_calls.json", __dir__))) }
+  let(:fixture) { JSON.parse(File.read(File.expand_path("fixtures/b7089279_calls.json", __dir__))) }
   let(:looping) { fixture["turns"][0] }
   let(:calm) { fixture["turns"][1] }
   let(:tool_call) { Struct.new(:name, :arguments) }

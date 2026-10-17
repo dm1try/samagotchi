@@ -2,7 +2,7 @@
   "delay": 0.03,
   "nudge_counts": true,
   "iterations": [
-    {"thinking_file": "../../../fixtures/loop_guard/thinking/cycle3.txt", "repeat": 3, "chunk_chars": 80},
+    {"thinking_file": "../../../../lib/samagotchi/bundles/loop-guard/spec/fixtures/thinking/cycle3.txt", "repeat": 3, "chunk_chars": 80},
     {"hold": 3, "thinking": "Answer now.", "text": "PONG after the cut."}
   ]
 }

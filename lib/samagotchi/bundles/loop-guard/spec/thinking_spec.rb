@@ -1,14 +1,12 @@
 # frozen_string_literal: true
 
-require "spec_helper"
-require "samagotchi/hooks"
 require "samagotchi/testing/rspec"
 
 # loop-guard's thinking watch (lib/samagotchi/bundles/loop-guard): the
 # :generation_progress hook sees streamed thinking go round in the same few
 # sentences, cuts the generation (stop_generation) and, if the retry loops
 # too, stops the turn with a card. The detector is fed the fixtures in
-# spec/fixtures/loop_guard/thinking: positives (a loop_start and cycle_chars
+# fixtures/thinking (beside this spec): positives (a loop_start and cycle_chars
 # header) must trigger within one batch of the loop's third cycle,
 # negatives never. A loop of short sentences (write_loop.txt, a loop_start
 # and run_chars header) must trigger within one batch of its short_run-th
@@ -16,7 +14,7 @@ require "samagotchi/testing/rspec"
 # header: where the terminal cycle begins) must trigger within its first
 # window_sentences sentences.
 RSpec.describe "The loop-guard thinking watch", :bundle do
-  let(:fixtures) { File.expand_path("../../fixtures/loop_guard/thinking", __dir__) }
+  let(:fixtures) { File.expand_path("fixtures/thinking", __dir__) }
   # The module chi evaluated the plugin in (ThinkingWatch, Plugin).
   let(:mod) { shipped_bundle("loop-guard").namespace }
   let(:batch) { Samagotchi::Hooks::StreamWatch::EVERY_CHARS }
