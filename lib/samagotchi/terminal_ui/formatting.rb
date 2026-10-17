@@ -594,6 +594,9 @@ module Samagotchi
         lines << "speed:            #{speed}" if speed
         cost = stats_cost_text(tokens, price_host: snapshot[:price_host], per_model: segments.size >= 2)
         lines << "cost:             #{cost}" if cost
+        # The side requests, never in the totals above.
+        side = side_requests_text(snapshot[:side])
+        lines << "side requests:    #{side} (not in the totals above)" unless side.empty?
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"

@@ -184,5 +184,15 @@
       {"row": {"model_ref": null, "prompt_sum": 1000, "completion_sum": 100, "prefill_tokens": 0}, "expected": {"label": "earlier turns", "tokens": "1.0k in / 100 out", "cost": "", "prefill": ""}},
       {"row": {"model_ref": null, "folded_segments": 3, "prompt_sum": 2000, "completion_sum": 200, "prefill_tokens": 500, "prefill_cost_estimate": 0.00056}, "expected": {"label": "3 earlier segments", "tokens": "2.0k in / 200 out", "cost": "", "prefill": "switch prefill 500 uncached prompt ≈$0.0006"}}
     ]
+  },
+  "side_requests": {
+    "note": "A session's side requests (the snapshot's side block: the idle recap, /btw and plugins' ctx.ask_model, apart from its turns' totals; Formatting#side_requests_text after \"side requests:\" in /stats; ctx.js sideRequestsText in the ctx tooltip): the count, the kinds in first-seen order (one kind: its name alone), then the model rows' tokens and cost words (model_segments); none or 0 requests: \"\" (the line is hidden). Ruby reads each case string- and symbol-keyed (the attached TUI's snapshot comes deep-symbolized).",
+    "cases": [
+      {"side": null, "expected": ""},
+      {"side": {"requests": 0, "prompt_sum": 0, "completion_sum": 0, "cost_sum": null, "cost_estimate_sum": 0, "by_kind": {}}, "expected": ""},
+      {"side": {"requests": 2, "prompt_sum": 9100, "completion_sum": 210, "cost_sum": null, "cost_estimate_sum": 0, "by_kind": {"recap": {"requests": 2, "cost_sum": null, "cost_estimate_sum": 0}}}, "expected": "2 (recap) · 9.1k in / 210 out"},
+      {"side": {"requests": 3, "prompt_sum": 14210, "completion_sum": 380, "cost_sum": null, "cost_estimate_sum": 0.0021, "by_kind": {"recap": {"requests": 2, "cost_sum": null, "cost_estimate_sum": 0.0012}, "btw": {"requests": 1, "cost_sum": null, "cost_estimate_sum": 0.0009}}}, "expected": "3 (recap 2, btw 1) · 14.2k in / 380 out · ~$0.0021"},
+      {"side": {"requests": 2, "prompt_sum": 1500, "completion_sum": 40, "cost_sum": 0.0012, "cost_estimate_sum": 0.0009, "by_kind": {"btw": {"requests": 1, "cost_sum": 0.0012, "cost_estimate_sum": 0}, "coordinator": {"requests": 1, "cost_sum": null, "cost_estimate_sum": 0.0009}}}, "expected": "2 (btw 1, coordinator 1) · 1.5k in / 40 out · $0.0012 + ~$0.0009"}
+    ]
   }
 }

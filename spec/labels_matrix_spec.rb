@@ -120,6 +120,14 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "side_requests").each do |entry|
+    it "words the side requests #{entry["side"].inspect}" do
+      expect(fmt.side_requests_text(entry["side"])).to eq(expected(entry))
+      symbols = entry["side"] && Samagotchi::TerminalUI::EventRenderer.deep_symbolize_keys(entry["side"])
+      expect(fmt.side_requests_text(symbols)).to eq(expected(entry))
+    end
+  end
+
   cases(matrix, "memory_index").each do |entry|
     it "words the memory index #{entry["index"].inspect}" do
       expect(fmt.memory_index_text(entry["index"])).to eq(expected(entry))

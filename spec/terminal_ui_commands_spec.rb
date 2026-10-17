@@ -170,6 +170,39 @@ RSpec.describe Samagotchi::TerminalUI do
         expect(stats(cost_sum: 0.42, cost_estimate_sum: 0)).to include("cost:             $0.42 (this session only)")
       end
 
+      # The side requests (recap, /btw, ctx.ask_model) on their own line,
+      # never in the totals above it.
+      describe "the side requests line" do
+        let(:side) do
+          { requests: 3, prompt_sum: 14_210, completion_sum: 380, cached_sum: 0, cache_write_sum: 0, reasoning_sum: 0,
+            cost_sum: nil, cost_estimate_sum: 0.0021,
+            by_kind: { "recap" => { requests: 2, cost_sum: nil, cost_estimate_sum: 0.0012 },
+                       "btw" => { requests: 1, cost_sum: nil, cost_estimate_sum: 0.0009 } } }
+        end
+        let(:line) { "side requests:    3 (recap 2, btw 1) · 14.2k in / 380 out · ~$0.0021 (not in the totals above)" }
+
+        it "comes right after the cost: line" do
+          output = stats({ cost_sum: 0.42 }, { side: side })
+          expect(output[output.index("cost:             $0.42 (this session only)") + 1]).to eq(line)
+        end
+
+        it "takes the cost: line's place when there is none" do
+          output = stats({}, { side: side })
+          expect(output.join("\n")).not_to include("cost:")
+          expect(output[output.index(line) + 1]).to start_with("gen latency (ms):")
+        end
+
+        it "is absent without side requests (an older snapshot or analytics.json)" do
+          expect(stats({ cost_sum: 0.42 }).join("\n")).not_to include("side requests")
+        end
+
+        it "reads the attached TUI's snapshot, JSON deep-symbolized, the same" do
+          base = agent.engine.metrics.snapshot.merge(side: side)
+          attached = Samagotchi::TerminalUI::EventRenderer.deep_symbolize_keys(JSON.parse(JSON.generate(base)))
+          expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(attached).lines.map(&:chomp)).to include(line)
+        end
+      end
+
       it "has no speed line before a generation had one" do
         expect(stats({}).join("\n")).not_to include("speed:")
       end

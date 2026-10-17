@@ -127,6 +127,26 @@ RSpec.describe "chi sessions stats" do
       ])
     end
 
+    # The side block is saved as it is (side requests have no records).
+    it "prints the side requests line from a saved side block" do
+      session = make
+      save_analytics(session)
+      path = File.join(dir_of(session), "analytics.json")
+      data = JSON.parse(File.read(path))
+      data["side"] = { "requests" => 2, "prompt_sum" => 9100, "completion_sum" => 210, "cached_sum" => 0, "cache_write_sum" => 0,
+                       "reasoning_sum" => 0, "cost_sum" => 0.0012, "cost_estimate_sum" => 0,
+                       "by_kind" => { "recap" => { "requests" => 1, "cost_sum" => 0.0012, "cost_estimate_sum" => 0 },
+                                      "btw" => { "requests" => 1, "cost_sum" => nil, "cost_estimate_sum" => 0 } } }
+      File.write(path, JSON.generate(data))
+
+      out, _err, code = run_stats(session.id)
+
+      expect(code).to eq(0)
+      lines = out.lines.map(&:chomp)
+      expect(lines[lines.index("tokens in/out:    1520/240 (all requests, server-reported)") + 1])
+        .to eq("side requests:    2 (recap 1, btw 1) · 9.1k in / 210 out · $0.0012 (not in the totals above)")
+    end
+
     # The rows are rebuilt from the records' model_ref (never read back).
     it "splits the text per model from the saved records after a /model switch" do
       session = make

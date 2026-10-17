@@ -5,9 +5,11 @@ require_relative "../memory_bundle/index_size"
 
 module Samagotchi
   class TerminalUI
-    # A session's rows per model in /stats (the snapshot's model_segments).
-    # The four public model_segment_* labels are the words the web's ctx
-    # tooltip shares (ctx.js; spec/shared/labels_matrix.json model_segments).
+    # A session's rows per model in /stats (the snapshot's model_segments),
+    # and its side requests' line (the snapshot's side block).
+    # The four public model_segment_* labels and side_requests_text are the
+    # words the web's ctx tooltip shares (ctx.js;
+    # spec/shared/labels_matrix.json model_segments, side_requests).
     # Rows come symbol- or string-keyed (the attached TUI's as JSON).
     # Included by Formatting, whose cost_text and speed_text it uses.
     module ModelSegmentsText
@@ -32,6 +34,28 @@ module Samagotchi
       def model_segment_cost_text(row)
         [cost_text(segment_value(row, :cost_sum)), cost_text(segment_value(row, :cost_estimate_sum), estimate: true)]
           .reject(&:empty?).join(" + ")
+      end
+
+      # "3 (recap 2, btw 1) · 14.2k in / 380 out · $0.0012 + ~$0.0009": the
+      # side requests (the snapshot's side block: the recap, /btw and other
+      # ctx.ask_model calls), the kinds in first-seen order (one kind: its
+      # name alone), then the model rows' tokens and cost words on the
+      # block; "" without any (the line is hidden).
+      def side_requests_text(side)
+        return "" unless side.is_a?(Hash)
+
+        count = segment_value(side, :requests).to_i
+        return "" unless count.positive?
+
+        kinds = segment_value(side, :by_kind)
+        kinds = {} unless kinds.is_a?(Hash)
+        names = if kinds.size == 1
+                  kinds.keys.first.to_s
+                else
+                  kinds.map { |kind, row| "#{kind} #{(row.is_a?(Hash) ? segment_value(row, :requests) : 0).to_i}" }.join(", ")
+                end
+        head = names.empty? ? count.to_s : "#{count} (#{names})"
+        [head, model_segment_tokens_text(side), model_segment_cost_text(side)].reject(&:empty?).join(" · ")
       end
 
       # "switch prefill 3.0k uncached prompt ≈$0.0060": what the switch to the
