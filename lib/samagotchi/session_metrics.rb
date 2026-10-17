@@ -12,6 +12,8 @@ require_relative "model_price"
 require_relative "session"
 require_relative "session_metrics/totals"
 require_relative "session_metrics/model_segment"
+require_relative "session_metrics/side_totals"
+require_relative "side_usage"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -65,11 +67,14 @@ module Samagotchi
     # nil when an older file has none.
     # cost_estimate_sum: the estimated cost (hosts.<name>.models prices), 0
     # in an older file.
+    # side: the side requests' block (SideTotals#to_h as saved, string
+    # keys), nil when the session made none (or an older file).
     SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum,
-                               :cost_estimate_sum, :memory_index) do
-      def initialize(memory_index: nil, cost_estimate_sum: 0, **) = super
+                               :cost_estimate_sum, :memory_index, :side) do
+      def initialize(memory_index: nil, cost_estimate_sum: 0, side: nil, **) = super
 
-      def tokens = to_h.except(:ctx_pct, :memory_index)
+      # The turns' token totals (the side requests' are #side, apart).
+      def tokens = to_h.except(:ctx_pct, :memory_index, :side)
     end
 
     # Per-turn transient state, reset on each turn_started.
@@ -199,7 +204,8 @@ module Samagotchi
                        completion_sum: count.call("completion_sum"), cached_sum: count.call("cached_sum"),
                        reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"),
                        cost_estimate_sum: count.call("cost_estimate_sum"),
-                       memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil)
+                       memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil,
+                       side: data["side"].is_a?(Hash) ? data["side"] : nil)
     rescue TypeError
       nil
     end
@@ -285,6 +291,9 @@ module Samagotchi
       # and how many were loaded (a woken collector's live records start empty).
       @persisted_turns = 0
       @loaded_turns = 0
+      # The side requests' sums: not in reset_totals, which a load's recount
+      # of the turn records calls (side requests have no records).
+      @side = SideTotals.zero
       reset_totals
     end
 
@@ -339,6 +348,17 @@ module Samagotchi
 
         @session_id = id.to_s
         load_persisted
+      end
+    end
+
+    # Count one side request (a recap, a plugin's ctx.ask_model) in the
+    # side block, apart from the turns' totals. Safe from any thread.
+    # @param usage [SideUsage]
+    # @return [Hash] the side block now (SideTotals#to_h)
+    def add_side(usage)
+      @mutex.synchronize do
+        @side = @side.add(usage)
+        @side.to_h
       end
     end
 
@@ -511,6 +531,9 @@ module Samagotchi
         # The calls the model made under an alias's name (bash run as
         # execute), by its own spelling; only when there are any.
         **(@tool_tallies[:aliased].empty? ? {} : { tool_calls_aliased: @tool_tallies[:aliased].dup }),
+        # The side requests (recap, ctx.ask_model), apart from +tokens+;
+        # only when there were any.
+        **(@side.empty? ? {} : { side: @side.to_h }),
         tool_errors: @tool_tallies[:errors],
         iterations_total: totals.iterations,
         gen_latency_ms: totals.gen_ms.round,
@@ -1107,6 +1130,8 @@ module Samagotchi
       end
       # The indexes the prompt last held, until this process builds its own.
       @memory_index ||= symbolized(prior["memory_index"]) if prior["memory_index"].is_a?(Hash)
+      # The saved side block, with any counted before the load after it.
+      @side = SideTotals.from_saved(prior["side"]).merge(@side)
       # The window last seen, until this process's first generation reports.
       window = prior["context"].is_a?(Hash) ? prior["context"] : {}
       return unless window["window_tokens"] && @context_window_tokens.nil?

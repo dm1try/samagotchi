@@ -4,6 +4,8 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_metrics"
 require "samagotchi/token_usage"
+require "samagotchi/side_usage"
+require "samagotchi/llm/usage"
 
 RSpec.describe Samagotchi::SessionMetrics do
   let(:metrics) { described_class.new }
@@ -1701,6 +1703,150 @@ RSpec.describe Samagotchi::SessionMetrics do
                          symbolize_names: true)
       expect(saved[:model_segments]).not_to be_empty
       expect(segment_sums(saved)).to eq(expected_sums(saved))
+    end
+  end
+
+  # Side requests (a recap, a plugin's ctx.ask_model such as /btw) are a
+  # separate side block: never in the turns' tokens or model_segments.
+  describe "side requests (add_side and the side block)" do
+    let(:price) { Samagotchi::ModelPrice.new(input: 2.0, cache_read: 0.5, cache_write: 4.0, output: 10.0) }
+    let(:state_dir) { Dir.mktmpdir }
+
+    def side(kind, prompt: 1000, completion: 20, cost: nil, price: nil, cached: 0, reasoning: 0)
+      Samagotchi::SideUsage.new(kind: kind, model: "m", prompt_tokens: prompt, completion_tokens: completion,
+                                cached_tokens: cached, cache_write_tokens: 0, reasoning_tokens: reasoning, cost: cost, price: price)
+    end
+
+    def turn(id)
+      metrics.call(type: :turn_started, session_id: "side-sess", prompt: "p", turn_id: id)
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "x",
+                   payload: { "choices" => [], "usage" => { "prompt_tokens" => 500, "completion_tokens" => 30, "cost" => 0.01 } })
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+    end
+
+    it "has no side key before any side request" do
+      turn("t1")
+      expect(metrics.snapshot).not_to have_key(:side)
+    end
+
+    it "sums a reported cost into cost_sum, with no estimate" do
+      block = metrics.add_side(side("btw", cost: 0.0012, price: price))
+
+      expect(block).to include(requests: 1, prompt_sum: 1000, completion_sum: 20, cost_sum: 0.0012, cost_estimate_sum: 0)
+      expect(metrics.snapshot[:side]).to eq(block)
+    end
+
+    it "estimates from the price when no cost is reported (the shared rule), cost_sum staying nil" do
+      metrics.add_side(side("recap", prompt: 1000, cached: 400, completion: 50, price: price))
+
+      expected = Samagotchi::ModelPrice.estimate(price, reported_cost: nil, prompt_tokens: 1000, cached_tokens: 400,
+                                                        cache_write_tokens: 0, completion_tokens: 50)
+      expect(metrics.snapshot[:side]).to include(cost_sum: nil, cached_sum: 400)
+      expect(metrics.snapshot[:side][:cost_estimate_sum]).to be_within(1e-12).of(expected)
+    end
+
+    it "counts by kind in first-seen order" do
+      metrics.add_side(side("recap"))
+      metrics.add_side(side("btw", cost: 0.5))
+      metrics.add_side(side("recap", reasoning: 7))
+
+      block = metrics.snapshot[:side]
+      expect(block).to include(requests: 3, prompt_sum: 3000, completion_sum: 60, reasoning_sum: 7, cost_sum: 0.5)
+      expect(block[:by_kind].keys).to eq(%w[recap btw])
+      expect(block[:by_kind]["recap"]).to eq(requests: 2, cost_sum: nil, cost_estimate_sum: 0)
+      expect(block[:by_kind]["btw"]).to eq(requests: 1, cost_sum: 0.5, cost_estimate_sum: 0)
+    end
+
+    it "leaves the tokens block and model_segments exactly as the turns alone made them" do
+      other = described_class.new
+      [metrics, other].each do |collector|
+        collector.call(type: :turn_started, session_id: "side-sess", prompt: "p", turn_id: "t1")
+        collector.call(type: :generation_started, iteration: 1, model_ref: "a:m")
+        collector.call(type: :generation_chunk, iteration: 1, content: "x",
+                       payload: { "choices" => [], "usage" => { "prompt_tokens" => 500, "completion_tokens" => 30 } })
+        collector.call(type: :generation_completed, iteration: 1)
+        collector.call(type: :turn_completed)
+      end
+      metrics.add_side(side("btw", cost: 0.3, price: price))
+      metrics.add_side(side("recap", price: price))
+
+      expect(metrics.snapshot[:tokens]).to eq(other.snapshot[:tokens])
+      expect(metrics.snapshot[:model_segments]).to eq(other.snapshot[:model_segments])
+      expect(metrics.snapshot[:turn_records].map { |r| r.except(:started_at, :completed_at, :duration_ms) })
+        .to eq(other.snapshot[:turn_records].map { |r| r.except(:started_at, :completed_at, :duration_ms) })
+    end
+
+    it "is saved to analytics.json and loaded by a new collector for the session" do
+      metrics.state_dir = state_dir
+      turn("t1")
+      metrics.add_side(side("recap", price: price))
+      metrics.add_side(side("btw", cost: 0.25))
+      metrics.persist
+
+      saved = JSON.parse(File.read(File.join(state_dir, "side-sess", "analytics.json")))
+      expect(saved["side"]).to include("requests" => 2, "cost_sum" => 0.25)
+      expect(saved["side"]["by_kind"].keys).to eq(%w[recap btw])
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.session_id = "side-sess"
+      expect(woken.snapshot[:side]).to eq(metrics.snapshot[:side])
+      expect(woken.snapshot[:tokens]).to eq(metrics.snapshot[:tokens])
+    end
+
+    it "loads an analytics.json without a side block as before (no side key)" do
+      metrics.state_dir = state_dir
+      turn("t1")
+      metrics.persist
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.session_id = "side-sess"
+
+      expect(woken.snapshot).not_to have_key(:side)
+      expect(woken.snapshot[:tokens]).to eq(metrics.snapshot[:tokens])
+    end
+
+    it "keeps a side request counted before the session id is set, merged with the saved ones" do
+      metrics.state_dir = state_dir
+      metrics.session_id = "side-sess"
+      metrics.add_side(side("recap"))
+      metrics.persist
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.add_side(side("btw", cost: 0.1))
+      woken.session_id = "side-sess"
+
+      expect(woken.snapshot[:side]).to include(requests: 2, cost_sum: 0.1)
+      expect(woken.snapshot[:side][:by_kind].keys).to eq(%w[recap btw])
+    end
+
+    it "is SavedSummary#side (the saved hash), never in SavedSummary#tokens" do
+      metrics.state_dir = state_dir
+      turn("t1")
+      metrics.add_side(side("btw", cost: 0.25))
+      metrics.persist
+
+      summary = described_class.saved_summary(Samagotchi::Session.session_dir("side-sess", state_dir: state_dir))
+      expect(summary.side).to include("requests" => 1, "cost_sum" => 0.25, "by_kind" => { "btw" => include("requests" => 1) })
+      expect(summary.tokens).not_to have_key(:side)
+    end
+  end
+
+  describe Samagotchi::SessionMetrics::SideTotals do
+    it "reads a saved block leniently: a non-Hash is zero, junk counts 0, a null cost_sum stays nil" do
+      expect(described_class.from_saved(nil)).to eq(described_class.zero)
+      expect(described_class.from_saved("x")).to be_empty
+      loaded = described_class.from_saved("requests" => 2, "prompt_sum" => "lots", "cost_sum" => nil,
+                                          "cost_estimate_sum" => 0.5, "by_kind" => { "recap" => { "requests" => 2 } })
+      expect(loaded.to_h).to include(requests: 2, prompt_sum: 0, cost_sum: nil, cost_estimate_sum: 0.5)
+      expect(loaded.by_kind).to eq("recap" => { requests: 2, cost_sum: nil, cost_estimate_sum: 0 })
+    end
+
+    it "counts a request whose usage reported no counts (Usage.none) as one with zero tokens" do
+      usage = Samagotchi::SideUsage.from_usage(Samagotchi::LLM::Usage.none, kind: "recap", model: "m", price: nil)
+      totals = described_class.zero.add(usage)
+
+      expect(totals.to_h).to include(requests: 1, prompt_sum: 0, completion_sum: 0, cost_sum: nil, cost_estimate_sum: 0)
     end
   end
 
