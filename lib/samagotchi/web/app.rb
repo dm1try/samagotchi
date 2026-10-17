@@ -1794,6 +1794,9 @@ module Samagotchi
           # before the next turn streams (live over saved).
           context: source["context"],
           tokens: source["tokens"],
+          # The tokens, cost and speeds per model (SessionMetrics'
+          # model_segments; none with one model, or from an older file).
+          model_segments: Array(source["model_segments"]),
           # The memory indexes the session's prompt holds (the ctx tooltip).
           memory_index: source["memory_index"]
         }

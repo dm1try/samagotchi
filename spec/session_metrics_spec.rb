@@ -1402,6 +1402,104 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
   end
 
+  # The snapshot's model_segments split the totals by model, in order
+  # (ModelSegment): /stats and the web tooltip's rows.
+  describe "model_segments" do
+    def turn(ref, prompt: 1000, completion: 10, cost: nil, finish: true, id: nil)
+      usage = { "prompt_tokens" => prompt, "completion_tokens" => completion, "cost" => cost }.compact
+      events = [{ type: :turn_started, session_id: "sess-s", prompt: "p", turn_id: id },
+                { type: :generation_started, iteration: 1, model_ref: ref }.compact,
+                { type: :generation_chunk, iteration: 1, content: "a", payload: { "usage" => usage } },
+                { type: :generation_completed, iteration: 1 }]
+      feed(finish ? events + [{ type: :turn_completed }] : events)
+    end
+
+    def rows = metrics.snapshot[:model_segments]
+
+    it "is empty with one model, and always present" do
+      expect(metrics.snapshot).to include(model_segments: [])
+      2.times { turn("a:one") }
+      expect(rows).to eq([])
+    end
+
+    it "splits A x2 -> B x2 -> A into three rows in order, each switch's prefill under the model switched to" do
+      2.times { turn("a:one", prompt: 1000, completion: 10, cost: 0.25) }
+      2.times { turn("b:two", prompt: 3000, completion: 20) }
+      turn("a:one", prompt: 4000, completion: 5)
+
+      expect(rows.map { |row| row.slice(:model_ref, :turns, :prompt_sum, :completion_sum, :prefill_tokens) })
+        .to eq([{ model_ref: "a:one", turns: 2, prompt_sum: 2000, completion_sum: 20, prefill_tokens: 0 },
+                { model_ref: "b:two", turns: 2, prompt_sum: 6000, completion_sum: 40, prefill_tokens: 3000 },
+                { model_ref: "a:one", turns: 1, prompt_sum: 4000, completion_sum: 5, prefill_tokens: 4000 }])
+      expect(rows.first[:cost_sum]).to eq(0.5)
+      expect(rows.map { |row| row[:ended_at] }).to all(be_a(String))
+    end
+
+    it "keeps a turn with no ref (stopped before it asked) in the segment before it" do
+      turn("a:one")
+      turn("b:two")
+      feed([{ type: :turn_started, session_id: "sess-s", prompt: "p" }, { type: :turn_canceled, cancellation_reason: :user }])
+      turn("b:two")
+
+      expect(rows.map { |row| row.slice(:model_ref, :turns) }).to eq([{ model_ref: "a:one", turns: 1 },
+                                                                      { model_ref: "b:two", turns: 3 }])
+    end
+
+    it "puts a legacy session's turns with no ref in one leading row with no ref" do
+      2.times do
+        feed([{ type: :turn_started, session_id: "sess-s", prompt: "p" }, { type: :generation_started, iteration: 1 },
+              { type: :generation_completed, iteration: 1 }, { type: :turn_completed }])
+      end
+      turn("b:two")
+
+      expect(rows.map { |row| row.slice(:model_ref, :turns, :prefill_tokens) })
+        .to eq([{ model_ref: nil, turns: 2, prefill_tokens: 0 }, { model_ref: "b:two", turns: 1, prefill_tokens: 0 }])
+    end
+
+    it "counts the running turn in its model's row, a new one when it switched, with no end" do
+      turn("a:one")
+      turn("b:two", prompt: 2000, finish: false)
+
+      expect(rows.map { |row| row.slice(:model_ref, :turns, :prompt_sum, :prefill_tokens, :ended_at) })
+        .to eq([{ model_ref: "a:one", turns: 1, prompt_sum: 1000, prefill_tokens: 0, ended_at: rows.first[:ended_at] },
+                { model_ref: "b:two", turns: 1, prompt_sum: 2000, prefill_tokens: 2000, ended_at: nil }])
+    end
+
+    it "reports the rows with each generation's end (finish_generation)" do
+      turn("a:one")
+      feed([{ type: :turn_started, session_id: "sess-s", prompt: "p" },
+            { type: :generation_started, iteration: 1, model_ref: "b:two" },
+            { type: :generation_chunk, iteration: 1, content: "a", payload: { "usage" => { "prompt_tokens" => 700 } } }])
+
+      report = metrics.finish_generation
+      expect(report.model_segments.map { |row| row.slice(:model_ref, :prompt_sum) })
+        .to eq([{ model_ref: "a:one", prompt_sum: 1000 }, { model_ref: "b:two", prompt_sum: 700 }])
+    end
+
+    it "folds the oldest rows into one over the cap, saying how many it holds" do
+      refs = %w[a:one b:two] * 4
+      refs.each_with_index { |ref, n| turn(ref, prompt: 100 * (n + 1)) }
+
+      expect(rows.size).to eq(described_class::ModelSegment::CAP)
+      expect(rows.first).to include(model_ref: nil, folded_segments: 3, turns: 3, prompt_sum: 100 + 200 + 300)
+      expect(rows.drop(1).map { |row| row[:model_ref] }).to eq(%w[b:two a:one b:two a:one b:two])
+      expect(rows.sum { |row| row[:prompt_sum] }).to eq(metrics.snapshot[:tokens][:prompt_sum])
+    end
+
+    it "rebuilds the rows from analytics.json for a woken collector and a saved snapshot" do
+      state_dir = Dir.mktmpdir
+      metrics.state_dir = state_dir
+      turn("a:one")
+      turn("b:two")
+      metrics.persist
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.session_id = "sess-s"
+      expect(woken.saved_snapshot[:model_segments].map { |row| row[:model_ref] }).to eq(%w[a:one b:two])
+      expect(woken.snapshot[:model_segments]).to eq(metrics.snapshot[:model_segments])
+    end
+  end
+
   # The totals are running counters; they must equal the sums over every
   # record (what #snapshot computed before), mid-turn, after a reload too.
   describe "the running totals" do
@@ -1443,10 +1541,24 @@ RSpec.describe Samagotchi::SessionMetrics do
     def recomputed_keys = %i[turns cancellations tokens tool_calls_total tool_calls_by_tool tool_errors
                              iterations_total gen_latency_ms retries]
 
+    # The model segments add up to the totals: tokens, cost and turns.
+    def segment_sums(snapshot)
+      rows = snapshot[:model_segments]
+      return nil if rows.empty?
+
+      keys = %i[prompt_sum completion_sum cached_sum cost_sum]
+      keys.to_h { |key| [key, rows.sum { |row| row[key] }] }.merge(turns: rows.sum { |row| row[:turns] })
+    end
+
+    def expected_sums(snapshot)
+      snapshot[:tokens].slice(:prompt_sum, :completion_sum, :cached_sum, :cost_sum).merge(turns: snapshot[:turns])
+    end
+
     def random_events(rng, turn_id)
       events = [{ type: :turn_started, session_id: "random", prompt: "p", turn_id: turn_id }]
+      ref = [nil, "a:one", "a:one", "b:two", "c:three"].sample(random: rng)
       rng.rand(0..3).times do |iteration|
-        events << { type: :generation_started, iteration: iteration + 1 }
+        events << { type: :generation_started, iteration: iteration + 1, model_ref: ref }.compact
         events << { type: :generation_retrying, attempt: 1 } if rng.rand < 0.2
         events << if rng.rand < 0.7
                     { type: :generation_chunk, iteration: iteration + 1, content: "a",
@@ -1487,11 +1599,32 @@ RSpec.describe Samagotchi::SessionMetrics do
         end
         random_events(rng, "t#{n}").each do |event|
           metrics.call(event)
-          expect(totals(metrics.snapshot)).to eq(recomputed(metrics)), "turn #{n}, after #{event[:type]}"
+          snapshot = metrics.snapshot
+          expect(totals(snapshot)).to eq(recomputed(metrics)), "turn #{n}, after #{event[:type]}"
+          sums = segment_sums(snapshot)
+          expect(sums).to eq(expected_sums(snapshot)), "segments, turn #{n}, after #{event[:type]}" if sums
         end
         metrics.persist if n.even?
       end
       expect(metrics.snapshot[:turns]).to eq(30)
+      expect(metrics.snapshot[:model_segments].size).to eq(described_class::ModelSegment::CAP)
+    end
+
+    it "add up per model in a running turn's checkpoint (persist(running_turn: true))" do
+      rng = Random.new(20_261_017)
+      state_dir = Dir.mktmpdir
+      metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+      12.times do |n|
+        events = random_events(rng, "t#{n}")
+        events.each { |event| metrics.call(event) }
+      end
+      random_events(rng, "running")[0...-1].each { |event| metrics.call(event) }
+      metrics.persist(running_turn: true)
+
+      saved = JSON.parse(File.read(Samagotchi::AnalyticsFile.path(Samagotchi::Session.session_dir("random", state_dir: state_dir))),
+                         symbolize_names: true)
+      expect(saved[:model_segments]).not_to be_empty
+      expect(segment_sums(saved)).to eq(expected_sums(saved))
     end
   end
 

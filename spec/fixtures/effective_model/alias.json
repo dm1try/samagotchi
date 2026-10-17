@@ -152,6 +152,7 @@
     "turns",
     "cancellations",
     "tokens",
+    "model_segments",
     "context",
     "memory_index",
     "profile",

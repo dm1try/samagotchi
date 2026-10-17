@@ -1673,7 +1673,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(timing["session_duration_ms"]).to eq(3000)
       expect(timing["turn_records"]).to include(hash_including("id" => "turn-1"))
       expect(timing["tool_records"]).to include(hash_including("id" => "tool-1"))
-      expect(timing).to include("context" => nil, "tokens" => nil, "memory_index" => nil)
+      expect(timing).to include("context" => nil, "tokens" => nil, "memory_index" => nil, "model_segments" => [])
     end
 
     # The ctx meter's value on load: a stopped session's saved context.
@@ -1684,13 +1684,15 @@ RSpec.describe Samagotchi::Web::App do
                   "at" => "2026-09-21T10:00:03.000Z" }
       tokens = { "prompt_sum" => 900, "completion_sum" => 80, "source" => "server" }
       memory_index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
+      segments = [{ "model_ref" => "a:one", "turns" => 1 }, { "model_ref" => "b:two", "turns" => 2 }]
       File.write(File.join(state_dir, "s1", "analytics.json"),
-                 JSON.generate(context: context, tokens: tokens, memory_index: memory_index))
+                 JSON.generate(context: context, tokens: tokens, memory_index: memory_index, model_segments: segments))
       app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
 
       timing = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first).fetch("timing")
 
-      expect(timing).to include("context" => context, "tokens" => tokens, "memory_index" => memory_index)
+      expect(timing).to include("context" => context, "tokens" => tokens, "memory_index" => memory_index,
+                                "model_segments" => segments)
     end
 
     # A live worker's metrics carry only its recent records (the newest
@@ -1730,6 +1732,22 @@ RSpec.describe Samagotchi::Web::App do
           expect(timing(query)["tool_records"].map { |r| r["id"] })
             .to eq(%w[t1:1:1 t1:1:2 t2:1:1 t2:1:2 t3:1:1 t3:1:2])
         end
+      end
+
+      # The live rows replace the saved ones whole: an empty live list (one
+      # model now) is an answer too.
+      it "sends the live worker's model_segments over the saved ones (show and ?timing=1)" do
+        save([1, 2])
+        File.write(File.join(state_dir, "s1", "analytics.json"),
+                   JSON.generate(turn_records: [turn(1)], model_segments: [{ "model_ref" => "old:one" }]))
+        live_with([3], model_segments: [{ "model_ref" => "a:one" }, { "model_ref" => "b:two" }])
+
+        ["", "?timing=1"].each do |query|
+          expect(timing(query)["model_segments"].map { |row| row["model_ref"] }).to eq(%w[a:one b:two])
+        end
+
+        live_with([3], model_segments: [])
+        expect(timing["model_segments"]).to eq([])
       end
 
       it "keeps one copy of a turn both hold" do

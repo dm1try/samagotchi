@@ -327,10 +327,15 @@ which `SessionMetrics#persist` rewrites after each turn; the web server merges t
 The totals' `tokens` block adds the cached, cache-write and reasoning sums, the reported cost (`cost_sum`) and the
 estimated one (`cost_estimate_sum`, from `hosts.<name>.models` prices; 0 for none), the decode time and tokens
 behind the average speed (`avg_decode_tps`) and the last speeds (`last_decode_tps`,
-`last_prefill_tps`, `tps_source`: `server` or `estimate`). Each `generation_completed` event
+`last_prefill_tps`, `tps_source`: `server` or `estimate`). `model_segments` (always present) splits those sums
+by model after a `/model` switch: one row per run of consecutive turns on one model (`SessionMetrics::ModelSegment`,
+keyed on the turn records' `model_ref`), in order, with its turns, token and cost sums, speeds and the switch's prefill
+(`prefill_tokens`, `prefill_cost_estimate`); `[]` with one model, the oldest rows folded into one (`folded_segments`)
+past 6; a running turn counts in its model's row (`ended_at` null). The rows add up to `tokens`. They are derived from
+the records, never read back. Each `generation_completed` event
 carries the generation's `speed` (`{decode_tps, source}`, null without one), its own prompt-cache
 counts (`prompt_tokens`, `cached_tokens`, `cache_write_tokens`: null when the server reported no writes) and
-those running `tokens`: the Engine closes the generation in `SessionMetrics#finish_generation` before relaying
+those running `tokens` and `model_segments`: the Engine closes the generation in `SessionMetrics#finish_generation` before relaying
 it, so the web's info bar updates per generation without parsing chunk payloads.
 
 The page's frequent reads of `GET /api/sessions/:id` stay light too:

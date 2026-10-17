@@ -233,6 +233,16 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(engine.stats_snapshot[:context]).to include(window_tokens: 4096)
   end
 
+  it "carries the per-model rows (the Bridge's GET /stats)" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    %w[main:a main:b].each do |ref|
+      [{ type: :turn_started, session_id: "s", prompt: "p" }, { type: :generation_started, iteration: 1, model_ref: ref },
+       { type: :generation_completed, iteration: 1 }, { type: :turn_completed }].each { |event| engine.metrics.call(event) }
+    end
+
+    expect(engine.stats_snapshot[:model_segments].map { |row| row[:model_ref] }).to eq(%w[main:a main:b])
+  end
+
   # What a turn reported belongs to the model it ran on: after /model to
   # another native model, /stats resolves the new model's profile and window.
   it "drops the profile and window a turn reported for the model before /model" do

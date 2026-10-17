@@ -2643,13 +2643,15 @@ module Samagotchi
 
     # A :generation_completed with the generation's decode speed (`speed:`
     # {decode_tps:, source:}, nil without one), the session's running
-    # token totals (`tokens:`, the snapshot's block) and whether its served
+    # token totals (`tokens:`, the snapshot's block) and its per-model rows
+    # (`model_segments:`, the snapshot's) and whether its served
     # model is an expected one (`served_expected_by:`, its host): the web's info bar
     # reads them from the stream. SessionMetrics closes the generation here,
     # so the event it gets next finds it closed.
     def with_generation_report(event)
       report = @metrics.finish_generation
-      event.merge(speed: report.speed&.to_h, tokens: report.tokens, served_expected_by: served_expected_by(event[:served_model]))
+      event.merge(speed: report.speed&.to_h, tokens: report.tokens, model_segments: report.model_segments,
+                  served_expected_by: served_expected_by(event[:served_model]))
     rescue StandardError => e
       Log.warn(:turn, "generation_report_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       event

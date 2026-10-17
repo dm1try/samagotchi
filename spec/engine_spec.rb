@@ -322,6 +322,8 @@ RSpec.describe Samagotchi::Engine do
       completed = events.find { |e| e[:type] == :generation_completed }
       expect(completed).to include(type: :generation_completed, iteration: 1, content: "hello back", speed: nil)
       expect(completed[:tokens]).to include(prompt_sum: 0, completion_sum: 0, last_decode_tps: nil)
+      # One model: no per-model rows (SessionMetrics::ModelSegment.rows).
+      expect(completed[:model_segments]).to eq([])
 
       # Higher-level Engine events carry turn boundaries + session id.
       expect(events.find { |e| e[:type] == :turn_started })

@@ -11,6 +11,7 @@ require_relative "token_usage"
 require_relative "model_price"
 require_relative "session"
 require_relative "session_metrics/totals"
+require_relative "session_metrics/model_segment"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -55,8 +56,9 @@ module Samagotchi
     GenerationSpeed = Data.define(:decode_tps, :source)
 
     # What #finish_generation reports: the generation's speed (nil when it
-    # had none) and the session's tokens block as the snapshot has it.
-    GenerationReport = Data.define(:speed, :tokens)
+    # had none), the session's tokens block and its per-model rows
+    # (model_segments) as the snapshot has them.
+    GenerationReport = Data.define(:speed, :tokens, :model_segments)
 
     # memory_index: the memory indexes the session's prompt held
     # ({ system: { tokens:, lines: }, project: … }, string keys as saved),
@@ -410,7 +412,8 @@ module Samagotchi
     def finish_generation
       @mutex.synchronize do
         speed = close_generation if @turn&.gen_open
-        GenerationReport.new(speed: speed, tokens: @totals.with_running(@turn).tokens_block)
+        GenerationReport.new(speed: speed, tokens: @totals.with_running(@turn).tokens_block,
+                             model_segments: ModelSegment.rows(segments_with_running(@turn)))
       end
     end
 
@@ -466,6 +469,9 @@ module Samagotchi
         turns: @turn_records.size + (turn ? 1 : 0),
         cancellations: totals.cancellations,
         tokens: totals.tokens_block,
+        # The tokens, cost and speeds per model, in order (ModelSegment.rows:
+        # none with one model); they add up to +tokens+.
+        model_segments: ModelSegment.rows(segments_with_running(turn)),
         context: context_block(@turn_records),
         memory_index: @memory_index,
         profile: @profile,
@@ -491,6 +497,21 @@ module Samagotchi
         active_turn: active_turn_snapshot,
         active_tools: active_tool_snapshots
       }
+    end
+
+    # The model segments with the running turn in: the last one's when it
+    # runs on that model or names none yet, else a new one. Caller holds
+    # the mutex.
+    def segments_with_running(turn)
+      return @segments unless turn
+
+      last = @segments.last
+      ref = turn.model_ref
+      if last.nil? || (ref && last.model_ref != ref)
+        return @segments + [ModelSegment.empty(ref, turn.started_at).with_running(turn)]
+      end
+
+      @segments[0...-1] + [last.with_running(turn)]
     end
 
     # The records a snapshot carries, copied. :all is every record; :recent
@@ -1086,12 +1107,18 @@ module Samagotchi
     # records. Caller holds the mutex.
     def reset_totals
       @totals = Totals.zero
+      @segments = []
       @last_model_ref = nil
       @tool_tallies = { by_tool: {}, aliased: {}, errors: 0 }
     end
 
     def count_turn(record)
       @totals = @totals.add(record)
+      if ModelSegment.splits?(@segments.last, record)
+        @segments << ModelSegment.open(record)
+      else
+        @segments[-1] = @segments.last.add(record)
+      end
       # The model the last turn that named one ran on: what a switch is
       # told by (#note_model_ref).
       @last_model_ref = record[:model_ref].to_s unless record[:model_ref].to_s.empty?
