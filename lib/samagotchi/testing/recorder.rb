@@ -1,0 +1,136 @@
+# frozen_string_literal: true
+
+require_relative "../plugin/card"
+require_relative "../plugin/context"
+
+module Samagotchi
+  module Testing
+    # A line to the user (ctx.notify, event[:notify]); +hook+ is the
+    # plugin's or hook file's label ("plugin.rb (bundle x)").
+    Notice = Data.define(:text, :level, :hook, :fallback_for)
+    # Text put into the running turn (ctx.steer, event[:steer]).
+    Steer = Data.define(:text, :hook)
+    # A stop_turn or stop_generation (+kind+ :turn or :generation).
+    Stop = Data.define(:kind, :reason, :hook)
+    # An ask_user question.
+    Question = Data.define(:question, :options, :header, :allow_freeform, :hook)
+    # An ask_model request: the request Context built (SideQuestion), its
+    # limits and cancel controller.
+    ModelRequest = Data.define(:request, :timeout, :max_tokens, :cancel)
+
+    # What a bundle did at chi's edges, for a test to read: the Engine side
+    # of its Context (Testing::Host) and the hook runtime (Testing::Runtime)
+    # land here, file hooks and plugin hooks in the same lists. It also
+    # holds what those edges answer: queued ask_user / ask_model answers and
+    # the session's values (#values), read at each call.
+    class Recorder
+      # The session values a Host reads when the test sets none.
+      DEFAULTS = {
+        session_id: "test-session", cwd: nil, messages: [], messages_partial: false, model_name: "test:model",
+        model_key: "model", toolkit: "full", declared_tools: nil, frontend: :worker, scratch: false, setup: nil,
+        prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true
+      }.freeze
+
+      attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :answers,
+                  :model_answers, :values
+
+      def initialize(**values)
+        unknown = values.keys - DEFAULTS.keys
+        raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
+
+        @values = DEFAULTS.merge(values)
+        @notices = []
+        @cards = []
+        @steers = []
+        @stops = []
+        @questions = []
+        @model_requests = []
+        @toolkit_uses = []
+        @answers = []
+        @model_answers = []
+        @mutex = Mutex.new
+      end
+
+      # Change session values (cwd:, messages:, running:, cancelled: …).
+      def set(**values)
+        unknown = values.keys - DEFAULTS.keys
+        raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
+
+        @mutex.synchronize { @values.merge!(values) }
+        self
+      end
+
+      def [](key) = @mutex.synchronize { @values.fetch(key) }
+
+      # Only stop_turn's, or only stop_generation's.
+      def turn_stops = stops.select { |stop| stop.kind == :turn }
+      def generation_stops = stops.select { |stop| stop.kind == :generation }
+
+      def notify(text, level, hook, fallback_for)
+        record(@notices, Notice.new(text: text.to_s, level: level, hook: hook, fallback_for: fallback_for))
+        nil
+      end
+
+      # Checked as chi's cards are (Plugin::Card.build); the id it shows.
+      def card(**fields)
+        card = Plugin::Card.build(**fields).freeze
+        record(@cards, card)
+        card[:id]
+      end
+
+      def steer(text, hook)
+        return false unless self[:running]
+
+        record(@steers, Steer.new(text: text.to_s, hook: hook))
+        true
+      end
+
+      def stop(kind, reason, hook)
+        return false unless self[:running]
+
+        record(@stops, Stop.new(kind: kind, reason: reason.to_s, hook: hook))
+        true
+      end
+
+      # The next queued answer (#answers), nil with none (no one to ask).
+      def ask_user(question:, options:, header:, allow_freeform:, hook:)
+        record(@questions, Question.new(question: question, options: options, header: header,
+                                        allow_freeform: allow_freeform, hook: hook))
+        answer = @mutex.synchronize { @answers.shift }
+        answer.respond_to?(:call) ? answer.call(@questions.last) : answer
+      end
+
+      # The next queued model answer (#model_answers): a String, an
+      # exception to raise, or a callable given the ModelRequest. None left:
+      # Plugin::ModelError, as an unreachable model.
+      def ask_model(request, timeout:, max_tokens:, cancel_controller:)
+        entry = ModelRequest.new(request: request, timeout: timeout, max_tokens: max_tokens, cancel: cancel_controller)
+        record(@model_requests, entry)
+        answer = @mutex.synchronize { @model_answers.empty? ? :none : @model_answers.shift }
+        raise Plugin::ModelError, "no model answer queued (bundle.model_answers << \"text\")" if answer == :none
+        raise answer if answer.is_a?(Exception) || (answer.is_a?(Class) && answer <= Exception)
+
+        answer.respond_to?(:call) ? answer.call(entry) : answer
+      end
+
+      # ctx.use_toolkit: +known+ the toolkits chi and the plugins declare.
+      # Staged (toolkit_staged:, true by default), the session is on it at
+      # once, as chi saves it on the session (ToolkitBinding#use).
+      def use_toolkit(name, known)
+        raise ArgumentError, "no toolkit named #{name}" unless known.include?(name)
+
+        record(@toolkit_uses, name)
+        return false unless self[:toolkit_staged]
+
+        set(toolkit: name)
+        true
+      end
+
+      private
+
+      def record(list, item)
+        @mutex.synchronize { list << item }
+      end
+    end
+  end
+end
