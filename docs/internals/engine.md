@@ -273,8 +273,8 @@ One iteration with tool calls:
           → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)
           → KernelLoop#dispatch_tool_call, or the denial text
           → :tool_call_completed, then the :after_tool_call hook
-          → returns {output:, capped_output:, truncated:, activity:, images:, shown_params:,
-                     shown_label:, diff:}
+          → returns a ToolRun value object with output, capped_output, truncated, activity, images, shown_params,
+            shown_label, refs, diff and output_file; fields a call doesn't produce are nil
       → :tool_dispatch_completed {iteration, call_count}
     → native: ToolResponse.joined(runs, ids:), one entry with the capped outputs
       chat:   ToolResponse.single(run, tool_call_id:, ids:) as each call finishes (the block), with the
