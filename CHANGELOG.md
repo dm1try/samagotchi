@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-10-18
+
 ### Added
 
 - Stats: side requests (the idle recap, `/btw` and plugins' `ctx.ask_model`) are counted on their own
@@ -21,12 +23,18 @@ and commands may change between minor versions. How releases are made:
   heredoc fed to a shell or an interpreter, or piped on (also from a `( … )` or `{ … }` group), is still
   matched. The bundle's `chi-answer-piped` (guardrails bundle 0.9.1) no longer asks about stdin from
   `/dev/null`.
+- Guardrails: the `rm` and `touches` checks now see a heredoc that bash runs after all — piped on from a `( … )` or
+  `{ … }` group, fed through `<( … )` / `>( … )`, or written with `&>` / `>& file` and then run — which they used to
+  read as plain data.
 - Plugins: a `chi.service` that starts lazily from a tool or hook handler runs its start block outside the handler,
   so Stop no longer cancels the service's startup `ctx.http` calls (as docs/plugins.md says).
 - Bundles: the test kit's sandbox also points `XDG_DATA_HOME` and `XDG_CACHE_HOME` at its temp folder, so a bundle
   test no longer writes to your own data or cache home when you set them.
 - `chi bootstrap`: re-running it against a server the config already has says so, without the misleading "saved as …"
   line before it.
+
+Update with `chi update` (the system bundle 0.81.0, `guardrails` 0.9.1, `slow-commands` 0.2.3), then restart
+`chi web`.
 
 ## [0.80.0] - 2026-10-17
 
@@ -3330,7 +3338,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.80.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.81.0...HEAD
+[0.81.0]: https://github.com/dm1try/samagotchi/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/dm1try/samagotchi/compare/v0.79.0...v0.80.0
 [0.79.0]: https://github.com/dm1try/samagotchi/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/dm1try/samagotchi/compare/v0.77.0...v0.78.0
