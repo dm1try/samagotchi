@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMPOSER_FOLD_KEY, composerFolded, foldButton, foldHandle, opensOnKey } from "../../../lib/samagotchi/web/public/composer_fold.js";
+import { COMPOSER_FOLD_KEY, composerFolded, foldHandle, opensOnKey } from "../../../lib/samagotchi/web/public/composer_fold.js";
 
 test("COMPOSER_FOLD_KEY: the per-browser key", () => {
   assert.equal(COMPOSER_FOLD_KEY, "chi_composer_collapsed");
@@ -21,35 +21,6 @@ test("composerFolded: a visit the page opened stays open, saved or archived", ()
   assert.equal(composerFolded({ saved: true, archivedVisit: false, visitOpen: true }), false);
   assert.equal(composerFolded({ saved: false, archivedVisit: true, visitOpen: true }), false);
   assert.equal(composerFolded({ saved: true, archivedVisit: true, visitOpen: true }), false);
-});
-
-test("foldButton: expanded is `hide ▾`, unmarked, whatever the draft or a wait", () => {
-  const b = foldButton({ folded: false, draft: true, waiting: true, phone: false });
-  assert.equal(b.text, "hide ▾");
-  assert.equal(b.folded, false);
-  assert.equal(b.draft, false);
-  assert.equal(b.waiting, false);
-  assert.match(b.title, /^Hide the message box/);
-});
-
-test("foldButton: folded is `▴ message`, `▴ message · draft` with a draft (marked)", () => {
-  assert.deepEqual(foldButton({ folded: true, draft: false, waiting: false, phone: false }),
-                   { text: "▴ message", title: "Show the message box", folded: true, draft: false, waiting: false });
-  const d = foldButton({ folded: true, draft: true, waiting: false, phone: false });
-  assert.equal(d.text, "▴ message · draft");
-  assert.equal(d.draft, true);
-  assert.equal(d.title, "Show the message box");
-});
-
-test("foldButton: a session waiting on the user marks the folded button and says so", () => {
-  const w = foldButton({ folded: true, draft: true, waiting: true, phone: false });
-  assert.equal(w.waiting, true);
-  assert.equal(w.title, "Show the message box · the session waits on you");
-});
-
-test("foldButton: on a phone (an icon) the draft is in the title too", () => {
-  assert.equal(foldButton({ folded: true, draft: true, waiting: false, phone: true }).title, "Show the message box · a draft is in it");
-  assert.equal(foldButton({ folded: true, draft: false, waiting: false, phone: true }).title, "Show the message box");
 });
 
 test("foldHandle: expanded is unmarked, whatever the draft or a wait, and says how to hide", () => {
