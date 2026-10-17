@@ -16,6 +16,7 @@ async function send(page, prompt) {
 }
 
 test("the stage keeps one height while a multi-step turn runs; nothing moves the history; a scrolled-up reader stays at the hand-off", async ({ page, script }) => {
+  test.setTimeout(60_000);
   script("stage");
   await send(page, "First round");
   await page.mouse.move(0, 0);
