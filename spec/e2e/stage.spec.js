@@ -3,6 +3,7 @@
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
 import { test, expect } from "./support/fixtures.js";
+import { expectNoHorizontalOverflow } from "./support/layout.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
@@ -172,6 +173,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // With web.markdown on, it reads as markdown: its heading, and its link opens a new tab.
   await expect(asking.locator("h2")).toHaveText("Two files");
   await expect(asking.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
+  await expectNoHorizontalOverflow(page);
   // The card's arrival grows the stage, briefly; the top bar stays (the
   // hidden strip's pill gains "· 1 waiting" and must not wrap to a row).
   const marks = await stageMarks(page);
@@ -225,6 +227,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
+  await expectNoHorizontalOverflow(page);
   // The turn end with a short answer: the stage keeps its height, nothing
   // in it moves.
   const leaveAt = momentAt(await stageMarks(page), (m) => /\bleaving\b/.test(m.cls), answeredAt);

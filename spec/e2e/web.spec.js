@@ -1,6 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
+import { expectNoHorizontalOverflow } from "./support/layout.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 import { momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
 
@@ -840,9 +841,12 @@ async function continueAndCheck(page, first, kid) {
 
   // The chip's popover lists the earlier link; a click opens it.
   await chip.click();
+  await page.setViewportSize({ width: 390, height: 700 });
   const row = page.locator(`#chainPop .chain-row[data-id="${first}"]`);
   await expect(row.locator(".cr-n")).toHaveText("#1");
   await expect(row.locator(".archived-badge")).toHaveText("archived");
+  await expectNoHorizontalOverflow(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await row.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
   await expect(page.locator("#chainPop")).toBeHidden();
