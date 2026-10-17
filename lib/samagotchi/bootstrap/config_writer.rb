@@ -280,7 +280,7 @@ module Samagotchi
       # neither url: nor host: is Anthropic's own API (HostConfig's rule).
       def location(fields)
         url = fields["url"].to_s.strip
-        url = ANTHROPIC_URL if url.empty? && anthropic?(fields) && fields["host"].to_s.strip.empty? && fields["port"].to_s.strip.empty?
+        url = HostConfig::ANTHROPIC_URL if url.empty? && anthropic?(fields) && fields["host"].to_s.strip.empty? && fields["port"].to_s.strip.empty?
         unless url.empty?
           uri = URI.parse(url)
           path = uri.path.to_s.chomp("/")

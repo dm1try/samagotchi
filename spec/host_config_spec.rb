@@ -9,6 +9,15 @@ require "samagotchi/host_config"
 RSpec.describe Samagotchi::HostConfig do
   before { Samagotchi::ConfigFile.reset_warnings! }
 
+  describe "constants" do
+    it "defines host configuration constants on HostConfig" do
+      expect(Samagotchi.const_defined?(:ANTHROPIC_URL, false)).to be(false)
+      expect(Samagotchi.const_defined?(:AUTH_SCHEMES, false)).to be(false)
+      expect(described_class::ANTHROPIC_URL).to eq("https://api.anthropic.com")
+      expect(described_class::AUTH_SCHEMES).to eq("bearer" => :bearer, "x-api-key" => :x_api_key)
+    end
+  end
+
   describe ".parse" do
     it "reads string or symbol keys, lowercases the name and leaves unset fields nil (models {})" do
       host = described_class.parse("Box", { host: "box.lan", "port" => "8081", "api" => "OpenAI" })

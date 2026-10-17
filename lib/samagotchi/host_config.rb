@@ -23,11 +23,6 @@ module Samagotchi
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
-    # An api: anthropic host without url/host talks to Anthropic's own API.
-    ANTHROPIC_URL = "https://api.anthropic.com"
-    # auth: as written => the LLM::ApiKey scheme.
-    AUTH_SCHEMES = { "bearer" => :bearer, "x-api-key" => :x_api_key }.freeze
-
     # Every field but name may be left out: nil, models {}.
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
@@ -77,8 +72,8 @@ module Samagotchi
       end
 
       auth = value.call(:auth).to_s.strip.downcase
-      fields[:auth] = AUTH_SCHEMES[auth] unless auth.empty?
-      return invalid(name, "auth must be one of #{AUTH_SCHEMES.keys.join(", ")}") if !auth.empty? && fields[:auth].nil?
+      fields[:auth] = HostConfig::AUTH_SCHEMES[auth] unless auth.empty?
+      return invalid(name, "auth must be one of #{HostConfig::AUTH_SCHEMES.keys.join(", ")}") if !auth.empty? && fields[:auth].nil?
 
       if fields[:auth] && fields[:api_key_env].nil?
         ConfigFile.warn_once "Warning: #{where}: auth has no effect without api_key_env (no key is sent)"
@@ -121,7 +116,7 @@ module Samagotchi
       host = value.call(:host)
       port = value.call(:port)
       url = value.call(:url).to_s.strip
-      url = ANTHROPIC_URL if url.empty? && api == :anthropic && host.to_s.strip.empty? && port.to_s.strip.empty?
+      url = HostConfig::ANTHROPIC_URL if url.empty? && api == :anthropic && host.to_s.strip.empty? && port.to_s.strip.empty?
       scheme = "http"
       unless url.empty?
         return invalid(name, "give url or host/port, not both") unless host.to_s.strip.empty? && port.to_s.strip.empty?
@@ -178,4 +173,9 @@ module Samagotchi
     end
     private_class_method :invalid
   end
+
+  # An api: anthropic host without url/host talks to Anthropic's own API.
+  HostConfig::ANTHROPIC_URL = "https://api.anthropic.com"
+  # auth: as written => the LLM::ApiKey scheme.
+  HostConfig::AUTH_SCHEMES = { "bearer" => :bearer, "x-api-key" => :x_api_key }.freeze
 end
