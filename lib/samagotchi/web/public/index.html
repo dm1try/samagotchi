@@ -17,7 +17,8 @@
   --diff-add-bg:rgba(26,127,55,.12);--diff-add-text:#116329;--diff-del-bg:rgba(207,34,46,.10);--diff-del-text:#82071e;
   --code-text:#1f2328;--code-keyword:#cf222e;--code-string:#0a3069;--code-comment:#57606a;--code-constant:#0550ae;--code-func:#8250df;--code-type:#953800;
   --card-hover-border:rgba(31,35,40,.18);--on-solid:#fff;--on-warn:#1f2328;--text-hover:#0d1117;--badge-bg:rgba(31,35,40,.06);--badge-ring:rgba(31,35,40,.15);--shadow-strong:rgba(31,35,40,.18);--backdrop:rgba(13,17,23,.85);--toast-shadow:0 6px 24px rgba(31,35,40,.14)}}
-/* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor). */
+/* Icon masks shared by the phone info bar, the all view's cards and the composer's image button (the stroke only shapes the mask; the icon takes currentColor). */
+:root{--icon-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.75' cy='6.25' r='1.1'/%3E%3Cpath d='m2.5 12.5 3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
@@ -627,6 +628,12 @@ body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin
 #composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
 #composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
 #composer #actionBtn{min-width:64px;font-weight:600}
+/* The image button (app.js: a click opens #attachInput, the hidden file picker; a phone's offers the camera and the photo library):
+   an icon just left of Start / Send, quiet like the model picker; hidden in a session a terminal owns, and on a phone while a turn runs. */
+#composer .actions-col .attach-btn{order:2;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
+#composer .actions-col .attach-btn::before{content:"";display:block;width:16px;height:16px;margin:auto;background:currentColor;-webkit-mask:var(--icon-image) center/contain no-repeat;mask:var(--icon-image) center/contain no-repeat}
+#composer .actions-col .attach-btn:hover{filter:none;color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
+#composer .actions-col .attach-btn[hidden]{display:none}
 /* In a session the composer is one row: the text field (one line, growing with its text; fitPrompt sets its height)
    and Cancel · Send at its bottom right. The key hint is in the placeholder there, so its row goes. */
 body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
@@ -1273,6 +1280,8 @@ a{color:var(--accent)}
           <button type="button" id="llmContextNew" class="llmctx-new" aria-haspopup="dialog" hidden></button>
           <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
+          <button type="button" id="attachBtn" class="attach-btn" title="Add images (or paste or drop them here)" aria-label="Add images" hidden></button>
+          <input type="file" id="attachInput" accept="image/*" multiple hidden>
           <div class="split">
             <button id="actionBtn">Start</button>
           </div>
