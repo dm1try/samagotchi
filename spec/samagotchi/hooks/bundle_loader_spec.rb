@@ -349,4 +349,58 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       end.to raise_error(Interrupt)
     end
   end
+
+  describe ".load_hook_file" do
+    let(:hooks_dir) { File.join(tmpdir, "hooks") }
+    let(:registry) { Samagotchi::Hooks::Registry.new }
+
+    def hook(event, on_error: "skip", priority: 100)
+      Samagotchi::MemoryBundle::BundleHook.new(event: event, on_error: on_error, priority: priority)
+    end
+
+    it "registers the file's hook under its event and priority, with no sha check" do
+      write_hook(hooks_dir, "mark.rb", "class Mark; def call(e); e[:marked] = true; end; end")
+      described_class.load_hook_file("b", "mark.rb", File.join(hooks_dir, "mark.rb"), hook("before_turn", priority: 7), registry)
+
+      expect(registry.bundle_hook_names(:before_turn)).to eq([["b", "mark.rb", 7]])
+      event = {}
+      registry.fire(:before_turn, event)
+      expect(event[:marked]).to be true
+    end
+
+    it "raises a broken file's error and registers nothing" do
+      write_hook(hooks_dir, "broken.rb", "class Broken; def call(e\nend\n")
+      expect do
+        described_class.load_hook_file("b", "broken.rb", File.join(hooks_dir, "broken.rb"), hook("before_turn"), registry)
+      end.to raise_error(SyntaxError)
+      write_hook(hooks_dir, "no_call.rb", "class NoCall; end")
+      expect do
+        described_class.load_hook_file("b", "no_call.rb", File.join(hooks_dir, "no_call.rb"), hook("before_turn"), registry)
+      end.to raise_error(ArgumentError, /does not respond to #call/)
+      expect(registry.size).to eq(0)
+    end
+
+    it "loads the same file twice into fresh namespaces without reopening its class or its constants" do
+      write_hook(hooks_dir, "counter.rb", <<~RUBY)
+        class Counter
+          LIMIT = 3
+          @built = 0
+          class << self; attr_accessor :built; end
+          def initialize = self.class.built += 1
+          def call(e) = e[:built] = self.class.built
+        end
+      RUBY
+      file = File.join(hooks_dir, "counter.rb")
+      first = Module.new
+      second = Module.new
+
+      expect do
+        described_class.load_hook_file("b", "counter.rb", file, hook("before_turn"), registry, namespace: first)
+        described_class.load_hook_file("b", "counter.rb", file, hook("before_turn"), Samagotchi::Hooks::Registry.new,
+                                       namespace: second)
+      end.not_to output(/already initialized constant/).to_stderr
+      expect(first::Counter).not_to equal(second::Counter)
+      expect([first::Counter.built, second::Counter.built]).to eq([1, 1])
+    end
+  end
 end

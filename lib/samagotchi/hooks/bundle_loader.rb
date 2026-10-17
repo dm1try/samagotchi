@@ -70,10 +70,7 @@ module Samagotchi
             # A hook with no declared event cannot be auto-registered.
             next if hook.event.empty?
 
-            event_sym = hook.event.to_sym
-            on_error = hook.on_error
-            priority = hook.priority
-            fail_closed = on_error == "fail_closed" && event_sym == :before_tool_call
+            fail_closed = hook.on_error == "fail_closed" && hook.event == "before_tool_call"
             what = "hook #{basename} (bundle #{bundle_name})"
             file = hooks_dir && File.join(hooks_dir, basename)
             unless file && File.exist?(file)
@@ -87,15 +84,7 @@ module Samagotchi
             end
 
             begin
-              plugin = instantiate(bundle_name, basename, file, settings: settings)
-              policy = if fail_closed then :deny
-                       elsif on_error == "log" then :log
-                       else :skip
-                       end
-              label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
-              handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
-                                   fields: { bundle: bundle_name }) { |event| plugin.call(event) }
-              registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority, &handler)
+              load_hook_file(bundle_name, basename, file, hook, registry, settings: settings)
               loaded += 1
             rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
               raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
@@ -105,6 +94,31 @@ module Samagotchi
             end
           end
           loaded
+        end
+
+        # Build one hook file and register it in +registry+ under its
+        # event, priority and error policy (a fail_closed before_tool_call
+        # one denies when it raises). No missing-file, sha or requires_chi
+        # check: #load makes them; the test kit loads a bundle's source
+        # this way.
+        # @param hook [MemoryBundle::BundleHook] its manifest entry
+        # @param namespace [Module, nil] the module the file is evaluated
+        #   in (default: the bundle's, #namespace_for)
+        # @raise [Exception] what loading or building the file raised;
+        #   nothing is registered then
+        def load_hook_file(bundle_name, basename, file, hook, registry, settings: {}, namespace: nil)
+          event_sym = hook.event.to_sym
+          fail_closed = hook.on_error == "fail_closed" && event_sym == :before_tool_call
+          plugin = instantiate(bundle_name, basename, file, settings: settings, namespace: namespace)
+          policy = if fail_closed then :deny
+                   elsif hook.on_error == "log" then :log
+                   else :skip
+                   end
+          label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
+          handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
+                               fields: { bundle: bundle_name }) { |event| plugin.call(event) }
+          registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: hook.priority, &handler)
+          nil
         end
 
         # Why the file doesn't match the sha256 recorded at install, or nil.
@@ -119,12 +133,13 @@ module Samagotchi
           "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"
         end
 
-        # Evaluate a plugin file inside the bundle's namespace module and
+        # Evaluate a plugin file inside the bundle's namespace module (or
+        # +namespace+) and
         # return an instance that responds to #call. A class whose
         # initialize takes an argument gets the settings (one Hash, string
         # keys); one that takes none is built bare.
-        def instantiate(bundle_name, basename, file, settings: {})
-          ns = namespace_for(bundle_name)
+        def instantiate(bundle_name, basename, file, settings: {}, namespace: nil)
+          ns = namespace || namespace_for(bundle_name)
           content = File.read(file)
           ns.module_eval(content, file, 1)
           klass = Hooks.class_for(basename, ns)
