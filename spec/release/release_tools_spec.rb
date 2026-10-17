@@ -43,6 +43,10 @@ RSpec.describe ReleaseTools do
                                "known-names" => ["known_names.md", "hooks/known_names.rb"])
       expect(files["system"]).to include("identity.md", "delegated.md")
     end
+
+    it "keep each profile's requires_chi at its members' highest (bundles:check notes one below)" do
+      expect(described_class.low_meta_floors(repo_root)).to eq([])
+    end
   end
 
   describe ".refresh_manifest" do
@@ -154,6 +158,24 @@ RSpec.describe ReleaseTools do
       expect(described_class.unlisted_memories(tmp))
         .to eq(["b: ships b.md, which files: doesn't list (an install leaves it out; add it, then rake bundles:sha)"])
       expect(described_class.bundles_check(tmp).first).to include(a_string_matching(/b: ships b\.md/))
+    end
+
+    # A profile's floor guards nothing at install (each member checks its
+    # own), so one below a member's is a note, not a failure.
+    it "notes a meta bundle whose requires_chi is below a member's, naming the highest" do
+      write("lib/samagotchi/bundles/m1/manifest.yml", "name: m1\nversion: 0.1.0\nrequires_chi: \">= 0.3.0\"\nfiles: {}\n")
+      write("lib/samagotchi/bundles/m2/manifest.yml", "name: m2\nversion: 0.1.0\nrequires_chi: \">= 0.2.0, < 1.0\"\nfiles: {}\n")
+      write("lib/samagotchi/bundles/p/manifest.yml",
+            "name: p\nversion: 0.1.0\nrequires_chi: \">= 0.2.0\"\nincludes:\n- m2\n- m1\n- gone\n")
+      note = "p: requires_chi \">= 0.2.0\" is below member m1's \">= 0.3.0\": raise it to \">= 0.3.0\" (and bump p's version)"
+      expect(described_class.low_meta_floors(tmp)).to eq([note])
+      expect(described_class.bundles_check(tmp)).to eq([[], [note, "No v* tag yet: skipped the changed-bundle version check."]])
+
+      path = File.join(tmp, "lib/samagotchi/bundles/p/manifest.yml")
+      File.write(path, File.read(path).sub(">= 0.2.0", ">= 0.3.0"))
+      expect(described_class.low_meta_floors(tmp)).to eq([])
+      File.write(path, File.read(path).sub("requires_chi: \">= 0.3.0\"\n", ""))
+      expect(described_class.low_meta_floors(tmp)).to eq([note.sub("\">= 0.2.0\" is", "(none) is")])
     end
 
     it "skips the version check, with a note, before the first v* tag" do

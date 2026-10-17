@@ -70,7 +70,8 @@ namespace :bundles do
   end
 
   desc "Check the bundle manifests: sha256 lines match; a bundle changed since the last v* tag has a higher version " \
-       "(and a warning when its requires_chi admits that tag). bundles:check[ci], the CI workflow's: the version " \
+       "(and a warning when its requires_chi admits that tag); a note for a profile whose requires_chi is below a " \
+       "member's. bundles:check[ci], the CI workflow's: the version " \
        "check leaves out the system bundle (release:bump moves it with VERSION)"
   task :check, [:mode] do |_t, args|
     abort "usage: rake bundles:check or rake 'bundles:check[ci]'" unless [nil, "ci"].include?(args[:mode])

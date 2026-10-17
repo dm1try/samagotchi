@@ -181,7 +181,8 @@ module ReleaseTools
   # most bundle changes need nothing new (one that does is marked
   # requires_chi_next, and bundles_check drops its warning). A meta bundle (a profile, its
   # includes:) is left out: installing it checks each member's own
-  # requires_chi (Profile.install_member), so its floor guards nothing.
+  # requires_chi (Profile.install_member), so its floor guards nothing
+  # here (low_meta_floors keeps it at its members' highest).
   def stale_requires_chi(root, tag)
     tagged = Gem::Version.new(tag.delete_prefix("v"))
     bundle_dirs(root).filter_map do |dir|
@@ -197,6 +198,44 @@ module ReleaseTools
       "#{File.basename(dir)}: changed since #{tag} and requires_chi #{requires.to_s.inspect} admits that chi: " \
         "mark it requires_chi_next if the change uses anything newer"
     end
+  end
+
+  # A meta bundle (a profile, its includes:) whose requires_chi is below a
+  # member's: [notes]. Nothing breaks (installing it checks each member's
+  # own requires_chi, Profile.install_member), but the profile then claims
+  # a chi its members don't run on. A note, not a failure: release:bump
+  # raises a requires_chi_next member's floor and not its profile's, and
+  # release:check, right after it, runs bundles:check in full.
+  def low_meta_floors(root)
+    bundle_dirs(root).filter_map do |dir|
+      manifest = YAML.safe_load_file(File.join(dir, "manifest.yml")) || {}
+      members = manifest["includes"] or next
+
+      member, requires, floor = Array(members).filter_map do |name|
+        path = File.join(root, BUNDLES_DIR, name.to_s, "manifest.yml")
+        next unless File.file?(path)
+
+        member_requires = (YAML.safe_load_file(path) || {})["requires_chi"]
+        member_floor = requires_floor(member_requires)
+        [name.to_s, member_requires.to_s, member_floor] if member_floor
+      end.max_by(&:last)
+      own = requires_floor(manifest["requires_chi"])
+      next unless floor && (own.nil? || own < floor)
+
+      name = File.basename(dir)
+      have = manifest["requires_chi"] ? manifest["requires_chi"].to_s.inspect : "(none)"
+      "#{name}: requires_chi #{have} is below member #{member}'s #{requires.inspect}: " \
+        "raise it to \">= #{floor}\" (and bump #{name}'s version)"
+    end
+  end
+
+  # The lowest chi a requires_chi admits: its highest >=, >, ~> or = bound;
+  # nil for none.
+  def requires_floor(requires)
+    return nil if requires.to_s.strip.empty?
+
+    Gem::Requirement.new(*requires.to_s.split(",").map(&:strip)).requirements
+                    .filter_map { |op, version| version if %w[>= > ~> =].include?(op) }.max
   end
 
   # --- requires_chi_next: a floor raised at release time -------------------
@@ -262,7 +301,7 @@ module ReleaseTools
   # The sha lines stay strict for every bundle.
   def bundles_check(root, ci: false)
     problems = stale_shas(root) + unlisted_memories(root) + requires_chi_next_problems(root)
-    notes = []
+    notes = low_meta_floors(root)
     marked = requires_chi_next(root).keys.map { |dir| File.basename(dir) }
     if (tag = last_tag(root))
       problems += unbumped_bundles(root, tag, skip: ci ? [SYSTEM_BUNDLE] : [])

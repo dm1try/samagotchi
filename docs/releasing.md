@@ -13,7 +13,7 @@ can run the whole release; the user approves the notes before the tag and the
   and `rake release:check` enforce it). The system bundle upgrades itself when
   chi starts.
 - **Every other shipped bundle** (btw, check-in, guardrails, known-names,
-  loop-guard, mcp, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, and the profiles core and dev) has its own semver in its
+  loop-guard, mcp, skills, slow-commands, agents-md, source-links, github-pr, coordinator, claude-peer, codex-peer, and the profiles core and dev) has its own semver in its
   `manifest.yml` and, when it needs a newer chi, a `requires_chi:` line. They never upgrade by themselves: users run
   `chi update` (all of them, with the gem) or `chi bundle upgrade NAME`. So:
   - a change to a bundle's files bumps that bundle's `version:`
@@ -30,6 +30,10 @@ can run the whole release; the user approves the notes before the tag and the
     spec checks every bundle is in exactly one), and that profile's version
     goes up: `chi update` then installs only the new bundle for those who
     have the profile;
+  - a profile's `requires_chi` is its members' highest: a member's raised
+    floor (by hand, or by `release:bump` for a `requires_chi_next` marker)
+    raises its profile's too, with the profile's version (`bundles:check`
+    notes a profile below a member);
   - the release notes say "run `chi update`" and name the bundles whose
     version moved (what changed in each), not per-bundle upgrade steps.
 - Pre-1.0: config and commands may change in a minor version (0.2 → 0.3); a
@@ -55,7 +59,7 @@ as the GitHub release body.
 | Task | What it does |
 | --- | --- |
 | `rake bundles:sha` | Recomputes the sha256 lines of every shipped bundle manifest (`files:`, `hooks:`, `plugin:`). |
-| `rake bundles:check` | Sha lines match; every top-level `*.md` of a bundle is listed in its `files:` (an install takes only the listed ones); a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: mark it `requires_chi_next` if the change uses anything new. Notes a bundle marked `requires_chi_next`. The release workflow and `release:check` run it in full. |
+| `rake bundles:check` | Sha lines match; every top-level `*.md` of a bundle is listed in its `files:` (an install takes only the listed ones); a bundle changed since the last `v*` tag has a higher version (skipped, with a note, before the first tag). Warns (doesn't fail) when such a bundle's `requires_chi` still admits the tagged chi: mark it `requires_chi_next` if the change uses anything new. Notes a bundle marked `requires_chi_next`, and a profile (`core`, `dev`) whose `requires_chi` is below a member's. The release workflow and `release:check` run it in full. |
 | `rake 'bundles:check[ci]'` | The CI workflow's (every push and PR): the same, except the version check leaves out the system bundle, which is changed and unbumped between releases (`release:bump` moves its version with VERSION). A task argument, not `CI=1`: GitHub sets `CI` in the release workflow too. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
 | `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped). No commit. |
