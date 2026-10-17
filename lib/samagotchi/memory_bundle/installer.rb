@@ -34,8 +34,11 @@ module Samagotchi
 
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
-      def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false)
+      # prepared: the source already normalized (a PreparedSource, which the
+      # Installer then owns and cleans up as its own); nil normalizes source.
+      def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil)
         @source = source
+        @prepared = prepared
         @name = name
         @scope = scope&.to_s&.strip&.downcase || ""
         @force = force
@@ -146,8 +149,10 @@ module Samagotchi
       # from git/zip/tar, is cleaned up after #run) and its manifest.yml
       # (@manifest, nil when it has none and the install isn't strict).
       def load_source
-        @bundle_dir, @source_owned, @source_commit = SourceNormalizer.normalize(@source)
-        @source_dir = @bundle_dir
+        prepared = @prepared || PreparedSource.prepare(@source)
+        @bundle_dir = @source_dir = prepared.dir
+        @source_owned = prepared.owned
+        @source_commit = prepared.commit
         @manifest = Manifest.read(dir: @bundle_dir)
       rescue SourceNormalizer::UnknownSourceError => e
         raise InstallError, "Source normalization failed: #{e.message}"

@@ -155,5 +155,22 @@ module Samagotchi
 
       private_class_method :normalize_zip, :normalize_tar, :clean_copy_of
     end
+
+    # A source normalized once to a local dir (SourceNormalizer.normalize):
+    # owned when it is a git clone or a zip/tar extract, which #cleanup
+    # removes; commit is a git clone's HEAD (nil otherwise). BundleCommand
+    # reads the bundle's name from it and the Installer installs from it, so
+    # a source is cloned or extracted once per command.
+    PreparedSource = Data.define(:dir, :owned, :commit) do
+      # @raise [SourceNormalizer::UnknownSourceError]
+      def self.prepare(source)
+        dir, owned, commit = SourceNormalizer.normalize(source)
+        new(dir: dir, owned: owned, commit: commit)
+      end
+
+      def cleanup
+        SourceNormalizer.cleanup(dir) if owned
+      end
+    end
   end
 end

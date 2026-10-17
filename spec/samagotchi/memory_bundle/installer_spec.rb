@@ -611,6 +611,26 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  # BundleCommand normalizes the source once (a git clone, a zip or tar
+  # extract) to read the bundle's name, and hands that to the Installer.
+  describe "a prepared source" do
+    it "installs from it without normalizing the source again, and removes an owned one after the run" do
+      bundle = write_bundle(File.join(tmpdir, "p"), { "a.md" => "one\n" }, name: "prepped")
+      extract = File.join(tmpdir, "extract")
+      FileUtils.cp_r(bundle, extract)
+      prepared = Samagotchi::MemoryBundle::PreparedSource.new(dir: extract, owned: true, commit: "abc123")
+      allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_raise("normalized again")
+
+      described_class.new(source: "https://example.com/prepped.git", name: "prepped", strict: true, prepared: prepared).run
+
+      expect(Samagotchi::MemoryBundle::SourceNormalizer).not_to have_received(:normalize)
+      expect(File.read(File.join(system_memories_dir, "a.md"))).to eq("one\n")
+      record = JSON.parse(File.read(File.join(bundles_dir, "prepped", "manifest.json")))
+      expect(record.values_at("source", "source_commit")).to eq(["https://example.com/prepped.git", "abc123"])
+      expect(Dir.exist?(extract)).to be(false)
+    end
+  end
+
   describe "an upgrade from an owned source (zip) with a conflict" do
     # A zip source is extracted to a temp dir the installer owns; the
     # conflict's incoming: path points into it, so it must outlive #run
