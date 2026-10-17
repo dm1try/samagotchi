@@ -50,15 +50,18 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "is called no more often than WATCH_INTERVAL" do
-      stub_const("Samagotchi::QuestionDesk::WATCH_INTERVAL", 0.2)
+      interval = 0.2
+      stub_const("Samagotchi::QuestionDesk::WATCH_INTERVAL", interval)
       calls = 0
+      started_at = SpecWaiting.mono
       thread, box, id = open_in_background(watch: -> { calls += 1; nil })
-      sleep(0.5)
+      wait_until!("watch to run twice", timeout: 5) { calls >= 2 }
       desk.answer(id: id, selected: ["Yes"])
       thread.join(2)
+      elapsed = SpecWaiting.mono - started_at
 
       expect(box[:answer].to_h).to include(selected: ["Yes"])
-      expect(calls).to be_between(2, 4)
+      expect(calls).to be <= (elapsed / interval).floor + 1
     end
 
     it "lets an answer recorded first win over a watch close" do
