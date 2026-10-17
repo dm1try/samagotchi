@@ -28,7 +28,7 @@ module Samagotchi
     # @return [String] $XDG_CONFIG_HOME (absolute), else ~/.config
     def config_home(env: ENV)
       xdg = env.fetch("XDG_CONFIG_HOME", "").to_s.strip
-      xdg.empty? ? File.expand_path("~/.config") : File.absolute_path(xdg)
+      xdg.empty? ? File.join(Dir.home, ".config") : File.absolute_path(xdg)
     end
 
     # +path+ as chi shows it: ~ for the home folder (~/a for one in it),

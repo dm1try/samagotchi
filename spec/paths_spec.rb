@@ -37,7 +37,14 @@ RSpec.describe Samagotchi::Paths do
   describe ".config_home" do
     it "is XDG_CONFIG_HOME when set, else ~/.config" do
       expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "/c" })).to eq("/c")
-      expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "" })).to eq(File.expand_path("~/.config"))
+      expect(described_class.config_home(env: { "XDG_CONFIG_HOME" => "" })).to eq(File.join(Dir.home, ".config"))
+    end
+
+    # One style for both defaults: the home folder is Dir.home's.
+    it "falls back to ~/.config under Dir.home, as state_home does" do
+      allow(Dir).to receive(:home).and_return("/home/u")
+      expect(described_class.config_home(env: {})).to eq("/home/u/.config")
+      expect(described_class.state_home(env: {})).to eq("/home/u/.local/state")
     end
 
     it "makes a relative XDG_CONFIG_HOME absolute, from the current directory" do
