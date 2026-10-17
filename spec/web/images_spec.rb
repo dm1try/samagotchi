@@ -120,6 +120,12 @@ RSpec.describe Samagotchi::Web::App, "images" do
     expect(JSON.parse(body)["id"]).to be_a(String)
   end
 
+  it "has its caps mirrored in the composer's images.js, which refuses what a send would" do
+    js = File.read(File.expand_path("../../lib/samagotchi/web/public/images.js", __dir__))
+    expect(js[/^export const MAX_TURN_IMAGES = (\d+);$/, 1].to_i).to eq(Samagotchi::ImageStore::MAX_TURN_REFS)
+    expect(js[/^export const MAX_IMAGE_MB = (\d+);$/, 1].to_i * 1024 * 1024).to eq(described_class::MAX_IMAGE_UPLOAD_BYTES)
+  end
+
   it "shows a user message's images in the history" do
     ref = JSON.parse(upload.last)
     session.messages = [{ role: "user", content: "look", images: [ref.transform_keys(&:to_sym)] }, { role: "model", content: "red" }]

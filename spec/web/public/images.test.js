@@ -2,6 +2,7 @@ import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  MAX_IMAGE_MB, MAX_TURN_IMAGES, admitImages,
   chipName, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText, uploadChips,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
@@ -27,6 +28,33 @@ test("imageFiles takes the image files of a paste or drop, once each", () => {
   const dt = { files: [png, text], items: [{ kind: "file", getAsFile: () => png }, { kind: "string" }] };
   assert.deepEqual(imageFiles(dt), [png]);
   assert.deepEqual(imageFiles(null), []);
+});
+
+test("admitImages takes the images and says why the rest stayed out: not an image, over the size cap", () => {
+  const png = (name, size = 10) => ({ type: "image/png", name, size });
+  assert.deepEqual(admitImages([], 0), { take: [], refused: "" });
+  assert.deepEqual(admitImages(undefined), { take: [], refused: "" });
+  const a = png("a.png");
+  assert.deepEqual(admitImages([a], 0), { take: [a], refused: "" });
+  const text = { type: "text/plain", name: "a.txt", size: 5 };
+  const blank = { type: "", name: "x", size: 5 };
+  assert.deepEqual(admitImages([text, a, blank], 0), { take: [a], refused: "2 files not added: not an image" });
+  const big = png("big.png", MAX_IMAGE_MB * 1024 * 1024 + 1);
+  const edge = png("edge.png", MAX_IMAGE_MB * 1024 * 1024);
+  assert.deepEqual(admitImages([big, edge], 0), { take: [edge], refused: "1 file not added: over 20 MB" });
+});
+
+test("admitImages counts the chips held: the 20th image goes in, the 21st and on stay out", () => {
+  const files = Array.from({ length: 3 }, (_, i) => ({ type: "image/jpeg", name: `p${i}.jpg`, size: 1 }));
+  assert.equal(MAX_TURN_IMAGES, 20);
+  const { take, refused } = admitImages(files, 19);
+  assert.deepEqual(take, [files[0]]);
+  assert.equal(refused, "2 files not added: at most 20 images a message");
+  assert.deepEqual(admitImages(files, 20).take, []);
+  const big = { type: "image/png", name: "big.png", size: MAX_IMAGE_MB * 1024 * 1024 + 1 };
+  const text = { type: "text/plain", name: "a.txt", size: 1 };
+  assert.equal(admitImages([...files, big, text], 20).refused,
+    "3 files not added: at most 20 images a message · 1 file not added: over 20 MB · 1 file not added: not an image");
 });
 
 test("chipName keeps a real name and numbers pasted screenshots", () => {
