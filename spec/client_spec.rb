@@ -548,6 +548,7 @@ RSpec.describe Samagotchi::Client do
         http = instance_double(Net::HTTP)
         response = double("response", code: "404", body: "File Not Found")
         allow(response).to receive(:[]).with("Retry-After").and_return(nil)
+        allow(response).to receive(:[]).with("anthropic-thinking-prefix-mismatch").and_return(nil)
         allow(Net::HTTP).to receive(:start).and_yield(http)
         allow(http).to receive(:request) { |_request, &block| block.call(response) }
         client

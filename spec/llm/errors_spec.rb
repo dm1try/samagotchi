@@ -9,6 +9,13 @@ RSpec.describe Samagotchi::LLM::ProviderError do
     Samagotchi::LLM::ProviderErrors.from_response(status: status, body: JSON.generate(error: { message: message }), host: "fw", **options)
   end
 
+  it "keeps an optional provider diagnosis on the error" do
+    error = from(400, "Invalid signature", diagnosis: "changed_validated=system.1")
+
+    expect(error.diagnosis).to eq("changed_validated=system.1")
+    expect(from(400, "Invalid signature").diagnosis).to be_nil
+  end
+
   describe "#summary: one line per kind for the UIs" do
     it "names the variable for a missing key, and the server's words for a refused one" do
       missing = Samagotchi::LLM::AuthError.new("fw: set FW_KEY (the API key for host fw)", host: "fw")

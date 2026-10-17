@@ -417,7 +417,8 @@ module Samagotchi
         return if status.between?(200, 299)
 
         error = ProviderErrors.from_response(status: status, body: response.body.to_s, host: @label,
-                                             retry_after: response["Retry-After"])
+                                             retry_after: response["Retry-After"],
+                                             diagnosis: response["anthropic-thinking-prefix-mismatch"])
         error.hint ||= @api_key ? @api_key.hint : ApiKey.missing_hint(@label) if error.is_a?(AuthError)
         raise error
       end

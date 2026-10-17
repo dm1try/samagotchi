@@ -178,7 +178,7 @@ Why not send drop_block on every request: it needs adaptive or enabled thinking 
 thinking field, `off` sends disabled), it would put a beta header on every request to every host, and it would drop
 the same blocks again on every request until something pruned them. The reactive form does the same work in one
 place, for one extra 400 round trip per break. The `anthropic-thinking-prefix-mismatch` diagnosis header (on the
-400, undocumented) is not read: `ProviderErrors.from_response` keeps no headers.
+400, undocumented) is kept on the provider error and logged as `diagnosis` on `thinking_recovered`.
 
 ## Cache breakpoints
 

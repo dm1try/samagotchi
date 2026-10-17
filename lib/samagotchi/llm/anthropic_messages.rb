@@ -95,8 +95,8 @@ module Samagotchi
       # One request's binding recovery (#binding_recovery): the step taken
       # (nil, :drop_block or :strip), the steps tried, where a strip starts
       # ([message, block] in the body), the last signature 400 and the body
-      # it answered, and the first 400's last sentence for the log line.
-      Recovery = Struct.new(:step, :tried, :strip_from, :signature, :why)
+      # it answered, and the first 400's last sentence and diagnosis for the log line.
+      Recovery = Struct.new(:step, :tried, :strip_from, :signature, :why, :diagnosis)
 
       attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :dialect
 
@@ -314,6 +314,7 @@ module Samagotchi
         end
         return nil unless error.thinking_signature?
 
+        recovery.diagnosis ||= error.diagnosis
         recovery.signature = [error.detail.to_s, body]
         case recovery.step
         when nil
@@ -412,8 +413,10 @@ module Samagotchi
           identities = prefix.filter_map { |entry| identity_at(body, entry["path"]) }.uniq.freeze
           kept = others.size
         end
-        Log.info(:http, "thinking_recovered", host: @host_name, model: model.to_s, how: recovery.step.to_s,
-                                              dropped: identities.size, kept: kept, why: recovery.why)
+        fields = { host: @host_name, model: model.to_s, how: recovery.step.to_s, dropped: identities.size,
+                   kept: kept, why: recovery.why }
+        fields[:diagnosis] = recovery.diagnosis if recovery.diagnosis
+        Log.info(:http, "thinking_recovered", **fields)
         return response if identities.empty?
 
         response.with(thinking_drop: ThinkingDrop.new(identities: identities, how: recovery.step))

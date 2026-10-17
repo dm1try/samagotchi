@@ -34,8 +34,8 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages, "binding recovery" do
 
   def fixture(name) = FakeProviderServer.fixture(name, api: "anthropic")
 
-  def signature_400(name = "claude_error_400_signature_system_changed.json")
-    server.enqueue("/v1/messages", status: 400, json: fixture(name))
+  def signature_400(name = "claude_error_400_signature_system_changed.json", headers: {})
+    server.enqueue("/v1/messages", status: 400, json: fixture(name), headers: headers)
   end
 
   def refuse(message)
@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages, "binding recovery" do
   end
 
   it "asks again once with the beta and drop_block, and hands on the prefix-dropped blocks the answer names" do
-    signature_400
+    signature_400(headers: { "anthropic-thinking-prefix-mismatch" => "changed_validated=system.1" })
     stream
     allow(Samagotchi::Log).to receive(:info).and_call_original
 
@@ -88,11 +88,25 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages, "binding recovery" do
     expect(response.provider_content.first).to include("type" => "thinking")
     expect(Samagotchi::Log).to have_received(:info).with(
       :http, "thinking_recovered", host: "claude", model: "claude-haiku-5-5", how: "drop_block", dropped: 3, kept: 0,
-                                   why: "The `system` prompt differs from the one this block was created with."
+                                   why: "The `system` prompt differs from the one this block was created with.",
+                                   diagnosis: "changed_validated=system.1"
     )
     # ADAPTIVE_REFUSED_RE matches the 400's text ("…adaptive…" in no such
     # path here, "thinking" everywhere): never the budget form.
     expect(adapter.budget_form?("claude-haiku-5-5")).to be(false)
+  end
+
+  it "omits the diagnosis field from recovery logs when the 400 has no diagnosis header" do
+    signature_400
+    stream
+    allow(Samagotchi::Log).to receive(:info).and_call_original
+
+    chat
+
+    expect(Samagotchi::Log).to have_received(:info).with(
+      :http, "thinking_recovered", host: "claude", model: "claude-haiku-5-5", how: "drop_block", dropped: 3, kept: 0,
+                                   why: "The `system` prompt differs from the one this block was created with."
+    )
   end
 
   it "sends the default level (no thinking field) adaptive with drop_block on the retry" do

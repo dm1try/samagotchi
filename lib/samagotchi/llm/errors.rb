@@ -38,17 +38,19 @@ module Samagotchi
     #                    whatever status; also raised before sending)
     #   ProtocolError    a body that isn't what the API promises
     class ProviderError < StandardError
-      attr_reader :host, :status, :retry_after
+      attr_reader :host, :status, :retry_after, :diagnosis
       attr_accessor :attempts
 
       # @param host [String, nil] the host (or server label) that failed
       # @param status [Integer, nil] the HTTP status, when there was one
       # @param retry_after [Float, nil] seconds the server asked to wait
-      def initialize(message = nil, host: nil, status: nil, retryable: nil, retry_after: nil, attempts: 1)
+      # @param diagnosis [String, nil] an optional provider diagnosis header
+      def initialize(message = nil, host: nil, status: nil, retryable: nil, retry_after: nil, diagnosis: nil, attempts: 1)
         @host = host
         @status = status
         @retryable = retryable.nil? ? default_retryable? : retryable
         @retry_after = retry_after
+        @diagnosis = diagnosis
         @attempts = attempts
         super(message)
       end
@@ -402,10 +404,10 @@ module Samagotchi
       # @param status [Integer]
       # @param body [String] the response body (JSON or text)
       # @param retry_after [String, nil] the Retry-After header
-      def from_response(status:, body:, host:, retry_after: nil)
+      def from_response(status:, body:, host:, retry_after: nil, diagnosis: nil)
         message = error_message(body)
         text = "#{host}: HTTP #{status}: #{message}"
-        options = { host: host, status: status }
+        options = { host: host, status: status, diagnosis: diagnosis }
         if CONTEXT_OVERFLOW_RE.match?(message) || CONTEXT_OVERFLOW_RE.match?(body.to_s)
           return BadRequest.new(text, context_overflow: true, **options)
         end
