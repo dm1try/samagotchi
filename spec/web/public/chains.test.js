@@ -176,7 +176,7 @@ test("chainRowsTemplate lists the other links newest first: #N, date, recap's fi
   const ids = [...html.matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids, ["d2", "d1"]);
   assert.match(html, /class="family-row chain-row active archived" data-id="d2"/);
-  assert.match(html, /<span class="cr-day">#2<\/span><span class="cr-date">2026-10-0[78]<\/span><span class="fr-preview">Day two fixed the specs\.<\/span>/);
+  assert.match(html, /<span class="cr-n">#2<\/span><span class="cr-date">2026-10-0[78]<\/span><span class="fr-preview">Day two fixed the specs\.<\/span>/);
   // No recap: its preview.
   assert.match(html, /<span class="fr-preview">d1 work<\/span>/);
   assert.equal((html.match(/archived-badge/g) || []).length, 2);
@@ -192,8 +192,8 @@ test("chainRowsTemplate: a row's date carries its HH:MM only when another link o
   const e3 = link("e3", 7, { continues: "e2", created_at: local(17, 14, 32) });
   const [f] = foldChains(families([e3]), [e3, e2, e1]);
   const html = chainRowsHtml(f);
-  assert.match(html, /data-id="e2"[^]*?<span class="cr-day">#2<\/span><span class="cr-date timed">2026-10-17 09:12<\/span>/);
-  assert.match(html, /data-id="e1"[^]*?<span class="cr-day">#1<\/span><span class="cr-date">2026-10-16<\/span>/);
+  assert.match(html, /data-id="e2"[^]*?<span class="cr-n">#2<\/span><span class="cr-date timed">2026-10-17 09:12<\/span>/);
+  assert.match(html, /data-id="e1"[^]*?<span class="cr-n">#1<\/span><span class="cr-date">2026-10-16<\/span>/);
 });
 
 const refused = (code, body, message = "refused") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });

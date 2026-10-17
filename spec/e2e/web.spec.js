@@ -841,7 +841,7 @@ async function continueAndCheck(page, first, kid) {
   // The chip's popover lists the earlier link; a click opens it.
   await chip.click();
   const row = page.locator(`#chainPop .chain-row[data-id="${first}"]`);
-  await expect(row.locator(".cr-day")).toHaveText("#1");
+  await expect(row.locator(".cr-n")).toHaveText("#1");
   await expect(row.locator(".archived-badge")).toHaveText("archived");
   await row.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
