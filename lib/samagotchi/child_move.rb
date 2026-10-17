@@ -11,8 +11,8 @@ require_relative "log"
 require_relative "tools/delegate_cursor"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires KernelLoop and so the tools (a require cycle otherwise).
+  # Loaded on first use: session_manager requires this file (a require cycle
+  # otherwise).
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
   # SessionContinue::OpenChild, the rows a plan refuses: loaded on first use too.
   autoload :SessionContinue, File.expand_path("session_continue", __dir__)

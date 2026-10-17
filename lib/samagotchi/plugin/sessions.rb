@@ -9,8 +9,8 @@ require_relative "../tools/delegate"
 require_relative "../children_status"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires the Engine and so the plugins (a require cycle otherwise).
+  # Loaded on first use: this autoload keeps SessionManager and its ~80
+  # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
 
   module Plugin

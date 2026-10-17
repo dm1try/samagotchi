@@ -37,7 +37,6 @@ require_relative "plugin_session_state"
 require_relative "context_sources"
 require_relative "session_chain"
 require_relative "child_move"
-require_relative "terminal_ui"
 
 module Samagotchi
   # SessionManager coordinates background session processes.

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Workers no longer load the terminal UI or Reline, saving about 50–100 ms and 2 MB per worker start; a plugin
+  that uses Reline, StringIO, Forwardable or Tempfile must now require it itself.
+
 ## [0.77.0] - 2026-10-17
 
 ### Changed

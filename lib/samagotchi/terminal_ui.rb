@@ -42,8 +42,8 @@ require_relative "children_status"
 require_relative "log"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires this file (its worker
-  # process loads the whole UI stack through it), a require cycle otherwise.
+  # Loaded on first use: this autoload keeps SessionManager and its ~80
+  # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
 
   # The in-process terminal front end (`chi --no-shared`, `chi scratch`,

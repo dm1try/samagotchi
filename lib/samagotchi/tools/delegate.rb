@@ -10,8 +10,8 @@ require_relative "delegate_wait"
 require_relative "../child_reports"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires KernelLoop and so these tools (a require cycle otherwise).
+  # Loaded on first use: this autoload keeps SessionManager and its ~80
+  # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
 
   module Tools

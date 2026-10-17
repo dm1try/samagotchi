@@ -4,6 +4,7 @@ require "fileutils"
 
 require_relative "client_id"
 require_relative "config"
+require_relative "engine"
 require_relative "events"
 require_relative "session"
 require_relative "session_inbox"

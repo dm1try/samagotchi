@@ -6,9 +6,8 @@ require_relative "session_inbox"
 require_relative "worker_sidecar"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires KernelLoop and so the tools that use this (a require cycle
-  # otherwise).
+  # Loaded on first use: this autoload keeps SessionManager and its ~80
+  # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
 
   # Waiting for a session's next reply. A reply is the worker's
