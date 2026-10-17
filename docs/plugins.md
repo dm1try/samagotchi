@@ -990,6 +990,48 @@ context_providers:
   the PATH may be another one, such as macOS's 2.6).
 - The command follows [the contract](context.md#the-command-contract).
 
+## Stable for bundles
+
+Bundles normally use only `chi.*` and `ctx`; the constants and helpers below
+are the rest of the surface they may use. A change to any of them gets a
+CHANGELOG line and bumps the shipped bundles that use it. Anything else under
+`Samagotchi::` is internal.
+
+**Stable**
+
+1. `Samagotchi::Plugin::Api` / `chi.*` as documented above, including
+   `Samagotchi::Plugin::ToolResult`, `Samagotchi::Plugin::ModelError` (and its
+   subclass `Samagotchi::Plugin::ModelCancelled`),
+   `Samagotchi::Plugin::Service::Stopped`, `Samagotchi::Plugin::Sessions::Error`
+   and `Samagotchi::Plugin::AttachedContext::Error`.
+2. `Samagotchi::Plugin::Peer` as a base class. A subclass defines `post`,
+   `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
+   `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
+   `APP`, `COMMAND`, `USAGE`, `OUTBOX` and `SCRIPTS_DIRS`. These constants are
+   read as `self.class::X`. See the [claude-peer](#the-claude-peer-bundle) and
+   [codex-peer](#the-codex-peer-bundle) bundles.
+3. `Samagotchi::Tools::ToolIndex::Tool` and `Samagotchi::Tools::ToolIndex::Group`
+   values, `Samagotchi::Tools::ToolIndex.schema_note` and
+   `Samagotchi::Tools::ToolIndex.spec_tokens` (used by the mcp bundle).
+4. `Samagotchi::Tools::Execute::NAME`, `TIMEOUT_PREFIX`, `HANDED_OVER` and
+   `Samagotchi::Tools::Execute.timeout_seconds`.
+5. `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `EXIT_CODE_FILENAME`.
+6. `Samagotchi::AtomicFile.write`, `Samagotchi::Log.warn` /
+   `Samagotchi::Log.debug`, `Samagotchi::Config.get` and
+   `Samagotchi::VERSION`.
+
+**Used by shipped bundles today, but internal** (may change without notice; a
+bundle that needs one should ask for an API instead):
+
+- `Samagotchi::Tools::MemoryRead.memories_dir`, `Samagotchi::MemoryPaths.scope_dir`,
+  `Samagotchi::ConfigFile.global_path` and
+  `Samagotchi::Config.validate_yaml_sections`.
+- `Samagotchi::Ref` / `Samagotchi::RefAction` constants and
+  `Samagotchi::TokenUsage::CHARS_PER_TOKEN`.
+- `Samagotchi::ProcessGroup.stop`, `Samagotchi::Guardrails::ShellLex` and
+  `Samagotchi::Guardrails::GitInfo`.
+- `Samagotchi::Tools::Execute.const_get` reflection.
+
 ## The btw bundle
 
 `chi bundle install btw` (or the `dev` profile) installs the bundle shipped with chi. It is written
