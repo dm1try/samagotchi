@@ -6,6 +6,7 @@ require "fileutils"
 require "ipaddr"
 require_relative "../atomic_file"
 require_relative "../config"
+require_relative "../host_config"
 require_relative "../yaml_lines"
 require_relative "../redacted_inspect"
 
@@ -91,6 +92,8 @@ module Samagotchi
       end
 
       # The name of an existing entry that points at the same server, or nil.
+      # An api: anthropic entry and any other on one server are different
+      # hosts (Fireworks serves both protocols).
       def duplicate_of(fields)
         current_hosts.find { |_, existing| same_server?(existing, fields) }&.first
       end
@@ -267,15 +270,22 @@ module Samagotchi
       def same_server?(existing, fields)
         a = location(existing)
         b = location(fields)
-        a && b && a == b
+        a && b && a == b && anthropic?(existing) == anthropic?(fields)
       end
 
-      # [scheme-less host, port, path] of an entry.
+      def anthropic?(fields) = fields["api"].to_s.strip.downcase == "anthropic"
+
+      # [scheme-less host, port, path] of an entry. An api: anthropic url's
+      # path loses a trailing /v1 (the adapter adds it), and one with
+      # neither url: nor host: is Anthropic's own API (HostConfig's rule).
       def location(fields)
         url = fields["url"].to_s.strip
+        url = ANTHROPIC_URL if url.empty? && anthropic?(fields) && fields["host"].to_s.strip.empty? && fields["port"].to_s.strip.empty?
         unless url.empty?
           uri = URI.parse(url)
-          return [uri.host.to_s.downcase, uri.port, uri.path.to_s.chomp("/")]
+          path = uri.path.to_s.chomp("/")
+          path = path.delete_suffix("/v1") if anthropic?(fields)
+          return [uri.host.to_s.downcase, uri.port, path]
         end
         host = fields["host"].to_s.strip.downcase
         return nil if host.empty?

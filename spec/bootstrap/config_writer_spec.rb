@@ -221,12 +221,50 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
   end
 
   describe "#duplicate_of" do
+    let(:anthropic) { { "url" => "https://api.anthropic.com", "api" => "anthropic", "api_key_env" => "ANTHROPIC_API_KEY" } }
+
     it "matches host+port entries and url entries" do
       existing("hosts:\n  main:\n    host: 192.168.1.29\n    port: 8081\n  or:\n    url: https://openrouter.ai/api/v1/\n    api: openai\n")
 
       expect(writer.duplicate_of(lan)).to eq("main")
       expect(writer.duplicate_of("url" => "https://openrouter.ai/api/v1", "api" => "openai")).to eq("or")
       expect(writer.duplicate_of("host" => "192.168.1.29", "port" => 8082, "api" => "openai")).to be_nil
+    end
+
+    it "takes an api: anthropic entry with neither url nor host as api.anthropic.com" do
+      existing("hosts:\n  claude:\n    api: anthropic\n    api_key_env: ANTHROPIC_API_KEY\n")
+
+      expect(writer.duplicate_of(anthropic)).to eq("claude")
+      expect(writer.write(name: "anthropic", fields: anthropic, model: "claude-a"))
+        .to have_attributes(kind: :exists, existing: "claude")
+    end
+
+    it "takes an api: anthropic url ending in /v1 as the API root" do
+      existing("hosts:\n  claude:\n    url: https://api.anthropic.com/v1/\n    api: Anthropic\n")
+
+      expect(writer.duplicate_of(anthropic)).to eq("claude")
+    end
+
+    it "keeps an OpenAI and an Anthropic entry on one server apart" do
+      existing("hosts:\n  fw:\n    url: https://api.fireworks.ai/inference/v1\n    api: openai\n  " \
+               "splash:\n    host: 10.0.0.5\n    port: 8082\n  urlless-openai:\n    api: openai\n")
+      fireworks = { "url" => "https://api.fireworks.ai/inference", "api" => "anthropic", "dialect" => "fireworks" }
+
+      expect(writer.duplicate_of(fireworks)).to be_nil
+      expect(writer.duplicate_of("host" => "10.0.0.5", "port" => 8082, "api" => "anthropic")).to be_nil
+      expect(writer.duplicate_of(anthropic)).to be_nil
+      expect(writer.duplicate_of("host" => "10.0.0.5", "port" => 8082)).to eq("splash")
+
+      expect(writer.write(name: "fireworks", fields: fireworks, model: "m").kind).to eq(:appended)
+      expect(hosts["fireworks"]).to have_attributes(api: :anthropic, dialect: "fireworks", url: "https://api.fireworks.ai/inference")
+    end
+
+    it "writes and reads back an entry's dialect and auth" do
+      existing("hosts:\n  main:\n    host: a\n")
+      gateway = { "url" => "https://gw.example.com", "api" => "anthropic", "auth" => "bearer", "api_key_env" => "GW_KEY" }
+
+      expect(writer.write(name: "gw", fields: gateway, model: "m").kind).to eq(:appended)
+      expect(hosts["gw"]).to have_attributes(api: :anthropic, auth: :bearer, api_key_env: "GW_KEY")
     end
   end
 end
