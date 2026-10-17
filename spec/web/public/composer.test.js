@@ -127,16 +127,19 @@ test("routeSessionLine routes the created session's line by its commands", () =>
 
 // ── Commands sent from the composer and from controls ────────────────────
 
-// +switchTo+: the page opens that session while the command is in flight.
-function harness({ session = "s1", fail = null, switchTo = undefined } = {}) {
+// +switchTo+: the page opens that session while the command is in flight;
+// +draft+: the composer then holds that text (typed in the session opened).
+function harness({ session = "s1", fail = null, switchTo = undefined, draft = undefined } = {}) {
   const calls = [];
   let open = session;
+  let text = "/model x";
   const deps = {
     session: () => open,
     clientId: "c1",
     sendCommand: async (id, line, opts) => {
       calls.push(["send", id, line, opts]);
       if (switchTo !== undefined) open = switchTo;
+      if (draft !== undefined) text = draft;
       if (fail) throw fail;
     },
     followWokenWorker: () => calls.push(["follow"]),
@@ -146,6 +149,7 @@ function harness({ session = "s1", fail = null, switchTo = undefined } = {}) {
     ownedByTui: () => calls.push(["tui"]),
     composer: {
       busy: () => calls.push(["busy"]),
+      text: () => text,
       clear: () => calls.push(["clear"]),
       done: () => calls.push(["done"]),
     },
@@ -197,6 +201,14 @@ test("send: a switch mid-send clears the composer but follows no worker", async 
   assert.deepEqual(calls, [
     ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear"], ["refresh"], ["done"],
   ]);
+});
+
+// The composer is shared across sessions: a draft typed in the session
+// opened meanwhile stays when the command answers.
+test("send: a switch mid-send keeps the draft typed since in the session opened", async () => {
+  const { calls, commands } = harness({ switchTo: "s2", draft: "a draft in s2" });
+  await commands.send("/model x");
+  assert.deepEqual(calls, [["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["refresh"], ["done"]]);
 });
 
 test("send: after a switch, a refusal or a terminal's hold is said elsewhere, not marked on the open session", async () => {

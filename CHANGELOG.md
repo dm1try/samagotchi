@@ -54,6 +54,9 @@ and commands may change between minor versions. How releases are made:
   until the next request` over the session's tokens and per-model rows, instead of `No request in this session yet`.
 - Web: opening another session while a `!cmd` (or a turn that failed and was rolled back) re-read its own no longer
   draws that command's output, or the failed prompt and its line, in the session just opened.
+- Web: a session command's answer (`/model x`, `!ls`) no longer clears what you typed meanwhile in another session's
+  composer; a command that fails after you switched sessions, and a turn that can't be sent, are said in a toast you
+  dismiss (✕), not a blocking alert.
 
 ## [0.75.0] - 2026-10-17
 
