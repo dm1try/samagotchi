@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Bundles: the test kit's sandbox also points `XDG_DATA_HOME` and `XDG_CACHE_HOME` at its temp folder, so a bundle
+  test no longer writes to your own data or cache home when you set them.
+
 ## [0.80.0] - 2026-10-17
 
 ### Added

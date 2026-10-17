@@ -1164,8 +1164,8 @@ bundle.shutdown
   `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`.
 - **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
   go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
-- **Sandbox.** A test runs with temp config and state homes (config.yml, memories, `ctx.data_dir`, the debug
-  log), `HOME`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, no git config of yours, no Keychain and none of your
+- **Sandbox.** A test runs with temp config, state, data and cache homes (config.yml, memories, `ctx.data_dir`, the
+  debug log), `HOME`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, no git config of yours, no Keychain and none of your
   `SAMAGOTCHI_*` settings; `sandbox.config(hash)` writes its config.yml.
 - **RSpec:** `require "samagotchi/testing/rspec"`; example groups tagged `:bundle` (a spec under a bundle's own
   `spec/` is tagged by itself) get `load_bundle(dir)`, `shipped_bundle(name)` and `sandbox`, each example in its

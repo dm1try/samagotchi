@@ -9,8 +9,8 @@ require_relative "fake_executable"
 
 module Samagotchi
   module Testing
-    # The environment a bundle test runs in: temp config and state homes
-    # (config.yml, memories, ctx.data_dir, the debug log), HOME and the peer
+    # The environment a bundle test runs in: temp config, state, data and cache
+    # homes (config.yml, memories, ctx.data_dir, the debug log), HOME and the peer
     # CLIs' folders, git without the user's config, no Keychain, none of
     # the user's SAMAGOTCHI_* settings, a bin/ first on PATH for fake
     # commands. ENV is put back on #leave.
@@ -59,12 +59,14 @@ module Samagotchi
         @saved = ENV.to_h
         @outer = Sandbox.current
         ENV.each_key.select { |key| key.start_with?("SAMAGOTCHI_") && !KEPT.include?(key) }.each { |key| ENV.delete(key) }
-        %w[config state home work bin].each { |dir| FileUtils.mkdir_p(File.join(@root, dir)) }
+        %w[config state data cache home work bin].each { |dir| FileUtils.mkdir_p(File.join(@root, dir)) }
         File.write(File.join(@root, "gitconfig"), "")
         ENV.update(
           "HOME" => File.join(@root, "home"),
           "XDG_CONFIG_HOME" => File.join(@root, "config"),
           "XDG_STATE_HOME" => File.join(@root, "state"),
+          "XDG_DATA_HOME" => File.join(@root, "data"),
+          "XDG_CACHE_HOME" => File.join(@root, "cache"),
           "CLAUDE_CONFIG_DIR" => File.join(@root, "home", ".claude"),
           "CODEX_HOME" => File.join(@root, "home", ".codex"),
           "GIT_CONFIG_GLOBAL" => File.join(@root, "gitconfig"),

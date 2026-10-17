@@ -30,6 +30,18 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(described_class.current).to be_nil
   end
 
+  it "points the data and cache homes at the temp root too, and puts them back" do
+    with_env("XDG_DATA_HOME" => "/outside/data", "XDG_CACHE_HOME" => "/outside/cache") do
+      described_class.with do |sandbox|
+        expect(ENV.fetch("XDG_DATA_HOME")).to eq(File.join(sandbox.root, "data"))
+        expect(ENV.fetch("XDG_CACHE_HOME")).to eq(File.join(sandbox.root, "cache"))
+        expect(File.directory?(ENV.fetch("XDG_DATA_HOME"))).to be true
+        expect(File.directory?(ENV.fetch("XDG_CACHE_HOME"))).to be true
+      end
+      expect(ENV.values_at("XDG_DATA_HOME", "XDG_CACHE_HOME")).to eq(%w[/outside/data /outside/cache])
+    end
+  end
+
   it "writes memories as memory_write does, in the system scope or a checkout's project scope" do
     described_class.with do |sandbox|
       system = sandbox.write_memory("skill_a", "# A\n", description: "does a")
