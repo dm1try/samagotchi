@@ -61,6 +61,7 @@ export async function startSampling(page) {
         slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-foot"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
         extras: s.querySelector(".ts-extras").offsetHeight,
         top: document.querySelector("#history").scrollTop,
+        t: performance.now(),
       });
     }, 100);
   });
@@ -90,7 +91,9 @@ export const frames = (page) => page.evaluate(() => window.frames2);
 // forever), the
 // node animates itself (a turn's arrival in the history) or an eased
 // follow runs ([data-following] on the history or the stage's scroller).
-// A replaced or removed node starts a new track (not a move).
+// A replaced or removed node starts a new track (not a move). A gap between
+// two frames longer than the stage's growth ease (a starved page under load)
+// starts new tracks too: the ease may have run entirely inside it unseen.
 export const startSnaps = (page) => page.evaluate(() => {
   cancelAnimationFrame(window.snapRaf);
   window.snapLog = [];
@@ -103,11 +106,14 @@ export const startSnaps = (page) => page.evaluate(() => {
     last: () => document.querySelector("#history")?.lastElementChild,
   };
   let prev = {};
+  let prevT = 0;
   const tick = () => {
     const stage = document.querySelector("#turnStage");
     const stageMoves = !!stage && stage.getAnimations().length > 0;
     const following = !!document.querySelector("#history[data-following], #turnStage [data-following]");
     const t = performance.now();
+    const gap = prevT && t - prevT > 180;
+    prevT = t;
     const next = {};
     for (const [key, find] of Object.entries(tracked)) {
       const el = find();
@@ -116,7 +122,7 @@ export const startSnaps = (page) => page.evaluate(() => {
       const own = el.getAnimations().length > 0;
       next[key] = { el, top, exempt: following || own || (stageMoves && !!stage?.contains(el)) };
       const was = prev[key];
-      if (was && was.el === el && Math.abs(top - was.top) > 2 && !next[key].exempt && !was.exempt) {
+      if (was && !gap && was.el === el && Math.abs(top - was.top) > 2 && !next[key].exempt && !was.exempt) {
         window.snapLog.push({ t, key, from: Math.round(was.top), to: Math.round(top) });
       }
     }

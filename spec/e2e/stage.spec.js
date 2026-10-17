@@ -20,6 +20,9 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   test.setTimeout(60_000);
   script("stage");
   await send(page, "First round");
+  // The stage rises under the click's pointer; under load that can come after
+  // an earlier move away, and a pointer left over it defers the hand-off.
+  await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   await expect(stageEl(page)).toBeHidden(); // the first turn's fold is over
@@ -28,13 +31,13 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await watchStage(page);
   await startSnaps(page);
   const sendAt = await pageNow(page);
+  await startSampling(page); // from the send: the running window is the turn's, not a delay's
   await send(page, "Second round");
   await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
   await page.waitForTimeout(500); // the rise and the history's follow are over
   const scrolledAt = await pageNow(page);
-  await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; });
-  await startSampling(page);
+  const scrollTopSet = await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; return performance.now(); });
   await handedOff(page, 2);
   await page.waitForTimeout(600); // the fold and the arrival are over
   const samples = await stopSampling(page);
@@ -53,7 +56,7 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(withCard.length).toBeGreaterThan(3);
   expect([...new Set(withCard.map((s) => s.h))]).toHaveLength(1);
   expect(running.slice(cardIndex).every((s, i, all) => i === 0 || s.h >= all[i - 1].h)).toBe(true);
-  expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
+  expect([...new Set(samples.filter((s) => s.t >= scrollTopSet).map((s) => s.top))]).toEqual([120]);
   // The moments, by the stage's own marks (page clock).
   const marks = await stageMarks(page);
   const shownAt = momentAt(marks, (m) => !m.hidden, sendAt);
