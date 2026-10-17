@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Bundles: `samagotchi/testing` (experimental), a test kit for bundles: load a bundle in a sandbox, fire its hooks, run its commands and tools, record steers, notices and cards (RSpec `:bundle` groups or Minitest `Testing::Case`; docs/plugins.md "Testing a bundle"). The shipped bundles' specs now live in each bundle's own `spec/` and use it; a boundary spec keeps bundles on the stable surface.
+
 ### Changed
 
 - Web: the start page says "+ new session" (and "new session in …") instead of "+ new chat", matching the rest of the UI.
