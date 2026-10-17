@@ -17,7 +17,10 @@ ChatLoop::Run#generate
       → POST {base}/v1/messages             # LLM::HTTP: retries, cancel, first-token limit
       → AnthropicAssembly#add per SSE event # → ChatResponse (text, reasoning, tool_calls, usage,
                                             #   finish_reason, provider_content)
+      → a signature 400 (Claude 5.x preserved thinking): #binding_recovery, then the same
+        request with drop_block or the blocks stripped; ChatResponse#thinking_drop names them
       → a 400 it can fix: #refusal_fix, then the same request again (once per kind)
+  → ChatLoop#settle_dropped_thinking!       # the dropped blocks leave the stored model entries
 ```
 
 ## Files
@@ -32,7 +35,7 @@ Paths are under `lib/samagotchi/llm/`.
 | `anthropic_assembly.rb` | `AnthropicAssembly`: a response from a whole body (`.from_message`) or stream events (`#add`), its usage in the OpenAI shape |
 | `dialect.rb` | `Dialect` (`STANDARD`, `FIREWORKS`): what a provider's `/v1/messages` does differently |
 | `prompt_cache.rb` | `PromptCache.control`: the `cache_control` a breakpoint carries (`cache.ttl`) |
-| `chat_loop.rb` | `ChatLoop#replay_blocks`, `#reasoning_history`'s floor, `Run#with_thinking` (saves `anthropic_content`) |
+| `chat_loop.rb` | `ChatLoop#replay_blocks`, `#reasoning_history`'s floor, `Run#with_thinking` (saves `anthropic_content`), `#settle_dropped_thinking!` |
 
 ## The adapter
 
@@ -112,8 +115,70 @@ text and `tool_use` blocks (a tool loop with thinking needs the last assistant t
 - `ChatLoop#reasoning_history` floors the level at `turn` on a replaying adapter: `drop` would remove the running
   run's thinking, which Messages needs. For the same reason a reasoning 400 doesn't ask again without reasoning
   (`Run#generate`: it would resend the same body).
-- A 400 about a thinking block's signature (`BadRequest#thinking_signature?`, a Claude 5.x block bound to a
-  different conversation) fails the turn for now; configuration.md has the known limit.
+- A 400 about a thinking block's signature (`BadRequest#thinking_signature?`) is recovered in the adapter, and the
+  blocks it cost leave the history (next section).
+
+## Preserved thinking (Claude 5.x)
+
+Claude 5.x models bind each thinking block to the prefix it was minted after: both `system` blocks (the stable part
+and the per-session tail), the tool set, and every earlier message. Sent back after any of those changed, the block
+gets a 400 `messages.N.content.M: Invalid signature in thinking block. The block is bound to a different
+conversation.`, and its last sentence says what changed ("The `system` prompt differs …"). chi's history is
+append-only within a process, so what changes the prefix is:
+
+1. **A system-prompt rebuild** (`SystemPrompt#build` is cached per process and key; `PromptBuilder#reset!` drops it):
+   a new process (`--resume`, a respawn after `session.idle_exit_minutes`, a crash) after a memory index line, an
+   AGENTS.md, an appended file, a model note or a bundle memory changed; `/model` (the tail's `Model:` line, its
+   overlays and notes); `/thinking` (another key); a toolkit or profile change; a plugin's `tools_changed!`.
+2. **A tool set change**: the same triggers, plus MCP lines that differ on a respawn.
+3. **History edits by design**: the `llm_context` `stale`/`forget` stubs, and the image cut moving a batch.
+
+A model switch never 400s: the API drops blocks another model can't read silently (`model_binding_mismatch`).
+
+**Recover on the 400, then settle.** Normal requests carry no beta header and no `block_binding`, so Fireworks,
+Splash and gateways see the same bytes as before. On a signature 400, before anything streamed,
+`AnthropicMessages#binding_recovery` picks the next step, once each per request:
+
+- **drop_block**: the same body with `thinking.block_binding: {prefix_mismatch_behavior: "drop_block"}` (the body's
+  adaptive or enabled thinking, `display` as sent; adaptive when the level sends none) and the header
+  `anthropic-beta: thinking-binding-controls-2026-08-01`. The answer's `input_transformations` (in `message_start`'s
+  message, or the body; `AnthropicAssembly#input_transformations`) list the dropped blocks by path into the body
+  sent; the adapter maps the `prefix_binding_mismatch` ones to block identities. Any other entry
+  (`model_binding_mismatch`: a switch back reads those blocks again) is counted as kept, never settled.
+- **strip**: the block the 400 names (else the first replayed thinking block) and every thinking or
+  redacted_thinking block after it removed from the body (a trailing run, which Messages takes). For a bad
+  signature (the 400 without "bound to a different conversation": drop_block doesn't apply), thinking `disabled`
+  (block_binding goes only with adaptive or enabled), a model on the budget form with no thinking field, a host
+  that refused the controls (`binding_controls`, remembered), or a second signature 400 after drop_block.
+
+A third signature 400 fails the turn. The extra requests are 400s, rejected before generation and not billed. The
+step is request state that `#request_body`'s rebuild keeps, so a later `#refusal_fix` (display, cache_control,
+output cap) in the same request keeps the binding or the strip. The response carries `thinking_drop`
+(`LLM::ThinkingDrop`: `identities`, `how`), and the adapter logs `thinking_recovered` (`how`, `dropped`, `kept`,
+`why`: the 400's last sentence).
+
+A block's identity (`AnthropicWire.block_identity`, shared by the adapter and ChatLoop) is its `signature`, a
+redacted block's `data`, or, when that is empty (Splash's `signature: ""`), `text:` + the SHA256 of its text.
+
+`ChatLoop::Run#generate` hands those identities to `ChatLoop#settle_dropped_thinking!` before the step adds its own
+entry, whatever the finish reason: each model entry holding one is replaced in place (same index) with a copy
+without those blocks (`thinking:` stays; an entry left with none loses `anthropic_content`). That is the edit the
+API made, so the next request is valid with no beta (a pruned history is valid: removing exactly the dropped set
+leaves no gap), and the session file keeps it, since `Engine#kept_messages` and `#failed_messages` take the run's
+conversation whole. It emits `:thinking_dropped` (`count`, `how`) and `thinking_dropped` on `:generation_completed`,
+which `SessionMetrics` sums for `/stats`. A drop that settles nothing (blocks already settled came back, e.g. a
+rolled-back turn's) logs `thinking_recovery_repeated` once per run. A cancelled, cut or dropped generation settles
+nothing; the next request recovers again.
+
+Each break costs one free 400, one cache write of the prefix from the edit point, and the reasoning the dropped
+blocks carried. Whether the request after a drop_block one reads the cache that request wrote (it no longer carries
+`block_binding`) is unverified.
+
+Why not send drop_block on every request: it needs adaptive or enabled thinking on the body (`default` sends no
+thinking field, `off` sends disabled), it would put a beta header on every request to every host, and it would drop
+the same blocks again on every request until something pruned them. The reactive form does the same work in one
+place, for one extra 400 round trip per break. The `anthropic-thinking-prefix-mismatch` diagnosis header (on the
+400, undocumented) is not read: `ProviderErrors.from_response` keeps no headers.
 
 ## Cache breakpoints
 
@@ -152,7 +217,10 @@ adapter's life, so ChatLoop's broader paths never see them (`#refusal_fix`, logg
 | adaptive thinking or its effort (`ADAPTIVE_REFUSED_RE`) | the budget form: `thinking: {type: "enabled", budget_tokens: BUDGETS[level]}`, no effort (`#budget_form`) | per model (`thinking_form_switched`) |
 | `cache_control` | no breakpoints | per host (`cache_control_refused`) |
 | `max_tokens: N > M` (`OUTPUT_CAP_RE`) | `max_tokens` capped at M | per model (`output_cap`) |
+| `block_binding` or the binding beta, on a drop_block retry (`thinking_binding_unsupported?`) | the strip instead (Preserved thinking) | per host (`binding_controls_refused`) |
 
 The display check comes before the adaptive one: its path (`thinking.adaptive.display`) names adaptive too. A context
-overflow, a refused sampling field, a signature or a binding-controls 400 is not one of these: it goes on as it is,
-to the loop's own handling (ChatLoop's sampling and thinking-fields fallbacks) or to the turn's failure.
+overflow, a refused sampling field, a signature or a binding-controls 400 is not one of these (`#refusal_fix` keeps
+excluding them, so `ADAPTIVE_REFUSED_RE` never reads a binding 400's "adaptive" as a form refusal): a signature 400
+goes to the binding recovery above, the rest on as they are, to the loop's own handling (ChatLoop's sampling and
+thinking-fields fallbacks) or to the turn's failure.

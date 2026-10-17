@@ -20,6 +20,13 @@ and commands may change between minor versions. How releases are made:
 - Workers no longer load the terminal UI or Reline, saving about 50–100 ms and 2 MB per worker start; a plugin
   that uses Reline, StringIO, Forwardable or Tempfile must now require it itself.
 
+### Fixed
+
+- Claude 5.x on `api: anthropic`: a request whose earlier thinking the API refuses after the system prompt or tools
+  changed (a resume or respawn after memory or AGENTS.md edits, `/model`, `/thinking`, `/toolkit`) no longer fails the
+  turn. chi asks again with Anthropic's binding controls (or without those thinking blocks), drops that thinking from
+  the session, and `/stats` counts it as `thinking dropped`.
+
 ## [0.77.0] - 2026-10-17
 
 ### Changed

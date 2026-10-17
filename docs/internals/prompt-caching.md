@@ -171,7 +171,9 @@ is prefilled once. The native and the chat loop use the same plan.
    first reply, on a server that renders it; a stock Qwen template without `preserve_thinking` re-renders from the
    reply before every user message whatever chi sends). A worker's
    mid-turn checkpoint (`TurnCheckpoint`) is append-only too (the history plus what the loop appended) and
-   never changes the request bytes.
+   never changes the request bytes. On Messages with Claude 5.x a change to the prefix (the system prompt, the
+   tools, an earlier message) also costs the thinking blocks after it: one 400, then chi drops them for good
+   (internals/anthropic.md, "Preserved thinking").
 3. **Deterministic order.** Tools, memory lists and anything else that's rendered from a hash or a set needs a
    fixed sort. Plugin tools are sorted by (bundle, name) whatever order their plugins finished starting in
    (R5a).

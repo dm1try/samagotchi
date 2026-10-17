@@ -343,12 +343,16 @@ hosts:
 
 `auth:` works on any host (`bearer` is the default everywhere but `api: anthropic`).
 
-**Known limit (until a later release):** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) bind each
-thinking block to the request it came from. When the history before a block changes (the system prompt rebuilt after a
-worker restart or a `/model` switch, a changed tool set, the forget layer's edits), such a model may answer HTTP 400
-"… bound to a different conversation" and the turn fails with that error; `/reasoning-history turn` makes it rarer.
-A later release sends Anthropic's binding controls and recovers from that 400. Fireworks, Splash and other
-non-Claude models are not affected.
+**Claude 5.x preserved thinking:** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) bind each thinking
+block to everything before it: the system prompt, the tools and the earlier messages. chi keeps the history
+append-only, but the system prompt or the tools can change under a session: a resume or a worker respawn after
+memory or AGENTS.md edits, `/model`, `/thinking`, `/toolkit`, a plugin's tools, or an `llm_context` layer stubbing
+older outputs. Then the API refuses the earlier thinking once (HTTP 400 "… bound to a different conversation"); chi
+asks again with Anthropic's binding controls (or without those blocks), drops that thinking from the session for
+good, and no turn fails. `/stats` counts it (`thinking dropped: N blocks (preserved-thinking recovery)`), and each
+time costs one extra (free) 400 and one cache write. `reasoning_history` on these hosts is `all` by default; `turn`
+drops more reasoning but never needs a recovery at a turn's start. Fireworks, Splash and other non-Claude models
+never see these requests. internals/anthropic.md has the details.
 
 The loop, tools, events, hooks and UIs are the chat loop's, as for `api: openai`; only the wire differs: the
 system prompt goes as the request's `system` (later system notes as user text), tool calls as `tool_use` blocks,
