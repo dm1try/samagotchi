@@ -27,6 +27,27 @@ RSpec.describe Samagotchi::LLM::Usage do
     expect(described_class.none.cache_fields).to eq({})
   end
 
+  it "keeps OpenRouter's reported cost and the reasoning tokens" do
+    usage = described_class.from_payload({ "usage" => { "prompt_tokens" => 900, "completion_tokens" => 40, "cost" => 0.0012,
+                                                        "completion_tokens_details" => { "reasoning_tokens" => 25 } } })
+
+    expect(usage).to have_attributes(cost: 0.0012, reasoning_tokens: 25)
+  end
+
+  it "keeps a reported cost of 0 as 0 (a free model), not nil" do
+    usage = described_class.from_payload({ "usage" => { "prompt_tokens" => 9, "completion_tokens" => 4, "cost" => 0 } })
+
+    expect(usage.cost).to eq(0)
+    expect(usage.cost).not_to be_nil
+  end
+
+  it "has no cost and no reasoning tokens when the payload reports none" do
+    usage = described_class.from_payload({ "usage" => { "prompt_tokens" => 9, "completion_tokens" => 4 } })
+
+    expect(usage).to have_attributes(cost: nil, reasoning_tokens: 0)
+    expect(described_class.none).to have_attributes(cost: nil, reasoning_tokens: 0)
+  end
+
   it "is nil for a payload without counts" do
     expect(described_class.from_payload({ "content" => "hi" })).to be_nil
   end

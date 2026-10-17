@@ -8,7 +8,11 @@ module Samagotchi
     # (:server), else zeros (:none). +cached_tokens+ is the prompt the server
     # reused from its cache, +cache_write_tokens+ what it wrote to it
     # (OpenRouter reports those for Anthropic models); 0 when not reported.
-    Usage = Data.define(:prompt_tokens, :completion_tokens, :source, :cached_tokens, :cache_write_tokens) do
+    # +reasoning_tokens+ is the completion's reasoning part (0 when not
+    # reported), +cost+ the provider's reported cost in USD (OpenRouter's
+    # usage.cost; nil when not reported, a reported 0 stays 0).
+    Usage = Data.define(:prompt_tokens, :completion_tokens, :source, :cached_tokens, :cache_write_tokens,
+                        :reasoning_tokens, :cost) do
       # @return [Usage, nil] nil when the payload carries no counts
       def self.from_payload(payload)
         counts = TokenUsage.from_payload(payload)
@@ -16,12 +20,14 @@ module Samagotchi
 
         new(prompt_tokens: counts.prompt_tokens.to_i, completion_tokens: counts.completion_tokens.to_i,
             source: :server, cached_tokens: counts.cached_tokens.to_i,
-            cache_write_tokens: counts.cache_write_tokens.to_i)
+            cache_write_tokens: counts.cache_write_tokens.to_i, reasoning_tokens: counts.reasoning_tokens.to_i,
+            cost: counts.cost)
       end
 
       def self.none = new(prompt_tokens: 0, completion_tokens: 0, source: :none)
 
-      def initialize(prompt_tokens:, completion_tokens:, source:, cached_tokens: 0, cache_write_tokens: 0)
+      def initialize(prompt_tokens:, completion_tokens:, source:, cached_tokens: 0, cache_write_tokens: 0,
+                     reasoning_tokens: 0, cost: nil)
         super
       end
 
