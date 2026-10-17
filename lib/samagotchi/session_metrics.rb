@@ -791,10 +791,10 @@ module Samagotchi
       turn.cost_sum = turn.cost_sum.to_f + turn.gen_cost if turn.gen_cost
       # A reported cost wins; a reported 0 with a price is taken as no report
       # (a gateway that doesn't bill per call); the 0 stays in cost.
-      if turn.gen_price && (turn.gen_cost.nil? || turn.gen_cost.zero?)
-        turn.cost_estimate_sum += turn.gen_price.cost(prompt_tokens: turn.gen_prompt_max, cached_tokens: turn.gen_cached_max,
-                                                      cache_write_tokens: turn.gen_cache_write_max, completion_tokens: completion)
-      end
+      estimate = ModelPrice.estimate(turn.gen_price, reported_cost: turn.gen_cost, prompt_tokens: turn.gen_prompt_max,
+                                                     cached_tokens: turn.gen_cached_max,
+                                                     cache_write_tokens: turn.gen_cache_write_max, completion_tokens: completion)
+      turn.cost_estimate_sum += estimate if estimate
       turn.last_prefill_tps = turn.gen_prefill_tps.round(1) if turn.gen_prefill_tps
       speed = generation_speed(turn, completion)
       return unless speed

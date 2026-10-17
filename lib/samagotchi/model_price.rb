@@ -34,6 +34,22 @@ module Samagotchi
     end
     private_class_method :warn_once
 
+    # The cost rule, one place for a turn's generation (SessionMetrics) and
+    # a side request (SessionMetrics::SideTotals): a reported cost wins; a
+    # reported 0, or none, with a price is estimated from the price (a
+    # gateway that doesn't bill per call reports 0). The reported cost
+    # itself is summed apart, a 0 included.
+    # @param price [ModelPrice, nil]
+    # @param reported_cost [Numeric, nil] the provider's cost (usage.cost)
+    # @return [Float, nil] the estimate, nil when none applies (no price, or
+    #   a positive reported cost), so a sum without one stays as it was
+    def self.estimate(price, reported_cost:, prompt_tokens:, cached_tokens:, cache_write_tokens:, completion_tokens:)
+      return nil unless price && (reported_cost.nil? || reported_cost.zero?)
+
+      price.cost(prompt_tokens: prompt_tokens, cached_tokens: cached_tokens, cache_write_tokens: cache_write_tokens,
+                 completion_tokens: completion_tokens)
+    end
+
     # USD for one generation, OpenAI usage semantics: +prompt_tokens+ holds
     # the cached reads and the cache writes (OpenRouter keeps that for
     # Anthropic models), and reasoning is inside +completion_tokens+.

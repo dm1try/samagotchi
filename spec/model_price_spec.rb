@@ -47,4 +47,29 @@ RSpec.describe Samagotchi::ModelPrice do
         .to be_within(1e-12).of(100 * 0.5 / 1e6)
     end
   end
+
+  # The one cost rule a turn's generation and a side request share.
+  describe ".estimate" do
+    let(:price) { described_class.new(input: 2.0, cache_read: 0.5, cache_write: 4.0, output: 10.0) }
+    let(:counts) { { prompt_tokens: 1000, cached_tokens: 200, cache_write_tokens: 100, completion_tokens: 50 } }
+    let(:priced) { price.cost(**counts) }
+
+    it "estimates from the price when no cost was reported" do
+      expect(described_class.estimate(price, reported_cost: nil, **counts)).to be_within(1e-12).of(priced)
+    end
+
+    it "estimates from the price when the reported cost is 0 (a gateway that doesn't bill per call)" do
+      expect(described_class.estimate(price, reported_cost: 0, **counts)).to be_within(1e-12).of(priced)
+      expect(described_class.estimate(price, reported_cost: 0.0, **counts)).to be_within(1e-12).of(priced)
+    end
+
+    it "is nil when a positive cost was reported: the reported cost wins" do
+      expect(described_class.estimate(price, reported_cost: 0.0012, **counts)).to be_nil
+    end
+
+    it "is nil without a price" do
+      expect(described_class.estimate(nil, reported_cost: nil, **counts)).to be_nil
+      expect(described_class.estimate(nil, reported_cost: 0.5, **counts)).to be_nil
+    end
+  end
 end
