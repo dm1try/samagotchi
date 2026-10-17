@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: `hide ▾` in a session's info bar folds the message box away for room to read; the info bar stays at the
+  bottom. `▴ message` (or `▴ message · draft` when it holds text or images) or just typing on the page brings it
+  back, and Stop turn moves into the info bar while it is folded. The choice is remembered per browser, and an
+  archived session opens folded.
+
 ### Changed
 
 - Workers no longer load the terminal UI or Reline, saving about 50–100 ms and 2 MB per worker start; a plugin
