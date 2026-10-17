@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "data_readers"
+
 module Samagotchi
   module Guardrails
     # A small shell lexer for the guardrails' text checks (ShellGitDirs
@@ -21,15 +23,13 @@ module Samagotchi
       SUBST = "\0SUBST"
       # What a heredoc body that cat or tee read as data becomes (its command
       # ends at a plain separator, outside any ( or { group).
-      HEREDOC = "\0HEREDOC"
-      # Commands that read a heredoc as data (when not piped on).
-      DATA_SINKS = %w[cat tee].freeze
+      HEREDOC = DataReaders::HEREDOC
       # The operators that may follow a data heredoc's command; any other
       # (|, |&, &, (, ), ;;) may hand its output on, and & also starts
       # &>file.
       DATA_ENDS = ["\n", ";", "&&", "||"].freeze
       # A word that is a redirection (>, >>, 2>&1, <).
-      REDIRECT = /\A\d*[<>]/
+      REDIRECT = DataReaders::REDIRECT
 
       # Words and operators ([:word, "x", specials] / [:op, "&&"]). A word's
       # specials are the characters the shell would act on in it, unquoted
@@ -82,6 +82,126 @@ module Samagotchi
         end
         parens.positive? || braces.positive?
       end
+
+      # +text+ as code: the lines of each heredoc body its command only reads
+      # as data (DataReaders) cut out, the <<TAG word and the terminator line
+      # kept as written. This is what a rule's command: reads. A text the
+      # lexer isn't sure of (unterminated) comes back as it was, and so does
+      # one it can't read: the safe default.
+      def self.code_text(text)
+        lexer = Lexer.new(text)
+        tokens = lexer.tokens
+        return text if lexer.unterminated?
+
+        bodies = lexer.heredoc_spans.map { |doc| doc[:span] }
+        cuts = []
+        each_command(tokens) do |indices|
+          words = indices.map { |i| tokens[i][1] }
+          indices.each_with_index do |i, position|
+            kind, value, = tokens[i]
+            next unless kind == :word
+
+            span = lexer.spans[i]
+            cut = if bodies.include?(span)
+                    body_cut(text, span, words) if value == HEREDOC
+                  elsif value == SUBST
+                    substitution_cut(text, tokens, i, span, words, position)
+                  end
+            cuts << cut if cut
+          end
+        end
+        cuts.sort_by { |span, _| -span.begin }.each_with_object(+text) do |(span, replacement), out|
+          out[span] = replacement
+        end
+      rescue ArgumentError, EncodingError
+        text
+      end
+
+      # The token indices of each simple command, its operators left out.
+      def self.each_command(tokens)
+        current = []
+        tokens.each_with_index do |(kind, _value, *_rest), i|
+          if kind == :op
+            yield current unless current.empty?
+            current = []
+          else
+            current << i
+          end
+        end
+        yield current unless current.empty?
+      end
+      private_class_method :each_command
+
+      # [span, what it becomes] for a data heredoc's body at +span+ (its
+      # command's +words+), or nil when the body stays in the code text: a
+      # cat or tee writing a file may be run later (D1).
+      def self.body_cut(text, span, words)
+        return nil unless cut_body?(words)
+
+        [span, terminator_line(text[span])]
+      end
+      private_class_method :body_cut
+
+      # Whether a body a data reader reads leaves the code text: a cat or tee
+      # sending it to a file keeps it (D1); a body any other command reads as
+      # data is one the lexer's data_sink? approved.
+      def self.cut_body?(words)
+        verb = DataReaders.command_word(words)
+        return true unless DataReaders::SINKS.include?(File.basename(verb.to_s))
+
+        !DataReaders.writes_file?(words)
+      end
+      private_class_method :cut_body?
+
+      # [span, what it becomes] for the body of a "$(cat <<'EOF' … EOF)" given
+      # as a message (-m, --body, …) of a data reader (D2), or nil: eval,
+      # bash -c, a command piped on and a body that runs stay.
+      def self.substitution_cut(text, tokens, index, span, words, position)
+        return nil unless data_end?(tokens, index)
+        return nil if in_group?(tokens, index)
+        return nil unless DataReaders.message_arg?(words, position)
+
+        raw = text[span]
+        dollar = raw.start_with?("\"$(") ? 1 : 0
+        return nil unless raw[dollar, 2] == "$("
+
+        inner = raw[(dollar + 2)..]
+        inner_lexer = Lexer.new(inner)
+        first = inner_lexer.tokens.first(5)
+        return nil unless message_heredoc?(first)
+
+        inner_span = inner_lexer.spans[2]
+        return nil unless inner_span
+
+        start = span.begin + dollar + 2
+        cut = ((start + inner_span.begin)...(start + inner_span.end))
+        [cut, terminator_line(text[cut])]
+      end
+      private_class_method :substitution_cut
+
+      # Whether the command holding token +index+ ends at nil or a plain
+      # separator (not piped on: what it prints is not run).
+      def self.data_end?(tokens, index)
+        next_op = (tokens[(index + 1)..] || []).find { |token| token[0] == :op }
+        next_op.nil? || DATA_ENDS.include?(next_op[1])
+      end
+      private_class_method :data_end?
+
+      # Whether the tokens inside a $(…) are cat <<TAG and a data body, and
+      # the substitution closes right after.
+      def self.message_heredoc?(first)
+        first.size == 5 && first[0][0..1] == [:word, "cat"] &&
+          first[1][0] == :word && first[1][1].start_with?("<<") &&
+          first[2][0..1] == [:word, HEREDOC] && first[3] == [:op, "\n"] && first[4] == [:op, ")"]
+      end
+      private_class_method :message_heredoc?
+
+      # +raw+ (a body and its terminator line) as its terminator line alone.
+      def self.terminator_line(raw)
+        line = raw.rindex("\n")
+        line ? raw[(line + 1)..] : raw
+      end
+      private_class_method :terminator_line
 
       # A hand-written shell lexer: quotes, backslashes, comments, $(…) and
       # backticks (an opaque marker inside the word), redirections kept in
@@ -390,7 +510,7 @@ module Samagotchi
         def data_sink?(at)
           start = at
           start -= 1 while start.positive? && @tokens[start - 1][0] == :word
-          verb = command_word(@tokens[start...at])
+          verb = DataReaders.command_word(@tokens[start...at].map { |t| t[1] })
           following = @tokens[at..] || []
           next_op = following.index { |t| t[0] == :op }
           ends = next_op.nil? || DATA_ENDS.include?(following[next_op][1])
@@ -399,23 +519,6 @@ module Samagotchi
 
         # Whether an ( or { group is still open at token +at+.
         def in_group?(at) = ShellLex.in_group?(@tokens, at)
-
-        # The command word among the words before a heredoc's: the NAME=
-        # words and the redirections dropped, and with a redirection written
-        # with a space (> /tmp/x) its target word too.
-        def command_word(words)
-          i = 0
-          while i < words.size
-            word = words[i][1]
-            if word.match?(REDIRECT)
-              i += 1 if word.match?(/\A\d*[<>]{1,2}\z/)
-            elsif !word.match?(/\A[A-Za-z_]\w*=/)
-              return word
-            end
-            i += 1
-          end
-          nil
-        end
       end
     end
   end

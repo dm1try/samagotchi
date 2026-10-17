@@ -13,7 +13,9 @@ module Samagotchi
     #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*"); it
     #            matches the call's name or the tool a plugin tool's call
     #            acts as (Targets#acts_as: an MCP tool behind call_tool)
-    #   command: a Ruby regex on a shell tool's command
+    #   command: a Ruby regex on a shell tool's command, the body of a
+    #            heredoc its command only reads as data left out
+    #            (Targets#rule_command, ShellLex.code_text)
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path
     #            relative to the repo root, the cwd outside one)
@@ -61,7 +63,7 @@ module Samagotchi
           return false unless targets
           return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
           return false if tools && !tool_matches?(targets.tool) && !(targets.acts_as && tool_matches?(targets.acts_as))
-          return false if command && !(targets.command && command.match?(targets.command))
+          return false if command && !(targets.rule_command && command.match?(targets.rule_command))
           return false if path && !path_matches?(targets)
           return false if git && !targets.git_outside_repo?
           return false if touches && !targets.touches_chi?

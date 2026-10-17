@@ -53,3 +53,12 @@
 {"id":"commit-body-then-push","tool":"execute","command":"git commit -F - <<'EOF'\nno push here\nEOF\ngit push","expect":"ask","rule":"git-push","source":"heredoc-fp","note":"whole set: the push after the body asks"}
 {"id":"plain-gem-push","tool":"execute","command":"gem push chi-1.gem","expect":"deny","rule":"gem-push","source":"heredoc-fp","note":"sanity: a deny label"}
 {"id":"plain-status","tool":"execute","command":"git status","expect":"allow","source":"heredoc-fp","note":"sanity: an allow label"}
+{"id":"cat-stdout-heredoc","tool":"execute","command":"cat <<'EOF'\nnext: rake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"cat to stdout only prints the body"}
+{"id":"cat-stdout-dash-heredoc","tool":"execute","command":"cat <<-EOF\n\trake release\n\tEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"<<- body cut, tabbed terminator kept"}
+{"id":"cat-stderr-heredoc","tool":"execute","command":"cat <<'EOF' >&2\nrun rake release next\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"a fd dup writes no file"}
+{"id":"cat-fd-file-spaced","tool":"execute","command":"cat <<'E' >& r.sh\ngit push\nE","expect":"match","rule":"git-push","source":"heredoc-bypass","note":"bash reads >& file as &>file: the body is written to r.sh"}
+{"id":"cat-fd-file-attached","tool":"execute","command":"cat <<'E' >&r.sh\ngit push\nE","expect":"match","rule":"git-push","source":"heredoc-bypass","note":">&file is &>file too: the body lands in r.sh"}
+{"id":"cat-fd-dup-2","tool":"execute","command":"cat <<'E' >&2\ngit push\nE","expect":"no_match","rule":"git-push","source":"heredoc-fp","note":"a dup to stderr writes no file: the body stays data"}
+{"id":"cat-fd-dup-closed","tool":"execute","command":"cat <<'E' >&-\ngit push\nE","expect":"no_match","rule":"git-push","source":"heredoc-fp","note":"a closed fd writes no file"}
+{"id":"cat-stdout-then-rm","tool":"execute","command":"cat <<'EOF'\nrm -rf is gone\nEOF\nrm -rf build","expect":"match","rule":"rm-rf","source":"heredoc-fp","note":"the body is cut, the command after it isn't"}
+{"id":"two-cats-second-piped","tool":"execute","command":"cat <<'A'; cat <<'B' | sh\nnote\nA\nrake release\nB","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"two heredocs on one line: only the first is data"}

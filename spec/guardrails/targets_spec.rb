@@ -154,4 +154,32 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
       expect([t.git_dirs, t.git_outside_repo?, t.to_h[:git_dirs]]).to eq([[], false, []])
     end
   end
+
+  describe "#rule_command: what a rule's command: reads" do
+    it "leaves out a stdout cat's body, and keeps the raw command for approvals and hooks" do
+      command = "cat <<'EOF'\nrake release\nEOF"
+      t = targets(name: "execute", content: command)
+      expect(t.rule_command).to eq("cat <<'EOF'\nEOF")
+      expect(t.command).to eq(command)
+      expect(t.to_h[:command]).to eq(command)
+    end
+
+    it "keeps a command that may run its heredoc body" do
+      command = "bash <<'EOF'\nrake release\nEOF"
+      expect(targets(name: "task_create", content: command).rule_command).to eq(command)
+    end
+
+    it "is nil without a command" do
+      expect(targets(name: "write", path: File.join(@sibling, "x")).rule_command).to be_nil
+    end
+
+    it "is a plugin tool's own command, as given" do
+      registry = Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("run_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                               targets: ->(_call) { { command: "cat <<'EOF'\nrake release\nEOF" } })
+      end
+      t = targets({ name: "run_note", args: {} }, context, registry: registry)
+      expect(t.rule_command).to eq("cat <<'EOF'\nrake release\nEOF")
+    end
+  end
 end

@@ -8,6 +8,7 @@ require_relative "../log"
 require_relative "model_size"
 require_relative "outside"
 require_relative "shell_git_dirs"
+require_relative "shell_lex"
 require_relative "read_only_shell"
 require_relative "shell_paths"
 require_relative "rm_targets"
@@ -245,6 +246,19 @@ module Samagotchi
       end
 
       def shell? = SHELL_TOOLS.include?(@tool)
+
+      # What a rule's command: reads: the shell command with the body of each
+      # heredoc its command only reads as data left out (ShellLex.code_text);
+      # a plugin tool's own command as given (its text may not be shell).
+      # Approvals, the approval question and hooks keep #command.
+      def rule_command
+        return @rule_command if defined?(@rule_command)
+
+        @rule_command = if @command.nil? then nil
+                        elsif shell? then ShellLex.code_text(@command)
+                        else @command
+                        end
+      end
 
       # The repository's name: its main checkout's folder (the folder
       # holding the common .git dir; a bare repo's name less .git), else

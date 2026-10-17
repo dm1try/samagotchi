@@ -39,6 +39,13 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "write", path: "git push", content: "x" }, rules(push.except(:tool)))).to be_allow
     end
 
+    it "reads a shell command without the body of a heredoc its command only reads as data" do
+      set = rules({ id: "package-publish", tool: "shell", command: '\brake\s+release\b', verdict: "ask", reason: "publishes" })
+      expect(verdict_for({ name: "execute", content: "cat <<'EOF'\nrake release\nEOF" }, set)).to be_allow
+      expect(verdict_for({ name: "execute", content: "bash <<'EOF'\nrake release\nEOF" }, set)).to be_ask
+      expect(verdict_for({ name: "execute", content: "cat <<'EOF'\nx\nEOF\nrake release" }, set)).to be_ask
+    end
+
     it "matches a tool name or list alone" do
       set = rules({ id: "no-fetch", tool: %w[web_fetch], verdict: "deny" })
       v = verdict_for({ name: "web_fetch", content: "https://x" }, set)

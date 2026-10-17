@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/guardrails/shell_lex"
 
 # The guardrails' shell lexer: words and operators, never anything run.
@@ -118,6 +119,42 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
     it "keeps $(cat <<'EOF' … EOF) one opaque word" do
       text = "git commit -m \"$(cat <<'EOF'\nit's\nEOF\n)\" && git push"
       expect(commands(text)).to eq([["git", "commit", "-m", subst], %w[git push]])
+    end
+  end
+
+  describe ".code_text" do
+    # Whether +lines+ appear in +of+ in that order.
+    def subsequence?(lines, of)
+      rest = of.dup
+      lines.all? do |line|
+        at = rest.index(line)
+        rest = rest[(at + 1)..] if at
+        at
+      end
+    end
+
+    it "cuts a stdout cat's body, keeping the <<TAG word and the terminator line" do
+      expect(described_class.code_text("cat <<'EOF'\nrake release\nEOF\nls")).to eq("cat <<'EOF'\nEOF\nls")
+      expect(described_class.code_text("cat <<-EOF\n\trake release\n\tEOF\nls")).to eq("cat <<-EOF\n\tEOF\nls")
+      expect(described_class.code_text("cat <<A; cat <<'B'\na\nA\nb\nB\nls")).to eq("cat <<A; cat <<'B'\nA\nB\nls")
+    end
+
+    it "leaves the text as it was for a body that may run or is not known to be data" do
+      ["bash <<'EOF'\nrm -rf /\nEOF", "cat <<'EOF' | sh\nrm -rf /\nEOF", "cat <<EOF\n$(rm -rf /)\nEOF",
+       "cat > f <<'EOF'\nx\nEOF", "cat <<'EOF' > f\nx\nEOF", "cat <<'EOF' &>f\nx\nEOF",
+       "(cat <<'EOF') | bash\nx\nEOF", "cat <<EOF\nx", "git commit -F - <<'EOF'\nx\nEOF",
+       "echo '<<EOF'\nx\nEOF", "echo hi", ""].each do |text|
+        expect(described_class.code_text(text)).to eq(text), text
+      end
+    end
+
+    it "only removes lines, and changes nothing of a text without <<" do
+      corpus = JSON.parse(File.read(File.expand_path("../fixtures/command_steps/corpus.json", __dir__)))
+      corpus.each do |text|
+        code = described_class.code_text(text)
+        expect(subsequence?(code.lines, text.lines)).to be(true), text
+        expect(code).to eq(text), text unless text.include?("<<")
+      end
     end
   end
 
