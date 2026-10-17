@@ -32,8 +32,10 @@ module Samagotchi
       TOOL_ID_INVALID = /[^a-zA-Z0-9_-]/
       # What Messages takes as a tool name.
       TOOL_NAME = /\A[a-zA-Z0-9_-]{1,128}\z/
+      # The content block types a model's thinking is replayed in.
+      THINKING_TYPES = %w[thinking redacted_thinking].freeze
       # Blocks that can't carry a cache_control breakpoint.
-      UNMARKABLE = %w[thinking redacted_thinking].freeze
+      UNMARKABLE = THINKING_TYPES
 
       # A request's system blocks and messages.
       Translated = Data.define(:system, :messages)
@@ -104,6 +106,10 @@ module Samagotchi
           data.empty? ? nil : data
         end
       end
+
+      # Whether +block+ is a thinking or redacted_thinking block (a Hash,
+      # string or symbol keys).
+      def thinking_block?(block) = block.is_a?(Hash) && THINKING_TYPES.include?(type_of(block))
 
       # +id+ as Messages takes it (^[a-zA-Z0-9_-]+$), the same in tool_use
       # and tool_result: a valid id as it is, another with its invalid

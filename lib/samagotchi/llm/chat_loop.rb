@@ -471,8 +471,6 @@ module Samagotchi
 
       def thought?(entry) = entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
 
-      THINKING_BLOCKS = %w[thinking redacted_thinking].freeze
-
       # A model entry's saved blocks (anthropic_content) to send back
       # verbatim, for an adapter that replays them: nil when there are none,
       # for an interrupted entry (its partial blocks have no signature), and
@@ -485,7 +483,7 @@ module Samagotchi
         return nil unless replays_content? && blocks.is_a?(Array) && !blocks.empty? && !entry[:interrupted]
         return nil unless Array(entry[:tool_calls]).all? { |call| paired.include?(call[:id]) }
 
-        blocks = blocks.reject { |block| block.is_a?(Hash) && THINKING_BLOCKS.include?((block["type"] || block[:type]).to_s) } unless keep_thinking
+        blocks = blocks.reject { |block| AnthropicWire.thinking_block?(block) } unless keep_thinking
         blocks.empty? ? nil : blocks
       end
 

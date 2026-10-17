@@ -2,6 +2,7 @@
 
 require_relative "config"
 require_relative "setting_explained"
+require_relative "llm/anthropic_wire"
 
 module Samagotchi
   # Which of its own reasoning a chat host's model gets back
@@ -125,7 +126,7 @@ module Samagotchi
         next false unless entry[:role].to_s == "model"
 
         (entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?) ||
-          Array(entry[:anthropic_content]).any? { |block| block.is_a?(Hash) && %w[thinking redacted_thinking].include?(block["type"].to_s) }
+          Array(entry[:anthropic_content]).any? { |block| LLM::AnthropicWire.thinking_block?(block) }
       end
     end
 

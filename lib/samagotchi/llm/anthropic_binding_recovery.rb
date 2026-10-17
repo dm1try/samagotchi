@@ -24,7 +24,6 @@ module Samagotchi
       BOUND_ELSEWHERE_RE = /bound to a different conversation/i
       # The block a signature 400 names: an index into the body sent.
       BLOCK_PATH_RE = /messages\.(\d+)\.content\.(\d+)/
-      THINKING_TYPES = %w[thinking redacted_thinking].freeze
       # The only drop the loop settles: a model_binding_mismatch (a /model
       # downgrade) keeps its blocks, a switch back reads them again.
       PREFIX_DROP = "prefix_binding_mismatch"
@@ -145,11 +144,9 @@ module Samagotchi
       # +body+'s messages.
       def thinking_positions(body)
         Array(body[:messages]).each_with_index.flat_map do |message, n|
-          Array(message[:content]).each_with_index.filter_map { |block, m| [n, m] if thinking_block?(block) }
+          Array(message[:content]).each_with_index.filter_map { |block, m| [n, m] if AnthropicWire.thinking_block?(block) }
         end
       end
-
-      def thinking_block?(block) = block.is_a?(Hash) && THINKING_TYPES.include?((block["type"] || block[:type]).to_s)
 
       # The body's thinking with block_binding: drop_block (adaptive
       # without one: the binding controls need adaptive or enabled).
@@ -169,7 +166,7 @@ module Samagotchi
           next message if n < first_message
 
           content = message[:content].each_with_index.reject do |block, m|
-            drop = (n > first_message || m >= first_block) && thinking_block?(block)
+            drop = (n > first_message || m >= first_block) && AnthropicWire.thinking_block?(block)
             removed << AnthropicWire.block_identity(block) if drop
             drop
           end.map(&:first)
@@ -185,7 +182,7 @@ module Samagotchi
         return nil unless n
 
         block = Array(body[:messages])[n]&.then { |message| Array(message[:content])[m] }
-        thinking_block?(block) ? AnthropicWire.block_identity(block) : nil
+        AnthropicWire.thinking_block?(block) ? AnthropicWire.block_identity(block) : nil
       end
 
       # The last sentence of a 400 (what it says changed: "The `system`
