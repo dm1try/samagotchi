@@ -168,10 +168,16 @@ class Plugin < Samagotchi::Plugin::Peer
   # [stdout, stderr, status]; both pipes read on threads, so a full one
   # can't block the command.
   def run(*command)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + QUEUE_SECONDS
     Open3.popen3(*command, pgroup: true) do |stdin, stdout, stderr, wait|
       stdin.close
       out, err = [stdout, stderr].map { |io| Thread.new { io.read }.tap { |t| t.report_on_exception = false } }
-      unless wait.join(QUEUE_SECONDS)
+      threads = [wait, out, err]
+      within_deadline = lambda do |thread|
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        thread.join([remaining, 0].max)
+      end
+      unless threads.all?(&within_deadline)
         begin
           Process.kill("KILL", -wait.pid)
         rescue SystemCallError
@@ -179,7 +185,18 @@ class Plugin < Samagotchi::Plugin::Peer
         end
         # The group is gone, so the pipes end: let the readers finish
         # before popen3 closes them.
-        [wait, out, err].each { |t| t.join(1) }
+        cleanup_deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 1
+        threads.each do |thread|
+          remaining = cleanup_deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          thread.join([remaining, 0].max)
+        end
+        # The queue itself finished fine, and only a process it left held
+        # the pipes: the message is likely queued, so don't say "try again"
+        # (a retry would deliver it twice).
+        if wait.join(0) && wait.value.success?
+          raise SendError, "codex queue exited but left a process holding its output (stopped after " \
+                           "#{QUEUE_SECONDS} s): the message may already be queued, check Codex before sending again"
+        end
         raise SendError, "Codex didn't take the message in #{QUEUE_SECONDS} s (codex queue was stopped): try " \
                          "again, or pair again from Codex"
       end

@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- codex-peer 0.3.2: a send no longer hangs when `codex queue` exits but leaves a process holding its output: it is
+  stopped after 10 s like a hung queue, and says the message may already be queued (check Codex before resending).
 - A plain `chi bundle install` over an installed bundle no longer forgets the files the new version stopped shipping
   (such as the README an older chi installed as a memory): they stay where they are, still the bundle's, and the
   `chi bundle upgrade` its summary suggests moves them to the trash.

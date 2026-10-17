@@ -216,6 +216,23 @@ RSpec.describe "The codex-peer plugin" do
       expect(wait_until { process_gone?(sleeper) }).to be(true)
     end
 
+    it "stops a finished queue whose child holds its pipes, and says the message may be queued" do
+      pair
+      plugin_class.send(:remove_const, :QUEUE_SECONDS)
+      plugin_class.const_set(:QUEUE_SECONDS, 0.3)
+      pid_file = File.join(tmpdir, "sleep.pid")
+      FakeExecutables.fake_executable(bin, "codex", "sleep 4 &\necho $! > '#{pid_file}'\necho queued\nexit 0")
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = send_part(kind: "validate", title: "t", text: "x")
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(result).to eq("Error: codex queue exited but left a process holding its output (stopped after 0.3 s): " \
+                           "the message may already be queued, check Codex before sending again")
+      sleeper = File.read(pid_file).to_i
+      expect(wait_until { process_gone?(sleeper) }).to be(true)
+    end
+
     it "refuses a text over the cap, an empty one and an unknown kind, sending nothing" do
       pair
 
