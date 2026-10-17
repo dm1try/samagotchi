@@ -515,7 +515,8 @@ Engine initialization (in this order, among other things):
   @tools = Tools::Builtins.registry; @command_registry (SessionCommands' built-ins); @plugin_tasks
   @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
   @thinking_notices (ThinkingNotices); @tool_index = Tools::ToolIndex.new; @peer_sources = PeerSources.new
-  the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins),
+  the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins; each plugin's ctx is a
+    Plugin::Context over plugin_host, whose ctx.sessions it builds itself: the test kit passes its own, sessions:),
     then (plugins or not) @tool_index.declare(@tools): find_tools + call_tool (source "index", not core),
     declared per toolkit by Registry#declared? (a source registered at load, or a reachable built-in) and
     sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'

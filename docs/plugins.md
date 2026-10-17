@@ -1032,6 +1032,47 @@ bundle that needs one should ask for an API instead):
   `Samagotchi::Guardrails::GitInfo`.
 - `Samagotchi::Tools::Execute.const_get` reflection.
 
+## Testing a bundle (experimental)
+
+`samagotchi/testing` loads a bundle the way chi does and records what it does at chi's edges, so a test
+needs no fake `chi` or `ctx`. It is **experimental**: it may change in any release before 1.0.0 and is not
+part of "Stable for bundles".
+
+```ruby
+require "samagotchi/testing"
+
+bundle = Samagotchi::Testing::Bundle.load("path/to/my-bundle", settings: { "every" => 3 },
+                                          host: { session_id: "s1", cwd: Dir.pwd })
+bundle.fire(:after_turn, status: "completed")            # → the event, after the hooks
+bundle.command("/mine stop")                             # → what the command returned
+bundle.tool("my_tool", path: "a.txt")                    # → the text the model reads
+verdict = bundle.tool_call({ name: "execute", content: "rm -rf /" })
+verdict.deny?                                            # a real Guardrails::Verdict (votes: verdict.votes)
+bundle.notices.map(&:text)                               # also cards, steers, stops, generation_stops, questions
+bundle.answer({ selected: "yes" })                       # the next ask_user's answer
+bundle.model_answers << "a summary"                      # the next ask_model's answer
+bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripted and recorded
+bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
+bundle.shutdown
+```
+
+- **Real seams.** The plugin loads through `Plugin::Loader.register_file` (the real `chi` API and a real `ctx`),
+  the hook files through `Hooks::BundleLoader.load_hook_file`, into registries that already hold chi's own
+  commands and tools: a name chi has fails the load as it would in chi. `tool_call` runs a real
+  `Guardrails::Gate` (context and targets computed for the call; `verdict:` starts from one with a vote in it).
+  Only the edges are recorded: the session (`Testing::Host`), the hook helpers (`Testing::Runtime`),
+  `ctx.sessions`, `chi.init` tasks (`bundle.run_inits`) and `chi.replace_tools` sets
+  (`bundle.apply_staged_tools!`). No sha256 or `requires_chi` check: it loads the source as it is.
+- **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
+  go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
+- **Sandbox.** A test runs with temp config and state homes (config.yml, memories, `ctx.data_dir`, the debug
+  log), `HOME`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, no git config of yours, no Keychain and none of your
+  `SAMAGOTCHI_*` settings; `sandbox.config(hash)` writes its config.yml.
+- **RSpec:** `require "samagotchi/testing/rspec"`; example groups tagged `:bundle` (a spec under a bundle's own
+  `spec/` is tagged by itself) get `load_bundle(dir)`, `shipped_bundle(name)` and `sandbox`, each example in its
+  own sandbox, its bundles shut down after it. **Minitest:** `require "samagotchi/testing/minitest"` and subclass
+  `Samagotchi::Testing::Case` (the same helpers).
+
 ## The btw bundle
 
 `chi bundle install btw` (or the `dev` profile) installs the bundle shipped with chi. It is written

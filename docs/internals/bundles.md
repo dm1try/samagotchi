@@ -44,6 +44,10 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 Readers of the installed state: `Hooks::BundleLoader` (Engine), `GuardrailWiring#bundle_rules`, `Plugin::Loader`,
 `ContextProviders` (scripts), `BundleNeeds` (index markers). Each goes through `Provenance.each_installed` / `#record`
 and checks the recorded sha256 (and `requires_chi`) before loading.
+The checks live in `Hooks::BundleLoader.load` and `Plugin::Loader.load_bundle`; the loading itself is
+`BundleLoader.load_hook_file` (one hook file, into a given `namespace:`) and `Plugin::Loader.register_file` (one
+plugin file: build, `register`, `commit!`), which raise instead of logging: the bundle test kit
+(`Samagotchi::Testing::Bundle`) loads a bundle's source through them, unchecked.
 
 ## Installer#run, in order
 

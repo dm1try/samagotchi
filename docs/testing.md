@@ -53,6 +53,23 @@ Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integrat
 `recap` examples are exempt), so a hang fails its example instead of the run. `SPEC_EXAMPLE_TIMEOUT=N` changes the
 limit, `0` turns it off (a debugger session).
 
+## Bundle specs: the test kit
+
+A shipped bundle's plugin and hook files are tested through the bundle test kit (`samagotchi/testing`,
+[plugins.md](plugins.md#testing-a-bundle-experimental)): `require "samagotchi/testing/rspec"`, tag the group
+`:bundle`, and `shipped_bundle("check-in", settings: …)` loads it through chi's own loaders, registries, `ctx` and
+guardrail Gate, with the session, the hook helpers and `ctx.sessions` recorded. No fake `chi` or `ctx`: what the kit
+can't express is a kit change (with a kit spec), not a local fake. A spec that runs real turns (install → Engine →
+`run_turn`) stays as it is.
+
+Two specs keep the kit honest:
+
+- `spec/samagotchi/testing/contract_spec.rb`: the kit sets every `Plugin::Host` and `Hooks::Runtime` member,
+  `Testing::Sessions` has `Plugin::Sessions`' methods and parameters, and each `ctx` helper lands in its recorder. A
+  member added to the Host fails it until the kit has it.
+- `spec/samagotchi/testing/shipped_bundles_spec.rb`: each shipped bundle with a plugin or hooks registers the same
+  commands, tools, hooks, inits, toolkits and sources loaded by the kit as installed and loaded by chi.
+
 ## While you work: affected specs
 
 ```sh
