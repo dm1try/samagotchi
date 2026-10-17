@@ -45,6 +45,24 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(json[:memory_index]).to eq("system" => { "tokens" => 1997, "lines" => 54 })
     end
 
+    # The side requests' block, apart from the turns' tokens (the card's
+    # ctx tooltip has its own line).
+    it "carries a saved side block, never in tokens; nil without one" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      side = { "requests" => 1, "prompt_sum" => 300, "completion_sum" => 3, "cost_sum" => nil, "cost_estimate_sum" => 0.0004,
+               "by_kind" => { "btw" => { "requests" => 1, "cost_sum" => nil, "cost_estimate_sum" => 0.0004 } } }
+      path = File.join(session_dir(s), "analytics.json")
+      File.write(path, JSON.generate("tokens" => { "prompt_sum" => 900 }, "side" => side))
+
+      json = described_class.build(s, owner: nil, session_dir: session_dir(s))
+      expect(json[:side]).to eq(side)
+      expect(json[:tokens]).not_to have_key(:side)
+
+      File.write(path, JSON.generate("tokens" => { "prompt_sum" => 900 }))
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:side]).to be_nil
+    end
+
     it "has neither without saved analytics" do
       s = session
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))

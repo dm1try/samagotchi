@@ -1750,6 +1750,23 @@ RSpec.describe Samagotchi::Web::App do
         expect(timing["model_segments"]).to eq([])
       end
 
+      # The side requests' block, live over saved (as tokens), in the whole
+      # timing and in a tail read's.
+      it "sends the side block, the live worker's over the saved one, and the saved one without a worker" do
+        saved_side = { "requests" => 1, "prompt_sum" => 100, "by_kind" => { "recap" => { "requests" => 1 } } }
+        live_side = { "requests" => 2, "prompt_sum" => 400, "by_kind" => { "recap" => { "requests" => 1 }, "btw" => { "requests" => 1 } } }
+        FileUtils.mkdir_p(File.join(state_dir, "s1"))
+        File.write(File.join(state_dir, "s1", "analytics.json"),
+                   JSON.generate(started_at: "2026-10-03T10:00:00.000Z", turn_records: [turn(1)], tool_records: [], side: saved_side))
+        live_with([1], count: 1, side: live_side)
+
+        ["", "?timing=1", "?tail=1&recent=1"].each { |query| expect(timing(query)["side"]).to eq(live_side), query }
+
+        stub_worker(app, nil)
+        allow(app).to receive(:bridge_get_json).with("s1", "state").and_return(nil)
+        ["", "?timing=1", "?tail=1&recent=1"].each { |query| expect(timing(query)["side"]).to eq(saved_side), query }
+      end
+
       it "keeps one copy of a turn both hold" do
         save([1, 2, 3])
         live_with([3])

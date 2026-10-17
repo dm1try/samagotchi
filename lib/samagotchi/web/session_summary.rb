@@ -77,6 +77,8 @@ module Samagotchi
           tokens: saved&.tokens,
           # The memory indexes its prompt held (the card's ctx tooltip).
           memory_index: saved&.memory_index,
+          # Its side requests, apart from the tokens (the tooltip's own line).
+          side: saved&.side,
           # Hidden from the strip and the list unless "include archived".
           archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),
