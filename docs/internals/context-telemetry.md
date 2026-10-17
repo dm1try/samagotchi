@@ -44,6 +44,13 @@ from them) and `usage.source: "switch"`. It is kept for a client that joins late
 status row drops its ctx until the next generation. Nothing is sent before the session's first counted turn. A
 hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
 
+A process that loads the session on another model than its last turn ran on (`Engine#session=`:
+`SessionMetrics#last_model_ref` differs from `effective_model_ref`; a `--resume`'d REPL with `--model`, a worker woken
+after a `/model` with no turn since) drops the old window (`forget_model_reports!`) and calls
+`announce_switched_context!(configured_only: true)`: the configured window only
+(`EffectiveModel#configured_context_window`, no `/props` GET or model list, since a worker runs it before its Bridge
+serves); without one, no percentage until the first generation reports the window.
+
 Under an LLM context strategy (`ContextStatus.new(llm_context:)`, the turn's `LLMContextStrategy::Resolved`, given by
 both loops):
 

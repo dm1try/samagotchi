@@ -290,6 +290,12 @@ module Samagotchi
       end
     end
 
+    # The model ref the last turn that named one ran on (a loaded session's
+    # too), nil before any: Engine#session= compares it with the effective
+    # model's.
+    # @return [String, nil]
+    def last_model_ref = @mutex.synchronize { @last_model_ref }
+
     # /model's new window (Engine#announce_switched_context!), until the
     # new model's first generation reports one: what the snapshot's context
     # (a page's ctx % on load) counts against.

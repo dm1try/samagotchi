@@ -168,6 +168,11 @@ module Samagotchi
       unresolved(:window_unresolved, e, nil)
     end
 
+    # The window config.yml gives this model or its host
+    # (ContextWindow.setting), never asking a server: a session loaded on
+    # it (Engine#session=, before a worker's Bridge serves). nil when none.
+    def configured_context_window = ContextWindow.setting(target, names: names)
+
     # The window as its loop would see it (ChatLoop#context_window: a remote
     # chat host has no /props, only its model list); nil when it can't be
     # resolved.

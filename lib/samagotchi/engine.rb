@@ -1027,12 +1027,15 @@ module Samagotchi
     # window in the metrics' context too, which a page counts from). A window
     # that can't be resolved sends usage nil: the UIs clear the % until the
     # next generation. Nothing before the session's first counted turn.
+    # +configured_only+: the configured window only, never asking a server
+    # (EffectiveModel#configured_context_window): a loaded session's (#session=).
     # @return [Hash, nil] the event sent
-    def announce_switched_context!
+    def announce_switched_context!(configured_only: false)
       used = @metrics.snapshot.dig(:context, :used_tokens)
       return nil unless used.is_a?(Integer)
 
-      window = current_context_window(effective_model)
+      model = effective_model
+      window = configured_only ? model.configured_context_window : current_context_window(model)
       display = window && saved_context_status({ used_tokens: used, window_tokens: window.tokens })
       @last_context_status = display&.dup
       @metrics.note_context_window(window.tokens, window.source) if window
@@ -1674,7 +1677,28 @@ module Samagotchi
       # A woken worker's /stats and status line count the turns before it.
       bind_metrics(session)
       @used_memories.absorb(session)
+      # Loaded on another model than its last turn ran on (a --resume'd
+      # REPL's --model, a worker woken after a /model with no turn since):
+      # the saved ctx % was that model's window's. Drop it and count it as
+      # /model does, on a configured window only: this runs before a
+      # worker's Bridge serves, so no /props GET or model list here (a slow
+      # or hung host would hold up the worker's start). No configured
+      # window: no % (ctx ?) until the first generation reports one.
+      return unless model_switched_since_last_turn?
+
+      @metrics.forget_model_reports!
+      announce_switched_context!(configured_only: true)
     end
+
+    # Whether the last turn that named its model ran on another one than
+    # the effective model; false before any (or when the ref can't be told).
+    def model_switched_since_last_turn?
+      last = @metrics.last_model_ref
+      !last.nil? && last != effective_model_ref
+    rescue StandardError
+      false
+    end
+    private :model_switched_since_last_turn?
 
     # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
     attr_reader :recap

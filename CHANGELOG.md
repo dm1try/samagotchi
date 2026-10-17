@@ -33,6 +33,9 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle upgrade` with no source prints the same usage line as `--help` (it left out `[--agent|--no-agent]`).
 - `/stats` no longer counts a `/model` switch to the same model id on another host as re-prefilled tokens too: that
   prefill is the switch's (`switch prefill`) only.
+- A session loaded on another model than its last turn ran on (`--resume` with `--model`, a worker woken after a
+  `/model` with no turn since) no longer shows the old model's ctx %: it is counted on the new model's configured
+  window at once (`window_tokens`), else shown as `ctx ?` until the first generation.
 
 ## [0.75.0] - 2026-10-17
 

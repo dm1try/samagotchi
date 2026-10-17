@@ -246,8 +246,8 @@ RSpec.describe "Engine#stats_snapshot" do
   # After /model the old model's ctx % goes; announce_switched_context!
   # counts the history against the new model's window (D4 a).
   describe "the ctx % after /model" do
-    def counted_turn(engine, used)
-      [{ type: :turn_started, session_id: "s", prompt: "p" }, { type: :generation_started, iteration: 1 },
+    def counted_turn(engine, used, model_ref: nil)
+      [{ type: :turn_started, session_id: "s", prompt: "p" }, { type: :generation_started, iteration: 1, model_ref: model_ref }.compact,
        { type: :generation_chunk, iteration: 1, content: "a",
          payload: { "usage" => { "prompt_tokens" => used - 800, "completion_tokens" => 800 } } },
        { type: :generation_completed, iteration: 1 }, { type: :turn_completed }].each { |event| engine.metrics.call(event) }
@@ -290,6 +290,50 @@ RSpec.describe "Engine#stats_snapshot" do
 
       expect(engine.announce_switched_context!).to include(usage: nil, bucket: nil, context_window_tokens: nil)
       expect(engine.session_state_snapshot[:context_status]).to be_nil
+    end
+
+    # A process that loads the session on another model than its last turn
+    # ran on (a --resume'd REPL with --model, a worker woken after a /model
+    # with no turn since): the status /model would have sent, at #session=,
+    # on the configured window only: it runs before a worker's Bridge
+    # serves, so it never asks the server (no /props GET, no model list).
+    it "counts a loaded session's context against the configured window when its last turn ran on another" do
+      saved = Samagotchi::Session.new_session(mode: "assist", model_name: "house-blend-35b", working_directory: Dir.pwd)
+      earlier = engine_on("house-blend-35b" => 128_000)
+      earlier.session = saved
+      earlier.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 32_000, context_window_source: :server)
+      counted_turn(earlier, 12_800, model_ref: "other-blend")
+      earlier.metrics.persist
+      expect(earlier.session_state_snapshot[:context_status]).to eq(est_pct: 40.0, bucket: "40plus")
+
+      [[128_000, { est_pct: 10.0, bucket: "under20" }], [nil, nil]].each do |configured, status|
+        client = FakeResolvingClient.new(nil)
+        client.define_singleton_method(:context_window) { |model: nil| (asked << [:window, model]) && 64_000 }
+        registry = Samagotchi::HostRegistry.new(hosts_config: { "main" => { host: "h.test", port: 8081, window_tokens: configured }.compact })
+        registry.client_override = client
+        engine = Samagotchi::Engine.new(host_registry: registry)
+        events = []
+        engine.subscribe(observer: ->(event) { events << event if event[:type] == :context_status })
+
+        engine.session = saved
+
+        expect(client.asked).to be_empty
+        expect(engine.session_state_snapshot[:context_status]).to eq(status)
+        expect(engine.metrics.snapshot[:context]).to include(used_tokens: 12_800, window_tokens: configured)
+        expect(events.map { |event| event[:context_window_tokens] }).to eq([configured])
+      end
+    end
+
+    it "keeps a loaded session's saved status when its last turn ran on the effective model, or named none" do
+      ["house-blend-35b", nil].each do |ref|
+        engine = engine_on("house-blend-35b" => 128_000)
+        engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 32_000, context_window_source: :server)
+        counted_turn(engine, 12_800, model_ref: ref)
+
+        engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "house-blend-35b", working_directory: Dir.pwd)
+
+        expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 40.0, bucket: "40plus")
+      end
     end
   end
 
