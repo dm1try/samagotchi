@@ -267,6 +267,154 @@ RSpec.describe "chi bootstrap" do
     expect(out).to include("chi bootstrap [HOST[:PORT]|URL]")
   end
 
+  describe "an Anthropic Messages server" do
+    let(:anthropic_error) { { type: "error", error: { type: "invalid_request_error", message: "anthropic-version: header is required" } } }
+    let(:message_ok) { { type: "message", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" } }
+
+    # BootstrapCommand with +probe+ (an instance_double's results), else as
+    # #bootstrap.
+    def bootstrap_with(probe, *args)
+      vars = env.merge("FAKE_KEY" => "sk-1")
+      out = StringIO.new
+      err = StringIO.new
+      code = with_env(vars) do
+        Samagotchi::BootstrapCommand.new(args, stdin: StringIO.new(""), stdout: out, stderr: err, env: vars.compact,
+                                               probe: probe).run
+      end
+      [out.string, err.string, code]
+    end
+
+    def model_info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
+
+    # A probe that finds +kind+ at +target+ with one model.
+    def probe_finding(target, kind, model: "claude-a", **fields)
+      candidate = Samagotchi::Bootstrap::Probe.candidates(target).first
+      result = Samagotchi::Bootstrap::Probe::Result.of(kind, candidate, models: [model_info(model)], **fields)
+      probe = instance_double(Samagotchi::Bootstrap::Probe)
+      allow(probe).to receive(:classify_target).and_return(result)
+      allow(probe).to receive(:test_turn).and_return(0.4)
+      probe
+    end
+
+    it "writes host/port, api: anthropic and the key's variable for a plain-http one, testing on /v1/messages" do
+      server.enqueue("/v1/models", status: 400, json: anthropic_error)
+      server.enqueue("/v1/models", json: { data: [{ id: "claude-a", type: "model" }], has_more: false })
+      server.default("/v1/messages", json: message_ok)
+
+      out, err, status = bootstrap(target, "--key-env", "FAKE_KEY", extra_env: { "FAKE_KEY" => "sk-1" })
+
+      expect([err, status]).to eq(["", 0])
+      expect(out).to include("found: an Anthropic Messages API at http://#{target}\n", "model: claude-a", "test: answered in")
+      expect(written["hosts"]).to eq("local" => { "host" => "127.0.0.1", "port" => server.port, "api" => "anthropic",
+                                                  "api_key_env" => "FAKE_KEY" })
+      expect(server.requests.last.path).to eq("/v1/messages")
+      expect(server.requests.last.header("x-api-key")).to eq("sk-1")
+    end
+
+    it "writes api.anthropic.com as its url without /v1, in the claude host's shape" do
+      probe = probe_finding("https://api.anthropic.com/v1", :anthropic)
+
+      out, err, status = bootstrap_with(probe, "https://api.anthropic.com/v1", "--key-env", "FAKE_KEY")
+
+      expect([err, status]).to eq(["", 0])
+      expect(out).to include("found: an Anthropic Messages API at https://api.anthropic.com\n")
+      expect(File.read(config)).to include(<<~YAML)
+        hosts:
+          anthropic:
+            url: "https://api.anthropic.com"
+            api: "anthropic"
+            api_key_env: "FAKE_KEY"
+      YAML
+      expect(probe).to have_received(:test_turn)
+        .with(anything, "claude-a", key_env: "FAKE_KEY", api: :anthropic, dialect: nil, auth: nil)
+    end
+
+    it "writes dialect: fireworks and no auth for Fireworks" do
+      probe = probe_finding("https://api.fireworks.ai/inference/v1", :anthropic, model: "accounts/fireworks/models/glm-5",
+                                                                                 dialect: "fireworks")
+
+      out, _err, status = bootstrap_with(probe, "https://api.fireworks.ai/inference/v1", "--key-env", "FAKE_KEY")
+
+      expect(status).to eq(0)
+      expect(out).to include("found: an Anthropic Messages API at https://api.fireworks.ai/inference (dialect: fireworks)\n")
+      expect(written.dig("hosts", "fireworks")).to eq("url" => "https://api.fireworks.ai/inference", "api" => "anthropic",
+                                                      "dialect" => "fireworks", "api_key_env" => "FAKE_KEY")
+    end
+
+    it "writes auth: bearer when only Bearer opened the Anthropic list" do
+      probe = probe_finding("https://gateway.example.com", :anthropic, auth: :bearer)
+
+      _out, _err, status = bootstrap_with(probe, "https://gateway.example.com", "--key-env", "FAKE_KEY")
+
+      expect(status).to eq(0)
+      expect(written.dig("hosts", "example").keys).to eq(%w[url api auth api_key_env])
+      expect(written.dig("hosts", "example", "auth")).to eq("bearer")
+    end
+
+    it "keeps direct Fireworks api: openai and says it serves the Messages API too, unless --api was given" do
+      probe = probe_finding("https://api.fireworks.ai/inference/v1", :openai)
+
+      out, _err, status = bootstrap_with(probe, "https://api.fireworks.ai/inference/v1", "--key-env", "FAKE_KEY", "--dry-run")
+
+      expect(status).to eq(0)
+      expect(out).to include("found: an OpenAI-compatible API at https://api.fireworks.ai/inference/v1\n" \
+                             "Fireworks also serves the Anthropic Messages API: --api anthropic\n", 'api: "openai"')
+
+      out, = bootstrap_with(probe, "https://api.fireworks.ai/inference/v1", "--key-env", "FAKE_KEY", "--dry-run", "--api", "openai")
+      expect(out).not_to include("also serves")
+    end
+
+    it "shows the anthropic entry on --dry-run, writing nothing" do
+      probe = probe_finding("https://api.anthropic.com", :anthropic)
+
+      out, _err, status = bootstrap_with(probe, "https://api.anthropic.com", "--key-env", "FAKE_KEY", "--dry-run", "--no-test")
+
+      expect(status).to eq(0)
+      expect(out).to include("dry run: would write a new file", "    anthropic:\n      url: \"https://api.anthropic.com\"\n      " \
+                                                                 "api: \"anthropic\"\n      api_key_env: \"FAKE_KEY\"\n")
+      expect(File.exist?(config)).to be(false)
+    end
+
+    it "passes --api and --dialect to the probe; --dialect alone means --api anthropic" do
+      probe = probe_finding("https://llm.example.com", :anthropic)
+
+      bootstrap_with(probe, "https://llm.example.com", "--key-env", "FAKE_KEY", "--dialect", "Fireworks", "--dry-run")
+      bootstrap_with(probe, "https://llm.example.com", "--key-env", "FAKE_KEY", "--api", "openai", "--dry-run")
+
+      expect(probe).to have_received(:classify_target).with(anything, key_env: "FAKE_KEY", api: :anthropic, dialect: "fireworks")
+      expect(probe).to have_received(:classify_target).with(anything, key_env: "FAKE_KEY", api: :openai, dialect: nil)
+    end
+
+    it "refuses a bad --api, a bad --dialect, and --dialect with --api openai, with exit 2" do
+      [%w[--api gemini], %w[--dialect bedrock], %w[--dialect fireworks --api openai]].each do |flags|
+        _out, err, status = bootstrap(target, *flags)
+
+        expect(status).to eq(2), flags.join(" ")
+        expect(err).to start_with("chi bootstrap: --")
+      end
+      expect(server.requests).to be_empty
+    end
+
+    it "names the three lists when none answered" do
+      server.default("/v1/models", status: 400, json: anthropic_error)
+
+      _out, err, status = bootstrap(target, "--key-env", "FAKE_KEY", extra_env: { "FAKE_KEY" => "sk-1" })
+
+      expect(status).to eq(1)
+      expect(err).to eq("chi bootstrap: reached #{target} but it answers neither llama.cpp /props, /v1/models " \
+                        "nor the Anthropic /v1/models (HTTP 400)\n")
+    end
+
+    it "hints --api anthropic when an OpenAI-listing server has no /chat/completions" do
+      server.default("/v1/models", json: models("m"))
+
+      out, _err, status = bootstrap(target)
+
+      expect(status).to eq(1)
+      expect(out).to match(/^test: failed: HTTP 404: .* \(an Anthropic Messages API\? try --api anthropic\)$/)
+    end
+  end
+
   describe "the loading hint on a slow test" do
     def result_for(target)
       candidate = Samagotchi::Bootstrap::Probe.candidates(target).first

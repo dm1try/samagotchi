@@ -14,9 +14,10 @@ require_relative "redacted_inspect"
 
 module Samagotchi
   # `chi bootstrap [TARGET]`: the first setup. It names a model server, works
-  # out what it is (llama.cpp's native API or an OpenAI-compatible one),
-  # picks the model, sends one test request and writes config.yml: a fresh
-  # file, or a hosts: entry added to an existing one. Then it installs the
+  # out what it is (llama.cpp's native API, an OpenAI-compatible one or
+  # Anthropic's Messages API, Bootstrap::Probe), picks the model, sends one
+  # test request and writes config.yml: a fresh file, or a hosts: entry
+  # added to an existing one. Then it installs the
   # system bundle and the core profile, and on a terminal asks about dev.
   # Prompts only on a terminal; a script gets the list and exit 2 instead.
   class BootstrapCommand
@@ -24,11 +25,14 @@ module Samagotchi
     include RedactedInspect
 
     USAGE = <<~TEXT
-      Usage: chi bootstrap [TARGET] [--name NAME] [--model ID] [--key-env VAR] [--no-test] [--dry-run]
+      Usage: chi bootstrap [TARGET] [--name NAME] [--model ID] [--key-env VAR] [--api API] [--dialect NAME]
+                           [--no-test] [--dry-run]
         Finds the model server at TARGET and writes config.yml for it.
           chi bootstrap 192.168.1.29:8081          llama.cpp on the LAN
           chi bootstrap localhost:11434            Ollama
           chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
+          chi bootstrap https://api.anthropic.com --key-env ANTHROPIC_API_KEY
+          chi bootstrap https://api.fireworks.ai/inference/v1 --key-env FIREWORKS_API_KEY --api anthropic
           chi bootstrap                            look on this machine's usual ports
         TARGET        host[:port] (port 8080 when none), or a URL; a URL's
                       path is the OpenAI API base
@@ -37,6 +41,12 @@ module Samagotchi
         --model ID    the model, when the server has several
         --key-env VAR the environment variable holding the API key (the
                       key itself is never written)
+        --api API     openai or anthropic (Anthropic's Messages API) instead
+                      of detecting it; detection takes anthropic only when
+                      the OpenAI model list is refused
+        --dialect NAME the Messages API's dialect: standard or fireworks
+                      (implies --api anthropic; default: fireworks when the
+                      host or the model ids say so)
         --no-test     skip the test request
         --dry-run     show what would be written; write nothing
         With no config.yml it writes one; an existing one gets a hosts:
@@ -50,10 +60,13 @@ module Samagotchi
       f.value "--name"
       f.value "--model"
       f.value "--key-env"
+      f.value "--api"
+      f.value "--dialect"
       f.switch "--no-test"
       f.switch "--dry-run"
     end
 
+    APIS = %i[openai anthropic].freeze
     PICK_SHOWN = 20
     # A test request slower than this says it is waiting (a model loading).
     LOADING_AFTER = 3
@@ -92,6 +105,8 @@ module Samagotchi
         return @exit
       end
 
+      @api = options[:api]
+      @dialect = options[:dialect]
       result = find(options, key_env) or return @exit
       unlocked = with_key(result, key_env) or return @exit
       result, key_env = unlocked
@@ -124,7 +139,25 @@ module Samagotchi
         return usage_error("--key-env takes the variable's name (e.g. OPENROUTER_API_KEY), not the key")
       end
 
-      options
+      parse_api(options)
+    end
+
+    # --api as a Symbol, --dialect downcased (implying --api anthropic).
+    def parse_api(options)
+      if options[:api]
+        api = options[:api].strip.downcase.to_sym
+        return usage_error("--api must be #{APIS.join(" or ")} (got #{options[:api]})") unless APIS.include?(api)
+
+        options[:api] = api
+      end
+      return options unless options[:dialect]
+
+      dialect = options[:dialect].strip.downcase
+      names = LLM::Dialect::BY_NAME.keys
+      return usage_error("--dialect must be #{names.join(" or ")} (got #{options[:dialect]})") unless names.include?(dialect)
+      return usage_error("--dialect is for --api anthropic, not --api openai") if options[:api] == :openai
+
+      options.merge(dialect: dialect, api: :anthropic)
     end
 
     # The server's Probe::Result, or nil with @exit set.
@@ -137,14 +170,23 @@ module Samagotchi
         @exit = usage_error(e.message)
         return nil
       end
-      result = @probe.classify_target(candidates, key_env: key_env)
+      result = @probe.classify_target(candidates, key_env: key_env, api: @api, dialect: @dialect)
       case result.kind
       when :unreachable
         fail!("can't reach #{result.candidate.label} (#{result.reason})")
       when :unknown
         detail = result.status ? "HTTP #{result.status}" : result.reason
-        fail!("reached #{result.candidate.label} but it answers neither llama.cpp /props nor /v1/models (#{detail})")
+        fail!("reached #{result.candidate.label} but it answers #{unknown_asked} (#{detail})")
       else result
+      end
+    end
+
+    # What an :unknown server didn't answer, by what --api let the probe ask.
+    def unknown_asked
+      case @api
+      when :anthropic then "no Anthropic /v1/models"
+      when :openai then "neither llama.cpp /props nor /v1/models"
+      else "neither llama.cpp /props, /v1/models nor the Anthropic /v1/models"
       end
     end
 
@@ -190,7 +232,7 @@ module Samagotchi
       return fail!("#{key_env} isn't a variable name") unless key_env.match?(ConfigFile::ENV_NAME_RE)
       return fail!("#{key_env} is not set; #{export_hint(key_env, "and run chi bootstrap again")}") if unset?(key_env)
 
-      result = @probe.classify(result.candidate, key_env: key_env)
+      result = @probe.classify(result.candidate, key_env: key_env, api: @api, dialect: @dialect)
       return fail!("#{host} refused the key in #{key_env} (HTTP #{result.status})") if result.kind == :needs_key
       return fail!("can't reach #{host} (#{result.reason || "HTTP #{result.status}"})") unless result.reached?
 
@@ -201,8 +243,15 @@ module Samagotchi
       if result.native?
         build = result.props["build_info"].to_s
         @stdout.puts("found: llama.cpp at #{result.candidate.root}#{" (build #{build})" unless build.empty?}")
+      elsif result.anthropic?
+        dialect = " (dialect: #{result.dialect})" if result.dialect
+        @stdout.puts("found: an Anthropic Messages API at #{Bootstrap::Probe.api_root(result.candidate)}#{dialect}")
       else
         @stdout.puts("found: an OpenAI-compatible API at #{result.candidate.base}")
+        # By the host only: a proxy listing accounts/fireworks/ ids may not serve /v1/messages.
+        if @api.nil? && Bootstrap::Probe.fireworks_host?(result.candidate.host)
+          @stdout.puts("Fireworks also serves the Anthropic Messages API: --api anthropic")
+        end
       end
     end
 
@@ -248,15 +297,26 @@ module Samagotchi
                     @stdout.puts("test: waiting for an answer (loading the model?)…") if done.pop(timeout: LOADING_AFTER).nil?
                   end
                 end
-      seconds = @probe.test_turn(result.candidate, model, key_env: key_env)
+      seconds = @probe.test_turn(result.candidate, model, key_env: key_env, api: result.anthropic? ? :anthropic : :openai,
+                                                          dialect: result.dialect, auth: result.auth)
       @stdout.puts(format("test: answered in %.1f s", seconds))
       true
     rescue StandardError => e
-      @stdout.puts("test: failed: #{e.message}")
+      @stdout.puts("test: failed: #{e.message}#{messages_hint(result, e)}")
       false
     ensure
       done&.push(true)
       waiting&.join
+    end
+
+    # A detected OpenAI server whose model list worked but whose
+    # /chat/completions is 404: maybe a Messages-only url (a gateway's
+    # Anthropic route that also lists the OpenAI way).
+    def messages_hint(result, error)
+      return "" unless @api.nil? && result.kind == :openai && error.is_a?(Bootstrap::Probe::TestFailed)
+      return "" unless error.status == 404 && error.path.to_s.end_with?("/chat/completions")
+
+      " (an Anthropic Messages API? try --api anthropic)"
     end
 
     # The "loading the model?" hint fits a local server (a llama.cpp loading
@@ -268,7 +328,7 @@ module Samagotchi
     # 0 written, 1 written but not as planned, nil with @exit on a refusal.
     def write(result, model, key_env, options)
       writer = Bootstrap::ConfigWriter.new(path: @config_path, env: @env)
-      fields = host_fields(result.candidate, result.native?, key_env)
+      fields = host_fields(result, key_env)
       ids = result.models.map(&:id)
       base = Bootstrap::ConfigWriter.derived_name(result.candidate.host)
       name, reason = begin
@@ -350,16 +410,33 @@ module Samagotchi
     end
 
     # The hosts entry: host/port for a plain http server (api: openai when it
-    # isn't llama.cpp), url for https or a URL with its own path.
-    def host_fields(candidate, native, key_env)
+    # isn't llama.cpp), url for https or a URL with its own path (an
+    # Anthropic one without /v1: the API root, as the hand-written claude
+    # host has it). Then api, dialect, auth (Bearer only when the dialect's
+    # own header isn't), api_key_env.
+    def host_fields(result, key_env)
+      candidate = result.candidate
       fields = if candidate.url || candidate.scheme == "https"
-                 { "url" => native ? candidate.root : candidate.base }
+                 { "url" => url_field(result) }
                else
                  { "host" => candidate.host, "port" => candidate.port }
                end
-      fields["api"] = "openai" unless native
+      if result.anthropic?
+        fields["api"] = "anthropic"
+        fields["dialect"] = result.dialect if result.dialect
+        fields["auth"] = result.auth.to_s if result.auth && result.auth != LLM::Dialect.for(result.dialect).auth
+      elsif !result.native?
+        fields["api"] = "openai"
+      end
       fields["api_key_env"] = key_env if key_env
       fields
+    end
+
+    def url_field(result)
+      return result.candidate.root if result.native?
+      return Bootstrap::Probe.api_root(result.candidate) if result.anthropic?
+
+      result.candidate.base
     end
 
     def report(outcome, model)
