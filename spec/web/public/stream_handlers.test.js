@@ -273,6 +273,26 @@ test("command_ran: a !cmd the resync drew gets no second bubble", async () => {
   assert.deepEqual(page.names(), ["resync"]);
 });
 
+// A switch while the handler re-read the session: what it would draw is the
+// other session's, so the session open now gets nothing.
+test("command_ran: a switch during its resync draws nothing in the session open then", async () => {
+  const { page, deps } = fakePage();
+  deps.resync = async () => page.open("s2");
+  const handlers = createStreamHandlers(deps);
+  await handlers.command_ran({ line: "!ls", output: "a", changed: ["messages"] });
+  assert.deepEqual(page.names(), []);
+});
+
+test("prompt_restored: a switch during its resync draws nothing in the session open then", async () => {
+  const { page, deps, liveTurn } = fakePage();
+  deps.resync = async () => page.open("s2");
+  const handlers = createStreamHandlers(deps);
+  liveTurn.failedText = "✕ failed";
+  await handlers.prompt_restored({ prompt: "again", origin: { client_id: "tab-other", enqueued_id: "e1" } });
+  assert.deepEqual(page.names(), []);
+  assert.equal(liveTurn.failedText, null);
+});
+
 test("command_queued: an anytime command's bubble, once; a card's action waits", () => {
   const { page, handlers } = fakePage();
   handlers.command_queued({ anytime: true, line: "/help", command_id: "c1" });

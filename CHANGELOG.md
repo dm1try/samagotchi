@@ -36,8 +36,7 @@ and commands may change between minor versions. How releases are made:
 - A session loaded on another model than its last turn ran on (`--resume` with `--model`, a worker woken after a
   `/model` with no turn since) no longer shows the old model's ctx %: it is counted on the new model's configured
   window at once (`window_tokens`), else shown as `ctx ?` until the first generation.
-- Web: after a `/model` whose new window can't be resolved (`ctx ?`), the ctx tooltip says `Context window unknown
-  until the next request` over the session's tokens and per-model rows, instead of `No request in this session yet`.
+
 - A bundle's `manifest.yml` that isn't valid YAML (or isn't a mapping) makes `chi bundle install|upgrade` fail with
   `Install failed: manifest.yml is not valid YAML in <dir>: line N, column M: …` (`Upgrade failed: …` for an
   upgrade; exit 1), not a Psych backtrace.
@@ -51,6 +50,10 @@ and commands may change between minor versions. How releases are made:
   <repo name>` first, then install it again.
 - A bundle manifest whose `name:` is a path (`../x`, `a/b`, `.`, `..`) is refused (`Install failed: name: …`): the
   name is a directory under `.bundles/`, and a git URL bundle is now named by its manifest.
+- Web: after a `/model` whose new window can't be resolved (`ctx ?`), the ctx tooltip says `Context window unknown
+  until the next request` over the session's tokens and per-model rows, instead of `No request in this session yet`.
+- Web: opening another session while a `!cmd` (or a turn that failed and was rolled back) re-read its own no longer
+  draws that command's output, or the failed prompt and its line, in the session just opened.
 
 ## [0.75.0] - 2026-10-17
 
