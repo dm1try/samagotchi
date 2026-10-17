@@ -517,6 +517,17 @@ module Samagotchi
           # The empty generations, never saved: the UIs draw the turn's
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
+          # Set as the run goes: the last response's refusal, the context
+          # window the last request was sized for, that request's text and
+          # image estimates, whether a refused reasoning is being asked
+          # again without it, and whether a preserved-thinking recovery
+          # settled nothing once already.
+          @refusal = nil
+          @window = nil
+          @request_chars = nil
+          @request_image_tokens = nil
+          @without_reasoning = false
+          @recovery_repeated = false
           @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context)
           loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context,
                                                              emit: method(:emit))
