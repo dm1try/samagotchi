@@ -30,6 +30,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle upgrade` of a source with no `manifest.yml` (or an invalid one) fails with `Upgrade failed: <the
   manifest error>`, instead of first saying the bundle isn't installed and falling back to an install that then
   failed as `Install failed: …`.
+- `chi bundle upgrade` with no source prints the same usage line as `--help` (it left out `[--agent|--no-agent]`).
 
 ## [0.75.0] - 2026-10-17
 

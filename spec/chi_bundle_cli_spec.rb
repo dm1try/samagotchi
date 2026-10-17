@@ -214,7 +214,7 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses upgrade and uninstall without a source or name, and an unknown bundle" do
-      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]\n", 2])
+      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", 2])
       expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 2])
       expect(chi("uninstall")).to eq(["", "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", 2])
       expect(chi("uninstall", "--bogus")).to eq(["", "Unknown bundle uninstall flag: --bogus\n", 2])

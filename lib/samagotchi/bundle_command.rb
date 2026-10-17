@@ -164,7 +164,7 @@ module Samagotchi
       dry_run = opts.fetch(:dry_run, false)
       agent = opts[:agent]
       if source.nil? || source.empty?
-        @stderr.puts "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
+        @stderr.puts UPGRADE_HELP
         return CLI::Exit::USAGE
       end
       expanded_source = expand_source(source)
