@@ -31,6 +31,20 @@ module Samagotchi
       xdg.empty? ? File.join(Dir.home, ".config") : File.absolute_path(xdg)
     end
 
+    # The set XDG dirs, made absolute. +set+ is :nonblank (unset or blank
+    # values omitted) or :key (present keys included, even when blank).
+    # @return [Hash{String => String}]
+    def absolute_xdg(env: ENV, set: :nonblank)
+      included = case set
+                 when :nonblank then ->(key) { !env.fetch(key, "").to_s.strip.empty? }
+                 when :key then ->(key) { env.key?(key) }
+                 else raise ArgumentError, "set must be :nonblank or :key"
+                 end
+      { "XDG_STATE_HOME" => :state_home, "XDG_CONFIG_HOME" => :config_home }.each_with_object({}) do |(key, home), dirs|
+        dirs[key] = public_send(home, env: env) if included.call(key)
+      end
+    end
+
     # +path+ as chi shows it: ~ for the home folder (~/a for one in it),
     # else as it is; as it is too when there's no home (HOME unset).
     # @return [String]

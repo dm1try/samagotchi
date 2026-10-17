@@ -144,11 +144,7 @@ module Samagotchi
 
       # The XDG dirs set in +env+, made absolute (nothing for an unset one).
       def xdg_absolute(env = ENV)
-        set = ->(key) { !env.fetch(key, "").to_s.strip.empty? }
-        dirs = {}
-        dirs["XDG_STATE_HOME"] = Paths.state_home(env: env) if set.call("XDG_STATE_HOME")
-        dirs["XDG_CONFIG_HOME"] = Paths.config_home(env: env) if set.call("XDG_CONFIG_HOME")
-        dirs
+        Paths.absolute_xdg(env: env)
       end
 
       # The unsets that keep a `chi --model X` worker's default from passing

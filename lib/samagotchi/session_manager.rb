@@ -244,8 +244,7 @@ module Samagotchi
       end
       # And the spawner's XDG dirs, absolute: a relative XDG_STATE_HOME or
       # XDG_CONFIG_HOME would otherwise be read from the session's directory.
-      child_env["XDG_STATE_HOME"] = Paths.state_home unless ENV.fetch("XDG_STATE_HOME", "").to_s.strip.empty?
-      child_env["XDG_CONFIG_HOME"] = Paths.config_home unless ENV.fetch("XDG_CONFIG_HOME", "").to_s.strip.empty?
+      child_env.merge!(Paths.absolute_xdg)
       # The spawner's environment must not reach the worker's guardrails (a
       # parent agent starting or waking a session): Process.spawn unsets a
       # key mapped to nil. config.yml no longer reads them; this keeps an

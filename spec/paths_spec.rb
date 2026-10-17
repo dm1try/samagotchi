@@ -53,6 +53,27 @@ RSpec.describe Samagotchi::Paths do
     end
   end
 
+  describe ".absolute_xdg" do
+    it "makes nonblank XDG values absolute and omits blanks" do
+      env = { "XDG_STATE_HOME" => "rel/state", "XDG_CONFIG_HOME" => " " }
+
+      expect(described_class.absolute_xdg(env: env)).to eq("XDG_STATE_HOME" => File.join(Dir.pwd, "rel", "state"))
+    end
+
+    it "can include present keys even when their values are blank" do
+      env = { "XDG_STATE_HOME" => "", "XDG_CONFIG_HOME" => "rel/config" }
+
+      expect(described_class.absolute_xdg(env: env, set: :key)).to eq(
+        "XDG_STATE_HOME" => File.join(Dir.home, ".local", "state"),
+        "XDG_CONFIG_HOME" => File.join(Dir.pwd, "rel", "config")
+      )
+    end
+
+    it "refuses an unknown set rule" do
+      expect { described_class.absolute_xdg(set: :truthy) }.to raise_error(ArgumentError, "set must be :nonblank or :key")
+    end
+  end
+
   it "gives the same folders as the modules that use it" do
     env = { "XDG_STATE_HOME" => "/s", "XDG_CONFIG_HOME" => "/c" }
     expect(Samagotchi::Session.default_state_dir(env: env)).to eq("/s/samagotchi/sessions")

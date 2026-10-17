@@ -152,8 +152,7 @@ module Samagotchi
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
-        env["XDG_CONFIG_HOME"] = Paths.config_home(env: @env) if env.key?("XDG_CONFIG_HOME")
-        env["XDG_STATE_HOME"] = Paths.state_home(env: @env) if env.key?("XDG_STATE_HOME")
+        env.merge!(Paths.absolute_xdg(env: env, set: :key))
         config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
         TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
         config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout
