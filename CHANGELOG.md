@@ -10,10 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- Web: `hide ▾` in a session's info bar folds the message box away for room to read; the info bar stays at the
-  bottom. `▴ message` (or `▴ message · draft` when it holds text or images) or just typing on the page brings it
-  back, and Stop turn moves into the info bar while it is folded. The choice is remembered per browser, and an
-  archived session opens folded.
+- Web: dragging the message box's top-edge grip down folds the box away for room to read; the info bar stays at the
+  bottom, and the grip stays on its top edge as a handle. Pull the handle up or click it, or just type on the page, to
+  bring the box back (a draft marks the handle in the accent, a session waiting on you in the attention colour), and
+  Stop turn moves into the info bar while it is folded. The choice is remembered per browser, and an archived session
+  opens folded.
 
 ### Changed
 
