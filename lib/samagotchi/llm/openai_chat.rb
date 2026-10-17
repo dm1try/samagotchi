@@ -37,11 +37,21 @@ module Samagotchi
     # +stop_details+: why the provider stopped, when it says more than the
     # finish reason (Messages' stop_details on a refusal: type, category,
     # explanation; string keys); nil otherwise.
+    # +thinking_drop+: the replayed thinking blocks the provider dropped (or
+    # the adapter stripped) to answer a request whose history it had
+    # refused (ThinkingDrop, AnthropicMessages' binding recovery); nil
+    # otherwise.
     ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut,
-                               :top_logprobs, :provider_content, :stop_details) do
+                               :top_logprobs, :provider_content, :stop_details, :thinking_drop) do
       def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, provider_content: nil, stop_details: nil,
-                     **fields) = super
+                     thinking_drop: nil, **fields) = super
     end
+
+    # Replayed thinking blocks a request went through without: their
+    # identities (AnthropicWire.block_identity, a frozen Array) and +how+:
+    # :drop_block (the provider dropped them, prefix_binding_mismatch) or
+    # :strip (the adapter removed them from the body).
+    ThinkingDrop = Data.define(:identities, :how)
 
     # One alternative for an answer token: its text and log probability.
     TokenLogprob = Data.define(:token, :logprob) do

@@ -656,3 +656,18 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
     expect(built.api_key_env).to eq("FW_KEY")
   end
 end
+
+RSpec.describe Samagotchi::LLM::ChatResponse do
+  let(:fields) { { text: "", reasoning: "", tool_calls: [], usage: Samagotchi::LLM::Usage.none, finish_reason: "stop" } }
+
+  it "has no thinking_drop unless an adapter sets one" do
+    expect(described_class.new(**fields).thinking_drop).to be_nil
+  end
+
+  it "carries a ThinkingDrop: the dropped blocks' identities and how they went" do
+    drop = Samagotchi::LLM::ThinkingDrop.new(identities: %w[sig1 sig2].freeze, how: :drop_block)
+
+    expect(described_class.new(**fields, thinking_drop: drop).thinking_drop).to have_attributes(identities: %w[sig1 sig2],
+                                                                                                how: :drop_block)
+  end
+end

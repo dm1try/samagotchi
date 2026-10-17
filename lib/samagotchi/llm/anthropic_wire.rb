@@ -83,6 +83,28 @@ module Samagotchi
         end
       end
 
+      # A replayed thinking block's identity, the one name the adapter and
+      # ChatLoop share for it: a thinking block's signature, a
+      # redacted_thinking block's data, or, when that is empty (Splash
+      # sends signature ""), "text:" + the SHA256 of its thinking text. nil
+      # for any other block and for one with neither (never matched).
+      # String or symbol keys.
+      def block_identity(block)
+        return nil unless block.is_a?(Hash)
+
+        case type_of(block)
+        when "thinking"
+          signature = (block["signature"] || block[:signature]).to_s
+          return signature unless signature.empty?
+
+          text = (block["thinking"] || block[:thinking]).to_s
+          text.empty? ? nil : "text:#{Digest::SHA256.hexdigest(text)}"
+        when "redacted_thinking"
+          data = (block["data"] || block[:data]).to_s
+          data.empty? ? nil : data
+        end
+      end
+
       # +id+ as Messages takes it (^[a-zA-Z0-9_-]+$), the same in tool_use
       # and tool_result: a valid id as it is, another with its invalid
       # characters replaced and a short hash of it appended (so "a.b" and
