@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/hooks"
-require "support/plugin_handler_ctx"
+require "samagotchi/testing/rspec"
 
 # loop-guard's thinking watch (lib/samagotchi/bundles/loop-guard): the
 # :generation_progress hook sees streamed thinking go round in the same few
@@ -15,10 +15,10 @@ require "support/plugin_handler_ctx"
 # sentence. The real DeepSeek loops (real_deepseek_*_loop.txt, a loop_start
 # header: where the terminal cycle begins) must trigger within its first
 # window_sentences sentences.
-RSpec.describe "The loop-guard thinking watch" do
-  let(:source) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard/plugin.rb", __dir__) }
+RSpec.describe "The loop-guard thinking watch", :bundle do
   let(:fixtures) { File.expand_path("../../fixtures/loop_guard/thinking", __dir__) }
-  let(:mod) { Module.new.tap { |m| m.module_eval(File.read(source), source) } }
+  # The module chi evaluated the plugin in (ThinkingWatch, Plugin).
+  let(:mod) { shipped_bundle("loop-guard").namespace }
   let(:batch) { Samagotchi::Hooks::StreamWatch::EVERY_CHARS }
 
   # A fixture's text, its header lines ("# key: value") dropped and read.
@@ -233,39 +233,33 @@ RSpec.describe "The loop-guard thinking watch" do
   end
 
   describe "the plugin" do
-    let(:notices) { [] }
-    let(:cards) { [] }
-    let(:acts) { [] }
-    let(:ctx) do
-      Struct.new(:notices, :cards) do
-        prepend PluginHandlerCtx
-
-        def notify(text, level: :info) = notices << [text, level]
-        def card(**card) = cards << card
-      end.new(notices, cards)
-    end
     let(:looping) { fixture("cycle3.txt").first }
 
-    def plugin(settings = {})
-      hooks = Hash.new { |h, k| h[k] = [] }
-      chi = Object.new
-      chi.define_singleton_method(:on) { |event, priority: 100, &block| hooks[event] << block }
-      mod::Plugin.new(settings).register(chi)
-      hooks
+    # Every event a hook can be registered for.
+    let(:all_events) do
+      %i[session_start before_turn before_generation generation_progress generation_retrying after_generation
+         before_tool_call after_tool_call after_turn session_end]
     end
 
-    def fire(hooks, event)
-      hooks[event[:type]].each { |block| ctx.with_event(event) { block.arity == 1 ? block.call(event) : block.call(event, ctx) } }
-    end
+    # The plugin as chi loads it; notices, cards and acts read the last one.
+    def plugin(settings = {}) = (@bundle = shipped_bundle("loop-guard", settings: settings))
+
+    # The events it registered hooks for.
+    def events(bundle) = all_events.reject { |event| bundle.hook_names(event).empty? }
+
+    def fire(bundle, event) = bundle.fire(event[:type], **event.except(:type))
+
+    def notices = @bundle.notices.map { |notice| [notice.text, notice.level] }
+    def cards = @bundle.cards
+    # Its stop_generation and stop_turn calls in order, as [:stop_generation | :stop_turn, reason].
+    def acts = @bundle.stops.map { |stop| [:"stop_#{stop.kind}", stop.reason] }
 
     # One generation streaming +text+ in batches, as StreamWatch fires them.
     def generation(hooks, text, iteration: 1)
       fire(hooks, { type: :before_generation, iteration: iteration })
       text.each_char.each_slice(batch).with_index do |slice, i|
         fire(hooks, { type: :generation_progress, iteration: iteration, thinking: slice.join, text: "",
-                      elapsed_ms: (i + 1) * 4000,
-                      stop_generation: ->(reason) { acts.push([:stop_generation, reason]).any? },
-                      stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
+                      elapsed_ms: (i + 1) * 4000 })
       end
     end
 
@@ -400,17 +394,13 @@ RSpec.describe "The loop-guard thinking watch" do
         fire(hooks, { type: :before_generation, iteration: iteration })
         text.each_char.each_slice(batch) do |slice|
           fire(hooks, { type: :generation_progress, iteration: iteration, thinking: slice.join, text: "",
-                        elapsed_ms: 4000,
-                        stop_generation: ->(reason) { acts.push([:stop_generation, reason]).any? },
-                        stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
+                        elapsed_ms: 4000 })
         end
         fire(hooks, { type: :generation_retrying, iteration: iteration, attempt: 1, restarted: true })
         after.each_char.each_slice(batch).with_index do |slice, i|
           fire(hooks, { type: :generation_progress, iteration: iteration, thinking: slice.join, text: "",
                         elapsed_ms: 8000 + (i * 4000),
-                        restarted: i.zero?,
-                        stop_generation: ->(reason) { acts.push([:stop_generation, reason]).any? },
-                        stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
+                        restarted: i.zero? })
         end
       end
 
@@ -488,8 +478,8 @@ RSpec.describe "The loop-guard thinking watch" do
     end
 
     it "registers no stream hooks with watch: false" do
-      expect(plugin("thinking" => { "watch" => false }).keys).to contain_exactly(:before_turn, :before_tool_call, :after_tool_call)
-      expect(plugin.keys).to include(:before_generation, :generation_progress)
+      expect(events(plugin("thinking" => { "watch" => false }))).to contain_exactly(:before_turn, :before_tool_call, :after_tool_call)
+      expect(events(plugin)).to include(:before_generation, :generation_progress)
     end
 
     it "reads its settings, keeping the defaults for bad values" do

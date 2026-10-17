@@ -4,69 +4,53 @@ require "spec_helper"
 require "json"
 require "samagotchi/guardrails"
 require "samagotchi/llm/native_tool_normalizer"
-require "support/plugin_handler_ctx"
+require "samagotchi/testing/rspec"
 
 # The loop-guard plugin (lib/samagotchi/bundles/loop-guard) replayed over
 # the turn that looped in session b7089279: the model ran
 # `find . -name 'config.yml'` 10 times, with other calls between. Each
 # call is built by the normalizer from the session's {name, arguments}, so
-# the key sees the real call shape, and gets a real Guardrails::Verdict.
-RSpec.describe "The loop-guard plugin, replayed" do
-  let(:source) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard/plugin.rb", __dir__) }
+# the key sees the real call shape, and goes through a real Guardrails::Gate
+# (the bundle test kit's tool_call).
+RSpec.describe "The loop-guard plugin, replayed", :bundle do
   let(:fixture) { JSON.parse(File.read(File.expand_path("../../fixtures/loop_guard/b7089279_calls.json", __dir__))) }
   let(:looping) { fixture["turns"][0] }
   let(:calm) { fixture["turns"][1] }
-  let(:notices) { [] }
-  let(:cards) { [] }
-  let(:stops) { [] }
-  let(:ctx) do
-    Struct.new(:notices, :cards) do
-      prepend PluginHandlerCtx
-
-      def notify(text, level: :info) = notices << [text, level]
-      def card(**card) = cards << card
-    end.new(notices, cards)
-  end
   let(:tool_call) { Struct.new(:name, :arguments) }
+  # [message, reason] per stop_turn: the call the turn stopped at.
+  let(:stops) { [] }
   let(:known_names_at_66) { ->(entry) { "near miss of samagotchi" if entry["message"] == 66 } }
 
-  # The plugin as the loader builds it: its file in a module of its own,
-  # register(chi) collecting the chi.on blocks.
-  def plugin(settings = {})
-    mod = Module.new
-    mod.module_eval(File.read(source), source)
-    hooks = Hash.new { |h, k| h[k] = [] }
-    chi = Object.new
-    chi.define_singleton_method(:on) { |event, priority: 100, &block| hooks[event] << block }
-    mod::Plugin.new(settings).register(chi)
-    hooks
-  end
-
-  def fire(hooks, event)
-    hooks[event[:type]].each { |block| ctx.with_event(event) { block.arity == 1 ? block.call(event) : block.call(event, ctx) } }
-  end
+  # The plugin as chi loads it.
+  def plugin(settings = {}) = shipped_bundle("loop-guard", settings: settings)
 
   # Replays a turn: before_turn, then before/after_tool_call per call, as
   # ToolRunner does. A call the block marks denies first (known-names at
   # priority 50). Stops at a stop_turn, as the turn would.
   # @return [Array<Hash>] {message:, verdict:} per call run
-  def replay(hooks, turn, prior_deny: ->(_call) {})
-    fire(hooks, { type: :before_turn, prompt: turn["prompt"] })
+  def replay(bundle, turn, prior_deny: ->(_call) {})
+    @bundle = bundle
+    bundle.fire(:before_turn, prompt: turn["prompt"])
     turn["calls"].each_with_object([]) do |entry, seen|
       call = Samagotchi::LLM::NativeToolNormalizer.normalize(tool_call.new(entry["name"], entry["arguments"]))
-      verdict = Samagotchi::Guardrails::Verdict.new(call: call)
+      verdict = Samagotchi::Testing::Verdict.new(call: call)
       if (reason = prior_deny.call(entry))
         verdict.deny!(reason, source: "hook known_names, bundle known-names")
       end
-      stopped = false
-      fire(hooks, { type: :before_tool_call, call: call.dup, guardrail: verdict,
-                    stop_turn: ->(reason) { stops << [entry["message"], reason]; stopped = true } })
+      before = bundle.stops.size
+      bundle.tool_call(call, verdict: verdict)
+      stopped = bundle.stops.size > before
+      stops << [entry["message"], bundle.stops.last.reason] if stopped
       output = verdict.deny? ? "[#{call[:name]}] Error: #{verdict.deny_text}" : entry["output"]
-      fire(hooks, { type: :after_tool_call, tool: call[:name], output: output })
+      bundle.fire(:after_tool_call, tool: call[:name], output: output)
       seen << { message: entry["message"], verdict: verdict }
       break seen if stopped
     end
   end
+
+  # What the last replayed plugin said: notices as [text, level], its cards.
+  def notices = @bundle.notices.map { |notice| [notice.text, notice.level] }
+  def cards = @bundle.cards
 
   def by_guard(seen) = seen.select { |s| s[:verdict].deny? && s[:verdict].source == "bundle loop-guard" }.map { |s| s[:message] }
 
