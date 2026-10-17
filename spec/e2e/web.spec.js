@@ -801,6 +801,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.mouse.up();
   await expect(page.locator("#composer")).toBeVisible();
   await expect(page.locator("#prompt")).toHaveValue(draft);
+  await expect(page.locator("#prompt")).toBeFocused();
   await expect.poll(() => page.locator("#prompt").evaluate((el) => el.offsetHeight)).toBeGreaterThan(PROMPT_LINE_PX * 3);
   await page.locator("#prompt").fill("");
   await page.locator("#infoArchiveBtn").click();
