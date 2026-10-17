@@ -49,6 +49,8 @@ and commands may change between minor versions. How releases are made:
   normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
   bundle installed by URL before this under a repo name that differs from its manifest's: `chi bundle uninstall
   <repo name>` first, then install it again.
+- A bundle manifest whose `name:` is a path (`../x`, `a/b`, `.`, `..`) is refused (`Install failed: name: …`): the
+  name is a directory under `.bundles/`, and a git URL bundle is now named by its manifest.
 
 ## [0.75.0] - 2026-10-17
 

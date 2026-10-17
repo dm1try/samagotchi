@@ -43,6 +43,15 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(manifest.checksum_for("commit_preferences.md")).to eq("def456")
     end
 
+    it "refuses a name that is a path (it names a directory under .bundles/), keeps a dotted one" do
+      ["../x", "a/b", "a\\b", ".", ".."].each do |name|
+        path = write_manifest("name" => name)
+        expect { described_class.new(path: path) }
+          .to raise_error(described_class::ValidationError, /is not a bundle name/), "name #{name.inspect}"
+      end
+      expect(described_class.new(path: write_manifest("name" => "my.bundle")).name).to eq("my.bundle")
+    end
+
     it "reads a files: entry given as a mapping: its sha in files, its description apart" do
       path = write_manifest({
         "files" => {

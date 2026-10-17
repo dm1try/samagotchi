@@ -66,6 +66,11 @@ module Samagotchi
         @path = path
         raw = load_mapping(path)
         @name     = require_str(raw, "name")
+        # The name is a directory under .bundles/: never a path.
+        if @name.match?(%r{[/\\\0]}) || %w[. ..].include?(@name)
+          raise ValidationError, "name: #{@name.inspect} is not a bundle name (no path separators, not . or ..)"
+        end
+
         @version  = require_str(raw, "version")
         @scope    = normalize_scope(raw["scope"])
         @description = (raw["description"] || "").to_s
