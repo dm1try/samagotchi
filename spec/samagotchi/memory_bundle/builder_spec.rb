@@ -6,6 +6,7 @@ require "fileutils"
 require "yaml"
 require "json"
 require "digest"
+require "open3"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/memory_bundle/builder"
@@ -117,6 +118,34 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect { builder.run }.not_to raise_error
     manifest = YAML.load_file(File.join(out, "manifest.yml"))
     expect(manifest["hooks"]).to be_nil
+  end
+
+  # Packing runs zip / tar in the staging dir without Dir.chdir, which moves
+  # the whole process (another thread in a chdir block makes Ruby raise).
+  { "packed.zip" => %w[unzip -Z1], "packed.tar.gz" => %w[tar -tzf], "packed.tar" => %w[tar -tf] }.each do |file, list|
+    it "packs #{file} without changing the process's directory" do
+      File.write(File.join(system_dir, "identity.md"), "# Id\n")
+      out = File.join(tmpdir, file)
+      entered = Queue.new
+      release = Queue.new
+      holder = Thread.new do
+        Dir.chdir(tmpdir) do
+          entered << true
+          release.pop
+        end
+      end
+      entered.pop
+      begin
+        described_class.new(scope: "system", name: "packed", out: out).run
+      ensure
+        release << true
+        holder.join
+      end
+
+      entries, status = Open3.capture2(*list, out)
+      expect(status).to be_success
+      expect(entries.split("\n").map { |e| e.delete_prefix("./") }).to include("identity.md", "manifest.yml")
+    end
   end
 
   it "keeps the installed bundle's needs (symbol-keyed provenance) in the built manifest" do

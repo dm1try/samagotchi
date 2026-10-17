@@ -398,11 +398,10 @@ module Samagotchi
           raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
 
-        # Use zip CLI like source.rb does with unzip
-        Dir.chdir(staging) do
-          result = system("zip", "-r", out_path, ".")
-          raise BuildError, "zip failed for #{out_path} (is zip installed?)" unless result && File.exist?(out_path)
-        end
+        # Use zip CLI like source.rb does with unzip. It runs in the staging
+        # dir (chdir:): Dir.chdir would move the whole process.
+        result = system("zip", "-r", out_path, ".", chdir: staging)
+        raise BuildError, "zip failed for #{out_path} (is zip installed?)" unless result && File.exist?(out_path)
       end
 
       def tar_staging(staging, out_path, format)
@@ -411,15 +410,13 @@ module Samagotchi
           raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
 
-        # Use tar CLI
-        Dir.chdir(staging) do
-          cmd = case format
-                when :tar_gz, :tgz then ["tar", "-czf", out_path, "."]
-                when :tar then ["tar", "-cf", out_path, "."]
-                end
-          result = system(*cmd)
-          raise BuildError, "tar failed for #{out_path}" unless result && File.exist?(out_path)
-        end
+        # Use tar CLI, in the staging dir (chdir:, as zip_staging).
+        cmd = case format
+              when :tar_gz, :tgz then ["tar", "-czf", out_path, "."]
+              when :tar then ["tar", "-cf", out_path, "."]
+              end
+        result = system(*cmd, chdir: staging)
+        raise BuildError, "tar failed for #{out_path}" unless result && File.exist?(out_path)
       end
     end
   end
