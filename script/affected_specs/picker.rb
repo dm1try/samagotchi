@@ -32,6 +32,8 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/bundles/*/manifest.yml],
       specs: %w[spec/samagotchi/memory_bundle/shipped_profiles_spec.rb spec/chi_bundle_cli_spec.rb],
       why: "reads shipped manifests for profiles and pins versions in chi bundle CLI" },
+    { match: %w[lib/samagotchi/session_metrics.rb spec/fixtures/effective_model/**/*],
+      specs: %w[spec/engine_effective_model_characterization_spec.rb], why: "pins effective-model goldens" },
     { match: %w[samagotchi.gemspec],
       specs: %w[spec/gem_contents_spec.rb], why: "builds the gem and lists its files" },
     { match: %w[bin/chi],

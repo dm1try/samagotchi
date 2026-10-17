@@ -106,6 +106,17 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
 
+  it "picks the effective-model characterization when its metrics source or golden fixtures change" do
+    files["spec/engine_effective_model_characterization_spec.rb"] = ""
+
+    ["lib/samagotchi/session_metrics.rb", "spec/fixtures/effective_model/case.json"].each do |changed|
+      result = pick(changed)
+
+      expect(paths(result.ruby)).to eq(%w[spec/engine_effective_model_characterization_spec.rb])
+      expect(result.ruby.first.reason).to include("effective-model goldens")
+    end
+  end
+
   it "picks the bundle CLI spec when a shipped bundle manifest changes" do
     files["spec/chi_bundle_cli_spec.rb"] = ""
     result = pick("lib/samagotchi/bundles/core/manifest.yml")
