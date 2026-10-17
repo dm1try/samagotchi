@@ -784,18 +784,24 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(page.locator("#prompt")).toHaveValue("h");
   await expect(page.locator("#prompt")).toBeFocused();
   await page.locator("#prompt").fill("");
-  // Pulled up from folded, the handle opens it and the box follows the pointer.
+  // Pulled up from folded, the handle opens it and the box follows the
+  // pointer: with a multi-line draft (a tall box) it stays open on release
+  // (re-based at the box's height after the unfold, not at the minimum).
+  const draft = "one\ntwo\nthree\nfour\nfive";
+  await page.locator("#prompt").fill(draft);
   await grip.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#composer")).toBeHidden();
-  await expect(grip).not.toHaveClass(/draft/);
+  await expect(grip).toHaveClass(/draft/);
   const handle = await grip.boundingBox();
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 - 70, { steps: 7 });
+  await expect(grip).not.toHaveClass(/will-fold/);
   await page.mouse.up();
   await expect(page.locator("#composer")).toBeVisible();
-  await expect.poll(() => page.locator("#prompt").evaluate((el) => el.offsetHeight)).toBeGreaterThan(PROMPT_LINE_PX);
+  await expect(page.locator("#prompt")).toHaveValue(draft);
+  await expect.poll(() => page.locator("#prompt").evaluate((el) => el.offsetHeight)).toBeGreaterThan(PROMPT_LINE_PX * 3);
   await page.locator("#prompt").fill("");
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
