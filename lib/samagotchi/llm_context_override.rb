@@ -125,7 +125,14 @@ module Samagotchi
         raise ArgumentError, "unknown llm_context field #{field}" unless FIELDS.include?(field)
 
         text = word.to_s.strip
-        [field, text.casecmp?(DEFAULT_WORD) ? nil : send(:"parse_#{field}", text)]
+        value = if text.casecmp?(DEFAULT_WORD)
+                  nil
+                elsif field == :budget_tokens
+                  LLMContextStrategy.budget_tokens(text)
+                else
+                  send(:"parse_#{field}", text)
+                end
+        [field, value]
       end
       (current || new).with(**fields)
     end
@@ -151,11 +158,6 @@ module Samagotchi
       rule = LLMContextStrategy::APPLIES.find { |name| name.to_s.casecmp?(text) }
       rule || raise(ArgumentError, "unknown llm_context apply #{text} (#{LLMContextStrategy::APPLIES.join(", ")})")
     end
-
-    # "64000", "64k" or "off" (0): LLMContextStrategy.budget_tokens.
-    # .update reaches it (and the other parse_<field>s) by its name.
-    # @return [Integer] 0 for off
-    def self.parse_budget_tokens(text) = LLMContextStrategy.budget_tokens(text)
 
     private_class_method :file_value, :file_strategy, :file_budget
   end

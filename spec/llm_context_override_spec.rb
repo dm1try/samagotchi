@@ -25,18 +25,18 @@ RSpec.describe Samagotchi::LLMContextOverride do
       expect(described_class.parse_strategy("stale forget")).to eq(%i[stale forget])
       expect(described_class.parse_strategy("STALE|forget,stale")).to eq(%i[stale forget])
       expect(described_class.parse_strategy("forget stale")).to eq(%i[stale forget])
-      expect(described_class.parse_budget_tokens("48000")).to eq(48_000)
-      expect(described_class.parse_budget_tokens("48_000")).to eq(48_000)
-      expect(described_class.parse_budget_tokens("48K")).to eq(48_000)
-      expect(described_class.parse_budget_tokens("0")).to eq(0)
-      expect(described_class.parse_budget_tokens("4k")).to eq(4000)
-      expect(described_class.parse_budget_tokens("10000k")).to eq(10_000_000)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("48000")).to eq(48_000)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("48_000")).to eq(48_000)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("48K")).to eq(48_000)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("0")).to eq(0)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("4k")).to eq(4000)
+      expect(Samagotchi::LLMContextStrategy.budget_tokens("10000k")).to eq(10_000_000)
     end
 
     it "refuses a budget under 4k or over 10M tokens (off is 0)" do
-      expect { described_class.parse_budget_tokens("3999") }
+      expect { Samagotchi::LLMContextStrategy.budget_tokens("3999") }
         .to raise_error(ArgumentError, "a budget of 3999 tokens is out of range: 4000 (4k) to 10000000 (10000k), or off")
-      expect { described_class.parse_budget_tokens("10001k") }.to raise_error(ArgumentError, /out of range/)
+      expect { Samagotchi::LLMContextStrategy.budget_tokens("10001k") }.to raise_error(ArgumentError, /out of range/)
     end
 
     it "refuses a word that isn't a value, saying what is" do
