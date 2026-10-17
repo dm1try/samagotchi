@@ -742,14 +742,51 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripShow").click();
   await expect(title).toBeHidden();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["hide ▾", "continue →", "archive", "stop session", "delete"]);
+  // hide ▾ folds the composer away (the info bar stays): the history's
+  // reserve shrinks, and the choice survives a reload.
+  const fold = page.locator("#composerFoldBtn");
+  const dockH = () => page.locator("#center").evaluate((el) => parseFloat(el.style.getPropertyValue("--dock-h")));
+  const expandedH = await dockH();
+  await fold.click();
+  await expect(page.locator("#composer")).toBeHidden();
+  await expect(fold).toHaveText("▴ message");
+  await expect.poll(dockH).toBeLessThan(expandedH - 30);
+  await page.reload();
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
+  await expect(page.locator("#composer")).toBeHidden();
+  await expect(fold).toHaveText("▴ message");
+  // Typing on the page brings it back, the key in the box; folded again
+  // with it, the button says there is a draft.
+  await page.keyboard.press("h");
+  await expect(page.locator("#composer")).toBeVisible();
+  await expect(page.locator("#prompt")).toHaveValue("h");
+  await expect(page.locator("#prompt")).toBeFocused();
+  await expect(fold).toHaveText("hide ▾");
+  await fold.click();
+  await expect(fold).toHaveText("▴ message · draft");
+  await fold.click();
+  await expect(page.locator("#prompt")).toHaveValue("h");
+  await page.locator("#prompt").fill("");
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);
   await expect(stripCard).toHaveCount(0);
   await expect(page.locator("#infoStopBtn")).toBeHidden();
-  // Still on the session.
+  // Still on the session, its composer as it was (archiving it there decides nothing).
   await expect(page).toHaveURL(new RegExp(`#/s/${id}$`));
+  await expect(page.locator("#composer")).toBeVisible();
+  // Opened afresh (a reload: the list may not hold it yet), an archived
+  // session is folded, and it fits a phone that way.
+  await page.reload();
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
+  await expect(page.locator("#composer")).toBeHidden();
+  await expect(fold).toHaveText("▴ message");
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expectNoHorizontalOverflow(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await fold.click();
+  await expect(page.locator("#composer")).toBeVisible();
 
   await page.locator("#allTile").click();
   const listed = page.locator(`#allList .card[data-id="${id}"]`);
@@ -759,6 +796,9 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(listed.locator(".archived-badge")).toHaveText("archived");
   await listed.click();
 
+  // A new visit of the archived session: folded again (the unfold above
+  // was for that visit only), unarchive still there.
+  await expect(page.locator("#composer")).toBeHidden();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
