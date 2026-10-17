@@ -273,12 +273,18 @@ RSpec.describe "chi bootstrap" do
       Samagotchi::Bootstrap::Probe::Result.of(:openai, candidate, models: [])
     end
 
-    # A test request slower than LOADING_AFTER: the hint thread prints while
-    # test_turn is still running.
-    def run_test(target)
+    # A test request slower than LOADING_AFTER: test_turn keeps running until
+    # the hint is printed (up to `wait` seconds), so a slow CI runner can't
+    # finish it before the hint thread wakes.
+    def run_test(target, wait:)
       probe = instance_double(Samagotchi::Bootstrap::Probe)
-      allow(probe).to receive(:test_turn) { sleep(0.15); 0.15 }
       out = StringIO.new
+      allow(probe).to receive(:test_turn) do
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
+        sleep(0.01) until out.string.include?("loading the model?") ||
+                          Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        0.15
+      end
       command = Samagotchi::BootstrapCommand.new([], stdout: out, stderr: StringIO.new, probe: probe)
       command.send(:test, result_for(target), "m", nil)
       out.string
@@ -287,11 +293,11 @@ RSpec.describe "chi bootstrap" do
     before { stub_const("Samagotchi::BootstrapCommand::LOADING_AFTER", 0.05) }
 
     it "says it is waiting for a local server" do
-      expect(run_test("127.0.0.1:8080")).to include("test: waiting for an answer (loading the model?)…")
+      expect(run_test("127.0.0.1:8080", wait: 5)).to include("test: waiting for an answer (loading the model?)…")
     end
 
     it "doesn't say it for a remote provider" do
-      expect(run_test("https://openrouter.ai/api/v1")).not_to include("loading the model?")
+      expect(run_test("https://openrouter.ai/api/v1", wait: 0.15)).not_to include("loading the model?")
     end
   end
 
