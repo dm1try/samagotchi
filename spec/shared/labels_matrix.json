@@ -174,5 +174,15 @@
       { "notes": [], "expected": "" },
       { "notes": null, "expected": "" }
     ]
+  },
+  "model_segments": {
+    "note": "A row of a session's per-model split after /model (the snapshot's model_segments; Formatting#model_segment_* in /stats' models: block; ctx.js in the ctx/cost tooltip). label: the model ref; the rows folded past the cap are told by folded_segments (never by a missing ref alone); a legacy session's turns with no ref are \"earlier turns\". tokens: prompt in / completion out. cost: reported + ~estimated. prefill: the switch's uncached prompt, its cost an estimate (≈), none without a price; \"\" for no prefill.",
+    "cases": [
+      {"row": {"model_ref": "splash:qwen3-35b", "prompt_sum": 96000, "completion_sum": 9000, "cost_sum": 0, "cost_estimate_sum": 0.018, "prefill_tokens": 58000, "prefill_cost_estimate": 0.012}, "expected": {"label": "splash:qwen3-35b", "tokens": "96.0k in / 9.0k out", "cost": "~$0.02", "prefill": "switch prefill 58.0k uncached prompt ≈$0.01"}},
+      {"row": {"model_ref": "a:one", "prompt_sum": 900, "completion_sum": 60, "cost_sum": 0.42, "cost_estimate_sum": 0.12, "prefill_tokens": 0, "prefill_cost_estimate": null}, "expected": {"label": "a:one", "tokens": "900 in / 60 out", "cost": "$0.42 + ~$0.12", "prefill": ""}},
+      {"row": {"model_ref": "b:two", "prompt_sum": 3000, "completion_sum": 20, "prefill_tokens": 3000, "prefill_cost_estimate": null}, "expected": {"label": "b:two", "tokens": "3.0k in / 20 out", "cost": "", "prefill": "switch prefill 3.0k uncached prompt"}},
+      {"row": {"model_ref": null, "prompt_sum": 1000, "completion_sum": 100, "prefill_tokens": 0}, "expected": {"label": "earlier turns", "tokens": "1.0k in / 100 out", "cost": "", "prefill": ""}},
+      {"row": {"model_ref": null, "folded_segments": 3, "prompt_sum": 2000, "completion_sum": 200, "prefill_tokens": 500, "prefill_cost_estimate": 0.00056}, "expected": {"label": "3 earlier segments", "tokens": "2.0k in / 200 out", "cost": "", "prefill": "switch prefill 500 uncached prompt ≈$0.0006"}}
+    ]
   }
 }

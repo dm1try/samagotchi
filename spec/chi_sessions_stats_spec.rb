@@ -127,6 +127,24 @@ RSpec.describe "chi sessions stats" do
       ])
     end
 
+    # The rows are rebuilt from the records' model_ref (never read back).
+    it "splits the text per model from the saved records after a /model switch" do
+      session = make
+      save_analytics(session, turns: 2)
+      path = File.join(dir_of(session), "analytics.json")
+      data = JSON.parse(File.read(path))
+      data["turn_records"][0]["model_ref"] = "a:one"
+      data["turn_records"][1].merge!("model_ref" => "b:two", "switch_prefill_tokens" => 1400)
+      File.write(path, JSON.generate(data))
+
+      out, _err, code = run_stats(session.id)
+
+      expect(code).to eq(0)
+      expect(out).not_to include("tokens in/out")
+      expect(out.lines.map(&:chomp)).to include(a_string_matching(%r{\Amodels: +a:one .* 1 turn +1\.5k in / 240 out\z}),
+                                                "                    └ switch prefill 1.4k uncached prompt")
+    end
+
     it "resolves a unique prefix of the id" do
       session = make
       save_analytics(session)

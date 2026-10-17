@@ -105,6 +105,15 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "model_segments").each do |entry|
+    it "words the per-model row #{entry["expected"]["label"].inspect}" do
+      row = entry["row"]
+      words = { "label" => fmt.model_segment_label(row), "tokens" => fmt.model_segment_tokens_text(row),
+                "cost" => fmt.model_segment_cost_text(row), "prefill" => fmt.model_segment_prefill_text(row) }
+      expect(words).to eq(expected(entry))
+    end
+  end
+
   cases(matrix, "costs").each do |entry|
     it "words the cost #{entry["cost"].inspect}" do
       expect(fmt.cost_text(entry["cost"], estimate: entry["estimate"] == true)).to eq(expected(entry))

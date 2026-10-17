@@ -58,6 +58,73 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, base)).not_to include("called as")
     end
 
+    # After /model the snapshot's model_segments split the sums per model
+    # (SessionMetrics::ModelSegment); one model keeps the tokens line.
+    describe "the models: block" do
+      around { |example| with_env("TZ" => "UTC") { example.run } }
+
+      def row(ref, from, to, turns, prompt, completion, **extra)
+        { model_ref: ref, started_at: "2026-10-17T#{from}:00.000Z", ended_at: to && "2026-10-17T#{to}:00.000Z",
+          turns: turns, prompt_sum: prompt, completion_sum: completion, cached_sum: 0, cost_sum: 0,
+          cost_estimate_sum: 0, avg_decode_tps: nil, last_decode_tps: nil, tps_source: nil, prefill_tokens: 0,
+          prefill_cost_estimate: nil, **extra }
+      end
+
+      def stats(segments, tokens = {}, snapshot = {})
+        base = agent.engine.metrics.snapshot
+        totals = { prompt_sum: 278_000, completion_sum: 30_000, source: "server" }.merge(tokens)
+        agent.send(:format_session_metrics, base.merge(turns: 20, tokens: base[:tokens].merge(totals), model_segments: segments)
+                                                .merge(snapshot)).lines.map(&:chomp)
+      end
+
+      let(:two) do
+        [row("deepseek:v4.1-flash", "10:02", "10:41", 14, 182_000, 21_000, cost_sum: 0.041, avg_decode_tps: 52.0,
+                                                                         tps_source: "server", last_decode_tps: 50.0),
+         row("splash:qwen3-35b", "10:43", nil, 6, 96_000, 9_000, cost_estimate_sum: 0.018, avg_decode_tps: 38.2,
+                                                                 tps_source: "server", last_decode_tps: 38.0,
+                                                                 prefill_tokens: 58_000, prefill_cost_estimate: 0.012)]
+      end
+
+      it "replaces the tokens line with a row per model, the switch's prefill and the total" do
+        output = stats(two, { last_decode_tps: 38.0, tps_source: "server", avg_decode_tps: 47.0, cost_sum: 0.041,
+                              cost_estimate_sum: 0.018 }, { price_host: "splash" })
+
+        expect(output.join("\n")).not_to include("tokens in/out")
+        models = output.index { |line| line.start_with?("models:") }
+        expect(output[models, 4]).to eq([
+          "models:           deepseek:v4.1-flash  10:02–10:41  14 turns  182.0k in / 21.0k out  52 tok/s  $0.04",
+          "                  splash:qwen3-35b     10:43–now    6 turns   96.0k in / 9.0k out  38 tok/s  ~$0.02",
+          "                    └ switch prefill 58.0k uncached prompt ≈$0.01",
+          "                  total                             20 turns  278.0k in / 30.0k out (all requests, server-reported)"
+        ])
+        expect(output).to include("speed:            38 tok/s out (last, server, splash:qwen3-35b), avg 47 tok/s",
+                                  "cost:             $0.04 reported + ~$0.02 from each model's host prices (this session only)")
+      end
+
+      it "keeps one model's output byte-identical (no rows, or one)" do
+        plain = stats([])
+        expect(stats([two.first])).to eq(plain)
+        expect(plain).to include("tokens in/out:    278000/30000 (all requests, server-reported)")
+      end
+
+      it "names a legacy session's turns with no ref \"earlier turns\" and the folded rows \"N earlier segments\"" do
+        legacy = row(nil, "09:00", "09:30", 3, 1000, 100)
+        folded = row(nil, "08:00", "09:40", 4, 2000, 200, folded_segments: 3)
+
+        expect(stats([legacy, two.last]).find { |l| l.start_with?("models:") }).to start_with("models:           earlier turns ")
+        expect(stats([folded, two.last]).find { |l| l.start_with?("models:") }).to start_with("models:           3 earlier segments ")
+      end
+
+      it "dates the rows when they span more than one day, and leaves out a prefill's cost without a price" do
+        rows = [row("a:one", "10:00", "10:30", 1, 1000, 10),
+                row("b:two", "11:00", nil, 1, 2000, 20, prefill_tokens: 2000).merge(started_at: "2026-10-18T09:00:00.000Z")]
+
+        output = stats(rows)
+        expect(output).to include(a_string_including("Oct 17 10:00–Oct 17 10:30"), a_string_including("Oct 18 09:00–now"))
+        expect(output).to include("                    └ switch prefill 2.0k uncached prompt")
+      end
+    end
+
     describe "the token breakdown, speed and cost" do
       def stats(tokens, snapshot = {})
         base = agent.engine.metrics.snapshot

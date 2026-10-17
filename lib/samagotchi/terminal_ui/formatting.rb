@@ -435,15 +435,59 @@ module Samagotchi
       # /stats' cost: the reported part and the estimated one, each when present.
       # +price_host+ names the host whose hosts.<name>.models prices the
       # estimate came from (Engine#stats_snapshot; nil from an older worker).
-      def stats_cost_text(tokens, price_host: nil)
+      # +per_model+: the session ran on several models (model_segments), each
+      # priced from its own host's prices.
+      def stats_cost_text(tokens, price_host: nil, per_model: false)
         reported = cost_text(tokens[:cost_sum])
         estimated = cost_text(tokens[:cost_estimate_sum], estimate: true)
         return nil if reported.empty? && estimated.empty?
         return "#{reported} (this session only)" if estimated.empty?
 
-        source = price_host.to_s.empty? ? "configured prices" : "hosts.#{price_host}.models prices"
+        source = if per_model then "each model's host prices"
+                 elsif price_host.to_s.empty? then "configured prices"
+                 else "hosts.#{price_host}.models prices"
+                 end
         estimate = "#{estimated} from #{source}"
         "#{reported.empty? ? estimate : "#{reported} reported + #{estimate}"} (this session only)"
+      end
+
+      # ── A session's rows per model (the snapshot's model_segments) ──────
+      # The words the web's ctx tooltip shares (ctx.js; spec/shared/
+      # labels_matrix.json model_segments). Rows come symbol- or
+      # string-keyed (the attached TUI's as JSON).
+
+      # A row's model: its ref; the rows folded past the cap ("3 earlier
+      # segments", told by folded_segments); a session's turns from before
+      # turns named their model ("earlier turns").
+      def model_segment_label(row)
+        folded = segment_value(row, :folded_segments).to_i
+        return "#{folded} earlier segments" if folded.positive?
+
+        ref = segment_value(row, :model_ref).to_s
+        ref.empty? ? "earlier turns" : ref
+      end
+
+      # "6.0k in / 40 out": the row's prompt and completion sums.
+      def model_segment_tokens_text(row)
+        count = ->(key) { MemoryBundle::IndexSize.count_text(segment_value(row, key).to_i) }
+        "#{count.call(:prompt_sum)} in / #{count.call(:completion_sum)} out"
+      end
+
+      # "$0.42", "~$0.12", "$0.42 + ~$0.12" (reported + estimated); "" for none.
+      def model_segment_cost_text(row)
+        [cost_text(segment_value(row, :cost_sum)), cost_text(segment_value(row, :cost_estimate_sum), estimate: true)]
+          .reject(&:empty?).join(" + ")
+      end
+
+      # "switch prefill 3.0k uncached prompt ≈$0.0060": what the switch to the
+      # row's model prefilled (its cost an estimate from the configured
+      # price, left out without one); "" for none.
+      def model_segment_prefill_text(row)
+        tokens = segment_value(row, :prefill_tokens).to_i
+        return "" unless tokens.positive?
+
+        cost = cost_text(segment_value(row, :prefill_cost_estimate))
+        "switch prefill #{MemoryBundle::IndexSize.count_text(tokens)} uncached prompt#{" ≈#{cost}" unless cost.empty?}"
       end
 
       private
@@ -574,12 +618,17 @@ module Samagotchi
           lines << "  called as:      #{aliased.map { |k, v| "#{k}=#{v}" }.join(", ")}"
         end
         lines << "iterations:       #{snapshot[:iterations_total]}"
-        # Summed over every request: each prompt is sent in full again.
-        lines << "tokens in/out:    #{tokens[:prompt_sum].to_i}/#{tokens[:completion_sum].to_i} (all requests, #{token_src_label})" \
-                 "#{token_breakdown_text(tokens)}"
-        speed = stats_speed_text(tokens)
+        segments = Array(snapshot[:model_segments])
+        if segments.size >= 2
+          lines.concat(models_block_lines(segments, snapshot[:turns], tokens, token_src_label))
+        else
+          # Summed over every request: each prompt is sent in full again.
+          lines << "tokens in/out:    #{tokens[:prompt_sum].to_i}/#{tokens[:completion_sum].to_i} (all requests, #{token_src_label})" \
+                   "#{token_breakdown_text(tokens)}"
+        end
+        speed = stats_speed_text(tokens, last_model: segments.size >= 2 ? last_speed_label(segments) : nil)
         lines << "speed:            #{speed}" if speed
-        cost = stats_cost_text(tokens, price_host: snapshot[:price_host])
+        cost = stats_cost_text(tokens, price_host: snapshot[:price_host], per_model: segments.size >= 2)
         lines << "cost:             #{cost}" if cost
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
@@ -682,17 +731,85 @@ module Samagotchi
 
       # "87 tok/s out, 1.9k tok/s prompt (last, server), avg 81 tok/s", or nil
       # before a generation had a speed. The prompt (prefill) speed only when
-      # the server reported it.
-      def stats_speed_text(tokens)
+      # the server reported it. +last_model+: the model the last speed came
+      # from, named when the session ran on several.
+      def stats_speed_text(tokens, last_model: nil)
         last = tokens[:last_decode_tps]
         return nil unless last
 
         source = tokens[:tps_source].to_s
         text = "#{speed_text(last, source)} out"
         text << ", #{speed_text(tokens[:last_prefill_tps], "server")} prompt" if tokens[:last_prefill_tps]
-        text << " (last, #{source})"
+        text << " (last, #{source}#{", #{last_model}" if last_model})"
         text << ", avg #{speed_text(tokens[:avg_decode_tps], source)}" if tokens[:avg_decode_tps]
         text
+      end
+
+      def segment_value(row, key)
+        row[key] || row[key.to_s]
+      end
+
+      # /stats' models: block, in place of the tokens line: a row per
+      # segment (model, when, turns, tokens, its average speed and cost), a
+      # switch's prefill under the row of the model switched to, and the
+      # total (the tokens line's sums and breakdown).
+      def models_block_lines(segments, turns, tokens, token_src_label)
+        dated = segment_dates_differ?(segments)
+        cells = segments.map do |row|
+          speed = speed_text(segment_value(row, :avg_decode_tps), segment_value(row, :tps_source))
+          [model_segment_label(row), segment_span_text(row, dated: dated), turns_text(segment_value(row, :turns)),
+           [model_segment_tokens_text(row), speed, model_segment_cost_text(row)].reject(&:empty?).join("  ")]
+        end
+        total = ["total", "", turns_text(turns),
+                 "#{MemoryBundle::IndexSize.count_text(tokens[:prompt_sum].to_i)} in / " \
+                 "#{MemoryBundle::IndexSize.count_text(tokens[:completion_sum].to_i)} out " \
+                 "(all requests, #{token_src_label}#{token_breakdown_text(tokens)})"]
+        widths = (0..2).map { |i| (cells + [total]).map { |cell| cell[i].length }.max }
+        row_text = ->(cell) { cell.each_with_index.map { |text, i| i < 3 ? text.ljust(widths[i]) : text }.join("  ") }
+        lines = []
+        segments.each_with_index do |row, i|
+          lines << "#{i.zero? ? "models:".ljust(18) : " " * 18}#{row_text.call(cells[i])}"
+          prefill = model_segment_prefill_text(row)
+          lines << "#{" " * 20}└ #{prefill}" unless prefill.empty?
+        end
+        lines << "#{" " * 18}#{row_text.call(total)}"
+      end
+
+      def turns_text(count)
+        "#{count.to_i} #{count.to_i == 1 ? "turn" : "turns"}"
+      end
+
+      # "10:02–10:41", "10:43–now" (a row with a turn running); with the
+      # day ("Oct 16 10:02") when the rows span more than one day.
+      def segment_span_text(row, dated:)
+        started = segment_time(segment_value(row, :started_at))
+        ended = segment_time(segment_value(row, :ended_at))
+        format_time = lambda { |time|
+          if time
+            time.strftime(dated ? "%b %-d %H:%M" : "%H:%M")
+          else
+            "?"
+          end
+        }
+        "#{format_time.call(started)}–#{ended ? format_time.call(ended) : "now"}"
+      end
+
+      def segment_dates_differ?(segments)
+        days = segments.flat_map { |row| [segment_value(row, :started_at), segment_value(row, :ended_at)] }
+                       .filter_map { |stamp| segment_time(stamp)&.strftime("%F") }
+        days.uniq.size > 1
+      end
+
+      def segment_time(stamp)
+        stamp ? Time.iso8601(stamp.to_s).localtime : nil
+      rescue ArgumentError
+        nil
+      end
+
+      # The row the session's last speed came from: the newest with one.
+      def last_speed_label(segments)
+        row = segments.reverse_each.find { |segment| segment_value(segment, :last_decode_tps) }
+        row && model_segment_label(row)
       end
 
       def format_elapsed_duration(duration_ms)

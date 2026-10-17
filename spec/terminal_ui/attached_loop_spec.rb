@@ -834,6 +834,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
                                     a_string_including("context window:   128000 tokens (server)"))
   end
 
+  it "shows the worker's per-model rows in /stats (JSON keys)" do
+    rows = [{ model_ref: "a:one", started_at: "2026-10-17T10:00:00.000Z", ended_at: "2026-10-17T10:05:00.000Z", turns: 1,
+              prompt_sum: 10, completion_sum: 5, prefill_tokens: 0 },
+            { model_ref: "b:two", started_at: "2026-10-17T10:06:00.000Z", ended_at: nil, turns: 1, prompt_sum: 300,
+              completion_sum: 7, prefill_tokens: 290 }]
+    metrics = { turns: 2, tokens: { prompt_sum: 310, completion_sum: 12, source: "server" }, model_segments: rows }
+    allow(client).to receive(:get_json).with("stats").and_return(JSON.parse(JSON.generate(metrics: metrics)))
+
+    run_with(["/stats"])
+
+    expect(screen.lines).to include(a_string_matching(%r{^models: +a:one +\S+ +1 turn +10 in / 5 out}).and(match(%r{^ +b:two +\S+now +1 turn +300 in / 7 out})),
+                                    a_string_including("└ switch prefill 290 uncached prompt"))
+  end
+
   it "reads /stats from /state on a worker without the stats route" do
     allow(client).to receive(:get_json).with("stats").and_return(nil)
     allow(client).to receive(:get_json).with("state")

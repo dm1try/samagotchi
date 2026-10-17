@@ -469,7 +469,17 @@ prompt (last, server)`); for other servers it is estimated from the first
 streamed chunk to the end and marked `~` (`~64 tok/s out (last, estimate)`).
 Generations under 8 tokens or 100 ms get no speed of their own, nor does a
 reply without server token counts or a non-streamed one. A delegated child
-keeps its own numbers: a parent's tokens and cost leave them out. `/recap` is in
+keeps its own numbers: a parent's tokens and cost leave them out.
+
+After a `/model` switch (or a hook's) the tokens line becomes a `models:` block, a row per run of turns on one
+model, in order (A → B → A is three rows): the model (`host:model` as asked), when (`10:43–now` while it runs; with
+the day when the rows span several), turns, tokens in/out, its average speed and cost. Under the row of the model
+switched to, `└ switch prefill 58.0k uncached prompt ≈$0.01` says what its first request prefilled on the new model
+(the prompt less the cached reads; `≈` an estimate from the new model's configured price, left out without one). A
+`total` row ends the block. The speed line names the model of its last speed, and the cost is from `each model's host
+prices`. Past 6 rows the oldest fold into one `N earlier segments` row; a session's turns from before chi recorded
+their model are one `earlier turns` row. One model: the output is unchanged. `chi sessions stats` prints the same,
+also offline (from the saved records). `/recap` is in
 [Session recap](#session-recap), `/model` and `/models` in [Runtime Model
 Switch](#runtime-model-switch-assist-mode).
 
