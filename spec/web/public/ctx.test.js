@@ -190,20 +190,44 @@ test("ctxBarTip: the window line when there's a number, why there's none when th
   assert.equal(ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 1000, source: "server", pct: 60 }),
     tokensTipText({ prompt_sum: 500, completion_sum: 100 }, undefined, null,
                   { tokens: 1000, source: "server", pct: 60 }));
-  assert.equal(ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 1000, source: "server", pct: null }),
-    "No request in this session yet");
   assert.equal(ctxBarTip(null, null, null), "No request in this session yet");
+  assert.equal(ctxBarTip({ prompt_sum: 0, completion_sum: 0 }, null, { tokens: 1000, source: "server", pct: null }),
+    "No request in this session yet");
+});
+
+// After a /model whose new window didn't resolve (usage null: "ctx ?") the
+// session has had requests: the window is unknown, not "no request yet";
+// the tokens and per-model rows stay, the old model's window line doesn't.
+test("ctxBarTip: no percent after requests — the window is unknown until the next request", () => {
+  const tokens = { prompt_sum: 278000, completion_sum: 30000 };
+  const rows = [
+    { model_ref: "deepseek:v4.1-flash", turns: 14, prompt_sum: 182000, completion_sum: 21000, prefill_tokens: 0 },
+    { model_ref: "splash:qwen3-35b", turns: 1, prompt_sum: 96000, completion_sum: 9000, prefill_tokens: 0 },
+  ];
+  assert.equal(ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 1000, source: "server", pct: null }),
+    "Context window unknown until the next request\ntokens: in 500 · out 100\nthis session only, all requests");
+  const tip = ctxBarTip(tokens, null, { tokens: 32000, source: "server", pct: null }, rows);
+  assert.deepEqual(tip.split("\n").slice(0, 2), ["Context window unknown until the next request", "per model:"]);
+  assert.ok(!tip.includes("context:"));
+  assert.ok(!tip.includes("No request"));
+  // Either count alone is a request already.
+  for (const partial of [{ prompt_sum: 500 }, { completion_sum: 100 }]) {
+    assert.match(ctxBarTip(partial, null, { pct: null }), /^Context window unknown until the next request\n/);
+  }
 });
 
 // The card calls ctxBarTip with {pct} as its window (no tokens/source).
 // A card with a number shows the old tooltip (token sums + memory index,
-// no window line); only a card without one says "No request yet".
+// no window line); a card without one says the window is unknown when it
+// has tokens, "No request yet" when it has none.
 test("ctxBarTip: the card's tooltip with just a pct — old tooltip for a number, why-none for none", () => {
   const tokens = { prompt_sum: 500, completion_sum: 100 };
   const memoryIndex = { system: { tokens: 1000, lines: 10 }, project: { tokens: 500, lines: 5 } };
   assert.equal(ctxBarTip(tokens, memoryIndex, { pct: 60 }),
     tokensTipText(tokens, undefined, memoryIndex, { pct: 60 }));
-  assert.equal(ctxBarTip(tokens, memoryIndex, { pct: null }), "No request in this session yet");
+  assert.equal(ctxBarTip(tokens, memoryIndex, { pct: null }),
+    tokensTipText(tokens, "Context window unknown until the next request", memoryIndex));
+  assert.equal(ctxBarTip(null, memoryIndex, { pct: null }), "No request in this session yet");
 });
 
 test("ctxWindowText: used of window with its source; the default says it's a guess", () => {

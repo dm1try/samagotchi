@@ -36,6 +36,8 @@ and commands may change between minor versions. How releases are made:
 - A session loaded on another model than its last turn ran on (`--resume` with `--model`, a worker woken after a
   `/model` with no turn since) no longer shows the old model's ctx %: it is counted on the new model's configured
   window at once (`window_tokens`), else shown as `ctx ?` until the first generation.
+- Web: after a `/model` whose new window can't be resolved (`ctx ?`), the ctx tooltip says `Context window unknown
+  until the next request` over the session's tokens and per-model rows, instead of `No request in this session yet`.
 
 ## [0.75.0] - 2026-10-17
 
