@@ -17,7 +17,7 @@ ChatLoop::Run#generate
       → POST {base}/v1/messages             # LLM::HTTP: retries, cancel, first-token limit
       → AnthropicAssembly#add per SSE event # → ChatResponse (text, reasoning, tool_calls, usage,
                                             #   finish_reason, provider_content)
-      → a signature 400 (Claude 5.x preserved thinking): #binding_recovery, then the same
+      → a signature 400 (Claude 5.x preserved thinking): AnthropicBindingRecovery#advance, then the same
         request with drop_block or the blocks stripped; ChatResponse#thinking_drop names them
       → a 400 it can fix: #refusal_fix, then the same request again (once per kind)
   → ChatLoop#settle_dropped_thinking!       # the dropped blocks leave the stored model entries
@@ -31,6 +31,7 @@ Paths are under `lib/samagotchi/llm/`.
 |---|---|
 | `adapters.rb` | `Adapters::BY_API` (`openai`, `anthropic`), `.for(entry)`, `.build(api:, …)` for side requests (`IdleClient`) |
 | `anthropic_messages.rb` | `AnthropicMessages`: the request body, `#chat` (streamed or not), the 400 fixes, `#list_models`, `#thinking_fields`, `#replays_content?` |
+| `anthropic_binding_recovery.rb` | `AnthropicBindingRecovery`: the preserved-thinking recovery (`#advance` picks drop_block or strip for a signature 400, `#recovered_body`, `#with_thinking_drop`); one per adapter |
 | `anthropic_wire.rb` | `AnthropicWire`: ChatLoop's wire messages as Messages' `system` and `messages`, the two breakpoints, tool ids and names |
 | `anthropic_assembly.rb` | `AnthropicAssembly`: a response from a whole body (`.from_message`) or stream events (`#add`), its usage in the OpenAI shape |
 | `dialect.rb` | `Dialect` (`STANDARD`, `FIREWORKS`): what a provider's `/v1/messages` does differently |
@@ -137,7 +138,7 @@ A model switch never 400s: the API drops blocks another model can't read silentl
 
 **Recover on the 400, then settle.** Normal requests carry no beta header and no `block_binding`, so Fireworks,
 Splash and gateways see the same bytes as before. On a signature 400, before anything streamed,
-`AnthropicMessages#binding_recovery` picks the next step, once each per request:
+`AnthropicBindingRecovery#advance` (one per adapter, `anthropic_binding_recovery.rb`) picks the next step, once each per request:
 
 - **drop_block**: the same body with `thinking.block_binding: {prefix_mismatch_behavior: "drop_block"}` (the body's
   adaptive or enabled thinking, `display` as sent; adaptive when the level sends none) and the header
