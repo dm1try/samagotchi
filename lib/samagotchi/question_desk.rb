@@ -349,7 +349,7 @@ module Samagotchi
         @pending = pending = pending.with(relayed_to: relayed_to)
         if session
           session.pending_question = pending
-          begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+          save_session(session)
         end
         pending.id
       end
@@ -439,7 +439,7 @@ module Samagotchi
       end
       if session
         session.pending_question = pending
-        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+        save_session(session)
       end
       event = { type: :question_requested, pending_question: pending.to_h }
       event[:standing] = true if standing
@@ -559,12 +559,19 @@ module Samagotchi
     def cancel_controller = @cancel_controller_lookup.call
     def emit(event) = @emit.call(event)
 
+    def save_session(session)
+      session.save(state_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:turn, "question_save_failed", sid: session.id, error: e.class.name, msg: e.message.to_s[0, 200])
+      nil
+    end
+
     # The session file no longer holds a pending question.
     def clear_saved_question
       return unless session
 
       session.pending_question = nil
-      begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+      save_session(session)
     end
   end
 end

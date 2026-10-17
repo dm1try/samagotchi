@@ -152,6 +152,18 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
   end
 
+  describe "session save failures" do
+    it "logs and swallows a failed session save" do
+      allow(session).to receive(:save).and_raise(IOError, "disk full")
+      expect(Samagotchi::Log).to receive(:warn).with(
+        :turn, "question_save_failed", sid: session.id, error: "IOError", msg: "disk full"
+      )
+
+      expect { desk.post(fields, on_answer: ->(_answer, client_id:) { client_id }) }.not_to raise_error
+      expect(desk.pending).to have_attributes(question: "Run it?")
+    end
+  end
+
   describe "#annotate" do
     it "sets and clears the pending question's relay marker, saved and announced" do
       thread, _box, id = open_in_background
