@@ -57,6 +57,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a session command's answer (`/model x`, `!ls`) no longer clears what you typed meanwhile in another session's
   composer; a command that fails after you switched sessions, and a turn that can't be sent, are said in a toast you
   dismiss (✕), not a blocking alert.
+- The `core` and `dev` profiles name the chi their members need: `core` 0.3.1 `requires_chi: ">= 0.60.0"` (was
+  `>= 0.8.0`), `dev` 0.5.1 `">= 0.72.0"` (was `>= 0.34.0`). Installing a profile already skipped a member this chi
+  is too old for; now the profile's own floor says so too.
 
 ## [0.75.0] - 2026-10-17
 

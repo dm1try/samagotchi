@@ -323,13 +323,13 @@ Hooks removed: 1\n\z})
 
     it "installs the core profile's bundles, records them, and keeps one the user uninstalled out" do
       expect(chi("upgrade", "core", "--dry-run"))
-        .to eq(["core v0.3.0 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands, agents-md\n(dry-run: no changes written)\n", "", 0])
-      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands, agents-md\n", "", 0])
+        .to eq(["core v0.3.1 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands, agents-md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.3.1 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands, agents-md\n", "", 0])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md check-in core guardrails loop-guard slow-commands])
 
-      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.3.1 (profile)\n  nothing new to install\n", "", 0])
       expect(chi("uninstall", "check-in")[2]).to eq(0)
-      expect(chi("upgrade", "core")).to eq(["core v0.3.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(chi("upgrade", "core")).to eq(["core v0.3.1 (profile)\n  nothing new to install\n", "", 0])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md core guardrails loop-guard slow-commands])
 
       out, err, code = chi("uninstall", "core")
@@ -343,7 +343,7 @@ Hooks removed: 1\n\z})
       chi("uninstall", "check-in")
 
       out, = chi("list")
-      expect(out).to match(/^  core +v0\.3\.0 +scope=system  includes=loop-guard,guardrails,slow-commands,agents-md  left out=check-in  installed=\S+$/)
+      expect(out).to match(/^  core +v0\.3\.1 +scope=system  includes=loop-guard,guardrails,slow-commands,agents-md  left out=check-in  installed=\S+$/)
       expect(out).to match(/^Available.*\n(.*\n)*  check-in +v\S+  /)
       expect(out).to match(/^  dev +v/)
 
@@ -352,7 +352,7 @@ Hooks removed: 1\n\z})
       expect(out.lines.grep(/includes /)).to eq(["  includes loop-guard [installed]\n", "  includes check-in [not installed: chi bundle install check-in]\n",
                                                  "  includes guardrails [installed]\n", "  includes slow-commands [installed]\n",
                                                  "  includes agents-md [installed]\n"])
-      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.0 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md issues=0\n"])
+      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.1 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md issues=0\n"])
     end
 
     it "status goes on past a bundle whose manifest.json doesn't parse" do
@@ -366,7 +366,7 @@ Hooks removed: 1\n\z})
     it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do
       chi("install", "guardrails")
       expect(chi("install", "core"))
-        .to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, slow-commands, agents-md\n  already installed: guardrails\n", "", 0])
+        .to eq(["core v0.3.1 (profile)\n  installed: loop-guard, check-in, slow-commands, agents-md\n  already installed: guardrails\n", "", 0])
       expect(chi("install", "core", "--scope", "project"))
         .to eq(["", "Install failed: core is a profile: its bundles install system-wide (drop --scope project)\n", 1])
 

@@ -1,10 +1,10 @@
 ---
 name: core
-version: 0.3.0
+version: 0.3.1
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
-requires_chi: ">= 0.8.0"
+requires_chi: ">= 0.60.0"
 includes:
 - loop-guard
 - check-in
