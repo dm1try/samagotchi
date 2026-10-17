@@ -83,6 +83,25 @@ The kit's own specs, in `spec/samagotchi/testing/`, keep it and the bundles hone
   bundle's `Boundary::EXCEPTIONS` entry, each with why. A new internal reference fails it, and so does an exception
   no longer used. Fix the reference (the kit or a stable API), or add the exception with its why.
 
+## Guardrail cases corpus
+
+`spec/fixtures/guardrails/cases.jsonl` holds one labelled tool call per line, run by
+`spec/guardrails/cases_corpus_spec.rb` against a fixed rule set (`spec/fixtures/guardrails/rules.yml`) or the
+shipped guardrails bundle's rules. A case:
+
+- `id` (required, unique, kebab-case), `tool` (required: `execute`, `task_create`, `write`, `edit` or `read`),
+  `command` (a shell tool) or `path` (a file tool), `cwd` (optional: the call's `cwd:`, relative to the spec's
+  temp repo), `expect` (required), `rule` (a rule id), `rules` (optional: `fixture`, the default, or
+  `guardrails-bundle`), `source` (required: where the case came from: `heredoc-fp`, `heredoc-bypass`,
+  `chi-answer-piped`) and `note` (optional: why the label is what it is).
+- `expect` is one of two kinds: `match` / `no_match` say whether rule `rule` matches the call (`Rule#matches?`),
+  and `allow` / `ask` / `deny` the whole rule set's decision (`Rules#check`, not the Gate's core checks); with
+  `rule` given, an ask or deny must also be decided by that rule.
+
+Add a case with every guardrail false positive or miss you fix, under the `source` it came from. Never relabel
+a case to make a spec pass: a case that goes red means the code is wrong. The spec also keeps the corpus
+well formed (unique ids, known keys and labels, a rule that exists in its set).
+
 ## While you work: affected specs
 
 ```sh

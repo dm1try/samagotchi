@@ -230,7 +230,7 @@ guardrails:
   rules:
     - id: git-push
       tool: shell            # execute + task_create; or a tool name, a glob, or a list
-      command: '\bgit\s+push\b'   # Ruby regex on the command
+      command: '\bgit\s+push\b'   # Ruby regex on the command (data heredoc bodies left out)
       verdict: ask           # ask | deny
       reason: git push publishes commits
       scopes: [once, session, repo]   # optional; default all four
@@ -247,6 +247,23 @@ guardrails:
 ```
 
 A rule gives at least one of `tool`, `command`, `path`, `git`, `touches`, `rm` and `memory`.
+
+`command:` reads the command without the body of a heredoc its command
+only reads as data: `cat` or `tee` to stdout, `git commit`/`git tag` with
+`-F -`/`--file -`, `gh pr|issue`/`gh release` with `--body-file -`/
+`--notes-file -`, and a `"$(cat <<'EOF' … EOF)"` given to `-m`, `--body`
+or another message option. Each counts only when its command ends at a
+newline, `;`, `&&` or `||` and sits outside any `( … )` or `{ … }` group;
+the `<<TAG` word and the terminator line stay in the text, so a rule on
+`<<` or on what follows the terminator still matches. A heredoc fed to
+anything else (`bash`, an interpreter, `ssh`, a wrapper), an unquoted one
+whose body holds `$(…)` or backticks, a piped one, a file-writing
+`cat`/`tee` (a `>&2` or `>&-` writes no file; `>& file` does), a
+here-string and an unterminated heredoc all stay in it. An fd opened
+earlier and written to by number (`exec 3>r.sh; cat <<E >&3`) isn't
+followed, so that body counts as data: out of scope here, which is
+chi-nah's job for a model that goes looking. Approvals, the approval
+question and hooks see the whole command.
 
 `memory: remove` matches a `memory_write` with `remove: true` (it moves a
 memory into the bundle trash). Nothing else asks about it: a memory's file is
@@ -493,7 +510,7 @@ only by the user: these change a model's system prompt for later sessions (see
 [Model notes](memory.md#model-notes); a shell command reaches them only under
 `shell-touches-chi`'s text heuristic); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
-pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
+pipe, a here-string or a file, not `/dev/null` (`chi-answer-piped`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session.
 `chi answer` itself isn't asked about. It denies writes into `.git/hooks`.
 
@@ -591,7 +608,13 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
 
 Text matching on shell commands stops accidents, not a model set on getting
 around it: `sh -c`, base64, a script written earlier, `git -C` variants and
-aliases can get past a regex. `outside_repo` covers the file tools and git
+aliases can get past a regex, and these rules are built for trusted models (a
+model set on getting around them is chi-nah's job). A heredoc counts as data
+only for the consumers listed under [Rules in config.yml](#rules-in-configyml)
+(`cat`/`tee` to stdout, `git commit`/`git tag` `-F -`, `gh`'s body and notes
+files, a `"$(cat <<'EOF' … EOF)"` message): anything else keeps its body in
+the text a rule sees, and a function or alias shadowing a reader in the same
+command isn't seen at all. `outside_repo` covers the file tools and git
 only: `sed -i`, `cp` or `cat > file` into another folder from the shell aren't
 asked about, and neither is git run through `sh -c`, a script, an alias, `make`
 or a folder in a variable. `!cmd` lines typed by you are not checked. The only

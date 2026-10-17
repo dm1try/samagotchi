@@ -16,6 +16,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Guardrails: a `command:` rule no longer matches the text of a heredoc its command only reads as data
+  (`git commit -F -`, `gh pr create --body-file -`, `cat` to stdout, a `"$(cat <<'EOF' …)"` commit message); a
+  heredoc fed to a shell or an interpreter, or piped on (also from a `( … )` or `{ … }` group), is still
+  matched. The bundle's `chi-answer-piped` (guardrails bundle 0.9.1) no longer asks about stdin from
+  `/dev/null`.
 - Plugins: a `chi.service` that starts lazily from a tool or hook handler runs its start block outside the handler,
   so Stop no longer cancels the service's startup `ctx.http` calls (as docs/plugins.md says).
 - Bundles: the test kit's sandbox also points `XDG_DATA_HOME` and `XDG_CACHE_HOME` at its temp folder, so a bundle
