@@ -344,6 +344,25 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "a /model context switch" do
+    it "clears the previous ctx in the status row when the new window is unknown" do
+      status = agent.instance_variable_get(:@status_row)
+      status.update(model: "m1", context: { est_pct: 12.34, bucket: "under20" })
+      commands = agent.instance_variable_get(:@commands)
+      result = Samagotchi::SessionCommands::Result.new(status: :ok, output: "switched", changed: [:model])
+      allow(commands).to receive(:run).and_return(result)
+      allow(agent).to receive_messages(piped_input?: true)
+      allow(agent.engine).to receive(:session_state_snapshot).and_return(context_status: nil)
+      allow(agent).to receive(:show_command_result) { agent.instance_variable_set(:@effective_model_name, "m2") }
+
+      agent.send(:run_input_line, nil, "/model m2")
+
+      text = status.rows(120).join
+      expect(text).to start_with("status> model=m2")
+      expect(text).not_to include("ctx=")
+    end
+  end
+
   describe "an unknown command word at the prompt" do
     let(:surface) { RecordingSurface.new }
     let(:agent) { described_class.new(client: client, surface: surface) }

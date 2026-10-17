@@ -873,6 +873,7 @@ module Samagotchi
                   end
         if command
           show_command_result(command)
+          refresh_status_row(clear_unknown_context: true) if command.changed.include?(:model)
           persist_recent_history(input) if command.shell
           return
         end
@@ -1400,9 +1401,10 @@ module Samagotchi
 
     # The status row under the prompt, from the Engine's state (what a
     # worker hands an attached TUI when it joins): drawn when it changed.
-    def refresh_status_row
+    def refresh_status_row(clear_unknown_context: false)
       state = @engine.session_state_snapshot.merge(model_name: @effective_model_name)
       @status_row.take_state(state, default_model: @default_model_name)
+      @status_row.update(context: nil) if clear_unknown_context && state.key?(:context_status) && state[:context_status].nil?
       refresh_children_status
     end
 
