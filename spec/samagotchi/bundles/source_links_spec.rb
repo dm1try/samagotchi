@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "json"
 require "open3"
 require "tmpdir"
 require "fileutils"
@@ -188,6 +189,22 @@ RSpec.describe "The source-links bundle" do
         ["sources: JIRA JIRA-5 → https://myjira.com/browse/JIRA-5, " \
          "JIRA JIRA-6 → https://myjira.com/browse/JIRA-6"]
       )
+    end
+  end
+
+  describe "the shared URL-end cases" do
+    it "keeps the source-links URL spans from the shared fixture" do
+      registry
+      klass = Samagotchi::Hooks::BundleLoader.namespace_for("source-links").const_get(:SourceLinks, false)
+      source_links = klass.allocate
+      fixture = JSON.parse(File.read(File.expand_path("../../fixtures/url_ends.json", __dir__)))
+
+      fixture.fetch("rows").each do |row|
+        text = row.fetch("text")
+        spans = source_links.send(:bare_url_spans, text)
+        urls = spans.map { |start, finish| text[start...finish] }
+        expect(urls).to eq(row.fetch("ruby_url_spans")), text
+      end
     end
   end
 

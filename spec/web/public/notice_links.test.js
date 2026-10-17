@@ -1,14 +1,17 @@
 // A hook notice line's http(s) URLs as links (notice_links.js): the rest
 // stays text, escaped by lit.
 import { markupOf } from "./dom_shim.js";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { html } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import { linkedLine } from "../../../lib/samagotchi/web/public/notice_links.js";
 
+const URL_ENDS = JSON.parse(readFileSync(new URL("../../fixtures/url_ends.json", import.meta.url), "utf8"));
 const A = 'target="_blank" rel="noopener noreferrer"';
 const link = (href, shown = href) => `<a ${A} href="${href}">${shown}</a>`;
 const markup = (text) => markupOf(html`<div>${linkedLine(text)}</div>`);
+const linkedUrls = (text) => Array.from(markup(text).matchAll(/href="([^"]+)"/g), ([, href]) => href);
 
 test("a line with no URL is the string itself", () => {
   assert.equal(linkedLine("h: nothing to link"), "h: nothing to link");
@@ -36,6 +39,10 @@ test("the URL's end: trailing punctuation and an unbalanced ) are cut, a balance
   assert.equal(markup("https://x.com/a)."), `<div>${link("https://x.com/a")}).</div>`);
   assert.equal(markup("<https://x.com/a>"), `<div>&lt;${link("https://x.com/a")}&gt;</div>`);
   assert.equal(markup("[https://x.com/a]"), `<div>[${link("https://x.com/a")}]</div>`);
+});
+
+test("shared URL-end cases link the fixture's web URLs", () => {
+  for (const row of URL_ENDS.rows) assert.deepEqual(linkedUrls(row.text), row.js_urls, row.text);
 });
 
 test("other schemes, userinfo and bare schemes stay text", () => {
