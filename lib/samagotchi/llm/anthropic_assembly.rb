@@ -44,7 +44,14 @@ module Samagotchi
         @stop_reason = nil
         @stop_details = nil
         @model = nil
+        @input_transformations = []
       end
+
+      # The message's input_transformations (Claude 5.x: what the API did to
+      # the request before generating, e.g. the thinking blocks drop_block
+      # dropped), as sent (string keys); [] when it named none. The paths
+      # index into the request body, which only the adapter holds.
+      attr_reader :input_transformations
 
       # A whole message: its model, usage, stop reason and blocks.
       def add_message(message)
@@ -52,6 +59,7 @@ module Samagotchi
 
         @model = served(message["model"]) || @model
         merge_usage(message["usage"])
+        read_transformations(message)
         @stop_reason = message["stop_reason"] if message["stop_reason"]
         @stop_details = message["stop_details"] if message["stop_details"].is_a?(Hash)
         Array(message["content"]).each { |block| @blocks << block.dup if block.is_a?(Hash) }
@@ -133,7 +141,13 @@ module Samagotchi
 
         @model = served(message["model"]) || @model
         merge_usage(message["usage"])
+        read_transformations(message)
         ["", ""]
+      end
+
+      def read_transformations(message)
+        entries = message["input_transformations"]
+        @input_transformations = entries.select { |entry| entry.is_a?(Hash) } if entries.is_a?(Array)
       end
 
       def start_block(index, block)

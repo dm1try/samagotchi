@@ -287,7 +287,8 @@ RSpec.describe Samagotchi::LLM::ProviderError do
     end
 
     it "tells a thinking block's signature 400 (bound elsewhere, or unreadable) apart, without refusing reasoning" do
-      %w[error_400_signature_other_conversation.hand-written.json error_400_signature_invalid.hand-written.json]
+      %w[error_400_signature_other_conversation.hand-written.json error_400_signature_invalid.hand-written.json
+         claude_error_400_signature_system_changed.json]
         .each do |name|
           error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: anthropic(name), host: "msg")
 

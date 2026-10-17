@@ -26,6 +26,17 @@ key, host address or path is in them (Splash sends none).
 | `splash_error_400_between_tools.json` | `thinking: {type: "between_tools"}` | 400 `invalid_request_error` "thinking.type must be enabled, disabled, or adaptive" |
 | `splash_error_404_unknown_model.json` | an unknown model id | 404 `not_found_error` (mapped like a model not found: not retried) |
 
+## Recorded: Claude API (`claude_*`, haiku-5-5, 2026-10-17)
+
+Recorded through a logging proxy (bodies and usage only, never headers) by the Anthropic P3
+probe against api.anthropic.com, `claude-haiku-5-5`, thinking `high`. No key, host address or
+path is in them.
+
+| File | Request | What it shows |
+|---|---|---|
+| `claude_error_400_signature_system_changed.json` | a `--resume` after a turn that called `memory_write` (the rebuilt system prompt's memory index changed), no beta header | 400 `invalid_request_error`: `messages.1.content.0: Invalid signature … bound to a different conversation … The system prompt differs from the one this block was created with.` (the preserved-thinking binding; its `anthropic-thinking-prefix-mismatch` header is not in the file) |
+| `claude_drop_block_input_transformations.sse` | the same request with `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` and the `thinking-binding-controls-2026-08-01` beta | 200: `message_start`'s message carries `input_transformations`: three `thinking_dropped` entries (`messages.1/3/9.content.0`, `prefix_binding_mismatch`), then a new thinking block (with its signature) and three `tool_use` blocks. **Trimmed**: 45 `thinking_delta` events recorded; the first and last 8 kept, everything else as recorded |
+
 ## Hand-written (`*.hand-written.*`)
 
 Not recorded: Splash 1.3.1 can't produce them, or they come from Anthropic's API (no key used
@@ -52,6 +63,7 @@ signatures and redacted data are made up; signatures are not valid.
 | `splash_ping_progress_stream.hand-written.sse` | Splash DEVELOPMENT.md / source | `ping` events carrying `prompt_progress` `{total, cache, processed, time_ms}` (only with `return_progress: true`; S0 saw none), then a plain keep-alive `ping` |
 | `error_400_prompt_too_long.hand-written.json` | Anthropic docs | the context overflow 400, "prompt is too long: N tokens > M maximum" |
 | `error_400_signature_other_conversation.hand-written.json` | Anthropic docs | a thinking block bound to a different conversation (edited history), without the beta header |
+| `drop_block_model_binding_stream.hand-written.sse` | the claude-api skill (Breaking change 3) | a drop_block answer whose `input_transformations` hold a `prefix_binding_mismatch` entry next to a `model_binding_mismatch` one (a `/model` downgrade: those blocks stay in the history), then a text answer |
 | `error_400_signature_invalid.hand-written.json` | Anthropic docs | a tampered or unreadable signature: the same leading clause, without "bound to a different conversation" |
 | `error_400_block_binding_extra.hand-written.json` | Anthropic docs | `block_binding` sent without the binding beta header ("…block_binding: Extra inputs are not permitted"; the path before it is made up) |
 | `error_400_binding_beta_unknown.hand-written.json` | Anthropic docs | the binding beta header refused where it is not offered ("Unexpected value(s) … for the `anthropic-beta` header.") |
