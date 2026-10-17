@@ -899,6 +899,8 @@ In interactive assist mode, you can switch the request model without restarting:
 Notes:
 
 - The switch updates the request `model` field, routes to the matching host (`HostRegistry#resolve`), and resolves the prompt profile again (config, the server's chat template, the name; see "Prompt profile" in configuration.md).
+- The ctx % follows the switch at once: the last turn's count against the new model's window (the web's info bar, the attached TUI's status row, a client that joins later), recounted at the next generation. When the new window can't be resolved the web shows `ctx ?` and the attached TUI's status row drops its ctx until then ([context telemetry](internals/context-telemetry.md)).
+- After a switch `/stats` (and the web's ctx tooltip) splits the session's tokens, cost and speed per model, with what each switch prefilled on the new model: the `models:` block ([Session commands](#session-commands)).
 - Without `--default` the command is session-scoped and does not rewrite config files.
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
 - `--default` and `--alias` change only their one key's line in `config.yml` (`default.model`, or the alias under `model_aliases:`): comments and the rest of the file stay as written, a symlinked file is written through and keeps its mode. When the edited text wouldn't read back as the expected settings (a flow-style section, anchors), chi writes the whole file out from the parsed data instead, which drops its comments.
