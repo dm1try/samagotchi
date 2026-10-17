@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-10-17
+
 ### Fixed
 
 - Web: a repeated toast cannot unstick a sticky error and make it time out.
@@ -17,6 +19,7 @@ and commands may change between minor versions. How releases are made:
   answers and `--thinking off` sessions now send `thinking: {type: "between_tools"}` after that 400 (a recap used to
   fall back to adaptive thinking at low effort, a `--thinking off` session to the provider's default thinking). Each
   side-answer client learns it once for itself.
+- A host whose model list fails is asked again at most once a minute (it was asked on every context-window lookup).
 
 ## [0.78.0] - 2026-10-17
 
@@ -3279,7 +3282,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.78.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.79.0...HEAD
+[0.79.0]: https://github.com/dm1try/samagotchi/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/dm1try/samagotchi/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/dm1try/samagotchi/compare/v0.76.0...v0.77.0
 [0.76.0]: https://github.com/dm1try/samagotchi/compare/v0.75.0...v0.76.0
