@@ -1,6 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
+import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 import { momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
@@ -742,31 +743,59 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripShow").click();
   await expect(title).toBeHidden();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["hide ▾", "continue →", "archive", "stop session", "delete"]);
-  // hide ▾ folds the composer away (the info bar stays): the history's
-  // reserve shrinks, and the choice survives a reload.
-  const fold = page.locator("#composerFoldBtn");
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
+  // Dragging the composer's grip down folds the composer away (the info bar
+  // stays, the grip stays as its handle): the history's reserve shrinks, and
+  // the choice survives a reload.
+  const grip = page.locator("#composeGrip");
   const dockH = () => page.locator("#center").evaluate((el) => parseFloat(el.style.getPropertyValue("--dock-h")));
   const expandedH = await dockH();
-  await fold.click();
+  await expect(grip).toHaveAttribute("aria-expanded", "true");
+  await page.evaluate(() => localStorage.setItem("chi_composer_floor", "120"));
+  const box = await grip.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 80, { steps: 8 });
+  await expect(grip).toHaveClass(/will-fold/);
+  await page.mouse.up();
   await expect(page.locator("#composer")).toBeHidden();
-  await expect(fold).toHaveText("▴ message");
+  await expect(grip).toHaveAttribute("aria-expanded", "false");
+  // A fold forgets the floor: it opens at the minimum again.
+  expect(await page.evaluate(() => localStorage.getItem("chi_composer_floor"))).toBeNull();
   await expect.poll(dockH).toBeLessThan(expandedH - 30);
   await page.reload();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
   await expect(page.locator("#composer")).toBeHidden();
-  await expect(fold).toHaveText("▴ message");
+  await expect(grip).toHaveAttribute("aria-expanded", "false");
   // Typing on the page brings it back, the key in the box; folded again
-  // with it, the button says there is a draft.
+  // with it (the keyboard: Enter on the handle), the handle says there is a
+  // draft; a click on it opens the box and focuses it.
   await page.keyboard.press("h");
   await expect(page.locator("#composer")).toBeVisible();
   await expect(page.locator("#prompt")).toHaveValue("h");
   await expect(page.locator("#prompt")).toBeFocused();
-  await expect(fold).toHaveText("hide ▾");
-  await fold.click();
-  await expect(fold).toHaveText("▴ message · draft");
-  await fold.click();
+  await expect(grip).toHaveAttribute("aria-expanded", "true");
+  await grip.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#composer")).toBeHidden();
+  await expect(grip).toHaveClass(/draft/);
+  await grip.click();
+  await expect(page.locator("#composer")).toBeVisible();
   await expect(page.locator("#prompt")).toHaveValue("h");
+  await expect(page.locator("#prompt")).toBeFocused();
+  await page.locator("#prompt").fill("");
+  // Pulled up from folded, the handle opens it and the box follows the pointer.
+  await grip.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#composer")).toBeHidden();
+  await expect(grip).not.toHaveClass(/draft/);
+  const handle = await grip.boundingBox();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 - 70, { steps: 7 });
+  await page.mouse.up();
+  await expect(page.locator("#composer")).toBeVisible();
+  await expect.poll(() => page.locator("#prompt").evaluate((el) => el.offsetHeight)).toBeGreaterThan(PROMPT_LINE_PX);
   await page.locator("#prompt").fill("");
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
@@ -781,11 +810,11 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.reload();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#composer")).toBeHidden();
-  await expect(fold).toHaveText("▴ message");
+  await expect(grip).toHaveAttribute("aria-expanded", "false");
   await page.setViewportSize({ width: 390, height: 700 });
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 1280, height: 720 });
-  await fold.click();
+  await grip.click();
   await expect(page.locator("#composer")).toBeVisible();
 
   await page.locator("#allTile").click();
