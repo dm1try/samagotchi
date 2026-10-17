@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxBarTip, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
   modelSegmentLabel,
+  shortRef,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -256,4 +257,23 @@ test("tokensTipText: the window line under the title", () => {
   assert.equal(tokensTipText({ prompt_sum: 300, completion_sum: 56 }, "ctx", null, { tokens: 1000, source: "config", pct: 35.6 }),
     "ctx\ncontext: ~356 of 1.0k tokens (config)\ntokens: in 300 · out 56\nthis session only, all requests");
   assert.equal(tokensTipText(null, "ctx", null, { tokens: 1000, source: "config", pct: null }), "ctx\ncontext: 1.0k tokens (config)");
+});
+
+test("shortRef: a ref past 40 characters keeps its start and end around one …; a short one stays", () => {
+  assert.equal(shortRef("a:one"), "a:one");
+  const long = "openrouter-digitalocean:deepseek/deepseek-v4.1-flash-preview-2026-10";
+  const cut = shortRef(long);
+  assert.equal([...cut].length, 40);
+  assert.ok(cut.startsWith("openrouter-d"));
+  assert.ok(cut.endsWith("flash-preview-2026-10"));
+  assert.equal(cut.split("…").length, 2);
+});
+
+test("tokensTipText: a long ref is cut in the per-model rows, so the tooltip stays narrow", () => {
+  const long = "openrouter-digitalocean:deepseek/deepseek-v4.1-flash-preview-2026-10";
+  const rows = [{ model_ref: long, turns: 1, prompt_sum: 10, completion_sum: 1 },
+                { model_ref: "a:one", turns: 1, prompt_sum: 10, completion_sum: 1 }];
+  const tip = ctxBarTip({ prompt_sum: 20, completion_sum: 2 }, null, { pct: 10 }, rows);
+  assert.ok(!tip.includes(long));
+  assert.ok(tip.includes(`  ${shortRef(long)} · 1 turn`));
 });

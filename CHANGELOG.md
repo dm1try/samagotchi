@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: toasts stack instead of replacing one another, so later notices cannot hide a sticky error.
 - Web: the context chip and tooltip redraw at generation start when context-window state changes.
+- Web: the ctx tooltip's per-model rows cut a model ref longer than 40 characters in the middle, so a long ref no
+  longer stretches the tooltip.
 - REPL: the status row clears the old context % after `/model` when the new window is unknown.
 - Web: a session's card drops the old model's context % right after `/model` (the new window's %, or none while it is
   unknown), in every tab and after a reload, instead of keeping it until the next turn ends.
