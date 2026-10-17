@@ -91,7 +91,8 @@
     "label": "ant:claude-x",
     "api": "anthropic",
     "auth": null,
-    "dialect": "fireworks"
+    "dialect": "fireworks",
+    "price": null
   },
   "backend": "Samagotchi::LLM::ChatLoop",
   "session_state_keys": [

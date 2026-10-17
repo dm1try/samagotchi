@@ -87,7 +87,8 @@
     "label": "down:declared-m",
     "api": "openai",
     "auth": null,
-    "dialect": null
+    "dialect": null,
+    "price": null
   },
   "backend": "Samagotchi::LLM::NativeBackend",
   "session_state_keys": [

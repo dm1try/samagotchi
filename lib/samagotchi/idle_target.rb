@@ -14,8 +14,14 @@ module Samagotchi
   #   auth:, LLM::ApiKey::SCHEMES); nil: the api's own default
   # @!attribute dialect [String, nil] an api: anthropic host's dialect:
   #   (LLM::Dialect), so a side request gets its auth and fields
-  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label, :api, :auth, :dialect) do
-    def initialize(api: :openai, auth: nil, dialect: nil, **) = super
+  # @!attribute price [ModelPrice, nil] the host's models: price for the
+  #   id asked for (as EffectiveModel#price), what a side request's cost is
+  #   estimated from; nil for none, and for a bare base_url target
+  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label, :api, :auth, :dialect, :price) do
+    def initialize(api: :openai, auth: nil, dialect: nil, price: nil, **) = super
+
+    # +entry+'s models: price for +id+ (the id asked for, case-insensitively).
+    def self.price_of(entry, id) = entry.models&.dig(id.to_s.strip.downcase)&.price
 
     # The api a side request to +entry+ talks: a chat host's own, else the
     # OpenAI API (a raw host's llama.cpp serves /v1 too).
@@ -49,7 +55,8 @@ module Samagotchi
       resolved = host_registry.resolve(name)
       entry = resolved.entry
       new(base_url: entry.api_base_url, api_key_env: entry.api_key_env, model: resolved.bare_model,
-          label: name.to_s.strip, api: api_of(entry), auth: entry.auth, dialect: dialect_of(entry))
+          label: name.to_s.strip, api: api_of(entry), auth: entry.auth, dialect: dialect_of(entry),
+          price: price_of(entry, resolved.bare_model))
     end
 
     # A side model's settings (recap.*, broadcast.triage_*) as a target:
@@ -74,6 +81,7 @@ module Samagotchi
       api = :openai
       auth = nil
       dialect = nil
+      entry = nil
       if host_ref
         entry = host_registry.find_entry(host_ref)
         raise self::Unresolved.new(:host_ref_unknown, model: model, host_ref: host_ref) unless entry
@@ -95,7 +103,7 @@ module Samagotchi
       raise self::Unresolved.new(:incomplete, model: model, host_ref: host_ref) if blank(base_url).nil? || blank(model).nil?
 
       new(base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.strip, api: api, auth: auth,
-          dialect: dialect)
+          dialect: dialect, price: entry && price_of(entry, model))
     end
 
     # Whether the settings fix a host (+base_url+, +host_ref+, or a model
