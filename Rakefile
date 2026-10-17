@@ -81,6 +81,15 @@ namespace :bundles do
     abort "bundles:check failed:\n  #{problems.join("\n  ")}" unless problems.empty?
     puts "bundles:check OK (#{ReleaseTools.bundle_dirs(ROOT).size} bundles)"
   end
+
+  desc "Run the shipped bundles' own specs (lib/samagotchi/bundles/*/spec) on the bundle test kit alone: no spec_helper, " \
+       "as an external bundle's would run"
+  task :specs do
+    dirs = Dir[File.join(ROOT, "lib/samagotchi/bundles/*/spec")].sort
+    abort "No bundle has a spec/ folder." if dirs.empty?
+
+    sh "bundle", "exec", "rspec", "--options", File::NULL, "-r", "samagotchi/testing/rspec", *dirs
+  end
 end
 
 namespace :release do
@@ -129,7 +138,9 @@ namespace :release do
     Rake::Task["lint"].invoke
 
     step.call("specs")
-    sh "bundle exec rspec --format progress"
+    # Both roots: plain rspec runs spec/ only (docs/testing.md).
+    sh "bundle", "exec", "rspec", "--format", "progress", "spec", *Dir[File.join(ROOT, "lib/samagotchi/bundles/*/spec")].sort
+    Rake::Task["bundles:specs"].invoke
     sh "npm test"
 
     step.call("gem build")

@@ -244,6 +244,7 @@ Lint/UnusedMethodArgument:
 Lint/EmptyBlock:
   Exclude:
     - spec/**/*
+    - lib/samagotchi/bundles/*/spec/**/*
 
 # -- Off: unsafe autocorrect ----------------------------------------------------
 # These only autocorrect with -A, and the rewrite changes behaviour when the

@@ -216,6 +216,16 @@ RSpec.describe ReleaseTools do
         expect(described_class.bundles_check(tmp).first.size).to eq(1)
       end
 
+      it "passes a bundle whose spec/ alone changed: its specs aren't installed" do
+        write("#{bundle}/spec/b_spec.rb", "# a spec")
+        git("add", ".")
+        git("commit", "-qm", "a spec")
+        expect(described_class.bundles_check(tmp, ci: true)).to eq([[], []])
+        write("#{bundle}/a.md", "two")
+        described_class.refresh_bundle_shas!(tmp)
+        expect(described_class.bundles_check(tmp).first.size).to eq(1)
+      end
+
       it "passes a changed bundle with a higher version, and a bundle new since the tag" do
         write("#{bundle}/a.md", "two")
         described_class.refresh_bundle_shas!(tmp)

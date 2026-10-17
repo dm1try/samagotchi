@@ -63,7 +63,7 @@ as the GitHub release body.
 | `rake 'bundles:check[ci]'` | The CI workflow's (every push and PR): the same, except the version check leaves out the system bundle, which is changed and unbumped between releases (`release:bump` moves its version with VERSION). A task argument, not `CI=1`: GitHub sets `CI` in the release workflow too. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
 | `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped). No commit. |
-| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop), rspec + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
+| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
 ## Runbook
@@ -165,4 +165,4 @@ things differ there, and a new spec that trips on them fails only on CI:
 To run it locally, use Docker with the Ruby build CI uses
 (`ruby-X.Y.Z-ubuntu-24.04-x64.tar.gz` from ruby/ruby-builder's releases) on
 `ubuntu:24.04` with `LANG=C.UTF-8`, `zip` and `git`, and run
-`CI=1 BUNDLE_PATH=… bundle exec rspec`.
+`CI=1 BUNDLE_PATH=… bundle exec rspec spec lib/samagotchi/bundles/*/spec`.

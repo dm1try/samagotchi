@@ -11,7 +11,12 @@ module AffectedSpecs
       @rev = rev
     end
 
-    def spec_files = files("spec").select { |path| path.end_with?("_spec.rb") && !path.start_with?("spec/fixtures/") }
+    # The suite's specs and the shipped bundles' own (lib/samagotchi/bundles/<name>/spec/).
+    def spec_files
+      files("spec").select { |path| path.end_with?("_spec.rb") && !path.start_with?("spec/fixtures/") } +
+        files("lib/samagotchi/bundles").select { |path| path.match?(%r{\Alib/samagotchi/bundles/[^/]+/spec/.*_spec\.rb\z}) }
+    end
+
     def node_tests = files("spec/web/public").select { |path| path.match?(%r{\Aspec/web/public/[^/]+\.test\.js\z}) }
 
     def read(path)

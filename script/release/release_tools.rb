@@ -132,6 +132,11 @@ module ReleaseTools
 
   # --- git --------------------------------------------------------------
 
+  # The pathspecs of what a bundle ships: its folder without its spec/
+  # (the bundle's own specs, never installed: a change there needs no
+  # version bump).
+  def shipped_paths(rel) = [rel, ":(exclude)#{rel}/spec"]
+
   def git(root, *)
     out, status = Open3.capture2e("git", "-C", root, *)
     [out, status.success?]
@@ -161,7 +166,7 @@ module ReleaseTools
       next if skip.include?(File.basename(dir))
 
       rel = dir.delete_prefix("#{File.expand_path(root)}/")
-      _, same = git(root, "diff", "--quiet", tag, "--", rel)
+      _, same = git(root, "diff", "--quiet", tag, "--", *shipped_paths(rel))
       next if same
 
       old_text, existed = git(root, "show", "#{tag}:#{rel}/manifest.yml")
@@ -192,7 +197,7 @@ module ReleaseTools
       requires = manifest["requires_chi"] or next
       next unless Gem::Requirement.new(*requires.to_s.split(",").map(&:strip)).satisfied_by?(tagged)
 
-      _, same = git(root, "diff", "--quiet", tag, "--", dir.delete_prefix("#{File.expand_path(root)}/"))
+      _, same = git(root, "diff", "--quiet", tag, "--", *shipped_paths(dir.delete_prefix("#{File.expand_path(root)}/")))
       next if same
 
       "#{File.basename(dir)}: changed since #{tag} and requires_chi #{requires.to_s.inspect} admits that chi: " \

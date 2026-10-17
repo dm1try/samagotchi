@@ -35,8 +35,9 @@ jobs:
           path: tmp/parallel_runtime_rspec.log
           key: parallel-runtime-${{ runner.os }}-ruby-${{ matrix.ruby }}-${{ github.run_id }}
           restore-keys: parallel-runtime-${{ runner.os }}-ruby-${{ matrix.ruby }}-
+      # Both spec roots: parallel_rspec doesn't read .rspec's --pattern.
       - name: Specs (:integration and :macos_build skip themselves)
-        run: bundle exec parallel_rspec -n 4
+        run: bundle exec parallel_rspec -n 4 spec lib/samagotchi/bundles/*/spec
       - name: Save the spec runtime log (main only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -63,8 +64,9 @@ jobs:
           path: tmp/parallel_runtime_rspec.log
           key: parallel-runtime-${{ runner.os }}-ruby-3.4-${{ github.run_id }}
           restore-keys: parallel-runtime-${{ runner.os }}-ruby-3.4-
+      # Both spec roots: parallel_rspec doesn't read .rspec's --pattern.
       - name: Specs (:integration and :macos_build skip themselves)
-        run: bundle exec parallel_rspec -n 3
+        run: bundle exec parallel_rspec -n 3 spec lib/samagotchi/bundles/*/spec
       - name: Save the spec runtime log (main only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -102,6 +104,10 @@ jobs:
       # moves it with VERSION). The release workflow runs the full check.
       - name: Bundle manifests (rake 'bundles:check[ci]')
         run: bundle exec rake 'bundles:check[ci]'
+      # The shipped bundles' own specs on the bundle test kit alone (no
+      # spec_helper), as an external bundle's run.
+      - name: Bundle specs (rake bundles:specs)
+        run: bundle exec rake bundles:specs
 
   web:
     name: npm test

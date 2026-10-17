@@ -454,6 +454,21 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  # A bundle's own specs (lib/samagotchi/bundles/<name>/spec/, the bundle
+  # test kit's) stay in its source: nothing under spec/ is installed.
+  it "installs nothing from the bundle's spec/ folder" do
+    bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+    FileUtils.mkdir_p(File.join(bundle_dir, "spec", "fixtures"))
+    File.write(File.join(bundle_dir, "spec", "test_bundle_spec.rb"), "# a spec\n")
+    File.write(File.join(bundle_dir, "spec", "fixtures", "notes.md"), "# a fixture\n")
+
+    installer_for(source: bundle_dir, name: "test-bundle").run
+
+    installed = Dir.glob("**/*", base: File.join(tmpdir, "config"))
+    expect(installed).to include(a_string_ending_with("identity.md"))
+    expect(installed.grep(/spec|notes\.md|fixtures/)).to eq([])
+  end
+
   describe "guardrail rule files" do
     it "an unchanged rules file is skipped as already up to date; a changed one is installed" do
       bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })

@@ -12,7 +12,8 @@ module AffectedSpecs
 
   # Specs that read docs or source as text, or print a file's words through
   # another layer (the REPL golden), which no name points at: a changed path
-  # matching one of +match+ (File.fnmatch, ** spans folders) picks +specs+.
+  # matching one of +match+ (File.fnmatch, ** spans folders) picks +specs+
+  # (globs too, matched against the spec files).
   # Keep it short; a rule earns its place when a full run caught what the
   # names missed.
   RULES = [
@@ -38,6 +39,10 @@ module AffectedSpecs
       specs: %w[spec/gem_contents_spec.rb], why: "builds the gem and lists its files" },
     { match: %w[bin/chi],
       specs: %w[spec/cli_parsing_spec.rb spec/chi_help_spec.rb], why: "runs bin/chi" },
+    { match: %w[lib/samagotchi/testing.rb lib/samagotchi/testing/**/* lib/samagotchi/plugin/**/* lib/samagotchi/hooks.rb
+                lib/samagotchi/hooks/**/* lib/samagotchi/guardrails/gate.rb],
+      specs: %w[lib/samagotchi/bundles/*/spec/**/*_spec.rb],
+      why: "the shipped bundles' own specs run on the test kit and chi's plugin and hook seams (they name neither)" },
     { match: %w[lib/samagotchi/turn_flow.rb lib/samagotchi/turn_note.rb],
       specs: %w[spec/terminal_ui_golden_spec.rb], why: "the REPL golden prints their turn-end and continue words" }
   ].freeze
@@ -70,7 +75,8 @@ module AffectedSpecs
       @unmatched = []
       @changed.each { |path| add_changed(path) }
       code_files.each { |path| add_strong(path) }
-      @changed.each { |path| add_rules(path) }
+      @changed.each { |path| add_bundle_specs(path) }
+      @changed.each { |path| add_rules(path) } # rubocop:disable Style/CombinableLoops -- a tier after the bundle specs
       code_files.each { |path| add_golden(path) }
       # One tier after the other: every golden before any weak name match,
       # every weak name match before any grep hit.
@@ -143,12 +149,24 @@ module AffectedSpecs
       candidates.each { |spec| add(spec, "named after #{path}", path) if spec_set.key?(spec) }
     end
 
+    # 2: any file of a shipped bundle (its plugin, hooks, memories,
+    # manifest, its specs' fixtures) picks the bundle's own specs.
+    def add_bundle_specs(path)
+      bundle = path[%r{\Alib/samagotchi/bundles/([^/]+)/}, 1] or return
+      dir = "lib/samagotchi/bundles/#{bundle}/spec/"
+      spec_files.each { |spec| add(spec, "the #{bundle} bundle's own spec (#{path})", path) if spec.start_with?(dir) }
+    end
+
     # 3: RULES.
     def add_rules(path)
       RULES.each do |rule|
         next unless rule[:match].any? { |glob| File.fnmatch?(glob, path, File::FNM_PATHNAME) }
 
-        rule[:specs].each { |spec| add(spec, "rule: #{rule[:why]} (#{path})", path) if spec_set.key?(spec) }
+        rule[:specs].each do |pattern|
+          spec_files.each do |spec|
+            add(spec, "rule: #{rule[:why]} (#{path})", path) if File.fnmatch?(pattern, spec, File::FNM_PATHNAME)
+          end
+        end
       end
     end
 

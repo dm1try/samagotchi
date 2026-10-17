@@ -156,6 +156,33 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("lib/samagotchi/bundles/loop-guard/plugin.rb").ruby)).to eq(%w[spec/samagotchi/plugin/loop_guard_bundle_spec.rb])
   end
 
+  it "picks every bundle's own specs for a change in the test kit or chi's plugin and hook seams, saying why" do
+    files.merge!("lib/samagotchi/bundles/loop-guard/spec/loop_guard_spec.rb" => "",
+                 "lib/samagotchi/bundles/check-in/spec/check_in_spec.rb" => "")
+    bundle_specs = %w[lib/samagotchi/bundles/check-in/spec/check_in_spec.rb lib/samagotchi/bundles/loop-guard/spec/loop_guard_spec.rb]
+    %w[lib/samagotchi/testing/bundle.rb lib/samagotchi/testing.rb lib/samagotchi/plugin/context.rb
+       lib/samagotchi/hooks/bundle_loader.rb lib/samagotchi/guardrails/gate.rb].each do |changed|
+      picks = pick(changed).ruby.select { |p| p.path.include?("/bundles/") }
+      expect(paths(picks)).to match_array(bundle_specs)
+      expect(picks.map(&:reason)).to all(eq("rule: the shipped bundles' own specs run on the test kit and chi's plugin " \
+                                            "and hook seams (they name neither) (#{changed})"))
+    end
+    expect(paths(pick("lib/samagotchi/engine.rb").ruby)).not_to include(*bundle_specs)
+  end
+
+  it "picks a bundle's own specs for any change in the bundle, its specs' fixtures included" do
+    files.merge!("lib/samagotchi/bundles/loop-guard/spec/loop_guard_spec.rb" => "",
+                 "lib/samagotchi/bundles/loop-guard/spec/fixtures/cycle.txt" => "",
+                 "lib/samagotchi/bundles/check-in/spec/check_in_spec.rb" => "")
+    %w[lib/samagotchi/bundles/loop-guard/plugin.rb lib/samagotchi/bundles/loop-guard/manifest.yml
+       lib/samagotchi/bundles/loop-guard/spec/fixtures/cycle.txt].each do |changed|
+      picks = pick(changed).ruby
+      expect(paths(picks)).to include("lib/samagotchi/bundles/loop-guard/spec/loop_guard_spec.rb")
+      expect(paths(picks)).not_to include("lib/samagotchi/bundles/check-in/spec/check_in_spec.rb")
+      expect(picks.find { |p| p.path.include?("loop_guard_spec") }.reason).to eq("the loop-guard bundle's own spec (#{changed})")
+    end
+  end
+
   it "picks nothing for a change no spec matches, and names the unmatched code file" do
     result = pick("README.md", "lib/samagotchi/lonely.rb")
 

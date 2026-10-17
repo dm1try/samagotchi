@@ -41,6 +41,9 @@ Gem::Specification.new do |spec|
     `git ls-files -z -- #{patterns.map { |p| "':(glob)#{p}'" }.join(" ")} 2>/dev/null`.split("\x0")
   end
   tracked = Dir.chdir(__dir__) { patterns.flat_map { |p| Dir.glob(p) } } if tracked.empty? # no git: an unpacked source
+  # A shipped bundle's own specs (lib/samagotchi/bundles/<name>/spec/) stay
+  # in the repo, as spec/ does.
+  tracked = tracked.grep_v(%r{\Alib/samagotchi/bundles/[^/]+/spec/})
   spec.files = Dir.chdir(__dir__) { tracked.select { |f| File.file?(f) }.sort.uniq }
   spec.bindir        = "bin"
   spec.executables   = ["chi"]

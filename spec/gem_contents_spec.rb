@@ -43,6 +43,17 @@ RSpec.describe "The built gem" do
     expect(leaked).to eq([])
   end
 
+  # A shipped bundle's own specs (lib/samagotchi/bundles/<name>/spec/) stay
+  # in the repo; the test kit they run on ships.
+  it "leaves the bundles' own specs out, and ships the bundle test kit" do
+    bundle_specs = Dir.glob("lib/samagotchi/bundles/*/spec/**/*", base: root).select { |f| File.file?(File.join(root, f)) }
+    expect(bundle_specs).not_to be_empty
+    expect(files.grep(%r{\Alib/samagotchi/bundles/[^/]+/spec/})).to eq([])
+    kit = Dir.glob("lib/samagotchi/testing{.rb,/*.rb}", base: root)
+    expect(kit).to include("lib/samagotchi/testing.rb", "lib/samagotchi/testing/bundle.rb", "lib/samagotchi/testing/rspec.rb")
+    expect(files).to include(*kit)
+  end
+
   it "ships only files, only under lib/, bin/, docs/ or the top-level docs" do
     expect(files.reject { |f| File.file?(File.join(root, f)) }).to eq([])
     expect(files.reject { |f| f.match?(%r{\A(lib|bin|docs)/}) || %w[README.md LICENSE CHANGELOG.md].include?(f) }).to eq([])
