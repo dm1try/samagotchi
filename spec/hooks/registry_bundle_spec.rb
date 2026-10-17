@@ -93,3 +93,22 @@ RSpec.describe Samagotchi::Hooks::Registry, "#fire_each" do
     expect(seen).to eq([[:bundle], %i[bundle plain], %i[bundle plain]])
   end
 end
+
+RSpec.describe Samagotchi::Hooks::Registry, "#bundle_hook_names" do
+  it "lists an event's bundle hooks in fire order, without config or turn hooks" do
+    registry = described_class.new
+    order = []
+    registry.register_bundle("zeta", :before_turn, hook_name: "a.rb", priority: 10) { order << "zeta a.rb" }
+    registry.register_bundle("alpha", :before_turn, hook_name: "b.rb", priority: 10) { order << "alpha b.rb" }
+    registry.register_bundle("alpha", :before_turn, hook_name: "a.rb", priority: 50) { order << "alpha a.rb" }
+    registry.register_bundle("alpha", :after_turn, hook_name: "c.rb") { nil }
+    registry.register_persistent(:before_turn) { nil }
+    registry.register(:before_turn) { nil }
+
+    names = registry.bundle_hook_names(:before_turn)
+    expect(names).to eq([["alpha", "b.rb", 10], ["zeta", "a.rb", 10], ["alpha", "a.rb", 50]])
+    registry.fire(:before_turn, {})
+    expect(order).to eq(names.map { |bundle, hook, _| "#{bundle} #{hook}" })
+    expect(registry.bundle_hook_names(:session_end)).to eq([])
+  end
+end

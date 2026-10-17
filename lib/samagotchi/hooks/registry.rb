@@ -309,6 +309,16 @@ module Samagotchi
         end
       end
 
+      # The bundle hooks registered for +name+, in the order #fire calls
+      # them (priority, bundle, hook name).
+      # @param name [Symbol]
+      # @return [Array<Array(String, String, Integer)>] [bundle, hook_name, priority]
+      def bundle_hook_names(name)
+        @mutex.synchronize do
+          sorted_bundle_hooks(name).map { |h| [h[:bundle], h[:hook_name], h[:priority]] }
+        end
+      end
+
       # @return [Integer] total number of registered hooks (bundle + plain)
       def size
         @mutex.synchronize do
@@ -323,13 +333,16 @@ module Samagotchi
       # turn-scoped hooks, each in registration order.
       def ordered_procs(name)
         @mutex.synchronize do
-          bundle_procs = (@bundle_hooks[name] || [])
-            .sort_by { |h| [h[:priority].to_i, h[:bundle].to_s, h[:hook_name].to_s] }
-            .map { |h| ["#{h[:hook_name]} (bundle #{h[:bundle]})", h[:proc]] }
+          bundle_procs = sorted_bundle_hooks(name).map { |h| ["#{h[:hook_name]} (bundle #{h[:bundle]})", h[:proc]] }
           config_procs = (@persistent_hooks[name] || []).map { |h| [h[:label], h[:proc]] }
           turn_procs = (@hooks[name] || []).map { |hook_proc| [TURN_HOOK_LABEL, hook_proc] }
           bundle_procs + config_procs + turn_procs
         end
+      end
+
+      # The bundle hooks for an event in fire order; call under @mutex.
+      def sorted_bundle_hooks(name)
+        (@bundle_hooks[name] || []).sort_by { |h| [h[:priority].to_i, h[:bundle].to_s, h[:hook_name].to_s] }
       end
 
       # The helpers, once per fire; a fire site's own keys stay.
