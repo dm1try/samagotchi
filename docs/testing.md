@@ -1,7 +1,9 @@
 # Testing
 
 ```sh
-bundle exec parallel_rspec -n 8   # Ruby specs, in parallel (or plain: bundle exec rspec)
+bundle exec parallel_rspec -n 8 spec lib/samagotchi/bundles/*/spec   # Ruby specs, both roots, in parallel
+bundle exec rspec spec lib/samagotchi/bundles/*/spec                 # the same, plain
+bundle exec rake bundles:specs    # the shipped bundles' own specs, on the bundle test kit alone
 npm test                          # web frontend specs
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 npx playwright test spec/e2e/stage.spec.js   # one e2e file (the root playwright.config.js is the suite's)
@@ -56,19 +58,30 @@ limit, `0` turns it off (a debugger session).
 ## Bundle specs: the test kit
 
 A shipped bundle's plugin and hook files are tested through the bundle test kit (`samagotchi/testing`,
-[plugins.md](plugins.md#testing-a-bundle-experimental)): `require "samagotchi/testing/rspec"`, tag the group
-`:bundle`, and `shipped_bundle("check-in", settings: …)` loads it through chi's own loaders, registries, `ctx` and
-guardrail Gate, with the session, the hook helpers and `ctx.sessions` recorded. No fake `chi` or `ctx`: what the kit
-can't express is a kit change (with a kit spec), not a local fake. A spec that runs real turns (install → Engine →
-`run_turn`) stays as it is.
+[plugins.md](plugins.md#testing-a-bundle-experimental)): `shipped_bundle("check-in", settings: …)` loads it through
+chi's own loaders, registries, `ctx` and guardrail Gate, with the session, the hook helpers and `ctx.sessions`
+recorded. No fake `chi` or `ctx`: what the kit can't express is a kit change (with a kit spec), not a local fake.
 
-Two specs keep the kit honest:
+These specs live **next to the bundle**, in `lib/samagotchi/bundles/<name>/spec/` (their fixtures in its
+`spec/fixtures/`), and require only `samagotchi/testing/rspec` (tagged `:bundle` by their path): no `spec_helper`, no
+`spec/support`, as an external bundle's specs would run. `rake bundles:specs` runs them that way
+(`rspec --options /dev/null -r samagotchi/testing/rspec`), in CI's bundles job; the full suite runs them too, under
+`spec_helper`, given both roots (plain `rspec` runs `spec/` only: `.rspec` holds no `--pattern`, which would make
+`rspec FILE` run everything). They are never shipped: the gem and an install leave `spec/` out, and the release
+tools' version check ignores a bundle's `spec/` (a spec-only change needs no bump). A spec that runs real turns
+(install → Engine → `run_turn`) stays in `spec/samagotchi/plugin/<name>_bundle_spec.rb`.
+
+The kit's own specs, in `spec/samagotchi/testing/`, keep it and the bundles honest:
 
 - `spec/samagotchi/testing/contract_spec.rb`: the kit sets every `Plugin::Host` and `Hooks::Runtime` member,
   `Testing::Sessions` has `Plugin::Sessions`' methods and parameters, and each `ctx` helper lands in its recorder. A
   member added to the Host fails it until the kit has it.
 - `spec/samagotchi/testing/shipped_bundles_spec.rb`: each shipped bundle with a plugin or hooks registers the same
   commands, tools, hooks, inits, toolkits and sources loaded by the kit as installed and loaded by chi.
+- `spec/samagotchi/testing/boundary_spec.rb`, the boundary lint: each bundle's Ruby (plugin, hooks, scripts, specs)
+  reaches chi only through `Samagotchi::Testing::Boundary::ALLOWED` (the "Stable for bundles" list) and that
+  bundle's `Boundary::EXCEPTIONS` entry, each with why. A new internal reference fails it, and so does an exception
+  no longer used. Fix the reference (the kit or a stable API), or add the exception with its why.
 
 ## While you work: affected specs
 
@@ -90,7 +103,7 @@ The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web ch
 hint for a hub class (named in too many specs to list) go to stderr. Nothing printed means nothing matched.
 
 It finds a change's own specs, not the regressions it causes elsewhere. So before committing, run the full suite
-(`bundle exec parallel_rspec -n 8`), unless your task says the coordinator runs it; the coordinator runs it at merge
+(`bundle exec parallel_rspec -n 8 spec lib/samagotchi/bundles/*/spec`), unless your task says the coordinator runs it; the coordinator runs it at merge
 either way.
 
 ## Worktrees

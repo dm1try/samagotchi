@@ -220,9 +220,9 @@ once, for the session, for the repo, or for the whole rule in the repo.
 ## Development
 
 ```sh
-bundle exec rspec    # Ruby specs
-npm test             # web frontend specs
-npm run e2e          # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
+bundle exec rspec spec lib/samagotchi/bundles/*/spec   # Ruby specs (chi's and the shipped bundles' own)
+npm test                                               # web frontend specs
+npm run e2e                                            # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 ```
 
 Integration specs against a live model server, and what the suite isolates: [docs/testing.md](docs/testing.md).

@@ -1020,6 +1020,12 @@ CHANGELOG line and bumps the shipped bundles that use it. Anything else under
    `Samagotchi::Log.debug`, `Samagotchi::Config.get` and
    `Samagotchi::VERSION`.
 
+`Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of this list,
+and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle
+(and its specs) reaches beyond it, each with why: the APIs to design before
+that bundle could leave chi's repo. `spec/samagotchi/testing/boundary_spec.rb`
+fails on a reference in neither (docs/testing.md).
+
 **Used by shipped bundles today, but internal** (may change without notice; a
 bundle that needs one should ask for an API instead):
 
@@ -1063,6 +1069,10 @@ bundle.shutdown
   Only the edges are recorded: the session (`Testing::Host`), the hook helpers (`Testing::Runtime`),
   `ctx.sessions`, `chi.init` tasks (`bundle.run_inits`) and `chi.replace_tools` sets
   (`bundle.apply_staged_tools!`). No sha256 or `requires_chi` check: it loads the source as it is.
+- **More:** `bundle.plugin` (the instance `register` ran on, for its own methods), `bundle.declarations` (the
+  `chi.*` calls `register` made, in order, as made), `bundle.namespace`, `bundle.hook_names(event)`,
+  `bundle.run_inits`, `sandbox.write_memory(name, text, scope:)` / `memory_dir`, `sandbox.fake_executable(name,
+  body)` (first on `PATH`), `wait_until { }`.
 - **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
   go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
 - **Sandbox.** A test runs with temp config and state homes (config.yml, memories, `ctx.data_dir`, the debug
@@ -1070,7 +1080,8 @@ bundle.shutdown
   `SAMAGOTCHI_*` settings; `sandbox.config(hash)` writes its config.yml.
 - **RSpec:** `require "samagotchi/testing/rspec"`; example groups tagged `:bundle` (a spec under a bundle's own
   `spec/` is tagged by itself) get `load_bundle(dir)`, `shipped_bundle(name)` and `sandbox`, each example in its
-  own sandbox, its bundles shut down after it. **Minitest:** `require "samagotchi/testing/minitest"` and subclass
+  own sandbox, its bundles shut down after it (chi's shipped bundles keep theirs in `<bundle>/spec/`,
+docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subclass
   `Samagotchi::Testing::Case` (the same helpers).
 
 ## The btw bundle
