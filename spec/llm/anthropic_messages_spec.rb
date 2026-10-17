@@ -571,6 +571,28 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(models.last.raw["max_tokens"]).to eq(64_000)
       queries = server.requests.select { |r| r.path == "/v1/models" }.map { |r| r.query_string }
       expect(queries).to eq(["limit=1000", "limit=1000&after_id=claude-sonnet-5-5"])
+      expect(server.requests.map { |request| request.header("anthropic-version") }).to eq(
+        [described_class::API_VERSION, described_class::API_VERSION]
+      )
+    end
+
+    it "lists Claude models with Anthropic's required version header and uses max_input_tokens" do
+      WebMock.enable!
+      path = "#{server.base_url}/models"
+      stub_request(:get, /#{Regexp.escape(path)}/)
+        .to_return(status: 400, body: '{"type":"error","error":{"message":"anthropic-version: header is required"}}')
+      stub_request(:get, "#{path}?limit=1000").with(headers: { "anthropic-version" => described_class::API_VERSION })
+        .to_return(status: 200, body: fixture("models_page1.hand-written.json"))
+      stub_request(:get, "#{path}?limit=1000&after_id=claude-sonnet-5-5")
+        .with(headers: { "anthropic-version" => described_class::API_VERSION })
+        .to_return(status: 200, body: fixture("models_page2.hand-written.json"))
+
+      expect(adapter.context_window(model: "claude-sonnet-5-5")).to eq(1_000_000)
+      expect(adapter.image_input(model: "claude-sonnet-5-5")).to be(true)
+      expect(WebMock).to have_requested(:get, "#{path}?limit=1000")
+        .with(headers: { "anthropic-version" => described_class::API_VERSION }).once
+      expect(WebMock).to have_requested(:get, "#{path}?limit=1000&after_id=claude-sonnet-5-5")
+        .with(headers: { "anthropic-version" => described_class::API_VERSION }).once
     end
 
     it "reads Splash's OpenAI-shaped list (context_length, input_modalities), and answers the window and vision" do

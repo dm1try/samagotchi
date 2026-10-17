@@ -211,7 +211,9 @@ module Samagotchi
 
       # @return [Array<ModelInfo>]
       def list_models
-        list_model_pages { |after| URI("#{@base_url}/v1/models?#{URI.encode_www_form({ limit: 1000, after_id: after }.compact)}") }
+        list_model_pages(headers: { "anthropic-version" => API_VERSION }) do |after|
+          URI("#{@base_url}/v1/models?#{URI.encode_www_form({ limit: 1000, after_id: after }.compact)}")
+        end
       end
 
       private

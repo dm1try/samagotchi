@@ -46,12 +46,14 @@ module Samagotchi
       # Every page of the host's model list (MAX_MODEL_PAGES at most): the
       # block gives a page's URI for the last page's last_id (nil first).
       # @return [Array<ModelInfo>]
-      def list_model_pages
+      def list_model_pages(headers: {})
         models = []
         after = nil
         MAX_MODEL_PAGES.times do
           uri = yield(after)
-          body = parse_json(@http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" }).body, "model list")
+          request = Net::HTTP::Get.new(uri)
+          headers.each { |name, value| request[name] = value }
+          body = parse_json(@http.fetch(uri, request, log_fields: { purpose: "models" }).body, "model list")
           models.concat(model_entries(body).map { |raw| model_info(raw) })
           break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
 
