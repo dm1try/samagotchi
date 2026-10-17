@@ -9,7 +9,7 @@ require "samagotchi/plugin/peer"
 
 # Samagotchi::Plugin::Peer, the peer bundles' base, with a fake peer whose
 # transport keeps what it was given. The bundles' own texts are pinned by
-# spec/samagotchi/bundles/peer_goldens_spec.rb.
+# lib/samagotchi/bundles/claude-peer/spec/peer_goldens_spec.rb.
 RSpec.describe Samagotchi::Plugin::Peer do
   let(:peer_class) do
     Class.new(described_class) do

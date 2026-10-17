@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-require "spec_helper"
 require "tmpdir"
 require "json"
 require "socket"
-require "samagotchi/plugin/context"
+require "samagotchi/testing/rspec"
 require "samagotchi/context_sources"
 
 # The claude-peer bundle's plugin (lib/samagotchi/bundles/claude-peer):
 # claude_send writes one JSON line to the paired Claude Code session's
 # inbox socket (the claude-inbox context's hint). Here the socket is a
 # UNIXServer in a tmpdir, never a real Claude.
-RSpec.describe "The claude-peer plugin" do
-  let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/claude-peer", __dir__) }
+RSpec.describe "The claude-peer plugin", :bundle do
+  let(:shipped) { File.expand_path("..", __dir__) }
   # A short dir: a socket path has a ~104-byte limit.
   let(:tmpdir) { Dir.mktmpdir("cp", "/tmp") }
-  let(:state_home) { File.join(tmpdir, "state") }
+  # The sandbox's state home: ctx.data_dir and the sessions are under it.
+  let(:state_home) { File.dirname(sandbox.state_dir) }
   let(:state_dir) { File.join(state_home, "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
@@ -23,50 +23,20 @@ RSpec.describe "The claude-peer plugin" do
   end
   let(:session_id) { session.id }
   let(:short) { session.id[0, 8] }
-  let(:cards) { [] }
   let(:messages) { [] }
-  let(:host) do
-    Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                 messages: -> { messages }, card: ->(**card) { cards << card and card[:id] })
-  end
-  let(:ctx) do
-    Samagotchi::Plugin::Context.new(bundle: "claude-peer", label: "plugin.rb (bundle claude-peer)", settings: {},
-                                    host: host, env: { "XDG_STATE_HOME" => state_home })
-  end
-  let(:namespace) { Module.new.tap { |n| n.module_eval(File.read(File.join(shipped, "plugin.rb")), File.join(shipped, "plugin.rb"), 1) } }
-  let(:plugin) { namespace.const_get(:Plugin).new({}) }
-  # What register declares: the tools and commands, by name.
-  let(:fake_chi) do
-    Class.new do
-      attr_reader :tools, :commands, :hooks, :annotations, :peer_sources
-
-      def initialize
-        @tools = {}
-        @commands = {}
-        @hooks = {}
-        @annotations = []
-        @peer_sources = []
-      end
-
-      def annotation(label, **opts) = @annotations << [label, opts]
-
-      def peer_source(name, label:) = @peer_sources << [name, label]
-
-      def tool(name, description, params:, label:, preview:, &block)
-        @tools[name] = { description: description, params: params, label: label, preview: preview, block: block }
-      end
-
-      def command(name, _description, anytime: false, &block)
-        @commands[name] = [anytime, block]
-      end
-
-      def on(event, priority: 100, &block)
-        @hooks[event] = [priority, block]
-      end
-    end.new.tap { |chi| plugin.register(chi) }
+  # The plugin as chi loads it, for this session.
+  let(:bundle) do
+    shipped_bundle("claude-peer", host: { session_id: session_id, cwd: tmpdir, state_dir: state_dir, messages: messages })
   end
   let(:socket) { File.join(tmpdir, "inbox.sock") }
   let(:data_dir) { File.join(state_home, "samagotchi", "plugins", "claude-peer") }
+
+  # Every UI's events of the session: from the plugin, they are cards.
+  def cards = bundle.cards
+
+  # The hook events the plugin registered for.
+  def hooked_events = %i[session_start before_turn before_generation generation_progress after_generation
+                         before_tool_call after_tool_call after_turn session_end].select { |event| bundle.hook_names(event).any? }
 
   after { FileUtils.rm_rf(tmpdir) }
 
@@ -91,7 +61,7 @@ RSpec.describe "The claude-peer plugin" do
   end
 
   def send_part(**args)
-    fake_chi.tools.fetch("claude_send")[:block].call(args.transform_keys(&:to_s).freeze, ctx)
+    bundle.tool("claude_send", args)
   end
 
   # Sends with a listening inbox; the lines that came.
@@ -105,13 +75,14 @@ RSpec.describe "The claude-peer plugin" do
   end
 
   it "declares claude_send whether or not Claude is paired, with a fixed label and the title as its preview" do
-    tool = fake_chi.tools.fetch("claude_send")
+    tool = bundle.tools["claude_send"]
+    params = tool.schema[:parameters][:properties]
 
-    expect(tool[:label]).to eq("sent to Claude")
-    expect(tool[:params].keys).to eq(%i[kind title text])
-    expect(tool[:params][:kind][:enum]).to eq(%w[validate context question])
-    expect(tool[:preview].call("kind" => "validate", "title" => "cache step 2")).to eq("validate: cache step 2")
-    expect(tool[:description]).to include("Only when the user asks", "claude-outbox")
+    expect(tool.label).to eq("sent to Claude")
+    expect(params.keys).to eq(%i[kind title text])
+    expect(params[:kind][:enum]).to eq(%w[validate context question])
+    expect(tool.preview.call({ name: "claude_send", args: { "kind" => "validate", "title" => "cache step 2" } })).to eq("validate: cache step 2")
+    expect(tool.schema[:description]).to include("Only when the user asks", "claude-outbox")
   end
 
   it "writes one JSON line to the inbox: the header, then a short text inline" do
@@ -213,15 +184,15 @@ RSpec.describe "The claude-peer plugin" do
       it "finds no Claude paired, in the tool and the card" do
         expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: no claude-inbox: pair from Claude")
 
-        fake_chi.commands.fetch("/claude").last.call("", ctx)
+        bundle.command("/claude")
         expect(cards.last[:title]).to eq("claude-peer: not paired")
       end
     end
   end
 
   describe "/claude" do
-    def run(args = "") = fake_chi.commands.fetch("/claude").last.call(args, ctx)
-    def hook(event, payload) = fake_chi.hooks.fetch(event).last.call(payload)
+    def run(args = "") = bundle.command("/claude #{args}")
+    def hook(event, payload) = bundle.fire(event, **payload)
 
     def sent_content(args)
       server, thread, received = listen
@@ -241,13 +212,13 @@ RSpec.describe "The claude-peer plugin" do
     end
 
     it "is an anytime command, and the plugin watches turns start and end" do
-      expect(fake_chi.commands.fetch("/claude").first).to be(true)
-      expect(fake_chi.hooks.keys).to contain_exactly(:before_turn, :after_turn)
+      expect(bundle.commands.lookup("/claude").anytime).to be(true)
+      expect(hooked_events).to contain_exactly(:before_turn, :after_turn)
     end
 
     it "adds a Confirm with Claude pill (a fill, the quote) and the claude-outbox peer source" do
-      expect(fake_chi.annotations).to eq([["Confirm with Claude", { command: "/claude validate" }]])
-      expect(fake_chi.peer_sources).to eq([%w[claude-outbox Claude]])
+      expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Claude", { command: "/claude validate" }]])
+      expect(bundle.peer_sources.names.map { |name| [name, bundle.peer_sources.label_for(name)] }).to eq([%w[claude-outbox Claude]])
     end
 
     describe "alone: the status card" do
@@ -376,7 +347,7 @@ RSpec.describe "The claude-peer plugin" do
       let(:claude_dir) { File.join(tmpdir, "claude") }
       let(:target) { File.join(claude_dir, "skills", "chi-peer", "SKILL.md") }
 
-      around { |example| with_env("CLAUDE_CONFIG_DIR" => claude_dir) { example.run } }
+      before { ENV["CLAUDE_CONFIG_DIR"] = claude_dir } # the sandbox puts ENV back
 
       it "shows a card with the target, an Install action and the Read rule to offer, writing nothing" do
         expect(run("install-skill")).to be_nil

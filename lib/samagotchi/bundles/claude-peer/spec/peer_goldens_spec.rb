@@ -1,12 +1,10 @@
 # frozen_string_literal: true
 
-require "spec_helper"
 require "tmpdir"
 require "json"
 require "socket"
-require "samagotchi/plugin/context"
+require "samagotchi/testing/rspec"
 require "samagotchi/context_sources"
-require_relative "../../support/fake_executables"
 
 # Byte-for-byte goldens of every text the claude-peer and codex-peer plugins
 # show the model or the user: what register declares (the tool description is
@@ -17,35 +15,24 @@ require_relative "../../support/fake_executables"
 #
 # Paths, the session id and payload times are written as <TMP>, <ID>, <SHORT>
 # and HHMMSS. Regenerate after an intended change with:
-#   UPDATE_GOLDENS=1 bundle exec rspec spec/samagotchi/bundles/peer_goldens_spec.rb
-RSpec.describe "Peer bundle goldens" do
-  # register's declarations, kept in order.
-  let(:fake_chi_class) do
-    Class.new do
-      attr_reader :declared, :tools, :commands
-
-      def initialize
-        @declared = []
-        @tools = {}
-        @commands = {}
+#   UPDATE_GOLDENS=1 bundle exec rspec lib/samagotchi/bundles/claude-peer/spec/peer_goldens_spec.rb
+RSpec.describe "Peer bundle goldens", :bundle do
+  # What register declared, in order, each as written (bundle.declarations):
+  # the tool's params as given and its preview called on a part.
+  def declared
+    bundle.declarations.map do |decl|
+      name, description = decl.args
+      options = decl.options
+      case decl.name
+      when :tool
+        { tool: name, description: description, params: options[:params], label: options[:label],
+          preview: options[:preview].call("kind" => "validate", "title" => "cache step 2") }
+      when :command then { command: name, description: description, anytime: options.fetch(:anytime, false) }
+      when :annotation then { annotation: name, **options }
+      when :peer_source then { peer_source: name, label: options[:label] }
+      when :on then { hook: name, priority: options.fetch(:priority, 100) }
+      else raise "#{decl.name}: not in the goldens yet"
       end
-
-      def tool(name, description, params:, label:, preview:, &block)
-        @tools[name] = block
-        @declared << { tool: name, description: description, params: params, label: label,
-                       preview: preview.call("kind" => "validate", "title" => "cache step 2") }
-      end
-
-      def command(name, description, anytime: false, &block)
-        @commands[name] = block
-        @declared << { command: name, description: description, anytime: anytime }
-      end
-
-      def annotation(label, **opts) = @declared << { annotation: label, **opts }
-
-      def peer_source(name, label:) = @declared << { peer_source: name, label: label }
-
-      def on(event, priority: 100, &) = @declared << { hook: event, priority: priority }
     end
   end
 
@@ -59,34 +46,36 @@ RSpec.describe "Peer bundle goldens" do
                        .tap { |s| s.save(state_dir: state_dir) }
   end
   let(:session_id) { session.id }
-  let(:cards) { [] }
   let(:messages) { [] }
-  let(:host) do
-    Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                 messages: -> { messages }, card: ->(**card) { cards << card and card[:id] })
+  let(:shipped) { File.expand_path("../../#{peer}-peer", __dir__) }
+  # The plugin as chi loads it, for this session.
+  let(:bundle) do
+    shipped_bundle("#{peer}-peer", host: { session_id: session_id, cwd: tmpdir, state_dir: state_dir, messages: messages })
   end
-  let(:ctx) do
-    Samagotchi::Plugin::Context.new(bundle: "#{peer}-peer", label: "plugin.rb (bundle #{peer}-peer)", settings: {},
-                                    host: host, env: { "XDG_STATE_HOME" => state_home })
-  end
-  let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/#{peer}-peer", __dir__) }
-  let(:plugin_class) do
-    path = File.join(shipped, "plugin.rb")
-    Module.new.tap { |n| n.module_eval(File.read(path), path, 1) }.const_get(:Plugin)
-  end
-  let(:plugin) { plugin_class.new({}) }
-  let(:chi) { fake_chi_class.new.tap { |chi| plugin.register(chi) } }
+  let(:plugin_class) { bundle.namespace::Plugin }
   let(:out) { +"" }
   let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
 
-  around do |example|
-    with_env("HOME" => home, "CLAUDE_CONFIG_DIR" => nil, "CODEX_HOME" => nil, "CODEX" => nil) { example.run }
+  # Under the sandbox, the paths the goldens hold: <TMP>/home, its state.
+  # The sandbox puts ENV back.
+  before do
+    ENV.update("HOME" => home, "XDG_STATE_HOME" => state_home)
+    %w[CLAUDE_CONFIG_DIR CODEX_HOME CODEX].each { |key| ENV.delete(key) }
+  end
+
+  # Set ENV for the block (nil unsets), then put it back.
+  def with_vars(vars)
+    saved = vars.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    vars.each { |key, value| ENV[key] = value }
+    yield
+  ensure
+    saved&.each { |key, value| ENV[key] = value }
   end
 
   after { FileUtils.rm_rf(tmpdir) }
 
   def expect_golden(name)
-    path = File.expand_path("../../fixtures/peer/goldens/#{peer}_#{name}.txt", __dir__)
+    path = File.expand_path("fixtures/peer_goldens/#{peer}_#{name}.txt", __dir__)
     if ENV["UPDATE_GOLDENS"] == "1"
       FileUtils.mkdir_p(File.dirname(path))
       File.write(path, out)
@@ -96,7 +85,7 @@ RSpec.describe "Peer bundle goldens" do
 
   def normalize(text)
     # The checkout's own path: a worktree's differs from main's and CI's.
-    text.to_s.gsub(File.expand_path("../../..", __dir__), "<REPO>").gsub(File.realpath(tmpdir), "<TMP>").gsub(tmpdir, "<TMP>").gsub(session.id, "<ID>")
+    text.to_s.gsub(File.expand_path("../../../../..", __dir__), "<REPO>").gsub(File.realpath(tmpdir), "<TMP>").gsub(tmpdir, "<TMP>").gsub(session.id, "<ID>")
         .gsub(session.id[0, 8], "<SHORT>").gsub(%r{/\d{6}-}, "/HHMMSS-")
   end
 
@@ -120,24 +109,24 @@ RSpec.describe "Peer bundle goldens" do
                                                                               wake: true, hint: nil))
   end
 
-  # A context before the session has an id.
-  def no_id_ctx
-    Samagotchi::Plugin::Context.new(
-      bundle: "#{peer}-peer", label: "plugin.rb (bundle #{peer}-peer)", settings: {},
-      env: { "XDG_STATE_HOME" => state_home },
-      host: Samagotchi::Plugin::Host.new(session_id: -> {}, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                         messages: -> { [] }, card: ->(**card) { cards << card and card[:id] })
-    )
+  # The block run before the session has an id.
+  def without_id
+    bundle.set(session_id: nil)
+    yield
+  ensure
+    bundle.set(session_id: session_id)
   end
 
-  def tool(context = ctx, **args) = chi.tools.fetch("#{peer}_send").call(args.transform_keys(&:to_s).freeze, context)
-  def command(args, context = ctx) = chi.commands.fetch("/#{peer}").call(args, context)
+  def tool(**args) = bundle.tool("#{peer}_send", args)
+  def command(args) = bundle.command("/#{peer} #{args}")
 
   # Each reply, then the card it showed (if any).
-  def run_command(title, args, context = ctx)
-    cards.clear
-    section("#{"/#{peer} #{args}".strip} (#{title})", command(args, context).inspect)
-    cards.each { |card| section("card", card) }
+  def run_command(title, args, no_id: false)
+    shown = bundle.cards.size
+    reply = no_id ? without_id { command(args) } : command(args)
+    section("#{"/#{peer} #{args}".strip} (#{title})", reply.inspect)
+    # As the plugin's ctx.card passed it on (Context#card's keywords).
+    bundle.cards.drop(shown).each { |card| section("card", card.slice(:source, :title, :body, :actions, :level, :id)) }
   end
 
   def last_send
@@ -152,7 +141,7 @@ RSpec.describe "Peer bundle goldens" do
     section("empty text", tool(kind: "validate", title: "t", text: "  \n"))
     section("over the cap", tool(kind: "validate", title: "t", text: "x" * 200_001))
     section("not paired", tool(kind: "validate", title: "t", text: "x"))
-    section("no session id", tool(no_id_ctx, kind: "validate", title: "t", text: "x"))
+    section("no session id", without_id { tool(kind: "validate", title: "t", text: "x") })
   end
 
   def commands_common
@@ -172,7 +161,7 @@ RSpec.describe "Peer bundle goldens" do
   end
 
   def cards_common
-    run_command("no session yet", "", no_id_ctx)
+    run_command("no session yet", "", no_id: true)
     run_command("not paired", "")
     pair
     outbox(nil)
@@ -244,7 +233,7 @@ RSpec.describe "Peer bundle goldens" do
     end
 
     it "keeps what register declares" do
-      chi.declared.each { |decl| section(decl.keys.first.to_s, decl) }
+      declared.each { |decl| section(decl.keys.first.to_s, decl) }
       section("USAGE", plugin_class::USAGE)
       expect_golden("register")
     end
@@ -289,7 +278,7 @@ RSpec.describe "Peer bundle goldens" do
     let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
     let(:args_file) { File.join(tmpdir, "codex-args") }
 
-    def fake_codex(body) = FakeExecutables.fake_executable(bin, "codex", body)
+    def fake_codex(body) = Samagotchi::Testing::FakeExecutable.write(bin, "codex", body)
 
     def queue_ok = fake_codex("printf '%s\\0' \"$@\" >> '#{args_file}'\necho \"Queued.\"\n")
 
@@ -299,12 +288,13 @@ RSpec.describe "Peer bundle goldens" do
       section("queued", File.read(args_file).split("\0").inspect) if File.exist?(args_file)
     end
 
-    around { |example| with_env("CODEX" => File.join(tmpdir, "bin", "codex")) { example.run } }
-
-    before { queue_ok }
+    before do
+      ENV["CODEX"] = File.join(tmpdir, "bin", "codex")
+      queue_ok
+    end
 
     it "keeps what register declares" do
-      chi.declared.each { |decl| section(decl.keys.first.to_s, decl) }
+      declared.each { |decl| section(decl.keys.first.to_s, decl) }
       section("USAGE", plugin_class::USAGE)
       expect_golden("register")
     end
@@ -323,10 +313,10 @@ RSpec.describe "Peer bundle goldens" do
       section("failed", tool(kind: "validate", title: "t", text: "x"))
       fake_codex("exit 4")
       section("failed, no text", tool(kind: "validate", title: "t", text: "x"))
-      with_env("CODEX" => File.join(tmpdir, "no-codex")) do
+      with_vars("CODEX" => File.join(tmpdir, "no-codex")) do
         section("no CLI there", tool(kind: "validate", title: "t", text: "x"))
       end
-      with_env("CODEX" => nil, "PATH" => File.join(tmpdir, "empty")) do
+      with_vars("CODEX" => nil, "PATH" => File.join(tmpdir, "empty")) do
         section("no codex on the PATH", tool(kind: "validate", title: "t", text: "x"))
       end
       plugin_class.send(:remove_const, :QUEUE_SECONDS)
