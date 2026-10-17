@@ -45,8 +45,10 @@ and commands may change between minor versions. How releases are made:
   plugin installed again); a git, zip or tar source is cloned or extracted once per `chi bundle install|upgrade`,
   not twice. A git URL that doesn't clone says `Install failed: git clone failed for <url>` (no `Source
   normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
-  bundle installed by URL before this under a repo name that differs from its manifest's: `chi bundle uninstall
-  <repo name>` first, then install it again.
+  bundle installed by URL before this under a repo name that differs from its manifest's isn't installed a second
+  time beside it: `chi bundle install|upgrade <url>` fails with `<url> is installed as <repo name>: chi bundle
+  uninstall <repo name>, then install it again` (it fell back to a second install, both copies' plugin and hooks
+  loaded).
 - A bundle can no longer be replaced silently by another source whose manifest takes its name: `chi bundle install
   <dir>` with `name: btw` deleted the installed btw's plugin and hooks and rewrote its record, while the summary said
   `btw is already installed`. Now an install over a bundle from another source is refused, `--force` too (`btw is

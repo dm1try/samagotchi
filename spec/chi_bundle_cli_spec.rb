@@ -255,6 +255,32 @@ RSpec.describe "chi bundle (CLI)" do
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
+    # Before chi named a git URL bundle by its manifest, it took the repo's
+    # name: such a record isn't found under the manifest's name, and a second
+    # install beside it would load both copies' plugin and hooks.
+    it "refuses an upgrade or install of a git URL recorded under the repo's name, and says how to move on" do
+      repo = self.class.make_bundle(File.join(@root, "chi-foo"), name: "foo", version: "1.0.0", content: "one\n")
+      git = ->(*args) { system("git", "-C", repo, *args, out: File::NULL, err: File::NULL) }
+      expect(git.call("init", "-q") && git.call("add", ".") &&
+             git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v1")).to be(true)
+      url = "file://#{repo}"
+      chi("install", url)
+      # The record as chi 0.75.0 wrote it: named after the repo.
+      bundles = File.join(memories, ".bundles")
+      FileUtils.mv(File.join(bundles, "foo"), File.join(bundles, "chi-foo"))
+      record = File.join(bundles, "chi-foo", "manifest.json")
+      File.write(record, JSON.generate(JSON.parse(File.read(record)).merge("name" => "chi-foo")))
+
+      hint = "is installed as chi-foo: `chi bundle uninstall chi-foo`, then install it again\n"
+      expect(chi("upgrade", url)).to eq(["", "Upgrade failed: #{url} #{hint}", 1])
+      expect(chi("upgrade", "#{url}/")).to eq(["", "Upgrade failed: #{url}/ #{hint}", 1])
+      expect(chi("install", url)).to eq(["", "Install failed: #{url} #{hint}", 1])
+      expect(Dir.children(bundles)).to eq(["chi-foo"])
+
+      chi("uninstall", "chi-foo")
+      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("foo")}", "", 0])
+    end
+
     # BundleCommand reads the name from the extract the Installer then
     # installs: one git clone, zip or tar extract per command, not two.
     it "extracts an archive source once per install or upgrade" do

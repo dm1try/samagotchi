@@ -248,7 +248,12 @@ for a file another bundle installed.
 
   Sources compare as a git URL without its `#ref` (or a trailing `/` or
   `.git`), a shipped bundle by its dir in any chi version, and a path with
-  symlinks resolved.
+  symlinks resolved. A git URL bundle chi 0.75.0 or earlier installed under
+  the repo's name (`chi-foo` for `name: foo`) isn't installed again beside
+  it: `chi bundle install|upgrade <url>` says `<url> is installed as
+  chi-foo: chi bundle uninstall chi-foo, then install it again`. That match
+  is by the same source, so a record of `git@github.com:x/foo` isn't found
+  from `https://github.com/x/foo` (uninstall it by name).
 - **The index says where a memory came from.** The `index.md` line of a file
   a bundle installed ends in `· from <bundle>`, before the description:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —

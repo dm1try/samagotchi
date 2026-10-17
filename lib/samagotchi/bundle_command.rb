@@ -148,6 +148,7 @@ module Samagotchi
 
       prepared, bundle_name = prepare_or_fail(expanded_source, "Install")
       return 1 unless prepared
+      return 1 if installed_under_another_name?(expanded_source, bundle_name, prepared, "Install")
 
       installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force)
       run_installer(installer, failed: "Install") do |manifest|
@@ -177,6 +178,7 @@ module Samagotchi
 
       prepared, bundle_name = prepare_or_fail(expanded_source, "Upgrade")
       return 1 unless prepared
+      return 1 if installed_under_another_name?(expanded_source, bundle_name, prepared, "Upgrade")
 
       unless Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
@@ -213,6 +215,29 @@ module Samagotchi
     ensure
       # Any failure (an unexpected error too) removes the extract.
       prepared&.cleanup unless named
+    end
+
+    # A bundle installed from this source under another name: a git URL
+    # bundle recorded before chi named it by its manifest (it took the
+    # repo's name, chi-foo for name: foo). Installing it again would load
+    # both copies' plugin and hooks, so "<word> failed: … installed as
+    # chi-foo" instead (the extract removed). Only when no bundle has the
+    # manifest's name; sources compare by SourceIdentity.
+    # @return [Boolean] refused
+    def installed_under_another_name?(expanded_source, bundle_name, prepared, word)
+      return false if Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
+
+      identity = Samagotchi::MemoryBundle::SourceIdentity.of(expanded_source)
+      return false unless identity
+
+      other, = Samagotchi::MemoryBundle::Provenance.each_installed.find do |name, bundle|
+        name != bundle_name && !bundle.error? && Samagotchi::MemoryBundle::SourceIdentity.of(bundle.source) == identity
+      end
+      return false unless other
+
+      prepared.cleanup
+      @stderr.puts "#{word} failed: #{expanded_source} is installed as #{other}: `chi bundle uninstall #{other}`, then install it again"
+      true
     end
 
     def installer_for(source, name, scope:, force:, **)

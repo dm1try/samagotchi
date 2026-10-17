@@ -22,7 +22,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 
 | Piece | Role |
 |---|---|
-| `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step |
+| `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step; refuses a source already installed under another name (`installed_under_another_name?`: a git URL bundle recorded under its repo's name before the manifest named it) |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
 | `SourceIdentity` (source.rb) | what a source is, for comparing two installs of one name: `shipped:<dir>` (any gem or checkout), `git:<url>` (no `#ref`, trailing `/` or `.git`), `path:<realpath>`; nil when it can't place one |
 | `PreparedSource` (source.rb) | one source normalized once (dir, owned, git commit): `BundleCommand` reads the bundle's name from its `manifest.yml` (the name for every kind of source, a git URL too) and hands it to the Installer (`prepared:`), so a source is cloned or extracted once per command |
