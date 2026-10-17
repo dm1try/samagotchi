@@ -10,6 +10,7 @@ require_relative "atomic_file"
 require_relative "token_usage"
 require_relative "model_price"
 require_relative "session"
+require_relative "session_metrics/totals"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -401,7 +402,7 @@ module Samagotchi
     def finish_generation
       @mutex.synchronize do
         speed = close_generation if @turn&.gen_open
-        GenerationReport.new(speed: speed, tokens: tokens_block(@totals, @turn))
+        GenerationReport.new(speed: speed, tokens: @totals.with_running(@turn).tokens_block)
       end
     end
 
@@ -449,14 +450,14 @@ module Samagotchi
     # Caller holds the mutex. +records+: :recent (the live snapshot) or :all
     # (analytics.json).
     def build_snapshot(records_mode)
-      totals = @totals
       turn = @turn
+      totals = @totals.with_running(turn)
       in_flight = turn ? turn.tool_calls_by_id.values : []
       {
         session_id: @session_id,
         turns: @turn_records.size + (turn ? 1 : 0),
-        cancellations: totals[:cancellations],
-        tokens: tokens_block(totals, turn),
+        cancellations: totals.cancellations,
+        tokens: totals.tokens_block,
         context: context_block(@turn_records),
         memory_index: @memory_index,
         profile: @profile,
@@ -464,16 +465,16 @@ module Samagotchi
         served_model: @served_model,
         served_model_for: @served_model_for,
         tool_calls_total: @tool_records.size + in_flight.size,
-        tool_calls_by_tool: tally_into(totals[:by_tool].dup, in_flight),
+        tool_calls_by_tool: tally_into(@tool_tallies[:by_tool].dup, in_flight),
         # The calls the model made under an alias's name (bash run as
         # execute), by its own spelling; only when there are any.
-        **(totals[:aliased].empty? ? {} : { tool_calls_aliased: totals[:aliased].dup }),
-        tool_errors: totals[:tool_errors],
-        iterations_total: totals[:iterations] + (turn&.iteration_count || 0),
-        gen_latency_ms: (totals[:gen_ms] + (turn&.gen_latency_accum || 0)).round,
-        retries: totals[:retries] + (turn&.retries || 0),
-        cuts: totals[:cuts] + (turn&.cuts || 0),
-        capped: totals[:capped] + (turn&.capped || 0),
+        **(@tool_tallies[:aliased].empty? ? {} : { tool_calls_aliased: @tool_tallies[:aliased].dup }),
+        tool_errors: @tool_tallies[:errors],
+        iterations_total: totals.iterations,
+        gen_latency_ms: totals.gen_ms.round,
+        retries: totals.retries,
+        cuts: totals.cuts,
+        capped: totals.capped,
         started_at: @started_at,
         last_activity_at: @last_activity_at,
         # From the session's first start (an earlier process's too), to now.
@@ -481,33 +482,6 @@ module Samagotchi
         **records_view(records_mode),
         active_turn: active_turn_snapshot,
         active_tools: active_tool_snapshots
-      }
-    end
-
-    # The session's token totals, with the running turn's finished
-    # generations; the last speeds are the newest a generation reported.
-    # Caller holds the mutex.
-    def tokens_block(totals, turn)
-      add = ->(key) { totals[key] + (turn&.public_send(key) || 0) }
-      decode_ms = add.call(:decode_ms_sum)
-      decode_tokens = add.call(:decode_tokens_sum)
-      speed_turn = turn&.last_decode_tps ? turn : nil
-      {
-        prompt_sum: add.call(:prompt_sum),
-        completion_sum: add.call(:completion_sum),
-        cached_sum: add.call(:cached_sum),
-        cache_write_sum: add.call(:cache_write_sum),
-        reprefill_sum: add.call(:reprefill_sum),
-        reasoning_sum: add.call(:reasoning_sum),
-        cost_sum: add.call(:cost_sum),
-        cost_estimate_sum: add.call(:cost_estimate_sum),
-        decode_ms_sum: decode_ms.round,
-        decode_tokens_sum: decode_tokens,
-        avg_decode_tps: decode_ms.positive? ? (decode_tokens * 1000.0 / decode_ms).round(1) : nil,
-        last_decode_tps: speed_turn ? speed_turn.last_decode_tps : totals[:last_decode_tps],
-        last_prefill_tps: turn&.last_prefill_tps || totals[:last_prefill_tps],
-        tps_source: speed_turn ? speed_turn.tps_source : totals[:tps_source],
-        source: combined_source(totals[:token_sources] + (turn&.token_sources || []))
       }
     end
 
@@ -1057,48 +1031,22 @@ module Samagotchi
     end
 
     # The session totals over the finished records, as running counters
-    # (#snapshot adds the running turn). Caller holds the mutex.
+    # (#snapshot adds the running turn), and the tool tallies over the tool
+    # records. Caller holds the mutex.
     def reset_totals
-      @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
-                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, aliased: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
-                  reprefill_sum: 0, reasoning_sum: 0,
-                  cost_sum: 0, cost_estimate_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
-                  last_prefill_tps: nil, tps_source: nil }
+      @totals = Totals.zero
+      @tool_tallies = { by_tool: {}, aliased: {}, errors: 0 }
     end
 
     def count_turn(record)
-      totals = @totals
-      totals[:cancellations] += 1 if record[:status] == "canceled"
-      totals[:prompt_sum] += number(record[:prompt_tokens_sum])
-      totals[:completion_sum] += number(record[:completion_tokens])
-      totals[:iterations] += number(record[:iterations])
-      totals[:gen_ms] += number(record[:gen_ms])
-      totals[:retries] += number(record[:retries])
-      totals[:cuts] += number(record[:cuts])
-      totals[:capped] += number(record[:capped])
-      totals[:cached_sum] += number(record[:cached_tokens_sum])
-      totals[:cache_write_sum] += number(record[:cache_write_tokens_sum])
-      totals[:reprefill_sum] += number(record[:reprefill_tokens_sum])
-      totals[:reasoning_sum] += number(record[:reasoning_tokens])
-      totals[:cost_sum] += number(record[:cost])
-      totals[:cost_estimate_sum] += number(record[:cost_estimate])
-      totals[:decode_ms_sum] += number(record[:decode_ms])
-      totals[:decode_tokens_sum] += number(record[:decode_tokens])
-      # The newest speeds a record has (an older record has none).
-      if record[:decode_tps].is_a?(Numeric)
-        totals[:last_decode_tps] = record[:decode_tps]
-        totals[:tps_source] = record[:tps_source]
-      end
-      totals[:last_prefill_tps] = record[:prefill_tps] if record[:prefill_tps].is_a?(Numeric)
-      source = record[:token_source]
-      totals[:token_sources] |= [source.to_s] unless source.nil?
+      @totals = @totals.add(record)
     end
 
     def count_tool(record)
-      @totals[:tool_errors] += 1 if record[:status] == "error"
-      tally_into(@totals[:by_tool], [record])
+      @tool_tallies[:errors] += 1 if record[:status] == "error"
+      tally_into(@tool_tallies[:by_tool], [record])
       called_as = record[:called_as].to_s
-      @totals[:aliased][called_as] = @totals[:aliased].fetch(called_as, 0) + 1 unless called_as.empty?
+      @tool_tallies[:aliased][called_as] = @tool_tallies[:aliased].fetch(called_as, 0) + 1 unless called_as.empty?
     end
 
     def tally_into(counts, tools)
@@ -1107,17 +1055,6 @@ module Samagotchi
         counts[name] = counts.fetch(name, 0) + 1 unless name.empty?
       end
       counts
-    end
-
-    def number(value)
-      value.is_a?(Numeric) ? value : 0
-    end
-
-    # server, estimate, or mixed when both kinds of counts (or a turn that
-    # was already mixed) are in; nil before any.
-    def combined_source(sources)
-      kinds = sources.compact.map(&:to_s).flat_map { |source| source == "mixed" ? %w[server estimate] : [source] }.uniq
-      kinds.size > 1 ? "mixed" : kinds.first
     end
 
     def earliest_timestamp(*timestamps)
