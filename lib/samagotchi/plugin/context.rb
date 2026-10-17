@@ -5,6 +5,7 @@ require_relative "../log"
 require_relative "../paths"
 require_relative "../guardrails/context"
 require_relative "../idle_client"
+require_relative "service"
 require_relative "side_question"
 
 module Samagotchi
@@ -76,7 +77,7 @@ module Samagotchi
     # handler started) they act on the session now, through the Host.
     class Context
       # Thread.current key: {Context => the event its handler runs for}.
-      CURRENT_EVENTS = :samagotchi_plugin_current_events
+      CURRENT_EVENTS = Service::CURRENT_EVENTS
       # Debug-log records tagged plugins, with bundle=<bundle> (tags are a
       # closed list, LogLine::TAGS).
       class Logger
@@ -318,7 +319,7 @@ module Samagotchi
       # @return [Http]
       def http
         @http ||= Http.new(bundle: @bundle, transport: @http_transport,
-                           cancel_lookup: -> { @host.cancel_controller&.call(handler: in_handler?) })
+                           cancel_lookup: -> { http_cancel_controller })
       end
 
       # This session's attached context: attach a URL or a command, list
@@ -386,6 +387,12 @@ module Samagotchi
 
       # Whether this plugin's handler runs on this thread (#with_event).
       def in_handler? = !!Thread.current[CURRENT_EVENTS]&.key?(self)
+
+      # The controller a ctx.http call without cancel: stops with: nil inside
+      # a service's start block, even on the turn's thread.
+      def http_cancel_controller
+        Service.starting? ? nil : @host.cancel_controller&.call(handler: in_handler?)
+      end
 
       # The event[:x] helper of the event this plugin's handler runs for on
       # this thread, or nil (not in a handler).

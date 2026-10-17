@@ -26,7 +26,7 @@ RSpec.describe "ctx.http's default cancel controller" do
   before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
   # The controller a call would use, as ctx.http reads it (Context's lookup).
-  def lookup = host.cancel_controller.call(handler: ctx.send(:in_handler?))
+  def lookup = ctx.send(:http_cancel_controller)
 
   def run_turn(&)
     allow(client).to receive(:complete) do |*|
@@ -44,6 +44,52 @@ RSpec.describe "ctx.http's default cancel controller" do
     seen = nil
 
     run_turn { seen = lookup }
+
+    expect(seen).to be(turn_controller)
+  end
+
+  it "is nil inside a service's start block that a handler's first value starts, the turn's again after" do
+    service = Samagotchi::Plugin::Service.new("demo:svc") { lookup }
+    at_start = after = :unset
+
+    run_turn do
+      Thread.new do
+        ctx.with_event({ type: :before_tool_call }) do
+          at_start = service.value
+          after = lookup
+        end
+      end.join
+    end
+
+    expect(at_start).to be_nil
+    expect(after).to be(turn_controller)
+  end
+
+  it "is nil inside a service's start block on the turn thread (a tool's first value), the turn's again after" do
+    service = Samagotchi::Plugin::Service.new("demo:svc") { lookup }
+    at_start = after = :unset
+
+    run_turn do
+      at_start = service.value
+      after = lookup
+    end
+
+    expect(at_start).to be_nil
+    expect(after).to be(turn_controller)
+  end
+
+  it "restores the handler's event after a start block that raises" do
+    service = Samagotchi::Plugin::Service.new("demo:svc") { raise "boom" }
+    seen = nil
+
+    run_turn do
+      Thread.new do
+        ctx.with_event({ type: :before_tool_call }) do
+          expect { service.value }.to raise_error("boom")
+          seen = lookup
+        end
+      end.join
+    end
 
     expect(seen).to be(turn_controller)
   end

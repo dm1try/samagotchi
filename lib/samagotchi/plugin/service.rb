@@ -15,6 +15,16 @@ module Samagotchi
       # again.
       class Stopped < StandardError; end
 
+      # The thread-local Context#with_event keeps its handler events in;
+      # the start block runs with it cleared.
+      CURRENT_EVENTS = :samagotchi_plugin_current_events
+      # Thread.current key: true while a start block runs (the turn's own
+      # thread too: a ctx.http call there isn't the turn's).
+      STARTING = :samagotchi_plugin_service_starting
+
+      # Whether a service's start block runs on this thread.
+      def self.starting? = !!Thread.current[STARTING]
+
       # @return [String] "<bundle>:<name>"
       attr_reader :name
 
@@ -37,7 +47,7 @@ module Samagotchi
           return @value if @state == :running
 
           begin
-            @value = @start.call(self)
+            @value = start_outside_handler
             @state = :running
             Log.info(:plugins, "service_started", service: @name)
             @value
@@ -80,6 +90,19 @@ module Samagotchi
       end
 
       private
+
+      # The start block is the service's, not the handler's whose first
+      # #value started it: no event helper or ctx.http turn cancel inside.
+      def start_outside_handler
+        events = Thread.current[CURRENT_EVENTS]
+        starting = Thread.current[STARTING]
+        Thread.current[CURRENT_EVENTS] = nil
+        Thread.current[STARTING] = true
+        @start.call(self)
+      ensure
+        Thread.current[CURRENT_EVENTS] = events
+        Thread.current[STARTING] = starting
+      end
 
       def run_on_stop
         callbacks = @on_stop.reverse

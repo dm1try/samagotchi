@@ -923,7 +923,8 @@ Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which r
 - **Stop.** A call made for the turn (a tool, a hook's handler) stops when the turn is stopped, and a call inside an
   init task when chi shuts down; a call from your own thread, a `chi.service` or an anytime command has only its
   timeout unless you pass `cancel:`. After the turn has ended (an `:after_turn` or `:session_end` hook of a
-  stopped turn) a call is not cancelled by that stop.
+  stopped turn) a call is not cancelled by that stop. A service's start block counts as the service's even when its
+  first `value` comes from a handler.
 - **The log.** Each call writes one `http` line to the debug log: INFO (ERROR when it fails) with `bundle=`,
   `purpose=plugin`, the method, the URL **without its query**, the status and the time. Never headers or bodies.
   A plugin that polls a dead service therefore logs an ERROR per poll.
