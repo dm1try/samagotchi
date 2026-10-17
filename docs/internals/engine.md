@@ -131,6 +131,13 @@ The effective model doesn't resolve (a broken host config, HostRegistry#resolve 
   → session_state_snapshot never raises (its model fields are nil); a turn, stats_snapshot,
      chat_model? and system_prompt raise, as before
 
+A session's toolkit doesn't resolve (an unknown kit name: a typo, a bundle's kit that isn't installed; a base that
+doesn't resolve, a cycle), at a turn's start (ToolkitBinding#apply!):
+  → that turn declares the full kit with the session's own added and removed tools on top (Toolkit#resolve's
+     fallback); the saved toolkit stays as it is, so a reinstalled bundle gets it back
+  → each warning (that fallback, a config.yml kit with a problem: Toolkit.kits) logged once per process as
+     toolkit_unresolved (WARN), with a :guardrail_warning (label "toolkit") to the turn and the observers
+
 Stopped before the model was asked (prepare_turn returned false):
   → stopped_before_model(turn) → end_turn(turn, "canceled")
   → nothing kept, :turn_canceled {cancellation_reason, cancelled_by, duration_ms}
@@ -460,7 +467,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 |---|---|---|
 | `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, resumed?, images?, cut_after}` (`resumed`: a step-limit Continue) |
 | `:reminder_injected` | due reminders went into the turn | `{reminders}` |
-| `:context_status` | every request (unless `context.status` is off), the current estimate before it | `{iteration, status, usage, bucket, source}` (internals/context-telemetry.md) |
+| `:context_status` | every request (unless `context.status` is off), the current estimate before it; and outside any turn after `/model` (or when a session is loaded on another model than its last turn ran on), to the observers only (`Engine#announce_switched_context!`) | `{iteration, status, usage, bucket, source}`; the switch's form has no `iteration`: `{usage, bucket, context_window_tokens, context_window_source}`, with `usage.source: "switch"`, and `usage` nil when the new window doesn't resolve (internals/context-telemetry.md) |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source, price, model_ref}` (`price`: the turn's `ModelPrice#to_h`, nil without one; `model_ref`: the turn's model, asked `host:model`, added by the Engine's stream handler from the model `#generate` resolved after the `before_turn` hooks, so a hook's switch is the one named; native adds `profile`, `profile_source`) |
 | `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` |
 | `:generation_retrying` | the transport retries the request, or the chat loop asks again for a step whose stream dropped mid-answer (`restarted: true`: what the step streamed is void, and the web's live step, the TUI's activity line, the Bridge's TurnAccumulator and the stream hooks' watch start it over) | `{iteration, attempt, max_retries, next_delay, error_class, error_message, status, restarted?}` |
@@ -526,6 +533,10 @@ Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
     thread finishes for the old model is neither kept nor applied: #store_profile)
   → sync_model_key!, @prompt_builder.reset! (the system prompt is built again)
   → sync_kernel_client! (the kernel talks to the new host), the context window cache dropped
+  → the old model's ctx dropped: @metrics.forget_model_reports! (its window and profile reports) and
+    @last_context_status = nil; /model (SessionCommands#switch_model) then calls #announce_switched_context!
+    (the ctx % on the new model's window, before its first turn; Engine#session= does the configured-window-only
+    variant for a session loaded on another model; internals/context-telemetry.md)
   → the kernel is never rebuilt; the next turn's backend follows the new host's api
 
 Model probes (per turn):
