@@ -1899,6 +1899,27 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
 // text only), so B queues behind A.
 const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+// The composer's image button opens the file picker; the picked images are
+// chips, a file that isn't an image stays out with a toast, × drops a chip,
+// and the rest go with the message (a thumbnail in its bubble).
+test("the image button: picked images are chips, a non-image stays out with a toast, × drops one, the rest go with the message", async ({ page, script }) => {
+  script("plain");
+  const png = (name) => ({ name, mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") });
+  await expect(page.locator("#attachBtn")).toBeVisible();
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator("#attachBtn").click();
+  await (await chooser).setFiles([png("one.png"), png("two.png"), { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") }]);
+  await expect(page.locator("#chips .chip-name")).toHaveText(["one.png", "two.png"]);
+  await expect(page.locator("#toast")).toContainText("1 file not added: not an image");
+  await page.locator("#chips .chip-remove").first().click();
+  await expect(page.locator("#chips .chip-name")).toHaveText(["two.png"]);
+  await send(page, "Say pong");
+  await expect(page.locator(`${H()} .bubble.user`).last().locator("img.thumb")).toHaveCount(1);
+  await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
+  await turnEnded(page, 1);
+  await expect(page.locator("#chips")).toBeHidden();
+});
+
 // A's turn-end re-read (?tail=1) lands after B started: B keeps its own
 // live line ("turn 2", ticking), A's line and answer are A's, and a reload
 // draws the same two lines.
