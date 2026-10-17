@@ -461,11 +461,11 @@ RSpec.describe "The slow-commands bundle" do
 
     it "records a timed-out execute, denies the next identical one once, and lets the second through" do
       hooks.fire(:before_turn, { type: :before_turn, prompt: "test" })
-      expect(run(execute("bundle exec rspec"))[:output]).to start_with("[execute]\nError: command timed out")
+      expect(run(execute("bundle exec rspec")).output).to start_with("[execute]\nError: command timed out")
       hooks.fire(:before_turn, { type: :before_turn, prompt: "again" })
-      expect(run(execute("bundle exec rspec"))[:output])
+      expect(run(execute("bundle exec rspec")).output)
         .to start_with("[execute] Error: denied by guardrail (bundle slow-commands): slow command. ")
-      expect(run(execute("bundle exec rspec"))[:output]).to start_with("[execute]\nError: command timed out")
+      expect(run(execute("bundle exec rspec")).output).to start_with("[execute]\nError: command timed out")
     end
   end
 end

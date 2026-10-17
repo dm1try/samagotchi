@@ -54,23 +54,23 @@ RSpec.describe "read on images" do
     it "stores the image with the session and returns its ref on the run and the event" do
       kernel.turn_settings = kernel.turn_settings.with(vision: vision)
       run = run_read
-      expect(run[:output]).to eq("[read]\nImage tiny.png (3×2 PNG) attached.")
-      expect(run[:images].first).to include(name: "tiny.png", source: "tool", width: 3, height: 2)
-      expect(File.exist?(File.join(dir, run[:images].first[:file]))).to be(true)
-      expect(events.last).to include(type: :tool_call_completed, images: run[:images])
+      expect(run.output).to eq("[read]\nImage tiny.png (3×2 PNG) attached.")
+      expect(run.images.first).to include(name: "tiny.png", source: "tool", width: 3, height: 2)
+      expect(File.exist?(File.join(dir, run.images.first[:file]))).to be(true)
+      expect(events.last).to include(type: :tool_call_completed, images: run.images)
     end
 
     it "tells the model it can't see images, and attaches nothing" do
       kernel.turn_settings = kernel.turn_settings.with(vision: blind)
       run = run_read
-      expect(run[:output]).to eq("[read]\ntiny.png (3×2 PNG) is an image; this model can't see images")
-      expect(run).not_to have_key(:images)
+      expect(run.output).to eq("[read]\ntiny.png (3×2 PNG) is an image; this model can't see images")
+      expect(run.images).to be_nil
       expect(events.last).not_to have_key(:images)
       expect(Dir.exist?(File.join(dir, "images"))).to be(false)
     end
 
     it "says the image can't be attached without a session" do
-      expect(run_read[:output]).to eq("[read]\ntiny.png (3×2 PNG) is an image; images can't be attached here")
+      expect(run_read.output).to eq("[read]\ntiny.png (3×2 PNG) is an image; images can't be attached here")
     end
   end
 

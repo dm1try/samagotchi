@@ -91,13 +91,13 @@ RSpec.describe "Engine: editing config.yml after an approval" do
   it "asks, and writes once allowed" do
     result, asked = write_config("Allow once")
     expect(asked.first[:approval]).to include(rule: "chi-config", scopes: %w[once session])
-    expect(result[:output]).not_to include("denied")
+    expect(result.output).not_to include("denied")
     expect(File.read(config_path)).to end_with("# edited\n")
   end
 
   it "doesn't write when denied" do
     result, = write_config("Deny")
-    expect(result[:output]).to include("The user declined this call. It needed approval (rule chi-config, core)")
+    expect(result.output).to include("The user declined this call. It needed approval (rule chi-config, core)")
     expect(File.read(config_path)).to eq(original)
   end
 end

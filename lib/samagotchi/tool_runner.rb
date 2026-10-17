@@ -15,6 +15,17 @@ require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
 
 module Samagotchi
+  # One call's result from ToolRunner#run, read by ToolResponse (the loops'
+  # tool_response entries) and the loops' activity list. Fields a call didn't
+  # produce (images, shown_params, shown_label, refs, diff, output_file) are nil.
+  ToolRun = Data.define(:output, :capped_output, :truncated, :activity, :images, :shown_params, :shown_label, :refs, :diff,
+                        :output_file) do
+    def initialize(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil, shown_params: nil,
+                   shown_label: nil, refs: nil, diff: nil, output_file: nil)
+      super
+    end
+  end
+
   # The single per-call path both loops use: the tool_call_started and
   # tool_call_completed events, the guardrail gate (before_tool_call hooks
   # and their veto), dispatch through KernelLoop, the after_tool_call hook
@@ -40,7 +51,7 @@ module Samagotchi
     end
 
     # @param call_index [Integer] 1-based position of the call in its batch
-    # @return [Hash] output:, capped_output:, truncated:, activity:,
+    # @return [ToolRun] output:, capped_output:, truncated:, activity:,
     #   output_file: (the saved whole output of a cut execute result),
     #   images: (refs) when the tool returned images the model gets to see, and
     #   shown_params: the params line the live row showed, and shown_label:
@@ -135,14 +146,10 @@ module Samagotchi
       fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped,
                                status: status || "error", call: call.dup, elapsed_ms: elapsed_ms, result: tool_text })
 
-      run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
-      run[:images] = images if images&.any?
-      run[:shown_params] = params if params && plugin_tool?(call[:name])
-      run[:shown_label] = label if label
-      run[:refs] = refs unless refs.empty?
-      run[:diff] = diff if diff
-      run[:output_file] = output_file if output_file
-      run
+      ToolRun.new(output: output, capped_output: capped, truncated: truncated, activity: result[:activity],
+                  images: images&.any? ? images : nil,
+                  shown_params: params && plugin_tool?(call[:name]) ? params : nil,
+                  shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file)
     end
 
     private

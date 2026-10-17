@@ -50,39 +50,39 @@ RSpec.describe "tool results with images" do
 
     it "stores every image, from a path or raw bytes, and keeps the text" do
       result = run([{ path: png_path }, { bytes: File.binread(gif_path), name: "shot.gif" }])
-      expect(result[:output]).to eq("[shots]\ntwo shots")
-      expect(result[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png shot.gif])
-      expect(result[:images].map { |ref| ref[:source] }).to eq(%w[tool tool])
-      expect(result[:images]).to all(satisfy { |ref| File.exist?(File.join(dir, ref[:file])) })
-      expect(events.last[:images]).to eq(result[:images])
+      expect(result.output).to eq("[shots]\ntwo shots")
+      expect(result.images.map { |ref| ref[:name] }).to eq(%w[tiny.png shot.gif])
+      expect(result.images.map { |ref| ref[:source] }).to eq(%w[tool tool])
+      expect(result.images).to all(satisfy { |ref| File.exist?(File.join(dir, ref[:file])) })
+      expect(events.last[:images]).to eq(result.images)
     end
 
     it "keeps the text and the good images when one entry is bad" do
       result = run([{ path: png_path }, { bytes: "not an image", name: "junk.bin" }, { nope: 1 }, "x"])
-      expect(result[:images].size).to eq(1)
-      expect(result[:output]).to eq("[shots]\ntwo shots\nError: junk.bin is not an image chi can send (png, jpeg, gif, webp)\n" \
+      expect(result.images.size).to eq(1)
+      expect(result.output).to eq("[shots]\ntwo shots\nError: junk.bin is not an image chi can send (png, jpeg, gif, webp)\n" \
                                     "Error: image 3 is not {path:} or {bytes:, name:}\nError: image 4 is not {path:} or {bytes:, name:}")
     end
 
     it "attaches at most 4 images and says which were left out" do
       result = run(Array.new(6) { |i| { bytes: File.binread(png_path), name: "shot#{i + 1}.png" } })
-      expect(result[:images].size).to eq(4)
-      expect(result[:output]).to end_with("shot5.png is not attached: at most 4 images per tool result\n" \
+      expect(result.images.size).to eq(4)
+      expect(result.output).to end_with("shot5.png is not attached: at most 4 images per tool result\n" \
                                           "shot6.png is not attached: at most 4 images per tool result")
     end
 
     it "tells a model that can't see images so, and keeps the text" do
       result = run([{ path: png_path }, { bytes: File.binread(gif_path), name: "shot.gif" }], vision: blind)
-      expect(result[:output]).to eq("[shots]\ntwo shots\ntiny.png is an image; this model can't see images\n" \
+      expect(result.output).to eq("[shots]\ntwo shots\ntiny.png is an image; this model can't see images\n" \
                                     "shot.gif is an image; this model can't see images")
-      expect(result).not_to have_key(:images)
+      expect(result.images).to be_nil
       expect(Dir.exist?(File.join(dir, "images"))).to be(false)
     end
 
     it "caps raw bytes like a file (nothing over 50 MB is read)" do
       stub_const("Samagotchi::ImageStore::MAX_SOURCE_BYTES", 10)
       result = run([{ bytes: File.binread(png_path), name: "big.png" }])
-      expect(result[:output]).to end_with("Error: big.png is too large (over 50 MB)")
+      expect(result.output).to end_with("Error: big.png is too large (over 50 MB)")
     end
   end
 

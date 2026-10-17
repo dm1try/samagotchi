@@ -40,7 +40,7 @@ RSpec.describe "Engine: a scratch session" do
   def run_call(engine, call)
     kernel = engine.instance_variable_get(:@kernel)
     Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
-                                                 on_stream_event: nil, max_tool_output_chars: nil)[:output]
+                                                 on_stream_event: nil, max_tool_output_chars: nil).output
   end
 
   it "refuses memory_write with a short tool result and saves nothing" do

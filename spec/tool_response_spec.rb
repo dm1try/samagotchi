@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/tool_response"
+require "samagotchi/tool_runner"
 
 RSpec.describe Samagotchi::ToolResponse do
   # Stands in for ToolRunner: answers each call with its scripted run.
@@ -20,11 +21,12 @@ RSpec.describe Samagotchi::ToolResponse do
   let(:ticket) { { kind: "issue", target: { id: "T-1" }, actions: [] } }
   let(:runs) do
     {
-      "shots" => { output: "[shots]\none shot", capped_output: "[shots]\none", activity: { tool: "shots" },
-                   images: [shot], shown_params: "all", shown_label: "chrome: shots", refs: [ticket] },
-      "write" => { output: "[write]\nwrote", capped_output: "[write]\nwrote", activity: { tool: "write" },
-                   diff: { path: "x" } },
-      "broken" => { output: "[broken] Error: RuntimeError: x", capped_output: "[broken] Error", activity: nil }
+      "shots" => Samagotchi::ToolRun.new(output: "[shots]\none shot", capped_output: "[shots]\none",
+                                         activity: { tool: "shots" }, images: [shot], shown_params: "all",
+                                         shown_label: "chrome: shots", refs: [ticket]),
+      "write" => Samagotchi::ToolRun.new(output: "[write]\nwrote", capped_output: "[write]\nwrote",
+                                         activity: { tool: "write" }, diff: { path: "x" }),
+      "broken" => Samagotchi::ToolRun.new(output: "[broken] Error: RuntimeError: x", capped_output: "[broken] Error")
     }
   end
   let(:events) { [] }
@@ -39,7 +41,7 @@ RSpec.describe Samagotchi::ToolResponse do
     it "runs each call between the dispatch events and yields each run with its index" do
       yielded = []
 
-      runs = batch(%w[shots write]) { |run, index| yielded << [run[:output], index] }
+      runs = batch(%w[shots write]) { |run, index| yielded << [run.output, index] }
 
       expect(events).to eq([{ type: :tool_dispatch_started, iteration: 2, call_count: 2 },
                             { type: :tool_dispatch_completed, iteration: 2, call_count: 2 }])

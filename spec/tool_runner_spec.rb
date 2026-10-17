@@ -14,8 +14,9 @@ require "support/test_kernel"
 # level (text the model gets, both loops) is in
 # spec/llm/tool_call_wrapper_parity_spec.rb.
 RSpec.describe Samagotchi::ToolRunner do
-  let(:hooks) { Samagotchi::Hooks::Registry.new }
-  let(:dispatched) { [] }
+  let(:call) { { name: "execute", content: "ls" } }
+  let(:runner) { described_class.new(kernel) }
+  let(:events) { [] }
   let(:kernel) do
     k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate) do
       def dispatch_tool_call(call)
@@ -25,9 +26,17 @@ RSpec.describe Samagotchi::ToolRunner do
     end
     k.new(hooks, dispatched)
   end
-  let(:events) { [] }
-  let(:runner) { described_class.new(kernel) }
-  let(:call) { { name: "execute", content: "ls" } }
+  let(:dispatched) { [] }
+  let(:hooks) { Samagotchi::Hooks::Registry.new }
+
+  describe Samagotchi::ToolRun do
+    it "defaults every field to nil" do
+      expect(described_class.new).to eq(
+        described_class.new(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil,
+                            shown_params: nil, shown_label: nil, refs: nil, diff: nil, output_file: nil)
+      )
+    end
+  end
 
   def run(c = call)
     runner.run(c, iteration: 1, call_index: 1, call_count: 1,
@@ -138,7 +147,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
   it "dispatches an unvetoed call" do
     result = run
-    expect(result[:output]).to eq("[execute]\nran")
+    expect(result.output).to eq("[execute]\nran")
     expect(dispatched).to eq([call])
   end
 
@@ -146,13 +155,13 @@ RSpec.describe Samagotchi::ToolRunner do
     hooks.register(:before_tool_call) { |e| e[:blocked] = true; e[:block_reason] = "nope" }
     result = run
     expect(dispatched).to be_empty
-    expect(result[:output]).to eq("[execute] Error: blocked by guardrail: nope")
-    expect(result[:activity]).to include(status: "blocked")
+    expect(result.output).to eq("[execute] Error: blocked by guardrail: nope")
+    expect(result.activity).to include(status: "blocked")
   end
 
   it "uses a default reason when a hook blocks without one" do
     hooks.register(:before_tool_call) { |e| e[:blocked] = true }
-    expect(run[:output]).to eq("[execute] Error: blocked by guardrail: blocked by hook")
+    expect(run.output).to eq("[execute] Error: blocked by guardrail: blocked by hook")
   end
 
   it "dispatches a call a hook replaced" do
@@ -164,19 +173,19 @@ RSpec.describe Samagotchi::ToolRunner do
   it "tells the model what actually ran when the gate changed the call" do
     hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
     result = run
-    expect(result[:output]).to start_with("ran as: execute command=\"pwd\"\n")
-    expect(result[:capped_output]).to start_with("ran as: execute command=\"pwd\"\n")
+    expect(result.output).to start_with("ran as: execute command=\"pwd\"\n")
+    expect(result.capped_output).to start_with("ran as: execute command=\"pwd\"\n")
   end
 
   it "tells the model when the gate changed only the tool's name" do
     hooks.register(:before_tool_call) { |e| e[:call] = e[:call].merge(name: "read") }
     result = run
-    expect(result[:output]).to start_with("ran as: read")
+    expect(result.output).to start_with("ran as: read")
   end
 
   it "adds no ran-as line when the gate left the call alone" do
     hooks.register(:before_tool_call) { |e| e[:call] = e[:call].dup }
-    expect(run[:output]).to eq("[execute]\nran")
+    expect(run.output).to eq("[execute]\nran")
   end
 
   it "passes the before event its call, params, and an unset veto" do
@@ -210,30 +219,30 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "cuts the output and says so in a last line, the whole within the cap" do
       result = capped_run(100)
-      kept = result[:capped_output].index("\n[cut: ")
-      expect(result[:capped_output]).to eq("#{full[0, kept]}\n[cut: #{kept} of 310 chars; read it in parts]")
-      expect(result[:capped_output].length).to be <= 100
-      expect(result[:truncated]).to be(true)
-      expect(result[:output]).to eq(full)
+      kept = result.capped_output.index("\n[cut: ")
+      expect(result.capped_output).to eq("#{full[0, kept]}\n[cut: #{kept} of 310 chars; read it in parts]")
+      expect(result.capped_output.length).to be <= 100
+      expect(result.truncated).to be(true)
+      expect(result.output).to eq(full)
     end
 
     it "gives the event and the after_tool_call hook the text the model gets" do
       result = capped_run(100)
       completed = events.find { |e| e[:type] == :tool_call_completed }
-      expect(completed[:output]).to eq(result[:capped_output])
+      expect(completed[:output]).to eq(result.capped_output)
       expect(completed[:output_truncated]).to be(true)
-      expect(outputs).to eq([result[:capped_output]])
+      expect(outputs).to eq([result.capped_output])
     end
 
     it "cuts at the cap and adds the line after it when the cap is smaller than the line" do
       result = capped_run(10)
-      expect(result[:capped_output]).to eq("#{full[0, 10]}\n[cut: 10 of 310 chars; read it in parts]")
+      expect(result.capped_output).to eq("#{full[0, 10]}\n[cut: 10 of 310 chars; read it in parts]")
     end
 
     it "leaves an output within the cap as it is, with no line" do
       result = capped_run(310)
-      expect(result[:capped_output]).to eq(full)
-      expect(result[:truncated]).to be(false)
+      expect(result.capped_output).to eq(full)
+      expect(result.truncated).to be(false)
     end
   end
 
@@ -272,16 +281,16 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "keeps the end (the verdict and the exit line) as well as the start, within the cap" do
       result = capped_run(5000)
-      text = result[:capped_output]
+      text = result.capped_output
 
       expect(text).to start_with("[execute]\nstdout:\n  example 1 passed")
       expect(text).to end_with("\n744 examples, 0 failures\nexit: 0")
       expect(text.length).to be <= 5000
-      expect(result[:truncated]).to be(true)
+      expect(result.truncated).to be(true)
     end
 
     it "saves the whole output and names the file and the lines left out of it in the gap line" do
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
       path = saved_file
       lines = File.read(path).lines
       gap = text.lines.find { |l| l.start_with?("[cut: ") }
@@ -302,23 +311,23 @@ RSpec.describe Samagotchi::ToolRunner do
       result = capped_run(5000)
       completed = events.find { |e| e[:type] == :tool_call_completed }
 
-      expect(completed[:output]).to eq(result[:capped_output])
-      expect(outputs).to eq([result[:capped_output]])
-      expect(result[:output]).to eq(full)
+      expect(completed[:output]).to eq(result.capped_output)
+      expect(outputs).to eq([result.capped_output])
+      expect(result.output).to eq(full)
       expect(completed[:output_file]).to eq(saved_file)
-      expect(result[:output_file]).to eq(saved_file)
+      expect(result.output_file).to eq(saved_file)
     end
 
     it "cuts the same output to the same text, one file (loop-guard's repeat check)" do
-      first = capped_run(5000)[:capped_output]
-      expect(capped_run(5000)[:capped_output]).to eq(first)
+      first = capped_run(5000).capped_output
+      expect(capped_run(5000).capped_output).to eq(first)
       expect(saved_files.size).to eq(1)
     end
 
     it "keeps stdout's summary under a long stderr (each block cut on its own)" do
       warnings = (1..300).map { |i| "warning: deprecated thing #{i}" }.join("\n")
       kernel.output = "[execute]\nstdout:\n#{filler}\n744 examples, 0 failures\nstderr:\n#{warnings}\nexit: 1"
-      text = capped_run[:capped_output]
+      text = capped_run.capped_output
 
       expect(text).to include("\n744 examples, 0 failures\nstderr:\n")
       expect(text).to end_with("warning: deprecated thing 300\nexit: 1")
@@ -328,7 +337,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "says a preview is all that was saved (execute's own cut above 64 KB), and not to rely on it" do
       kernel.output = "[execute]\nstdout:\ntruncated=true\n[TRUNCATED_PREVIEW_HEAD]\n#{filler}\nexit: 0"
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
 
       expect(text).to include("this preview is saved in #{saved_file}")
       expect(text).to include("the full output wasn't kept")
@@ -337,7 +346,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "doesn't say not to rerun a command that didn't finish (killed at the limit)" do
       kernel.output = "[execute]\nError: command timed out after 120s\nstdout:\n#{filler}"
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
 
       expect(text).to include("the output it printed is saved in #{saved_file}")
       expect(text).not_to include("don't rerun")
@@ -345,7 +354,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "says the output wasn't saved with no session, and how to see the rest" do
       kernel.session_dir = nil
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
 
       expect(text).to end_with("exit: 0")
       expect(text).to include("the whole output wasn't saved (no session); to look past this, rerun with the output " \
@@ -356,7 +365,7 @@ RSpec.describe Samagotchi::ToolRunner do
     it "says why when the file can't be written, and logs it" do
       allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::ENOSPC)
       allow(Samagotchi::Log).to receive(:warn)
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
 
       expect(text).to include("the whole output wasn't saved (Errno::ENOSPC)")
       expect(text).to end_with("exit: 0")
@@ -370,16 +379,16 @@ RSpec.describe Samagotchi::ToolRunner do
       result = capped_run(700)
       completed = events.find { |e| e[:type] == :tool_call_completed }
 
-      expect(result[:capped_output]).to eq(Samagotchi::ToolOutputCut.head(kernel.output, 700))
+      expect(result.capped_output).to eq(Samagotchi::ToolOutputCut.head(kernel.output, 700))
       expect(saved_files).to be_empty
       expect(completed).not_to have_key(:output_file)
-      expect(result).not_to have_key(:output_file)
+      expect(result.output_file).to be_nil
     end
 
     it "doesn't say not to rerun a stopped command whose own last line looks like an exit line" do
       kernel.output = "[execute]\nError: command stopped by the user after 3s (killed; rerun it if still needed)\n" \
                       "stdout:\n#{filler}\nexit: 0"
-      text = capped_run(5000)[:capped_output]
+      text = capped_run(5000).capped_output
 
       expect(text).to include("the output it printed is saved in #{saved_file}")
       expect(text).not_to include("don't rerun")
@@ -387,11 +396,11 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "falls back to no session when the session's folder can't be looked up" do
       kernel.session_dir = -> { raise "gone" }
-      expect(capped_run(5000)[:capped_output]).to include("wasn't saved (no session)")
+      expect(capped_run(5000).capped_output).to include("wasn't saved (no session)")
     end
 
     it "gets the head cut, nothing saved, under a cap too small for a tail" do
-      text = capped_run(300)[:capped_output]
+      text = capped_run(300).capped_output
 
       expect(text).to eq(Samagotchi::ToolOutputCut.head(full, 300))
       expect(saved_files).to be_empty
@@ -399,7 +408,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "keeps execute.cut_head_chars of the head at most" do
       with_env("SAMAGOTCHI_EXECUTE_CUT_HEAD_CHARS" => "200") do
-        text = capped_run(5000)[:capped_output]
+        text = capped_run(5000).capped_output
         expect(text.index("\n[cut: ")).to be <= "[execute]\nstdout:\n".length + 200
       end
     end
@@ -409,7 +418,7 @@ RSpec.describe Samagotchi::ToolRunner do
       result = runner.run(read, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                 max_tool_output_chars: 5000)
 
-      expect(result[:capped_output]).to eq(Samagotchi::ToolOutputCut.head(full, 5000))
+      expect(result.capped_output).to eq(Samagotchi::ToolOutputCut.head(full, 5000))
       expect(saved_files).to be_empty
     end
   end
@@ -428,13 +437,13 @@ RSpec.describe Samagotchi::ToolRunner do
     it "keeps the header and the tail's end, names the log, saves nothing" do
       result = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                 max_tool_output_chars: 3000)
-      text = result[:capped_output]
+      text = result.capped_output
 
       expect(text).to start_with("[task_wait]\ntask_id: t1\nstatus: running\noutput_path: /tasks/t1.log\n")
       expect(text).to end_with("progress 300 ......................\nall done")
       expect(text).to match(%r{^\[cut: \d+ of #{full.length} chars not shown; the task's whole output is in /tasks/t1\.log: read it with start_line/end_line or rg it\]$})
       expect(text.length).to be <= 3000
-      expect(result[:output_file]).to be_nil
+      expect(result.output_file).to be_nil
     end
 
     it "names a handed-over execute's stderr log too" do
@@ -444,7 +453,7 @@ RSpec.describe Samagotchi::ToolRunner do
       end
 
       text = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
-                              max_tool_output_chars: 3000)[:capped_output]
+                              max_tool_output_chars: 3000).capped_output
 
       expect(text).to match(%r{^\[cut: \d+ of #{full.length} chars not shown; the task's whole output is in /tasks/t1\.log \(its stderr in /tasks/t1\.err\): read it with start_line/end_line or rg it\]$})
       expect(text.length).to be <= 3000
@@ -457,18 +466,18 @@ RSpec.describe Samagotchi::ToolRunner do
       hooks.register(:before_tool_call) { |e| e[:blocked] = false; e[:block_reason] = nil }
       result = run
       expect(dispatched).to be_empty
-      expect(result[:output]).to eq("[execute] Error: blocked by guardrail: nope")
+      expect(result.output).to eq("[execute] Error: blocked by guardrail: nope")
     end
 
     it "denies through the verdict API with the deny text for the model" do
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no listing today") }
       result = run
       expect(dispatched).to be_empty
-      expect(result[:output]).to eq(
+      expect(result.output).to eq(
         "[execute] Error: denied by guardrail (hook): no listing today. The user was not asked. " \
         "Do not retry it or reach the same result another way; ask the user how to proceed."
       )
-      expect(result[:activity]).to include(status: "blocked", guardrail: { verdict: "deny", decided_by: "hook" })
+      expect(result.activity).to include(status: "blocked", guardrail: { verdict: "deny", decided_by: "hook" })
     end
 
     it "ends the deny text with the voter's advice instead of the fixed tail" do
@@ -476,7 +485,7 @@ RSpec.describe Samagotchi::ToolRunner do
         e[:guardrail].deny!('"dedvo" is 1 edit away from "dedov"', source: "hook known_names, bundle known-names",
                             advice: 'Retry with "dedov".')
       end
-      expect(run[:output]).to eq(
+      expect(run.output).to eq(
         '[execute] Error: denied by guardrail (hook known_names, bundle known-names): "dedvo" is 1 edit away from "dedov". ' \
         'The user was not asked. Retry with "dedov".'
       )
@@ -484,24 +493,24 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "keeps the fixed tail when the advice is blank, and the first vote's advice when a later deny loses" do
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no", advice: " ") }
-      expect(run[:output]).to end_with("Do not retry it or reach the same result another way; ask the user how to proceed.")
+      expect(run.output).to end_with("Do not retry it or reach the same result another way; ask the user how to proceed.")
 
       hooks.unregister(:before_tool_call)
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("first", advice: "Retry it corrected.") }
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("second", advice: "Other advice.") }
-      expect(run[:output]).to eq("[execute] Error: denied by guardrail (hook): first. The user was not asked. Retry it corrected.")
+      expect(run.output).to eq("[execute] Error: denied by guardrail (hook): first. The user was not asked. Retry it corrected.")
     end
 
     it "names the rule and its source in the deny text" do
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("pushes commits", rule: "git-push", source: "bundle guardrails") }
-      expect(run[:output]).to start_with("[execute] Error: denied by guardrail (rule git-push, bundle guardrails): pushes commits.")
+      expect(run.output).to start_with("[execute] Error: denied by guardrail (rule git-push, bundle guardrails): pushes commits.")
     end
 
     it "denies an ask when no one can approve it" do
       hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("really?") }
       result = run
       expect(dispatched).to be_empty
-      expect(result[:output]).to include("denied by guardrail (hook): really? No one to approve it.")
+      expect(result.output).to include("denied by guardrail (hook): really? No one to approve it.")
     end
 
     it "lets hooks see the verdict so far" do
@@ -517,7 +526,7 @@ RSpec.describe Samagotchi::ToolRunner do
     allow_any_instance_of(Samagotchi::Guardrails::Gate).to receive(:evaluate).and_raise(RuntimeError, "bug")
     result = run
     expect(dispatched).to be_empty
-    expect(result[:output]).to start_with("[execute] Error: denied by guardrail (core): the guardrail check failed: RuntimeError: bug.")
+    expect(result.output).to start_with("[execute] Error: denied by guardrail (core): the guardrail check failed: RuntimeError: bug.")
   end
 
   describe "tool_call_started" do
@@ -543,13 +552,13 @@ RSpec.describe Samagotchi::ToolRunner do
       result = described_class.new(labelled).run({ name: "mcp_chrome_screenshot" }, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
       expect(events.first).to include(type: :tool_call_started, tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
-      expect(result[:shown_label]).to eq("chrome: screenshot")
+      expect(result.shown_label).to eq("chrome: screenshot")
 
       events.clear
       result = described_class.new(labelled).run({ name: "execute", content: "ls" }, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
       expect(events.first).not_to have_key(:label)
-      expect(result).not_to have_key(:shown_label)
+      expect(result.shown_label).to be_nil
     end
 
     it "carries the call's title (the process's cwd), the params unchanged" do
@@ -635,7 +644,7 @@ RSpec.describe Samagotchi::ToolRunner do
       result = run
       expect(asked).to eq([%i[tool_call_started]])
       expect(dispatched).to eq([call])
-      expect(result[:activity]).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once", note: "approved (once)" })
+      expect(result.activity).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once", note: "approved (once)" })
     end
 
     # The UIs time a row from tool_call_started, which comes before the ask:
@@ -674,7 +683,7 @@ RSpec.describe Samagotchi::ToolRunner do
       it "does not run the call" do
         result = run
         expect(dispatched).to be_empty
-        expect(result[:output]).to eq("[execute] Error: The user declined this call. It needed approval (hook): sure? Do not retry it " \
+        expect(result.output).to eq("[execute] Error: The user declined this call. It needed approval (hook): sure? Do not retry it " \
                                       "or reach the same result another way; ask the user how to proceed.")
       end
     end
@@ -696,12 +705,12 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "is the preview a plugin tool showed" do
       result = run({ name: "save_note", args: { "path" => "w.md", "text" => "hello world!" } })
-      expect(result[:shown_params]).to eq("w.md (12 chars)")
+      expect(result.shown_params).to eq("w.md (12 chars)")
       expect(events.first[:params]).to eq("w.md (12 chars)")
     end
 
     it "is absent for a built-in, so its saved result stays as it was" do
-      expect(run).not_to have_key(:shown_params)
+      expect(run.shown_params).to be_nil
     end
   end
 
@@ -730,27 +739,27 @@ RSpec.describe Samagotchi::ToolRunner do
       File.write(path, "a\nb\n")
       result = run({ name: "edit", path: path, old_text: "b", new_text: "B" })
       diff = { text: "@@ -1,2 +1,2 @@\n a\n-b\n+B", added: 1, removed: 1, truncated: false, new_file: false }
-      expect(result[:diff]).to eq(diff)
+      expect(result.diff).to eq(diff)
       expect(events.last).to include(type: :tool_call_completed, diff: diff)
-      expect(result[:output]).to eq("[edit]\nEdited #{path}: replaced 1 bytes with 1 bytes")
-      expect(result[:capped_output]).to eq(result[:output])
+      expect(result.output).to eq("[edit]\nEdited #{path}: replaced 1 bytes with 1 bytes")
+      expect(result.capped_output).to eq(result.output)
     end
 
     it "marks a written new file" do
-      expect(run({ name: "write", path: path("new.txt"), content: "x\n" })[:diff]).to include(new_file: true, added: 1)
+      expect(run({ name: "write", path: path("new.txt"), content: "x\n" }).diff).to include(new_file: true, added: 1)
     end
 
     it "is absent when the file didn't change (an edit that errors before writing)" do
       File.write(path, "a\n")
       result = run({ name: "edit", path: path, old_text: "zzz", new_text: "B" })
-      expect(result).not_to have_key(:diff)
+      expect(result.diff).to be_nil
       expect(events.last).not_to have_key(:diff)
     end
 
     it "shows a change the call made even when its result is an error" do
       File.write(path, "orig\n")
       stub_const("Samagotchi::EditPreview::TOOLS", %w[edit write sneaky])
-      expect(run({ name: "sneaky", path: path })[:diff]).to include(added: 1, removed: 1)
+      expect(run({ name: "sneaky", path: path }).diff).to include(added: 1, removed: 1)
     end
 
     it "refreshes a memory's index line after a write/edit that changed its file, not after one that didn't" do
@@ -778,12 +787,12 @@ RSpec.describe Samagotchi::ToolRunner do
         write_memory("seed")
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => tokens.to_s) do
           result = write_memory("first")
-          expect(result[:output]).to include("\n\n#{note}#{tokens} tokens")
-          expect(result[:capped_output]).to eq(result[:output])
+          expect(result.output).to include("\n\n#{note}#{tokens} tokens")
+          expect(result.capped_output).to eq(result.output)
           expect(events.last[:output]).to include(note)
-          expect(write_memory("second")[:output]).not_to include("Note:")
+          expect(write_memory("second").output).not_to include("Note:")
           edit = run({ name: "edit", path: File.join(memories, "first.md"), old_text: "first", new_text: "1st" })
-          expect(edit[:output]).not_to include("Note:")
+          expect(edit.output).not_to include("Note:")
         end
       end
 
@@ -794,7 +803,7 @@ RSpec.describe Samagotchi::ToolRunner do
         write_memory("seed")
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => tokens.to_s) do
           result = run({ name: "write", path: File.join(upper, "first.md"), content: "first\n" })
-          expect(result[:output]).to include(note)
+          expect(result.output).to include(note)
         end
       end
 
@@ -805,7 +814,7 @@ RSpec.describe Samagotchi::ToolRunner do
         expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
           linked = run({ name: "write", path: File.join(memories, "linked.md"), content: "#{"y" * 400}\n" })
-          expect(linked[:output]).not_to include("Note:")
+          expect(linked.output).not_to include("Note:")
         end
       end
 
@@ -815,7 +824,7 @@ RSpec.describe Samagotchi::ToolRunner do
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
           index = File.read(File.join(memories, "index.md"))
           upper = run({ name: "write", path: File.join(memories, "INDEX.md"), content: "#{index}#{"- **z** · 1 B\n" * 40}" })
-          expect(upper[:output]).not_to include("Note:")
+          expect(upper.output).not_to include("Note:")
         end
         expect(Dir.children(memories).grep(/index/i).map { |f| File.read(File.join(memories, f)) }.join).not_to include("**INDEX**")
       end
@@ -824,17 +833,17 @@ RSpec.describe Samagotchi::ToolRunner do
         write_memory("seed")
         expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
-          expect(run({ name: "write", path: path("new.md"), content: "x\n" })[:output]).not_to include("Note:")
+          expect(run({ name: "write", path: path("new.md"), content: "x\n" }).output).not_to include("Note:")
         end
-        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write_memory("first")[:output]).not_to include("Note:") }
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write_memory("first").output).not_to include("Note:") }
       end
     end
 
     it "is absent for a denied edit and for other tools" do
       File.write(path, "a\n")
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }
-      expect(run({ name: "edit", path: path, old_text: "a", new_text: "b" })).not_to have_key(:diff)
-      expect(run).not_to have_key(:diff)
+      expect(run({ name: "edit", path: path, old_text: "a", new_text: "b" }).diff).to be_nil
+      expect(run.diff).to be_nil
     end
   end
 
@@ -869,7 +878,7 @@ RSpec.describe Samagotchi::ToolRunner do
       result = described_class.new(real_kernel).run({ name: "delegate", task: "x" }, iteration: 1, call_index: 1, call_count: 1,
                                                                            on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
 
-      expect(result[:output]).to start_with("Error: delegate isn't loaded in this session (toolkit lean) and can't be " \
+      expect(result.output).to start_with("Error: delegate isn't loaded in this session (toolkit lean) and can't be " \
                                             "loaded from here; only the user can (/toolkit add delegate). Available: execute, read")
       expect(before_calls).to eq([])
       expect(asked).to eq([])
@@ -880,8 +889,8 @@ RSpec.describe Samagotchi::ToolRunner do
     it "leaves an unknown name's error as it was (never echoed)" do
       result = described_class.new(real_kernel).run({ name: "nope" }, iteration: 1, call_index: 1, call_count: 1,
                                                             on_stream_event: nil, max_tool_output_chars: nil)
-      expect(result[:output]).to start_with("Error: no such tool. Available: execute")
-      expect(result[:output]).not_to include("delegate")
+      expect(result.output).to start_with("Error: no such tool. Available: execute")
+      expect(result.output).not_to include("delegate")
       expect(before_calls).to eq(["nope"])
     end
   end

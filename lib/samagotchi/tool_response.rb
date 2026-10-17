@@ -29,7 +29,7 @@ module Samagotchi
     # Runs +calls+ in order (ToolRunner#run each), yielding each run and its
     # index as it finishes. +emit+ takes the dispatch events, the runner's
     # own go to +on_stream_event+.
-    # @return [Array<Hash>] the runs
+    # @return [Array<ToolRun>] the runs
     def run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
       emit.call({ type: :tool_dispatch_started, iteration: iteration, call_count: calls.length })
       runs = calls.each_with_index.map do |call, index|
@@ -45,7 +45,7 @@ module Samagotchi
     # The runs' activity, for the turn's tool list (none for a call whose
     # dispatcher raised).
     def activities(runs)
-      runs.filter_map { |run| run[:activity] }
+      runs.filter_map(&:activity)
     end
 
     # The native loop's entry for a batch: the capped outputs joined, every image
@@ -53,14 +53,14 @@ module Samagotchi
     # each on its own tool row), and the saved-only fields one per call:
     # +ids+ (ToolIds.next_ids) as tool_ids.
     def joined(runs, ids:)
-      images = runs.flat_map { |run| Array(run[:images]) }
-      entry = { role: "tool_response", content: runs.map { |run| run[:capped_output] }.join(SEPARATOR) }
+      images = runs.flat_map { |run| Array(run.images) }
+      entry = { role: "tool_response", content: runs.map(&:capped_output).join(SEPARATOR) }
       unless images.empty?
         entry[:images] = images
-        entry[:image_counts] = runs.map { |run| Array(run[:images]).size }
+        entry[:image_counts] = runs.map { |run| Array(run.images).size }
       end
-      saved = { tool_params: runs.map { |run| run[:shown_params] }, tool_labels: runs.map { |run| run[:shown_label] },
-                tool_diffs: runs.map { |run| run[:diff] }, tool_refs: runs.map { |run| run[:refs] } }
+      saved = { tool_params: runs.map(&:shown_params), tool_labels: runs.map(&:shown_label),
+                tool_diffs: runs.map(&:diff), tool_refs: runs.map(&:refs) }
       saved.each { |key, values| entry[key] = values if values.any? }
       entry[:tool_ids] = ids
       entry
@@ -70,12 +70,12 @@ module Samagotchi
     # call by +tool_call_id+, and its chi-owned id (a one-id +ids+, as
     # #joined's tool_ids).
     def single(run, tool_call_id:, ids:)
-      entry = { role: "tool_response", content: run[:capped_output], tool_call_id: tool_call_id }
-      entry[:images] = run[:images] if run[:images]&.any?
-      entry[:tool_params] = run[:shown_params] if run[:shown_params]
-      entry[:tool_labels] = run[:shown_label] if run[:shown_label]
-      entry[:tool_diffs] = run[:diff] if run[:diff]
-      entry[:tool_refs] = run[:refs] if run[:refs]
+      entry = { role: "tool_response", content: run.capped_output, tool_call_id: tool_call_id }
+      entry[:images] = run.images if run.images&.any?
+      entry[:tool_params] = run.shown_params if run.shown_params
+      entry[:tool_labels] = run.shown_label if run.shown_label
+      entry[:tool_diffs] = run.diff if run.diff
+      entry[:tool_refs] = run.refs if run.refs
       entry[:tool_ids] = ids
       entry
     end

@@ -62,14 +62,14 @@ RSpec.describe "The loop-guard bundle" do
   it "denies the 3rd identical call with the same result, through the Gate, and before_turn resets it" do
     find = { name: "execute", content: "find . -name 'config.yml' 2>/dev/null" }
     hooks.fire(:before_turn, { type: :before_turn, prompt: "update my config" })
-    outputs = Array.new(3) { run(find.dup)[:output] }
+    outputs = Array.new(3) { run(find.dup).output }
 
     expect(outputs[0, 2]).to all(eq("[execute]\nexit: 0 (no output)"))
     expect(outputs[2]).to start_with("[execute] Error: denied by guardrail (bundle loop-guard): repeated call. ")
     expect(outputs[2]).to include("You already ran this exact call 2 times this turn", "(exit: 0 (no output))")
 
     hooks.fire(:before_turn, { type: :before_turn, prompt: "try again" })
-    expect(run(find.dup)[:output]).to eq("[execute]\nexit: 0 (no output)")
+    expect(run(find.dup).output).to eq("[execute]\nexit: 0 (no output)")
   end
 
   # The REPL prints events in order: the stop card goes under the denied
@@ -94,8 +94,8 @@ RSpec.describe "The loop-guard bundle" do
     edit = ->(old) { gemma.parse("<|tool_call>call:edit{path:#{d}a.rb#{d},old_text:#{d}#{old}#{d},new_text:#{d}x#{d}}<tool_call|>").first }
     hooks.fire(:before_turn, { type: :before_turn, prompt: "edit" })
 
-    expect(%w[a b c].map { |old| run(edit.call(old))[:output] }).to all(start_with("[edit]\nexit: 0"))
-    expect(run(edit.call("c"))[:output]).to start_with("[edit]\nexit: 0")
-    expect(run(edit.call("c"))[:output]).to start_with("[edit] Error: denied by guardrail (bundle loop-guard): repeated call. ")
+    expect(%w[a b c].map { |old| run(edit.call(old)).output }).to all(start_with("[edit]\nexit: 0"))
+    expect(run(edit.call("c")).output).to start_with("[edit]\nexit: 0")
+    expect(run(edit.call("c")).output).to start_with("[edit] Error: denied by guardrail (bundle loop-guard): repeated call. ")
   end
 end

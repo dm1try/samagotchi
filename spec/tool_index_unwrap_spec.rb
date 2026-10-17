@@ -65,7 +65,7 @@ RSpec.describe "call_tool on a built-in" do
     toolkit!
     result = run(via("chi/delegate", { "task" => "look", "wait" => false }))
 
-    expect(result[:output]).to eq("[delegate]\nran delegate")
+    expect(result.output).to eq("[delegate]\nran delegate")
     expect(seen).to eq([%w[delegate call_tool]])
     expect(ran).to eq([%w[delegate call_tool]])
     started = events.find { |e| e[:type] == :tool_call_started }
@@ -75,7 +75,7 @@ RSpec.describe "call_tool on a built-in" do
 
   it "resolves a bare name of a reachable tool as well" do
     toolkit!
-    expect(run(via("send_note", { "session" => "s", "text" => "t" }))[:output]).to eq("[send_note]\nran send_note")
+    expect(run(via("send_note", { "session" => "s", "text" => "t" })).output).to eq("[send_note]\nran send_note")
   end
 
   it "meets the rules a direct call meets: the same verdict and the same approval key" do
@@ -85,10 +85,10 @@ RSpec.describe "call_tool on a built-in" do
       e[:guardrail].ask!("sure?", rule: "ask-ls") if e[:call][:name] == "execute" && e[:call][:content] == "ls"
     end
     toolkit!("tiny", add: %w[execute])
-    denied_direct = run({ name: "execute", content: "rm -rf x", command: "rm -rf x" })[:output]
+    denied_direct = run({ name: "execute", content: "rm -rf x", command: "rm -rf x" }).output
     run({ name: "execute", content: "ls", command: "ls" })
     toolkit!("tiny")
-    denied_via = run(via("chi/execute", { "command" => "rm -rf x" }))[:output]
+    denied_via = run(via("chi/execute", { "command" => "rm -rf x" })).output
     run(via("chi/execute", { "command" => "ls" }))
 
     expect(denied_via).to eq(denied_direct)
@@ -109,7 +109,7 @@ RSpec.describe "call_tool on a built-in" do
       asked.clear
       outputs = commands.map do |command|
         call = direct ? { name: "execute", content: command, command: command } : via("chi/execute", { "command" => command })
-        run(call)[:output]
+        run(call).output
       end
       [outputs, asked.dup]
     end
@@ -145,29 +145,29 @@ RSpec.describe "call_tool on a built-in" do
     it "a tool the toolkit removes (child's memory_write, a /toolkit remove)" do
       toolkit!("child")
       result = run(via("chi/memory_write", { "name" => "x", "scope" => "project", "content" => "y" }))
-      expect(result[:output]).to start_with("Error: memory_write isn't loaded in this session (toolkit child) and " \
+      expect(result.output).to start_with("Error: memory_write isn't loaded in this session (toolkit child) and " \
                                             "can't be loaded from here; only the user can (/toolkit add memory_write).")
       toolkit!("child")
-      expect(run(via("chi/delegate", { "task" => "x" }))[:output]).to start_with("Error: delegate isn't loaded")
+      expect(run(via("chi/delegate", { "task" => "x" })).output).to start_with("Error: delegate isn't loaded")
       toolkit!(remove: %w[delegate])
-      expect(run(via("chi/delegate", { "task" => "x" }))[:output]).to start_with("Error: delegate isn't loaded")
+      expect(run(via("chi/delegate", { "task" => "x" })).output).to start_with("Error: delegate isn't loaded")
       # A remove after an add is hard (D12).
       toolkit!(add: %w[delegate], remove: %w[delegate])
-      expect(run(via("chi/delegate", { "task" => "x" }))[:output]).to start_with("Error: delegate isn't loaded")
+      expect(run(via("chi/delegate", { "task" => "x" })).output).to start_with("Error: delegate isn't loaded")
       expect([seen, asked, ran]).to eq([[], [], []])
     end
 
     it "every built-in when the toolkit removes call_tool itself (B1)" do
       toolkit!(remove: %w[call_tool])
       result = run(via("chi/delegate", { "task" => "x" }))
-      expect(result[:output]).to start_with("Error: call_tool isn't loaded in this session (toolkit lean)")
+      expect(result.output).to start_with("Error: call_tool isn't loaded in this session (toolkit lean)")
       expect([seen, asked, ran]).to eq([[], [], []])
     end
 
     it "a direct call of a reachable tool, told the call_tool route (D7)" do
       toolkit!
       result = run({ name: "delegate", content: "x", task: "x" })
-      expect(result[:output]).to start_with("Error: delegate isn't declared in this session (toolkit lean); call it with " \
+      expect(result.output).to start_with("Error: delegate isn't declared in this session (toolkit lean); call it with " \
                                             "call_tool(tool: \"chi/delegate\", args: {…}) (find_tools gives its " \
                                             "inputSchema). Available: execute, read")
       expect([seen, asked, ran]).to eq([[], [], []])
@@ -176,7 +176,7 @@ RSpec.describe "call_tool on a built-in" do
     it "a chi/ call of a tool the toolkit declares, told to call it directly" do
       toolkit!("tiny")
       registry["read"].handler = ->(*) { raise "never" }
-      expect(run(via("chi/read", { "path" => "x" }))[:output]).to start_with("Error: read is declared in this session " \
+      expect(run(via("chi/read", { "path" => "x" })).output).to start_with("Error: read is declared in this session " \
                                                                              "(toolkit tiny); call it directly.")
       expect(seen).to eq([])
     end
@@ -185,13 +185,13 @@ RSpec.describe "call_tool on a built-in" do
   it "keeps call_tool working with find_tools removed alone" do
     toolkit!(remove: %w[find_tools])
     expect(registry.names).to include("call_tool")
-    expect(run(via("chi/delegate", { "task" => "x" }))[:output]).to eq("[delegate]\nran delegate")
+    expect(run(via("chi/delegate", { "task" => "x" })).output).to eq("[delegate]\nran delegate")
   end
 
   it "refuses a hook's rewrite to a removed tool, or one that drops via:, by its name (N4)" do
     toolkit!(remove: %w[send_note])
     hooks.register(:before_tool_call) { |e| e[:call] = e[:call].merge(name: "send_note") }
-    expect(run(via("chi/delegate", { "task" => "x" }))[:output])
+    expect(run(via("chi/delegate", { "task" => "x" })).output)
       .to start_with("ran as: send_note").and include("\nError: send_note isn't loaded")
 
     hooks2 = Samagotchi::Hooks::Registry.new
@@ -200,7 +200,7 @@ RSpec.describe "call_tool on a built-in" do
     gate = Samagotchi::Guardrails::Gate.new(-> { hooks2 })
     kernel.define_singleton_method(:guardrail_gate) { gate }
     toolkit!
-    expect(run(via("chi/delegate", { "task" => "x" }))[:output]).to include("\nError: delegate isn't declared")
+    expect(run(via("chi/delegate", { "task" => "x" })).output).to include("\nError: delegate isn't declared")
     expect(ran).to eq([])
   end
 
@@ -210,7 +210,7 @@ RSpec.describe "call_tool on a built-in" do
 
   it "runs an MCP tool or a miss as call_tool, as before" do
     toolkit!
-    expect(run(via("zebra/nope"))[:output]).to start_with("[call_tool]\nError: no tool zebra/nope.")
+    expect(run(via("zebra/nope")).output).to start_with("[call_tool]\nError: no tool zebra/nope.")
     expect(seen).to eq([["call_tool", nil]])
   end
 end

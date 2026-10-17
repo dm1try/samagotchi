@@ -252,40 +252,40 @@ RSpec.describe "The mcp bundle" do
   describe "images" do
     it "attaches an image block's picture (decoded), the text saying where it was" do
       result = run_mcp("mixed")
-      expect(result[:output]).to eq("[call_tool]\nfirst\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
-      expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
+      expect(result.output).to eq("[call_tool]\nfirst\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
+      expect(result.images.map { |ref| ref.slice(:name, :width, :height, :source) })
         .to eq([{ name: "mixed-1.png", width: 3, height: 2, source: "tool" }])
-      expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
+      expect(File.binread(File.join(session_dir, result.images.first[:file]))).to eq(File.binread(tiny_png))
     end
 
     it "keeps the text and says so when the model can't see images" do
       blind = Samagotchi::VisionContext.new(session_dir: session_dir,
                                             capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
       result = run_mcp("mixed", vision: blind)
-      expect(result[:output]).to end_with("last\nmixed-1.png is an image; this model can't see images")
-      expect(result).not_to have_key(:images)
+      expect(result.output).to end_with("last\nmixed-1.png is an image; this model can't see images")
+      expect(result.images).to be_nil
     end
 
     it "writes a neutral image line, never claiming it was attached" do
       result = run_mcp("mixed")
-      expect(result[:output]).to include("[image 1: image/png]")
-      expect(result[:output]).not_to include("attached")
+      expect(result.output).to include("[image 1: image/png]")
+      expect(result.output).not_to include("attached")
     end
 
     it "attaches a resource block carrying an image blob" do
       result = run_mcp("blob")
-      expect(result[:output]).to eq("[call_tool]\nhere\n[image 1: image/png]")
-      expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
+      expect(result.output).to eq("[call_tool]\nhere\n[image 1: image/png]")
+      expect(result.images.map { |ref| ref.slice(:name, :width, :height, :source) })
         .to eq([{ name: "blob-1.png", width: 3, height: 2, source: "tool" }])
-      expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
+      expect(File.binread(File.join(session_dir, result.images.first[:file]))).to eq(File.binread(tiny_png))
     end
 
     it "attaches an image whose path is the whole answer, when it is in the temp dir" do
       shot = File.join(tmpdir, "screenshot.png")
       FileUtils.cp(tiny_png, shot)
       result = run_mcp("path", { "path" => shot })
-      expect(result[:output]).to eq("[call_tool]\n#{shot}\n[image 1: screenshot.png]")
-      expect(result[:images].map { |ref| ref[:name] }).to eq(["screenshot.png"])
+      expect(result.output).to eq("[call_tool]\n#{shot}\n[image 1: screenshot.png]")
+      expect(result.images.map { |ref| ref[:name] }).to eq(["screenshot.png"])
     end
 
     context "when the server runs elsewhere" do
@@ -296,8 +296,8 @@ RSpec.describe "The mcp bundle" do
         File.write(notes, "not really a png")
         [tiny_png, notes, "screenshot.png"].each do |path|
           result = run_mcp("path", { "path" => path })
-          expect(result[:output]).to eq("[call_tool]\n#{path}")
-          expect(result).not_to have_key(:images)
+          expect(result.output).to eq("[call_tool]\n#{path}")
+          expect(result.images).to be_nil
         end
       end
 
@@ -306,8 +306,8 @@ RSpec.describe "The mcp bundle" do
         File.write(notes, "not really a png")
         text = "Saved to #{notes} and #{tiny_png}; see /nowhere/x.gif"
         result = run_mcp("path", { "path" => text })
-        expect(result[:output]).to eq("[call_tool]\n#{text}")
-        expect(result).not_to have_key(:images)
+        expect(result.output).to eq("[call_tool]\n#{text}")
+        expect(result.images).to be_nil
       end
     end
 
@@ -318,9 +318,9 @@ RSpec.describe "The mcp bundle" do
       [shot, second, spaced].each { |path| FileUtils.cp(tiny_png, path) }
       text = "Saved screenshot to #{shot}. Also (#{shot}), \"#{second}\" and #{spaced}."
       result = run_mcp("path", { "path" => text })
-      expect(result[:output])
+      expect(result.output)
         .to eq("[call_tool]\n#{text}\n[image 1: screenshot.png]\n[image 2: b.JPEG]")
-      expect(result[:images].map { |ref| ref[:name] }).to eq(%w[screenshot.png b.JPEG])
+      expect(result.images.map { |ref| ref[:name] }).to eq(%w[screenshot.png b.JPEG])
     end
 
     context "when the image is in the server's cwd" do
@@ -328,7 +328,7 @@ RSpec.describe "The mcp bundle" do
 
       it "attaches it" do
         allow(Dir).to receive(:tmpdir).and_return("/nonexistent-tmp")
-        expect(run_mcp("path", { "path" => tiny_png })[:images].size).to eq(1)
+        expect(run_mcp("path", { "path" => tiny_png }).images.size).to eq(1)
       end
     end
 
@@ -338,7 +338,7 @@ RSpec.describe "The mcp bundle" do
       it "leaves the path as text" do
         shot = File.join(tmpdir, "screenshot.png")
         FileUtils.cp(tiny_png, shot)
-        expect(run_mcp("path", { "path" => shot })).not_to have_key(:images)
+        expect(run_mcp("path", { "path" => shot }).images).to be_nil
       end
     end
   end

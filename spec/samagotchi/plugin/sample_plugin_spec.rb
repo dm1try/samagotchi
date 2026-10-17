@@ -174,10 +174,10 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       end
       Dir.mktmpdir do |dir|
         denied = run.call(name: "save_note", args: { "path" => "#{dir}/secret.md", "text" => "x" })
-        expect(denied[:output]).to include("no-secrets").and include("secrets stay put")
+        expect(denied.output).to include("no-secrets").and include("secrets stay put")
         expect(File.exist?("#{dir}/secret.md")).to be false
         allowed = run.call(name: "save_note", args: { "path" => "#{dir}/plain.md", "text" => "x" })
-        expect(allowed[:output]).to eq("[save_note]\nsaved #{dir}/plain.md")
+        expect(allowed.output).to eq("[save_note]\nsaved #{dir}/plain.md")
       end
     end
 
@@ -256,17 +256,17 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
                 actions: [{ id: "open", label: "Open in Jira", url: "https://jira.test/JIRA-7" }] },
               { kind: "file", target: { path: File.join(Dir.pwd, "lib/login.rb"), line: 4 }, actions: [] }]
 
-      expect(run[:output]).to eq("[ticket]\nticket JIRA-7")
+      expect(run.output).to eq("[ticket]\nticket JIRA-7")
       expect(events.map { |e| [e[:type], e[:refs]] }).to eq([[:tool_call_started, refs], [:tool_call_completed, refs]])
-      expect(run[:refs]).to eq(refs)
+      expect(run.refs).to eq(refs)
     end
 
     it "runs a tool whose lambda raises, with no refs (logged)" do
       allow(Samagotchi::Log).to receive(:warn).and_call_original
       run, events = run_tool(name: "flaky", args: {})
 
-      expect(run[:output]).to eq("[flaky]\nflaky ran")
-      expect(run).not_to have_key(:refs)
+      expect(run.output).to eq("[flaky]\nflaky ran")
+      expect(run.refs).to be_nil
       expect(events).to all(satisfy { |e| !e.key?(:refs) })
       expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_refs_failed", tool: "flaky", error: "RuntimeError: no refs today")
     end
@@ -275,7 +275,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       engine.session = session
       run, = run_tool(name: "ticket", args: { "id" => "JIRA-7" })
 
-      expect(run[:refs].last[:target]).to eq(path: File.join(File.realpath(tmpdir), "lib/login.rb"), line: 4)
+      expect(run.refs.last[:target]).to eq(path: File.join(File.realpath(tmpdir), "lib/login.rb"), line: 4)
     end
 
     it "gives a built-in's row none" do
@@ -321,8 +321,8 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       vision = Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
       kernel.turn_settings = kernel.turn_settings.with(vision: vision)
       result = run(name: "shoot", args: { "path" => png_path })
-      expect(result[:output]).to eq("[shoot]\ntook 2 shots\nError: image 3 is not {path:} or {bytes:, name:}")
-      expect(result[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png frame.png])
+      expect(result.output).to eq("[shoot]\ntook 2 shots\nError: image 3 is not {path:} or {bytes:, name:}")
+      expect(result.images.map { |ref| ref[:name] }).to eq(%w[tiny.png frame.png])
     end
 
     it "keeps the text when the model can't see images" do
@@ -330,12 +330,12 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
                                             capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
       kernel.turn_settings = kernel.turn_settings.with(vision: blind)
       result = run(name: "shoot", args: { "path" => png_path })
-      expect(result[:output]).to start_with("[shoot]\ntook 2 shots\ntiny.png is an image; this model can't see images\n")
-      expect(result).not_to have_key(:images)
+      expect(result.output).to start_with("[shoot]\ntook 2 shots\ntiny.png is an image; this model can't see images\n")
+      expect(result.images).to be_nil
     end
 
     it "leaves a block that returns something else as its text" do
-      expect(run(name: "plain", args: {})[:output]).to eq("[plain]\n42")
+      expect(run(name: "plain", args: {}).output).to eq("[plain]\n42")
     end
   end
 
