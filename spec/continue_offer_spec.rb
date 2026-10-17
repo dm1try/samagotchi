@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::ContinueOffer do
   # The offer asked, then answered as a UI (or chi answer) would.
   def answer(selected, freeform: nil)
     continue_offer.after_turn(kernel_result)
-    engine.answer_question(id: engine.pending_question[:id], selected: selected, freeform: freeform, client_id: "web:2")
+    engine.answer_question(id: engine.pending_question.id, selected: selected, freeform: freeform, client_id: "web:2")
   end
 
   def resolved(resume:, decision:)
@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     @fail_before_begin = IOError.new("save failed")
 
     continue_offer.run_continue_turn(command_from("web:2"))
-    expect(engine.pending_question).to include(kind: "continue")
+    expect(engine.pending_question).to have_attributes(kind: "continue")
     @fail_before_begin = nil
     engine.run_turn(session, "something else")
 
@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     allow(turn_flow).to receive(:before_continue_turn).and_raise(IOError, "checkpoint")
 
     expect { continue_offer.run_continue_turn(command_from("web:2")) }.not_to raise_error
-    expect(engine.pending_question).to include(kind: "continue")
+    expect(engine.pending_question).to have_attributes(kind: "continue")
     engine.run_turn(session, "something else")
 
     expect(drains).to eq([[]])

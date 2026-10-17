@@ -87,11 +87,11 @@ RSpec.describe "approval relay, two hops" do
       Samagotchi::Tools::DelegateRelay.call(middle.id, pending_of(middle), relay: top_engine.relay_peer, state_dir: state_dir)
     end
     card = wait_until(timeout: 2) { top_engine.pending_question }
-    expect(card[:relay][:chain]).to eq([leaf.id[0, 8], middle.id[0, 8]])
-    expect(card[:question]).to start_with("delegate #{middle.id[0, 8]} → #{leaf.id[0, 8]} (\"push the tag\") asks:\n  execute: git push --tags")
-    expect(card[:options][1]).to eq("Allow this call for delegate #{middle.id[0, 8]} → #{leaf.id[0, 8]}'s session")
+    expect(card.relay[:chain]).to eq([leaf.id[0, 8], middle.id[0, 8]])
+    expect(card.question).to start_with("delegate #{middle.id[0, 8]} → #{leaf.id[0, 8]} (\"push the tag\") asks:\n  execute: git push --tags")
+    expect(card.options[1]).to eq("Allow this call for delegate #{middle.id[0, 8]} → #{leaf.id[0, 8]}'s session")
 
-    top_engine.answer_question(id: card[:id], selected: [card[:options][0]])
+    top_engine.answer_question(id: card.id, selected: [card.options[0]])
 
     wait_until(timeout: 5) { leaf_answer.key?(:value) }
     expect(leaf_answer[:value]).to include(selected: ["Allow once"], selected_indices: [0])
@@ -116,7 +116,7 @@ RSpec.describe "approval relay, two hops" do
     wait_until(timeout: 2) { top_engine.pending_question }
 
     # The leaf is answered on its own: the middle's card closes, then the parent's.
-    leaf_engine.answer_question(id: leaf_engine.pending_question[:id], selected: ["Deny"])
+    leaf_engine.answer_question(id: leaf_engine.pending_question.id, selected: ["Deny"])
     wait_until(timeout: 5) { middle_outcome.key?(:value) && top_outcome.key?(:value) }
     expect(middle_outcome[:value].line).to end_with("→ answered on the child")
     expect(top_outcome[:value].line).to end_with("→ answered on the child")

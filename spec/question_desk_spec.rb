@@ -31,8 +31,8 @@ RSpec.describe Samagotchi::QuestionDesk do
     thread = Thread.new { box[:answer] = desk.open_question(fields, **opts) }
     thread.report_on_exception = false
     # Past a standing question pending before it.
-    wait_until(timeout: 2) { desk.pending && desk.pending[:kind] != "continue" }
-    [thread, box, desk.pending[:id]]
+    wait_until(timeout: 2) { desk.pending && desk.pending.kind != "continue" }
+    [thread, box, desk.pending.id]
   end
 
   def saved = Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       end
       thread = Thread.new { box[:answer] = desk.open_question(fields, watch: watch) }
       wait_until(timeout: 2) { desk.pending }
-      desk.answer(id: desk.pending[:id], selected: ["No"])
+      desk.answer(id: desk.pending.id, selected: ["No"])
       gate << :go
       thread.join(2)
 
@@ -158,13 +158,13 @@ RSpec.describe Samagotchi::QuestionDesk do
       marker = { parent_id: "p-1", parent_short: "p-1", relay_id: "r-1" }
 
       expect(desk.annotate(id, relayed_to: marker)).to be(true)
-      expect(desk.pending[:relayed_to]).to eq(marker)
+      expect(desk.pending.relayed_to).to eq(marker)
       # Session.load leaves nested keys as strings.
       expect(saved.relayed_to).to eq(marker.transform_keys(&:to_s))
       expect(events.last).to eq(type: :question_relay, id: id, relayed_to: marker)
 
       expect(desk.annotate(id, relayed_to: nil, reason: "parent_gone")).to be(true)
-      expect(desk.pending).not_to have_key(:relayed_to)
+      expect(desk.pending).to have_attributes(relayed_to: nil)
       expect(saved).to have_attributes(relayed_to: nil)
       expect(events.last).to eq(type: :question_relay, id: id, relayed_to: nil, reason: "parent_gone")
 
@@ -193,15 +193,15 @@ RSpec.describe Samagotchi::QuestionDesk do
     it "is pending, saved and announced as standing, and blocks no one" do
       pending = desk.post(continue_fields, on_answer: on_answer)
 
-      expect(desk.pending).to include(id: pending[:id], kind: "continue", limit: 3, status: "pending")
-      expect(saved).to have_attributes(id: pending[:id], kind: "continue")
+      expect(desk.pending).to have_attributes(id: pending.id, kind: "continue", limit: 3, status: "pending")
+      expect(saved).to have_attributes(id: pending.id, kind: "continue")
       expect(events.last).to include(type: :question_requested, standing: true)
     end
 
     it "hands an answer to on_answer with who answered, after it is cleared and announced" do
       id = desk.post(continue_fields, on_answer: lambda { |answer, client_id:|
         answers << [answer, client_id, desk.pending, events.last[:type]]
-      })[:id]
+      }).id
 
       result = desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
 
@@ -213,7 +213,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "doesn't bring the session back to the lists on a parent agent's answer" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
       desk.answer(id: id, selected: ["Stop"], client_id: "cli:answer")
 
       expect(answers.map(&:last)).to eq(["cli:answer"])
@@ -223,24 +223,24 @@ RSpec.describe Samagotchi::QuestionDesk do
     it "refuses a parent agent's Continue with turn.parent_continue: false, and takes its Stop" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue").and_return(false)
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       expect { desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer") }
         .to raise_error(described_class::Refused) { |e| expect(e.reason).to eq(:stop_only) }
-      expect(desk.pending).to include(id: id)
+      expect(desk.pending).to have_attributes(id: id)
       # A person's Continue is theirs to give.
       desk.answer(id: id, selected: ["Continue"], client_id: "web:1")
       expect(answers.map(&:last)).to eq(["web:1"])
     end
 
     it "lets a parent agent Continue by default (turn.parent_continue: true)" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
       desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer")
       expect(answers.map(&:last)).to eq(["cli:answer"])
     end
 
     it "takes Continue with a text, handed to the poster as the answer's freeform" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       answer = desk.answer(id: id, selected: ["Continue"], freeform: "  and also check X ", client_id: "web:1")
 
@@ -250,7 +250,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "marks a parent agent's Continue with a text, so the poster can label the steer" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       desk.answer(id: id, selected: ["Continue"], freeform: "and also", client_id: "cli:answer")
 
@@ -258,7 +258,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "still takes Stop with a text" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
 
@@ -266,15 +266,15 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "can't be dismissed: a UI's dismiss raises, a cancel with no id leaves it" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       expect { desk.cancel("dismissed", id: id) }.to raise_error(described_class::NotDismissable)
       expect(desk.cancel("user")).to be(false)
-      expect(desk.pending).to include(id: id)
+      expect(desk.pending).to have_attributes(id: id)
     end
 
     it "is withdrawn by its poster, announced with the reason" do
-      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      id = desk.post(continue_fields, on_answer: on_answer).id
 
       expect(desk.withdraw("dropped", id: "other")).to be(false)
       expect(desk.withdraw("dropped")).to be(true)
@@ -286,11 +286,11 @@ RSpec.describe Samagotchi::QuestionDesk do
 
     it "gives way to a question opened meanwhile (superseded) and is offered again once that closes" do
       reposts = []
-      id = desk.post(continue_fields, on_answer: on_answer, on_superseded_close: -> { reposts << desk.pending })[:id]
+      id = desk.post(continue_fields, on_answer: on_answer, on_superseded_close: -> { reposts << desk.pending }).id
 
       thread, box, other = open_in_background
       expect(events.find { |e| e[:type] == :question_cancelled }).to eq(type: :question_cancelled, id: id, reason: "superseded")
-      expect(desk.pending).to include(id: other, question: "Run it?")
+      expect(desk.pending).to have_attributes(id: other, question: "Run it?")
       expect(reposts).to be_empty
 
       desk.answer(id: other, selected: ["Yes"])
@@ -305,19 +305,19 @@ RSpec.describe Samagotchi::QuestionDesk do
       desk.answer(id: other, selected: ["No"])
       thread.join(2)
 
-      expect(desk.pending).to include(kind: "continue", status: "pending")
-      desk.answer(id: desk.pending[:id], selected: ["Continue"], client_id: "tui:1")
+      expect(desk.pending).to have_attributes(kind: "continue", status: "pending")
+      desk.answer(id: desk.pending.id, selected: ["Continue"], client_id: "tui:1")
       expect(answers.map(&:last)).to eq(["tui:1"])
     end
 
     it "waits for a question open as it is posted, then goes up" do
       thread, _box, other = open_in_background
       expect(desk.post(continue_fields, on_answer: on_answer)).to be_nil
-      expect(desk.pending).to include(id: other)
+      expect(desk.pending).to have_attributes(id: other)
 
       desk.answer(id: other, selected: ["Yes"])
       thread.join(2)
-      expect(desk.pending).to include(kind: "continue")
+      expect(desk.pending).to have_attributes(kind: "continue")
     end
 
     it "isn't offered again once withdrawn while shelved" do

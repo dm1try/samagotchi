@@ -37,8 +37,8 @@ module Samagotchi
     end
 
     def relayed?(pending, question_id, relay_id)
-      relay = pending && pending[:relayed_to]
-      return false unless relay.is_a?(Hash) && pending[:id].to_s == question_id.to_s
+      relay = pending&.relayed_to
+      return false unless relay.is_a?(Hash) && pending.id.to_s == question_id.to_s
 
       (relay[:relay_id] || relay["relay_id"]).to_s == relay_id.to_s
     end

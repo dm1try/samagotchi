@@ -88,6 +88,8 @@ module Samagotchi
       # A Monitor: re-entered by the specs from the same thread.
       @lock = Monitor.new
       @cv = @lock.new_cond
+      # The open question (PendingQuestion), nil with none; replaced, never
+      # changed in place (#annotate, #cancel make a new one with #with).
       @pending = nil
       @answer = nil
       # Why the open question was cancelled (#cancel), for the sync path.
@@ -100,9 +102,10 @@ module Samagotchi
       @shelved = nil
     end
 
-    # @return [Hash, nil] current pending question (thread-safe copy)
+    # @return [PendingQuestion, nil] the question pending now (a value: it
+    #   never changes once read)
     def pending
-      @lock.synchronize { @pending&.dup }
+      @lock.synchronize { @pending }
     end
 
     # Ask the model's question (ask_user_question): the kernel's
@@ -128,8 +131,9 @@ module Samagotchi
     # Open a question for the UIs and wait for its answer. Emits
     # :question_requested, persists it to the session, and BLOCKS until
     # answer / cancel wakes it (or the turn is cancelled).
-    # The fields go to pending as given (no cleaning), extra keys
-    # included, so a caller can add its own (kind:, approval:).
+    # The fields become the PendingQuestion as given (no cleaning): any of
+    # its members (kind:, approval:, …); a key it doesn't have raises
+    # ArgumentError.
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
     # @param watch [#call, nil] asked every WATCH_INTERVAL seconds while the
     #   question waits (outside the lock): a String closes the question with
@@ -156,7 +160,7 @@ module Samagotchi
     # @param on_superseded_close [#call, nil] called when a question that
     #   superseded it closes (its poster posts it again if it still
     #   stands); nil: posted again as it was
-    # @return [Hash, nil] the pending question; nil when it waits for another
+    # @return [PendingQuestion, nil] the pending question; nil when it waits for another
     def post(fields, on_answer:, on_superseded_close: nil)
       standing = { fields: fields, on_answer: on_answer, on_superseded_close: on_superseded_close }
       shelved = @lock.synchronize do
@@ -180,7 +184,7 @@ module Samagotchi
       withdrawn = @lock.synchronize do
         @shelved = nil if id.nil?
         standing = @standing
-        next nil unless standing && @pending && @pending[:id] == standing[:id]
+        next nil unless standing && @pending && @pending.id == standing[:id]
         next nil if id && standing[:id].to_s != id.to_s
 
         @standing = nil
@@ -196,7 +200,7 @@ module Samagotchi
 
     private def ask(fields, watch)
       pending = publish(fields)
-      id = pending[:id]
+      id = pending.id
 
       # If a synchronous UI handler is registered (TUI), invoke it inline on the
       # SAME thread that called request_question (TerminalUI's REPL thread is the
@@ -205,7 +209,7 @@ module Samagotchi
       # any future UI that registers a sync handler gets the same guarantee.
       if @sync_handler
         begin
-          sync_res = @sync_handler.call(pending.dup)
+          sync_res = @sync_handler.call(pending.to_h)
           # Handler may have called answer_question or returned a hash/string.
           # Decided under the lock; saved and announced after it (never emit
           # holding the question lock: a snapshot holds the event lock and
@@ -299,16 +303,15 @@ module Samagotchi
       answer = @lock.synchronize do
         pending = @pending
         raise NotPending, "no pending question" unless pending
-        raise NotPending, "id mismatch" unless pending[:id].to_s == id.to_s
+        raise NotPending, "id mismatch" unless pending.id.to_s == id.to_s
         # First responder wins: after the first answer the turn thread clears
         # @pending in a later lock block, so a second UI's answer can
         # land in between and must not overwrite the first.
         raise NotPending, "question already answered" if @answer
-        raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
+        raise NotPending, "question #{pending.status}" unless pending.status.to_s == "pending"
 
         answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
-        if parent_agent && (reason = Guardrails::ParentContinue.refusal(PendingQuestion.from_file(pending), sel,
-                                                                        allowed: parent_continue))
+        if parent_agent && (reason = Guardrails::ParentContinue.refusal(pending, sel, allowed: parent_continue))
           raise Refused, reason
         end
 
@@ -340,15 +343,15 @@ module Samagotchi
     def annotate(id, relayed_to:, reason: nil)
       marked = @lock.synchronize do
         pending = @pending
-        next nil unless pending && pending[:id].to_s == id.to_s
-        next nil if @answer || pending[:status].to_s != "pending"
+        next nil unless pending && pending.id.to_s == id.to_s
+        next nil if @answer || pending.status.to_s != "pending"
 
-        relayed_to ? pending[:relayed_to] = relayed_to : pending.delete(:relayed_to)
+        @pending = pending = pending.with(relayed_to: relayed_to)
         if session
-          session.pending_question = pending.dup
+          session.pending_question = pending
           begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
         end
-        pending[:id]
+        pending.id
       end
       return false unless marked
 
@@ -374,16 +377,16 @@ module Samagotchi
       cancelled_id = @lock.synchronize do
         pending = @pending
         next unless pending
-        next if id && pending[:id].to_s != id.to_s
-        next if @answer || pending[:status].to_s != "pending"
+        next if id && pending.id.to_s != id.to_s
+        next if @answer || pending.status.to_s != "pending"
         # Its poster closes it; nothing waits on a cancel.
-        raise NotDismissable, "answer #{Array(pending[:options]).join(" or ")}" if @standing && id
+        raise NotDismissable, "answer #{Array(pending.options).join(" or ")}" if @standing && id
         next if @standing
 
-        pending[:status] = "cancelled"
+        @pending = pending.with(status: "cancelled")
         @cancel_reason = reason.to_s
         @cv.broadcast
-        pending[:id]
+        pending.id
       end
       return id.nil? && self.pending.nil? unless cancelled_id
 
@@ -422,21 +425,23 @@ module Samagotchi
     # :question_requested to every UI. Observers that stash the event (e.g.
     # TerminalUI handle_question_event) discard it as stale if a sync
     # handler answers and clears it first (drain_pending_question?).
-    # @return [Hash] the pending question
+    # The event carries it as a Hash (PendingQuestion#to_h), as every UI
+    # and the Bridge's stream read it.
+    # @return [PendingQuestion] the pending question
     # @param standing [Hash, nil] a standing question's record (#post)
     def publish(fields, standing: nil)
-      pending = { id: SecureRandom.uuid, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
+      pending = PendingQuestion.new(id: SecureRandom.uuid, **fields, status: "pending", created_at: Time.now.iso8601(3))
       @lock.synchronize do
         @pending = pending
         @answer = nil
         @cancel_reason = nil
-        @standing = standing&.merge(id: pending[:id])
+        @standing = standing&.merge(id: pending.id)
       end
       if session
-        session.pending_question = pending.dup
+        session.pending_question = pending
         begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
       end
-      event = { type: :question_requested, pending_question: pending }
+      event = { type: :question_requested, pending_question: pending.to_h }
       event[:standing] = true if standing
       emit(event)
       pending
@@ -491,19 +496,19 @@ module Samagotchi
     # @return [Hash] {id:, selected:, freeform:, selected_indices:, by:}
     # @raise [ArgumentError, Refused]
     def validated_answer(pending, sel, fm, parent_agent:, parent_setting:)
-      opts = Array(pending[:options])
+      opts = Array(pending.options)
       invalid = sel.reject { |v| opts.include?(v) }
       raise ArgumentError, "invalid selection: #{invalid.join(", ")} (valid: #{opts.join(", ")})" unless invalid.empty?
-      raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
-      raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
+      raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending.multi_select && sel.size > 1
+      raise ArgumentError, "selection required" if pending.multi_select == false && sel.empty? && fm.nil?
 
       indices = sel.map { |v| opts.index(v) }
       # The one whose answer settles the approval (Approval.settle, by index).
       if parent_setting
-        reason = Guardrails::ParentApprovals.refusal(PendingQuestion.from_file(pending), indices, setting: parent_setting)
+        reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
         raise Refused, reason if reason
       end
-      answer = { id: pending[:id].to_s, selected: sel, freeform: fm, selected_indices: indices.compact }
+      answer = { id: pending.id.to_s, selected: sel, freeform: fm, selected_indices: indices.compact }
       answer[:by] = "parent_agent" if parent_agent
       answer
     end
@@ -515,7 +520,7 @@ module Samagotchi
       loop do
         done = @lock.synchronize do
           next true if @answer || cancel_controller&.cancelled?
-          next true if @pending.nil? || @pending[:status] != "pending"
+          next true if @pending.nil? || @pending.status != "pending"
 
           # Wait with timeout to check cancel; 0.2s matches reminder poll
           @cv.wait([0.2, watch ? next_watch - monotonic : 0.2].min.clamp(0.0, 0.2))
@@ -529,9 +534,9 @@ module Samagotchi
         next unless reason
 
         closed = @lock.synchronize do
-          next false if @answer || @pending.nil? || @pending[:status] != "pending"
+          next false if @answer || @pending.nil? || @pending.status != "pending"
 
-          @pending[:status] = "cancelled"
+          @pending = @pending.with(status: "cancelled")
           true
         end
         return reason if closed

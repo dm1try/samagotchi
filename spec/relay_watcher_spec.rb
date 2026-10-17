@@ -2,15 +2,16 @@
 
 require "spec_helper"
 require "samagotchi/relay_watcher"
+require "samagotchi/pending_question"
 
 RSpec.describe Samagotchi::RelayWatcher do
-  let(:pending) { [{ id: "q1", relayed_to: { relay_id: "r1" } }] }
+  let(:pending) { [Samagotchi::PendingQuestion.new(id: "q1", relayed_to: { relay_id: "r1" })] }
   let(:engine) { double("engine", pending_question: nil) }
 
   before do
     allow(engine).to receive(:pending_question) { pending[0] }
     allow(engine).to receive(:annotate_question) do |_id, relayed_to:, reason:|
-      pending[0] = pending[0].except(:relayed_to) if relayed_to.nil?
+      pending[0] = pending[0].with(relayed_to: nil) if relayed_to.nil?
       true
     end
   end
@@ -31,7 +32,7 @@ RSpec.describe Samagotchi::RelayWatcher do
 
   it "stops without touching anything once the question is answered or another relay's" do
     thread = start(-> { true })
-    pending[0] = { id: "q1", relayed_to: { relay_id: "r2" } }
+    pending[0] = Samagotchi::PendingQuestion.new(id: "q1", relayed_to: { relay_id: "r2" })
     thread.join(1)
     expect(thread).not_to be_alive
 

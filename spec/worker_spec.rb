@@ -2245,15 +2245,15 @@ RSpec.describe Samagotchi::Worker do
         it "gives way to a plugin's question asked meanwhile, and comes back once that is answered" do
           box = {}
           asker = Thread.new { box[:answer] = engine.open_question(question: "Which?", options: %w[A B], multi_select: false) }
-          expect(wait_until { engine.pending_question&.dig(:question) == "Which?" }).to be(true)
+          expect(wait_until { engine.pending_question&.question == "Which?" }).to be(true)
           expect(events_seen.find { |e| e[:type] == :question_cancelled }).to include(id: question[:id], reason: "superseded")
 
-          engine.answer_question(id: engine.pending_question[:id], selected: ["A"])
+          engine.answer_question(id: engine.pending_question.id, selected: ["A"])
           asker.join(2)
 
-          expect(wait_until { engine.pending_question&.dig(:kind) == "continue" }).to be(true)
+          expect(wait_until { engine.pending_question&.kind == "continue" }).to be(true)
           expect(saved_session.pending_question).to have_attributes(kind: "continue")
-          expect(post_answer(["Continue"], id: engine.pending_question[:id]).code).to eq("200")
+          expect(post_answer(["Continue"], id: engine.pending_question.id).code).to eq("200")
           expect(continue_ran("/continue yes")).to include(status: "ok")
         end
 
@@ -2264,7 +2264,7 @@ RSpec.describe Samagotchi::Worker do
           expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
           loop_rounds
           expect(events_seen.count { |e| e[:type] == :question_requested }).to eq(2)
-          expect(engine.pending_question).to include(kind: "continue")
+          expect(engine.pending_question).to have_attributes(kind: "continue")
           expect(saved_session.pending_question).to have_attributes(kind: "continue")
         end
 
@@ -2283,7 +2283,7 @@ RSpec.describe Samagotchi::Worker do
           expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
           expect(failed).to be(true)
           expect(@thread).to be_alive
-          expect(engine.pending_question).to include(kind: "continue")
+          expect(engine.pending_question).to have_attributes(kind: "continue")
           expect(wait_until { saved_session.pending_question&.kind == "continue" }).to be(true)
           expect(saved_session.status).to eq("idle")
           expect(seen.map { |e| e[:type] }).not_to include(:turn_failed)
@@ -2295,7 +2295,7 @@ RSpec.describe Samagotchi::Worker do
 
           expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
           expect(@thread).to be_alive
-          expect(engine.pending_question).to include(kind: "continue")
+          expect(engine.pending_question).to have_attributes(kind: "continue")
         end
       end
     end

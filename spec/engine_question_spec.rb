@@ -61,18 +61,21 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       pending = engine.pending_question
       expect(pending).not_to be_nil
-      expect(pending[:question]).to eq("Which option?")
-      expect(pending[:options]).to eq(%w[Cats Dogs])
-      expect(pending[:header]).to eq("Pet preference")
-      expect(pending[:multi_select]).to be(false)
-      expect(pending[:status]).to eq("pending")
-      expect(pending[:id]).to be_a(String)
+      expect(pending.question).to eq("Which option?")
+      expect(pending.options).to eq(%w[Cats Dogs])
+      expect(pending.header).to eq("Pet preference")
+      expect(pending.multi_select).to be(false)
+      expect(pending.status).to eq("pending")
+      expect(pending.id).to be_a(String)
 
       requested = events.find { |e| e[:type] == :question_requested }
       expect(requested).not_to be_nil
-      expect(requested[:pending_question][:id]).to eq(pending[:id])
+      expect(requested[:pending_question][:id]).to eq(pending.id)
+      # The Bridge's /state frame takes the event's Hash, not the value.
+      expect(requested[:pending_question]).to eq(pending.to_h)
+      expect(engine.session_state_snapshot[:pending_question]).to eq(pending.to_h)
 
-      engine.answer_question(id: pending[:id], selected: ["Cats"])
+      engine.answer_question(id: pending.id, selected: ["Cats"])
       turn_thread.join(2)
       expect(result_box[:error]).to be_nil
     end
@@ -87,11 +90,11 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread, result_box, _events = request_in_background(engine, Samagotchi::Tools::AskUserQuestion.validate(dirty))
 
       pending = engine.pending_question
-      expect(pending[:question]).to eq("Which option?")
-      expect(pending[:options]).to eq(%w[Cats Dogs])
-      expect(pending[:header]).to eq("Pet preference")
+      expect(pending.question).to eq("Which option?")
+      expect(pending.options).to eq(%w[Cats Dogs])
+      expect(pending.header).to eq("Pet preference")
 
-      engine.answer_question(id: pending[:id], selected: ["Cats"])
+      engine.answer_question(id: pending.id, selected: ["Cats"])
       turn_thread.join(2)
       expect(result_box[:error]).to be_nil
     end
@@ -125,9 +128,9 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       rescue ArgumentError
         nil
       end
-      expect(on_disk.pending_question.id).to eq(engine.pending_question[:id])
+      expect(on_disk.pending_question.id).to eq(engine.pending_question.id)
 
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Dogs"])
       turn_thread.join(2)
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question).to be_nil
     ensure
@@ -144,7 +147,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       allow(session).to receive(:save)
       turn_thread, = request_in_background(engine, payload)
 
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Dogs"])
       turn_thread.join(2)
 
       expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))).to be(false)
@@ -155,7 +158,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "blocks until answer_question is called from another thread and returns answer JSON" do
       engine = build_engine
       turn_thread, result_box, events = request_in_background(engine, payload)
-      qid = engine.pending_question[:id]
+      qid = engine.pending_question.id
 
       engine.answer_question(id: qid, selected: ["Dogs"], freeform: nil)
       turn_thread.join(2)
@@ -252,7 +255,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread = Thread.new { engine.request_question(payload) }
       turn_thread.report_on_exception = false
       wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
-      id = engine.pending_question[:id]
+      id = engine.pending_question.id
 
       engine.cancel_question("user")
       turn_thread.join(2)
@@ -299,10 +302,10 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       end
       wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
-      expect(pending).to include(kind: "approval", approval: { tool: "execute" }, status: "pending")
-      engine.answer_question(id: pending[:id], selected: ["No"])
+      expect(pending).to have_attributes(kind: "approval", approval: { tool: "execute" }, status: "pending")
+      engine.answer_question(id: pending.id, selected: ["No"])
       thread.join(2)
-      expect(result).to include(id: pending[:id], selected: ["No"], selected_indices: [1])
+      expect(result).to include(id: pending.id, selected: ["No"], selected_indices: [1])
     end
 
     it "shows the question text as given (no wire-token stripping)" do
@@ -354,7 +357,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       result = {}
       thread = Thread.new { result[:answer] = engine.open_question(fields) }
       wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
-      [thread, result, engine.pending_question[:id]]
+      [thread, result, engine.pending_question.id]
     end
 
     def setting(value)
@@ -370,7 +373,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         expect { engine.answer_question(id: qid, selected: [label], freeform: "go", client_id: parent) }
           .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:off) }
       end
-      expect(engine.pending_question).to include(id: qid, status: "pending")
+      expect(engine.pending_question).to have_attributes(id: qid, status: "pending")
 
       engine.answer_question(id: qid, selected: ["Allow this call for the session"])
       thread.join(2)
@@ -466,41 +469,41 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread, _box, _events = request_in_background(engine, payload)
       expect { engine.answer_question(id: "wrong-id", selected: ["Cats"]) }
         .to raise_error(ArgumentError, /id mismatch/)
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Cats"])
       turn_thread.join(2)
     end
 
     it "raises when the selection is not a subset of the options" do
       engine = build_engine
       turn_thread, _box, _events = request_in_background(engine, payload)
-      expect { engine.answer_question(id: engine.pending_question[:id], selected: ["Birds"]) }
+      expect { engine.answer_question(id: engine.pending_question.id, selected: ["Birds"]) }
         .to raise_error(ArgumentError, /invalid selection/)
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Cats"])
       turn_thread.join(2)
     end
 
     it "raises when multiple selections are given for a single-select question" do
       engine = build_engine
       turn_thread, _box, _events = request_in_background(engine, payload)
-      expect { engine.answer_question(id: engine.pending_question[:id], selected: %w[Cats Dogs]) }
+      expect { engine.answer_question(id: engine.pending_question.id, selected: %w[Cats Dogs]) }
         .to raise_error(ArgumentError, /single-select/)
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Cats"])
       turn_thread.join(2)
     end
 
     it "raises when neither selection nor freeform is provided" do
       engine = build_engine
       turn_thread, _box, _events = request_in_background(engine, payload)
-      expect { engine.answer_question(id: engine.pending_question[:id], selected: [], freeform: nil) }
+      expect { engine.answer_question(id: engine.pending_question.id, selected: [], freeform: nil) }
         .to raise_error(ArgumentError, /selection required/)
-      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      engine.answer_question(id: engine.pending_question.id, selected: ["Cats"])
       turn_thread.join(2)
     end
 
     it "accepts multiple selections for a multi-select question" do
       engine = build_engine
       turn_thread, result_box, _events = request_in_background(engine, payload.merge(multi_select: true))
-      engine.answer_question(id: engine.pending_question[:id], selected: %w[Cats Dogs])
+      engine.answer_question(id: engine.pending_question.id, selected: %w[Cats Dogs])
       turn_thread.join(2)
 
       answer = JSON.parse(result_box[:result])
@@ -511,7 +514,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "accepts freeform-only answers when allow_freeform is set" do
       engine = build_engine
       turn_thread, result_box, _events = request_in_background(engine, payload.merge(allow_freeform: true))
-      engine.answer_question(id: engine.pending_question[:id], selected: [], freeform: "Something else")
+      engine.answer_question(id: engine.pending_question.id, selected: [], freeform: "Something else")
       turn_thread.join(2)
 
       answer = JSON.parse(result_box[:result])
@@ -524,7 +527,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "rejects a second answer that lands before the turn thread clears the question" do
       engine = build_engine
       turn_thread, result_box, _events = request_in_background(engine, payload)
-      qid = engine.pending_question[:id]
+      qid = engine.pending_question.id
 
       # Hold the question lock across both answers: this is exactly the window
       # between the first answer and the turn thread clearing @pending_question.
@@ -541,7 +544,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "rejects an answer to a cancelled question" do
       engine = build_engine
       turn_thread, _result_box, _events = request_in_background(engine, payload)
-      qid = engine.pending_question[:id]
+      qid = engine.pending_question.id
 
       engine.instance_variable_get(:@question_desk).instance_variable_get(:@lock).synchronize do
         engine.cancel_question("other client")
@@ -554,7 +557,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "doesn't cancel a question once an answer is recorded (the answer wins, nothing is announced)" do
       engine = build_engine
       turn_thread, result_box, events = request_in_background(engine, payload)
-      qid = engine.pending_question[:id]
+      qid = engine.pending_question.id
 
       cancelled = nil
       engine.instance_variable_get(:@question_desk).instance_variable_get(:@lock).synchronize do
@@ -571,10 +574,10 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "cancels only the question it names with id:" do
       engine = build_engine
       turn_thread, result_box, events = request_in_background(engine, payload)
-      qid = engine.pending_question[:id]
+      qid = engine.pending_question.id
 
       expect(engine.cancel_question("dismissed", id: "an-older-one")).to be(false)
-      expect(engine.pending_question[:status]).to eq("pending")
+      expect(engine.pending_question.status).to eq("pending")
 
       expect(engine.cancel_question("dismissed", id: qid)).to be(true)
       turn_thread.join(2)

@@ -172,9 +172,9 @@ RSpec.describe "The mcp bundle" do
         thread = Thread.new { engine.request_approval(verdict) }
         Timeout.timeout(2) { sleep(0.005) until engine.pending_question }
         pending = engine.pending_question
-        expect(pending[:approval]).to include(tool: "call_tool", acts_as: "mcp_fake_echo", label: "fake: echo")
-        expect(pending[:question].lines.first).to eq("fake: echo: text=hi\n")
-        engine.cancel_question("dismissed", id: pending[:id])
+        expect(pending.approval).to include(tool: "call_tool", acts_as: "mcp_fake_echo", label: "fake: echo")
+        expect(pending.question.lines.first).to eq("fake: echo: text=hi\n")
+        engine.cancel_question("dismissed", id: pending.id)
         thread.join(2)
       end
     end

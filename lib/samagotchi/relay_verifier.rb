@@ -70,9 +70,9 @@ module Samagotchi
     # of range; [] for a freeform-only deny.
     def labels(indices, question_id)
       pending = @engine.pending_question
-      return [] unless pending && pending[:id].to_s == question_id
+      return [] unless pending && pending.id.to_s == question_id
 
-      options = Array(pending[:options])
+      options = Array(pending.options)
       indices = Array(indices)
       return nil unless indices.all? { |index| index.is_a?(Integer) && index >= 0 && index < options.size }
 

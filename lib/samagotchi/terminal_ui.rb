@@ -1465,13 +1465,13 @@ module Samagotchi
     def drain_pending_question?
       pq = @pending_question_event
       # Also check Engine's persisted pending (covers resume)
-      pq ||= @engine.pending_question
+      pq ||= @engine.pending_question&.to_h
       return false unless pq
 
       # If the pending no longer matches the engine's current pending (stale
       # event after sync handler already answered and cleared), discard.
       current = @engine.pending_question
-      if current && (pq[:id] || pq["id"]).to_s != (current[:id] || current["id"]).to_s
+      if current && (pq[:id] || pq["id"]).to_s != current.id.to_s
         @pending_question_event = nil
         return false
       end

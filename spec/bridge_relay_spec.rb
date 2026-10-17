@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
     child_engine.subscribe(observer: ->(e) { events << e })
     (@threads ||= []) << Thread.new { box[:answer] = child_engine.open_question(fields) }
     wait_until(timeout: 2) { child_engine.pending_question }
-    [box, child_engine.pending_question[:id]]
+    [box, child_engine.pending_question.id]
   end
 
   def saved_question = Samagotchi::Session.load(child.id, state_dir: state_dir).pending_question
@@ -84,14 +84,14 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
 
       expect(relay("opened", "r-1", qid).status).to eq(200)
       marker = { parent_id: parent.id, parent_short: parent.id[0, 8], relay_id: "r-1" }
-      expect(child_engine.pending_question[:relayed_to]).to eq(marker)
+      expect(child_engine.pending_question.relayed_to).to eq(marker)
       expect(saved_question.relayed_to).to eq(marker.transform_keys(&:to_s))
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: marker)
 
       # Another relay's close, or a reason it doesn't know, changes nothing / is "closed".
       expect(relay("closed", "r-other", qid).status).to eq(409)
       expect(relay("closed", "r-1", qid, reason: "made up").status).to eq(200)
-      expect(child_engine.pending_question).not_to have_key(:relayed_to)
+      expect(child_engine.pending_question).to have_attributes(relayed_to: nil)
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "closed")
     end
 
@@ -110,9 +110,9 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       _box, qid = ask_child
       relay("opened", "r-1", qid)
 
-      wait_until(timeout: 2) { !child_engine.pending_question.key?(:relayed_to) }
-      expect(child_engine.pending_question).to include(id: qid, status: "pending")
-      expect(child_engine.pending_question).not_to have_key(:relayed_to)
+      wait_until(timeout: 2) { child_engine.pending_question.relayed_to.nil? }
+      expect(child_engine.pending_question).to have_attributes(id: qid, status: "pending")
+      expect(child_engine.pending_question).to have_attributes(relayed_to: nil)
       # The event follows the mark's clearing: wait for it too.
       wait_until(timeout: 2) { events.last&.dig(:reason) == "parent_gone" }
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "parent_gone")
@@ -198,7 +198,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
       expect(response.status).to eq(403)
       expect(response.json).to include("error" => "parent_approval_refused", "reason" => "off")
-      expect(child_engine.pending_question[:id]).to eq(qid)
+      expect(child_engine.pending_question.id).to eq(qid)
 
       expect(relay("answered", parent_relay(qid, indices: [2], by: "parent_agent"), qid).status).to eq(200)
     end
@@ -221,7 +221,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
         expect(relay("answered", relay_id, qid).status).to eq(422), relay_id
       end
       expect(relay("answered", other_question, qid).status).to eq(422)
-      expect(child_engine.pending_question[:id]).to eq(qid)
+      expect(child_engine.pending_question.id).to eq(qid)
     end
 
     it "answers 409 for a replayed relay of an earlier question, or one answered on the child first" do
@@ -240,7 +240,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       relay_id = parent_relay(qid)
       @bridges.first.stop
       expect(relay("answered", relay_id, qid).status).to eq(422)
-      expect(child_engine.pending_question[:id]).to eq(qid)
+      expect(child_engine.pending_question.id).to eq(qid)
     end
   end
 end

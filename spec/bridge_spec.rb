@@ -1162,7 +1162,7 @@ RSpec.describe Samagotchi::Bridge do
         c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
         @clients << c
         snap = c.wait_for(1).first[:data]["snapshot"]
-        @engine.answer_question(id: @engine.pending_question[:id], selected: ["A"])
+        @engine.answer_question(id: @engine.pending_question.id, selected: ["A"])
         release << true
         turn.join
 
@@ -1689,14 +1689,14 @@ RSpec.describe Samagotchi::Bridge do
                  approval: { tool: "execute", scopes: %w[once session] } }
       thread = Thread.new { result[:answer] = @engine.open_question(fields) }
       wait_until { @engine.pending_question }
-      qid = @engine.pending_question[:id]
+      qid = @engine.pending_question.id
 
       status, resp, reason = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"],
                                                        client_id: "cli:answer"))
       expect([status, reason, resp["error"]]).to eq([403, "Forbidden", "parent_approval_refused"])
       expect(resp["detail"]).to start_with("only Allow once (guardrails.parent_approvals: once) can be given here")
       expect(resp["detail"]).to end_with("deny it (--option Deny --text WHY), and tell your user")
-      expect(@engine.pending_question).to include(id: qid, status: "pending")
+      expect(@engine.pending_question).to have_attributes(id: qid, status: "pending")
 
       status, = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"]))
       expect(status).to eq(200)
@@ -2066,7 +2066,7 @@ RSpec.describe Samagotchi::Bridge do
         seen = []
         @engine.subscribe(observer: ->(e) { seen << e })
         tool_result = ask_in_turn
-        id = @engine.pending_question[:id]
+        id = @engine.pending_question.id
 
         status, resp = post_dismiss(JSON.generate(id: id))
 
@@ -2079,13 +2079,13 @@ RSpec.describe Samagotchi::Bridge do
       it "answers 409 and leaves the question open for a stale id" do
         start_bridge
         tool_result = ask_in_turn
-        id = @engine.pending_question[:id]
+        id = @engine.pending_question.id
 
         status, resp = post_dismiss(JSON.generate(id: "an-older-question"))
 
         expect(status).to eq(409)
         expect(resp["error"]).to eq("question_not_pending")
-        expect(@engine.pending_question).to include(id: id, status: "pending")
+        expect(@engine.pending_question).to have_attributes(id: id, status: "pending")
         @engine.answer_question(id: id, selected: ["A"])
         expect(JSON.parse(tool_result.pop(timeout: 2))).to include("selected" => ["A"])
       end
@@ -2093,7 +2093,7 @@ RSpec.describe Samagotchi::Bridge do
       it "carries a question asked between turns in its snapshot's top level (the turn accumulator drops it)" do
         start_bridge
         id = @engine.post_question({ kind: "continue", question: "Continue?", options: %w[Continue Stop],
-                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {})[:id]
+                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {}).id
 
         snap = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")["snapshot"]
         expect(snap["current_turn"]).to be_nil
@@ -2103,13 +2103,13 @@ RSpec.describe Samagotchi::Bridge do
       it "answers 409 not_dismissable for a standing question (the step limit's): it stays open" do
         start_bridge
         id = @engine.post_question({ kind: "continue", question: "Continue?", options: %w[Continue Stop],
-                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {})[:id]
+                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {}).id
 
         status, resp = post_dismiss(JSON.generate(id: id))
 
         expect(status).to eq(409)
         expect(resp).to eq("error" => "not_dismissable", "detail" => "answer Continue or Stop")
-        expect(@engine.pending_question).to include(id: id, status: "pending")
+        expect(@engine.pending_question).to have_attributes(id: id, status: "pending")
       end
 
       it "answers 409 with no question pending, and 400 without an id" do

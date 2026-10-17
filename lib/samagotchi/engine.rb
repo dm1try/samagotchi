@@ -1227,7 +1227,7 @@ module Samagotchi
     #   :last_prompt   [String, nil] the last user prompt (empty string if none)
     #   :event_seq     [Integer]   @session_observer.event_count
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
-    #   :pending_question [Hash, nil] current pending structured question
+    #   :pending_question [Hash, nil] the pending question (PendingQuestion#to_h)
     #   :used_memory_names [Array<String>] deduped memory names active this session
     #   :prompt_notes  [Array<Hash>] the model notes the prompt carried
     #     ({name:, scope:, chars:, digest:}; #prompt_notes)
@@ -1253,7 +1253,7 @@ module Samagotchi
         last_prompt: @session&.last_prompt,
         event_seq: @session_observer&.event_count,
         metrics: metrics,
-        pending_question: @question_desk.pending,
+        pending_question: @question_desk.pending&.to_h,
         used_memory_names: @used_memories.names,
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
@@ -1563,7 +1563,7 @@ module Samagotchi
 
     # ── Ask-user-question (structured qualification) ──────────────────────────
 
-    # @return [Hash, nil] current pending question (thread-safe copy)
+    # @return [PendingQuestion, nil] the question pending now
     def pending_question
       @question_desk.pending
     end
@@ -1589,7 +1589,7 @@ module Samagotchi
 
     # Publish a standing question that blocks nobody (QuestionDesk#post: a
     # worker's step-limit question).
-    # @return [Hash, nil] the pending question, nil while another is open
+    # @return [PendingQuestion, nil] the pending question, nil while another is open
     def post_question(fields, on_answer:, on_superseded_close: nil)
       @question_desk.post(fields, on_answer: on_answer, on_superseded_close: on_superseded_close)
     end

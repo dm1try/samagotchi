@@ -97,9 +97,9 @@ RSpec.describe "The hook runtime through the Engine" do
 
       thread = Thread.new { engine.run_turn(session, "hi") }
       pending = wait_for_question(engine)
-      expect(pending).to include(kind: "hook", hook: "turn hook", header: "known-names", question: "which?",
-                                 options: %w[a b], multi_select: false, allow_freeform: false)
-      engine.answer_question(id: pending[:id], selected: ["b"])
+      expect(pending).to have_attributes(kind: "hook", hook: "turn hook", header: "known-names", question: "which?",
+                                         options: %w[a b], multi_select: false, allow_freeform: false)
+      engine.answer_question(id: pending.id, selected: ["b"])
       thread.join(2)
 
       expect(result).to eq(selected: ["b"], freeform: nil, selected_indices: [1])
@@ -112,7 +112,7 @@ RSpec.describe "The hook runtime through the Engine" do
 
       thread = Thread.new { engine.run_turn(session, "hi") }
       pending = wait_for_question(engine)
-      engine.cancel_question("dismissed", id: pending[:id])
+      engine.cancel_question("dismissed", id: pending.id)
       thread.join(2)
 
       expect(result).to be_nil

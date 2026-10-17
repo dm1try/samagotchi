@@ -105,6 +105,15 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
   # On a terminal the prompt stays open during turns (ReplInput): the
   # question turns it into the ? prompt and takes the lines submitted there.
+  it "renders the engine's own pending question (a resume: no event stashed) as the event's Hash" do
+    question = Samagotchi::PendingQuestion.new(**pending, status: "pending")
+    allow(engine).to receive(:pending_question).and_return(question)
+    allow(agent).to receive(:render_question_widget).and_return(false)
+
+    agent.send(:drain_pending_question?)
+    expect(agent).to have_received(:render_question_widget).with(question.to_h)
+  end
+
   describe "asked while the prompt is open" do
     let(:answers) { Thread::Queue.new }
     let(:repl_input) do

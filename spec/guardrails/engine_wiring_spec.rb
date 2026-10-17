@@ -56,9 +56,9 @@ RSpec.describe "Engine guardrail wiring" do
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
       wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
-      expect(pending).to include(kind: "approval", header: "Approve tool call?")
-      expect(pending[:approval]).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
-      engine.answer_question(id: pending[:id], selected: [pending[:options][1]])
+      expect(pending).to have_attributes(kind: "approval", header: "Approve tool call?")
+      expect(pending.approval).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
+      engine.answer_question(id: pending.id, selected: [pending.options[1]])
       thread.join(2)
       expect([result.decision, result.scope]).to eq([:allow, "repo"])
     end
@@ -74,9 +74,9 @@ RSpec.describe "Engine guardrail wiring" do
       thread = Thread.new { engine.request_approval(v) }
       wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
-      expect(pending[:approval]).to include(tool: "mcp_x_echo", label: "x: echo")
-      expect(pending[:question].lines.first).to start_with("x: echo: ")
-      engine.cancel_question("dismissed", id: pending[:id])
+      expect(pending.approval).to include(tool: "mcp_x_echo", label: "x: echo")
+      expect(pending.question.lines.first).to start_with("x: echo: ")
+      engine.cancel_question("dismissed", id: pending.id)
       thread.join(2)
     end
 
@@ -94,9 +94,9 @@ RSpec.describe "Engine guardrail wiring" do
       thread = Thread.new { engine.request_approval(v) }
       wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
-      expect(pending[:approval]).to include(tool: "call_tool", acts_as: "mcp_x_echo", label: "x: echo")
-      expect(pending[:question].lines.first).to eq("x: echo: m=hi\n")
-      engine.cancel_question("dismissed", id: pending[:id])
+      expect(pending.approval).to include(tool: "call_tool", acts_as: "mcp_x_echo", label: "x: echo")
+      expect(pending.question.lines.first).to eq("x: echo: m=hi\n")
+      engine.cancel_question("dismissed", id: pending.id)
       thread.join(2)
     end
 
@@ -116,9 +116,9 @@ RSpec.describe "Engine guardrail wiring" do
         thread = Thread.new { engine.request_approval(v) }
         wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
-        engine.cancel_question("dismissed", id: pending[:id])
+        engine.cancel_question("dismissed", id: pending.id)
         thread.join(2)
-        [pending[:approval][:label], v.targets.label]
+        [pending.approval[:label], v.targets.label]
       end
       expect(asked.call("  github: x ")).to eq(["github: x", "github: x"])
       [nil, "", "  ", 5, "a\nb", "x" * 81].each do |label|
@@ -133,7 +133,7 @@ RSpec.describe "Engine guardrail wiring" do
       result = nil
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
       wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
-      engine.cancel_question("dismissed", id: engine.pending_question[:id])
+      engine.cancel_question("dismissed", id: engine.pending_question.id)
       thread.join(2)
       expect(result.deny_text).to include("The approval was cancelled.")
     end
@@ -154,7 +154,7 @@ RSpec.describe "Engine guardrail wiring" do
         wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
         yield pending if block_given?
-        engine.cancel_question("dismissed", id: pending[:id])
+        engine.cancel_question("dismissed", id: pending.id)
         thread.join(2)
         pending
       end
@@ -178,8 +178,8 @@ RSpec.describe "Engine guardrail wiring" do
           end
           expect(reloaded.approval["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")
         end
-        expect(pending[:approval][:preview]).to include(added: 1, removed: 1, new_file: false)
-        expect(pending[:question]).to end_with("  change: +1 \u22121")
+        expect(pending.approval[:preview]).to include(added: 1, removed: 1, new_file: false)
+        expect(pending.question).to end_with("  change: +1 \u22121")
         expect(File.read(path)).to eq("font_size 12\n")
       end
 
@@ -193,19 +193,19 @@ RSpec.describe "Engine guardrail wiring" do
         gate = engine.instance_variable_get(:@kernel).guardrail_gate
         verdict = gate.evaluate({ name: "write", path: path, content: "original\n" }, iteration: 1, params: "")
         pending = pending_for(engine, verdict)
-        expect(pending[:approval][:preview]).to include(text: "@@ -0,0 +1 @@\n+replaced", new_file: true)
+        expect(pending.approval[:preview]).to include(text: "@@ -0,0 +1 @@\n+replaced", new_file: true)
       end
 
       it "asks without a preview when building it fails" do
         engine.interface = :worker
         allow(Samagotchi::EditPreview).to receive(:for).and_raise(RuntimeError, "boom")
         pending = pending_for(engine, ask_for(engine, { name: "write", path: File.join(@dir, "x"), content: "x" }))
-        expect(pending[:approval]).not_to have_key(:preview)
+        expect(pending.approval).not_to have_key(:preview)
       end
 
       it "gives other tools no preview" do
         engine.interface = :worker
-        expect(pending_for(engine, asking(engine))[:approval]).not_to have_key(:preview)
+        expect(pending_for(engine, asking(engine)).approval).not_to have_key(:preview)
       end
     end
   end

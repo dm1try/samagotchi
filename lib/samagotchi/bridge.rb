@@ -260,7 +260,7 @@ module Samagotchi
           recap: @accumulator.recap,
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
-          pending_question: @engine.pending_question,
+          pending_question: @engine.pending_question&.to_h,
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
           init_tasks: @engine.init_tasks,
@@ -1178,8 +1178,8 @@ module Samagotchi
     # still that relay's.
     def relay_closed(qid, relay_id, reason)
       pending = @engine.pending_question
-      relay = pending && pending[:relayed_to]
-      unless pending && pending[:id].to_s == qid && relay && (relay[:relay_id] || relay["relay_id"]).to_s == relay_id
+      relay = pending&.relayed_to
+      unless pending && pending.id.to_s == qid && relay && (relay[:relay_id] || relay["relay_id"]).to_s == relay_id
         return [{}, 409, { error: "question_not_pending", detail: "no question #{qid} relayed by #{relay_id}" }]
       end
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: nil, reason: reason)
