@@ -1270,6 +1270,138 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
   end
 
+  # :generation_started's model_ref (Engine#generation_model_ref) names the
+  # model a turn ran on; the first generation after a switch prefilled the
+  # history on the new model, and its record says how much.
+  describe "the turn's model and a switch's prefill" do
+    let(:price) { { input: 2.0, cache_read: 0.5, cache_write: 4.0, output: 10.0 } }
+
+    def turn(ref, prompt: 1000, cached: 0, cache_write: nil, generations: 1, price: nil, id: nil)
+      events = [{ type: :turn_started, session_id: "sess-m", prompt: "p", turn_id: id }]
+      generations.times do |n|
+        usage = { "prompt_tokens" => prompt, "completion_tokens" => 10,
+                  "prompt_tokens_details" => { "cached_tokens" => cached, "cache_write_tokens" => cache_write }.compact }
+        events << { type: :generation_started, iteration: n + 1, model_ref: ref, price: price }.compact
+        events << { type: :generation_chunk, iteration: n + 1, content: "a", payload: { "usage" => usage } }
+        events << { type: :generation_completed, iteration: n + 1 }
+      end
+      feed(events + [{ type: :turn_completed }])
+      metrics.snapshot[:turn_records].last
+    end
+
+    it "records the turn's model ref, the first generation's" do
+      feed([{ type: :turn_started, session_id: "sess-m", prompt: "p" },
+            { type: :generation_started, iteration: 1, model_ref: "a:one" },
+            { type: :generation_completed, iteration: 1 },
+            { type: :generation_started, iteration: 2, model_ref: "b:two" },
+            { type: :generation_completed, iteration: 2 },
+            { type: :turn_completed }])
+
+      expect(metrics.snapshot[:turn_records].last[:model_ref]).to eq("a:one")
+    end
+
+    it "gives the first turn on a model no switch prefill, nor a later turn on it" do
+      expect(turn("a:one", prompt: 5000)).not_to include(:switch_prefill_tokens)
+      expect(turn("a:one", prompt: 6000)).not_to include(:switch_prefill_tokens)
+    end
+
+    it "records the uncached prompt of the first generation after a switch, with its cost estimated from the price" do
+      turn("a:one")
+      record = turn("b:two", prompt: 5000, cached: 1000, cache_write: 2000, generations: 2, price: price)
+
+      expect(record[:switch_prefill_tokens]).to eq(4000)
+      # 2000 uncached at 2.0, 1000 cached reads at 0.5, 2000 writes at 4.0; no completion.
+      expect(record[:switch_prefill_cost_estimate]).to be_within(1e-9).of(((2000 * 2.0) + (1000 * 0.5) + (2000 * 4.0)) / 1e6)
+      expect(turn("b:two", prompt: 6000)).not_to include(:switch_prefill_tokens)
+    end
+
+    it "records the tokens alone without a price" do
+      turn("a:one")
+      record = turn("b:two", prompt: 3000)
+
+      expect(record).to include(switch_prefill_tokens: 3000)
+      expect(record).not_to include(:switch_prefill_cost_estimate)
+    end
+
+    it "counts each switch of A -> B -> A, under the model switched to" do
+      turn("a:one")
+      to_b = turn("b:two", prompt: 2000)
+      back = turn("a:one", prompt: 2500, cached: 300)
+
+      expect([to_b[:switch_prefill_tokens], back[:switch_prefill_tokens]]).to eq([2000, 2200])
+    end
+
+    it "skips a prefill under REPREFILL_MIN_TOKENS (a server that kept the cache)" do
+      turn("a:one")
+      expect(turn("b:two", prompt: 2000, cached: 1950)).not_to include(:switch_prefill_tokens)
+    end
+
+    it "skips a first generation with estimated tokens only" do
+      turn("a:one")
+      feed([{ type: :turn_started, session_id: "sess-m", prompt: "p" },
+            { type: :generation_started, iteration: 1, model_ref: "b:two" },
+            { type: :generation_chunk, iteration: 1, content: "x" * 400, payload: nil },
+            { type: :generation_completed, iteration: 1 },
+            { type: :turn_completed }])
+
+      expect(metrics.snapshot[:turn_records].last).to include(model_ref: "b:two")
+      expect(metrics.snapshot[:turn_records].last).not_to include(:switch_prefill_tokens)
+    end
+
+    # A turn stopped before any generation (Stop during probes) names no
+    # model: it is never a switch, and the next turn compares with the last
+    # turn that named one.
+    it "treats a turn with no ref as none: the next one on the same model is no switch" do
+      turn("a:one")
+      turn("b:two", prompt: 2000)
+      feed([{ type: :turn_started, session_id: "sess-m", prompt: "p" }, { type: :turn_canceled, cancellation_reason: :user }])
+      expect(metrics.snapshot[:turn_records].last[:model_ref]).to be_nil
+
+      expect(turn("b:two", prompt: 3000)).not_to include(:switch_prefill_tokens)
+    end
+
+    it "never takes a legacy session's first ref'd turn for a switch" do
+      feed([{ type: :turn_started, session_id: "sess-m", prompt: "p" },
+            { type: :generation_started, iteration: 1 },
+            { type: :generation_completed, iteration: 1 },
+            { type: :turn_completed }])
+
+      expect(turn("b:two", prompt: 3000)).not_to include(:switch_prefill_tokens)
+    end
+
+    it "keeps the last model across a woken collector" do
+      state_dir = Dir.mktmpdir
+      first = described_class.new.tap { |m| m.state_dir = state_dir }
+      first.call(type: :turn_started, session_id: "sess-w", prompt: "p")
+      first.call(type: :generation_started, iteration: 1, model_ref: "a:one")
+      first.call(type: :turn_completed)
+      first.persist
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      [{ type: :turn_started, session_id: "sess-w", prompt: "p" },
+       { type: :generation_started, iteration: 1, model_ref: "b:two" },
+       { type: :generation_chunk, iteration: 1, content: "a", payload: { "usage" => { "prompt_tokens" => 900 } } },
+       { type: :generation_completed, iteration: 1 },
+       { type: :turn_completed }].each { |e| woken.call(e) }
+
+      expect(woken.snapshot[:turn_records].last).to include(model_ref: "b:two", switch_prefill_tokens: 900)
+    end
+
+    it "saves the running turn's model and prefill with persist(running_turn: true)" do
+      state_dir = Dir.mktmpdir
+      metrics.state_dir = state_dir
+      turn("a:one")
+      feed([{ type: :turn_started, session_id: "sess-m", prompt: "p", turn_id: "running" },
+            { type: :generation_started, iteration: 1, model_ref: "b:two" },
+            { type: :generation_chunk, iteration: 1, content: "a", payload: { "usage" => { "prompt_tokens" => 700 } } },
+            { type: :generation_completed, iteration: 1 }])
+      metrics.persist(running_turn: true)
+
+      saved = described_class.saved_turn_record(Samagotchi::Session.session_dir("sess-m", state_dir: state_dir), "running")
+      expect(saved).to include("model_ref" => "b:two", "switch_prefill_tokens" => 700)
+    end
+  end
+
   # The totals are running counters; they must equal the sums over every
   # record (what #snapshot computed before), mid-turn, after a reload too.
   describe "the running totals" do

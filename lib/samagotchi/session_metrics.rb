@@ -143,6 +143,13 @@ module Samagotchi
       :cuts,
       :capped,
       :model,
+      # The model the turn ran on (asked host:model, :generation_started's
+      # model_ref; the first generation's), and whether its open generation
+      # is the first after a /model switch (its prefill is recorded).
+      :model_ref,
+      :gen_switch,
+      :switch_prefill_tokens,
+      :switch_prefill_cost_estimate,
       # A turn with no prompt of its own (:turn_started's +continue+): a
       # step-limit Continue, a reminder's or a wake's turn; its record
       # carries it.
@@ -345,6 +352,7 @@ module Samagotchi
             reset_generation_tokens
             @turn.gen_price = generation_price(event[:price])
             @turn.gen_open = true
+            note_model_ref(event[:model_ref])
           end
         end
       when :generation_completed, :generation_cancelled
@@ -545,6 +553,8 @@ module Samagotchi
           cuts: 0,
           capped: 0,
           model: nil,
+          model_ref: nil,
+          gen_switch: false,
           continue: event[:continue] ? true : false,
           resumed: event[:resumed] ? true : false,
           id: event[:turn_id] || SecureRandom.uuid,
@@ -663,6 +673,7 @@ module Samagotchi
     def close_generation
       turn = @turn
       turn.gen_open = false
+      note_switch_prefill(turn)
       speed = nil
       if turn.gen_had_server
         completion = turn.gen_completion_max
@@ -684,6 +695,42 @@ module Samagotchi
       turn.gen_latency_accum += elapsed_ms if elapsed_ms > 0
       turn.gen_started_at = nil
       speed
+    end
+
+    # The turn's model, from its first generation that names one; that
+    # generation is a switch's when the last turn that named a model ran on
+    # another (a turn with none, stopped before it asked, never counts; nor
+    # does a legacy session's first named one). Caller holds the mutex.
+    def note_model_ref(ref)
+      return if @turn.model_ref || ref.to_s.empty?
+
+      @turn.model_ref = ref.to_s
+      @turn.gen_switch = !@last_model_ref.nil? && @last_model_ref != @turn.model_ref
+      @last_model_ref = @turn.model_ref
+    end
+
+    # The first generation after a switch prefilled the history on the new
+    # model: its uncached prompt (the whole prompt less the cached reads;
+    # llama.cpp's native tokens_evaluated is the whole prompt too), with its
+    # cost estimated from the configured price, never a completion's. None
+    # for a generation with estimated tokens only or a prefill too small to
+    # be one (REPREFILL_MIN_TOKENS). Caller holds the mutex.
+    def note_switch_prefill(turn)
+      return unless turn.gen_switch
+
+      turn.gen_switch = false
+      return unless turn.gen_had_server
+
+      tokens = [turn.gen_prompt_max - turn.gen_cached_max, 0].max
+      return if tokens < TokenUsage::REPREFILL_MIN_TOKENS
+
+      turn.switch_prefill_tokens = tokens
+      return unless turn.gen_price
+
+      turn.switch_prefill_cost_estimate = turn.gen_price.cost(prompt_tokens: turn.gen_prompt_max,
+                                                              cached_tokens: turn.gen_cached_max,
+                                                              cache_write_tokens: turn.gen_cache_write_max,
+                                                              completion_tokens: 0)
     end
 
     # The generation's cached/reasoning counts, cost and decode speed, into
@@ -755,6 +802,7 @@ module Samagotchi
       sources = turn.token_sources
       {
         model: turn.model,
+        model_ref: turn.model_ref,
         generations: turn.generations,
         prompt_tokens: turn.prompt_last,
         prompt_tokens_max: turn.prompt_max,
@@ -789,6 +837,8 @@ module Samagotchi
       fields[:reprefill_tokens_sum] = turn.reprefill_sum if turn.reprefill_sum.positive?
       fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
       fields[:cost_estimate] = turn.cost_estimate_sum if turn.cost_estimate_sum.positive?
+      fields[:switch_prefill_tokens] = turn.switch_prefill_tokens if turn.switch_prefill_tokens
+      fields[:switch_prefill_cost_estimate] = turn.switch_prefill_cost_estimate if turn.switch_prefill_cost_estimate
       fields
     end
 
@@ -991,6 +1041,7 @@ module Samagotchi
       reset_totals
       @turn_records.each { |record| count_turn(record) }
       @tool_records.each { |record| count_tool(record) }
+      @last_model_ref = @turn.model_ref if @turn&.model_ref
       @started_at = earliest_timestamp(prior["started_at"], @started_at)
       @last_activity_at ||= prior["last_activity_at"]
       # The served model last reported, with the name asked for then (the
@@ -1035,11 +1086,15 @@ module Samagotchi
     # records. Caller holds the mutex.
     def reset_totals
       @totals = Totals.zero
+      @last_model_ref = nil
       @tool_tallies = { by_tool: {}, aliased: {}, errors: 0 }
     end
 
     def count_turn(record)
       @totals = @totals.add(record)
+      # The model the last turn that named one ran on: what a switch is
+      # told by (#note_model_ref).
+      @last_model_ref = record[:model_ref].to_s unless record[:model_ref].to_s.empty?
     end
 
     def count_tool(record)

@@ -2047,7 +2047,8 @@ module Samagotchi
       result = backend(model).complete(
         messages: turn.messages,
         max_iterations: turn.limit,
-        on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
+        on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller,
+                                                    model_ref: generation_model_ref(model)),
         cancel_controller: turn.controller,
         model_name: bare_for_backend,
         max_tool_output_chars: max_tool_output_chars,
@@ -2058,6 +2059,18 @@ module Samagotchi
       result
     end
     private :generate
+
+    # The ref (host:model, as asked) a turn's generations ran on: the model
+    # #generate resolved, after the before_turn hooks (which may switch it).
+    # SessionMetrics keys its per-model segments on it. nil when it can't be
+    # named (the turn's record then has none).
+    def generation_model_ref(model)
+      model.ref
+    rescue StandardError => e
+      Log.warn(:turn, "model_ref_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      nil
+    end
+    private :generation_model_ref
 
     # A step-limit Continue's resume_from, when it is inside the messages the
     # run gets (a wrong one only drops reasoning: it is ignored, logged).
@@ -2594,13 +2607,17 @@ module Samagotchi
     #
     # With a :generation_progress hook registered, a Hooks::StreamWatch gets
     # each chunk's thinking and text after the UIs had it.
-    def build_stream_event_handler(on_event, cancel_controller: nil)
+    #
+    # +model_ref+: the turn's model (#generation_model_ref), added to each
+    # :generation_started as `model_ref:` (both loops send through here).
+    def build_stream_event_handler(on_event, cancel_controller: nil, model_ref: nil)
       watch = stream_watch(cancel_controller)
       proc do |event|
         progress = SteerCut.lanes(event) if event[:type] == :generation_chunk
         @steer_cut.observe(event, progress)
         case event[:type]
         when :generation_started
+          event = event.merge(model_ref: model_ref) if model_ref
           @thinking_notices.generation_started
           watch&.started(event[:iteration])
         when :generation_retrying

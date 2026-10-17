@@ -316,7 +316,9 @@ RSpec.describe Samagotchi::Engine do
 
       # Raw kernel events are forwarded unchanged, but a generation's end
       # gets its speed and the session's token totals.
-      expect(events.find { |e| e[:type] == :generation_started }).to eq(type: :generation_started, iteration: 1)
+      # A generation's start names the model the turn ran on (model_ref).
+      expect(events.find { |e| e[:type] == :generation_started })
+        .to eq(type: :generation_started, iteration: 1, model_ref: "Gemma-4B-it")
       completed = events.find { |e| e[:type] == :generation_completed }
       expect(completed).to include(type: :generation_completed, iteration: 1, content: "hello back", speed: nil)
       expect(completed[:tokens]).to include(prompt_sum: 0, completion_sum: 0, last_decode_tps: nil)
@@ -437,6 +439,33 @@ RSpec.describe Samagotchi::Engine do
         got = stream_turn_chunks(build_engine(profile: "qwen36"), make_session, [chunk]).first
         expect(got).to eq(chunk.merge(type: :generation_chunk, iteration: 1))
       end
+    end
+  end
+
+  # The model is fixed in #generate, after the before_turn hooks: a hook's
+  # switch is the model the turn's generations name (not the one at
+  # :turn_started).
+  describe ":generation_started's model_ref" do
+    before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
+
+    let(:result) do
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [])
+    end
+
+    it "names the model a before_turn hook switched to" do
+      events = []
+      allow(kernel).to receive(:run) do |_messages, **kwargs|
+        kwargs[:on_stream_event].call(type: :generation_started, iteration: 1)
+        result
+      end
+      engine = build_engine(profile: "gemma4")
+      engine.register_hook(:before_turn) { engine.switch_model!("Qwen3-14B") }
+
+      engine.run_turn(make_session, "hi", on_event: proc { |event| events << event })
+
+      expect(events.find { |e| e[:type] == :generation_started }[:model_ref]).to eq("Qwen3-14B")
+      expect(engine.metrics.snapshot[:turn_records].last[:model_ref]).to eq("Qwen3-14B")
     end
   end
 
