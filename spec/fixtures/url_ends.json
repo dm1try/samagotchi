@@ -2,14 +2,13 @@
   "about": [
     "URL-end cases shared by notice_links.js and source-links' bare_url_spans (trim_url_end).",
     "js_urls are links from the web; ruby_url_spans are the source-links URL ranges.",
-    "only: js marks trimming that exists only in the web; neither side changes behaviour here."
+    "Both sides trim trailing punctuation and unbalanced brackets while keeping balanced parentheses."
   ],
   "rows": [
     {
       "text": "see https://x.test/path.,;:!?'\u0022 now",
       "js_urls": ["https://x.test/path"],
-      "ruby_url_spans": ["https://x.test/path.,;:!?'\u0022"],
-      "only": "js"
+      "ruby_url_spans": ["https://x.test/path"]
     },
     {
       "text": "https://x.test/Foo_(bar)",
@@ -34,8 +33,7 @@
     {
       "text": "https://x.test/a]",
       "js_urls": ["https://x.test/a"],
-      "ruby_url_spans": ["https://x.test/a]"],
-      "only": "js"
+      "ruby_url_spans": ["https://x.test/a"]
     },
     {
       "text": "https://x.test/[a]",

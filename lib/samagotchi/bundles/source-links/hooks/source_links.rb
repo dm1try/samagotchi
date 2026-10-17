@@ -76,6 +76,7 @@ class SourceLinks
   # A bare URL (scheme-anchored, so it can't start inside a markdown label),
   # and a markdown link (label in group 1, target in group 2).
   URL_SPAN = %r{[a-z][a-z0-9+.-]*://\S+}i
+  TRAILING_URL_PUNCTUATION = /[.,;:!?'"]+\z/
   MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/
   # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
   FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
@@ -328,35 +329,36 @@ class SourceLinks
 
   # The [start, end) character ranges of the answer that are a bare URL
   # (scheme-anchored, `[a-z][a-z0-9+.\-]*://\S+`). A ref inside one is not
-  # linked again. The span stops at the first `)` that no `(` inside the URL
-  # balances — so `(https://x.com/a)` ends before the `)`, while
-  # `…/Foo_(bar)` keeps it.
+  # linked again. Trailing punctuation and a trailing `]` without a `[` are
+  # excluded; balanced parentheses and brackets stay part of the URL.
   def bare_url_spans(text)
     spans = []
     text.scan(URL_SPAN) do
       match = Regexp.last_match
-      finish = trim_url_end(match[0], match.begin(0), match.end(0))
+      finish = trim_url_end(match[0], match.begin(0))
       spans << [match.begin(0), finish] if finish > match.begin(0)
     end
     spans
   end
 
-  # The end offset of a URL match after trimming its tail: the span stops at
-  # the first `)` that no `(` inside the URL balances.
-  def trim_url_end(url, start, finish)
+  # The end offset of a URL match after trimming it like notice_links.js.
+  def trim_url_end(url, start)
+    trimmed = url.sub(TRAILING_URL_PUNCTUATION, "")
     depth = 0
-    url.each_char.with_index do |char, index|
+    trimmed.each_char.with_index do |char, index|
       if char == "("
         depth += 1
       elsif char == ")"
         if depth.zero?
-          finish = start + index
+          trimmed = trimmed[0...index]
           break
         end
         depth -= 1
       end
     end
-    finish
+    trimmed = trimmed.sub(/\]+\z/, "") if trimmed.end_with?("]") && !trimmed.include?("[")
+    trimmed = trimmed.sub(TRAILING_URL_PUNCTUATION, "")
+    start + trimmed.length
   end
 
   # A markdown link's label and target ranges, with the target text. A ref in
