@@ -8,22 +8,29 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-10-17
+
 ### Changed
 
-- Workers load Nokogiri only when `web_fetch` first parses an HTML page (about 60 ms off worker start).
+- A session's worker starts about 80 ms faster: it loads the HTML parser (Nokogiri) only when `web_fetch` first reads
+  an HTML page.
 
 ### Fixed
 
-- Web: toasts stack instead of replacing one another, so later notices cannot hide a sticky error.
-- Web: the context chip and tooltip redraw at generation start when context-window state changes.
-- Web: the ctx tooltip's per-model rows cut a model ref longer than 40 characters in the middle, so a long ref no
+- Web: toasts stack (up to three) instead of replacing one another, so a later notice no longer hides a sticky error
+  such as "Can't send: …"; each one has its own timer and ✕.
+- After `/model`, a session's card drops the old model's context % right away (the new window's %, or none while it
+  is unknown), in every tab and after a reload, instead of keeping it until the next turn ends.
+- Web: the context chip and its tooltip update as soon as a generation starts, not at its first chunk.
+- Web: a model ref longer than 40 characters is cut in the middle in the ctx tooltip's per-model rows, so it no
   longer stretches the tooltip.
-- REPL: the status row clears the old context % after `/model` when the new window is unknown.
-- Web: a session's card drops the old model's context % right after `/model` (the new window's %, or none while it is
-  unknown), in every tab and after a reload, instead of keeping it until the next turn ends.
+- REPL (`--no-shared`): the status row drops the old context % after `/model` when the new window is unknown.
+- source-links: a URL in the terminal answer no longer takes in trailing punctuation (`.`, `,`, `)` …) or an unmatched
+  `]`, the same as in the web.
 - `chi bundle build` skips a symlinked memory (`notes.md is a symlink (not included)`) instead of copying the file it
   links to into the bundle.
-- source-links: terminal URL spans trim trailing punctuation and an unmatched `]`, matching the web.
+
+Update with `chi update` (the system bundle 0.77.0, `source-links` 0.5.1), then restart `chi web`.
 
 ## [0.76.0] - 2026-10-17
 
@@ -3238,7 +3245,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.76.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.77.0...HEAD
+[0.77.0]: https://github.com/dm1try/samagotchi/compare/v0.76.0...v0.77.0
 [0.76.0]: https://github.com/dm1try/samagotchi/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/dm1try/samagotchi/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/dm1try/samagotchi/compare/v0.73.0...v0.74.0
