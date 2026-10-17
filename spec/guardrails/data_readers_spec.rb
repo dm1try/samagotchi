@@ -60,4 +60,27 @@ RSpec.describe Samagotchi::Guardrails::DataReaders do
       end
     end
   end
+
+  describe ".data_reader?" do
+    reading = [%w[git commit -F -], %w[git commit -F-], %w[git commit --file=-], %w[git commit -a --file -],
+               %w[git -C /tmp/x commit -F -], %w[git -c user.name=x commit -F -], %w[git tag -a v1 -F -],
+               %w[gh pr create --title x --body-file -], %w[gh issue comment 12 -F -],
+               %w[gh pr edit 3 --body-file=-], %w[gh release create v1 --notes-file -],
+               %w[FOO=1 cat], ["cat", ">", "f"]]
+    other = [["git", "commit", "-F", "<<A", "-\n"], %w[git commit -F msg.txt], %w[git commit],
+             %w[git commit -F /dev/stdin], %w[git log -F -], %w[git notes add -F -], %w[gh api repos/o/r -F -],
+             %w[gh pr view -F -], %w[env cat], %w[command cat], %w[bash], %w[sh -s], %w[ruby], %w[ssh host],
+             %w[xargs sh -c x], []]
+
+    reading.each do |words|
+      it "reads stdin as data: #{words.inspect}" do
+        expect(described_class.data_reader?(words)).to be(true)
+      end
+    end
+    other.each do |words|
+      it "is no data reader: #{words.inspect}" do
+        expect(described_class.data_reader?(words)).to be(false)
+      end
+    end
+  end
 end

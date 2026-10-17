@@ -40,7 +40,9 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     "echo x > /tmp/pp/config/samagotchi/config.yml", "rg samagotchi/hooks lib", "echo x > lib/samagotchi/hooks/x.rb",
     "cp a ~/.configs/samagotchi", "cp a ~/projects/x", "cd ~/.config && ls", "echo samagotchi",
     "cd $X && echo > other.txt", "ls -la", "make -C sub",
-    "cat > /tmp/notes <<'EOF'\nedit ~/.config/samagotchi/config.yml\nEOF"
+    "cat > /tmp/notes <<'EOF'\nedit ~/.config/samagotchi/config.yml\nEOF",
+    # a commit message read from stdin names chi's dir: no path is written
+    "git commit -F - <<'EOF'\nsee ~/.config/samagotchi/config.yml\nEOF"
   ]
 
   touching.each do |command|

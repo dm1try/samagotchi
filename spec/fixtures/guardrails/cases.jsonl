@@ -62,3 +62,17 @@
 {"id":"cat-fd-dup-closed","tool":"execute","command":"cat <<'E' >&-\ngit push\nE","expect":"no_match","rule":"git-push","source":"heredoc-fp","note":"a closed fd writes no file"}
 {"id":"cat-stdout-then-rm","tool":"execute","command":"cat <<'EOF'\nrm -rf is gone\nEOF\nrm -rf build","expect":"match","rule":"rm-rf","source":"heredoc-fp","note":"the body is cut, the command after it isn't"}
 {"id":"two-cats-second-piped","tool":"execute","command":"cat <<'A'; cat <<'B' | sh\nnote\nA\nrake release\nB","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"two heredocs on one line: only the first is data"}
+{"id":"commit-F-quoted","tool":"execute","command":"git commit -F - <<'EOF'\nRelease notes: run rake release after the bump\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"the real case: a commit message on stdin"}
+{"id":"commit-F-unquoted","tool":"execute","command":"git commit -F - <<EOF\nrake release docs\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"unquoted tag without $( or backticks: still data"}
+{"id":"commit-file-eq","tool":"execute","command":"git commit --file=- <<'EOF'\nrake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"commit-file-space","tool":"execute","command":"git commit -a --file - <<'EOF'\nrake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"commit-git-C","tool":"execute","command":"git -C /tmp/x commit -F - <<'EOF'\nrake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"git global options skipped"}
+{"id":"tag-F","tool":"execute","command":"git tag -a v1 -F - <<'EOF'\nrake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"gh-pr-body-file","tool":"execute","command":"gh pr create --title x --body-file - <<'EOF'\nafter merge: rake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"gh-issue-comment-F","tool":"execute","command":"gh issue comment 12 -F - <<'EOF'\nrake release failed\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"gh-release-notes-file","tool":"execute","command":"gh release create v1 --notes-file - <<'EOF'\nrake release\nEOF","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"commit-body-rm","tool":"execute","command":"git commit -F - <<'EOF'\nguard rm -rf ~ in the cleanup\nEOF","expect":"no_match","rule":"rm-rf","source":"heredoc-fp"}
+{"id":"commit-and-pr-bodies","tool":"execute","command":"git commit -F - <<'A' && gh pr create --body-file - <<'B'\nrake release\nA\nrake release\nB","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"two data heredocs on one line"}
+{"id":"commit-and-bash-bodies","tool":"execute","command":"git commit -F - <<'A'; bash <<'B'\nmsg\nA\nrake release\nB","expect":"match","rule":"package-publish","source":"heredoc-fp","note":"the second heredoc is a script"}
+{"id":"commit-in-group-piped","tool":"execute","command":"{ git commit -F - <<'EOF'; } | sh\nrake release\nEOF","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"open { group, piped on"}
+{"id":"commit-body-then-terminator-code","tool":"execute","command":"git commit -F - <<'EOF'\nmsg\nEOF\nrake release","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"the body is cut, the line after the terminator isn't"}

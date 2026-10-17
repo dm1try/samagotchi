@@ -21,8 +21,8 @@ module Samagotchi
       OPERATORS = ["&&", "||", ";;", "|&", ";", "|", "&", "\n", "(", ")"].freeze
       # What a $(…) or `…` becomes inside a word.
       SUBST = "\0SUBST"
-      # What a heredoc body that cat or tee read as data becomes (its command
-      # ends at a plain separator, outside any ( or { group).
+      # What a heredoc body that a data reader reads as data becomes (its
+      # command ends at a plain separator, outside any ( or { group).
       HEREDOC = DataReaders::HEREDOC
       # The operators that may follow a data heredoc's command; any other
       # (|, |&, &, (, ), ;;) may hand its output on, and & also starts
@@ -503,18 +503,20 @@ module Samagotchi
           body
         end
 
-        # Whether the command the heredoc at token +at+ is in is cat or tee,
-        # ends at a plain separator (DATA_ENDS: not piped on, backgrounded or
-        # handed to a process substitution) and sits outside any ( or { group
-        # (whose output a pipe after the group's ) or } would take).
+        # Whether the command the heredoc at token +at+ is in reads it as data
+        # (DataReaders.data_reader?: cat, tee, git commit -F -, gh …), ends at
+        # a plain separator (DATA_ENDS: not piped on, backgrounded or handed to
+        # a process substitution) and sits outside any ( or { group (whose
+        # output a pipe after the group's ) or } would take).
         def data_sink?(at)
           start = at
           start -= 1 while start.positive? && @tokens[start - 1][0] == :word
-          verb = DataReaders.command_word(@tokens[start...at].map { |t| t[1] })
           following = @tokens[at..] || []
           next_op = following.index { |t| t[0] == :op }
           ends = next_op.nil? || DATA_ENDS.include?(following[next_op][1])
-          DATA_SINKS.include?(File.basename(verb.to_s)) && ends && !in_group?(at)
+          words = @tokens[start...at].map { |t| t[1] }
+          words += @tokens[at...(next_op ? at + next_op : @tokens.size)].map { |t| t[1] }
+          DataReaders.data_reader?(words) && ends && !in_group?(at)
         end
 
         # Whether an ( or { group is still open at token +at+.

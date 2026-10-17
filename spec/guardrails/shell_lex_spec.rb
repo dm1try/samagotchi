@@ -72,7 +72,23 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
                                     %w[git push]])
     end
 
-    it "keeps a body fed to anything but cat or tee as one script word" do
+    it "reads a heredoc a git or gh command takes its text from data" do
+      expect(commands("git commit -F - <<'EOF'\nrm -rf /\nEOF\nls"))
+        .to eq([["git", "commit", "-F", "-", "<<EOF", heredoc], %w[ls]])
+      expect(commands("git commit <<'EOF' -F -\nx\nEOF")).to eq([["git", "commit", "<<EOF", heredoc, "-F", "-"]])
+      expect(commands("gh pr create --body-file - <<'EOF'\nx\nEOF"))
+        .to eq([["gh", "pr", "create", "--body-file", "-", "<<EOF", heredoc]])
+    end
+
+    it "keeps such a body a script when it is piped on, in a group, or holds a substitution" do
+      expect(commands("git commit -F - <<'EOF' | tee log\nx\nEOF"))
+        .to eq([["git", "commit", "-F", "-", "<<EOF", "x\n"], %w[tee log]])
+      expect(commands("(git commit -F - <<'EOF'; true) | sh\nx\nEOF"))
+        .to eq([:open, ["git", "commit", "-F", "-", "<<EOF", "x\n"], %w[true], :close, %w[sh]])
+      expect(commands("git commit -F - <<EOF\n$(id)\nEOF")).to eq([["git", "commit", "-F", "-", "<<EOF", subst]])
+    end
+
+    it "keeps a body fed to anything but a data reader as one script word" do
       expect(commands("bash <<'EOF'\nrm -rf /\nEOF\nls")).to eq([["bash", "<<EOF", "rm -rf /\n"], %w[ls]])
       expect(commands("cat <<'EOF' | sh\nrm -rf /\nEOF")).to eq([["cat", "<<EOF", "rm -rf /\n"], %w[sh]])
     end
@@ -137,12 +153,13 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       expect(described_class.code_text("cat <<'EOF'\nrake release\nEOF\nls")).to eq("cat <<'EOF'\nEOF\nls")
       expect(described_class.code_text("cat <<-EOF\n\trake release\n\tEOF\nls")).to eq("cat <<-EOF\n\tEOF\nls")
       expect(described_class.code_text("cat <<A; cat <<'B'\na\nA\nb\nB\nls")).to eq("cat <<A; cat <<'B'\nA\nB\nls")
+      expect(described_class.code_text("git commit -F - <<'EOF'\nx\nEOF")).to eq("git commit -F - <<'EOF'\nEOF")
     end
 
     it "leaves the text as it was for a body that may run or is not known to be data" do
       ["bash <<'EOF'\nrm -rf /\nEOF", "cat <<'EOF' | sh\nrm -rf /\nEOF", "cat <<EOF\n$(rm -rf /)\nEOF",
        "cat > f <<'EOF'\nx\nEOF", "cat <<'EOF' > f\nx\nEOF", "cat <<'EOF' &>f\nx\nEOF",
-       "(cat <<'EOF') | bash\nx\nEOF", "cat <<EOF\nx", "git commit -F - <<'EOF'\nx\nEOF",
+       "(cat <<'EOF') | bash\nx\nEOF", "cat <<EOF\nx",
        "echo '<<EOF'\nx\nEOF", "echo hi", ""].each do |text|
         expect(described_class.code_text(text)).to eq(text), text
       end

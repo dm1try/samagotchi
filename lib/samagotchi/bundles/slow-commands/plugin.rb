@@ -21,7 +21,8 @@
 # `env X=… cmd` is `X=… cmd`, an `env` with -C/-i/-u (or any other option)
 # stays as typed. The entry's `shown` is the last run as typed. Input that ends inside a quote, $(…)
 # or heredoc is never recorded, nor one with a $(…), backticks or a heredoc
-# cat/tee read as data: ShellLex makes those one placeholder, so different
+# a data reader reads as data (ShellLex: cat, tee, git commit -F -, gh …
+# --body-file -): ShellLex makes those one placeholder, so different
 # commands would share a key.
 #
 # after_tool_call records: timed out (killed at the limit), handed over as

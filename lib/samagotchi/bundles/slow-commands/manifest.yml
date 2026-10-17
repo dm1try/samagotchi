@@ -1,12 +1,12 @@
 ---
 name: slow-commands
-version: 0.2.2
+version: 0.2.3
 scope: system
 description: "Remembers commands that ran past the execute limit in a project; the next identical execute is denied once a turn with advice to run it with task_create and task_wait; /slow-commands lists and forgets them"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:6bf5da2501a6404cda01c95975b005fce179f756c56222771c5ee857d7ba4b98
+  sha256: sha256:249615f1d8529ab020ea9872bb42b00463594f20a9ec44fecc4e0f58d34dce91
 # Execute::HANDED_OVER, read when the plugin loads (0.59.0); after_tool_call's
 # call:, elapsed_ms: and result: (0.57.0)
 requires_chi: ">= 0.59.0"
