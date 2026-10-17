@@ -350,14 +350,22 @@ read: the idle scheduler, the Bridge's request threads, plugin threads, the UIs.
 TurnState
   ├── running?
   ├── controller        (the running turn's CancellationController)
+  ├── thread, ended     (the turn's own thread; its end event is out: post-turn work)
   ├── sink              (the turn's on_event)
   ├── steers            (plugin steers for the running turn's next boundary)
   ├── carried_steers    (for the next turn that begins)
   └── activity clock    (last_activity_at, activity_seq)
 ```
 
-- `begin!(controller:, sink:)`: running, with controller and sink, in one step; carried steers become steers.
-- `finish!`: not running, controller and sink cleared; returns the steers never taken (logged as dropped).
+- `begin!(controller:, sink:)`: running, with controller and sink (and the calling thread, the turn's own), in one
+  step; carried steers become steers.
+- `ended!`: the turn's end is decided (`end_turn`, next to `turn.ended`): its after_turn / session_end hooks run
+  after it and before `finish!`.
+- `own_controller(handler:)`: the controller for work done for the turn itself, which a plugin's `ctx.http` call
+  without `cancel:` stops with (`Plugin::Host#cancel_controller`, `Engine#plugin_cancel_controller`): the turn's, on
+  its thread or inside a plugin handler, until `ended!`; nil elsewhere (an anytime command, a service, a plugin's
+  own thread) and outside a turn. An init task's own controller wins inside one.
+- `finish!`: not running, controller, thread and sink cleared; returns the steers never taken (logged as dropped).
 - `steer(text, source:)`: queues a steer for the running turn (false with no turn).
 - `steer_next_turn(text, source:)`: queues a steer for the next turn that begins.
 

@@ -43,8 +43,9 @@ module Samagotchi
 
       # Requests of these purposes are the ones a turn waits on (or, for the
       # turn-end warm-up, prepares the next one): INFO lines (and ERROR when
-      # they fail). Probes and model lists are DEBUG.
-      LOGGED_PURPOSES = %w[chat recap warmup].freeze
+      # they fail); so are a plugin's ctx.http calls ("plugin"). Probes and
+      # model lists are DEBUG.
+      LOGGED_PURPOSES = %w[chat recap warmup plugin].freeze
 
       # Exponential backoff: base_delay * 2^(attempt-1), capped at max_delay,
       # for up to +max+ retries (max + 1 attempts).
@@ -190,11 +191,11 @@ module Samagotchi
       # @raise [RequestCancelled] when +cancel_controller+ cancels (with or
       #   without retries)
       def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
-                cancel_controller: nil, log_fields: {})
+                write_timeout: nil, cancel_controller: nil, log_fields: {})
         identify(request)
         current = new_attempt_state(uri, request, log_fields, stream: false)
         attempt = lambda do |state|
-          start(uri, open_timeout: open_timeout, read_timeout: read_timeout, max_retries: 0) do |http|
+          start(uri, open_timeout: open_timeout, read_timeout: read_timeout, write_timeout: write_timeout, max_retries: 0) do |http|
             state[:http] = http
             http.request(request).tap do |response|
               state[:status] = response.code.to_i
@@ -224,8 +225,9 @@ module Samagotchi
         @api_key&.authorize(request)
       end
 
-      def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &)
+      def start(uri, open_timeout: nil, read_timeout: nil, write_timeout: nil, max_retries: nil, &)
         options = { open_timeout: open_timeout || @open_timeout, read_timeout: read_timeout || @read_timeout }
+        options[:write_timeout] = write_timeout if write_timeout
         # Net::HTTP retries an idempotent request once on its own (max_retries
         # defaults to 1) when the connection drops before an answer: chi's
         # RetryPolicy owns retries (and the log line says how many were sent),

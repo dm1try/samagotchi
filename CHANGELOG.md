@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
   failing.
 
 - Bundles: `samagotchi/testing` (experimental), a test kit for bundles: load a bundle in a sandbox, fire its hooks, run its commands and tools, record steers, notices and cards (RSpec `:bundle` groups or Minitest `Testing::Case`; docs/plugins.md "Testing a bundle"). The shipped bundles' specs now live in each bundle's own `spec/` and use it; a boundary spec keeps bundles on the stable surface.
+- Plugins: `ctx.http`, an HTTP client for calling services (`get`, `post_json`, `request`): short default timeouts, one error type (`Samagotchi::Plugin::HttpError`), a 4xx/5xx returned as a Response, one INFO `http` log line per call without query, headers or body (`purpose=plugin`, `bundle=`), and a call made for the turn stops when the turn is stopped (docs/plugins.md "Calling services"; experimental until 1.0).
 
 ### Changed
 

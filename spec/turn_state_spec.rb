@@ -112,4 +112,41 @@ RSpec.describe Samagotchi::TurnState do
       expect(state.take_steers).to eq([{ text: "again", source: "user" }])
     end
   end
+
+  describe "#own_controller (work done for the turn itself)" do
+    it "is the controller on the thread that began the turn, nil on another, nil with no turn" do
+      expect(state.own_controller).to be_nil
+      state.begin!(controller: controller, sink: nil)
+
+      expect(state.own_controller).to be(controller)
+      expect(Thread.new { state.own_controller }.value).to be_nil
+      expect(lock_held?).to be(false)
+    end
+
+    it "is the controller on any thread for a plugin handler" do
+      state.begin!(controller: controller, sink: nil)
+
+      expect(Thread.new { state.own_controller(handler: true) }.value).to be(controller)
+    end
+
+    it "is nil once the turn has ended (its post-turn hooks run), though the controller is still held" do
+      state.begin!(controller: controller, sink: nil)
+      state.ended!
+
+      expect(state.own_controller).to be_nil
+      expect(state.own_controller(handler: true)).to be_nil
+      expect(state.controller).to be(controller)
+    end
+
+    it "is nil after finish!, and a next turn begins unended" do
+      state.begin!(controller: controller, sink: nil)
+      state.ended!
+      state.finish!
+      expect(state.own_controller(handler: true)).to be_nil
+
+      next_one = Samagotchi::CancellationController.new
+      state.begin!(controller: next_one, sink: nil)
+      expect(state.own_controller).to be(next_one)
+    end
+  end
 end

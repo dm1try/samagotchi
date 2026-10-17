@@ -22,6 +22,8 @@ module Samagotchi
       @running = false
       @controller = nil
       @sink = nil
+      @thread = nil
+      @ended = false
       @steers = []
       @carried_steers = []
     end
@@ -64,12 +66,15 @@ module Samagotchi
       @lock.synchronize { @running }
     end
 
-    # A turn begins: running, with its controller and sink, in one step.
+    # A turn begins, on the calling thread (the turn's own): running, with
+    # its controller and sink, in one step.
     def begin!(controller:, sink:)
       @lock.synchronize do
         @running = true
         @controller = controller
         @sink = sink
+        @thread = Thread.current
+        @ended = false
         @steers.concat(@carried_steers)
         @carried_steers = []
       end
@@ -82,13 +87,35 @@ module Samagotchi
         @running = false
         @controller = nil
         @sink = nil
+        @thread = nil
+        @ended = false
         @steers.tap { @steers = [] }
       end
+    end
+
+    # The turn's end is decided (its end event is out): what runs after,
+    # its after_turn / session_end hooks, is post-turn work, up to #finish!.
+    def ended!
+      @lock.synchronize { @ended = true }
     end
 
     # @return [CancellationController, nil] the running turn's controller
     def controller
       @lock.synchronize { @controller }
+    end
+
+    # The controller for work done for the turn itself (a plugin's HTTP
+    # call): the running turn's, on the turn's thread or +handler+ (inside a
+    # plugin's event handler, whatever thread fires it), until the turn has
+    # ended; nil for any other thread (an anytime command, a service) and
+    # outside a turn.
+    # @return [CancellationController, nil]
+    def own_controller(handler: false)
+      @lock.synchronize do
+        return nil unless @running && !@ended
+
+        handler || @thread.equal?(Thread.current) ? @controller : nil
+      end
     end
 
     # Cancel the running turn, if any (outside the lock).

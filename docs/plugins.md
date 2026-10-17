@@ -744,6 +744,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
+| `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
 | `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there |
@@ -852,6 +853,63 @@ next turn never see it, and no hook fires. It returns the answer text.
 
 It goes through the host's OpenAI API (`/v1/chat/completions`), which
 llama.cpp serves on a native host too.
+
+## Calling services: `ctx.http`
+
+```ruby
+chi.tool("classify", "Label a text as safe or risky", params: { text: "String" }) do |args, ctx|
+  res = ctx.http.post_json("http://127.0.0.1:9000/classify", { text: args[:text] },
+                           headers: { "Authorization" => "Bearer #{ENV["CLS_KEY"]}" }, timeout: 5)
+  if res.ok?
+    res.json["label"]
+  else
+    ctx.log.warn(:classify_failed, status: res.status)
+    "the classifier answered #{res.status}"
+  end
+rescue Samagotchi::Plugin::HttpError => e
+  "the classifier is not reachable: #{e.message}"
+end
+```
+
+One way to call an HTTP service, with timeouts, errors, logging and Stop handled the same for every bundle.
+`Net::HTTP` stays available for what this doesn't do (streaming, multipart, redirects, connection reuse).
+
+| | |
+|---|---|
+| `ctx.http.get(url, headers: {}, timeout: 10)` | GET |
+| `ctx.http.post_json(url, body, headers: {}, timeout: 10)` | POST `body` encoded as JSON, with `Content-Type` and `Accept: application/json` (unless `headers` names them) |
+| `ctx.http.request(method, url, body: nil, headers: {}, timeout: 10)` | GET, POST, PUT, PATCH, DELETE or HEAD; `body` is a String sent as is (set your own `Content-Type`) |
+
+Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which replaces the default (below).
+
+- `url` is a String or URI, `http` or `https`. A bad URL, another scheme, an unknown method, a bad header, a
+  `timeout` that isn't a positive number, or a body `post_json` can't encode as JSON raises **ArgumentError**
+  before any request.
+- `timeout` (seconds) is the connect, the write and the **per-read** timeout, not a total deadline: a server that dribbles
+  bytes can take longer.
+- It returns a `Samagotchi::Plugin::Http::Response`: `status` (Integer), `headers` (frozen, lower-case names,
+  repeated values joined with `", "`), `body` (a String, `""` for HEAD or no body), `ok?` (2xx) and `json`. A
+  **4xx or 5xx is returned, not raised**: check `ok?`. A redirect is not followed: the 3xx comes back with its
+  `location` header.
+- `body` is tagged UTF-8 when its bytes are valid UTF-8, else left binary: `body.scrub` it before handing unknown
+  text to the model. There is no size limit: don't read an endpoint you don't trust to be small.
+- `json` parses the body on each call and raises `HttpError` ("not JSON: …") when it isn't JSON.
+- **One error type.** `Samagotchi::Plugin::HttpError` means the request didn't complete: refused, timed out, DNS,
+  TLS, reset, a malformed response, a bad compressed body, or `json` on a body that isn't JSON. No raw `Errno`,
+  `Net::` or `Zlib` error escapes (the original is the error's `cause`). The message says what and where
+  (`"POST 127.0.0.1:9000: connection refused"`), never headers or a body. `Samagotchi::Plugin::HttpCancelled`
+  (a subclass) means the call was cancelled.
+- `http_proxy`, `https_proxy` and `no_proxy` are honoured as for chi's model calls (loopback is never proxied).
+  chi's own `User-Agent` is always sent: yours is replaced.
+- **Stop.** A call made for the turn (a tool, a hook's handler) stops when the turn is stopped, and a call inside an
+  init task when chi shuts down; a call from your own thread, a `chi.service` or an anytime command has only its
+  timeout unless you pass `cancel:`. After the turn has ended (an `:after_turn` or `:session_end` hook of a
+  stopped turn) a call is not cancelled by that stop.
+- **The log.** Each call writes one `http` line to the debug log: INFO (ERROR when it fails) with `bundle=`,
+  `purpose=plugin`, the method, the URL **without its query**, the status and the time. Never headers or bodies.
+  A plugin that polls a dead service therefore logs an ERROR per poll.
+
+`ctx.http` is experimental until 1.0, like the test kit.
 
 ## Other sessions: `ctx.sessions`
 
@@ -1003,7 +1061,9 @@ CHANGELOG line and bumps the shipped bundles that use it. Anything else under
    `Samagotchi::Plugin::ToolResult`, `Samagotchi::Plugin::ModelError` (and its
    subclass `Samagotchi::Plugin::ModelCancelled`),
    `Samagotchi::Plugin::Service::Stopped`, `Samagotchi::Plugin::Sessions::Error`
-   and `Samagotchi::Plugin::AttachedContext::Error`.
+   and `Samagotchi::Plugin::AttachedContext::Error`. `ctx.http` and its
+   `Samagotchi::Plugin::HttpError` (with the subclass `HttpCancelled`) and
+   `Samagotchi::Plugin::Http::Response` are **experimental until 1.0**, like the test kit.
 2. `Samagotchi::Plugin::Peer` as a base class. A subclass defines `post`,
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,

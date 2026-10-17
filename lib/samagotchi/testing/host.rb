@@ -42,7 +42,8 @@ module Samagotchi
           frontend: -> { recorder[:frontend] },
           toolkit: -> { recorder[:toolkit] },
           declared_tools: -> { recorder[:declared_tools] || tool_names.call },
-          use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) }
+          use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
+          cancel_controller: ->(handler: false) {} # P2: follows the recorder's cancelled:
         )
       end
     end

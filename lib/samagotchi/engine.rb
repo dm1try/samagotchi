@@ -1424,6 +1424,7 @@ module Samagotchi
         emit_event(turn.on_event, turn.tag(event))
       end
       turn.ended = true
+      @turn_state.ended!
       save_quietly(turn.session) if save
       @metrics.persist(state_dir: session_state_dir)
     end
@@ -2542,6 +2543,7 @@ module Samagotchi
         toolkit: -> { @toolkit_binding.name },
         declared_tools: -> { toolkit_explained.declared.map(&:name) },
         use_toolkit: ->(name) { use_toolkit(name) },
+        cancel_controller: ->(handler: false) { plugin_cancel_controller(handler: handler) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },
@@ -2557,6 +2559,15 @@ module Samagotchi
         frontend: -> { interface }
       )
     end
+
+    # The controller a plugin's ctx.http call without cancel: stops with
+    # (docs/plugins.md): an init task's own, else the running turn's for the
+    # turn's own work until the turn has ended (TurnState#own_controller); nil
+    # for an anytime command, a service or a thread of the plugin's.
+    def plugin_cancel_controller(handler:)
+      (task = current_init_task) ? task.cancel : @turn_state.own_controller(handler: handler)
+    end
+    private :plugin_cancel_controller
 
     # A plugin's ctx.messages: the conversation without the system prompt
     # (the REPL's starts with it, a worker's new session doesn't), and,

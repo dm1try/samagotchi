@@ -18,6 +18,11 @@ module Samagotchi
     # bundle test kit, don't need.
     autoload :Sessions, File.expand_path("sessions", __dir__)
     autoload :AttachedContext, File.expand_path("attached_context", __dir__)
+    # ctx.http's file needs only json and uri (net/http loads with the first
+    # real request); autoloaded so a bundle can name HttpError at load time.
+    autoload :Http, File.expand_path("http", __dir__)
+    autoload :HttpError, File.expand_path("http", __dir__)
+    autoload :HttpCancelled, File.expand_path("http", __dir__)
 
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
@@ -40,10 +45,14 @@ module Samagotchi
     # +toolkit+ returns the session's toolkit name, +declared_tools+ the
     # tool names its next turn declares, +use_toolkit+ takes a name and
     # returns whether it staged it (Engine#use_toolkit).
+    # +cancel_controller+ takes (handler:) and returns the controller a
+    # ctx.http call without cancel: uses, nil for none: an init task's own,
+    # else the running turn's for work done for it (the turn's thread, or a
+    # plugin handler: +handler+) until the turn has ended.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit,
-                      keyword_init: true)
+                      :cancel_controller, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -95,7 +104,10 @@ module Samagotchi
       # @param host [Host]
       # @param sessions [Object, nil] what #sessions returns instead of a
       #   Sessions over +host+ (the test kit's recording one)
-      def initialize(bundle:, label:, settings:, host:, env: ENV, sessions: nil)
+      # @param http_transport [#call, nil] what #http sends through instead
+      #   of the network (the test kit's FakeHttp); the default cancel
+      #   lookup stays the Context's own
+      def initialize(bundle:, label:, settings:, host:, env: ENV, sessions: nil, http_transport: nil)
         @bundle = bundle.to_s
         @label = label
         @settings = deep_freeze(settings.is_a?(Hash) ? settings : {})
@@ -105,6 +117,8 @@ module Samagotchi
         @git = Guardrails::GitInfo.new
         @data_dir = nil
         @sessions = sessions
+        @http_transport = http_transport
+        @http = nil
       end
 
       # The bundle, never the environment it holds (every API key in it).
@@ -290,6 +304,16 @@ module Samagotchi
         @sessions ||= Sessions.new(@host)
       end
 
+      # An HTTP client for calling services (Http, docs/plugins.md). A call
+      # made for the turn (a tool, a handler) stops when the turn is stopped;
+      # one from a command, a service or your own thread has only its
+      # timeout unless it passes cancel:.
+      # @return [Http]
+      def http
+        @http ||= Http.new(bundle: @bundle, transport: @http_transport,
+                           cancel_lookup: -> { @host.cancel_controller&.call(handler: in_handler?) })
+      end
+
       # This session's attached context: attach a URL or a command, list
       # (AttachedContext).
       # @return [AttachedContext]
@@ -352,6 +376,9 @@ module Samagotchi
       end
 
       private
+
+      # Whether this plugin's handler runs on this thread (#with_event).
+      def in_handler? = !!Thread.current[CURRENT_EVENTS]&.key?(self)
 
       # The event[:x] helper of the event this plugin's handler runs for on
       # this thread, or nil (not in a handler).
