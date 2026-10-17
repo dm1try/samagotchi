@@ -396,6 +396,8 @@ RSpec.describe "chi bootstrap" do
     end
 
     it "asks for the key's variable on a 401 and probes again with it" do
+      # The OpenAI list, then the Anthropic one: both want a key.
+      server.enqueue("/v1/models", status: 401, json: { error: { message: "no key" } })
       server.enqueue("/v1/models", status: 401, json: { error: { message: "no key" } })
       server.default("/v1/models", json: models("m"))
 
