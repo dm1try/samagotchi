@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/hooks"
+require "samagotchi/guardrails/verdict"
 
 RSpec.describe Samagotchi::Hooks::Registry do
   describe "bundle hooks" do
@@ -110,5 +111,38 @@ RSpec.describe Samagotchi::Hooks::Registry, "#bundle_hook_names" do
     registry.fire(:before_turn, {})
     expect(order).to eq(names.map { |bundle, hook, _| "#{bundle} #{hook}" })
     expect(registry.bundle_hook_names(:session_end)).to eq([])
+  end
+end
+
+RSpec.describe Samagotchi::Hooks, ".capture_failures" do
+  it "collects every hook that raises on this thread, whatever its policy, and the policy still applies" do
+    registry = Samagotchi::Hooks::Registry.new
+    %i[skip log].each do |policy|
+      handler = described_class.wrap(label: "#{policy}.rb (bundle b)", event: :before_turn, policy: policy, echo: false) { raise "#{policy} broke" }
+      registry.register_bundle("b", :before_turn, hook_name: "#{policy}.rb", &handler)
+    end
+    registry.register(:before_turn) { raise ArgumentError, "plain broke" }
+    registry.register(:before_turn) { |event| event[:after] = true }
+
+    failures = []
+    event = {}
+    expect { described_class.capture_failures(failures) { registry.fire(:before_turn, event) } }
+      .to output(/turn hook failed: ArgumentError: plain broke/).to_stderr
+
+    expect(failures.map { |f| [f.hook, f.event, f.error.message] })
+      .to eq([["log.rb (bundle b)", "before_turn", "log broke"], ["skip.rb (bundle b)", "before_turn", "skip broke"],
+              ["turn hook", "before_turn", "plain broke"]])
+    expect(event[:after]).to be true
+    expect { registry.fire(:before_turn, {}) }.to output.to_stderr
+    expect(failures.size).to eq(3)
+  end
+
+  it "records a fail-closed guardrail that raises, which still denies" do
+    verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "x" })
+    handler = described_class.wrap(label: "guard.rb", event: :before_tool_call, policy: :deny) { raise "boom" }
+    failures = []
+    described_class.capture_failures(failures) { handler.call({ guardrail: verdict }) }
+    expect(failures.map { |f| f.error.message }).to eq(["boom"])
+    expect(verdict.deny?).to be true
   end
 end

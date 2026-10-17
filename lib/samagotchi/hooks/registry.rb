@@ -49,6 +49,31 @@ module Samagotchi
       namespace.const_get(File.basename(file.to_s, ".rb").split("_").map(&:capitalize).join, false)
     end
 
+    # A hook that raised: its label, event and error (#capture_failures).
+    Failure = Data.define(:hook, :event, :error)
+
+    # Thread.current key: the Array #capture_failures fills, or nil.
+    FAILURES = :samagotchi_hook_failures
+
+    # Collect into +sink+ every hook that raises on this thread while the
+    # block runs, whatever its policy (:skip ones log nothing, a stream
+    # hook's log is rate-limited): the bundle test kit raises them. The
+    # policy still applies. Nests; threads the block starts don't inherit it.
+    # @param sink [Array<Failure>]
+    def self.capture_failures(sink)
+      previous = Thread.current[FAILURES]
+      Thread.current[FAILURES] = sink
+      yield
+    ensure
+      Thread.current[FAILURES] = previous
+    end
+
+    # Add a raising hook to the sink #capture_failures set, if any.
+    def self.record_failure(hook, event, error)
+      Thread.current[FAILURES]&.push(Failure.new(hook: hook.to_s, event: event.to_s, error: error))
+      nil
+    end
+
     # A hook's block wrapped in its error policy: what a loader registers.
     # When the block raises,
     #   :deny  denies the call (event[:guardrail], the Gate's Verdict),
@@ -70,6 +95,7 @@ module Samagotchi
       rescue Exception => e # rubocop:disable Lint/RescueException -- :deny fails closed on anything
         raise unless policy == :deny || e.is_a?(StandardError) || e.is_a?(ScriptError)
 
+        Hooks.record_failure(label, event, e)
         failed = "#{e.class}: #{e.message}"
         if policy == :deny
           payload[:guardrail]&.deny!("#{label} raised #{failed}", rule: "guardrail-load", source: "core", decided_by: "core") if payload.is_a?(Hash)
@@ -273,6 +299,7 @@ module Samagotchi
             hook_proc.call(event)
           rescue StandardError => e
             # A failing hook must not break the turn.
+            Hooks.record_failure(label, name, e)
             Log.exception(:hooks, "hook_failed", e, echo: "[samagotchi:hooks] #{label} failed: #{e.class}: #{e.message}",
                                                 hook: label, event: name.to_s)
           end
@@ -302,6 +329,7 @@ module Samagotchi
             hook_proc.call(event)
           rescue StandardError => e
             # A failing hook must not break the turn.
+            Hooks.record_failure(label, name, e)
             Log.exception(:hooks, "hook_failed", e, echo: "[samagotchi:hooks] #{label} failed: #{e.class}: #{e.message}",
                                                 hook: label, event: name.to_s)
           end
