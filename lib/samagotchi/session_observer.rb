@@ -22,6 +22,9 @@ module Samagotchi
   #   * recap_ready — an idle session-recap finished generating
   #     (`recap:` prose, `generation:` id). Purely additive: it never mutates
   #     session.messages; each UI renders it (or not) however it likes.
+  #   * side_usage — a side request (the recap, a plugin's ctx.ask_model) was
+  #     counted (Engine#note_side_usage): `kind:` and `side:`, the session's
+  #     whole side block (SessionMetrics#add_side), in fold order.
   class SessionObserver
     # Handle returned by #subscribe. Holds the observer reference and carries
     # #unsubscribe so a caller can deregister without keeping the registry.

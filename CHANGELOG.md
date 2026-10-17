@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Stats: side requests (the idle recap, `/btw` and plugins' `ctx.ask_model`) are counted on their own
+  `side requests:` line in `/stats` and the web's ctx tooltip, with their tokens and cost; the session's totals stay
+  its turns'.
+
 ### Fixed
 
 - Plugins: a `chi.service` that starts lazily from a tool or hook handler runs its start block outside the handler,

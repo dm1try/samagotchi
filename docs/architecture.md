@@ -338,6 +338,14 @@ carries the generation's `speed` (`{decode_tps, source}`, null without one), its
 counts (`prompt_tokens`, `cached_tokens`, `cache_write_tokens`: null when the server reported no writes) and
 those running `tokens` and `model_segments`: the Engine closes the generation in `SessionMetrics#finish_generation` before relaying
 it, so the web's info bar updates per generation without parsing chunk payloads.
+Side requests (the idle recap, a plugin's `ctx.ask_model` such as `/btw`) are counted apart, in a `side` block
+(only when there were any; `SessionMetrics::SideTotals`: requests, token sums, `cost_sum` null until reported,
+`cost_estimate_sum` from the target host's price, `by_kind`): `IdleClient` hands each reply's usage to its
+`on_usage:` callback, `Engine#note_side_usage`, which folds it (`SessionMetrics#add_side`) and announces
+`:side_usage` (`kind`, the whole `side` block) under the event lock, so the blocks arrive in fold order, then saves
+`analytics.json` between turns (a running turn's end saves it). `tokens`, `model_segments` and the turn records
+stay the turns' only. `SessionMetrics#persist` is serialized (its own mutex, taken before the metrics one), so two
+threads' saves land in snapshot order.
 
 The page's frequent reads of `GET /api/sessions/:id` stay light too:
 - `?tail=1&recent=1` (each turn's end, a cancel, an answer display): `{tail, session: {id, status,
@@ -523,7 +531,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
 | LLM context strategies | `llm_context_strategy.rb`, `llm_context_view.rb`, `llm_context_stale.rb`, `llm_context_forget.rb` | What a request sends of the history (none, stale, forget) ([internals/llm-context-forget.md](internals/llm-context-forget.md)). |
 | Session chains | `session_continue.rb` (`SessionContinue`), `session_chain.rb` (`SessionChain`) | A session that continues an earlier one. `SessionChain.opener_for` gives the text web `continue →` prefills in the new link: the previous link's own first typed message when that link continues one itself, else nil (the 201's `opener`; not saved) ([sessions.md](sessions.md)). |
-| Analytics | `analytics_file.rb` (`AnalyticsFile`), `session_metrics/totals.rb` (`SessionMetrics::Totals`), `session_metrics/model_segment.rb` (`SessionMetrics::ModelSegment`) | A session's `analytics.json` (`SessionMetrics#persist`); the sums over its turn records (`Totals`: tokens, cost, speeds, kept as running counters) and their split per model after a `/model` switch (`ModelSegment`: a run of turns on one model, the `model_segments` rows). |
+| Analytics | `analytics_file.rb` (`AnalyticsFile`), `session_metrics/totals.rb` (`SessionMetrics::Totals`), `session_metrics/model_segment.rb` (`SessionMetrics::ModelSegment`) | A session's `analytics.json` (`SessionMetrics#persist`); the sums over its turn records (`Totals`: tokens, cost, speeds, kept as running counters) and their split per model after a `/model` switch (`ModelSegment`: a run of turns on one model, the `model_segments` rows). `session_metrics/side_totals.rb` (`SessionMetrics::SideTotals`) and `side_usage.rb` (`SideUsage`): the side requests' sums, apart from the turns'. |
 | Images / vision | `image_store.rb` (`ImageStore`), `vision_support.rb`, `vision_context.rb` | Stored prompt images and whether a model takes them. |
 | Toolkits | `toolkit.rb` (`Toolkit`), `toolkit_binding.rb` (`ToolkitBinding`, the Engine's seam), `toolkit_command.rb` (`/toolkit`), `tools/registry.rb` (`Registry#toolkit`, `#left_out_names`), `web/public/toolkit_chip.js` | Which registered tools a session's prompts declare: saved in the session, resolved at a turn's start (`Engine#apply_toolkit!`), named in the prompt's not-loaded line, a kit's prompt text after the appended files; `chi.toolkit` and `ctx.use_toolkit` for plugins ([configuration.md](configuration.md#toolkits)). |
 | Tool index | `tools/tool_index.rb` (`Tools::ToolIndex`) | `find_tools` and `call_tool`: the tools a session knows but doesn't declare one by one (an mcp bundle's servers through `chi.tool_source`, the built-ins its toolkit leaves out), searched and called by name ([plugins.md](plugins.md)). |

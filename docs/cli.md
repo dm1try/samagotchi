@@ -486,6 +486,14 @@ Generations under 8 tokens or 100 ms get no speed of their own, nor does a
 reply without server token counts or a non-streamed one. A delegated child
 keeps its own numbers: a parent's tokens and cost leave them out.
 
+Side requests have their own line, right after `cost:` (in its place without one), only when the session made any:
+`side requests:    3 (recap 2, btw 1) · 14.2k in / 380 out · $0.0012 + ~$0.0009 (not in the totals above)`. It
+counts the idle recap (`recap`), `/btw` and every other plugin's `ctx.ask_model` (under the asking bundle's name),
+with their tokens and cost: a reported cost as is, else estimated from the price of the model they asked, on its
+host (as a turn's, `~`). They are never in the tokens, `models:` or `cost:` lines above it, which stay the turns'.
+A recap thrown away (stale, overdue) still counts: it was billed. `chi sessions stats` shows the line too (saved
+between turns), and the web's ctx tooltip has the same words.
+
 After a `/model` switch (or a hook's) the tokens line becomes a `models:` block, a row per run of turns on one
 model, in order (A → B → A is three rows): the model (`host:model` as asked), when (`10:43–now` while it runs; with
 the day when the rows span several), turns, tokens in/out, its average speed and cost. Under the row of the model

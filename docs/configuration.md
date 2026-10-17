@@ -573,6 +573,9 @@ hosts:
 - The estimate is saved apart from the reported cost (`cost_estimate` per turn, `cost_estimate_sum` in the
   session's totals in `analytics.json`) and shows with a `~`.
 - A server that sends no cached counts has its whole prompt priced at `input`: an overestimate.
+- Side requests (the idle recap, `/btw`, a plugin's `ctx.ask_model`) are priced by the same rule from the price of
+  the model they asked on its host: the recap's host and model (`recap.*`, else the session's), `ask_model(model:)`'s
+  host. They count on `/stats`' own `side requests:` line, never in the session's `cost:`.
 
 ## Thinking
 

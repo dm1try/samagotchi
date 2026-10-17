@@ -858,6 +858,10 @@ next turn never see it, and no hook fires. It returns the answer text.
 It goes through the host's OpenAI API (`/v1/chat/completions`), which
 llama.cpp serves on a native host too.
 
+Each call counts in the session's side requests, under the bundle's name: `/stats`' `side requests:` line and the
+web's ctx tooltip (`2 (btw 1, recap 1) · …`), with its tokens and its cost (reported, else estimated from the target
+model's price), never in the session's own totals.
+
 ## Calling services: `ctx.http`
 
 ```ruby
