@@ -158,6 +158,21 @@ test("context_status: after an unresolved /model a chunk sets no %, and a turn's
   assert.equal(page.current.ctxWindow, 32000);
 });
 
+// The ctx tooltip's "until the next request" (ctxBarTip): set by a switch's
+// unresolved window, gone with a window or when the next request starts.
+test("context_status: an unresolved /model marks the window unknown until the next request starts or a window comes", () => {
+  const { page, handlers } = fakePage();
+  handlers.context_status({ usage: null, bucket: null, context_window_tokens: null });
+  assert.equal(page.current.ctxUnknownAfterSwitch, true);
+  handlers.generation_started({ context_window_tokens: null });
+  assert.equal(page.current.ctxUnknownAfterSwitch, false);
+  handlers.context_status({ usage: null, bucket: null, context_window_tokens: null });
+  assert.equal(page.current.ctxUnknownAfterSwitch, true);
+  handlers.context_status({ usage: { estimated_pct: 10 }, bucket: "under20", context_window_tokens: 128000,
+                            context_window_source: "server" });
+  assert.equal(page.current.ctxUnknownAfterSwitch, false);
+});
+
 test("turn_started on a guessed stream that replays a drawn turn restarts the stream only", () => {
   const { page, handlers } = fakePage();
   page.guess = true;

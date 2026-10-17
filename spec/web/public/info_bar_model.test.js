@@ -139,3 +139,15 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
   assert.equal(typeof bar.ctx.text, "string");
   assert.equal(bar.speed, null);
 });
+
+// The ctx tooltip waits for the next request only right after a /model
+// whose new window didn't resolve (session_state.js ctxUnknownAfterSwitch).
+test("the ctx tooltip says the window is unknown, until the next request right after such a /model", () => {
+  const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 } };
+  const model = (fields) => infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ...fields }, sessions: [],
+                                           chain: { prev: null, next: null }, cardTitle: title, badge: null,
+                                           restarting: false, running: false, now: Date.now() });
+  assert.match(model({}).ctx.tip, /^Context window unknown\n/);
+  assert.match(model({ ctxUnknownAfterSwitch: true }).ctx.tip, /^Context window unknown until the next request\n/);
+  assert.equal(model({ ctxUnknownAfterSwitch: true }).ctx.text, "ctx ?");
+});

@@ -13,6 +13,7 @@ test("starts every field empty", () => {
   assert.equal(s.ctxPct, null);
   assert.equal(s.ctxWindow, null);
   assert.equal(s.ctxWindowSource, null);
+  assert.equal(s.ctxUnknownAfterSwitch, false);
   assert.equal(s.llmContext, null);
   assert.equal(s.served, null);
   assert.equal(s.status, "");

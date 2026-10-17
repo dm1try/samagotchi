@@ -50,8 +50,9 @@ and commands may change between minor versions. How releases are made:
   <repo name>` first, then install it again.
 - A bundle manifest whose `name:` is a path (`../x`, `a/b`, `.`, `..`) is refused (`Install failed: name: …`): the
   name is a directory under `.bundles/`, and a git URL bundle is now named by its manifest.
-- Web: after a `/model` whose new window can't be resolved (`ctx ?`), the ctx tooltip says `Context window unknown
-  until the next request` over the session's tokens and per-model rows, instead of `No request in this session yet`.
+- Web: a session with requests but no ctx % (`ctx ?`: a `/model` whose new window can't be resolved, or a model whose
+  window never resolves) has a ctx tooltip that says `Context window unknown` (`… until the next request` right after
+  such a `/model`) over the session's tokens and per-model rows, instead of `No request in this session yet`.
 - Web: opening another session while a `!cmd` (or a turn that failed and was rolled back) re-read its own no longer
   draws that command's output, or the failed prompt and its line, in the session just opened.
 - Web: a session command's answer (`/model x`, `!ls`) no longer clears what you typed meanwhile in another session's

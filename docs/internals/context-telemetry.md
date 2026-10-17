@@ -43,7 +43,8 @@ from them) and `usage.source: "switch"`. It is kept for a client that joins late
 `context_status`). A window that doesn't resolve sends `usage: null` and `context_window_tokens: null`: the web shows
 `ctx ?` and drops the old model's window (a chunk's usage then counts no %, until a `generation_started` brings a
 window), and the attached TUI's status row drops its ctx until the next generation (the web's ctx tooltip then says
-`Context window unknown until the next request` over the session's tokens, `ctxBarTip`). Nothing is sent before the
+`Context window unknown until the next request` over the session's tokens, `ctxBarTip`, until that request starts;
+plain `Context window unknown` after it, and for a session whose window never resolves). Nothing is sent before the
 session's first counted turn. A
 hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
 
