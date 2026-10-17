@@ -1,26 +1,24 @@
 # frozen_string_literal: true
 
-require "spec_helper"
 require "tmpdir"
 require "json"
-require "samagotchi/plugin/context"
 require "samagotchi/memory_bundle/installer"
+require "samagotchi/testing/rspec"
 require "samagotchi/context_providers"
 require "samagotchi/answer_display"
 require "samagotchi/answer_refs"
 require "digest"
-require_relative "../../support/fake_executables"
 
 # The github-pr bundle as installed: its provider resolves PR URLs, and its
 # plugin's init task attaches the branch's open PR to the session (not to a
 # scratch session or a delegate child), quietly doing nothing without gh,
 # a branch or an open PR. Its line links: a `path:line` in an answer links
 # to that line of the session's PR, from a cache filled off the turn.
-RSpec.describe "The github-pr bundle" do
-  let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/github-pr", __dir__) }
+RSpec.describe "The github-pr bundle", :bundle do
+  let(:shipped) { File.expand_path("..", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("github-pr-plugin") }
   let(:state_dir) { File.join(tmpdir, "state", "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
-  let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
+  let(:bin) { sandbox.bin_dir }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
                        .tap { |s| s.save(state_dir: state_dir) }
@@ -29,57 +27,33 @@ RSpec.describe "The github-pr bundle" do
   # The Engine's interface ctx.frontend names (nil: a worker).
   let(:interface) { nil }
   let(:settings) { {} }
-  let(:cards) { [] }
-  let(:ctx) do
-    host = Samagotchi::Plugin::Host.new(session_id: -> { session.id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                        scratch: -> { scratch }, frontend: -> { interface }, model_name: -> { "host:gemma4" },
-                                        card: ->(**card) { cards << card and card[:id] })
-    Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "plugin.rb (bundle github-pr)", settings: settings, host: host,
-                                    env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
-  end
-  let(:namespace) { Module.new.tap { |n| n.module_eval(File.read(File.join(shipped, "plugin.rb")), "plugin.rb", 1) } }
-  let(:plugin) { namespace.const_get(:Plugin).new }
+  let(:bundle) { load }
+  let(:ctx) { bundle.ctx }
+  let(:cards) { bundle.cards }
+  let(:namespace) { bundle.namespace }
+  let(:plugin) { bundle.plugin }
   let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
-  # What the plugin's register gets: its inits, hooks and commands.
-  let(:fake_chi) do
-    Class.new do
-      attr_reader :inits, :hooks, :commands
 
-      def initialize
-        @inits = []
-        @hooks = {}
-        @commands = {}
-      end
-
-      def init(_label, **_options, &block) = @inits << block
-
-      def on(event, priority: 100, &block)
-        @hooks[event] = [priority, block]
-      end
-
-      def command(name, _description, anytime: false, &block)
-        @commands[name] = [anytime, block]
-      end
-    end.new
+  # The session's values the plugin's ctx reads (the kit's host).
+  def host_values
+    { session_id: session.id, cwd: tmpdir, state_dir: state_dir, scratch: scratch, model_name: "host:gemma4",
+      frontend: interface || :worker }
   end
 
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+  # The bundle as chi loads it, with these settings (a second load is a
+  # worker's restart: the same session, the same sandbox).
+  def load(with_settings = settings) = shipped_bundle("github-pr", settings: with_settings, host: host_values)
 
-  around do |example|
-    path = ENV.fetch("PATH", nil)
-    ENV["PATH"] = "#{bin}:/usr/bin:/bin"
-    example.run
-  ensure
-    ENV["PATH"] = path
-  end
-
+  # Only the fakes and the system's own tools: no gh of the user's (the
+  # sandbox puts ENV back after the example).
   before do
+    ENV["PATH"] = "#{bin}:/usr/bin:/bin"
     Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "github-pr", scope: "system", strict: true).run
   end
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def fake(name, script) = FakeExecutables.fake_executable(bin, name, script)
+  def fake(name, script) = sandbox.fake_executable(name, script)
 
   def on_branch_with(pr)
     fake("git", 'echo "feat/x"')
@@ -152,23 +126,19 @@ RSpec.describe "The github-pr bundle" do
 
   describe "auto_attach" do
     let(:pr_url) { "https://github.com/acme/app/pull/42" }
-    let(:offers_path) { File.join(tmpdir, "state", "samagotchi", "plugins", "github-pr", "offers.ndjson") }
+    let(:offers_path) { File.join(ctx.data_dir, "offers.ndjson") }
 
     before { on_branch_with("number" => 42, "url" => pr_url, "state" => "OPEN", "title" => "Make  the\nthing") }
 
     def offers = File.exist?(offers_path) ? File.readlines(offers_path).map { |line| JSON.parse(line) } : []
 
     def run_command(name, args)
-      plugin.register(fake_chi)
-      anytime, block = fake_chi.commands.fetch(name)
-      expect(anytime).to be(true)
-      block.call(args, ctx)
+      expect(bundle.bundle_commands.find { |entry| entry.name == name }.anytime).to be(true)
+      bundle.command("#{name} #{args}")
     end
 
-    def ctx_with(new_settings)
-      Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "l", settings: new_settings, host: ctx.instance_variable_get(:@host),
-                                      env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
-    end
+    # A ctx with other settings for the same session (another load's).
+    def ctx_with(new_settings) = load(new_settings).ctx
 
     it "reads the mode: attach by default, YAML's true/false, any case, an unknown value as attach (warned once)" do
       expect(plugin.auto_attach_mode(ctx_with({}))).to eq(:attach)
@@ -205,8 +175,7 @@ RSpec.describe "The github-pr bundle" do
       end
 
       it "logs no first prompt" do
-        plugin.register(fake_chi)
-        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+        bundle.fire(:before_turn, messages: [], prompt: "hi")
         expect(offers).to eq([])
       end
     end
@@ -218,7 +187,7 @@ RSpec.describe "The github-pr bundle" do
         expect(plugin.attach_branch_pr(ctx)).to eq("offered pr-42")
 
         expect(own.sources).to eq([])
-        expect(cards).to eq([{ source: "github-pr", id: "github-pr-offer-42", title: "PR #42 for branch feat/x",
+        expect(cards).to eq([{ type: :card, source: "github-pr", id: "github-pr-offer-42", title: "PR #42 for branch feat/x",
                                body: "Make the thing\n\nNot attached: the agent gets nothing until you attach it.",
                                level: :info, actions: [{ label: "Attach", command: "/pr-attach 42" },
                                                        { label: "Not here", command: "/pr-decline 42" }] }])
@@ -300,13 +269,11 @@ RSpec.describe "The github-pr bundle" do
       end
 
       it "logs every session's first prompt, not one after a user message, a continue or a context note-only history" do
-        plugin.register(fake_chi)
-        hook = fake_chi.hooks[:before_turn][1]
         note = { role: "system", kind: "context", content: "pr-9 changed" }
 
-        hook.call({ type: :before_turn, messages: [note], prompt: "x" * 200 }, ctx)
-        hook.call({ type: :before_turn, messages: [note, { "role" => "user", "content" => "x" }], prompt: "second" }, ctx)
-        hook.call({ type: :before_turn, messages: [], prompt: nil }, ctx)
+        bundle.fire(:before_turn, messages: [note], prompt: "x" * 200)
+        bundle.fire(:before_turn, messages: [note, { "role" => "user", "content" => "x" }], prompt: "second")
+        bundle.fire(:before_turn, messages: [], prompt: nil)
 
         expect(offers).to match([hash_including("event" => "first_prompt", "session" => session.id, "prompt" => "x" * 160)])
       end
@@ -323,12 +290,10 @@ RSpec.describe "The github-pr bundle" do
         let(:seed) { [{ role: "user", content: "the parent's question" }, { role: "model", content: "its answer" }] }
 
         it "logs its first prompt after the parent's conversation, once, beside another session's row" do
-          plugin.register(fake_chi)
-          hook = fake_chi.hooks[:before_turn][1]
           namespace::OffersLog.new(offers_path, ctx.log).write("first_prompt", session: parent.id, prompt: "parent")
 
-          hook.call({ type: :before_turn, messages: seed, prompt: "the fork's own" }, ctx)
-          hook.call({ type: :before_turn, messages: seed + [{ role: "user", content: "the fork's own" }], prompt: "next" }, ctx)
+          bundle.fire(:before_turn, messages: seed, prompt: "the fork's own")
+          bundle.fire(:before_turn, messages: seed + [{ role: "user", content: "the fork's own" }], prompt: "next")
 
           expect(offers.select { _1["session"] == session.id })
             .to match([hash_including("event" => "first_prompt", "prompt" => "the fork's own")])
@@ -337,8 +302,7 @@ RSpec.describe "The github-pr bundle" do
         it "finds its row in the rotated file too" do
           FileUtils.mkdir_p(File.dirname(offers_path))
           namespace::OffersLog.new("#{offers_path}.1", ctx.log).write("first_prompt", session: session.id, prompt: "older")
-          plugin.register(fake_chi)
-          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: seed, prompt: "again" }, ctx)
+          bundle.fire(:before_turn, messages: seed, prompt: "again")
           expect(offers).to eq([])
         end
       end
@@ -382,8 +346,7 @@ RSpec.describe "The github-pr bundle" do
 
         it "offers nothing and logs no first prompt" do
           expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a scratch session")
-          plugin.register(fake_chi)
-          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+          bundle.fire(:before_turn, messages: [], prompt: "hi")
           expect(cards).to eq([])
           expect(offers).to eq([])
         end
@@ -399,9 +362,8 @@ RSpec.describe "The github-pr bundle" do
 
         it "offers nothing and logs no first prompt (with a user message before it either: it isn't a fork)" do
           expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a delegate child")
-          plugin.register(fake_chi)
-          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
-          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [{ role: "user", content: "hi" }], prompt: "more" }, ctx)
+          bundle.fire(:before_turn, messages: [], prompt: "hi")
+          bundle.fire(:before_turn, messages: [{ role: "user", content: "hi" }], prompt: "more")
           expect(cards).to eq([])
           expect(offers).to eq([])
         end
@@ -441,22 +403,15 @@ RSpec.describe "The github-pr bundle" do
 
     def gh_calls = File.exist?(gh_log) ? File.readlines(gh_log, chomp: true) : []
 
-    def wait_for(seconds = 5)
-      deadline = Time.now + seconds
-      sleep 0.02 until yield || Time.now > deadline
-      yield
-    end
-
-    # The after_turn hook on an answer; the display text it leaves (the
-    # refs it added in @refs).
-    def answer(text, user: "please review #{pr_url}", context: ctx)
+    # The after_turn hook on an answer, fired with the fire site's present:
+    # and refs: helpers (they read the event only for its hook label); the
+    # display text it leaves (the refs it added in @refs).
+    def answer(text, user: "please review #{pr_url}")
       messages = [{ role: "user", content: user }, { role: "model", content: text }]
-      event = { type: :after_turn, status: "completed", messages: messages, hook: "plugin.rb (bundle github-pr)" }
+      site = { hook: "plugin.rb (bundle github-pr)" }
       display = Samagotchi::AnswerDisplay.new(messages)
       refs = Samagotchi::AnswerRefs.new(messages, cwd: tmpdir)
-      event[:present] = display.presenter(event)
-      event[:refs] = refs.adder(event)
-      plugin.link_answer(event, context)
+      bundle.fire(:after_turn, status: "completed", messages: messages, present: display.presenter(site), refs: refs.adder(site))
       @refs = refs.to_a
       display.text
     end
@@ -471,20 +426,18 @@ RSpec.describe "The github-pr bundle" do
     context "filling the cache (never from after_turn)" do
       it "before_turn warms the PRs the turn's prompt names (a one-turn child's task)" do
         fake_gh
-        plugin.register(fake_chi)
-        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "review #{pr_url}/files" }, ctx)
+        bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}/files")
 
-        expect(wait_for { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
-        expect(wait_for { answer("see `lib/foo.rb:28`") != "see `lib/foo.rb:28`" }).to be(true)
+        expect(wait_until { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
+        expect(wait_until { answer("see `lib/foo.rb:28`") != "see `lib/foo.rb:28`" }).to be(true)
         expect(answer("see `lib/foo.rb:28`")).to eq("see [`lib/foo.rb:28`](#{anchor("lib/foo.rb", "R28")})")
       end
 
       it "takes no PR from a tool result or an answer" do
         fake_gh
-        plugin.register(fake_chi)
         messages = [{ role: "user", content: "what's open?" }, { role: "tool", content: "#42 #{pr_url}" },
                     { role: "model", content: "#{pr_url} is open" }]
-        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: messages, prompt: "next" }, ctx)
+        bundle.fire(:before_turn, messages: messages, prompt: "next")
 
         expect(namespace::PrRef.from_messages(messages, prompt: "next")).to eq([])
         sleep 0.1
@@ -509,32 +462,28 @@ RSpec.describe "The github-pr bundle" do
         it "the init task warms an attached PR inline, though it attaches nothing" do
           fake_gh
           ctx.context.attach(url: pr_url)
-          plugin.register(fake_chi)
 
-          expect(fake_chi.inits.first.call(ctx)).to eq("skipped: a delegate child")
+          expect(bundle.run_inits).to eq(["skipped: a delegate child"])
           expect(answer("lib/foo.rb:30", user: "go")).to eq("[lib/foo.rb:30](#{anchor("lib/foo.rb", "R30")})")
         end
       end
 
       it "before_generation picks up a PR attached mid-turn, at most every 30 s" do
         fake_gh
-        plugin.register(fake_chi)
-        generation = fake_chi.hooks[:before_generation][1]
-        generation.call({ type: :before_generation, iteration: 1 }, ctx)
+        bundle.fire(:before_generation, iteration: 1)
         ctx.context.attach(url: pr_url)
-        generation.call({ type: :before_generation, iteration: 2 }, ctx)
+        bundle.fire(:before_generation, iteration: 2)
         sleep 0.1
         expect(gh_calls).to eq([])
 
         plugin.instance_variable_set(:@generation_checked_at, nil)
-        generation.call({ type: :before_generation, iteration: 3 }, ctx)
-        expect(wait_for { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
+        bundle.fire(:before_generation, iteration: 3)
+        expect(wait_until { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
       end
 
       it "the after_turn hook never runs gh, and links nothing before the cache has the PR" do
         fake_gh
-        plugin.register(fake_chi)
-        expect(fake_chi.hooks[:after_turn][0]).to eq(100)
+        expect(bundle.hook_names(:after_turn)).to eq([["github-pr", "plugin.rb", 100]])
 
         expect(answer("see lib/foo.rb:28")).to eq("see lib/foo.rb:28")
         expect(gh_calls).to eq([])
@@ -715,9 +664,8 @@ RSpec.describe "The github-pr bundle" do
         let(:settings) { { "line_links" => false } }
 
         it "links nothing and fetches nothing" do
-          plugin.register(fake_chi)
           FileUtils.rm_f(gh_log)
-          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: pr_url }, ctx)
+          bundle.fire(:before_turn, messages: [], prompt: pr_url)
 
           expect(answer("lib/foo.rb:28")).to eq("lib/foo.rb:28")
           sleep 0.1
@@ -733,17 +681,16 @@ RSpec.describe "The github-pr bundle" do
       def fake_gh_with_view
         fake_gh
         fake("git", 'echo "feat/x"')
-        script = FakeExecutables.fake_executable_body(bin, "gh")
+        script = File.read(File.join(bin, "gh.sh"))
         view = JSON.generate("number" => 42, "url" => pr_url, "state" => "OPEN", "title" => "T")
         fake("gh", script.sub("case \"$*\" in\n", "case \"$*\" in\n  \"pr view\"*) echo '#{view}' ;;\n"))
       end
 
       # The init task, a turn naming the PR and a generation check.
-      def run_hooks(context = ctx)
-        plugin.register(fake_chi)
-        summary = fake_chi.inits.first.call(context)
-        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "review #{pr_url}" }, context)
-        fake_chi.hooks[:before_generation][1].call({ type: :before_generation, iteration: 1 }, context)
+      def run_hooks
+        summary = bundle.run_inits.first
+        bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}")
+        bundle.fire(:before_generation, iteration: 1)
         sleep 0.1
         summary
       end
@@ -759,10 +706,8 @@ RSpec.describe "The github-pr bundle" do
         expect(mode.call("never")).to eq(:worker)
       end
 
-      def ctx_with(new_settings)
-        Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "l", settings: new_settings, host: ctx.instance_variable_get(:@host),
-                                        env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
-      end
+      # A ctx with other settings for the same session (another load's).
+      def ctx_with(new_settings) = load(new_settings).ctx
 
       %i[repl non_interactive].each do |name|
         context "in #{name == :repl ? "the REPL" : "-p --non-interactive"}" do
@@ -782,7 +727,7 @@ RSpec.describe "The github-pr bundle" do
             it "fetches and links as a worker does" do
               fake_gh_with_view
               run_hooks
-              expect(wait_for { api_calls.any? { |call| call.include?("/files") } }).to be(true)
+              expect(wait_until { api_calls.any? { |call| call.include?("/files") } }).to be(true)
               expect(answer("see lib/foo.rb:28")).to eq("see [lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
             end
           end
@@ -814,10 +759,10 @@ RSpec.describe "The github-pr bundle" do
       end
 
       it "on a chi without ctx.frontend, prefetches as before (a worker)" do
-        old = ctx.clone
-        old.singleton_class.send(:undef_method, :frontend)
+        allow(ctx).to receive(:respond_to?).and_call_original
+        allow(ctx).to receive(:respond_to?).with(:frontend).and_return(false)
         fake_gh_with_view
-        run_hooks(old)
+        run_hooks
         expect(api_calls).to include(a_string_including("pulls/42/files"))
       end
     end
