@@ -113,6 +113,9 @@ test("generation_started and generation_completed set the window, served model a
   handlers.generation_started({ context_window_tokens: 8192, context_window_source: "server" });
   assert.equal(page.current.ctxWindow, 8192);
   assert.equal(page.current.ctxWindowSource, "server");
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 1);
+  handlers.generation_started({ context_window_tokens: 8192, context_window_source: "server" });
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 1);
   handlers.generation_completed({ served_model: "q2", requested_model: "q" });
   assert.deepEqual(page.current.served, ["q2", "q", null]);
   assert.equal(page.current.timing.modelSegments, undefined);

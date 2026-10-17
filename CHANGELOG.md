@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: toasts stack instead of replacing one another, so later notices cannot hide a sticky error.
+- Web: the context chip and tooltip redraw at generation start when context-window state changes.
 - `chi bundle build` skips a symlinked memory (`notes.md is a symlink (not included)`) instead of copying the file it
   links to into the bundle.
 - source-links: terminal URL spans trim trailing punctuation and an unmatched `]`, matching the web.
