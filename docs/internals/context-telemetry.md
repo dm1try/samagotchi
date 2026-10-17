@@ -40,9 +40,11 @@ turn: the last turn's count (the old model's tokenizer's; the next generation re
 window (`EffectiveModel#context_window`: config, else one `/props` GET on a native host, the cached model list on a
 chat host) and the session's budget, with `context_window_tokens` / `context_window_source` (the web takes the window
 from them) and `usage.source: "switch"`. It is kept for a client that joins later (`session_state_snapshot`'s
-`context_status`). A window that doesn't resolve sends `usage: null`: the web shows `ctx ?` and the attached TUI's
-status row drops its ctx until the next generation (the web's ctx tooltip then says `Context window unknown until
-the next request` over the session's tokens, `ctxBarTip`). Nothing is sent before the session's first counted turn. A
+`context_status`). A window that doesn't resolve sends `usage: null` and `context_window_tokens: null`: the web shows
+`ctx ?` and drops the old model's window (a chunk's usage then counts no %, until a `generation_started` brings a
+window), and the attached TUI's status row drops its ctx until the next generation (the web's ctx tooltip then says
+`Context window unknown until the next request` over the session's tokens, `ctxBarTip`). Nothing is sent before the
+session's first counted turn. A
 hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
 
 A process that loads the session on another model than its last turn ran on (`Engine#session=`:

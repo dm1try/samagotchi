@@ -136,8 +136,26 @@ test("context_status after /model sets the window and the %, and usage null clea
 
   handlers.context_status({ usage: null, bucket: null, context_window_tokens: null });
   assert.equal(page.current.ctxPct, null);
-  assert.equal(page.current.ctxWindow, 128000);
+  assert.equal(page.current.ctxWindow, null);
+  assert.equal(page.current.ctxWindowSource, null);
   assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 2);
+});
+
+// The old model's window is gone after a switch whose new one didn't
+// resolve: a chunk's usage (no n_ctx in it) counts no % until a window
+// comes; a turn's own context_status (no window key) keeps the window.
+test("context_status: after an unresolved /model a chunk sets no %, and a turn's estimate keeps the window", () => {
+  const { page, handlers } = fakePage();
+  page.current.ctxWindow = 8192;
+  handlers.context_status({ usage: null, bucket: null, context_window_tokens: null, context_window_source: null });
+  handlers.generation_chunk({ content: "x", payload: { usage: { prompt_tokens: 6000, completion_tokens: 200 } } });
+  assert.equal(page.current.ctxPct, null);
+  handlers.generation_started({ context_window_tokens: 32000, context_window_source: "server" });
+  handlers.generation_chunk({ content: "y", payload: { usage: { prompt_tokens: 6000, completion_tokens: 200 } } });
+  assert.equal(page.current.ctxPct, (6200 / 32000) * 100);
+  handlers.context_status({ usage: { estimated_pct: 20 }, bucket: "20to40" });
+  assert.equal(page.current.ctxPct, 20);
+  assert.equal(page.current.ctxWindow, 32000);
 });
 
 test("turn_started on a guessed stream that replays a drawn turn restarts the stream only", () => {
