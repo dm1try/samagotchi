@@ -38,7 +38,7 @@ RSpec.describe "ctx.ask_model" do
     expect(user).to eq("<conversation>\nUser: Rename foo to bar\n[image shot.png]\n\nAssistant: Looking.\n\n" \
                        "Assistant: Renamed it.\n</conversation>\n\nwhat did we rename?")
     expect(user).not_to include("SECRET", "chi. (the system prompt)", "hmm", "call:read")
-    expect(options).to eq(timeout: 120.0, max_tokens: Samagotchi::Plugin::Context::ASK_MAX_TOKENS, cancel_controller: nil)
+    expect(options).to eq(timeout: 120.0, max_tokens: Samagotchi::Plugin::Context::ASK_MAX_TOKENS, cancel_controller: nil, model: nil)
   end
 
   it "shows a continue steer from the user or the parent agent as a User line, never a plugin's steer" do
@@ -57,7 +57,16 @@ RSpec.describe "ctx.ask_model" do
 
     request, options = asked.first
     expect(request).to eq([{ role: "system", content: "be terse" }, { role: "user", content: "q" }])
-    expect(options).to eq(timeout: 5.0, max_tokens: 50, cancel_controller: controller)
+    expect(options).to eq(timeout: 5.0, max_tokens: 50, cancel_controller: controller, model: nil)
+  end
+
+  it "passes a configured model: (stripped) to the Host, and refuses one that isn't a String" do
+    ctx.ask_model(messages: [], prompt: "q", model: " fw:kimi ")
+
+    expect(asked.last.last).to include(model: "fw:kimi")
+    expect { ctx.ask_model(messages: [], prompt: "q", model: :kimi) }.to raise_error(ArgumentError, /model:/)
+    expect { ctx.ask_model(messages: [], prompt: "q", model: "  ") }.to raise_error(ArgumentError, /model:/)
+    expect(asked.size).to eq(1)
   end
 
   it "keeps the tail of a long conversation" do

@@ -29,8 +29,9 @@ module Samagotchi
     # (text, level, label, fallback_for:), +ask_user+ takes (question:, options:, header:,
     # allow_freeform:, hook:) like the hook runtime's, +card+ takes
     # Engine#show_card's keywords and returns the id, +ask_model+ takes
-    # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
-    # the answer text.
+    # (chat messages, timeout:, max_tokens:, cancel_controller:, model:: a
+    # configured model ref, nil for the session's) and returns the answer
+    # text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +prompt_files+ returns the files whose text the built system prompt
     # holds (SystemPrompt#prompt_files, [] before a build); +model_name+
@@ -279,15 +280,21 @@ module Samagotchi
       #   ASK_MAX_TOKENS); an answer cut off ends with "…"
       # @param cancel [CancellationController, nil] cancelling it aborts
       #   the request
+      # @param model [String, nil] a configured model ("host:id", an alias,
+      #   or a model id one of the hosts lists) instead of the session's:
+      #   keys stay chi's config, a plugin never names a URL or a key
       # @return [String] the answer ("" when the model said nothing)
+      # @raise [ArgumentError] no prompt, or a +model+ that names nothing configured
       # @raise [ModelError] the request failed or timed out
       # @raise [ModelCancelled] +cancel+ was cancelled
-      def ask_model(messages:, prompt:, system: nil, timeout: 120, max_tokens: nil, cancel: nil)
+      def ask_model(messages:, prompt:, system: nil, timeout: 120, max_tokens: nil, cancel: nil, model: nil)
         raise ArgumentError, "ask_model needs a prompt" if prompt.to_s.strip.empty?
+        raise ArgumentError, "ask_model's model: is a String like \"host:id\"" unless model.nil? || (model.is_a?(String) && !model.strip.empty?)
 
         request = SideQuestion.request(messages: messages, prompt: prompt, system: system)
         limit = max_tokens.nil? ? ASK_MAX_TOKENS : Integer(max_tokens)
-        @host.ask_model.call(request, timeout: Float(timeout), max_tokens: limit, cancel_controller: cancel).to_s
+        @host.ask_model.call(request, timeout: Float(timeout), max_tokens: limit, cancel_controller: cancel,
+                                      model: model&.strip).to_s
       rescue IdleClient::SummarizeError => e
         raise ModelError, e.message
       rescue LLM::RequestCancelled

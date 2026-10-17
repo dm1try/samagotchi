@@ -15,8 +15,9 @@ module Samagotchi
     # An ask_user question.
     Question = Data.define(:question, :options, :header, :allow_freeform, :hook)
     # An ask_model request: the request Context built (SideQuestion), its
-    # limits and cancel controller.
-    ModelRequest = Data.define(:request, :timeout, :max_tokens, :cancel)
+    # limits, cancel controller and the model: it named (nil: the session's;
+    # the kit doesn't check it against any hosts).
+    ModelRequest = Data.define(:request, :timeout, :max_tokens, :cancel, :model)
 
     # What a bundle did at chi's edges, for a test to read: the Engine side
     # of its Context (Testing::Host) and the hook runtime (Testing::Runtime)
@@ -103,8 +104,9 @@ module Samagotchi
       # The next queued model answer (#model_answers): a String, an
       # exception to raise, or a callable given the ModelRequest. None left:
       # Plugin::ModelError, as an unreachable model.
-      def ask_model(request, timeout:, max_tokens:, cancel_controller:)
-        entry = ModelRequest.new(request: request, timeout: timeout, max_tokens: max_tokens, cancel: cancel_controller)
+      def ask_model(request, timeout:, max_tokens:, cancel_controller:, model: nil)
+        entry = ModelRequest.new(request: request, timeout: timeout, max_tokens: max_tokens, cancel: cancel_controller,
+                                 model: model)
         record(@model_requests, entry)
         answer = @mutex.synchronize { @model_answers.empty? ? :none : @model_answers.shift }
         raise Plugin::ModelError, "no model answer queued (bundle.model_answers << \"text\")" if answer == :none

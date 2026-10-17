@@ -229,13 +229,21 @@ module Samagotchi
       # ModelRef names a host only when it is one of ours
       return [find_entry(ref.host_name), ref.id] if ref.host_name
 
-      down = ref.id.to_s.strip.downcase
-      listed = @mutex.synchronize { @model_index }&.fetch(down, nil) || []
-      candidates = @entries.values.select { |e| listed.include?(e.name) || e.models&.key?(down) }.map(&:name)
-      candidates = saved_hosts_for(down) if candidates.empty?
+      candidates = hosts_with_model(ref.id)
       default = default_entry
       name = candidates.include?(default.name) ? default.name : candidates.first
       [(name && find_entry(name)) || default, ref.id]
+    end
+
+    # The hosts that list or declare the model id +id+, in hosts: order: by
+    # the cached lists and hosts.<name>.models, else by the saved lists
+    # (ModelListStore). None asked: no discovery here.
+    # @return [Array<String>] host names, empty when no host has it
+    def hosts_with_model(id)
+      down = id.to_s.strip.downcase
+      listed = @mutex.synchronize { @model_index }&.fetch(down, nil) || []
+      names = @entries.values.select { |e| listed.include?(e.name) || e.models&.key?(down) }.map(&:name)
+      names.empty? ? saved_hosts_for(down) : names
     end
 
     # The chat adapter for a host (one per host, so its cached model list

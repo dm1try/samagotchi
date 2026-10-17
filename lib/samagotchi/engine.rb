@@ -2544,8 +2544,9 @@ module Samagotchi
         declared_tools: -> { toolkit_explained.declared.map(&:name) },
         use_toolkit: ->(name) { use_toolkit(name) },
         cancel_controller: ->(handler: false) { plugin_cancel_controller(handler: handler) },
-        ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
-          ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
+        ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil|
+          ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller,
+                                  model: model)
         },
         model_name: -> { effective_model_ref },
         model_key: -> { @model_key },
@@ -2585,14 +2586,15 @@ module Samagotchi
     private :plugin_messages
 
     # ctx.ask_model's request: the session's current model on its host, as
-    # a turn resolves them (a /model switch counts), through its own
+    # a turn resolves them (a /model switch counts), or a configured +model+
+    # (a host:id ref, an alias, a bare id one of a host's models), through its own
     # IdleClient, so it shares nothing with the turn's backend. The client
     # is kept while the target and timeout stay (what it learned, e.g. a
     # refused thinking-off, holds for the next request); the session's id
     # goes with the request.
     # @return [String] the answer
-    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:)
-      target = session_model_recap_target
+    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil)
+      target = model.nil? ? session_model_recap_target : configured_side_target(model)
       client = side_model_client(target, timeout)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller, session_id: @session&.id)
@@ -2601,6 +2603,23 @@ module Samagotchi
       answer.text
     end
     private :ask_side_model
+
+    # The target of ctx.ask_model(model:): +model+ as a turn resolves it,
+    # once it is known to name something configured. IdleTarget.of_model
+    # never raises (an unknown host falls to the default host, an unknown id
+    # to the default entry), so a typo would silently ask another model.
+    # @raise [ArgumentError] +model+ names no configured host and is no
+    #   host's model (cached, declared or saved lists; nothing is asked)
+    def configured_side_target(model)
+      ref = @host_registry.model_ref(model)
+      unless ref.host_name || ref.alias_name || @host_registry.hosts_with_model(ref.id).any?
+        raise ArgumentError, "ask_model: unknown model #{model.to_s.inspect} (use a configured host:id, an alias, " \
+                             "or a model id one of your hosts lists)"
+      end
+
+      IdleTarget.of_model(@host_registry, model)
+    end
+    private :configured_side_target
 
     # The IdleClient for +target+ at +timeout+: the last one when both are
     # the same, else a new one.

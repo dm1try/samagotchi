@@ -54,7 +54,7 @@ RSpec.describe "The bundle test kit's contract" do
                                               { kind: :generation, reason: "cut", hook: label }])
     expect(recorder.questions.map(&:to_h)).to eq([{ question: "q?", options: %w[a b], header: "H", allow_freeform: true, hook: label }])
     request = recorder.model_requests.first
-    expect([request.timeout, request.max_tokens, request.cancel]).to eq([3.0, 9, nil])
+    expect([request.timeout, request.max_tokens, request.cancel, request.model]).to eq([3.0, 9, nil, nil])
     expect(request.request.last).to include(role: "user")
     expect(recorder.toolkit_uses).to eq(["lean"])
     expect(ctx.toolkit).to eq("lean")

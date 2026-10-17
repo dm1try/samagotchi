@@ -843,6 +843,10 @@ next turn never see it, and no hook fires. It returns the answer text.
 - `max_tokens:` defaults to 1024. An answer cut off by it ends with `…`.
 - `cancel:` takes a `Samagotchi::CancellationController`; cancelling it
   aborts the request.
+- `model:` names a configured model instead of the session's: `"host:id"` for a host in config.yml `hosts:`, an
+  alias from `models:`, or a bare id one of the hosts lists or declares. The host's own key and settings are used;
+  a plugin never names a URL or a key here (that is [`ctx.http`](#calling-services-ctxhttp)). A ref that names
+  nothing configured raises `ArgumentError`, asking nothing: a typo never goes to another model.
 - It blocks until the answer comes, so call it from an anytime command or a
   thread of your own. A local server that runs one request at a time
   (llama.cpp with one slot) answers it after a running turn's current
