@@ -38,7 +38,9 @@ Paths are under `lib/samagotchi/llm/`.
 
 `AnthropicMessages.for(entry)` takes the host's API root, key variable, `auth:`, `dialect:` and remoteness;
 `HostRegistry#adapter_for` keeps one per host for the worker's life, so what it learns from a 400 (below) lasts that
-long. Each request posts `{base}/v1/messages` with `anthropic-version: 2023-06-01`, the key in the header the host's
+long. Each request posts `{base}/v1/messages` with `anthropic-version: 2023-06-01`, the key (`LLM::ApiKey`: the
+variable `api_key_env:` names, else, on macOS, the login Keychain's item for that name, `HostKeys`; configuration.md,
+"API keys from the Keychain") in the header the host's
 `auth:` names (else the dialect's: `x-api-key` on the standard one), and `Session-Id` (plus the dialect's
 `session_header`) when the loop has a session id.
 
