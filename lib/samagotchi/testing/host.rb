@@ -31,9 +31,9 @@ module Samagotchi
           },
           cancelled: -> { recorder[:cancelled] },
           card: ->(**card) { recorder.card(**card) },
-          ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil|
+          ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil|
             recorder.ask_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller,
-                                        model: model)
+                                        model: model, source: source)
           },
           model_name: -> { recorder[:model_name] },
           model_key: -> { recorder[:model_key] },

@@ -295,7 +295,7 @@ module Samagotchi
         request = SideQuestion.request(messages: messages, prompt: prompt, system: system)
         limit = max_tokens.nil? ? ASK_MAX_TOKENS : Integer(max_tokens)
         @host.ask_model.call(request, timeout: Float(timeout), max_tokens: limit, cancel_controller: cancel,
-                                      model: model&.strip).to_s
+                                      model: model&.strip, source: @bundle).to_s
       rescue IdleClient::SummarizeError => e
         raise ModelError, e.message
       rescue LLM::RequestCancelled

@@ -3,6 +3,7 @@
 require "samagotchi/engine"
 require "samagotchi/plugin/context"
 require "samagotchi/broadcast/triage"
+require "tmpdir"
 require_relative "support/fake_provider_server"
 
 # Side requests (a recap, ctx.ask_model, a broadcast's triage) on an
@@ -68,6 +69,37 @@ RSpec.describe "Side requests on a Messages host" do
     expect(bodies.map { |b| b.dig("thinking", "type") }).to eq(%w[disabled adaptive adaptive])
     expect(server.requests.select { |r| r.path == "/v1/messages" }.map { |r| r.header("x-session-affinity") })
       .to eq([engine.session.id] * 3)
+  end
+
+  # Both side requests count in the session's side line, apart from its
+  # turns' tokens, and are saved between turns.
+  it "counts a recap and a ctx.ask_model in the side block, announced and saved at once", :recap do
+    state_dir = Dir.mktmpdir
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:kimi", recap: { host_ref: "fw", model: "fw:kimi" })
+    engine.session_state_dir = state_dir
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "fw:kimi", working_directory: Dir.pwd)
+    session.messages.replace([{ role: "user", content: "rename foo" }, { role: "model", content: "done" },
+                              { role: "user", content: "and bar" }, { role: "model", content: "done too" }])
+    session.save(state_dir: state_dir)
+    engine.session = session
+    events = []
+    engine.subscribe(observer: ->(event) { events << event })
+    ctx = Samagotchi::Plugin::Context.new(bundle: "btw", label: "l", settings: {}, host: engine.send(:plugin_host))
+    server.enqueue("/v1/messages", json: message("We renamed foo and bar.").merge(usage: { input_tokens: 700, output_tokens: 12 }))
+    server.enqueue("/v1/messages", json: message("foo.").merge(usage: { input_tokens: 300, output_tokens: 3 }))
+
+    expect(engine.recap.write_now).to eq("We renamed foo and bar.")
+    expect(ctx.ask_model(messages: [], prompt: "what?")).to eq("foo.")
+
+    side = engine.metrics.snapshot[:side]
+    expect(side).to include(requests: 2, prompt_sum: 1000, completion_sum: 15)
+    expect(side[:by_kind].keys).to eq(%w[recap btw])
+    expect(engine.metrics.snapshot[:tokens]).to include(prompt_sum: 0, completion_sum: 0)
+    expect(events.select { |e| e[:type] == :side_usage }.map { |e| e[:side][:requests] }).to eq([1, 2])
+    saved = JSON.parse(File.read(Samagotchi::AnalyticsFile.path(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))))
+    expect(saved["side"]).to include("requests" => 2, "prompt_sum" => 1000)
+  ensure
+    engine&.shutdown if engine.respond_to?(:shutdown)
   end
 
   it "judges a broadcast's card on a Messages host by its plain yes or no (no logprobs there)" do

@@ -472,7 +472,21 @@ RSpec.describe Samagotchi::IdleRecap do
                                    client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
-        expect(recap_client).to have_received(:summarize).with(anything, session_id: "sess-r")
+        expect(recap_client).to have_received(:summarize).with(anything, session_id: "sess-r", on_usage: nil)
+      end
+
+      # The recap's usage is counted in the session's side line
+      # (RecapSetup passes Engine#note_side_usage).
+      it "passes its on_usage to the client's summarize" do
+        engine = stub_engine_with_two_user_turns
+        recap_client = double("recap_client", summarize: "recap")
+        on_usage = ->(_usage) {}
+        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
+                                   client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time },
+                                   on_usage: on_usage)
+        allow(idle).to receive(:should_fire?).and_return(true)
+        drive(idle)
+        expect(recap_client).to have_received(:summarize).with(anything, session_id: "sess-r", on_usage: on_usage)
       end
 
       it "logs why the summarize thread failed, and emits nothing" do

@@ -288,12 +288,17 @@ module Samagotchi
                    client: nil,
                    store: nil,
                    session_id: -> {},
+                   on_usage: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       raise ArgumentError, "IdleRecap requires an engine" unless engine
 
       @engine = engine
       # The recapped session's id, sent with the request (IdleClient#summarize).
       @session_id = session_id
+      # Called with each recap request's SideUsage (IdleClient#summarize),
+      # a dropped recap's too: it was billed (RecapSetup: the Engine's
+      # side line).
+      @on_usage = on_usage
       @target = target || lambda {
         IdleTarget.new(base_url: base_url, api_key_env: api_key_env, model: model, label: model)
       }
@@ -547,7 +552,7 @@ module Samagotchi
 
     def spawn_summarize(client, prompt)
       Thread.new do
-        client.summarize(prompt, session_id: @session_id.call)
+        client.summarize(prompt, session_id: @session_id.call, on_usage: @on_usage)
       rescue StandardError => e
         # No recap this time (the next idle window tries again); say why.
         Log.exception(:recap, "summarize_failed", e)

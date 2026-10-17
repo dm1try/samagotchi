@@ -66,7 +66,8 @@ module Samagotchi
         timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float),
         sentences: recap_sentences(string_config(kwarg_config, :sentences) || registry_string("recap.sentences")),
         store: RecapStore.new(session_id_lookup: -> { session_id.call }, state_dir_lookup: -> { state_dir.call }),
-        session_id: -> { session_id.call }
+        session_id: -> { session_id.call },
+        on_usage: ->(usage) { engine.note_side_usage(usage) }
       )
     end
 

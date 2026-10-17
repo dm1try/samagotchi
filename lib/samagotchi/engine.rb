@@ -552,6 +552,30 @@ module Samagotchi
       @session_observer.notify(type: :recap_ready, recap: recap, generation: generation, covered: covered)
     end
 
+    # Count one side request (a recap, a plugin's ctx.ask_model: IdleClient's
+    # on_usage) in the session's side line, apart from its turns' totals.
+    # Folded and announced as :side_usage under the event lock, so the side
+    # blocks reach the UIs in fold order (the lock order event lock →
+    # metrics mutex is the existing one); then, between turns, saved to
+    # analytics.json (a running turn's end or checkpoint saves it), unless
+    # the session is gone (no session file: a late recap thread must not
+    # recreate a deleted session's folder; the folder itself may not exist
+    # yet before a first turn). Safe from any thread: the recap's, a
+    # plugin's, the turn's.
+    # @param usage [SideUsage]
+    # @return [void]
+    def note_side_usage(usage)
+      synchronize_events do
+        block = @metrics.add_side(usage)
+        @session_observer.notify(type: :side_usage, kind: usage.kind, side: block)
+      end
+      sid = @session&.id
+      return if sid.nil? || turn_running?
+      return unless File.exist?(Session.session_file(sid, state_dir: session_state_dir))
+
+      @metrics.persist(state_dir: session_state_dir)
+    end
+
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
 
@@ -2544,9 +2568,9 @@ module Samagotchi
         declared_tools: -> { toolkit_explained.declared.map(&:name) },
         use_toolkit: ->(name) { use_toolkit(name) },
         cancel_controller: ->(handler: false) { plugin_cancel_controller(handler: handler) },
-        ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil|
+        ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller,
-                                  model: model)
+                                  model: model, source: source)
         },
         model_name: -> { effective_model_ref },
         model_key: -> { @model_key },
@@ -2591,13 +2615,15 @@ module Samagotchi
     # IdleClient, so it shares nothing with the turn's backend. The client
     # is kept while the target and timeout stay (what it learned, e.g. a
     # refused thinking-off, holds for the next request); the session's id
-    # goes with the request.
+    # goes with the request. Its usage counts in the session's side line
+    # (#note_side_usage) under +source+, the asking bundle's name.
     # @return [String] the answer
-    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil)
+    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil)
       target = model.nil? ? session_model_recap_target : configured_side_target(model)
       client = side_model_client(target, timeout)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller, session_id: @session&.id)
+      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller, session_id: @session&.id,
+                                   kind: source.to_s.empty? ? "ask" : source.to_s, on_usage: method(:note_side_usage))
       Log.info(:plugins, "ask_model", model: target.label, answer_model: answer.model, chars: answer.text.length,
                                       ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       answer.text

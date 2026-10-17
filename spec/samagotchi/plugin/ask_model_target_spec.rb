@@ -77,6 +77,26 @@ RSpec.describe "ctx.ask_model(model:)" do
     expect(messages_requests.last.json["model"]).to eq("kimi-real")
   end
 
+  # The side line counts it under the asking bundle's name, priced from the
+  # target's host (by the id asked for), not the session's.
+  it "counts the request in the session's side block under the bundle's name, priced from the target's host" do
+    priced = Samagotchi::HostRegistry.new(hosts_config: {
+      "box" => { host: "box.test", port: 8080 },
+      "fw" => { url: server.root_url, api: :anthropic, dialect: "fireworks", api_key_env: "FW_SIDE_KEY", remote: true,
+                models: Samagotchi::HostModel.parse_map({ "kimi-real" => { "price" => { "input" => 2.0, "output" => 10.0 } } }, "spec") }
+    })
+    session_engine = Samagotchi::Engine.new(host_registry: priced, model_name: "box:m")
+    context = Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {}, host: session_engine.send(:plugin_host))
+    server.enqueue("/v1/messages", json: message("priced").merge(usage: { input_tokens: 1000, output_tokens: 100 }))
+
+    context.ask_model(messages: [], prompt: "q?", model: "fw:kimi-real")
+
+    side = session_engine.metrics.snapshot[:side]
+    expect(side).to include(requests: 1, prompt_sum: 1000, completion_sum: 100, cost_sum: nil)
+    expect(side[:by_kind].keys).to eq(["b"])
+    expect(side[:cost_estimate_sum]).to be_within(1e-12).of(((1000 * 2.0) + (100 * 10.0)) / 1e6)
+  end
+
   it "keeps one side client while the target stays and builds another for another target" do
     2.times { server.enqueue("/v1/messages", json: message("ok")) }
     ask("fw:kimi-real")
