@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle build` skips a symlinked memory (`notes.md is a symlink (not included)`) instead of copying the file it
+  links to into the bundle.
+
 ## [0.76.0] - 2026-10-17
 
 ### Security

@@ -110,6 +110,8 @@ module Samagotchi
       def select_memories(target_dir, name)
         candidates = Dir.glob(File.join(target_dir, "*.md")).sort
                         .reject { |p| File.basename(p) == "index.md" || File.basename(p).start_with?(".") }
+        symlinks, candidates = candidates.partition { |path| File.symlink?(path) }
+        @warnings.concat(symlinks.map { |path| "#{File.basename(path)} is a symlink (not included)" })
         if candidates.empty?
           raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
         end

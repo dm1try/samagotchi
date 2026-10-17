@@ -120,6 +120,22 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(manifest["hooks"]).to be_nil
   end
 
+  it "leaves symlinked memories out and warns" do
+    File.write(File.join(system_dir, "identity.md"), "# Id\n")
+    secret = File.join(tmpdir, "secret.txt")
+    File.write(secret, "SECRET-TOKEN-123\n")
+    File.symlink(secret, File.join(system_dir, "notes.md"))
+    out = File.join(tmpdir, "out-symlink")
+    builder = described_class.new(scope: "system", name: "symlinked", out: out)
+
+    result = builder.run
+
+    expect(result[:files]).to eq(["identity.md"])
+    expect(builder.warnings).to eq(["notes.md is a symlink (not included)"])
+    expect(File.exist?(File.join(out, "notes.md"))).to be(false)
+    expect(YAML.load_file(File.join(out, "manifest.yml"))["files"].keys).to eq(["identity.md"])
+  end
+
   # Packing runs zip / tar in the staging dir without Dir.chdir, which moves
   # the whole process (another thread in a chdir block makes Ruby raise).
   { "packed.zip" => %w[unzip -Z1], "packed.tar.gz" => %w[tar -tzf], "packed.tar" => %w[tar -tf] }.each do |file, list|
