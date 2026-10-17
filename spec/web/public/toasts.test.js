@@ -87,3 +87,19 @@ test("a duplicate sticky message stays untimed when shown again", (t) => {
   t.mock.timers.tick(12000);
   assert.equal(el.children.length, 1);
 });
+
+test("a non-sticky duplicate does not unstick a sticky message", (t) => {
+  const { el, toasts } = setup(t);
+  toasts.show("persistent", null, { sticky: true });
+  toasts.show("persistent");
+  t.mock.timers.tick(12000);
+  assert.equal(el.children.length, 1);
+  assert.ok(el.querySelector(".toast-close"));
+});
+
+test("a duplicate without an action keeps the earlier toast's action", (t) => {
+  const { el, toasts } = setup(t);
+  toasts.show("archived", { label: "Undo", run: () => {} }, { sticky: true });
+  toasts.show("archived");
+  assert.equal(el.querySelector(".toast-action")?.textContent, "Undo");
+});

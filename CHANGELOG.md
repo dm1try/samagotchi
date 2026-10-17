@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Web: a repeated toast cannot unstick a sticky error and make it time out.
 - Anthropic: `api: anthropic` hosts on the Claude API now read their model list, including 1M-token windows and image
   input, so `chi models` and model validation work.
 - Anthropic: on Claude 5.x models, which turn thinking off by `between_tools` and refuse `disabled`, recaps, side
