@@ -83,4 +83,23 @@ RSpec.describe Samagotchi::Guardrails::DataReaders do
       end
     end
   end
+
+  describe ".message_arg?" do
+    subst = Samagotchi::Guardrails::ShellLex::SUBST
+
+    message = [[%w[git commit -m], 3], [%w[git commit --message], 3], [%w[git -C x commit -m], 5],
+               [%w[git tag -a v1 -m], 5], [%w[gh pr create --body], 4], [%w[gh release create -n], 4]]
+    other = [[%w[bash -c], 2], [%w[eval], 1], [%w[git commit -F], 3], [%w[echo -m], 2], [%w[git log -m], 3]]
+
+    message.each do |words, index|
+      it "is a message: #{(words + [subst]).inspect} at #{index}" do
+        expect(described_class.message_arg?(words + [subst], index)).to be(true)
+      end
+    end
+    other.each do |words, index|
+      it "is no message: #{(words + [subst]).inspect} at #{index}" do
+        expect(described_class.message_arg?(words + [subst], index)).to be(false)
+      end
+    end
+  end
 end

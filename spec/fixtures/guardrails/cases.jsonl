@@ -76,3 +76,7 @@
 {"id":"commit-and-bash-bodies","tool":"execute","command":"git commit -F - <<'A'; bash <<'B'\nmsg\nA\nrake release\nB","expect":"match","rule":"package-publish","source":"heredoc-fp","note":"the second heredoc is a script"}
 {"id":"commit-in-group-piped","tool":"execute","command":"{ git commit -F - <<'EOF'; } | sh\nrake release\nEOF","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"open { group, piped on"}
 {"id":"commit-body-then-terminator-code","tool":"execute","command":"git commit -F - <<'EOF'\nmsg\nEOF\nrake release","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"the body is cut, the line after the terminator isn't"}
+{"id":"subst-m-quoted","tool":"execute","command":"git commit -m \"$(cat <<'EOF'\nRelease: rake release after the bump\nEOF\n)\"","expect":"no_match","rule":"package-publish","source":"heredoc-fp","note":"the Claude-style commit message form"}
+{"id":"subst-m-then-push","tool":"execute","command":"git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" && git push","expect":"match","rule":"git-push","source":"heredoc-fp","note":"the push after the message is code"}
+{"id":"subst-gh-body","tool":"execute","command":"gh pr create --title x --body \"$(cat <<'EOF'\nthen rake release\nEOF\n)\"","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
+{"id":"subst-m-inner-pipe","tool":"execute","command":"git commit -m \"$(cat <<'EOF' | sh\nrake release\nEOF\n)\"","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"inside the substitution cat is piped to sh"}

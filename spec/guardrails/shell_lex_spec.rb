@@ -173,6 +173,21 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
         expect(code).to eq(text), text unless text.include?("<<")
       end
     end
+
+    it "cuts the body of a $(cat <<'EOF' … EOF) given as a message, the terminator line kept" do
+      expect(described_class.code_text("git commit -m \"$(cat <<'EOF'\nrake release\nEOF\n)\" && git push"))
+        .to eq("git commit -m \"$(cat <<'EOF'\nEOF\n)\" && git push")
+    end
+
+    it "keeps a substitution that runs, is piped on or is no message" do
+      ["eval \"$(cat <<'EOF'\nrake release\nEOF\n)\"", "bash -c \"$(cat <<'EOF'\nrake release\nEOF\n)\"",
+       "git commit -m \"$(cat <<EOF\n$(id)\nEOF\n)\"", "git commit -m \"$(cat notes.md)\"",
+       "git commit -m \"$(cat <<'EOF'\nrake release\nEOF\n)\" | sh",
+       "git commit -m \"$(cat <<'EOF' | sh\nrake release\nEOF\n)\"",
+       "$(cat <<'EOF'\nrake release\nEOF\n)"].each do |text|
+        expect(described_class.code_text(text)).to eq(text), text
+      end
+    end
   end
 
   describe ".unterminated?" do
