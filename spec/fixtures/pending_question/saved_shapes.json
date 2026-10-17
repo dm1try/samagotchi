@@ -1,0 +1,109 @@
+{
+  "question": {
+    "id": "6d0c7f1e-0b5e-4a57-9a0c-1f2d3e4f5a61",
+    "question": "Which option?",
+    "options": [
+      "Cats",
+      "Dogs"
+    ],
+    "header": "Pick one",
+    "multi_select": false,
+    "allow_freeform": true,
+    "status": "pending",
+    "created_at": "2026-10-17T10:00:00.000+02:00"
+  },
+  "hook": {
+    "id": "7e1d8a2f-1c6f-4b68-8b1d-2a3e4f5a6b72",
+    "question": "Push now?",
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "multi_select": false,
+    "allow_freeform": false,
+    "kind": "hook",
+    "hook": "pre-push",
+    "status": "pending",
+    "created_at": "2026-10-17T10:01:00.000+02:00"
+  },
+  "approval": {
+    "id": "8f2e9b30-2d70-4c79-9c2e-3b4f5a6b7c83",
+    "question": "execute: git push origin main",
+    "options": [
+      "Allow once",
+      "Allow for this session",
+      "Deny"
+    ],
+    "header": "Approve tool call?",
+    "multi_select": false,
+    "allow_freeform": true,
+    "kind": "approval",
+    "approval": {
+      "tool": "execute",
+      "command": "git push origin main",
+      "cwd": "/repo",
+      "rule": "git-push",
+      "scopes": [
+        "once",
+        "session"
+      ]
+    },
+    "status": "pending",
+    "created_at": "2026-10-17T10:02:00.000+02:00",
+    "relayed_to": {
+      "parent_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "parent_short": "0a1b2c3d",
+      "relay_id": "r-1"
+    }
+  },
+  "relay": {
+    "id": "903fac41-3e81-4d8a-8d3f-4c5a6b7c8d94",
+    "question": "delegate ab12 asks:\n  execute: rm -rf tmp",
+    "options": [
+      "Allow once",
+      "Deny"
+    ],
+    "header": "Approve delegate ab12's tool call?",
+    "multi_select": false,
+    "allow_freeform": true,
+    "kind": "approval",
+    "approval": {
+      "tool": "execute",
+      "scopes": [
+        "once"
+      ]
+    },
+    "relay": {
+      "id": "r-2",
+      "child_id": "ab12cd34-0000-4000-8000-000000000000",
+      "child_short": "ab12cd34",
+      "child_question_id": "q-child",
+      "task": "clean up",
+      "chain": [
+        "ab12cd34"
+      ],
+      "asked": "execute: rm -rf tmp",
+      "more": 0
+    },
+    "status": "pending",
+    "created_at": "2026-10-17T10:03:00.000+02:00"
+  },
+  "continue": {
+    "id": "a1400b52-4f92-4e9b-9e40-5d6b7c8d9ea5",
+    "kind": "continue",
+    "header": "Step limit",
+    "question": "The turn ran out of iterations (3 steps) before it answered. Continue it?",
+    "options": [
+      "Continue",
+      "Stop"
+    ],
+    "multi_select": false,
+    "allow_freeform": true,
+    "limit": 3,
+    "context": {
+      "original_prompt": "fix the spec"
+    },
+    "status": "pending",
+    "created_at": "2026-10-17T10:04:00.000+02:00"
+  }
+}
