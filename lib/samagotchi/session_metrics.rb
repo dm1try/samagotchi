@@ -267,6 +267,10 @@ module Samagotchi
 
     def initialize(clock: nil, wall_clock: nil)
       @mutex = Monitor.new
+      # Serializes #persist (snapshot and write), so two threads' saves land
+      # in snapshot order. Taken before @mutex, never under it: the write's
+      # IO doesn't hold up the events.
+      @persist_mutex = Mutex.new
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @wall_clock = wall_clock || -> { Time.now }
       @session_id = nil
@@ -454,6 +458,15 @@ module Samagotchi
     #   turn's own end writes over it. Only the file has it.
     # @return [Boolean] true on success
     def persist(state_dir: nil, running_turn: false)
+      @persist_mutex.synchronize { persist_now(state_dir, running_turn) }
+    rescue StandardError
+      false
+    end
+
+    private
+
+    # #persist's work, under the persist mutex.
+    def persist_now(state_dir, running_turn)
       sid, data, turn_count = @mutex.synchronize do
         data = build_snapshot(:all).merge(active_turn: nil, active_tools: [])
         if running_turn && @turn
@@ -471,11 +484,7 @@ module Samagotchi
       AtomicFile.write(AnalyticsFile.path(dir), JSON.pretty_generate(data) + "\n")
       @mutex.synchronize { @persisted_turns = [@persisted_turns, turn_count].max }
       true
-    rescue StandardError
-      false
     end
-
-    private
 
     # Caller holds the mutex. +records+: :recent (the live snapshot) or :all
     # (analytics.json).

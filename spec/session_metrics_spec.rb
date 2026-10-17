@@ -948,6 +948,38 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(File.exist?(File.join(dir, "analytics.json"))).to be(true)
   end
 
+  # Two persists on two threads (a turn's end, a checkpoint, a side request
+  # between turns) never land out of order: the older snapshot can't be
+  # written over the newer one.
+  it "serializes persists, so a later persist's snapshot is written last" do
+    state_dir = Dir.mktmpdir
+    metrics.state_dir = state_dir
+    metrics.session_id = "order-sess"
+    metrics.memory_index = { system: { tokens: 1, lines: 1 } }
+    entered = Queue.new
+    gate = Queue.new
+    first = true
+    allow(Samagotchi::AtomicFile).to receive(:write).and_wrap_original do |original, *args|
+      if first
+        first = false
+        entered << true
+        gate.pop
+      end
+      original.call(*args)
+    end
+
+    older = Thread.new { metrics.persist }
+    entered.pop
+    metrics.memory_index = { system: { tokens: 2, lines: 2 } }
+    newer = Thread.new { metrics.persist }
+    newer.join(0.3) # without the lock it writes now, ahead of the older one
+    gate << true
+    [older, newer].each(&:join)
+
+    saved = JSON.parse(File.read(File.join(state_dir, "order-sess", "analytics.json")))
+    expect(saved["memory_index"]).to eq("system" => { "tokens" => 2, "lines" => 2 })
+  end
+
   it "records completed turn and tool wall-clock durations with injected clocks" do
     monotonic = 10.0
     wall_time = Time.utc(2026, 9, 21, 10, 0, 0)
