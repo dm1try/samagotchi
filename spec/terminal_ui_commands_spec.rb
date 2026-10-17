@@ -188,6 +188,15 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("retries:          0\nthinking cuts:    2\noutput cap hits:  1")
     end
 
+    it "shows the thinking blocks a preserved-thinking recovery dropped, only when there were any" do
+      snapshot = agent.engine.metrics.snapshot
+
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(snapshot.merge(thinking_dropped: 3)))
+        .to include("output cap hits:  0\nthinking dropped: 3 blocks (preserved-thinking recovery)")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(snapshot.merge(thinking_dropped: 0)))
+        .not_to include("thinking dropped")
+    end
+
     it "shows the served model in /stats, with the name asked for when they differ" do
       metrics = agent.engine.metrics
       output = ->(snapshot) { Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot.merge(snapshot)) }

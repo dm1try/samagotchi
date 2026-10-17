@@ -8,7 +8,7 @@ module Samagotchi
     # mid-turn. The tool tallies (by tool, aliased, errors) are counted per
     # tool record, not per turn: SessionMetrics keeps those apart.
     class Totals < Data.define(
-      :cancellations, :iterations, :gen_ms, :retries, :cuts, :capped,
+      :cancellations, :iterations, :gen_ms, :retries, :cuts, :capped, :thinking_dropped,
       :prompt_sum, :completion_sum, :cached_sum, :cache_write_sum, :reprefill_sum, :reasoning_sum,
       :cost_sum, :cost_estimate_sum, :decode_ms_sum, :decode_tokens_sum,
       # The newest speeds a record has, and where the decode one came from.
@@ -19,7 +19,8 @@ module Samagotchi
       # The record keys each sum adds up (a turn record's own names).
       RECORD_SUMS = {
         prompt_sum: :prompt_tokens_sum, completion_sum: :completion_tokens, iterations: :iterations,
-        gen_ms: :gen_ms, retries: :retries, cuts: :cuts, capped: :capped, cached_sum: :cached_tokens_sum,
+        gen_ms: :gen_ms, retries: :retries, cuts: :cuts, capped: :capped, thinking_dropped: :thinking_dropped,
+        cached_sum: :cached_tokens_sum,
         cache_write_sum: :cache_write_tokens_sum, reprefill_sum: :reprefill_tokens_sum,
         reasoning_sum: :reasoning_tokens, cost_sum: :cost, cost_estimate_sum: :cost_estimate,
         decode_ms_sum: :decode_ms, decode_tokens_sum: :decode_tokens
@@ -28,7 +29,7 @@ module Samagotchi
       # The running turn's (TurnState) counters each sum adds while it runs.
       TURN_SUMS = {
         iterations: :iteration_count, gen_ms: :gen_latency_accum, retries: :retries, cuts: :cuts,
-        capped: :capped, prompt_sum: :prompt_sum, completion_sum: :completion_sum, cached_sum: :cached_sum,
+        capped: :capped, thinking_dropped: :thinking_dropped, prompt_sum: :prompt_sum, completion_sum: :completion_sum, cached_sum: :cached_sum,
         cache_write_sum: :cache_write_sum, reprefill_sum: :reprefill_sum, reasoning_sum: :reasoning_sum,
         cost_sum: :cost_sum, cost_estimate_sum: :cost_estimate_sum, decode_ms_sum: :decode_ms_sum,
         decode_tokens_sum: :decode_tokens_sum

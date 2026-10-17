@@ -7,6 +7,7 @@ require_relative "model_result"
 require_relative "errors"
 require_relative "usage"
 require_relative "openai_chat"
+require_relative "anthropic_wire"
 require_relative "native_tool_normalizer"
 require_relative "refusal_memo"
 require_relative "stream_drops"
@@ -41,7 +42,9 @@ module Samagotchi
     #
     # Stream events match the native loop's: :generation_started (with the
     # context window), :generation_chunk per delta, :generation_completed,
-    # :generation_retrying, the tool-call events and :pending_input_merged.
+    # :generation_retrying, the tool-call events and :pending_input_merged,
+    # and :thinking_dropped after a preserved-thinking recovery
+    # (#settle_dropped_thinking!).
     # A chunk carries `thinking:` (reasoning deltas), `text:` (answer deltas)
     # and `content:` (both, like native raw content) plus the raw `payload:`.
     #
@@ -348,6 +351,30 @@ module Samagotchi
       # edit/write result's tool_diffs (never sent), an empty-answer
       # note's marker (TurnNote.empty, never sent), and an answer's display
       # and display_refs (AnswerDisplay, AnswerRefs; never sent).
+      # Removes the replayed thinking blocks a response's ThinkingDrop
+      # names (AnthropicWire.block_identity) from the model entries'
+      # anthropic_content: the edit the provider made for that request, so
+      # the next one is valid as it is. Each changed entry is replaced in
+      # place, at its index (the Run, ContextStatus and the LLM context
+      # turn hold the array and its indexes); one left with no blocks loses
+      # the key. +thinking+ (the text the UIs show) stays.
+      # @return [Integer] the blocks removed
+      def settle_dropped_thinking!(conversation, identities)
+        wanted = Array(identities)
+        removed = 0
+        conversation.each_with_index do |entry, index|
+          blocks = entry[:anthropic_content]
+          next unless blocks.is_a?(Array)
+
+          kept = blocks.reject { |block| (identity = AnthropicWire.block_identity(block)) && wanted.include?(identity) }
+          next if kept.size == blocks.size
+
+          removed += blocks.size - kept.size
+          conversation[index] = kept.empty? ? entry.except(:anthropic_content) : entry.merge(anthropic_content: kept)
+        end
+        removed
+      end
+
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -649,17 +676,37 @@ module Samagotchi
 
             return cut_response(iteration, thought, generation_controller.detail || {})
           end
+          dropped = settle_thinking_drop(iteration, response.thinking_drop)
           record_context_status(response.usage, window)
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
                served_provider: response.provider, requested_model: @model_name, finish_reason: response.finish_reason,
-               **(response.usage&.cache_fields || {}), **reprefill_field(response.usage))
+               **(response.usage&.cache_fields || {}), **reprefill_field(response.usage),
+               **(dropped.positive? ? { thinking_dropped: dropped } : {}))
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed, thought]
+        end
+
+        # A response the adapter got by dropping replayed thinking blocks
+        # (ChatResponse#thinking_drop): those blocks leave the stored
+        # entries (before this step adds its own, whatever its finish
+        # reason), and :thinking_dropped says how many. A drop that settles
+        # nothing (the same blocks again: they were settled, then came back)
+        # is logged once per run. Returns the blocks dropped.
+        def settle_thinking_drop(iteration, drop)
+          return 0 unless drop && !drop.identities.empty?
+
+          count = drop.identities.size
+          if @loop.settle_dropped_thinking!(@conversation, drop.identities).zero? && !@recovery_repeated
+            @recovery_repeated = true
+            Log.info(:model, "thinking_recovery_repeated", model: @model_name.to_s, how: drop.how.to_s, blocks: count)
+          end
+          emit(type: :thinking_dropped, iteration: iteration, count: count, how: drop.how)
+          count
         end
 
         # The request's re-prefilled tokens (KernelLoop#reprefilled_tokens).

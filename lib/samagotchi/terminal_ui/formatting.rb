@@ -600,6 +600,9 @@ module Samagotchi
         # A looped session: loop-guard's cuts, or thinking that ran to the cap.
         lines << "thinking cuts:    #{snapshot[:cuts].to_i}"
         lines << "output cap hits:  #{snapshot[:capped].to_i}"
+        # Claude 5.x: replayed thinking a prefix change made the API drop.
+        dropped = snapshot[:thinking_dropped].to_i
+        lines << "thinking dropped: #{dropped} blocks (preserved-thinking recovery)" if dropped.positive?
         context = snapshot[:context] || {}
         if context[:used_tokens]
           pct = context_pct_text(context, snapshot[:llm_context])

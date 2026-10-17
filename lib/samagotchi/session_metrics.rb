@@ -144,6 +144,9 @@ module Samagotchi
       # (finish_reason length). `retries` counts the network's only.
       :cuts,
       :capped,
+      # Replayed thinking blocks a preserved-thinking recovery dropped
+      # (:generation_completed's thinking_dropped, ChatLoop).
+      :thinking_dropped,
       :model,
       # The model the turn ran on (asked host:model, :generation_started's
       # model_ref; the first generation's), and whether its open generation
@@ -505,6 +508,7 @@ module Samagotchi
         retries: totals.retries,
         cuts: totals.cuts,
         capped: totals.capped,
+        thinking_dropped: totals.thinking_dropped,
         started_at: @started_at,
         last_activity_at: @last_activity_at,
         # From the session's first start (an earlier process's too), to now.
@@ -589,6 +593,7 @@ module Samagotchi
           retries: 0,
           cuts: 0,
           capped: 0,
+          thinking_dropped: 0,
           model: nil,
           model_ref: nil,
           gen_switch: false,
@@ -679,12 +684,15 @@ module Samagotchi
       end
     end
 
+    # A generation's cut, output cap and dropped thinking blocks, into the turn.
     def count_cut(event)
       @mutex.synchronize do
         next unless @turn
 
         @turn.cuts += 1 if event[:stopped_by] && event[:stopped_by].to_s != "steer"
         @turn.capped += 1 if event[:finish_reason].to_s == "length"
+        dropped = event[:thinking_dropped]
+        @turn.thinking_dropped += dropped if dropped.is_a?(Integer) && dropped.positive?
       end
     end
 
@@ -872,6 +880,7 @@ module Samagotchi
       }
       fields[:cache_write_tokens_sum] = turn.cache_write_sum if turn.cache_write_sum.positive?
       fields[:reprefill_tokens_sum] = turn.reprefill_sum if turn.reprefill_sum.positive?
+      fields[:thinking_dropped] = turn.thinking_dropped if turn.thinking_dropped.positive?
       fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
       fields[:cost_estimate] = turn.cost_estimate_sum if turn.cost_estimate_sum.positive?
       fields[:switch_prefill_tokens] = turn.switch_prefill_tokens if turn.switch_prefill_tokens

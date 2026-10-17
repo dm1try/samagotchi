@@ -835,6 +835,34 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot).to include(cuts: 2, capped: 1)
   end
 
+  it "sums the thinking blocks a preserved-thinking recovery dropped into the turn record and the session" do
+    feed([
+      { type: :turn_started, session_id: "sess-drop", prompt: "x" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_completed, iteration: 1, thinking_dropped: 3 },
+      { type: :generation_started, iteration: 2 },
+      { type: :generation_completed, iteration: 2 },
+      { type: :turn_completed },
+      { type: :turn_started, session_id: "sess-drop", prompt: "y" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_completed, iteration: 1, thinking_dropped: 1 }
+    ])
+
+    expect(metrics.snapshot[:turn_records].last).to include(thinking_dropped: 3)
+    expect(metrics.snapshot).to include(thinking_dropped: 4)
+
+    metrics.call(type: :turn_completed)
+    expect(metrics.snapshot).to include(thinking_dropped: 4)
+  end
+
+  it "saves no thinking_dropped on a turn record without a recovery" do
+    feed([{ type: :turn_started, session_id: "sess-nodrop", prompt: "x" }, { type: :generation_started, iteration: 1 },
+          { type: :generation_completed, iteration: 1 }, { type: :turn_completed }])
+
+    expect(metrics.snapshot[:turn_records].last).not_to have_key(:thinking_dropped)
+    expect(metrics.snapshot).to include(thinking_dropped: 0)
+  end
+
   it "keeps who stopped a turn a plugin stopped" do
     feed([
       { type: :turn_started, session_id: "sess-3c", prompt: "x" },
