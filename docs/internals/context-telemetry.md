@@ -37,8 +37,9 @@ Emission behavior:
 After `/model` (`SessionCommands#switch_model`), the old model's percentage goes at once (`Engine#switch_model!`
 clears the kept status), and `Engine#announce_switched_context!` sends a `:context_status` of its own, outside any
 turn: the last turn's count (the old model's tokenizer's; the next generation replaces it) against the new model's
-window (`EffectiveModel#context_window`: config, else one `/props` GET on a native host, the cached model list on a
-chat host) and the session's budget, with `context_window_tokens` / `context_window_source` (the web takes the window
+window (`EffectiveModel#context_window`, the lookup below: the running server first, one `/props` GET that a remote
+chat host is spared; else the host's cached model list; else the configured window) and the session's budget,
+with `context_window_tokens` / `context_window_source` (the web takes the window
 from them) and `usage.source: "switch"`. It is kept for a client that joins later (`session_state_snapshot`'s
 `context_status`). A window that doesn't resolve sends `usage: null` and `context_window_tokens: null`: the web shows
 `ctx ?` and drops the old model's window (a chunk's usage then counts no %, until a `generation_started` brings a

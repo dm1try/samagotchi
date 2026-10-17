@@ -1019,8 +1019,10 @@ module Samagotchi
     # After /model: how full the context is on the new model's window,
     # before its first turn: the last turn's count (the old model's
     # tokenizer's, replaced at the next generation) against the new model's
-    # window (EffectiveModel#context_window: config, else one /props GET on
-    # a native host or the cached model list on a chat host) and the
+    # window (EffectiveModel#context_window, ContextWindow.resolve: the
+    # running server first, one /props GET that a remote chat host is
+    # spared; else the host's cached model list; else the configured
+    # window) and the
     # session's budget. Sent as a :context_status event (the web's ctx
     # meter, the attached TUI's status row) with context_window_tokens, and
     # kept for a client that joins later (#session_state_snapshot; the
