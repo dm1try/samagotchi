@@ -1097,7 +1097,7 @@ bundles:
   and values: only the digest is stored) and `cwd`. A session with a saved
   list can search its tools at once and **doesn't start the server**: the
   first call of one of its tools does (the call's row shows the wait). So a
-  session that never uses MCP spawns nothing, and a new chat opens without
+  session that never uses MCP spawns nothing, and a new session opens without
   waiting for `npx`. If the live list differs from the saved one, the saved
   one is replaced, and so is what a search finds. The model's tools never
   change, so the prompt cache keeps. The saved file also keeps the first
@@ -1127,7 +1127,7 @@ bundles:
   you want at once.
 - **`npx -y …@latest` checks the npm registry on every start** (~3.4 s for
   `chrome-devtools-mcp`, against ~0.9 s for the installed binary). The cache
-  hides it from new chats, but not from the first call. For a faster first
+  hides it from new sessions, but not from the first call. For a faster first
   call, install the server once and run it directly:
 
   ```yaml

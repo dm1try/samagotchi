@@ -94,24 +94,24 @@ test("the command sets every field, default for the ones left to the model; all 
   assert.equal(commandLine({}), "/llm-context reset");
 });
 
-// The start page's chip (kind "new chat"): the picked model's values, and a
+// The start page's chip (kind "new session"): the picked model's values, and a
 // choice kept for the next create only.
-test("the new chat's chip shows the model's values, and a choice marked · new chat", () => {
+test("the new session's chip shows the model's values, and a choice marked · new session", () => {
   assert.equal(chipModel(withChoice(fromModel, null), { kind: NEW_CHAT }).text, "llm ctx stale");
   assert.equal(chipModel(fromModel, { kind: NEW_CHAT }).own, false);
-  assert.match(chipModel(fromModel, { kind: NEW_CHAT }).title, /Click to change it for the new chat\.$/);
+  assert.match(chipModel(fromModel, { kind: NEW_CHAT }).title, /Click to change it for the new session\.$/);
 
   const chosen = withChoice(fromModel, { strategy: ["forget", "stale"], budget_tokens: 0 });
   const chip = chipModel(chosen, { kind: NEW_CHAT });
-  assert.equal(chip.text, "llm ctx stale,forget · new chat");
+  assert.equal(chip.text, "llm ctx stale,forget · new session");
   assert.equal(chip.own, true);
-  assert.match(chip.title, /stale,forget \(the new chat\); apply payoff \(llm_context.apply\); budget off \(the new chat\)/);
-  assert.equal(chipModel(withChoice(fromModel, { apply: "turn_end" }), { kind: NEW_CHAT }).text, "llm ctx stale · new chat");
+  assert.match(chip.title, /stale,forget \(the new session\); apply payoff \(llm_context.apply\); budget off \(the new session\)/);
+  assert.equal(chipModel(withChoice(fromModel, { apply: "turn_end" }), { kind: NEW_CHAT }).text, "llm ctx stale · new session");
 });
 
-test("the new chat's form is titled for it, shows the model's values as Now and the choice in its fields", () => {
+test("the new session's form is titled for it, shows the model's values as Now and the choice in its fields", () => {
   const f = formOf(fromModel, { kind: NEW_CHAT, choice: { strategy: [], apply: "turn_end", budget_tokens: 64000 } });
-  assert.equal(f.text(".ctx-pop-kind"), "new chat");
+  assert.equal(f.text(".ctx-pop-kind"), "new session");
   assert.match(f.text(".llmctx-now"), /^Now: stale \(models: qwen\)/);
   assert.equal(f.field("strategy").value, "none");
   assert.equal(f.field("apply").value, "turn_end");
@@ -216,7 +216,7 @@ test("a refresh keeps what the user typed and picked; the Now: line follows; ano
   c.done();
 });
 
-test("the new chat's Set shows a bad budget's error, an edit clears it, a refresh keeps it", () => {
+test("the new session's Set shows a bad budget's error, an edit clears it, a refresh keeps it", () => {
   const picks = [];
   const c = control({ summary: () => fromModel, kind: NEW_CHAT, choice: () => null, choose: (next) => picks.push(next),
                       id: "llmContextNewPopover", anchor: ".llmctx-chip" });

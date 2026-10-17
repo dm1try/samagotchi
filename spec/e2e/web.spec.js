@@ -852,7 +852,7 @@ const TWO_MODELS = {
 
 test("continue → starts the next link with the opener in the composer, unsent, and the model picker until its first turn; the previous link is archived and reached from the chain's chip and the ← → links; its open delegate moves to the new link", async ({ page, script, chi }) => {
   script("plain");
-  // loadModels() runs at page load (and on + new chat): route, then reload.
+  // loadModels() runs at page load (and on + new session): route, then reload.
   await page.route("**/api/models", (route) => route.fulfill({ json: TWO_MODELS }));
   await page.reload();
   await expect(page.locator("#modelPick")).toHaveText("fake-script");
@@ -961,7 +961,7 @@ async function continueAndCheck(page, first, kid) {
   await page.locator("#newBtn").click();
   await expect(pick).toBeVisible();
   await expect(pick).toHaveText("fake-script");
-  await expect(pick).toHaveAttribute("aria-label", "Model for the new chat");
+  await expect(pick).toHaveAttribute("aria-label", "Model for the new session");
   expect(await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")])).toEqual(stored);
   // A panel open on the start page closes when a session (not a fresh link) opens without a click
   // outside it (a hash change: back, a link), and stays closed back here.
@@ -1166,14 +1166,14 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
-test("the start page's llm ctx chip starts the new chat under the strategy picked; it is not kept for the next one", async ({ page, script }) => {
+test("the start page's llm ctx chip starts the new session under the strategy picked; it is not kept for the next one", async ({ page, script }) => {
   script("plain");
   const chip = page.locator("#llmContextNew");
   await expect(chip).toHaveText("llm ctx none");
   await expect(chip).not.toHaveClass(/\bown\b/);
   await chip.click();
   const pop = page.locator("#llmContextNewPopover");
-  await expect(pop.locator(".ctx-pop-kind")).toHaveText("new chat");
+  await expect(pop.locator(".ctx-pop-kind")).toHaveText("new session");
   await expect(pop.locator(".llmctx-now")).toContainText("Now: none (llm_context.strategy)");
   // A budget chi wouldn't take is said in the form; an edit clears it.
   await pop.locator('input[name="budget"]').fill("12");
@@ -1184,15 +1184,15 @@ test("the start page's llm ctx chip starts the new chat under the strategy picke
   await pop.locator('select[name="strategy"]').selectOption("stale");
   await pop.locator(".llmctx-set").click();
   await expect(pop).toBeHidden();
-  await expect(chip).toHaveText("llm ctx stale · new chat");
+  await expect(chip).toHaveText("llm ctx stale · new session");
   await expect(chip).toHaveClass(/\bown\b/);
-  // The think chip beside it: the same mechanism, a level for the new chat.
+  // The think chip beside it: the same mechanism, a level for the new session.
   const think = page.locator("#thinkingNew");
   await expect(think).toHaveText("think default");
   await think.click();
   await page.locator("#thinkingNewPopover select[name=\"level\"]").selectOption("low");
   await page.locator("#thinkingNewPopover .llmctx-set").click();
-  await expect(think).toHaveText("think low · new chat");
+  await expect(think).toHaveText("think low · new session");
   const created = page.waitForRequest((r) => r.url().endsWith("/api/sessions") && r.method() === "POST");
 
   await send(page, "Say pong");
@@ -1210,11 +1210,11 @@ test("the start page's llm ctx chip starts the new chat under the strategy picke
   await expect(chip).toHaveText("llm ctx none");
   await expect(chip).not.toHaveClass(/\bown\b/);
 
-  // Opening a session drops a choice made for a new chat.
+  // Opening a session drops a choice made for a new session.
   await chip.click();
   await pop.locator('select[name="strategy"]').selectOption("stale");
   await pop.locator(".llmctx-set").click();
-  await expect(chip).toHaveText("llm ctx stale · new chat");
+  await expect(chip).toHaveText("llm ctx stale · new session");
   await page.locator("#topStrip .card[data-id]").first().click();
   await expect(page).toHaveURL(/#\/s\//);
   await page.locator("#newBtn").click();
@@ -1581,7 +1581,7 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   // Below the running turn's card, not among its rows (the stage's queued slot).
   const queuedSlot = page.locator("#turnStage .ts-queued .bubble.command");
   if (stage()) await expect(queuedSlot).toHaveCount(1);
-  // The session's model in the info bar (not the new chat's picker).
+  // The session's model in the info bar (not the new session's picker).
   const model = page.locator("#infoText .meta .status + .model");
   await expect(model).toHaveText(/^fake-script/);
 

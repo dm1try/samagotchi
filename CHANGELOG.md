@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: the start page says "+ new session" (and "new session in …") instead of "+ new chat", matching the rest of the UI.
+
 ## [0.79.0] - 2026-10-17
 
 ### Fixed

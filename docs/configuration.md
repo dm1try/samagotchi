@@ -1467,8 +1467,8 @@ its own). The first target is a long session such as a day-long coordinator, whe
   (the same flags on `chi send --new`), in the session with `/llm-context strategy … apply … budget …`
   (docs/cli.md, "Session commands"), or from the web's `llm ctx` chip in the info bar.
 - **A new web chat:** the start page's `llm ctx` chip, beside the model picker, shows the picked model's values
-  and follows a model pick. Its form (titled "new chat") sets a choice for that one chat: the chip reads
-  `llm ctx stale · new chat` in the accent colour, and the create sends it as `POST /api/sessions`'s
+  and follows a model pick. Its form (titled "new session") sets a choice for that one chat: the chip reads
+  `llm ctx stale · new session` in the accent colour, and the create sends it as `POST /api/sessions`'s
   `llm_context` (`{"strategy": "stale,forget", "apply": "turn_end", "budget": "64k"}`, each a word as
   `/llm-context` takes it, `default` for unset; anything else answers `400 invalid_llm_context` and starts
   nothing), so the session file holds it before the first turn runs. It is not remembered: it resets after a

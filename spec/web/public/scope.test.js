@@ -37,7 +37,7 @@ test("cardFolder shows a folder only where the scope doesn't make it obvious", (
   assert.equal(cardFolder("", null), "");
 });
 
-test("scopeTemplate: a project's name and its all link; a folder not found; all projects with the way back and where a new chat starts, escaped", () => {
+test("scopeTemplate: a project's name and its all link; a folder not found; all projects with the way back and where a new session starts, escaped", () => {
   const where = () => ({ hash: "#/s/abc", search: "?view=turn" });
   assert.equal(markupOf(scopeTemplate({ dir: "/p/chi", projectName: "chi", projectDir: "/p/chi" }, { where })),
     '<span class="scope-name" title="Sessions of /p/chi">chi</span>' +
@@ -47,7 +47,7 @@ test("scopeTemplate: a project's name and its all link; a folder not found; all 
   assert.equal(markupOf(scopeTemplate({ serverDir: "/srv/<x>", backDir: "/p/chi", backName: "chi" }, { where })),
     '<span class="scope-name" title="Sessions of every project">all projects</span>' +
     '<a class="scope-all scope-back" href="/?dir=/p/chi&amp;view=turn#/s/abc" title="Sessions of chi only">← chi</a>' +
-    '<span class="scope-where" title="New chats start in /srv/<x>">new chat in<span class="path"><bdi>/srv/&lt;x&gt;</bdi></span></span>');
+    '<span class="scope-where" title="New sessions start in /srv/<x>">new session in<span class="path"><bdi>/srv/&lt;x&gt;</bdi></span></span>');
 });
 
 test("scopeTemplate: a link clicked takes the hash the page has then; drawn again, the chip keeps its elements and one listener", () => {

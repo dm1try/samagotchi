@@ -44,10 +44,10 @@ test("the chip hides without a summary; the default with nothing set shows, as t
   assert.equal(chipModel(bare).title, "Thinking: default (the model's own). Click to change it for this session.");
 });
 
-test("the new chat's choice lays over the model's level, and shows even over a bare default", () => {
+test("the new session's choice lays over the model's level, and shows even over a bare default", () => {
   assert.equal(withChoice(fromModel, null), fromModel);
-  assert.equal(chipModel(withChoice(bare, "high"), { kind: NEW_CHAT }).text, "think high · new chat");
-  assert.match(chipModel(withChoice(fromModel, "low"), { kind: NEW_CHAT }).title, /low \(the new chat\)\. Click to change it for the new chat/);
+  assert.equal(chipModel(withChoice(bare, "high"), { kind: NEW_CHAT }).text, "think high · new session");
+  assert.match(chipModel(withChoice(fromModel, "low"), { kind: NEW_CHAT }).title, /low \(the new session\)\. Click to change it for the new session/);
   assert.equal(chipModel(fromModel, { kind: NEW_CHAT }).text, "think off");
 });
 
@@ -76,7 +76,7 @@ test("the form selects the session's own level, else follows the model, and name
   assert.equal(nowText(bare), "Now: default (the model's own)");
 
   const fresh = formHtml(fromModel, { kind: NEW_CHAT, choice: "high" });
-  assert.match(fresh, /<span class="ctx-pop-kind">new chat<\/span>/);
+  assert.match(fresh, /<span class="ctx-pop-kind">new session<\/span>/);
   assert.match(fresh, /<option value="high" selected="">/);
   assert.match(fresh, /not remembered for the next one/);
 });
@@ -157,7 +157,7 @@ test("a closed form forgets an unsent pick: the next open shows the level again"
   c.done();
 });
 
-test("the start page's form takes a choice for the next new chat only; follow the model is null", () => {
+test("the start page's form takes a choice for the next new session only; follow the model is null", () => {
   let choice = null;
   const picks = [];
   const c = control({ summary: () => fromModel, kind: NEW_CHAT, choice: () => choice, choose: (next) => { picks.push(next); choice = next; },
