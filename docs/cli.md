@@ -662,9 +662,12 @@ A model that can see images gets them these ways:
 - **A path in plain words**: "check /home/me/shot.png and describe it". The
   model calls `read` on it and sees the picture; the tool line ends in
   `→ image 1280×800`.
-- **The Web UI**: paste or drop images into the composer. Each shows as a chip
-  (× removes it) and is sent with the message; an image alone is sent as
-  `[image: name]`. Messages show thumbnails; a click opens one full size.
+- **The Web UI**: paste or drop images into the composer, or pick them with
+  its image button (left of Start / Send; on a phone it offers the camera and
+  the photo library, and is hidden while a turn runs). Each shows as a chip (× removes it) and is sent with the
+  message; an image alone is sent as `[image: name]`. A message takes up to 20
+  images of up to 20 MB each; a toast names the files left out (over a cap, or
+  not an image). Messages show thumbnails; a click opens one full size.
 - **`chi send --image PATH`** (repeatable, up to 20) with a message, from a
   script or another terminal: `chi send --image shot.png -m "why is this red?"
   3fa2`. The attached terminal and the web show it like an image typed there.

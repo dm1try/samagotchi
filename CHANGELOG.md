@@ -10,6 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- Web: the message box has an image button next to Start / Send that opens a file picker (on a phone, the camera or
+  the photo library); the picked images are added like pasted ones. A message now takes at most 20 images of up to
+  20 MB each as you add them, pasted, dropped or picked, and a toast names the files left out, instead of the send
+  failing.
+
 - Bundles: `samagotchi/testing` (experimental), a test kit for bundles: load a bundle in a sandbox, fire its hooks, run its commands and tools, record steers, notices and cards (RSpec `:bundle` groups or Minitest `Testing::Case`; docs/plugins.md "Testing a bundle"). The shipped bundles' specs now live in each bundle's own `spec/` and use it; a boundary spec keeps bundles on the stable surface.
 
 ### Changed
