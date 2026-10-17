@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::TerminalUI do
       metrics.call(type: :generation_completed)
       metrics.call(type: :turn_completed, result: double(respond_to?: false))
 
-      output = agent.send(:format_session_metrics, metrics.snapshot)
+      output = Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)
       expect(output).to include("turns:")
       expect(output).to include("tokens in/out:")
       expect(output).to include("10/5")
@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::TerminalUI do
       metrics.call(type: :turn_completed, result: double(respond_to?: false))
 
       module_output = Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)
-      instance_output = agent.send(:format_session_metrics, metrics.snapshot)
+      instance_output = Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)
       expect(module_output).to eq(instance_output)
       expect(module_output).to include("turns:")
       expect(module_output).to include("tokens in/out:")
@@ -52,10 +52,10 @@ RSpec.describe Samagotchi::TerminalUI do
 
     it "lists the calls made under an alias's name under by tool, only when there are any" do
       base = agent.engine.metrics.snapshot.merge(tool_calls_total: 3, tool_calls_by_tool: { "execute" => 3 })
-      lines = agent.send(:format_session_metrics, base.merge(tool_calls_aliased: { "bash" => 2 })).lines.map(&:chomp)
+      lines = Samagotchi::TerminalUI::Formatting.format_session_metrics(base.merge(tool_calls_aliased: { "bash" => 2 })).lines.map(&:chomp)
       by_tool = lines.index("  by tool:        execute=3")
       expect(lines[by_tool + 1]).to eq("  called as:      bash=2")
-      expect(agent.send(:format_session_metrics, base)).not_to include("called as")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(base)).not_to include("called as")
     end
 
     # After /model the snapshot's model_segments split the sums per model
@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::TerminalUI do
       def stats(segments, tokens = {}, snapshot = {})
         base = agent.engine.metrics.snapshot
         totals = { prompt_sum: 278_000, completion_sum: 30_000, source: "server" }.merge(tokens)
-        agent.send(:format_session_metrics, base.merge(turns: 20, tokens: base[:tokens].merge(totals), model_segments: segments)
+        Samagotchi::TerminalUI::Formatting.format_session_metrics(base.merge(turns: 20, tokens: base[:tokens].merge(totals), model_segments: segments)
                                                 .merge(snapshot)).lines.map(&:chomp)
       end
 
@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::TerminalUI do
     describe "the token breakdown, speed and cost" do
       def stats(tokens, snapshot = {})
         base = agent.engine.metrics.snapshot
-        agent.send(:format_session_metrics, base.merge(tokens: base[:tokens].merge(tokens)).merge(snapshot)).lines.map(&:chomp)
+        Samagotchi::TerminalUI::Formatting.format_session_metrics(base.merge(tokens: base[:tokens].merge(tokens)).merge(snapshot)).lines.map(&:chomp)
       end
 
       it "shows the server's exact speeds, the cached and reasoning counts" do
@@ -179,18 +179,18 @@ RSpec.describe Samagotchi::TerminalUI do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, context_window_tokens: 128_000, context_window_source: :server)
 
-      expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)).to include("context window:   128000 tokens (server)")
     end
 
     it "shows the generations plugins cut and the output cap ended in /stats" do
-      output = agent.send(:format_session_metrics, agent.engine.metrics.snapshot.merge(cuts: 2, capped: 1))
+      output = Samagotchi::TerminalUI::Formatting.format_session_metrics(agent.engine.metrics.snapshot.merge(cuts: 2, capped: 1))
 
       expect(output).to include("retries:          0\nthinking cuts:    2\noutput cap hits:  1")
     end
 
     it "shows the served model in /stats, with the name asked for when they differ" do
       metrics = agent.engine.metrics
-      output = ->(snapshot) { agent.send(:format_session_metrics, metrics.snapshot.merge(snapshot)) }
+      output = ->(snapshot) { Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot.merge(snapshot)) }
 
       expect(output.call(served_model: "ornith-1.5", served_model_for: "unsloth/Qwen3.6"))
         .to include("served model:     ornith-1.5 (asked for unsloth/Qwen3.6)")
@@ -219,18 +219,18 @@ RSpec.describe Samagotchi::TerminalUI do
       summary = { "strategy" => "stale,forget", "strategy_where" => "the session", "apply" => "turn_end",
                   "apply_where" => "models: ds", "budget_tokens" => nil, "budget_where" => "llm_context.budget_tokens" }
 
-      expect(agent.send(:format_session_metrics, { llm_context: summary }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: summary }))
         .to include("llm context:      stale,forget (the session); apply turn_end (models: ds); budget off " \
                     "(llm_context.budget_tokens)")
-      expect(agent.send(:format_session_metrics, {})).not_to include("llm context")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("llm context")
     end
 
     it "shows the thinking level with where it came from in /stats, string keys or symbol ones" do
-      expect(agent.send(:format_session_metrics, { thinking: { level: "low", source: "session", own: "low" } }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ thinking: { level: "low", source: "session", own: "low" } }))
         .to include("thinking:         low (session)")
-      expect(agent.send(:format_session_metrics, { thinking: { "level" => "default", "source" => nil } }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ thinking: { "level" => "default", "source" => nil } }))
         .to include("thinking:         default")
-      expect(agent.send(:format_session_metrics, {})).not_to include("thinking:  ")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("thinking:  ")
     end
 
     it "puts a change's --yes line in the next input when it asks first (CacheConfirm)" do
@@ -255,11 +255,11 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows a chat host's reasoning history with where it came from in /stats, nothing without one (a native host)" do
-      expect(agent.send(:format_session_metrics, { reasoning_history: { level: "all", source: "session", own: "all" } }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ reasoning_history: { level: "all", source: "session", own: "all" } }))
         .to include("reasoning history: all (session)")
-      expect(agent.send(:format_session_metrics, { reasoning_history: { "level" => "turn", "source" => nil } }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ reasoning_history: { "level" => "turn", "source" => nil } }))
         .to include("reasoning history: turn")
-      expect(agent.send(:format_session_metrics, { reasoning_history: nil })).not_to include("reasoning history")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ reasoning_history: nil })).not_to include("reasoning history")
     end
 
     it "names a set budget with its tokens and where it came from, string keys or symbol ones" do
@@ -269,8 +269,8 @@ RSpec.describe Samagotchi::TerminalUI do
                    apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
 
       line = "llm context:      stale (the session); apply turn_end (llm_context.apply); budget 64000 tokens (the session)"
-      expect(agent.send(:format_session_metrics, { llm_context: stringy })).to include(line)
-      expect(agent.send(:format_session_metrics, { llm_context: symbolic })).to include(line)
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: stringy })).to include(line)
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: symbolic })).to include(line)
     end
 
     # context used: counts against the smaller of the window and the
@@ -281,11 +281,11 @@ RSpec.describe Samagotchi::TerminalUI do
                   apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
       stringy = summary.transform_keys(&:to_s)
 
-      expect(agent.send(:format_session_metrics, { context: context, llm_context: summary }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: summary }))
         .to include("context used:     16000 tokens (25.0% of the 64000 budget)")
-      expect(agent.send(:format_session_metrics, { context: context, llm_context: stringy }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: stringy }))
         .to include("context used:     16000 tokens (25.0% of the 64000 budget)")
-      expect(agent.send(:format_session_metrics, { context: context, llm_context: summary }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: summary }))
         .to include("context window:   128000 tokens (server)")
     end
 
@@ -294,53 +294,53 @@ RSpec.describe Samagotchi::TerminalUI do
       base = { strategy: "stale", strategy_where: "the session", apply: "turn_end", apply_where: "llm_context.apply" }
 
       [{}, { budget_tokens: nil }, { budget_tokens: 128_000 }, { budget_tokens: 0 }].each do |extra|
-        output = agent.send(:format_session_metrics, { context: context, llm_context: base.merge(extra) })
+        output = Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: base.merge(extra) })
         expect(output).to include("context used:     16000 tokens (25.0%)"), extra.inspect
         expect(output).not_to include("budget)")
       end
       # No llm context at all (an older worker): the window, as before.
-      expect(agent.send(:format_session_metrics, { context: context }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context }))
         .to include("context used:     16000 tokens (25.0%)")
     end
 
     it "shows the memory indexes the session's prompt holds in /stats, none from an older worker" do
       index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
 
-      expect(agent.send(:format_session_metrics, { memory_index: index }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ memory_index: index }))
         .to include("memory index:     ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)")
-      expect(agent.send(:format_session_metrics, {})).not_to include("memory index")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("memory index")
     end
 
     it "shows the model notes the session's prompt carried in /stats, none without any" do
       notes = [{ "name" => "model_notes_deepseek", "scope" => "system", "chars" => 612, "digest" => "0123456789ab" }]
 
-      expect(agent.send(:format_session_metrics, { prompt_notes: notes }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_notes: notes }))
         .to include("model notes:      model_notes_deepseek (system, 612 chars)")
-      expect(agent.send(:format_session_metrics, { prompt_notes: [] })).not_to include("model notes")
-      expect(agent.send(:format_session_metrics, {})).not_to include("model notes")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_notes: [] })).not_to include("model notes")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("model notes")
     end
 
     it "shows the files whose text is in the session's prompt in /stats, relative to the checkout" do
       top = Samagotchi::MemoryPaths.work_tree_root(Dir.pwd)
       files = [File.join(top, "AGENTS.md"), File.join(top, "lib", "AGENTS.md"), File.join(Dir.home, "notes", "x.md")]
 
-      expect(agent.send(:format_session_metrics, { prompt_files: files }))
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_files: files }))
         .to include("prompt files:     AGENTS.md, lib/AGENTS.md, ~/notes/x.md")
-      expect(agent.send(:format_session_metrics, { prompt_files: [] })).not_to include("prompt files")
-      expect(agent.send(:format_session_metrics, {})).not_to include("prompt files")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_files: [] })).not_to include("prompt files")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("prompt files")
     end
 
     it "shows the toolkit's prompt text in /stats as its kit and tokens, nothing without one" do
-      text = agent.send(:format_session_metrics, { prompt_files: [File.join(Dir.home, "x.md")], kit_prompt: { kit: "coding", tokens: 15 } })
+      text = Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_files: [File.join(Dir.home, "x.md")], kit_prompt: { kit: "coding", tokens: 15 } })
       expect(text).to include("prompt files:     ~/x.md\nkit prompt:       coding (~15 tokens)")
-      expect(agent.send(:format_session_metrics, {})).not_to include("kit prompt")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("kit prompt")
     end
 
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")
 
-      expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("prompt profile:   qwen36 (config (models: ista))")
+      expect(Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)).to include("prompt profile:   qwen36 (config (models: ista))")
     end
   end
 
