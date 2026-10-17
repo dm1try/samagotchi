@@ -434,10 +434,29 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).last_turn.to_file).to eq(last)
       summary = described_class.summary_from_file(path)
       expect(summary.last_turn.to_file).to eq(last)
-      expect(summary.pending_question).to include(id: "q1", kind: "approval")
+      expect(summary.pending_question).to have_attributes(id: "q1", kind: "approval")
 
       plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
       expect(described_class.summary_from_file(File.join(tmpdir, "#{plain.id}.json"))).to have_attributes(last_turn: nil, pending_question: nil)
+    end
+
+    it "loads a pending question saved before PendingQuestion as one, nested keys as saved, and saves it back the same" do
+      record = JSON.parse(File.read(File.expand_path("fixtures/pending_question/saved_shapes.json", __dir__)))["approval"]
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      File.write(path, JSON.pretty_generate(JSON.parse(File.read(path)).merge("pending_question" => record)))
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.pending_question).to be_a(Samagotchi::PendingQuestion)
+      expect(loaded.pending_question).to have_attributes(id: record["id"], kind: "approval", status: "pending",
+                                                         options: record["options"], relayed_to: record["relayed_to"])
+      expect(loaded.pending_question.approval).to eq(record["approval"])
+      expect(loaded.waiting_question(live: true)).to eq(id: record["id"], kind: "approval", relayed_to: "0a1b2c3d")
+
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.pretty_generate(JSON.parse(File.read(path))["pending_question"])).to eq(JSON.pretty_generate(record))
+      expect(loaded.drop_dead_question).to eq(record["id"])
+      expect(loaded.pending_question).to be_nil
     end
 
     it "reads the hook that stopped the last turn (#stopped_by), and round-trips it" do

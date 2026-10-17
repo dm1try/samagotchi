@@ -30,7 +30,7 @@ module Samagotchi
     # @!attribute text [String, nil] the reply (:done) or the worker's error
     #   (:error)
     # @!attribute file [String, nil] the reply's filename, the next cursor
-    # @!attribute question [Hash, nil] the pending question
+    # @!attribute question [PendingQuestion, nil] the pending question
     #   (:waiting_for_answer)
     # @!attribute outcome [String, nil] how the turn ended when it left no
     #   reply (:no_reply): "failed", "canceled", "completed" (empty),
@@ -152,7 +152,7 @@ module Samagotchi
         # lists' rule): one a dead worker left waits for no one, and a chi
         # REPL's is answered there.
         pending = session.pending_question
-        if pending && !(baseline && pending[:id] == baseline[:question_id]) &&
+        if pending && !(baseline && pending.id == baseline[:question_id]) &&
            (turn.nil? || own_question?(session, turn, claimed)) &&
            session.waiting_question(live: SessionManager.worker_live?(id, state_dir: state_dir))
           return Result.new(status: :waiting_for_answer, question: pending, session: session)
@@ -217,7 +217,7 @@ module Samagotchi
     # its messages, the question pending then, and when its last turn
     # ended, so a turn that ends before the first look still ends the wait.
     # @return [Hash]
-    def baseline_of(session, question_id: session.pending_question&.dig(:id))
+    def baseline_of(session, question_id: session.pending_question&.id)
       { messages: session.messages.size, question_id: question_id, last_turn: session.last_turn&.ended_at }
     end
 
@@ -252,7 +252,7 @@ module Samagotchi
       end
 
       pending = session.pending_question
-      return nil unless pending && pending[:kind].to_s == "continue"
+      return nil unless pending && pending.kind.to_s == "continue"
       return nil unless turn_ids?(session_dir)
 
       session.last_turn&.enqueued_id

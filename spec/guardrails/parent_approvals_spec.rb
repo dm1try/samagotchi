@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/guardrails/parent_approvals"
+require "samagotchi/pending_question"
 
 # What a parent agent (chi answer) may allow on an approval: the one rule
 # the CLI checks before posting and the worker checks again.
@@ -12,8 +13,9 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
       approval: { tool: "execute", scopes: %w[once session rule] } }
   end
 
+  # A Hash here is the question's record (symbol or string keys).
   def refusal(pending, indices, setting)
-    described_class.refusal(pending, indices, setting: setting)
+    described_class.refusal(Samagotchi::PendingQuestion.from_file(pending), indices, setting: setting)
   end
 
   it "lets a deny through whatever the setting: the Deny option, no option (text alone)" do

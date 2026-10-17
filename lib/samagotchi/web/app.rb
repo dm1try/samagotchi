@@ -855,7 +855,7 @@ module Samagotchi
           current_turn = turn_snapshot["current_turn"]
           current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
         elsif owner&.worker?
-          session.pending_question
+          session.pending_question&.to_h
         end
       end
 

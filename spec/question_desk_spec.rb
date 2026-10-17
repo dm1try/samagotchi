@@ -160,12 +160,12 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.annotate(id, relayed_to: marker)).to be(true)
       expect(desk.pending[:relayed_to]).to eq(marker)
       # Session.load leaves nested keys as strings.
-      expect(saved[:relayed_to]).to eq(marker.transform_keys(&:to_s))
+      expect(saved.relayed_to).to eq(marker.transform_keys(&:to_s))
       expect(events.last).to eq(type: :question_relay, id: id, relayed_to: marker)
 
       expect(desk.annotate(id, relayed_to: nil, reason: "parent_gone")).to be(true)
       expect(desk.pending).not_to have_key(:relayed_to)
-      expect(saved).not_to have_key(:relayed_to)
+      expect(saved).to have_attributes(relayed_to: nil)
       expect(events.last).to eq(type: :question_relay, id: id, relayed_to: nil, reason: "parent_gone")
 
       desk.answer(id: id, selected: ["Yes"])
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       pending = desk.post(continue_fields, on_answer: on_answer)
 
       expect(desk.pending).to include(id: pending[:id], kind: "continue", limit: 3, status: "pending")
-      expect(saved).to include(id: pending[:id], kind: "continue")
+      expect(saved).to have_attributes(id: pending[:id], kind: "continue")
       expect(events.last).to include(type: :question_requested, standing: true)
     end
 

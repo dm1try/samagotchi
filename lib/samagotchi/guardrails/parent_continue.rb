@@ -24,12 +24,12 @@ module Samagotchi
       end
 
       # Why a parent may not give this answer, or nil.
-      # @param pending [Hash] the pending question (symbol or string keys)
+      # @param pending [PendingQuestion] the pending question
       # @param selected [Array<String>] the selected labels
       # @return [Symbol, nil] :stop_only
       def refusal(pending, selected, allowed: allowed?)
         return nil if allowed
-        return nil unless (pending[:kind] || pending["kind"]).to_s == KIND
+        return nil unless pending.kind.to_s == KIND
 
         Array(selected).map(&:to_s).include?(CONTINUE) ? :stop_only : nil
       end

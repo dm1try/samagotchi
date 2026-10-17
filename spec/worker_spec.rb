@@ -2126,7 +2126,7 @@ RSpec.describe Samagotchi::Worker do
           expect(seen.find { |e| e[:type] == :question_requested }).to include(standing: true)
           # Every save from the turn's end on has it: no idle write without it.
           expect(wait_until { saved_session.status == "idle" }).to be(true)
-          expect(saved_session.pending_question).to include(id: question[:id], kind: "continue")
+          expect(saved_session.pending_question).to have_attributes(id: question[:id], kind: "continue")
           expect(saved_session.last_turn.to_file).to include("exhausted" => true, "limit" => Samagotchi::IterationLimit::DEFAULT)
           expect(Samagotchi::ReplyWait.newest_reply(session.id, state_dir: tmpdir)).to be_nil
         end
@@ -2252,7 +2252,7 @@ RSpec.describe Samagotchi::Worker do
           asker.join(2)
 
           expect(wait_until { engine.pending_question&.dig(:kind) == "continue" }).to be(true)
-          expect(saved_session.pending_question).to include(kind: "continue")
+          expect(saved_session.pending_question).to have_attributes(kind: "continue")
           expect(post_answer(["Continue"], id: engine.pending_question[:id]).code).to eq("200")
           expect(continue_ran("/continue yes")).to include(status: "ok")
         end
@@ -2265,7 +2265,7 @@ RSpec.describe Samagotchi::Worker do
           loop_rounds
           expect(events_seen.count { |e| e[:type] == :question_requested }).to eq(2)
           expect(engine.pending_question).to include(kind: "continue")
-          expect(saved_session.pending_question).to include(kind: "continue")
+          expect(saved_session.pending_question).to have_attributes(kind: "continue")
         end
 
         it "is asked again, the worker running on, when the continue turn fails before it begins (its save)" do
@@ -2284,7 +2284,7 @@ RSpec.describe Samagotchi::Worker do
           expect(failed).to be(true)
           expect(@thread).to be_alive
           expect(engine.pending_question).to include(kind: "continue")
-          expect(wait_until { saved_session.pending_question&.dig(:kind) == "continue" }).to be(true)
+          expect(wait_until { saved_session.pending_question&.kind == "continue" }).to be(true)
           expect(saved_session.status).to eq("idle")
           expect(seen.map { |e| e[:type] }).not_to include(:turn_failed)
         end

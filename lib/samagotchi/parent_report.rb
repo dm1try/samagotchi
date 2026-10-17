@@ -4,6 +4,7 @@ require "delegate"
 require "json"
 
 require_relative "cli/exit"
+require_relative "pending_question"
 
 module Samagotchi
   # How a wait's end (ReplyWait::Result) reads to whoever runs chi as a
@@ -136,23 +137,24 @@ module Samagotchi
       JSON.generate({ status: "error", session_id: session_id, detail: detail.to_s })
     end
 
-    # A pending question (Session#pending_question) as a parent sees it.
+    # A pending question (Session#pending_question, a PendingQuestion) as a
+    # parent sees it.
     # kind is "question" for the model's own (the desk stores none),
     # "hook", "approval" or "continue" (the step-limit question, with the
     # turn's limit).
     # @return [Hash]
     def question(pending)
-      pending ||= {}
-      approval = pending[:approval].is_a?(Hash) ? symbolize(pending[:approval]) : nil
+      pending ||= PendingQuestion.new
+      approval = pending.approval.is_a?(Hash) ? symbolize(pending.approval) : nil
       {
-        id: pending[:id].to_s,
-        kind: (pending[:kind] || "question").to_s,
-        header: blank(pending[:header]),
-        text: pending[:question].to_s,
-        options: Array(pending[:options]).map(&:to_s),
-        multi_select: !!pending[:multi_select],
-        allow_freeform: !!pending[:allow_freeform],
-        limit: pending[:limit],
+        id: pending.id.to_s,
+        kind: (pending.kind || "question").to_s,
+        header: blank(pending.header),
+        text: pending.question.to_s,
+        options: Array(pending.options).map(&:to_s),
+        multi_select: !!pending.multi_select,
+        allow_freeform: !!pending.allow_freeform,
+        limit: pending.limit,
         approval: approval&.slice(*APPROVAL_KEYS)
       }.compact
     end
@@ -178,13 +180,18 @@ module Samagotchi
         "chi send --wait --format json #{session_id} waits until they answer"
     end
 
-    def approval?(question)
-      question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "approval"
-    end
+    # @param question [PendingQuestion, Hash, nil] a pending question, or a
+    #   Hash with its kind (#question's, Session#waiting_question's)
+    def approval?(question) = kind_of(question) == "approval"
 
     # The step-limit question (ContinueOffer).
-    def continue?(question)
-      question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "continue"
+    def continue?(question) = kind_of(question) == "continue"
+
+    def kind_of(question)
+      case question
+      when PendingQuestion then question.kind.to_s
+      when Hash then (question[:kind] || question["kind"]).to_s
+      end
     end
 
     # What a message does to a step-limit question.
@@ -197,13 +204,14 @@ module Samagotchi
       attach = "chi --attach #{session_id}"
       case result.status
       when :waiting_for_answer
-        if approval?(result.question)
-          "waiting for an approval: #{first_line(result.question[:question])}; #{DENY_AND_TELL}"
-        elsif continue?(result.question)
-          "waiting at the step limit: #{first_line(result.question[:question])}; " \
-            "answer Continue or Stop: chi answer #{session_id} --question #{result.question[:id]} --option Continue"
+        q = question(result.question)
+        if approval?(q)
+          "waiting for an approval: #{first_line(q[:text])}; #{DENY_AND_TELL}"
+        elsif continue?(q)
+          "waiting at the step limit: #{first_line(q[:text])}; " \
+            "answer Continue or Stop: chi answer #{session_id} --question #{q[:id]} --option Continue"
         else
-          "waiting for an answer: #{first_line(result.question&.dig(:question))}; open it: #{attach} or the web"
+          "waiting for an answer: #{first_line(q[:text])}; open it: #{attach} or the web"
         end
       when :no_reply then "#{no_reply_line(result, session_id)}; #{attach} shows it"
       when :error then "the worker failed: #{result.text}; #{attach} shows what happened"

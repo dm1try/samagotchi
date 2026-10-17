@@ -210,7 +210,7 @@ RSpec.describe "steering a running turn (chi send)" do
                                                                                     stderr: err, state_dir: tmpdir).run
     expect(sent).to eq(0), err.string
     answered = StringIO.new
-    status = Samagotchi::AnswerCommand.new([session.id, "--question", pending[:id], "--option", "A", "--timeout", "30"],
+    status = Samagotchi::AnswerCommand.new([session.id, "--question", pending.id, "--option", "A", "--timeout", "30"],
                                            stdout: answered, stderr: err, state_dir: tmpdir).run
 
     expect(status).to eq(0), err.string

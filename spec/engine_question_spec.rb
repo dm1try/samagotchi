@@ -103,9 +103,9 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread, _result_box, _events = request_in_background(engine, payload)
 
       expect(session.pending_question).not_to be_nil
-      expect(session.pending_question[:question]).to eq("Which option?")
+      expect(session.pending_question.question).to eq("Which option?")
 
-      engine.answer_question(id: session.pending_question[:id], selected: ["Dogs"])
+      engine.answer_question(id: session.pending_question.id, selected: ["Dogs"])
       turn_thread.join(2)
       expect(session.pending_question).to be_nil
     end
@@ -125,7 +125,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       rescue ArgumentError
         nil
       end
-      expect(on_disk.pending_question[:id]).to eq(engine.pending_question[:id])
+      expect(on_disk.pending_question.id).to eq(engine.pending_question[:id])
 
       engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
       turn_thread.join(2)

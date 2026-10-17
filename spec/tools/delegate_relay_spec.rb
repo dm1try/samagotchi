@@ -204,7 +204,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
                        "approval relayed to your user: execute: git push → still open (your turn was stopped)\n" \
                        "wait canceled; the child keeps running; chi brings its reply as a delegate report")
     expect(client.posts.last).to include(action: "closed", reason: "stopped")
-    expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).pending_question[:id]).to eq("q1")
+    expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).pending_question.id).to eq("q1")
   end
 
   it "closes the relay on the desk when the relay fails before it settles, so none stays open" do

@@ -26,8 +26,12 @@ RSpec.describe Samagotchi::Relay do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  # A question as Session.load gives it back: nested keys are strings.
-  def as_saved(hash) = JSON.parse(JSON.generate(hash)).transform_keys(&:to_sym)
+  # A question as Session.load gives it back: a PendingQuestion, nested
+  # keys strings.
+  def as_saved(hash) = Samagotchi::PendingQuestion.from_file(JSON.parse(JSON.generate(hash)))
+
+  # The card's fields as the parent's pending question.
+  def as_pending(card) = Samagotchi::PendingQuestion.new(**card)
 
   it "reopens the child's approval with the same facts, the delegate named above its text" do
     card = described_class.card(child, as_saved(pending), relay_id: "r-1")
@@ -51,25 +55,30 @@ RSpec.describe Samagotchi::Relay do
     expect(card[:options]).to eq(["Allow once", "Allow this call for delegate #{short}'s session",
                                   "Allow this call in this repo", "Deny"])
     # ParentApprovals reads it as it reads the child's: index 0 is once, the last denies.
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(card, [0], setting: "once")).to be_nil
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(card, [1], setting: "once")).to eq(:once_only)
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(card, [3], setting: "off")).to be_nil
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [0], setting: "once")).to be_nil
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [1], setting: "once")).to eq(:once_only)
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [3], setting: "off")).to be_nil
   end
 
   it "stays protected when the child's call writes chi's config" do
     config = pending.merge(approval: pending[:approval].merge(rule: "chi-config"))
     card = described_class.card(child, as_saved(config), relay_id: "r-1")
-    expect(Samagotchi::Guardrails::ParentApprovals.protected?(card)).to be(true)
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(card, [0], setting: "once")).to eq(:protected)
+    expect(Samagotchi::Guardrails::ParentApprovals.protected?(as_pending(card))).to be(true)
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [0], setting: "once")).to eq(:protected)
+  end
+
+  it "lets the parent add a reason unless the child's question said no (an unset allow_freeform reads as true)" do
+    expect(described_class.card(child, as_saved(pending.except(:allow_freeform)), relay_id: "r")[:allow_freeform]).to be(true)
+    expect(described_class.card(child, as_saved(pending.merge(allow_freeform: false)), relay_id: "r")[:allow_freeform]).to be(false)
   end
 
   it "says how many more delegates wait" do
-    expect(described_class.card(child, pending, relay_id: "r", more: 1)[:header]).to end_with("(+1 more delegate waiting)")
-    expect(described_class.card(child, pending, relay_id: "r", more: 2)[:header]).to end_with("(+2 more delegates waiting)")
+    expect(described_class.card(child, as_saved(pending), relay_id: "r", more: 1)[:header]).to end_with("(+1 more delegate waiting)")
+    expect(described_class.card(child, as_saved(pending), relay_id: "r", more: 2)[:header]).to end_with("(+2 more delegates waiting)")
   end
 
   it "relays a relay card one hop further: the chain grows, the grandchild's own text and task stay" do
-    grandchild_card = described_class.card(child, pending, relay_id: "r-1")
+    grandchild_card = described_class.card(child, as_saved(pending), relay_id: "r-1")
     middle = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w").tap do |s|
       s.last_prompt = "the middle task"
     end

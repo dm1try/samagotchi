@@ -7,6 +7,7 @@ require "time"
 
 require_relative "client_id"
 require_relative "log"
+require_relative "pending_question"
 require_relative "tools/ask_user_question"
 require_relative "guardrails/parent_approvals"
 require_relative "guardrails/parent_continue"
@@ -306,7 +307,8 @@ module Samagotchi
         raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
 
         answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
-        if parent_agent && (reason = Guardrails::ParentContinue.refusal(pending, sel, allowed: parent_continue))
+        if parent_agent && (reason = Guardrails::ParentContinue.refusal(PendingQuestion.from_file(pending), sel,
+                                                                        allowed: parent_continue))
           raise Refused, reason
         end
 
@@ -498,7 +500,7 @@ module Samagotchi
       indices = sel.map { |v| opts.index(v) }
       # The one whose answer settles the approval (Approval.settle, by index).
       if parent_setting
-        reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
+        reason = Guardrails::ParentApprovals.refusal(PendingQuestion.from_file(pending), indices, setting: parent_setting)
         raise Refused, reason if reason
       end
       answer = { id: pending[:id].to_s, selected: sel, freeform: fm, selected_indices: indices.compact }

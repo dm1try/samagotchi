@@ -37,7 +37,7 @@ module Samagotchi
       # @param relay [#open_question, #relay_desk] Peers#relay
       # @return [Boolean] a relay can take this question
       def relayable?(relay, question)
-        !relay.nil? && question.is_a?(Hash) && question[:kind].to_s == Guardrails::Approval::KIND
+        !relay.nil? && question.is_a?(PendingQuestion) && question.kind.to_s == Guardrails::Approval::KIND
       end
 
       # Relay the child's pending approval and wait until it settles.
@@ -45,7 +45,7 @@ module Samagotchi
       # @return [Outcome]
       def call(child_id, question, relay:, state_dir:, more: 0)
         child = Session.load(child_id, state_dir: state_dir)
-        qid = question[:id].to_s
+        qid = question.id.to_s
         desk = relay.relay_desk
         relay_id = desk.open(child_id: child_id, child_question_id: qid)
         client = BridgeClient.discover(child_id, session_dir: Session.session_dir(child_id, state_dir: state_dir))
@@ -70,7 +70,7 @@ module Samagotchi
           end
 
           pending = Session.load(child_id, state_dir: state_dir).pending_question
-          pending && pending[:id].to_s == qid ? nil : "answered_on_child"
+          pending && pending.id.to_s == qid ? nil : "answered_on_child"
         rescue ArgumentError
           "child_gone"
         end
@@ -175,7 +175,7 @@ module Samagotchi
           return if waiting.empty?
 
           child_id, question = waiting.first
-          @done[question[:id].to_s] = true
+          @done[question.id.to_s] = true
           outcome = DelegateRelay.call(child_id, question, relay: @relay, state_dir: @state_dir, more: waiting.size - 1)
           @on_outcome.call(child_id, outcome)
           # The next one, if any, right after.
@@ -186,7 +186,7 @@ module Samagotchi
         # @return [Integer]
         def count = waiting.size
 
-        # @return [Array<Array(String, Hash)>] [child id, pending question],
+        # @return [Array<Array(String, PendingQuestion)>] [child id, pending question],
         #   oldest question first
         def waiting
           rows = SessionManager.children_of(@parent_id, state_dir: @state_dir).select do |row|
@@ -194,10 +194,10 @@ module Samagotchi
           end
           rows.filter_map do |row|
             pending = Session.load(row[:id], state_dir: @state_dir).pending_question
-            [row[:id], pending] if pending && pending[:id].to_s == row[:waiting_id].to_s
+            [row[:id], pending] if pending && pending.id.to_s == row[:waiting_id].to_s
           rescue ArgumentError
             nil
-          end.sort_by { |_, pending| pending[:created_at].to_s }
+          end.sort_by { |_, pending| pending.created_at.to_s }
         end
 
         private

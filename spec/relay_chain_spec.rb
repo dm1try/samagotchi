@@ -80,8 +80,8 @@ RSpec.describe "approval relay, two hops" do
     middle_outcome = in_thread do
       Samagotchi::Tools::DelegateRelay.call(leaf.id, pending_of(leaf), relay: middle_engine.relay_peer, state_dir: state_dir)
     end
-    wait_until(timeout: 2) { pending_of(middle)&.dig(:relay) }
-    expect(pending_of(leaf)[:relayed_to]).to include("parent_id" => middle.id)
+    wait_until(timeout: 2) { pending_of(middle)&.relay }
+    expect(pending_of(leaf).relayed_to).to include("parent_id" => middle.id)
 
     top_outcome = in_thread do
       Samagotchi::Tools::DelegateRelay.call(middle.id, pending_of(middle), relay: top_engine.relay_peer, state_dir: state_dir)
@@ -109,7 +109,7 @@ RSpec.describe "approval relay, two hops" do
     middle_outcome = in_thread do
       Samagotchi::Tools::DelegateRelay.call(leaf.id, pending_of(leaf), relay: middle_engine.relay_peer, state_dir: state_dir)
     end
-    wait_until(timeout: 2) { pending_of(middle)&.dig(:relay) }
+    wait_until(timeout: 2) { pending_of(middle)&.relay }
     top_outcome = in_thread do
       Samagotchi::Tools::DelegateRelay.call(middle.id, pending_of(middle), relay: top_engine.relay_peer, state_dir: state_dir)
     end

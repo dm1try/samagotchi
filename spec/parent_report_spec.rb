@@ -11,26 +11,26 @@ RSpec.describe Samagotchi::ParentReport do
   let(:id) { "297da360-0000-4000-8000-000000000001" }
 
   let(:question) do
-    { id: "q1", question: "Which file should I read?", options: %w[README.md Gemfile], multi_select: false,
-      allow_freeform: false, status: "pending", created_at: "2026-10-02T10:00:00.000+02:00" }
+    Samagotchi::PendingQuestion.new(id: "q1", question: "Which file should I read?", options: %w[README.md Gemfile], multi_select: false,
+                                    allow_freeform: false, status: "pending", created_at: "2026-10-02T10:00:00.000+02:00")
   end
 
   let(:hook) do
-    { id: "h1", question: "Push to main?", options: %w[Yes No], header: "deploy-guard", multi_select: false,
-      allow_freeform: true, kind: "hook", hook: "deploy-guard", status: "pending" }
+    Samagotchi::PendingQuestion.new(id: "h1", question: "Push to main?", options: %w[Yes No], header: "deploy-guard", multi_select: false,
+                                    allow_freeform: true, kind: "hook", hook: "deploy-guard", status: "pending")
   end
 
   # The A3 shape: a guardrail's ask, as Approval.payload makes it and the
   # session file keeps it.
   let(:approval) do
-    { id: "a1", question: "execute: echo SPIKE_APPROVED\n  in /w (not in a repo)\n  why: spike approval (rule spike-ask, config)",
-      options: ["Allow once", "Allow this call for the session", "Allow this call in this directory",
-                "Allow rule spike-ask in this directory", "Deny"],
-      header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
-      approval: { "tool" => "execute", "command" => "echo SPIKE_APPROVED", "cwd" => "/w", "rule" => "spike-ask",
-                  "source" => "config", "reason" => "spike approval", "scopes" => %w[once session repo rule],
-                  "preview" => { "diff" => "x" } },
-      status: "pending" }
+    Samagotchi::PendingQuestion.new(id: "a1", question: "execute: echo SPIKE_APPROVED\n  in /w (not in a repo)\n  why: spike approval (rule spike-ask, config)",
+                                    options: ["Allow once", "Allow this call for the session", "Allow this call in this directory",
+                                              "Allow rule spike-ask in this directory", "Deny"],
+                                    header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
+                                    approval: { "tool" => "execute", "command" => "echo SPIKE_APPROVED", "cwd" => "/w", "rule" => "spike-ask",
+                                                "source" => "config", "reason" => "spike approval", "scopes" => %w[once session repo rule],
+                                                "preview" => { "diff" => "x" } },
+                                    status: "pending")
   end
 
   def json(result, timeout: nil)
@@ -127,8 +127,8 @@ RSpec.describe Samagotchi::ParentReport do
 
   describe "a step-limit question (kind continue)" do
     let(:limit_question) do
-      { id: "c1", kind: "continue", header: "Step limit", question: "The turn ran out of iterations (100 steps) before it answered. Continue it?\nPrompt: fix it",
-        options: %w[Continue Stop], multi_select: false, allow_freeform: true, limit: 100, status: "pending" }
+      Samagotchi::PendingQuestion.new(id: "c1", kind: "continue", header: "Step limit", question: "The turn ran out of iterations (100 steps) before it answered. Continue it?\nPrompt: fix it",
+                                      options: %w[Continue Stop], multi_select: false, allow_freeform: true, limit: 100, status: "pending")
     end
     let(:wait) { Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: limit_question) }
 
@@ -177,7 +177,7 @@ RSpec.describe Samagotchi::ParentReport do
     end
 
     it "says a multi-select question takes more than one --option" do
-      text = described_class.question_text(question.merge(multi_select: true), session_id: id)
+      text = described_class.question_text(question.with(multi_select: true), session_id: id)
       expect(text).to include("  more than one allowed: repeat --option\n")
     end
   end

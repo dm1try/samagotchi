@@ -135,7 +135,7 @@ RSpec.describe Samagotchi::ReplyWait do
     set(pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
     result = wait
     expect(result.status).to eq(:waiting_for_answer)
-    expect(result.question).to include(id: "q1", kind: "approval")
+    expect(result.question).to have_attributes(id: "q1", kind: "approval")
   end
 
   it "does not report a question a dead worker left: it waits for no one, and the worker is gone" do
@@ -279,7 +279,7 @@ RSpec.describe Samagotchi::ReplyWait do
       set(pending_question: { id: "old", question: "Old?" })
       later { set(pending_question: { id: "new", question: "New?" }) }
 
-      expect(wait(baseline: { messages: 0, question_id: "old" }).question).to include(id: "new")
+      expect(wait(baseline: { messages: 0, question_id: "old" }).question).to have_attributes(id: "new")
     end
   end
 
@@ -413,7 +413,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
       result = wait(baseline: base, turn: "q1")
       expect(result.status).to eq(:waiting_for_answer)
-      expect(result.question).to include(id: "mine")
+      expect(result.question).to have_attributes(id: "mine")
     end
 
     it "takes its own continue offer (no reply, asked after its end)" do
@@ -432,7 +432,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
       result = wait(baseline: base, turn: "q1")
       expect(result.status).to eq(:waiting_for_answer)
-      expect(result.question).to include(id: "cont")
+      expect(result.question).to have_attributes(id: "cont")
     end
 
     # A follow-up sent as a plain message (no queue) to a session that
@@ -463,7 +463,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
         result = wait(baseline: base, turn: "y1")
         expect(result.to_h).to include(status: :waiting_for_answer)
-        expect(result.question).to include(id: "theirs")
+        expect(result.question).to have_attributes(id: "theirs")
 
         later do
           set(pending_question: nil)
@@ -618,7 +618,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
         result = wait(baseline: base, turn: "x1")
         expect(result.to_h).to include(status: :waiting_for_answer)
-        expect(result.question).to include(id: "mine")
+        expect(result.question).to have_attributes(id: "mine")
       end
 
       it "does not take another turn's question: it waits on" do

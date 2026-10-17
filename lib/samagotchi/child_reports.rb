@@ -254,7 +254,7 @@ module Samagotchi
     def reportable?(wait)
       case wait.status
       when :done, :no_reply, :error then true
-      when :waiting_for_answer then [nil, "", "continue"].include?(wait.question&.dig(:kind)&.to_s)
+      when :waiting_for_answer then [nil, "", "continue"].include?(wait.question&.kind&.to_s)
       else false
       end
     end

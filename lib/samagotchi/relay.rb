@@ -18,29 +18,28 @@ module Samagotchi
     module_function
 
     # @param child [Session] the child as loaded (its id, its first prompt)
-    # @param pending [Hash] the child's pending question (string keys inside
-    #   when it came from a saved session)
+    # @param pending [PendingQuestion] the child's pending question (string
+    #   keys inside its approval and relay when it came from a saved session)
     # @param relay_id [String] RelayDesk's id
     # @param more [Integer] other delegates' approvals waiting behind this one
     # @return [Hash] Engine#open_question fields
     def card(child, pending, relay_id:, more: 0)
-      pending = deep_symbolize(pending)
-      facts = pending[:approval].is_a?(Hash) ? pending[:approval] : {}
+      facts = pending.approval.is_a?(Hash) ? deep_symbolize(pending.approval) : {}
       short = child.id.to_s[0, 8]
-      inner = pending[:relay].is_a?(Hash) ? pending[:relay] : nil
+      inner = pending.relay.is_a?(Hash) ? deep_symbolize(pending.relay) : nil
       chain = inner ? [*Array(inner[:chain]), short] : [short]
-      asked = inner ? inner[:asked].to_s : pending[:question].to_s
+      asked = inner ? inner[:asked].to_s : pending.question.to_s
       task = inner ? inner[:task].to_s : task_of(child)
       who = chain.reverse.join(" → ")
       {
         question: question_text(who, task, asked),
-        options: relabel(Array(pending[:options]), facts[:scopes], who),
+        options: relabel(Array(pending.options), facts[:scopes], who),
         header: header(who, more),
         multi_select: false,
-        allow_freeform: pending.key?(:allow_freeform) ? !!pending[:allow_freeform] : true,
+        allow_freeform: pending.allow_freeform.nil? || !!pending.allow_freeform,
         kind: Guardrails::Approval::KIND,
         approval: facts,
-        relay: { id: relay_id, child_id: child.id, child_short: short, child_question_id: pending[:id].to_s,
+        relay: { id: relay_id, child_id: child.id, child_short: short, child_question_id: pending.id.to_s,
                  task: task, chain: chain, asked: asked, more: more.to_i }
       }
     end

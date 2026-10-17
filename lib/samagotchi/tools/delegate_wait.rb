@@ -91,7 +91,7 @@ module Samagotchi
           # asked), the relayed question no longer reported: a turn that
           # ends with no reply during the relay's POST or after it still
           # ends the wait.
-          baseline = ReplyWait.baseline_of(wait.session, question_id: wait.question[:id])
+          baseline = ReplyWait.baseline_of(wait.session, question_id: wait.question.id)
         end
       rescue ArgumentError => e
         "Error: #{e.message}"

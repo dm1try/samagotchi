@@ -176,7 +176,7 @@ RSpec.describe "Engine guardrail wiring" do
           rescue ArgumentError
             nil
           end
-          expect(reloaded[:approval]["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")
+          expect(reloaded.approval["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")
         end
         expect(pending[:approval][:preview]).to include(added: 1, removed: 1, new_file: false)
         expect(pending[:question]).to end_with("  change: +1 \u22121")

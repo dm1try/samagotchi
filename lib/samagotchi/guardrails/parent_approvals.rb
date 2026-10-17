@@ -93,7 +93,7 @@ module Samagotchi
       # guardrail rules or approvals: by its rule, its paths or its command
       # (the dirs as this process's environment and config.yml name them).
       def protected?(pending)
-        facts = fetch(pending, :approval)
+        facts = pending.approval
         return false unless facts.is_a?(Hash)
         return true if PROTECTED_RULES.include?(fetch(facts, :rule).to_s)
         return true if fetch(facts, :source).to_s == ProtectedPaths::SOURCE
@@ -137,13 +137,13 @@ module Samagotchi
 
       # An approval: its kind says so, or it carries approval facts.
       def approval?(pending)
-        fetch(pending, :kind).to_s == Approval::KIND || !fetch(pending, :approval).nil?
+        pending.kind.to_s == Approval::KIND || !pending.approval.nil?
       end
 
       # The offered scopes, in option order, or nil when they are missing,
       # empty, not strings, or leave no option after them for Deny.
       def scopes(pending)
-        facts = fetch(pending, :approval)
+        facts = pending.approval
         scopes = facts.is_a?(Hash) ? fetch(facts, :scopes) : nil
         return nil unless scopes.is_a?(Array) && !scopes.empty? && scopes.all?(String)
         return nil unless scopes.size < options(pending).size
@@ -160,7 +160,7 @@ module Samagotchi
         index == options.size - 1 && options[index].to_s == Approval::DENY
       end
 
-      def options(pending) = Array(fetch(pending, :options))
+      def options(pending) = Array(pending.options)
 
       def fetch(hash, key)
         return nil unless hash.is_a?(Hash)

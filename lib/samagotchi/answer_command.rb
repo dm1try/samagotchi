@@ -117,7 +117,7 @@ module Samagotchi
       # turn queued behind it; nil (an older worker): the next reply.
       turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
 
-      if pending && pending[:id].to_s == qid
+      if pending && pending.id.to_s == qid
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
 
         selected = selection(pending, options) or return @selection_status
@@ -140,7 +140,7 @@ module Samagotchi
     # exact label wins over a number.
     # @return [Array<String>, nil] nil after a usage error
     def selection(pending, options)
-      offered = Array(pending[:options]).map(&:to_s)
+      offered = Array(pending.options).map(&:to_s)
       labels = options[:options].map do |given|
         next given if offered.include?(given)
 
@@ -151,7 +151,7 @@ module Samagotchi
         @selection_status = usage_failure("no option #{given}; the options: #{listed}")
         return nil
       end
-      if labels.uniq.size > 1 && !pending[:multi_select]
+      if labels.uniq.size > 1 && !pending.multi_select
         @selection_status = usage_failure("one option only: the question is single-select")
         return nil
       end
@@ -163,7 +163,7 @@ module Samagotchi
     # Deny, text alone or a dismissal always passes: each one denies. The
     # worker checks it again with its own config.
     def approval_refusal(pending, selected, _id)
-      offered = Array(pending[:options]).map(&:to_s)
+      offered = Array(pending.options).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
       reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: Guardrails::ParentApprovals.setting)
       reason && Guardrails::ParentApprovals.message(reason)
@@ -177,7 +177,7 @@ module Samagotchi
 
     # A step-limit question can't be left unanswered: the turn waits on it.
     def not_dismissable(pending)
-      "the step-limit question can't be dismissed: answer #{Array(pending[:options]).join(" or ")} " \
+      "the step-limit question can't be dismissed: answer #{Array(pending.options).join(" or ")} " \
         "(--option Stop --text WHY stops it)"
     end
 

@@ -88,9 +88,10 @@ module Samagotchi
       # A question left waiting (exit 3), in full on stderr as `chi send
       # --wait` prints it (ParentReport), so a script or a parent agent
       # can answer it with chi answer.
-      # @param pending [Hash] the pending question (symbol keys)
+      # @param pending [Hash] the pending question as the Bridge sent it
       def report_unanswered(pending, session_id:, err: $stderr)
-        err.print("chi: #{ParentReport.question_text(pending, session_id: session_id)}")
+        question = PendingQuestion.from_file(pending)
+        err.print("chi: #{ParentReport.question_text(question, session_id: session_id)}")
         err.flush
       end
 

@@ -85,7 +85,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(relay("opened", "r-1", qid).status).to eq(200)
       marker = { parent_id: parent.id, parent_short: parent.id[0, 8], relay_id: "r-1" }
       expect(child_engine.pending_question[:relayed_to]).to eq(marker)
-      expect(saved_question[:relayed_to]).to eq(marker.transform_keys(&:to_s))
+      expect(saved_question.relayed_to).to eq(marker.transform_keys(&:to_s))
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: marker)
 
       # Another relay's close, or a reason it doesn't know, changes nothing / is "closed".

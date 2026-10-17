@@ -8,6 +8,7 @@ require_relative "atomic_file"
 require_relative "context_note"
 require_relative "interrupted_turn"
 require_relative "last_turn"
+require_relative "pending_question"
 require_relative "llm_context_override"
 require_relative "session_setup"
 require_relative "prompt_note"
@@ -49,7 +50,7 @@ module Samagotchi
 
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
-                  :pending_question, :used_memory_names
+                  :used_memory_names
     # Memories the session was started with (--memory) and memories hidden
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
@@ -98,6 +99,15 @@ module Samagotchi
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
+    # The question this session waits on (PendingQuestion), saved as
+    # session.json's "pending_question"; nil with none. A Hash (a saved
+    # record, string or symbol keys) is read with PendingQuestion.from_file.
+    attr_reader :pending_question
+
+    def pending_question=(value)
+      @pending_question = PendingQuestion.from_file(value)
+    end
+
     # How the last turn ended (LastTurn), for a parent's wait (ReplyWait)
     # and the web's notifications (the hub sends it in the summary); nil
     # before the first turn.
@@ -246,7 +256,7 @@ module Samagotchi
       @last_prompt = last_prompt
       @first_preview = first_preview
       @test_run = !!test_run
-      @pending_question = pending_question
+      self.pending_question = pending_question
       @used_memory_names = self.class.name_list(used_memory_names)
       @preloaded_memory_names = self.class.name_list(preloaded_memory_names)
       @muted_memory_names = self.class.name_list(muted_memory_names)
@@ -289,12 +299,12 @@ module Samagotchi
     # @return [Hash, nil]
     def waiting_question(live:)
       pending = pending_question
-      return nil unless live && pending.is_a?(Hash) && pending[:id]
+      return nil unless live && pending&.id
 
-      kind = pending[:kind].to_s
-      relayed = pending[:relayed_to]
+      kind = pending.kind.to_s
+      relayed = pending.relayed_to
       relayed_to = relayed.is_a?(Hash) ? (relayed[:parent_short] || relayed["parent_short"]) : nil
-      { id: pending[:id], kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
+      { id: pending.id, kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
     end
 
     # A question saved by a process that no longer runs this session (the
@@ -306,7 +316,7 @@ module Samagotchi
       return nil unless pending
 
       @pending_question = nil
-      pending[:id].to_s
+      pending.id.to_s
     end
 
     # The stored project root, else (a file from before the field) the
@@ -390,10 +400,10 @@ module Samagotchi
 
     # The fields of <id>.json, in the order #save writes them: key => the
     # value for a file without it (REQUIRED for the ones it must have).
-    # .from_h and #to_h both go by this table; messages and
-    # pending_question change key type on the way (symbols in memory,
-    # strings on disk); last_turn and prompt_notes are value objects in
-    # memory (LastTurn, PromptNote).
+    # .from_h and #to_h both go by this table; messages change key type on
+    # the way (symbols in memory, strings on disk); last_turn, prompt_notes
+    # and pending_question are value objects in memory (LastTurn,
+    # PromptNote, PendingQuestion).
     FIELDS = {
       "metadata_version" => 1,
       "id" => REQUIRED,
@@ -435,8 +445,6 @@ module Samagotchi
         [key.to_sym, default.equal?(REQUIRED) ? data.fetch(key) : data.fetch(key, default)]
       end
       attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
-      pending = attrs[:pending_question]
-      attrs[:pending_question] = pending.is_a?(Hash) ? symbolize_message_keys(pending) : nil
       new(**attrs)
     end
 
@@ -557,7 +565,7 @@ module Samagotchi
                 when "messages"
                   (checkpoint ? checkpoint[:messages] : @messages).map { |msg| scrub_utf8(stringify_message_keys(msg)) }
                 when "interrupted_turn" then (checkpoint ? checkpoint[:marker] : @interrupted_turn)&.to_file
-                when "pending_question" then @pending_question && scrub_utf8(stringify_message_keys(@pending_question))
+                when "pending_question" then @pending_question && scrub_utf8(@pending_question.to_file)
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file
