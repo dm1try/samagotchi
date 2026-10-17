@@ -6,11 +6,19 @@ require_relative "../paths"
 require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "side_question"
-require_relative "sessions"
-require_relative "attached_context"
 
 module Samagotchi
+  # Context#saved_session reads it; Sessions and AttachedContext load it too.
+  autoload :Session, File.expand_path("../session", __dir__)
+
   module Plugin
+    # Loaded on first ctx.sessions / ctx.context (or a bundle naming
+    # Sessions::Error): they pull in the session, delivery and bridge
+    # client files (~150), which a plugin that never calls them, and the
+    # bundle test kit, don't need.
+    autoload :Sessions, File.expand_path("sessions", __dir__)
+    autoload :AttachedContext, File.expand_path("attached_context", __dir__)
+
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
     # (text, level, label, fallback_for:), +ask_user+ takes (question:, options:, header:,
