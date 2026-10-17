@@ -7,7 +7,7 @@ require_relative "file_ref"
 module Samagotchi
   # The fields a tool row shows beyond its params, built from the call in
   # one place for every path: the live tool_call_started (ToolRunner#run)
-  # and a reload from the saved call (Web::MessageParts#tool_part). The
+  # and a reload from the saved call (MessageParts#tool_part). The
   # bridge's snapshot and replay (Bridge::TurnAccumulator) copy them by
   # these lists, so a new field is added here and travels everywhere.
   #

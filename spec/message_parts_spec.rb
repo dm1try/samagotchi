@@ -4,9 +4,9 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 require "json"
-require "samagotchi/web/message_parts"
+require "samagotchi/message_parts"
 
-RSpec.describe Samagotchi::Web::MessageParts do
+RSpec.describe Samagotchi::MessageParts do
   def qwen_call(name, params)
     body = params.map { |k, v| "<parameter=#{k}>\n#{v}\n</parameter>\n" }.join
     "<tool_call>\n<function=#{name}>\n#{body}</function>\n</tool_call>"

@@ -6,7 +6,7 @@ require "samagotchi/llm/chat_loop"
 require "samagotchi/hooks"
 require "samagotchi/session"
 require "samagotchi/tools/write"
-require "samagotchi/web/message_parts"
+require "samagotchi/message_parts"
 require "fileutils"
 require "tmpdir"
 require_relative "../support/fake_chat_adapter"
@@ -1793,7 +1793,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         session.messages.concat(result.conversation)
         session.save(state_dir: dir)
         messages = Samagotchi::Session.load(session.id, state_dir: dir).messages
-        tools = Samagotchi::Web::MessageParts.for_message(messages[1], messages[2..3])[:tools]
+        tools = Samagotchi::MessageParts.for_message(messages[1], messages[2..3])[:tools]
         expect(tools.first[:diff]).to include("text" => diff[:text], "new_file" => false)
         expect(tools.last).not_to have_key(:diff)
       end

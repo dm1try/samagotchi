@@ -3,7 +3,7 @@
 require "samagotchi/kernel_loop"
 require "samagotchi/hooks"
 require "samagotchi/session"
-require "samagotchi/web/message_parts"
+require "samagotchi/message_parts"
 require "fileutils"
 require "tmpdir"
 
@@ -241,7 +241,7 @@ RSpec.describe Samagotchi::KernelLoop do
         session.save(state_dir: dir)
         messages = Samagotchi::Session.load(session.id, state_dir: dir).messages
         model = messages.find { |m| m[:content].to_s.include?("call:write") }
-        tools = Samagotchi::Web::MessageParts.for_message(model, messages.select { |m| m[:role] == "tool_response" })[:tools]
+        tools = Samagotchi::MessageParts.for_message(model, messages.select { |m| m[:role] == "tool_response" })[:tools]
         expect(tools.map { |t| t[:tool] }).to eq(%w[execute write])
         expect(tools.first).not_to have_key(:diff)
         expect(tools.last[:diff]).to include("added" => 1, "removed" => 1, "text" => "@@ -1,2 +1,2 @@\n one\n-two\n+TWO")

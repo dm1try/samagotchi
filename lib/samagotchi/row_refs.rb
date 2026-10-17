@@ -10,7 +10,7 @@ module Samagotchi
   # whose +to_h+ the row carries as +refs+ on tool_call_started and
   # tool_call_completed (ToolRowFields::EVENT_KEYS), saved with the result
   # as tool_refs (ToolResponse::SAVED_KEYS) for a reload, which has no
-  # plugins (Web::MessageParts). Display only: the model never sees them.
+  # plugins (MessageParts). Display only: the model never sees them.
   #
   # A file ref is any file under the session's folder (plan D7): a relative
   # path is resolved against it, a path outside it is dropped. The folder

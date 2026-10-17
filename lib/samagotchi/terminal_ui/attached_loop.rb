@@ -28,7 +28,7 @@ require_relative "../children_status"
 require_relative "../guardrails/parent_approvals"
 require_relative "../tool_activity"
 require_relative "../tool_view"
-require_relative "../web/message_parts"
+require_relative "../message_parts"
 
 module Samagotchi
   class TerminalUI
@@ -1274,7 +1274,7 @@ module Samagotchi
             @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
           elsif %w[model assistant].include?(m[:role].to_s)
             responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
-            Array(Web::MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
+            Array(MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
               record = join_record(records, part)
               duration = record&.dig("duration_ms")
               @screen.commit(join_tool_line(part, duration_ms: duration.is_a?(Numeric) ? duration : nil,

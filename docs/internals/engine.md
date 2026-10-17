@@ -290,7 +290,7 @@ One iteration with tool calls:
   replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
 - Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
   title, called_as, via, view, ref, refs}. The row fields (title, called_as, via, view, ref) come from `ToolRowFields.for`, which the
-  reload (`Web::MessageParts#tool_part`, after `BuiltinCalls.unwrap_saved`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as, via) travel
+  reload (`MessageParts#tool_part`, after `BuiltinCalls.unwrap_saved`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as, via) travel
   inside `activity` on the completed event; `EVENT_KEYS` (view, ref, refs) go top-level on both events.
   `Bridge::TurnAccumulator` (snapshot and replay) and the web (`activity.js` `ACTIVITY_FIELDS` /
   `EVENT_FIELDS`) copy them by these lists, so a new row field is added there. `ref` is `FileRef.for` (a

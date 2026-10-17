@@ -6,7 +6,7 @@ require "samagotchi/reminder_store"
 require "samagotchi/tool_call_parser"
 require "samagotchi/llm/openai_chat"
 require "samagotchi/llm/native_tool_normalizer"
-require "samagotchi/web/message_parts"
+require "samagotchi/message_parts"
 
 # What a built call does once it runs, per model format, for the cases the
 # three mappers disagree on; and what a reloaded session shows for one.
@@ -97,19 +97,19 @@ RSpec.describe "Tool call outcomes per model format" do
 
     it "reads Qwen markup" do
       content = tools.map { |name, args| qwen_wire(name, args) }.join
-      expect(Samagotchi::Web::MessageParts.for_message({ role: "model", content: content }, [joined])).to eq(rows)
+      expect(Samagotchi::MessageParts.for_message({ role: "model", content: content }, [joined])).to eq(rows)
     end
 
     it "reads Gemma markup" do
       content = tools.map { |name, args| gemma_wire(name, args) }.join
-      expect(Samagotchi::Web::MessageParts.for_message({ role: "model", content: content }, [joined])).to eq(rows)
+      expect(Samagotchi::MessageParts.for_message({ role: "model", content: content }, [joined])).to eq(rows)
     end
 
     it "reads the chat loop's saved arguments" do
       message = { role: "model", content: "",
                   tool_calls: tools.each_with_index.map { |(name, args), i| { id: i.to_s, name: name, arguments: args } } }
       responses = outputs.each_with_index.map { |output, i| { role: "tool_response", tool_call_id: i.to_s, content: output } }
-      expect(Samagotchi::Web::MessageParts.for_message(message, responses)).to eq(rows)
+      expect(Samagotchi::MessageParts.for_message(message, responses)).to eq(rows)
     end
   end
 end
