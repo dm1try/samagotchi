@@ -9,13 +9,14 @@ require "samagotchi/memory_paths"
 require "samagotchi/memory_bundle/installer"
 require "support/thinking_off"
 require "support/test_kernel"
+require "samagotchi/testing/rspec"
 
 # The agents-md bundle (lib/samagotchi/bundles/agents-md): a nested
 # AGENTS.md steered in on the first tool touch under its directory. The
-# plugin's hooks, driven with a fake ctx against a fixture repo in a tmp
-# dir (no git commits needed: only the .git layout matters), and the
-# shipped bundle installed and loaded by an Engine.
-RSpec.describe "The agents-md bundle" do
+# plugin's hooks, driven through the bundle test kit against a fixture repo
+# in a tmp dir (no git commits needed: only the .git layout matters), and
+# the shipped bundle installed and loaded by an Engine.
+RSpec.describe "The agents-md bundle", :bundle do
   include_context "thinking off"
 
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/agents-md", __dir__) }
@@ -24,13 +25,10 @@ RSpec.describe "The agents-md bundle" do
   let(:other) { File.realpath(File.join(tmpdir, "other")) }
   let(:link) { File.join(tmpdir, "link") }
   let(:chain) { [File.join(repo, "AGENTS.md"), File.join(repo, "pkg", "AGENTS.md")] }
-  let(:ctx) { FakeCtx.new(cwd: File.join(repo, "pkg"), repo_root: repo, prompt_files: chain) }
-  # The plugin as the loader builds it: module_eval the file, register(chi)
-  # collects the hooks.
-  let(:mod) do
-    Module.new.tap { |m| m.module_eval(File.read(File.join(shipped, "plugin.rb")), File.join(shipped, "plugin.rb")) }
-  end
-  let(:hooks) { plugin({}) }
+  # The plugin as chi loads it, its session in pkg/ with the chain in its
+  # prompt.
+  let(:bundle) { plugin }
+  let(:hooks) { bundle }
 
   before do
     FileUtils.mkdir_p(File.join(tmpdir, "repo", "pkg", "inner", "deep"))
@@ -61,63 +59,18 @@ RSpec.describe "The agents-md bundle" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  # The plugin's ctx, as the Engine's host would give it. +steer+ routes to
-  # the fired event's helper when the spec put one on it (a dropped steer),
-  # else queues (true) and records, like PluginHandlerCtx.
-  class FakeCtx
-    class Log
-      attr_reader :records
-
-      def initialize = @records = []
-
-      def info(event, **fields) = @records << [event, fields]
-      def debug(event, **fields) = @records << [event, fields]
-      def warn(event, **fields) = @records << [event, fields]
-      def error(event, **fields) = @records << [event, fields]
-    end
-
-    attr_accessor :cwd, :repo_root, :prompt_files, :session_id, :current_event, :steer_result
-    attr_reader :steers, :log
-
-    def initialize(cwd:, repo_root: nil, prompt_files: [], session_id: "s1")
-      @cwd = cwd
-      @repo_root = repo_root
-      @prompt_files = prompt_files
-      @session_id = session_id
-      @steers = []
-      @steer_result = true
-      @log = Log.new
-    end
-
-    def with_event(event)
-      previous = @current_event
-      @current_event = event
-      yield
-    ensure
-      @current_event = previous
-    end
-
-    def steer(text)
-      helper = @current_event.is_a?(Hash) ? @current_event[:steer] : nil
-      result = helper ? helper.call(text) : @steer_result
-      @steers << text if result
-      result
-    end
-  end
-
-  # The plugin as the loader builds it: register(chi) collects the hooks.
+  # The plugin as chi loads it (each call a new load, its own recorders),
+  # for session s1 in pkg/, the cwd's AGENTS.md chain in its prompt.
   def plugin(settings = {})
-    collected = Hash.new { |h, k| h[k] = [] }
-    chi = Object.new
-    chi.define_singleton_method(:on) { |event, priority: 100, &block| collected[event] << block }
-    mod::Plugin.new(settings).register(chi)
-    collected
+    shipped_bundle("agents-md", settings: settings,
+                                host: { cwd: File.join(repo, "pkg"), session_id: "s1", prompt_files: chain })
   end
 
   def fire(event, using: hooks)
-    using[event[:type]].each { |block| ctx.with_event(event) { block.call(event, ctx) } }
-    event
+    using.fire(event[:type], **event.except(:type))
   end
+
+  def steers(using = hooks) = using.steers.map(&:text)
 
   def read(path, status: "ok", **event)
     fire({ type: :after_tool_call, tool: "read", status: status, call: { name: "read", content: path }, **event })
@@ -132,7 +85,7 @@ RSpec.describe "The agents-md bundle" do
   end
 
   def turn(messages: [])
-    fire({ type: :before_turn, session_id: ctx.session_id, prompt: "go", messages: messages })
+    fire({ type: :before_turn, session_id: "s1", prompt: "go", messages: messages })
   end
 
   def steer_message(text) = { role: "user", kind: "steer", source: "agents-md", content: text }
@@ -141,13 +94,13 @@ RSpec.describe "The agents-md bundle" do
     it "steers a nested file's AGENTS.md into the turn" do
       read("inner/data.txt")
 
-      expect(ctx.steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\ninner rule"])
+      expect(steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\ninner rule"])
     end
 
     it "steers the outermost candidates first" do
       read("inner/deep/data.txt")
 
-      expect(ctx.steers.map { |text| text.lines.first.chomp }).to eq(
+      expect(steers.map { |text| text.lines.first.chomp }).to eq(
         ["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):",
          "AGENTS.md for pkg/inner/deep/ (applies to work under pkg/inner/deep/):"]
       )
@@ -156,108 +109,108 @@ RSpec.describe "The agents-md bundle" do
     it "leaves a file whose AGENTS.md is in the cwd's chain alone" do
       read("file.txt") # pkg/, in the chain
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "leaves a file whose AGENTS.md was appended alone" do
-      ctx.prompt_files = [File.join(repo, "AGENTS.md"), File.join(repo, "pkg2", "AGENTS.md")]
-      ctx.cwd = repo
+      bundle.set(prompt_files: [File.join(repo, "AGENTS.md"), File.join(repo, "pkg2", "AGENTS.md")], cwd: repo)
 
       read("pkg2/file.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "steers nothing for a file at the checkout top (its AGENTS.md is the chain's first)" do
-      ctx.cwd = repo
+      bundle.set(cwd: repo)
 
       read("loose.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "steers each directory once: a second read under the same dir adds nothing" do
       read("inner/data.txt")
       read("inner/more.txt")
 
-      expect(ctx.steers.size).to eq(1)
+      expect(steers.size).to eq(1)
     end
 
     it "steers a write and an edit as for a read" do
       write("inner/data.txt")
-      expect(ctx.steers.map { |text| text.lines.first.chomp }).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):"])
+      expect(steers.map { |text| text.lines.first.chomp }).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):"])
 
       edit("inner/more.txt")
-      expect(ctx.steers.size).to eq(1)
+      expect(steers.size).to eq(1)
     end
 
     it "does nothing for a call that errored" do
       read("inner/data.txt", status: "error")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "does nothing for a tool outside its settings" do
       hooks = plugin("tools" => ["write"])
 
       fire({ type: :after_tool_call, tool: "read", status: "ok", call: { name: "read", content: "inner/data.txt" } }, using: hooks)
-      expect(ctx.steers).to be_empty
+      expect(steers(hooks)).to be_empty
       fire({ type: :after_tool_call, tool: "write", status: "ok", call: { name: "write", path: "inner/data.txt" } }, using: hooks)
-      expect(ctx.steers.size).to eq(1)
+      expect(steers(hooks).size).to eq(1)
     end
 
     it "ignores a file in another repository" do
-      ctx.cwd = repo
+      bundle.set(cwd: repo)
       read("../other/f.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "ignores a file in a nested repository of the checkout" do
       read("nested/f.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
 
     it "still matches through a symlinked cwd (a /tmp-style /private/tmp split)" do
-      ctx.cwd = File.join(link, "pkg")
+      bundle.set(cwd: File.join(link, "pkg"))
 
       read("inner/data.txt")
 
-      expect(ctx.steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\ninner rule"])
+      expect(steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\ninner rule"])
     end
 
     it "ignores a touched file outside any repository" do
       FileUtils.mkdir_p(File.join(tmpdir, "plain"))
       File.write(File.join(tmpdir, "plain", "AGENTS.md"), "plain rule")
       File.write(File.join(tmpdir, "plain", "f.txt"), "plain file")
-      ctx.cwd = File.join(tmpdir, "plain")
-      ctx.repo_root = nil
+      bundle.set(cwd: File.join(tmpdir, "plain")) # outside any checkout: no repo_root
 
       read("f.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
   end
 
   describe "the loaded set" do
     it "rebuilds from the steers already in the conversation: a resume re-steers nothing" do
       read("inner/data.txt")
-      turn(messages: [steer_message(ctx.steers.first)])
+      turn(messages: [steer_message(steers.first)])
       read("inner/more.txt")
 
-      expect(ctx.steers.size).to eq(1)
+      expect(steers.size).to eq(1)
     end
 
     it "a steer that was queued but dropped fires again on the next touch" do
-      read("inner/data.txt", steer: ->(_text) { false })
-      expect(ctx.steers).to be_empty
+      bundle.set(running: false) # the steer isn't queued: the turn ended first
+      read("inner/data.txt")
+      expect(steers).to be_empty
+      bundle.set(running: true)
 
       turn(messages: []) # the rebuild finds none in the conversation
 
       read("inner/data.txt")
 
-      expect(ctx.steers.size).to eq(1)
+      expect(steers.size).to eq(1)
     end
 
     it "replaces, not accumulates: a dir whose steer is gone from the messages fires again" do
@@ -266,7 +219,7 @@ RSpec.describe "The agents-md bundle" do
 
       read("inner/more.txt")
 
-      expect(ctx.steers.size).to eq(2)
+      expect(steers.size).to eq(2)
     end
 
     it "skips other bundles' steers and messages" do
@@ -275,7 +228,7 @@ RSpec.describe "The agents-md bundle" do
 
       read("inner/data.txt")
 
-      expect(ctx.steers.size).to eq(1)
+      expect(steers.size).to eq(1)
     end
   end
 
@@ -285,7 +238,7 @@ RSpec.describe "The agents-md bundle" do
       hooks = plugin("max_chars" => 20)
       fire({ type: :after_tool_call, tool: "read", status: "ok", call: { name: "read", content: "inner/data.txt" } }, using: hooks)
 
-      expect(ctx.steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\n#{"x" * 20}\n" \
+      expect(steers(hooks)).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\n#{"x" * 20}\n" \
                                 "[cut at 20 of 30 chars: read #{File.realpath(repo)}/pkg/inner/AGENTS.md for the rest]"])
     end
 
@@ -294,31 +247,31 @@ RSpec.describe "The agents-md bundle" do
       hooks = plugin("max_chars" => 20)
       fire({ type: :after_tool_call, tool: "read", status: "ok", call: { name: "read", content: "inner/data.txt" } }, using: hooks)
 
-      expect(ctx.steers).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\n#{"x" * 20}"])
+      expect(steers(hooks)).to eq(["AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):\n#{"x" * 20}"])
     end
 
     it "leaves an empty AGENTS.md out" do
       File.write(File.join(repo, "pkg", "inner", "AGENTS.md"), "  \n")
       read("inner/data.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
   end
 
   describe "skip_agents_md" do
     it "does nothing when the setting is on" do
-      allow(Samagotchi::Config).to receive(:get).and_return(false)
-      allow(Samagotchi::Config).to receive(:get).with("skip_agents_md").and_return(true)
+      sandbox.config("skip_agents_md" => true)
 
       read("inner/data.txt")
 
-      expect(ctx.steers).to be_empty
+      expect(steers).to be_empty
     end
   end
 
   # Installed as a user would, loaded by an Engine: the steer lands in the
   # real conversation, and a second turn re-steers nothing.
-  describe "the shipped bundle" do
+  # Off the kit's sandbox: an Engine under the suite's own environment.
+  describe "the shipped bundle", bundle: false do
     let(:client) { test_client }
     let(:engine) { Samagotchi::Engine.new(client: client) }
     let(:session) do
