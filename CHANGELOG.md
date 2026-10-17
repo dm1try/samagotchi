@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
 - After `/model` the ctx % no longer shows the old model's window: it is counted against the new model's window at
   once (web info bar, attached TUI status row, a client that joins later), or cleared (`ctx ?`) when the window
   can't be resolved, until the next generation.
+- `chi bundle upgrade` of a source with no `manifest.yml` (or an invalid one) fails with `Upgrade failed: <the
+  manifest error>`, instead of first saying the bundle isn't installed and falling back to an install that then
+  failed as `Install failed: …`.
 
 ## [0.75.0] - 2026-10-17
 

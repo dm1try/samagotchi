@@ -193,10 +193,12 @@ module Samagotchi
       end
     end
 
-    # The bundle's name, or nil after "<word> failed: …".
+    # The bundle's name, or nil after "<word> failed: …" (an unknown source,
+    # or a missing or invalid manifest: an install needs one anyway).
     def bundle_name_or_fail(expanded_source, word)
       bundle_name_for(expanded_source)
-    rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
+    rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError,
+           Samagotchi::MemoryBundle::Manifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
       nil
     end
@@ -749,14 +751,9 @@ module Samagotchi
       owned = false
       begin
         nd, owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_src)
-        m = Samagotchi::MemoryBundle::Manifest.read(dir: nd)
-        m.name
-      rescue Samagotchi::MemoryBundle::Manifest::ValidationError
-        # Fallback to source basename without archive extensions
-        src = expanded_src
-        name = File.basename(src)
-        name = name.sub(/\.tar\.gz\z/i, "").sub(/\.tgz\z/i, "").sub(/\.zip\z/i, "").sub(/\.tar\z/i, "")
-        name.empty? ? File.basename(nd || src) : name
+        # A missing or invalid manifest raises Manifest::ValidationError
+        # (bundle_name_or_fail prints it): the strict install would refuse it.
+        Samagotchi::MemoryBundle::Manifest.read(dir: nd).name
       ensure
         Samagotchi::MemoryBundle::SourceNormalizer.cleanup(nd) if owned
       end

@@ -188,6 +188,23 @@ RSpec.describe "chi bundle (CLI)" do
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
+    # The source's manifest is read once, for the bundle's name: a missing or
+    # invalid one fails there, before "not installed — falling back to install".
+    it "fails an install or upgrade of a source without a valid manifest at the manifest, with no fall-back line" do
+      bare = File.join(@root, "bare")
+      FileUtils.mkdir_p(bare)
+      File.write(File.join(bare, "a.md"), "one\n")
+      nameless = File.join(@root, "nameless")
+      FileUtils.mkdir_p(nameless)
+      File.write(File.join(nameless, "manifest.yml"), "version: 1.0.0\n")
+
+      expect(chi("upgrade", bare)).to eq(["", "Upgrade failed: manifest.yml not found in #{bare}\n", 1])
+      expect(chi("upgrade", bare, "--dry-run")).to eq(["", "Upgrade failed: manifest.yml not found in #{bare}\n", 1])
+      expect(chi("install", bare)).to eq(["", "Install failed: manifest.yml not found in #{bare}\n", 1])
+      expect(chi("upgrade", nameless)).to eq(["", "Upgrade failed: manifest missing required field: name\n", 1])
+      expect(Dir.exist?(File.join(memories, ".bundles"))).to be(false)
+    end
+
     it "writes nothing on a dry-run upgrade of a bundle that isn't installed" do
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
 
