@@ -20,6 +20,12 @@ RSpec.configure do |config|
     enter_sandbox
     example.run
   ensure
-    leave_sandbox
+    unmatched = leave_sandbox
+    # A request no stub answered fails an example that passed, after its
+    # cleanup (a plugin that rescued the UnstubbedRequest can't hide it); an
+    # example that failed keeps its own failure.
+    unless unmatched.empty? || example.exception
+      raise Samagotchi::Testing::UnstubbedRequest, Samagotchi::Testing::FakeHttp.unmatched_message(unmatched)
+    end
   end
 end

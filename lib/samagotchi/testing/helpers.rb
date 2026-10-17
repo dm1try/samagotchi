@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "bundle"
+require_relative "fake_http"
 require_relative "sandbox"
 require_relative "waiting"
 
@@ -24,11 +25,19 @@ module Samagotchi
 
       def enter_sandbox = sandbox
 
-      # Shut the loaded bundles down and leave the sandbox.
+      # Shut the loaded bundles down and leave the sandbox, then say what
+      # no stub answered: the adapters fail the test with it (only a test
+      # that passed: a failure of its own is not hidden). The requests are
+      # collected before the shutdown, and nothing is raised before the
+      # cleanup is done.
+      # @return [Array<FakeHttp::Request>] the ctx.http requests no stub
+      #   answered, of every bundle the test loaded
       def leave_sandbox
+        unmatched = (@samagotchi_bundles || []).flat_map { |bundle| bundle.http.unmatched }
         shutdown_bundles
         @samagotchi_sandbox&.leave
         @samagotchi_sandbox = nil
+        unmatched
       end
 
       def shutdown_bundles

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../cancellation_controller"
 require_relative "../plugin/context"
 require_relative "recorder"
 
@@ -16,6 +17,9 @@ module Samagotchi
       # @param tool_names [#call] → the declared tools when none is set
       # @return [Plugin::Host]
       def build(recorder, toolkits: -> { [] }, tool_names: -> { [] })
+        # ctx.http's default cancel: a cancelled controller while the test
+        # says the turn is (cancelled: true), none otherwise.
+        stopped = CancellationController.new.tap { |controller| controller.cancel!(:test) }
         Plugin::Host.new(
           session_id: -> { recorder[:session_id] },
           cwd: -> { recorder[:cwd] },
@@ -43,7 +47,7 @@ module Samagotchi
           toolkit: -> { recorder[:toolkit] },
           declared_tools: -> { recorder[:declared_tools] || tool_names.call },
           use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
-          cancel_controller: ->(handler: false) {} # P2: follows the recorder's cancelled:
+          cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil }
         )
       end
     end

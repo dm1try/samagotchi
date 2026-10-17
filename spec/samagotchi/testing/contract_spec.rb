@@ -75,6 +75,14 @@ RSpec.describe "The bundle test kit's contract" do
     expect { recorder.set(nope: 1) }.to raise_error(ArgumentError, "unknown host values: nope")
   end
 
+  it "gives ctx.http's default cancel only while the session is cancelled (the kit's Host#cancel_controller)" do
+    expect(host.cancel_controller.call(handler: false)).to be_nil
+    recorder.set(cancelled: true)
+    expect(host.cancel_controller.call(handler: true)).to be_cancelled
+    recorder.set(cancelled: false)
+    expect(host.cancel_controller.call(handler: false)).to be_nil
+  end
+
   it "records a hook's helpers through the Runtime in the same lists, labelled by the hook" do
     registry = Samagotchi::Hooks::Registry.new
     registry.runtime = Samagotchi::Testing::Runtime.build(recorder)

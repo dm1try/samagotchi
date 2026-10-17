@@ -21,8 +21,10 @@ module Samagotchi
       end
 
       def after_teardown
-        leave_sandbox
+        unmatched = leave_sandbox
         super
+        # After the cleanup, and only over a test that passed.
+        flunk(FakeHttp.unmatched_message(unmatched)) if !unmatched.empty? && passed?
       end
     end
   end

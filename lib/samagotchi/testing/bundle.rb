@@ -15,6 +15,7 @@ require_relative "sandbox"
 require_relative "recorder"
 require_relative "host"
 require_relative "sessions"
+require_relative "fake_http"
 require_relative "verdict"
 require_relative "recording_api"
 
@@ -89,6 +90,8 @@ module Samagotchi
       attr_reader :recorder
       # @return [Sessions] ctx.sessions
       attr_reader :sessions
+      # @return [FakeHttp] what answers ctx.http (stub, requests, unmatched)
+      attr_reader :http
       # @return [Sandbox]
       attr_reader :sandbox
       # @return [Plugin::Api, nil] the plugin's committed Api (nil without one)
@@ -119,6 +122,7 @@ module Samagotchi
         @sandbox = sandbox || Sandbox.current || Sandbox.enter
         @recorder = Recorder.new(cwd: @sandbox.work_dir, **host)
         @sessions = Sessions.new
+        @http = FakeHttp.new
         @inits = []
         @staged_tools = []
         @errors = []
@@ -306,7 +310,7 @@ module Samagotchi
           hooks: Hooks::Registry.new.tap { |registry| registry.runtime = Runtime.build(@recorder) },
           context_for: lambda { |bundle, settings, label|
             @contexts[label] = Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host,
-                                                   env: ENV, sessions: @sessions)
+                                                   env: ENV, sessions: @sessions, http_transport: @http)
           },
           tools_changed: -> { @tools_changes += 1 },
           services: Plugin::Services.new,

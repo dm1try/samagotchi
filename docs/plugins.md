@@ -1118,6 +1118,7 @@ bundle.notices.map(&:text)                               # also cards, steers, s
 bundle.answer({ selected: "yes" })                       # the next ask_user's answer
 bundle.model_answers << "a summary"                      # the next ask_model's answer
 bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripted and recorded
+bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" })   # ctx.http, never the network
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
 bundle.shutdown
 ```
@@ -1133,6 +1134,15 @@ bundle.shutdown
   `chi.*` calls `register` made, in order, as made), `bundle.namespace`, `bundle.hook_names(event)`,
   `bundle.run_inits`, `sandbox.write_memory(name, text, scope:)` / `memory_dir`, `sandbox.fake_executable(name,
   body)` (first on `PATH`), `wait_until { }`.
+- **`ctx.http` is faked.** `bundle.http.stub(method, url_or_regexp, status: 200, headers: {}, body: nil, json: nil,
+  error: nil) { |request| … }` answers it: a String URL matches exactly (query included), a Regexp the full URL, later
+  stubs win, and a stub answers every matching call (a block that counts makes a sequence). `error: :refused` or
+  `:timeout` raises the `HttpError` the real client would; `bundle.http.requests` lists what the plugin sent
+  (`method`, `url`, `headers`, `body`, `json`) and `bundle.http.unmatched` what no stub answered. A request no stub
+  answered raises `Samagotchi::Testing::UnstubbedRequest` (not an `HttpError`, but a plugin may rescue it anyway) and
+  **fails the test at teardown** (RSpec and Minitest adapters: after the cleanup, and only a test that passed), so a
+  spec can't reach the network. With plain `Bundle.load` there is no teardown: check `bundle.http.unmatched`.
+  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`.
 - **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
   go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
 - **Sandbox.** A test runs with temp config and state homes (config.yml, memories, `ctx.data_dir`, the debug
