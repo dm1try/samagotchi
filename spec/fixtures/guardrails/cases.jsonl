@@ -80,3 +80,7 @@
 {"id":"subst-m-then-push","tool":"execute","command":"git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" && git push","expect":"match","rule":"git-push","source":"heredoc-fp","note":"the push after the message is code"}
 {"id":"subst-gh-body","tool":"execute","command":"gh pr create --title x --body \"$(cat <<'EOF'\nthen rake release\nEOF\n)\"","expect":"no_match","rule":"package-publish","source":"heredoc-fp"}
 {"id":"subst-m-inner-pipe","tool":"execute","command":"git commit -m \"$(cat <<'EOF' | sh\nrake release\nEOF\n)\"","expect":"match","rule":"package-publish","source":"heredoc-bypass","note":"inside the substitution cat is piped to sh"}
+{"id":"chi-p-devnull","tool":"execute","command":"chi -p go --non-interactive < /dev/null","expect":"no_match","rule":"chi-answer-piped","rules":"guardrails-bundle","source":"chi-answer-piped","note":"stdin from /dev/null answers nothing"}
+{"id":"chi-p-devnull-lookalike","tool":"execute","command":"chi -p go < /dev/null.txt","expect":"match","rule":"chi-answer-piped","rules":"guardrails-bundle","source":"chi-answer-piped","note":"a file named like /dev/null still answers"}
+{"id":"chi-attach-file","tool":"execute","command":"chi --attach abc < answers.txt","expect":"match","rule":"chi-answer-piped","rules":"guardrails-bundle","source":"chi-answer-piped"}
+{"id":"chi-attach-heredoc","tool":"execute","command":"chi --attach abc <<EOF\n3\nEOF","expect":"match","rule":"chi-answer-piped","rules":"guardrails-bundle","source":"chi-answer-piped","note":"chi is no data reader: its heredoc answers questions"}
