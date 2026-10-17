@@ -636,12 +636,12 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 /* A fresh link's (body.fresh-link): the session composer is one row and .actions-col is content-sized there, so a px cap keeps the text field's room and Send in view. :not([hidden]) keeps a failed /api/models' hide (this selector outranks the [hidden] one). */
 body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){display:inline-block;flex:0 1 auto;min-width:0;max-width:200px}
 @media(max-width:600px){body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){max-width:100px}}
-/* The new chat's LLM context chip, after the picker: as quiet as it; accent once a choice is set (the info bar chip's .own). */
+/* The new session's LLM context chip, after the picker: as quiet as it; accent once a choice is set (the info bar chip's .own). */
 #composer .actions-col .llmctx-new{order:0;flex:0 1 auto;min-width:0;max-width:min(40%,260px);height:24px;min-height:24px;line-height:22px;padding:0 6px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis}
 #composer .actions-col .llmctx-new:hover{filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
 #composer .actions-col .llmctx-new.own{color:var(--accent);border-color:var(--accent-border)}
 #composer .actions-col .llmctx-new[hidden],body.has-session #composer .actions-col .llmctx-new{display:none}
-/* The new chat's thinking chip, after it: shorter text, so a smaller share of the row. */
+/* The new session's thinking chip, after it: shorter text, so a smaller share of the row. */
 #composer .actions-col .think-new{max-width:min(25%,140px)}
 /* Phones (the key hint is gone there): the chips keep their whole text and the row wraps, Start staying right (its margin-left:auto) on the last line; only a model name wider than the row ellipsizes. */
 @media(max-width:600px){#composer .actions-col .model-pick{flex:0 1 auto;min-width:0;max-width:100%}#composer .actions-col .llmctx-new,#composer .actions-col .think-new{flex:0 0 auto;max-width:100%}}
@@ -976,7 +976,7 @@ body.has-session #notice{display:none}
 body.has-session #newBtn .brand-new{display:inline}
 #newBtn:hover .brand-new{color:var(--text-2)}
 .strip-side{display:flex;flex-direction:column;gap:6px;min-width:0}
-/* The scope chip: "<project> · all", or "all projects" and where a new chat starts (start page only). */
+/* The scope chip: "<project> · all", or "all projects" and where a new session starts (start page only). */
 #scope{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted)}
 #scope[hidden]{display:none}
 #scope .scope-name{flex-shrink:0;padding:2px 9px;border:1px solid var(--border-strong);border-radius:999px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}
@@ -989,7 +989,7 @@ body.has-session #newBtn .brand-new{display:inline}
 body.has-session #scope .scope-where{display:none}
 /* A phone has no room for both; the hidden strip's pill (count, live) wins. */
 @media(max-width:600px){body.strip-hidden #scope .scope-where{display:none}}
-/* A phone's top bar stays one row: "chi +" (the rest of "+ new chat" goes),
+/* A phone's top bar stays one row: "chi +" (the rest of "+ new session" goes),
    tighter gaps, nothing wraps, and the "← project" link cuts with an
    ellipsis before the pill does. */
 @media(max-width:600px){
