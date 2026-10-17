@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Anthropic: `api: anthropic` hosts on the Claude API now read their model list, including 1M-token windows and image
+  input, so `chi models` and model validation work.
+
 ## [0.78.0] - 2026-10-17
 
 ### Added
