@@ -3,6 +3,7 @@
 require "json"
 require_relative "llm/adapters"
 require_relative "log"
+require_relative "side_usage"
 
 module Samagotchi
   # Standalone summarizer for the idle session-recap feature.
@@ -54,9 +55,12 @@ module Samagotchi
     # @param api [Symbol] the wire to talk (LLM::Adapters; IdleTarget#api)
     # @param auth [Symbol, nil] the header the key goes in (IdleTarget#auth)
     # @param dialect [String, nil] a Messages host's dialect (IdleTarget#dialect)
+    # @param price [ModelPrice, nil] the model's price on its host
+    #   (IdleTarget#price), on each SideUsage the on_usage callbacks get
     def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap",
-                   api: :openai, auth: nil, dialect: nil)
+                   api: :openai, auth: nil, dialect: nil, price: nil)
       @model = model
+      @price = price
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own. Only the
       # Messages adapter takes a dialect.
@@ -70,7 +74,7 @@ module Samagotchi
     # @return [IdleClient]
     def self.for(target, **)
       new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, api: target.api,
-          auth: target.auth, dialect: target.dialect, **)
+          auth: target.auth, dialect: target.dialect, price: target.price, **)
     end
 
     THINK_RE = /<\|think\|.*?\|think\|>/m
@@ -100,11 +104,13 @@ module Samagotchi
     # @return [Summary, nil]
     # +session_id+: the session it is about, sent as the turns send it
     # (Session-Id, a dialect's affinity header), nil for none.
-    def summarize(prompt, session_id: nil)
+    # +on_usage+: called with the request's SideUsage (kind "recap") once a
+    # reply came back, see #ask.
+    def summarize(prompt, session_id: nil, on_usage: nil)
       messages = prompt.is_a?(Array) ? prompt : [{ role: "user", content: prompt.to_s.strip }]
       return nil if messages.all? { |m| m[:content].to_s.strip.empty? }
 
-      response = generate(messages, session_id: session_id)
+      response = generate(messages, session_id: session_id, on_usage: on_usage)
       cleaned = response.text.to_s.strip
       cleaned.empty? ? nil : Summary.new(text: cleaned, model: response.model)
     rescue SummarizeError
@@ -121,14 +127,18 @@ module Samagotchi
     # @param options [Hash] more request body fields (logprobs: true,
     #   top_logprobs: 5)
     # @param session_id [String, nil] the session it is about (#summarize)
+    # @param on_usage [#call, nil] called with the request's SideUsage
+    #   (+kind+, the counts, the reported cost, the client's price) once a
+    #   reply came back, a billed one with no usable text too; never for a
+    #   request that got no reply. Its errors are logged, never raised.
     # @return [Summary] the answer ("" when the model said nothing)
     # @raise [SummarizeError] any failure but a cancel; its #cause is an
     #   LLM::BadRequest when the host refused the request (+options+ it
     #   doesn't take, say)
     # @raise [LLM::RequestCancelled] +cancel_controller+ was cancelled
-    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {}, session_id: nil)
+    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {}, session_id: nil, on_usage: nil)
       response = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
-                                    kind: kind, options: options, session_id: session_id)
+                                    kind: kind, options: options, session_id: session_id, on_usage: on_usage)
       Summary.new(text: response.text.to_s.strip, model: response.model, top_logprobs: response.top_logprobs)
     rescue SummarizeError, LLM::RequestCancelled
       raise
@@ -146,7 +156,7 @@ module Samagotchi
     # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
     # or all of it, with "…".
     def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap", options: {},
-                 session_id: nil)
+                 session_id: nil, on_usage: nil)
       response = begin
         request(messages, max_tokens, cancel_controller, options, session_id)
       rescue LLM::BadRequest => e
@@ -156,6 +166,7 @@ module Samagotchi
         retry
       end
       log_usage(response, kind)
+      report_usage(on_usage, response, kind)
       content = response.text
       reasoning = response.reasoning
       raise SummarizeError, "server returned no parseable assistant content" if content.empty? && reasoning.empty?
@@ -176,14 +187,33 @@ module Samagotchi
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
 
-    # The request's prompt-cache counts (a side request on the session's
-    # host can evict the session's cached prompt there).
+    # The request's token counts and reported cost (a broadcast's triage
+    # has no session to count them in). The cache counts show whether the
+    # host reused a cached prefix. A side request evicts a session's cached
+    # prompt only on a llama.cpp with no host-memory cache (--cache-ram 0)
+    # or an old single-slot build, or when pinned to the session's slot,
+    # which chi never does; paid hosts and current llama.cpp aren't
+    # affected (docs/internals/prompt-caching.md).
     def log_usage(response, kind)
-      fields = response.usage&.cache_fields || {}
+      usage = response.usage
+      fields = usage&.cache_fields || {}
       return if fields.empty?
 
       Log.info(:recap, "request_usage", kind: kind, model: @model, prompt: fields[:prompt_tokens],
-                                        cached: fields[:cached_tokens], cache_write: fields[:cache_write_tokens])
+                                        cached: fields[:cached_tokens], cache_write: fields[:cache_write_tokens],
+                                        # A cost as written: Log rounds Floats to 3 places.
+                                        completion: usage.completion_tokens, cost: usage.cost&.to_s)
+    end
+
+    # The request's SideUsage to +on_usage+ (a session counts it in its side
+    # line); a reply without counts is one request with zero tokens.
+    # Counting never fails the side answer: a callback's error is logged.
+    def report_usage(on_usage, response, kind)
+      return unless on_usage
+
+      on_usage.call(SideUsage.from_usage(response.usage, kind: kind, model: @model, price: @price))
+    rescue StandardError => e
+      Log.warn(:recap, "usage_callback_failed", kind: kind, model: @model, error: "#{e.class}: #{e.message}")
     end
 
     # After a host refused this step's thinking fields: the next step, kept

@@ -5,6 +5,8 @@ require "samagotchi/idle_client"
 require "samagotchi/idle_target"
 require "samagotchi/cancellation_controller"
 require "samagotchi/log"
+require "samagotchi/model_price"
+require "samagotchi/side_usage"
 require "fileutils"
 require "tmpdir"
 require_relative "support/fake_provider_server"
@@ -176,9 +178,17 @@ RSpec.describe Samagotchi::IdleClient do
       client.ask([{ role: "user", content: "q" }])
 
       expect(usage_records.map { |r| [r.tag, r.fields] }).to eq([
-        ["recap", { "kind" => "recap", "model" => "gemma-small", "prompt" => "900", "cached" => "512" }],
-        ["recap", { "kind" => "ask", "model" => "gemma-small", "prompt" => "900", "cached" => "512" }]
+        ["recap", { "kind" => "recap", "model" => "gemma-small", "prompt" => "900", "cached" => "512", "completion" => "40" }],
+        ["recap", { "kind" => "ask", "model" => "gemma-small", "prompt" => "900", "cached" => "512", "completion" => "40" }]
       ])
+    end
+
+    it "logs the completion tokens and the reported cost" do
+      server.enqueue("/v1/chat/completions", json: { usage: { prompt_tokens: 90, completion_tokens: 7, cost: 0.0012 },
+                                                     choices: [{ message: { content: "Done." }, finish_reason: "stop" }] })
+      client.ask([{ role: "user", content: "q" }], kind: "btw")
+
+      expect(usage_records.last.fields).to include("kind" => "btw", "prompt" => "90", "completion" => "7", "cost" => "0.0012")
     end
 
     it "logs nothing when the server reports no counts" do
@@ -229,6 +239,73 @@ RSpec.describe Samagotchi::IdleClient do
       reply(content: "", reasoning_content: "")
       expect { client.summarize("summarize this") }
         .to raise_error(described_class::SummarizeError, /no parseable/)
+    end
+  end
+
+  # A side request's usage goes to its on_usage callback (Engine#note_side_usage
+  # counts it in the session's side line), priced with the client's price.
+  describe "on_usage" do
+    let(:price) { Samagotchi::ModelPrice.new(input: 1.0, cache_read: 0.5, cache_write: 1.0, output: 2.0) }
+    let(:client) { described_class.new(model: "gemma-small", base_url: server.base_url, price: price) }
+    let(:seen) { [] }
+    let(:on_usage) { ->(usage) { seen << usage } }
+
+    def usage_reply(content: "Done.", usage: { prompt_tokens: 900, completion_tokens: 40 })
+      server.enqueue("/v1/chat/completions", json: { usage: usage, choices: [{ message: { content: content }, finish_reason: "stop" }] })
+    end
+
+    it "gets the counts, OpenRouter's reported cost and the client's price, kind recap from #summarize" do
+      usage_reply(usage: { prompt_tokens: 900, completion_tokens: 40, cost: 0.0012,
+                           prompt_tokens_details: { cached_tokens: 512 }, completion_tokens_details: { reasoning_tokens: 9 } })
+      client.summarize("summarize this", on_usage: on_usage)
+
+      expect(seen).to eq([Samagotchi::SideUsage.new(kind: "recap", model: "gemma-small", prompt_tokens: 900, completion_tokens: 40,
+                                                    cached_tokens: 512, cache_write_tokens: 0, reasoning_tokens: 9,
+                                                    cost: 0.0012, price: price)])
+    end
+
+    it "reports #ask's kind (the asking bundle's name)" do
+      usage_reply
+      client.ask([{ role: "user", content: "q" }], kind: "btw", on_usage: on_usage)
+
+      expect(seen.map(&:kind)).to eq(["btw"])
+      expect(seen.first).to have_attributes(prompt_tokens: 900, completion_tokens: 40, cost: nil, price: price)
+    end
+
+    it "counts a reply with no counts as one request with zero tokens" do
+      reply(content: "Done.")
+      client.ask([{ role: "user", content: "q" }], on_usage: on_usage)
+
+      expect(seen.map { |u| [u.kind, u.prompt_tokens, u.completion_tokens] }).to eq([["ask", 0, 0]])
+    end
+
+    it "is called for a billed reply with no parseable content, before the raise" do
+      usage_reply(content: "")
+      expect { client.summarize("hi", on_usage: on_usage) }.to raise_error(described_class::SummarizeError, /no parseable/)
+      expect(seen.size).to eq(1)
+    end
+
+    it "isn't called for a failed request (an HTTP error)" do
+      server.default("/v1/chat/completions", status: 503, json: { error: { message: "busy" } })
+      expect { client.ask([{ role: "user", content: "q" }], on_usage: on_usage) }.to raise_error(described_class::SummarizeError)
+      expect(seen).to be_empty
+    end
+
+    it "prices with the target's price when built .for it" do
+      target = Samagotchi::IdleTarget.new(base_url: server.base_url, api_key_env: nil, model: "m", label: "fw:m", price: price)
+      usage_reply
+      described_class.for(target).ask([{ role: "user", content: "q" }], on_usage: on_usage)
+
+      expect(seen.first).to have_attributes(price: price, model: "m")
+    end
+
+    it "logs a raising callback and still answers" do
+      allow(Samagotchi::Log).to receive(:warn)
+      usage_reply
+      answer = client.ask([{ role: "user", content: "q" }], on_usage: ->(_usage) { raise "boom" })
+
+      expect(answer.text).to eq("Done.")
+      expect(Samagotchi::Log).to have_received(:warn).with(:recap, "usage_callback_failed", hash_including(error: /boom/))
     end
   end
 
