@@ -41,6 +41,14 @@ and commands may change between minor versions. How releases are made:
 - A bundle's `manifest.yml` that isn't valid YAML (or isn't a mapping) makes `chi bundle install|upgrade` fail with
   `Install failed: manifest.yml is not valid YAML in <dir>: line N, column M: …` (`Upgrade failed: …` for an
   upgrade; exit 1), not a Psych backtrace.
+- A bundle installed from a git URL is named by its `manifest.yml` `name:`, as a local copy or an archive of it
+  already was (it took the repo's name), so installing it by URL and upgrading it from a local copy (or the other
+  way round) is one bundle with one record, not a second bundle beside it (its memory files skipped, its hooks and
+  plugin installed again); a git, zip or tar source is cloned or extracted once per `chi bundle install|upgrade`,
+  not twice. A git URL that doesn't clone says `Install failed: git clone failed for <url>` (no `Source
+  normalization failed:` prefix), and on an upgrade `Upgrade failed: …` with no fall-back-to-install line first. A
+  bundle installed by URL before this under a repo name that differs from its manifest's: `chi bundle uninstall
+  <repo name>` first, then install it again.
 
 ## [0.75.0] - 2026-10-17
 

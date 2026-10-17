@@ -146,8 +146,11 @@ module Samagotchi
         return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
       end
 
-      bundle_name = bundle_name_or_fail(expanded_source, "Install") or return 1
-      run_installer(installer_for(expanded_source, bundle_name, scope: scope, force: force), failed: "Install") do |manifest|
+      prepared, bundle_name = prepare_or_fail(expanded_source, "Install")
+      return 1 unless prepared
+
+      installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force)
+      run_installer(installer, failed: "Install") do |manifest|
         print_hooks_and_plugin(manifest)
         print_provenance(bundle_name, manifest)
       end
@@ -172,18 +175,20 @@ module Samagotchi
         return install_profile(expanded_source, scope: scope, force: force, dry_run: dry_run, word: "Upgrade")
       end
 
-      bundle_name = bundle_name_or_fail(expanded_source, "Upgrade") or return 1
+      prepared, bundle_name = prepare_or_fail(expanded_source, "Upgrade")
+      return 1 unless prepared
+
       unless Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
         # (no Hooks/Plugin lines here)
-        installer = installer_for(expanded_source, bundle_name, scope: scope, force: force, dry_run: dry_run)
+        installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dry_run: dry_run)
         return run_installer(installer, failed: "Install") do |manifest|
           next dry_run_done if dry_run
 
           print_provenance(bundle_name, manifest)
         end
       end
-      installer = installer_for(expanded_source, bundle_name, scope: scope, force: force, upgrade: true, dry_run: dry_run)
+      installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, upgrade: true, dry_run: dry_run)
       run_installer(installer, failed: "Upgrade") do |manifest|
         print_hooks_and_plugin(manifest, plugin: !dry_run)
         next dry_run_done if dry_run
@@ -193,14 +198,21 @@ module Samagotchi
       end
     end
 
-    # The bundle's name, or nil after "<word> failed: …" (an unknown source,
-    # or a missing or invalid manifest: an install needs one anyway).
-    def bundle_name_or_fail(expanded_source, word)
-      bundle_name_for(expanded_source)
+    # The source normalized once (a git clone, a zip or tar extract) and the
+    # bundle's name, its manifest's name: for every kind of source, a git URL
+    # too. The Installer installs from that extract and removes it. Nil
+    # after "<word> failed: …" (an unknown source, or a missing or invalid
+    # manifest: an install needs one anyway), the extract removed.
+    # @return [Array(MemoryBundle::PreparedSource, String), nil]
+    def prepare_or_fail(expanded_source, word)
+      prepared = Samagotchi::MemoryBundle::PreparedSource.prepare(expanded_source)
+      named = [prepared, Samagotchi::MemoryBundle::Manifest.read(dir: prepared.dir).name]
     rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError,
            Samagotchi::MemoryBundle::Manifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
-      nil
+    ensure
+      # Any failure (an unexpected error too) removes the extract.
+      prepared&.cleanup unless named
     end
 
     def installer_for(source, name, scope:, force:, **)
@@ -730,33 +742,12 @@ module Samagotchi
       parsed
     end
 
-    # helpers for bundle_name derivation
+    # The source as given: a git URL as is, a shipped bundle's name as its
+    # dir, anything else as an expanded path.
     def expand_source(src)
       return src if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(src)
 
       Samagotchi::MemoryBundle::SourceNormalizer.shipped_bundle_dir(src) || File.expand_path(src)
-    end
-
-    def bundle_name_for(expanded_src)
-      # Try to derive from manifest if possible (skip git clone for speed if possible)
-      if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(expanded_src)
-        # For git URLs, avoid double clone: derive name from URL basename if no manifest yet
-        # Let Installer do the real manifest read; fallback to URL basename
-        base = expanded_src.split("/").last.to_s.split("#").first.to_s
-        base = base.sub(/\.git\z/i, "")
-        return base.empty? ? "bundle" : base
-      end
-      require "yaml"
-      nd = nil
-      owned = false
-      begin
-        nd, owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_src)
-        # A missing or invalid manifest raises Manifest::ValidationError
-        # (bundle_name_or_fail prints it): the strict install would refuse it.
-        Samagotchi::MemoryBundle::Manifest.read(dir: nd).name
-      ensure
-        Samagotchi::MemoryBundle::SourceNormalizer.cleanup(nd) if owned
-      end
     end
 
     def build_conflict_prompt(bundle_name, conflicts, expanded_source)

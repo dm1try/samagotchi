@@ -217,6 +217,62 @@ RSpec.describe "chi bundle (CLI)" do
       expect(File.read(File.join(broken, "manifest.yml"))).to eq("name: [x\n")
     end
 
+    # A bundle's name is its manifest's name: for a git URL too (it was the
+    # repo's name), so the same bundle from a URL and from a local copy is
+    # one install with one record.
+    it "names a bundle installed from a git URL by its manifest, as a local copy of it is named" do
+      repo = self.class.make_bundle(File.join(@root, "repo-dir"), name: "other-name", version: "1.0.0", content: "one\n")
+      git = ->(*args) { system("git", "-C", repo, *args, out: File::NULL, err: File::NULL) }
+      expect(git.call("init", "-q") && git.call("add", ".") &&
+             git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v1")).to be(true)
+      url = "file://#{repo}"
+      copy = self.class.make_bundle(File.join(@root, "copy"), name: "other-name", version: "2.0.0", content: "two\n")
+
+      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("other-name")}", "", 0])
+      record = JSON.parse(File.read(File.join(memories, ".bundles", "other-name", "manifest.json")))
+      expect(record.values_at("source", "source_commit")).to eq([url, `git -C #{repo} rev-parse HEAD`.strip])
+      expect(chi("upgrade", url, "--dry-run")).to eq(["Skipped: a.md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", copy)).to eq(["Updated: a.md\n#{provenance_line("other-name")}", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles"))).to eq(["other-name"])
+      expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
+    end
+
+    # BundleCommand reads the name from the extract the Installer then
+    # installs: one git clone, zip or tar extract per command, not two.
+    it "extracts an archive source once per install or upgrade" do
+      dir = self.class.make_bundle(File.join(@root, "zipped"), name: "zipped", version: "1.0.0", content: "one\n")
+      zip = File.join(@root, "zipped.zip")
+      expect(Dir.chdir(dir) { system("zip", "-qr", zip, ".") }).to be(true)
+      allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_call_original
+
+      expect(chi("upgrade", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "Bundle 'zipped' not installed — falling back to install\n", 0])
+      expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).once
+      expect(chi("upgrade", zip)).to eq(["Skipped: a.md\n#{provenance_line("zipped")}", "", 0])
+      expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).twice
+      expect(chi("install", zip)[2]).to eq(0)
+      expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).thrice
+    end
+
+    # A source that fails at its manifest leaves no extract behind; a local
+    # dir is the user's own and stays.
+    it "removes the extract of an archive whose manifest fails, and keeps a local dir" do
+      broken = File.join(@root, "nameless")
+      FileUtils.mkdir_p(broken)
+      File.write(File.join(broken, "manifest.yml"), "version: 1.0.0\n")
+      zip = File.join(@root, "nameless.zip")
+      expect(Dir.chdir(broken) { system("zip", "-qr", zip, ".") }).to be(true)
+      prepared = []
+      record = ->(original, source) { original.call(source).tap { |p| prepared << p } }
+      allow(Samagotchi::MemoryBundle::PreparedSource).to receive(:prepare).and_wrap_original(&record)
+      error = "manifest missing required field: name\n"
+
+      expect(chi("install", zip)).to eq(["", "Install failed: #{error}", 1])
+      expect(chi("upgrade", zip)).to eq(["", "Upgrade failed: #{error}", 1])
+      expect(chi("install", broken)).to eq(["", "Install failed: #{error}", 1])
+      expect(prepared.map(&:owned)).to eq([true, true, false])
+      expect(prepared.map { |p| Dir.exist?(p.dir) }).to eq([false, false, true])
+    end
+
     it "writes nothing on a dry-run upgrade of a bundle that isn't installed" do
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
 

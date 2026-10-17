@@ -24,6 +24,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 |---|---|
 | `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
+| `PreparedSource` (source.rb) | one source normalized once (dir, owned, git commit): `BundleCommand` reads the bundle's name from its `manifest.yml` (the name for every kind of source, a git URL too) and hands it to the Installer (`prepared:`), so a source is cloned or extracted once per command |
 | `Manifest` | parses/validates `manifest.yml` (YAML that doesn't parse or isn't a mapping is a `ValidationError` too; files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers) and writes it (`Manifest.write`, for Builder). It ignores `requires_chi_next`, a shipped bundle's release-time marker (`script/release/release_tools.rb`, docs/releasing.md) |
 | `Installer` | one install/upgrade/dry run of one bundle (below) |
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps) |
@@ -47,7 +48,7 @@ and checks the recorded sha256 (and `requires_chi`) before loading.
 The order matters: warnings print in it, and a plugin/script the manifest names but the bundle lacks raises
 `InstallError` after the memories are already copied.
 
-1. `load_source`: normalize, read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
+1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
 2. `resolve_target`: scope = CLI > manifest > `system`.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
    README, CHANGELOG, LICENSE and the like; a listed name not shipped warns): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
