@@ -1,19 +1,11 @@
 # frozen_string_literal: true
 
-require "spec_helper"
-require "tmpdir"
-require "yaml"
-require "samagotchi/memory_paths"
-require "samagotchi/plugin/sessions"
-require "samagotchi/memory_bundle/manifest"
-require "samagotchi/memory_bundle/provenance"
-require "samagotchi/config"
 require "samagotchi/testing/rspec"
 
-# The shipped coordinator bundle (lib/samagotchi/bundles/coordinator): the
-# plugin on its own through the bundle test kit.
+# The coordinator plugin (lib/samagotchi/bundles/coordinator) on its own,
+# through the bundle test kit.
 RSpec.describe "The coordinator plugin", :bundle do
-  let(:dir) { File.expand_path("../../../lib/samagotchi/bundles/coordinator", __dir__) }
+  let(:dir) { File.expand_path("..", __dir__) }
   let(:session_id) { "aaaabbbb-1111-2222-3333-444455556666" }
   # The plugin as chi loads it, for this session.
   let(:bundle) do
@@ -33,18 +25,6 @@ RSpec.describe "The coordinator plugin", :bundle do
   end
   # What ctx.sessions.children answers.
   let(:children) { [] }
-
-  # The plain setup: no guardrails bundle, auto mode.
-  let(:guardrails_installed) { false }
-  let(:guardrails) { { "guardrails.enabled" => true, "guardrails.mode" => nil } }
-
-  before do
-    record = instance_double(Samagotchi::MemoryBundle::Provenance, installed?: guardrails_installed)
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:new).and_call_original
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:new).with(name: "guardrails").and_return(record)
-    allow(Samagotchi::Config).to receive(:get).and_call_original
-    guardrails.each { |key, value| allow(Samagotchi::Config).to receive(:get).with(key).and_return(value) }
-  end
 
   def run(name, args = "") = bundle.command("#{name} #{args}")
 
@@ -196,19 +176,12 @@ RSpec.describe "The coordinator plugin", :bundle do
   end
 
   describe "/coordinate resume" do
-    let(:memories) { Dir.mktmpdir("coord-resume") }
-
-    before do
-      bundle.set(cwd: "/work/app")
-      allow(Samagotchi::MemoryPaths).to receive(:scope_dir).with("project", cwd: "/work/app").and_return(memories)
-    end
-
-    after { FileUtils.rm_rf(memories) }
+    # The session's checkout: its project memories are the sandbox's.
+    before { bundle.set(cwd: sandbox.work_dir) }
 
     def handoff(name, description, file: true)
-      File.write(File.join(memories, "#{name}.md"), "# #{name}\n") if file
-      line = "- **#{name}** · project · 2026-10-07 · 12#{" — #{description}" if description}\n"
-      File.write(File.join(memories, "index.md"), line, mode: "a")
+      path = sandbox.write_memory(name, "# #{name}\n", scope: "project", description: description, cwd: sandbox.work_dir)
+      File.delete(path) unless file
     end
 
     it "asks the model to resume the one open handoff, skipping DONE ones, other memories and lines without a file" do
@@ -279,7 +252,7 @@ RSpec.describe "The coordinator plugin", :bundle do
   end
 
   describe "the bundle" do
-    let(:manifest) { Samagotchi::MemoryBundle::Manifest.read(dir: dir) }
+    let(:manifest) { bundle.manifest }
 
     it "ships the skill with its index description, and its plugin" do
       expect(manifest.files.keys).to eq(["skill_coordinator.md"])
