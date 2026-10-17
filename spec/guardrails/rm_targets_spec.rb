@@ -25,6 +25,8 @@ RSpec.describe Samagotchi::Guardrails::RmTargets do
   ]
 
   outside = [
+    "{ true; cat <<'EOF'; } | bash\nrm -rf ~\nEOF",
+    "(cat <<'EOF') | bash\nrm -rf ~\nEOF",
     "rm -rf /", "rm -rf ~", "rm -rf ..", "rm -rf @T", "rm -rf @T/", "rm -rf @T/*", "rm -rf @T/../etc",
     "rm -rf $HOME/x", "rm -rf $X/y", "rm -rf @T/x ~/y", "rm -rf @T/x && rm -rf ~", "rm -rf @T/x; rm -rf ..",
     "sudo rm -rf @T/x", "xargs rm -rf < list", "/bin/rm -rf @T/x", "sh -c 'rm -rf @T/x'", "echo $(rm -rf ~)",

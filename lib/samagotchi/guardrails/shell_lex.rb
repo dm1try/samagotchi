@@ -8,8 +8,9 @@ module Samagotchi
     # backticks (quoted or not) as one opaque SUBST marker inside a word. A
     # heredoc's body (<<EOF, <<'EOF', <<-EOF) is one word after its <<TAG
     # word and lexing goes on after the terminator line: HEREDOC when cat or
-    # tee read it as data, SUBST when an unquoted tag's body holds $(…) or
-    # backticks, else the body text itself (a script, as sh -c '…' gives).
+    # tee read it as data (when the command ends at a plain separator,
+    # outside any ( or { group), SUBST when an unquoted tag's body holds $(…)
+    # or backticks, else the body text itself (a script, as sh -c '…' gives).
     # An unterminated heredoc is no heredoc: the rest is lexed as commands.
     # It never runs anything, and it does its best on odd input (an
     # unbalanced quote).
@@ -18,10 +19,15 @@ module Samagotchi
       OPERATORS = ["&&", "||", ";;", "|&", ";", "|", "&", "\n", "(", ")"].freeze
       # What a $(…) or `…` becomes inside a word.
       SUBST = "\0SUBST"
-      # What a heredoc body that cat or tee read as data becomes.
+      # What a heredoc body that cat or tee read as data becomes (its command
+      # ends at a plain separator, outside any ( or { group).
       HEREDOC = "\0HEREDOC"
       # Commands that read a heredoc as data (when not piped on).
       DATA_SINKS = %w[cat tee].freeze
+      # The operators that may follow a data heredoc's command; any other
+      # (|, |&, &, (, ), ;;) may hand its output on, and & also starts
+      # &>file.
+      DATA_ENDS = ["\n", ";", "&&", "||"].freeze
       # A word that is a redirection (>, >>, 2>&1, <).
       REDIRECT = /\A\d*[<>]/
 
@@ -55,6 +61,26 @@ module Samagotchi
           end
         end
         commands.reject { |c| c.is_a?(Array) && c.empty? }
+      end
+
+      # Whether an ( or { group is still open at token +at+: a pipe after
+      # the group's ) or } takes what the group prints. The counters never go
+      # below 0 (a case pattern's "x)" closes nothing); ((…)) arithmetic and
+      # <(…) / >(…) count as open parens (the conservative reading).
+      def self.in_group?(tokens, at)
+        parens = 0
+        braces = 0
+        tokens[0...at].each do |kind, value|
+          if kind == :op
+            parens += 1 if value == "("
+            parens -= 1 if value == ")" && parens.positive?
+          elsif value == "{"
+            braces += 1
+          elsif value == "}" && braces.positive?
+            braces -= 1
+          end
+        end
+        parens.positive? || braces.positive?
       end
 
       # A hand-written shell lexer: quotes, backslashes, comments, $(…) and
@@ -357,15 +383,22 @@ module Samagotchi
           body
         end
 
-        # Whether the command the heredoc at token +at+ is in is cat or tee
-        # and not piped into another command.
+        # Whether the command the heredoc at token +at+ is in is cat or tee,
+        # ends at a plain separator (DATA_ENDS: not piped on, backgrounded or
+        # handed to a process substitution) and sits outside any ( or { group
+        # (whose output a pipe after the group's ) or } would take).
         def data_sink?(at)
           start = at
           start -= 1 while start.positive? && @tokens[start - 1][0] == :word
           verb = command_word(@tokens[start...at])
-          next_op = @tokens[at..].find { |t| t[0] == :op }
-          DATA_SINKS.include?(File.basename(verb.to_s)) && !["|", "|&"].include?(next_op&.dig(1))
+          following = @tokens[at..] || []
+          next_op = following.index { |t| t[0] == :op }
+          ends = next_op.nil? || DATA_ENDS.include?(following[next_op][1])
+          DATA_SINKS.include?(File.basename(verb.to_s)) && ends && !in_group?(at)
         end
+
+        # Whether an ( or { group is still open at token +at+.
+        def in_group?(at) = ShellLex.in_group?(@tokens, at)
 
         # The command word among the words before a heredoc's: the NAME=
         # words and the redirections dropped, and with a redirection written

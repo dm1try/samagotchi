@@ -91,6 +91,30 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
         .to eq([["cat", ">", "/tmp/x", "<<EOF"], ["rm", "-rf", "/"], %w[ls]])
     end
 
+    it "keeps a body whose command is piped on, backgrounded or output into a process substitution a script" do
+      expect(commands("(cat <<'EOF') | bash\nx\nEOF")).to eq([:open, ["cat", "<<EOF", "x\n"], :close, %w[bash]])
+      expect(commands("cat <<'EOF' > >(bash)\nx\nEOF")).to eq([["cat", "<<EOF", "x\n", ">", ">"], :open, %w[bash], :close])
+      expect(commands("cat <<'EOF' &>r.sh; bash r.sh\nx\nEOF")).to eq([["cat", "<<EOF", "x\n"], [">r.sh"], %w[bash r.sh]])
+      expect(commands("cat <<'EOF' &\nx\nEOF")).to eq([["cat", "<<EOF", "x\n"]])
+    end
+
+    it "keeps a body inside an open ( or { group a script, whatever follows its command" do
+      expect(commands("{ true; cat <<'EOF'; } | bash\nx\nEOF"))
+        .to eq([["{", "true"], ["cat", "<<EOF", "x\n"], %w[}], %w[bash]])
+      expect(commands("(cat <<'EOF'; true) | bash\nx\nEOF"))
+        .to eq([:open, ["cat", "<<EOF", "x\n"], %w[true], :close, %w[bash]])
+      expect(commands("bash <(cat <<'EOF'\nx\nEOF\n)")).to eq([["bash", "<"], :open, ["cat", "<<EOF", "x\n"], :close])
+      expect(commands("case a in a) (cat <<'EOF'; true) | bash;; esac\nx\nEOF"))
+        .to eq([%w[case a in a], :close, :open, ["cat", "<<EOF", "x\n"], %w[true], :close, %w[bash], %w[esac]])
+    end
+
+    it "still reads a body as data after a plain separator or outside any group" do
+      expect(commands("cat <<'EOF' && ls\nx\nEOF")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+      expect(commands("cat <<'EOF' || ls\nx\nEOF")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+      expect(commands("cat <<'EOF'; ls\nx\nEOF")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+      expect(commands("f() { true; }; cat <<'EOF'\nx\nEOF")).to include(["cat", "<<EOF", heredoc])
+    end
+
     it "keeps $(cat <<'EOF' … EOF) one opaque word" do
       text = "git commit -m \"$(cat <<'EOF'\nit's\nEOF\n)\" && git push"
       expect(commands(text)).to eq([["git", "commit", "-m", subst], %w[git push]])
