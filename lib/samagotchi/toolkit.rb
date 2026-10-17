@@ -77,15 +77,16 @@ module Samagotchi
         super
       end
 
-      # What the prompt carries of it: the declared names, the reachable
-      # and removed ones (the not-loaded line, find_tools' chi line), when
-      # either list has any the kit name the line gives, and the kit's
-      # prompt text. Two equal keys build the same prompt (/toolkit's "no
-      # change", its cost).
-      def prompt_key
-        [declared.map(&:name), reachable, removed, reachable.empty? && removed.empty? ? nil : resolved.name,
-         resolved.prompt]
+      # What the prompt carries before the kit's prompt text: the declared
+      # names, reachable and removed ones (the not-loaded line, find_tools'
+      # chi line), and, when either list has any, the kit name the line gives.
+      def tools_key
+        [declared.map(&:name), reachable, removed, reachable.empty? && removed.empty? ? nil : resolved.name]
       end
+
+      # What the prompt carries of it, including the kit's prompt text. Two
+      # equal keys build the same prompt (/toolkit's "no change", its cost).
+      def prompt_key = [*tools_key, resolved.prompt]
 
       # What the UIs show (the snapshot, command_ran): nil when it declares
       # every tool on full (full, full +delegate), which has no chip.

@@ -129,9 +129,9 @@ module Samagotchi
 
     # What the confirm says is read again: from the tools on (the front of
     # every request), or from the kit's prompt text on when only that
-    # changes (Explained#prompt_key's last part: a kit on full's tools).
+    # changes (Explained#tools_key is unchanged: only a kit's prompt text).
     def reread_line(before, after)
-      if before.prompt_key[0...-1] == after.prompt_key[0...-1]
+      if before.tools_key == after.tools_key
         "The kit's prompt text is in the system prompt: the prompt is read again from it on."
       else
         "The tools are the front of every request: the whole prompt is read again from them on."
