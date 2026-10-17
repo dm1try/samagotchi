@@ -183,13 +183,13 @@ module Samagotchi
       # @return [Hash] frozen
       def thinking_off_refused_fields = thinking_fields(:low)
 
+      # Whether +model+ gets the budget form (it refused adaptive thinking).
+      def budget_form?(model) = @refusals.refused?(:thinking_form, model.to_s)
+
       # The host's models, every page: GET {base}/v1/models with
       # limit=1000 and after_id paging (has_more/last_id). Anthropic's shape
       # (max_input_tokens, max_tokens, capabilities) and the OpenAI shape a
       # gateway or Splash serves here are both read (ModelListing).
-      # Whether +model+ gets the budget form (it refused adaptive thinking).
-      def budget_form?(model) = @refusals.refused?(:thinking_form, model.to_s)
-
       # @return [Array<ModelInfo>]
       def list_models
         list_model_pages(headers: { "anthropic-version" => API_VERSION }) do |after|

@@ -342,15 +342,6 @@ module Samagotchi
         nil
       end
 
-      # The shape the engine persists: role and content (parts stay an
-      # Array), plus a model turn's tool_calls and thinking (the host's
-      # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
-      # refs of a user message or a tool result, a prompt's turn_id (Engine,
-      # never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
-      # (the live row's params line and label, never sent back), an
-      # edit/write result's tool_diffs (never sent), an empty-answer
-      # note's marker (TurnNote.empty, never sent), and an answer's display
-      # and display_refs (AnswerDisplay, AnswerRefs; never sent).
       # Removes the replayed thinking blocks a response's ThinkingDrop
       # names (AnthropicWire.block_identity) from the model entries'
       # anthropic_content: the edit the provider made for that request, so
@@ -375,6 +366,15 @@ module Samagotchi
         removed
       end
 
+      # The shape the engine persists: role and content (parts stay an
+      # Array), plus a model turn's tool_calls and thinking (the host's
+      # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
+      # refs of a user message or a tool result, a prompt's turn_id (Engine,
+      # never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
+      # (the live row's params line and label, never sent back), an
+      # edit/write result's tool_diffs (never sent), an empty-answer
+      # note's marker (TurnNote.empty, never sent), and an answer's display
+      # and display_refs (AnswerDisplay, AnswerRefs; never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
