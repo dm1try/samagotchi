@@ -96,6 +96,21 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).to be_running
     end
 
+    it "resyncs this terminal's queued ids from each snapshot" do
+      attached.instance_variable_set(:@my_queued, %w[e1 stale])
+      feed(snapshot(queued: [
+        { enqueued_id: "e0", client_id: "tui:1", prompt: "older" },
+        { enqueued_id: "e1", client_id: "tui:1", prompt: "current" },
+        { enqueued_id: "other", client_id: "web:1", prompt: "theirs" }
+      ]))
+
+      expect(attached.instance_variable_get(:@my_queued)).to eq(%w[e0 e1])
+
+      feed(snapshot(type: :reset, queued: [{ enqueued_id: "e1", prompt: "current" }]))
+
+      expect(attached.instance_variable_get(:@my_queued)).to eq(["e1"])
+    end
+
     it "shows a join during a hold as the live view does: thinking on the new step, not the last one's text" do
       turn = { prompt: "go", origin: nil,
                parts: [{ kind: "generation", iteration: 1 }, { kind: "text", iteration: 1, text: "Checking." },

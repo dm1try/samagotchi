@@ -1156,6 +1156,12 @@ module Samagotchi
 
       def render_snapshot(snapshot, reset:)
         @view.finish_thinking_spinner
+        queued = Array(snapshot[:queued])
+        known_queued = @my_queued.to_set
+        @my_queued = queued.filter_map do |entry|
+          id = entry[:enqueued_id]
+          id if id && (known_queued.include?(id) || (entry.key?(:client_id) && own?(entry[:client_id])))
+        end
         # A new worker's first snapshot is the session as it now stands.
         moved = @worker_changed
         reset ||= moved
@@ -1192,7 +1198,7 @@ module Samagotchi
         # A question between turns (the step-limit one) belongs to no turn.
         ask(snapshot[:pending_question]) if snapshot[:current_turn].nil? && snapshot[:pending_question]
         render_snapshot_cards(cards.select { |card| card[:current] }, joining: !reset)
-        Array(snapshot[:queued]).each do |entry|
+        queued.each do |entry|
           next if own?(entry[:client_id])
 
           @shown_enqueued << entry[:enqueued_id]
