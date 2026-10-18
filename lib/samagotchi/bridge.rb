@@ -519,9 +519,8 @@ module Samagotchi
     # Stop's last_turn carry the turn's enqueued_id (ReplyWait.own_turn).
     # unqueue: POST turn/dequeue (#handle_dequeue_turn) takes a queued
     # message back before it runs.
-    UNQUEUE_FEATURE = "unqueue"
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
-                UNQUEUE_FEATURE].freeze
+                SessionInbox::UNQUEUE_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

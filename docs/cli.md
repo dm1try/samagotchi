@@ -607,6 +607,15 @@ REPL alike:
   sent after it still go in at the next step.
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
   as a normal prompt.
+- `/unqueue` (attached terminal) takes back the newest line this terminal
+  queued that hasn't started: `removed: <its first 60 characters>`, then the one
+  before it on the next `/unqueue`; `(nothing queued: …)` when none waits,
+  `(not removed: it already started)` when its turn won the race, `(not removed:
+  it is already gone)` when another client removed it. Other terminals that
+  showed it say `(a queued message was removed)`; the web drops its bubble. A
+  worker older than it is not asked: `(/unqueue needs a newer worker: …)`. In
+  the plain REPL it answers with a note (its own queue is not touched), and the
+  web's composer points at the × on the bubble.
 - **The web composer** has a row above the text field in a session (always
   there, so the composer never changes height): the keys while idle, and while
   the turn runs the delivery line, where a message sent now goes in (`↳ goes in after this

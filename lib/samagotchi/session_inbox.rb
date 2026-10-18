@@ -281,6 +281,8 @@ module Samagotchi
     # an empty file outside the *.json glob, so a wait for that input's
     # turn (ReplyWait's turn:) learns it will never run (#removed?).
     REMOVED_DIR = "removed"
+    # The worker's sidecar feature for POST turn/dequeue (Bridge::FEATURES).
+    UNQUEUE_FEATURE = "unqueue"
 
     # Take back the unclaimed input file carrying +enqueued_id+ before a
     # turn takes it (the Bridge's POST turn/dequeue, under the event log):

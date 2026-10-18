@@ -70,6 +70,8 @@
     { "text": "/archive", "running": true, "expect": { "kind": "local", "local": "archive" } },
     { "text": "/stats", "running": false, "expect": { "kind": "local", "local": "stats" } },
     { "text": "/recap", "running": true, "expect": { "kind": "local", "local": "recap" } },
+    { "text": "/unqueue", "running": true, "expect": { "kind": "local", "local": "unqueue" },
+      "note": "the attached TUI takes back its newest queued message; the web answers with where its × is, the REPL with a note" },
     { "text": "/exit now", "running": false, "expect": { "kind": "prompt", "text": "/exit now" },
       "web": { "kind": "local", "text": "/exit now" },
       "note": "by design: the web answers a terminal's word by its first word (webLocalReply); a terminal's /exit takes only --delete after it" },

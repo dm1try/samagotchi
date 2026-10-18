@@ -123,13 +123,16 @@ module Samagotchi
       # /cut TEXT and /queue TEXT while a turn runs: a delivery the UIs parse
       # themselves (ComposerRoute.steer_choice) before any command check; the
       # entries exist for Tab completion and /help. The web composer sends
-      # /cut too. /queue is a real after-the-turn list only in the local
-      # REPL (the attached TUI's worker doesn't skip queued files yet), so
-      # it is offered there.
+      # /cut too (its queue is Alt+Enter). Both terminals queue: the REPL in
+      # its own list, the attached TUI's worker in its input files.
       registry.register("/cut", "cut the running generation and go in now (/cut TEXT)",
                         local: true, uis: %i[repl attached web], match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
       registry.register("/queue", "run as the next turn after this one (/queue TEXT)",
-                        local: true, uis: [:repl], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
+                        local: true, uis: %i[repl attached], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
+      # Takes back the newest message this attached TUI queued, before it
+      # runs (the worker's POST turn/dequeue); the web has × on the bubble.
+      registry.register("/unqueue", "remove your newest queued message before it runs", local: true, uis: [:attached],
+                                                                                          match: ->(text) { text.casecmp?("/unqueue") })
       registry
     end
 

@@ -1145,6 +1145,8 @@ Bridge acks `delivery: "queue"` while a turn runs (to an idle session the messag
 `next_step`). A worker whose sidecar doesn't name the `delivery` feature (older than queueing) would steer it, so the
 sender refuses it (`409 delivery_unavailable`, "restart it"), and so does a worker that answers the request with a
 400 `delivery_unavailable`.
+Until its turn starts, a queued message can be taken back: `/unqueue` in an attached terminal, the × on its bubble
+in the web ([sessions.md](sessions.md), *Removing a queued message*).
 
 ## Server errors
 

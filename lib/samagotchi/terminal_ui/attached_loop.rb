@@ -5,6 +5,7 @@ require_relative "../composer_route"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "../prompt_history"
+require_relative "../session_inbox"
 require_relative "attached_view"
 require_relative "status_row"
 require_relative "input_support"
@@ -149,6 +150,10 @@ module Samagotchi
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
         @sent_ids = Set.new
+        # This run's prompts queued for after the running turn (their ack
+        # said queue), oldest first, until their turn starts or they are
+        # removed: /unqueue takes back the newest.
+        @my_queued = []
         @wait_at_eof = wait_at_eof
         # Sent and not ended yet (by enqueued_id), the ones merged into the
         # running turn, whether the input has ended, and whether one of this
@@ -420,6 +425,8 @@ module Samagotchi
           show_stats
         elsif local == :recap
           show_recap
+        elsif local == :unqueue
+          unqueue_newest
         elsif route.kind == :command
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if PromptHistory.shell_line?(text)
@@ -621,6 +628,47 @@ module Samagotchi
       QUEUE_RUNS_NOW = "(the turn had ended: runs as the next turn)"
       # /queue to a worker from before queueing, which would steer it.
       QUEUE_NEEDS_NEWER_WORKER = "(/queue needs a newer worker: restart it with chi sessions restart, then send again)"
+      UNQUEUE_NEEDS_NEWER_WORKER = "(/unqueue needs a newer worker: restart it with chi sessions restart)"
+      NOTHING_QUEUED = "(nothing queued: /queue TEXT queues a message for after the running turn)"
+      UNQUEUE_REFUSED = { "already_started" => "(not removed: it already started)",
+                          "unknown_enqueued_id" => "(not removed: it is already gone)",
+                          "not_queued" => "(not removed: it goes in at the next step)" }.freeze
+
+      # /unqueue: take back the newest prompt this run queued for after the
+      # turn, before it runs (POST turn/dequeue). Its :turn_dequeued comes
+      # to every UI; here the reply says what became of it. A worker whose
+      # sidecar lacks "unqueue" is not asked.
+      def unqueue_newest
+        return @screen.commit(UNQUEUE_NEEDS_NEWER_WORKER) unless worker_unqueues?
+
+        id = @my_queued.last
+        return @screen.commit(NOTHING_QUEUED) unless id
+
+        reply = @client.dequeue(enqueued_id: id, client_id: @client_id)
+        error = reply.json&.fetch("error", nil)
+        return @screen.commit(UNQUEUE_NEEDS_NEWER_WORKER) if reply.status == 404 && error == "not_found"
+
+        # Removed, started or gone: no longer this run's to take back.
+        @my_queued.delete(id) if [200, 404, 409].include?(reply.status)
+        return @screen.commit("removed: #{first_line_clip(reply.json&.fetch("prompt", nil))}") if reply.status == 200
+
+        @screen.commit(UNQUEUE_REFUSED[error] || "could not remove the queued message (#{[reply.status, error].compact.join(" ")})")
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not remove the queued message (#{worker_down(e)})")
+      end
+
+      def first_line_clip(text, max = 60)
+        line = text.to_s.strip.lines.first.to_s.strip
+        line.length > max ? "#{line[0, max]}…" : line
+      end
+
+      # Whether the attached worker takes queued messages back (its sidecar
+      # names SessionInbox::UNQUEUE_FEATURE). No sidecar to read: true, its Bridge
+      # answers (an older one's 404 not_found says so).
+      def worker_unqueues?
+        sidecar = WorkerSidecar.read(Session.session_dir(@client.session_id, state_dir: @state_dir))
+        sidecar.nil? || sidecar.features.include?(SessionInbox::UNQUEUE_FEATURE)
+      end
 
       # A command queued for after the running turn (command_queued with
       # waits): its line now (another client's) and a note; its command_ran
@@ -761,6 +809,7 @@ module Samagotchi
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
           @sent_ids << enqueued_id if enqueued_id
           @open_ids << enqueued_id if enqueued_id && @wait_at_eof
+          @my_queued << enqueued_id if enqueued_id && reply.json&.fetch("delivery", nil) == Delivery::QUEUE
           note = sent_note(reply.json, delivery: delivery, images: images, running: running)
           @screen.commit(note) if note
           return
@@ -1460,6 +1509,7 @@ module Samagotchi
       # line says so.
       def turn_dequeued(event)
         id = event[:enqueued_id]
+        @my_queued.delete(id)
         if @open_ids.delete?(id)
           @own_failed = true
           @screen.commit("(your queued message was removed before it ran)") unless own?(event[:client_id])
@@ -1472,6 +1522,7 @@ module Samagotchi
         @running = true
         @joined_mid_turn = false
         origin = event[:origin] || {}
+        @my_queued.delete(origin[:enqueued_id])
         if event[:prompt].nil?
           # A continue turn (after the offer's yes) has no prompt to show; a
           # reminder turn shows its reminders (:reminder_injected).

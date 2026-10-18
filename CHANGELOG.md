@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A message queued for after the running turn can be taken back before it runs: the × on its bubble in the web,
+  `/unqueue` in an attached terminal (its newest queued line). Every UI drops it, and a `chi send --queue --wait` on
+  it ends with `removed` (exit 1). `/queue` is now listed in the attached terminal's Tab and `/help` too.
+
 ### Fixed
 
 - A plugin's `ctx.settings` reads a session's `--set` values again after a failed read, instead of keeping config.yml's

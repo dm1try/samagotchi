@@ -451,6 +451,25 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines).to include("(not attached: this session runs in this terminal; /exit ends it)")
   end
 
+  # /unqueue is the attached terminal's (the worker's input files); the
+  # REPL's own after-turn list is not touched, and the word never reaches
+  # the model.
+  it "answers /unqueue with a note, during a turn and at the prompt, and sends nothing" do
+    drained = nil
+    allow(engine).to receive(:run_turn) do |*, pending_input:, **|
+      repl_input << [:line, "/unqueue"]
+      drained = pending_input.call
+      result
+    end
+    agent.run_engine_turn(session, "go")
+    expect(drained).to eq([])
+
+    allow(engine).to receive(:run_turn)
+    agent.send(:run_input_line, session, "/unqueue")
+    expect(engine).to have_received(:run_turn).once
+    expect(surface.lines.count(described_class::REPL_UNQUEUE_NOTE)).to eq(2)
+  end
+
   it "queues !cmd typed mid-turn, and refuses !rollback with its own hint" do
     reader = double("reader", prefill_next: nil)
     repl_input.instance_variable_set(:@reader, reader)

@@ -1752,6 +1752,94 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     expect(screen.lines).not_to include("(goes in at the next step)", "(queued: runs after this turn)")
   end
 
+  describe "/unqueue" do
+    let(:removed) { [] }
+
+    # Each prompt's ack in turn (queue unless given), then the worker's answer to each removal.
+    def run_unqueue(*lines, acks: nil, answers: {})
+      acks ||= Array.new(lines.count { |l| !l.start_with?("/unqueue") }) { |i| { "enqueued_id" => "e#{i + 1}", "delivery" => "queue" } }
+      allow(client).to receive(:post_turn).and_return(*acks.map { |ack| reply(ack) })
+      allow(client).to receive(:dequeue) do |enqueued_id:, client_id:|
+        removed << [enqueued_id, client_id]
+        status, body = answers.fetch(enqueued_id, [200, { "status" => "removed", "enqueued_id" => enqueued_id, "prompt" => "text of #{enqueued_id}" }])
+        reply(body, status: status)
+      end
+      attached.run(input: ->(_prompt, _prefill) { lines.shift })
+    end
+
+    it "removes this client's newest queued message, then the one before it" do
+      run_unqueue("/queue first", "/queue second", "/unqueue", "/unqueue", "/unqueue")
+
+      expect(removed).to eq([%w[e2 tui:1], %w[e1 tui:1]])
+      expect(screen.lines).to include("removed: text of e2", "removed: text of e1",
+                                      "(nothing queued: /queue TEXT queues a message for after the running turn)")
+    end
+
+    it "takes only queued messages: a plain line or a /queue that ran as the next turn is not one" do
+      run_unqueue("hello", "/queue later", "/unqueue",
+                  acks: [{ "enqueued_id" => "e1", "delivery" => "next_step" }, { "enqueued_id" => "e2", "delivery" => "next_step" }])
+
+      expect(removed).to eq([])
+      expect(screen.lines).to include("(nothing queued: /queue TEXT queues a message for after the running turn)")
+    end
+
+    it "says when it already started or is gone, and forgets it either way" do
+      run_unqueue("/queue a", "/queue b", "/unqueue", "/unqueue", "/unqueue",
+                  answers: { "e2" => [409, { "error" => "already_started" }], "e1" => [404, { "error" => "unknown_enqueued_id" }] })
+
+      expect(removed.map(&:first)).to eq(%w[e2 e1])
+      expect(screen.lines).to include("(not removed: it already started)", "(not removed: it is already gone)")
+    end
+
+    it "clips a long removed line to its first 60 characters" do
+      long = "x" * 80
+      run_unqueue("/queue #{long}", "/unqueue", answers: { "e1" => [200, { "status" => "removed", "prompt" => "#{long}\nmore" }] })
+
+      expect(screen.lines).to include("removed: #{"x" * 60}…")
+    end
+
+    it "forgets a queued message once its turn starts or another client removes it" do
+      allow(client).to receive(:follow) do |&block|
+        block.call(snapshot)
+        @push = block
+        double("stream", close: nil)
+      end
+      lines = ["/queue a", "/queue b", :started, :dequeued, "/unqueue"]
+      allow(client).to receive(:post_turn).and_return(reply({ "enqueued_id" => "e1", "delivery" => "queue" }),
+                                                      reply({ "enqueued_id" => "e2", "delivery" => "queue" }))
+      allow(client).to receive(:dequeue)
+      attached.run(input: lambda { |_prompt, _prefill|
+        line = lines.shift
+        case line
+        when :started then @push.call("type" => "turn_started", "prompt" => "a", "origin" => { "client_id" => "tui:1", "enqueued_id" => "e1" })
+        when :dequeued then @push.call("type" => "turn_dequeued", "enqueued_id" => "e2", "client_id" => "web:2")
+        else next line
+        end
+        sleep(0.2)
+        ""
+      })
+
+      expect(client).not_to have_received(:dequeue)
+      expect(screen.lines).to include("(nothing queued: /queue TEXT queues a message for after the running turn)")
+    end
+
+    describe "to a worker without the route" do
+      let(:state_dir) { Dir.mktmpdir }
+      let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: state_dir) }
+
+      after { FileUtils.rm_rf(state_dir) }
+
+      it "asks nothing of a worker whose sidecar lacks unqueue, and says it needs a newer one" do
+        Samagotchi::WorkerSidecar.new(port: 1, session_id: "s-1234", features: %w[restart task_stop reparent delivery])
+                                 .write(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir))
+        run_unqueue("/queue later", "/unqueue")
+
+        expect(removed).to eq([])
+        expect(screen.lines).to include(a_string_including("/unqueue needs a newer worker"))
+      end
+    end
+  end
+
   describe "to a worker that can't queue" do
     let(:state_dir) { Dir.mktmpdir }
     let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: state_dir) }
@@ -2007,10 +2095,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
       .with(prompt: "PR #1: check #notes and #project/todo", client_id: "tui:1")
   end
 
-  it "offers the attached commands on Tab, /quit too" do
+  it "offers the attached commands on Tab, /quit, /queue and /unqueue too" do
     attached = described_class.new(client: client, screen: screen, client_id: "tui:1")
 
-    expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(["/quit"])
+    expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(%w[/queue /quit])
+    expect(attached.send(:assist_path_completion_candidates, "/u")).to eq(["/unqueue"])
     expect(attached.send(:assist_path_completion_candidates, "/mo")).to eq(%w[/model /models])
   end
 
@@ -2644,7 +2733,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
 
   it "offers /detach and /quit on Tab" do
     expect(attached.send(:assist_path_completion_candidates, "/d")).to eq(["/detach"])
-    expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(["/quit"])
+    expect(attached.send(:assist_path_completion_candidates, "/qui")).to eq(["/quit"])
   end
 end
 
