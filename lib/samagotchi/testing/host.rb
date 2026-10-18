@@ -2,6 +2,7 @@
 
 require_relative "../cancellation_controller"
 require_relative "../plugin/context"
+require_relative "../session_metrics/cost"
 require_relative "recorder"
 
 module Samagotchi
@@ -48,8 +49,32 @@ module Samagotchi
           toolkit: -> { recorder[:toolkit] },
           declared_tools: -> { recorder[:declared_tools] || tool_names.call },
           use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
-          cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil }
+          cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
+          cost: -> { cost(recorder[:cost]) }
         )
+      end
+
+      # The parts a test may give bundle.set(cost: {...}).
+      COST_PARTS = %i[reported estimated side known].freeze
+
+      # The SessionMetrics::Cost ctx.cost returns for the recorder's +cost+
+      # value (Recorder::DEFAULTS).
+      # @return [SessionMetrics::Cost]
+      def cost(value)
+        value = value.call while value.respond_to?(:call)
+        case value
+        when nil then SessionMetrics::Cost.zero
+        when SessionMetrics::Cost then value
+        when Numeric then SessionMetrics::Cost.zero.with(reported: value.to_f)
+        when Hash
+          unknown = value.keys.map(&:to_sym) - COST_PARTS
+          raise ArgumentError, "unknown cost parts: #{unknown.join(", ")}" unless unknown.empty?
+
+          parts = value.transform_keys(&:to_sym)
+          SessionMetrics::Cost.new(reported: parts.fetch(:reported, 0).to_f, estimated: parts.fetch(:estimated, 0).to_f,
+                                   side: parts.fetch(:side, 0).to_f, known: parts.fetch(:known, true))
+        else raise ArgumentError, "cost: a number, a Hash or a callable, not #{value.inspect}"
+        end
       end
     end
 

@@ -346,6 +346,9 @@ Side requests (the idle recap, a plugin's `ctx.ask_model` such as `/btw`) are co
 `analytics.json` between turns (a running turn's end saves it). `tokens`, `model_segments` and the turn records
 stay the turns' only. `SessionMetrics#persist` is serialized (its own mutex, taken before the metrics one), so two
 threads' saves land in snapshot order.
+A bundle's `ctx.cost` reads the same sums (`SessionMetrics#cost`, a frozen `SessionMetrics::Cost`): the `tokens`
+block's `cost_sum` and `cost_estimate_sum` with the running turn's finished generations folded in, plus the `side`
+block's, so it counts what earlier workers spent too ([plugins.md](plugins.md)).
 
 The page's frequent reads of `GET /api/sessions/:id` stay light too:
 - `?tail=1&recent=1` (each turn's end, a cancel, an answer display): `{tail, session: {id, status,

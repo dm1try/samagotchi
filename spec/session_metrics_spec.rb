@@ -773,6 +773,92 @@ RSpec.describe Samagotchi::SessionMetrics do
       end
     end
 
+    describe "#cost (ctx.cost's value)" do
+      let(:price) { { input: 2.0, cache_read: 0.5, cache_write: 2.0, output: 10.0 } }
+
+      def estimate_for(completion) = ((1000 * 2.0) + (completion * 10.0)) / 1e6
+
+      def priced_generation(completion, cost: nil, price: self.price)
+        metrics.call(type: :generation_started, iteration: 1, price: price)
+        metrics.call(router_chunk("", completion, cost: cost))
+        metrics.call(type: :generation_completed, iteration: 1)
+      end
+
+      def side(cost: nil, price: nil)
+        Samagotchi::SideUsage.new(kind: "btw", model: "m", prompt_tokens: 1000, completion_tokens: 20, cached_tokens: 0,
+                                  cache_write_tokens: 0, reasoning_tokens: 0, cost: cost, price: price)
+      end
+
+      it "is zero and known before anything ran, and frozen" do
+        cost = metrics.cost
+        expect([cost.total, cost.reported, cost.estimated, cost.side, cost.known?]).to eq([0.0, 0.0, 0.0, 0.0, true])
+        expect(cost).to be_frozen
+      end
+
+      it "counts the running turn's finished generations before turn_completed" do
+        start_turn
+        priced_generation(40, cost: 0.25)
+        expect(metrics.cost).to have_attributes(reported: 0.25, estimated: 0.0, total: 0.25, known?: true)
+      end
+
+      it "counts an estimate-only generation as estimated" do
+        start_turn
+        priced_generation(40)
+        metrics.call(type: :turn_completed)
+        expect(metrics.cost.estimated).to be_within(1e-12).of(estimate_for(40))
+        expect(metrics.cost).to have_attributes(reported: 0.0, known?: true)
+      end
+
+      it "counts the estimate of a reported 0 with a price (ModelPrice.estimate's rule)" do
+        start_turn
+        priced_generation(40, cost: 0)
+        expect(metrics.cost.total).to be_within(1e-12).of(estimate_for(40))
+        expect(metrics.cost.reported).to eq(0.0)
+      end
+
+      it "adds side requests, reported and estimated, to the total and to side" do
+        start_turn
+        priced_generation(40, cost: 0.25)
+        metrics.add_side(side(cost: 0.01))
+        side_estimate = Samagotchi::ModelPrice.estimate(Samagotchi::ModelPrice.new(**price), reported_cost: nil,
+                                                        prompt_tokens: 1000, cached_tokens: 0, cache_write_tokens: 0,
+                                                        completion_tokens: 20)
+        metrics.add_side(side(price: Samagotchi::ModelPrice.new(**price)))
+
+        cost = metrics.cost
+        expect(cost.reported).to be_within(1e-12).of(0.26)
+        expect(cost.estimated).to be_within(1e-12).of(side_estimate)
+        expect(cost.side).to be_within(1e-12).of(0.01 + side_estimate)
+        expect(cost.total).to be_within(1e-12).of(0.26 + side_estimate)
+      end
+
+      it "isn't known after an unpriced generation that reported no cost" do
+        start_turn
+        priced_generation(40, price: nil)
+        expect(metrics.cost).to have_attributes(total: 0.0, known?: false)
+      end
+
+      it "isn't known after an unpriced side request alone" do
+        metrics.add_side(side)
+        expect(metrics.cost.known?).to be(false)
+      end
+
+      it "counts what earlier workers spent (load_persisted)" do
+        dir = Dir.mktmpdir
+        metrics.state_dir = dir
+        start_turn("t1")
+        priced_generation(40, cost: 0.25)
+        metrics.call(type: :turn_completed)
+        metrics.add_side(side(cost: 0.01))
+        metrics.persist
+
+        woken = described_class.new.tap { |m| m.state_dir = dir }
+        woken.session_id = "speed"
+        expect(woken.cost.reported).to be_within(1e-12).of(0.26)
+        expect(woken.cost).to have_attributes(side: 0.01, known?: true)
+      end
+    end
+
     it "brings the sums back on reload, with the newest saved speeds; an older record counts as zeros" do
       dir = Dir.mktmpdir
       metrics.state_dir = dir

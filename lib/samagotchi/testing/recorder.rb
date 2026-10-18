@@ -32,7 +32,10 @@ module Samagotchi
       DEFAULTS = {
         session_id: "test-session", cwd: nil, messages: [], messages_partial: false, model_name: "test:model",
         model_key: "model", toolkit: "full", declared_tools: nil, frontend: :worker, scratch: false, setup: nil,
-        prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true
+        prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true,
+        # ctx.cost: nil (zero), a Float (reported USD), a Hash of the parts
+        # (reported:, estimated:, side:, known:) or a callable giving one.
+        cost: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :answers,

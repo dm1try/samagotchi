@@ -12,6 +12,7 @@ require_relative "model_price"
 require_relative "session"
 require_relative "session_metrics/totals"
 require_relative "session_metrics/model_segment"
+require_relative "session_metrics/cost"
 require_relative "session_metrics/side_totals"
 require_relative "side_usage"
 
@@ -363,6 +364,14 @@ module Samagotchi
         @side = @side.add(usage)
         @side.to_h
       end
+    end
+
+    # The session's spend now (ctx.cost): its turns' sums with the running
+    # turn's finished generations folded in, and its side requests.
+    # Safe from any thread.
+    # @return [Cost]
+    def cost
+      @mutex.synchronize { Cost.of(@totals.with_running(@turn), @side) }
     end
 
     # Event sink. Safe to call from any thread; errors are isolated by the

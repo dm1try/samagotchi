@@ -3,6 +3,7 @@
 require "fileutils"
 require_relative "../log"
 require_relative "../paths"
+require_relative "../session_metrics/cost"
 require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "service"
@@ -51,10 +52,11 @@ module Samagotchi
     # ctx.http call without cancel: uses, nil for none: an init task's own,
     # else the running turn's for work done for it (the turn's thread, or a
     # plugin handler: +handler+) until the turn has ended.
+    # +cost+ returns the session's spend now (SessionMetrics::Cost).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit,
-                      :cancel_controller, keyword_init: true)
+                      :cancel_controller, :cost, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -139,6 +141,11 @@ module Samagotchi
       #   (`<name>.<key>.md`, ModelOverlay.key_for), as memory_write
       #   current_model_only names it
       def model_key = @host.model_key&.call
+
+      # @return [SessionMetrics::Cost] the session's spend so far, read now:
+      #   #total, #reported, #estimated, #side (Float USD) and #known?
+      #   (docs/plugins.md); zero and known with no session
+      def cost = @host.cost&.call || SessionMetrics::Cost.zero
 
       # @return [String, nil] the name of the session's toolkit ("full" for
       #   one from before toolkits; nil with no session)

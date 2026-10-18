@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Bundles: `ctx.cost` reads the session's spend so far (reported + estimated, side requests included).
+
 ### Fixed
 
 - A delegate reply already taken as a report isn't returned again by `delegate_result` in the same turn.

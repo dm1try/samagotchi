@@ -130,6 +130,51 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(card[:id]).to match(/\A\h{8}\z/)
   end
 
+  describe "bundle.set(cost:), what ctx.cost reads" do
+    let(:spend) do
+      <<~RUBY
+        class Plugin
+          def initialize(_settings); end
+
+          def register(chi)
+            chi.command("/spend", "shows ctx.cost") do |_args, ctx|
+              cost = ctx.cost
+              [cost.total, cost.reported, cost.estimated, cost.side, cost.known?]
+            end
+          end
+        end
+      RUBY
+    end
+
+    before { write_bundle(plugin: spend) }
+
+    it "is zero and known when the test sets none" do
+      expect(load.command("/spend")).to eq([0.0, 0.0, 0.0, 0.0, true])
+    end
+
+    it "takes a number (reported USD) or a hash of the parts" do
+      bundle = load
+      expect(bundle.set(cost: 2.5).command("/spend")).to eq([2.5, 2.5, 0.0, 0.0, true])
+
+      bundle.set(cost: { reported: 2.0, estimated: 0.5, side: 0.1, known: true })
+      expect(bundle.command("/spend")).to eq([2.5, 2.0, 0.5, 0.1, true])
+      expect(bundle.set(cost: { known: false }).command("/spend")).to eq([0.0, 0.0, 0.0, 0.0, false])
+    end
+
+    it "takes a callable, called at each read" do
+      reads = 0
+      bundle = load(host: { cost: -> { reads += 1 } })
+      expect(bundle.command("/spend").first).to eq(1.0)
+      expect(bundle.command("/spend").first).to eq(2.0)
+      expect(reads).to eq(2)
+    end
+
+    it "refuses an unknown part" do
+      bundle = load(host: { cost: { spent: 1 } })
+      expect { bundle.command("/spend") }.to raise_error(ArgumentError, /spent/)
+    end
+  end
+
   it "builds a before_tool_call event with the fields the real gate dispatches" do
     write_bundle
     bundle = load(host: { cwd: "/work" })

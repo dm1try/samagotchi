@@ -2581,7 +2581,8 @@ module Samagotchi
         # build and after a rebuild that drops them (SystemPrompt#prompt_files
         # returns [] itself: the || keeps a nil builder safe).
         prompt_files: -> { @prompt_builder&.prompt_files || [] },
-        frontend: -> { interface }
+        frontend: -> { interface },
+        cost: -> { @metrics.cost }
       )
     end
 
