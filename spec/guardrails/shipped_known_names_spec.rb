@@ -101,6 +101,17 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
+  it "lets through an exact protected name followed by a URL fragment" do
+    expect(shell("curl https://github.com/dm1try/samagotchi#a")).to be_allow
+    expect(notices).to be_empty
+  end
+
+  it "rejects a misspelled protected name before a URL fragment" do
+    v = shell("curl https://github.com/dm1try/samagothci#a")
+    expect(v).to be_deny
+    expect(v.reason).to include('"samagothci" in the command is 1 edit away from the known name "samagotchi"')
+  end
+
   it "scans a read's path and a write's path, not a write's content" do
     expect(verdict_for({ name: "read", content: "~/../johndeo/x" }).reason).to include('"johndeo" in the path')
     expect(verdict_for({ name: "write", path: "/home/johndeo/a.txt", content: "x" })).to be_deny

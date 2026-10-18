@@ -22,9 +22,9 @@ class KnownNames
   DERIVATIONS = %w[home user git repo].freeze
   DEFAULT_MIN_LENGTH = 6
   # Splits a command or path into tokens; each token's [-_.] parts are
-  # candidates too. "~" splits: in "~name" (that user's home) the name
-  # after it is what is checked.
-  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~]+}
+  # candidates too. "#" and "~" split: in "~name" (that user's home) the
+  # name after it is what is checked.
+  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~#]+}
   PART_SPLIT = /[-_.]+/
   # A candidate with a shell glob character is not checked: `workato*`
   # is a pattern over the name, not a misspelling of it.

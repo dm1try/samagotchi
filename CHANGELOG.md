@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The known-names hook treats `#` URL fragments as token boundaries, allowing exact protected names in URLs while
+  still rejecting misspellings before a fragment.
+
 ## [0.86.0] - 2026-10-18
 
 ### Added
