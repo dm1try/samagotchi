@@ -616,7 +616,9 @@ REPL alike:
   **Alt+Enter** (Option+Enter) or `queue for after the turn` queues it, like
   `/queue TEXT`, and the bubble is dashed (`after this turn`), below the
   running turn's card with the commands queued for its end, until its turn
-  starts; `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
+  starts; its **×** (`Remove from queue`, once the worker acked it) takes it
+  back before it runs, in every tab (a toast says why when it can't: it
+  already started, it is gone, no live worker); `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
   thinking away). Cut is enabled only while the step has streamed nothing but
   thinking and cutting is on for the model (the line says `cuts at about 0:25
   if you choose cut in now` until the thinking passes `steer_cut_after`, and

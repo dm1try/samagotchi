@@ -90,7 +90,7 @@ test("every stream event type has its handler", () => {
     "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
-    "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated",
+    "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated",
   ]);
 });
 

@@ -86,6 +86,40 @@ test("an own echo is tagged by its turn_enqueued, started by its turn_started; a
   assert.equal(turnPromptBubbles(historyEl).length, 2);
 });
 
+test("a queued-for-after-the-turn bubble draws the remove button; a next-step, steered or started one doesn't", () => {
+  const { bubbles } = harness();
+  const queued = bubbles.makeUserBubble("later", { state: "queued", own: true, delivery: "queue" });
+  const button = queued.querySelector(".state-badge button.unqueue");
+  assert.ok(button);
+  assert.equal(button.title, "Remove from queue");
+  assert.equal(button.getAttribute("aria-label"), "Remove from queue");
+  // The badge's words stay its words (the glyph is CSS).
+  assert.equal(queued.querySelector(".state-badge").textContent, "after this turn");
+  const plain = bubbles.makeUserBubble("now", { state: "queued", own: true });
+  assert.ok(plain.querySelector("button.unqueue") === null);
+  setBubbleState(queued, null);
+  assert.ok(queued.querySelector("button.unqueue") === null);
+  setBubbleState(queued, "queued");
+  assert.ok(queued.querySelector("button.unqueue"));
+  setBubbleState(queued, "steered");
+  assert.ok(queued.querySelector("button.unqueue") === null);
+  // A queue a turn that ended meanwhile took as the next turn: no button.
+  setBubbleState(queued, "queued");
+  setBubbleDelivery(queued, "next_step");
+  assert.ok(queued.querySelector("button.unqueue") === null);
+});
+
+test("turn_dequeued removes the bubble it names, and only that one", () => {
+  const { bubbles, historyEl } = harness();
+  bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "q1", prompt: "first", client_id: "tui", delivery: "queue" });
+  bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "q2", prompt: "second", client_id: "tui", delivery: "queue" });
+  bubbles.applyPromptOps({ type: "turn_dequeued", enqueued_id: "q2", client_id: "web:x" });
+  assert.ok(bubbles.bubbleById("q2") === null);
+  assert.deepEqual([...historyEl.querySelectorAll(".bubble.user")].map((el) => el.dataset.enqueuedId), ["q1"]);
+  bubbles.applyPromptOps({ type: "turn_dequeued", enqueued_id: "gone" });
+  assert.equal(historyEl.querySelectorAll(".bubble.user").length, 1);
+});
+
 test("a merge steers its bubble; one with no bubble draws the merged text", () => {
   const { bubbles, liveTurn, historyEl } = harness();
   bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "e3", prompt: "more", client_id: "tui" });

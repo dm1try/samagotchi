@@ -120,6 +120,12 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.user.queued .state-badge::before{background:var(--accent);box-shadow:0 0 0 1px var(--accent-ring)}
 .bubble.user.steered .state-badge::before{background:var(--accent);box-shadow:0 0 0 1px var(--accent-ring)}
 .bubble.user.failed .state-badge::before{background:var(--danger);box-shadow:0 0 0 1px color-mix(in srgb,var(--danger) 40%,transparent)}
+/* The × on a message queued for after the turn (unqueue.js): only once the bubble has its enqueued_id; a 32px tap target around a small mark */
+.bubble.user .state-badge button.unqueue{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin:0 -3px 0 0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--text-muted);font-size:14px;line-height:1;cursor:pointer}
+.bubble.user .state-badge button.unqueue::before{content:"\00d7"}
+.bubble.user .state-badge button.unqueue::after{content:"";position:absolute;inset:-8px}
+.bubble.user .state-badge button.unqueue:hover:not(:disabled){background:var(--danger-bg-dim);color:var(--danger-text);filter:none}
+.bubble.user:not([data-enqueued-id]) .state-badge button.unqueue{display:none}
 .bubble.user .origin-label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
 .bubble.user .user-message{flex:1;min-width:0}
 .bubble.user blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-3);margin:2px 0 6px}

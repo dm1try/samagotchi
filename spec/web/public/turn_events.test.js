@@ -80,6 +80,13 @@ test("own turn_enqueued tags the local echo instead of adding one", () => {
   assert.deepEqual(promptOps(ev, none), [{ op: "tag", enqueuedId: "e2", prompt: "mine" }]);
 });
 
+test("turn_dequeued removes the bubble of a queued message taken back, in every tab", () => {
+  const ev = { type: "turn_dequeued", enqueued_id: "e4", client_id: "tui:1" };
+  assert.deepEqual(promptOps(ev, none), [{ op: "remove", enqueuedId: "e4" }]);
+  assert.deepEqual(promptOps({ ...ev, client_id: ME }, none), [{ op: "remove", enqueuedId: "e4" }]);
+  assert.deepEqual(promptOps({ type: "turn_dequeued" }, none), []);
+});
+
 test("turn_started starts a known bubble, or adds the prompt it never saw", () => {
   const started = { type: "turn_started", prompt: "p", origin: { client_id: "tui:1", enqueued_id: "e3" } };
   assert.deepEqual(promptOps(started, { myId: ME, known: (id) => id === "e3" }), [

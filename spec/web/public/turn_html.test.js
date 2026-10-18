@@ -241,13 +241,15 @@ test("badgeText: a queued line says what it waits for by its delivery; the other
   assert.equal(badgeText("queued", null), "queued");
   assert.equal(badgeText("steered", "cut"), "steered");
   assert.equal(badgeText("started", "queue"), null);
-  assert.equal(stateBadgeHtml("queued", "queue"), '<span class="state-badge">after this turn</span>');
+  // A message queued for after the turn carries its × (unqueue.js); a next-step one doesn't.
+  assert.equal(stateBadgeHtml("queued", "queue"), '<span class="state-badge">after this turn<button type="button" class="unqueue" title="Remove from queue" aria-label="Remove from queue"></button></span>');
+  assert.equal(stateBadgeHtml("queued", "next_step"), '<span class="state-badge">waits for the next step</span>');
 });
 
 test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge's words", () => {
   const out = userBubbleHtml({ content: "later" }, { state: "queued", delivery: "queue", own: true });
   assert.match(out, /data-delivery="queue"/);
-  assert.match(out, /<span class="state-badge">after this turn<\/span>/);
+  assert.match(out, /<span class="state-badge">after this turn<button type="button" class="unqueue"[^>]*><\/button><\/span>/);
   assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });
 

@@ -10,6 +10,7 @@ import {
   cancelTurn,
   stopSession,
   stopTask,
+  dequeueTurn,
   deleteSession,
   archiveSession,
   unarchiveSession,
@@ -355,6 +356,17 @@ test("stopTask posts to the task's stop route", async () => {
     },
   });
   assert.deepEqual(calls[0], ["/api/sessions/abc/tasks/20261004120000-0a1b2c3d/stop", "POST", "{}"]);
+});
+
+test("dequeueTurn posts the tab's client id to the queued message's dequeue route", async () => {
+  const calls = [];
+  await dequeueTurn("abc", "e/1", { clientId: "web:t1" }, {
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method, opts.body]);
+      return Promise.resolve(okResponse({ status: "removed", prompt: "later" }));
+    },
+  });
+  assert.deepEqual(calls[0], ["/api/sessions/abc/turn/e%2F1/dequeue", "POST", JSON.stringify({ client_id: "web:t1" })]);
 });
 
 test("stopSession posts to the stop route", async () => {

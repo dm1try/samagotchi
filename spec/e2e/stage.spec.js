@@ -300,8 +300,9 @@ test("check-in's card waits for the user in the stage; after Nudge the turn stay
 // The composer's delivery line (steer delivery P4w) over one long thinking
 // step: it says where a message goes in, cut can land, and Alt+Enter queues
 // the message below the running turn (also after a reload), to run as a
-// turn of its own after it. The line's variants are delivery_line.test.js's.
-test("the delivery line reads the thinking step; Alt+Enter queues messages below the turn, then each runs as its own turn", async ({ page, script }) => {
+// turn of its own after it; a queued one's × takes it back before it runs.
+// The line's variants are delivery_line.test.js's.
+test("the delivery line reads the thinking step; Alt+Enter queues messages below the turn, × takes one back, the other runs as its own turn", async ({ page, script }) => {
   test.setTimeout(60_000);
   script("long_thinking");
   const line = page.locator("#deliveryLine");
@@ -329,17 +330,22 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
   await expect(line.locator(".delivery-where .long")).toHaveText(/goes in after this thinking step · 0:\d\d/);
   await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveText([/QUEUED-LATER please/, /QUEUED-LATER second/]);
 
-  // The first one's turn runs; the second still waits below it, not above.
+  // The second one's × takes it back before it runs: its bubble goes, the first still waits.
+  const second = stageEl(page).locator(".ts-queued .bubble.user").filter({ hasText: "QUEUED-LATER second" });
+  await second.locator("button.unqueue").click();
+  await page.mouse.move(0, 0); // a pointer left over the stage defers its hand-off
+  await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveText([/QUEUED-LATER please/]);
+
+  // The first one's turn runs; nothing waits below it.
   await expect(stageEl(page).locator(".ts-prompt")).toHaveText(/QUEUED-LATER please/, { timeout: 30_000 });
-  await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveText([/QUEUED-LATER second/]);
+  await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveCount(0);
   await expect(page.locator("#history .bubble.user")).toHaveText(["Plan it"]);
 
-  // Each its own turn, in order, after turn 1's answer.
-  await handedOff(page, 3);
+  // Its own turn, after turn 1's answer; the removed one never runs.
+  await handedOff(page, 2);
   const order = await page.locator("#history > .bubble.user, #history > .bubble.output, #history > .turn-timing").evaluateAll(
     (els) => els.map((e) => (e.classList.contains("turn-timing") ? "timing" : e.innerText.split("\n")[0])),
   );
-  expect(order).toEqual(["Plan it", "First answer, after the long thinking.", "timing", "QUEUED-LATER please", "Answer to the queued message.", "timing",
-    "QUEUED-LATER second", "Answer to the queued message.", "timing"]);
+  expect(order).toEqual(["Plan it", "First answer, after the long thinking.", "timing", "QUEUED-LATER please", "Answer to the queued message.", "timing"]);
   await expect(line.locator(".delivery-where.idle")).toBeVisible();
 });

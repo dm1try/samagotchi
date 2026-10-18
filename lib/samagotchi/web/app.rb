@@ -166,6 +166,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop],
         ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart],
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive],
@@ -1333,6 +1334,33 @@ module Samagotchi
           when 200 then json_response(200, { status: body["status"], stop_reason: body["stop_reason"], task_id: task_id, session_id: id })
           when 404 then (error_response(404, "task_not_found", "no task #{task_id} in this conversation") if body["error"] == "task_not_found")
           when 409 then json_response(409, { error: "not_running", status: body["status"], task_id: task_id, session_id: id })
+          end
+        end
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # POST /api/sessions/:id/turn/:enqueued_id/dequeue {client_id?}: the ×
+      # on a queued bubble takes the message back before it runs
+      # (Bridge#handle_dequeue_turn). Straight to the live worker, never
+      # through deliver_turn: a removal must not wake one, and a stopped
+      # worker's queued file is the next worker's (503 not_live). 200
+      # {status, enqueued_id, prompt}; 409 already_started / not_queued and
+      # 404 unknown_enqueued_id pass through; the rest as every relay.
+      def handle_dequeue_turn(req, id, enqueued_id)
+        @session_class.load(id, state_dir: default_state_dir)
+        body = request_body(req)
+        parsed = body.nil? || body.strip.empty? ? nil : parse_json(body)
+        client_id = (parsed["client_id"] if parsed.is_a?(Hash))
+
+        request = ->(client) { client.dequeue(enqueued_id: enqueued_id, client_id: client_id) }
+        relay(id, bridge_client(id), request, what: "the message was not removed", cant: "remove queued messages") do |reply|
+          body = reply.json || {}
+          case reply.status
+          when 200 then json_response(200, { status: body["status"], enqueued_id: enqueued_id, prompt: body["prompt"].to_s, session_id: id })
+          when 409 then json_response(409, { error: body["error"] || "already_started", detail: body["detail"], enqueued_id: enqueued_id, session_id: id }.compact)
+          when 404
+            json_response(404, { error: "unknown_enqueued_id", enqueued_id: enqueued_id, session_id: id }) if body["error"] == "unknown_enqueued_id"
           end
         end
       rescue ArgumentError => e

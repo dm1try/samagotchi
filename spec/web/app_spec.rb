@@ -3064,6 +3064,52 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions/:id/turn/:enqueued_id/dequeue" do
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:app) do
+      build_app(state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_client).with("s1").and_return(bridge) }
+    end
+
+    def dequeue(id = "e-1", body: '{"client_id":"web:tab-1"}')
+      status, _headers, out = app.call(env_for("/api/sessions/s1/turn/#{id}/dequeue", method: "POST", body: body))
+      [status, JSON.parse(out.first)]
+    end
+
+    def reply(status, body) = Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
+
+    it "relays the removal with the tab's client id and answers with the removed prompt" do
+      allow(bridge).to receive(:dequeue).with(enqueued_id: "e-1", client_id: "web:tab-1")
+                                        .and_return(reply(200, status: "removed", enqueued_id: "e-1", prompt: "later"))
+
+      expect(dequeue).to eq([200, { "status" => "removed", "enqueued_id" => "e-1", "prompt" => "later", "session_id" => "s1" }])
+    end
+
+    it "keeps the worker's 409s and 404 unknown_enqueued_id apart from a stale worker's 404 not_found" do
+      allow(bridge).to receive(:dequeue).and_return(reply(409, error: "already_started", enqueued_id: "e-1"))
+      expect(dequeue).to match([409, hash_including("error" => "already_started")])
+
+      allow(bridge).to receive(:dequeue).and_return(reply(409, error: "not_queued", detail: "only a queued one"))
+      expect(dequeue).to match([409, hash_including("error" => "not_queued")])
+
+      allow(bridge).to receive(:dequeue).and_return(reply(404, error: "unknown_enqueued_id", enqueued_id: "e-1"))
+      expect(dequeue).to match([404, hash_including("error" => "unknown_enqueued_id")])
+
+      allow(bridge).to receive(:dequeue).and_return(reply(404, error: "not_found"))
+      expect(dequeue).to match([501, hash_including("error" => "not_supported")])
+    end
+
+    it "answers 503 not_live with no worker (a dead worker's queued file is not removed: the next worker runs it)" do
+      allow(app).to receive(:bridge_client).with("s1").and_return(nil)
+      expect(dequeue).to match([503, hash_including("error" => "not_live")])
+    end
+
+    it "takes an empty body (no client id)" do
+      allow(bridge).to receive(:dequeue).with(enqueued_id: "e-1", client_id: nil)
+                                        .and_return(reply(200, status: "removed", enqueued_id: "e-1", prompt: "x"))
+      expect(dequeue(body: "").first).to eq(200)
+    end
+  end
+
   describe "POST /api/sessions/:id/answer" do
     it "returns 400 when the question id is missing" do
       app = build_app(state_dir: Dir.mktmpdir)
@@ -3360,7 +3406,8 @@ RSpec.describe Samagotchi::Web::App do
       "an answer" => ["answer", '{"id":"q-1","selected":["A"]}', :answer, "the answer was not sent"],
       "a dismissal" => ["question/dismiss", '{"id":"q-1"}', :dismiss_question, "the question was not dismissed"],
       "a cancel" => ["cancel", '{"reason":"user"}', :cancel, "the turn was not cancelled"],
-      "a task stop" => ["tasks/20261004120000-0a1b2c3d/stop", "", :stop_task, "the task was not stopped"]
+      "a task stop" => ["tasks/20261004120000-0a1b2c3d/stop", "", :stop_task, "the task was not stopped"],
+      "a removal" => ["turn/e-1/dequeue", "", :dequeue, "the message was not removed"]
     }.each do |what, (path, body, call, said)|
       it "answers 504 for #{what} the worker timed out on" do
         allow(bridge).to receive(call).and_raise(Errno::ETIMEDOUT)
