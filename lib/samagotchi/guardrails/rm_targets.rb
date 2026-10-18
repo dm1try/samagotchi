@@ -33,8 +33,10 @@ module Samagotchi
       # @param session_root [String] the session's repo root (or cwd)
       def outside_tmp?(command, cwd:, tmp_roots:, session_root:, home: Dir.home, env: ENV)
         tokens = ShellLex.lex(command.to_s)
-        # rm inside $(…) or backticks: the lexer keeps no body.
-        return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && command.to_s.match?(/\brm\b/)
+        # rm inside $(…) or backticks: the lexer keeps no body. A message
+        # heredoc's text is data, so leave it out of this fallback.
+        code = ShellLex.code_text(command.to_s)
+        return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(/\brm\b/)
 
         session = ProtectedPaths.real(session_root.to_s)
         roots = tmp_roots.reject { |tmp| ShellPaths.within?(session, tmp) }

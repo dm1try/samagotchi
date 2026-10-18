@@ -33,6 +33,10 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     "sh -c 'echo x >> ~/.config/samagotchi/config.yml'", "ruby -e 'File.write(\"samagotchi/config.yml\", 1)'",
     "cp a $SOMEWHERE/.config/samagotchi/x", "cp a ~/.config/samagotchi/*.yml", "cd $X && echo > samagotchi/hooks/a",
     "cat > \"$(echo ~/.config/samagotchi)/config.yml\"",
+    "bash -c \"$(cat <<'EOF'\n~/.config/samagotchi/config.yml\nEOF\n)\"",
+    "git commit -m \"$(cat <<EOF\n$(echo ~/.config/samagotchi/config.yml)\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\n~/.config/samagotchi/config.yml\nEOF\n)\" | sh",
+    "echo `cat ~/.config/samagotchi/config.yml`",
     "cat <<EOF > ~/.config/samagotchi/x\nit's\nEOF", "bash <<'EOF'\necho x >> ~/.config/samagotchi/config.yml\nEOF"
   ]
 
@@ -41,6 +45,7 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     "cp a ~/.configs/samagotchi", "cp a ~/projects/x", "cd ~/.config && ls", "echo samagotchi",
     "cd $X && echo > other.txt", "ls -la", "make -C sub",
     "cat > /tmp/notes <<'EOF'\nedit ~/.config/samagotchi/config.yml\nEOF",
+    "git commit -m \"$(cat <<'EOF'\n~/.config/samagotchi/config.yml\nEOF\n)\"",
     # a commit message read from stdin names chi's dir: no path is written
     "git commit -F - <<'EOF'\nsee ~/.config/samagotchi/config.yml\nEOF"
   ]

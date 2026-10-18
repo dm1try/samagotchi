@@ -22,11 +22,17 @@ RSpec.describe Samagotchi::Guardrails::RmTargets do
     "rm -fr @T/a @T/b", "rm --recursive --force -- @T/x", "rm -rf @T/x 2>/dev/null", "rm -rf @T/x > /dev/null 2>&1",
     "cd @T && rm -rf x", "rm -f /etc/one-file", "rm -r ~/no-force", "rm -rf @T/x/../y", "ls ~ && rm -rf @T/x",
     "rm-tool -rf /", "cat > /tmp/x.sh <<'EOF'\nrm -rf /Users/foo\nEOF",
+    "git commit -m \"$(cat <<'EOF'\nchore: rm -rf ~ cleanup note\nEOF\n)\"",
     # a commit message read from stdin names rm: nothing runs it
     "git commit -F - <<'EOF'\nfix rm -rf ~ handling\nEOF"
   ]
 
   outside = [
+    "bash -c \"$(cat <<'EOF'\nrm -rf ~\nEOF\n)\"",
+    "git commit -m \"$(cat <<EOF\n$(rm -rf ~)\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nrm -rf ~\nEOF\n)\" | sh",
+    "git commit -m \"$(cat <<'EOF'\nmessage\nEOF\n)\" && rm -rf ~",
+    "echo `rm -rf ~`",
     "{ true; cat <<'EOF'; } | bash\nrm -rf ~\nEOF",
     "(cat <<'EOF') | bash\nrm -rf ~\nEOF",
     "rm -rf /", "rm -rf ~", "rm -rf ..", "rm -rf @T", "rm -rf @T/", "rm -rf @T/*", "rm -rf @T/../etc",

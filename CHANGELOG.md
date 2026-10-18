@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates
   the deleted old session's folder.
+- Guardrails: `rm` and protected-path checks treat a `$(cat <<'EOF' … EOF)` message body as data, while still
+  checking substitutions that run, piped messages and real commands beside a message.
 
 ## [0.81.0] - 2026-10-18
 

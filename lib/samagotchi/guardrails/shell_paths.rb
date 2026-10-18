@@ -16,8 +16,9 @@ module Samagotchi
     # A word it can't resolve (another $VAR, $(…), a glob, a relative path
     # after cd $X) or one that reads as a script (sh -c '…', ruby -e '…':
     # spaces, quotes, operators in it) falls back to a text match (+text+);
-    # so does the whole command when it holds a $(…) or backticks (the
-    # lexer keeps no body).
+    # so does the whole command when it holds a $(…) or backticks (the lexer
+    # keeps no body), except for message heredoc bodies ShellLex.code_text
+    # recognizes as data.
     module ShellPaths
       # A word that is a script rather than a path.
       SCRIPT = /[\s;&|<>()'"`]/
@@ -42,7 +43,8 @@ module Samagotchi
         roots = dirs.compact.map { |dir| ProtectedPaths.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
         walk = Walk.new(cwd, home, env)
         tokens = ShellLex.lex(command.to_s)
-        return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && command.to_s.match?(text)
+        code = ShellLex.code_text(command.to_s)
+        return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(text)
 
         ShellLex.simple_commands(tokens).any? do |words|
           walk.step(words).any? { |word, path| path ? names?(path, roots, tmp_roots) : word.match?(text) }
