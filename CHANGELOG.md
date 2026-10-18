@@ -35,7 +35,7 @@ and commands may change between minor versions. How releases are made:
   (was `parent_approval_refused` / `parent_continue_refused`).
 - The guardrails bundle's asks before answering chi's questions around `chi answer` (`chi-answer-piped`: `chi
   --attach` or `chi -p` fed from a pipe or a file; `chi-answer-http`: `curl …/answer`) are the user's alone: a parent
-  agent's Allow is refused, as on chi's own config.
+  agent's Allow is refused, as on chi's own config (guardrails bundle 0.9.2: its comment says so).
 
 ### Fixed
 
