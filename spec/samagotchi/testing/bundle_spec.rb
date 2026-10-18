@@ -80,6 +80,22 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(bundle.ctx.settings).to eq("word" => "hey")
   end
 
+  it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
+    write_bundle(hooks: { "guard.rb" => ["after_turn", "class Guard; def call(e) = e[:first] = true; end"] })
+    shared_namespace = Samagotchi::Hooks::BundleLoader.namespace_for("kit-test")
+    constants_before = shared_namespace.constants(false)
+    first = load
+    File.write(File.join(dir, "hooks", "guard.rb"), "class Guard; def call(e) = e[:second] = true; end\n")
+    second = load
+
+    expect(first.hooks_namespace).not_to equal(second.hooks_namespace)
+    expect(first.fire(:after_turn)[:first]).to be(true)
+    expect(first.fire(:after_turn)).not_to have_key(:second)
+    expect(second.fire(:after_turn)[:second]).to be(true)
+    expect(second.fire(:after_turn)).not_to have_key(:first)
+    expect(shared_namespace.constants(false)).to eq(constants_before)
+  end
+
   it "fails to load a plugin whose command clashes with chi's own, as chi would" do
     write_bundle(plugin: "class Plugin; def register(chi) = chi.command('/model', 'x') { nil }; end")
     expect { load }.to raise_error(ArgumentError, "command /model is already registered (core)")
