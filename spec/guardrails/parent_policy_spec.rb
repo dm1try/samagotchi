@@ -207,4 +207,65 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
     expect(described_class.allowed_options(pending_of(continue_question), strategy: strategy("hard")))
       .to eq(["Stop"])
   end
+
+  # P3: a session's own parent_answers may only tighten config.yml's.
+  describe "a session's own level (tighten-only)" do
+    before { allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @config || "soft" } }
+
+    it "picks the stricter of two by name; a tie keeps the first" do
+      %w[hard standard soft].product(%w[hard standard soft]).each do |a, b|
+        expected = [a, b].min_by { |name| described_class::ORDER.index(name) }
+        expect(described_class.stricter(strategy(a), strategy(b)).name).to eq(expected)
+      end
+      session_hard = strategy("hard").with(origin: :session)
+      expect(described_class.stricter(strategy("hard"), session_hard)).to equal(strategy("hard"))
+    end
+
+    it "reads a session value: nil unset, a level, anything else hard" do
+      expect(described_class.session_level(nil)).to be_nil
+      expect(described_class.session_level("")).to be_nil
+      expect(described_class.session_level("default")).to be_nil
+      expect(described_class.session_level("standard")).to eq("standard")
+      expect(described_class.session_level(" Soft ")).to eq("soft")
+      expect(described_class.session_level("loose")).to eq("hard")
+    end
+
+    it "is config's own strategy object with no session value, a tie or a looser one" do
+      @config = "standard"
+      expect(described_class.effective(nil)).to equal(described_class.current)
+      expect(described_class.current).to eq(described_class.effective(nil))
+      expect(described_class.effective("standard")).to equal(described_class.current)
+      expect(described_class.effective("soft")).to equal(described_class.current)
+      expect(described_class.effective("soft").label).to eq("guardrails.parent_answers: standard")
+    end
+
+    it "is the session's when stricter, labelled as the session's" do
+      @config = "soft"
+      effective = described_class.effective("hard")
+      expect(effective.name).to eq("hard")
+      expect(effective.allowed).to eq(%w[answer deny])
+      expect(effective.label).to eq("parent_answers: hard (this session)")
+      expect(described_class.effective("loose").name).to eq("hard")
+      expect(described_class::STRATEGIES["hard"].origin).to eq(:config)
+    end
+
+    it "reads a session's value (for_session); none is config's" do
+      @config = "soft"
+      session = Struct.new(:parent_answers).new("standard")
+      expect(described_class.for_session(session).name).to eq("standard")
+      expect(described_class.for_session(nil)).to equal(described_class.current)
+    end
+
+    it "tells a loosening of a session's value: unset is the loosest, an invalid value hard" do
+      expect(described_class.looser?("hard", "standard")).to be(true)
+      expect(described_class.looser?("soft", nil)).to be(true)
+      expect(described_class.looser?("standard", nil)).to be(true)
+      expect(described_class.looser?(nil, "soft")).to be(false)
+      expect(described_class.looser?(nil, nil)).to be(false)
+      expect(described_class.looser?("soft", "hard")).to be(false)
+      expect(described_class.looser?("standard", "standard")).to be(false)
+      expect(described_class.looser?("loose", "standard")).to be(true)
+      expect(described_class.looser?("loose", "hard")).to be(false)
+    end
+  end
 end

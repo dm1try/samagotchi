@@ -17,7 +17,9 @@ module Samagotchi
     # but eager parent, not a security boundary.
     #
     # Strategies (guardrails.parent_answers, config.yml only): hard = answer
-    # and deny; standard = + spend; soft (the default) = + permit.
+    # and deny; standard = + spend; soft (the default) = + permit. A session
+    # may carry its own, stricter one (Session#parent_answers): config.yml
+    # is the ceiling (#effective).
     #
     # Effects: answer (an untagged option), deny, spend (more time and
     # tokens: Continue), permit (one call: Allow once), permit_wide (more
@@ -45,16 +47,23 @@ module Samagotchi
       CONTINUE_QUESTION = PendingQuestion.new(kind: CONTINUE_KIND, options: [CONTINUE, STOP], effects: [SPEND, DENY])
 
       KEY = "guardrails.parent_answers"
+      # A session's own value (Session#parent_answers): it may only tighten KEY.
+      SESSION_KEY = "parent_answers"
       HARD = "hard"
       STANDARD = "standard"
       SOFT = "soft"
 
-      # A strategy: its name and the effects a parent may pick under it.
-      Strategy = Data.define(:name, :allowed) do
+      # A strategy: its name, the effects a parent may pick under it, and
+      # where it comes from: :config (config.yml's) or :session (a
+      # session's own, stricter one: #effective).
+      Strategy = Data.define(:name, :allowed, :origin) do
+        def initialize(name:, allowed:, origin: :config) = super
+
         def allow?(effect) = allowed.include?(effect.to_s)
 
-        # How a refusal names the setting: "guardrails.parent_answers: hard".
-        def label = "#{KEY}: #{name}"
+        # How a refusal names the setting: "guardrails.parent_answers: hard",
+        # or "parent_answers: hard (this session)" when the session's binds.
+        def label = origin == :session ? "#{SESSION_KEY}: #{name} (this session)" : "#{KEY}: #{name}"
       end
 
       STRATEGIES = {
@@ -73,6 +82,55 @@ module Samagotchi
       # The named strategy; anything else is hard, the strictest.
       # @return [Strategy]
       def strategy(name) = STRATEGIES.fetch(name.to_s, STRATEGIES[HARD])
+
+      # Strictest first: a session's own level may only move left of
+      # config.yml's.
+      ORDER = [HARD, STANDARD, SOFT].freeze
+      # A session value that means "none of its own" (config's).
+      UNSET = "default"
+
+      # The stricter of two strategies, by name; a tie keeps +a+.
+      # @return [Strategy]
+      def stricter(a, b) = ORDER.index(b.name) < ORDER.index(a.name) ? b : a
+
+      # A session's own value as a level: nil when it has none (nil, "",
+      # "default"), the level, or hard for anything else (a hand-edited
+      # file: the strictest, as config's invalid value; not logged, as this
+      # is read on every parent answer).
+      # @return [String, nil]
+      def session_level(value)
+        word = value.to_s.strip.downcase
+        return nil if word.empty? || word == UNSET
+
+        STRATEGIES.key?(word) ? word : HARD
+      end
+
+      # What a parent may answer on a session whose own value is
+      # +session_value+: config.yml's (+config+) unless the session's is
+      # stricter. Config's own object when it binds, so its label stays.
+      # @return [Strategy]
+      def effective(session_value, config: current)
+        level = session_level(session_value)
+        return config if level.nil?
+
+        own = STRATEGIES[level]
+        stricter(config, own).equal?(config) ? config : own.with(origin: :session)
+      end
+
+      # #effective with +session+'s own value (a Session; nil: config's).
+      # @return [Strategy]
+      def for_session(session) = effective(session&.parent_answers)
+
+      # Whether setting a session's value +from+ → +to+ loosens it: unset
+      # (config's) is the loosest, an invalid value hard. Only the user
+      # loosens (/parent-answers in a UI).
+      def looser?(from, to) = session_rank(to) > session_rank(from)
+
+      # hard 0, standard 1, soft 2, unset 3.
+      def session_rank(value)
+        level = session_level(value)
+        level.nil? ? ORDER.size : ORDER.index(level)
+      end
 
       # @return [Array<String>] the effects +strategy+ lets a parent pick
       def allowed_effects(strategy) = strategy.allowed

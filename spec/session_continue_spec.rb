@@ -62,6 +62,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     previous.reasoning_history = :drop
     previous.appended_prompt_files = ["/r/extra.md"]
     previous.toolkit = Samagotchi::Toolkit.new(name: "coordinator")
+    previous.parent_answers = "standard"
     previous.save(state_dir: tmpdir)
     save_recap(previous.id, "The user reviewed three PRs and merged two.")
     allow(Samagotchi::ConfigFile).to receive(:model_ref).and_call_original
@@ -79,6 +80,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(saved.reasoning_history).to eq(:drop)
     expect(saved.appended_prompt_files).to eq(["/r/extra.md"])
     expect(saved.toolkit).to eq(Samagotchi::Toolkit.new(name: "coordinator"))
+    expect(saved.parent_answers).to eq("standard")
     expect(archived?(previous.id)).to be(true)
     # Not a descendant: the archive's cascade never reaches the new link.
     expect(archived?(link.id)).to be(false)

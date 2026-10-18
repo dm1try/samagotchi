@@ -220,6 +220,27 @@ module Samagotchi
       @bundle_settings = BundleSessionSettings.normalize(value)
     end
 
+    # The session's own guardrails.parent_answers (hard|standard|soft), nil
+    # for none (config.yml's). It may only tighten config.yml's
+    # (Guardrails::ParentPolicy.effective); only the user loosens it
+    # (/parent-answers in a UI). Given at creation (chi --parent-answers,
+    # chi send --new --parent-answers); a respawn, a continue and a fork keep
+    # it (SessionSetup.of), a delegate child takes its parent's.
+    attr_reader :parent_answers
+
+    # @param value [String, Symbol, nil] stripped and downcased; "" and
+    #   "default" are none; a value that isn't a level is kept as written
+    #   (read as hard: ParentPolicy.session_level)
+    def parent_answers=(value)
+      word = value.to_s.strip
+      word = word.downcase if PARENT_ANSWERS_WORDS.include?(word.downcase)
+      @parent_answers = word.empty? || word == "default" ? nil : word
+    end
+
+    # The levels and "default" (Guardrails::ParentPolicy::ORDER and UNSET;
+    # not required here: that file loads the guardrails).
+    PARENT_ANSWERS_WORDS = %w[hard standard soft default].freeze
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -254,7 +275,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil)
+                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil, parent_answers: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -285,6 +306,7 @@ module Samagotchi
       self.appended_prompt_files = appended_prompt_files
       self.toolkit = toolkit
       self.bundle_settings = bundle_settings
+      self.parent_answers = parent_answers
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -383,6 +405,7 @@ module Samagotchi
         appended_prompt_files: setup.appended_prompt_files,
         toolkit: setup.toolkit,
         bundle_settings: setup.bundle_settings,
+        parent_answers: setup.parent_answers,
         continues: continues
       )
     end
@@ -449,7 +472,8 @@ module Samagotchi
       "appended_prompt_files" => [],
       "toolkit" => nil,
       "bundle_settings" => {},
-      "interrupted_turn" => nil
+      "interrupted_turn" => nil,
+      "parent_answers" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the

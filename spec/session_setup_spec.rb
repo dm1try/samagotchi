@@ -14,6 +14,7 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))).not_to be_empty
     expect(described_class.new(bundle_settings: { "cost-cap" => { "cap" => 3 } })).not_to be_empty
     expect(described_class.new(bundle_settings: {})).to be_empty
+    expect(described_class.new(parent_answers: "hard")).not_to be_empty
   end
 
   it "keeps bundle settings frozen, string-keyed" do
@@ -41,6 +42,8 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.of(session).appended_prompt_files).to eq(["/r/a.md"])
     session.bundle_settings = { "cost-cap" => { "cap" => 2 } }
     expect(described_class.of(session).bundle_settings).to eq("cost-cap" => { "cap" => 2 })
+    session.parent_answers = "standard"
+    expect(described_class.of(session).parent_answers).to eq("standard")
     expect(described_class.of(nil)).to be_empty
   end
 
@@ -50,9 +53,11 @@ RSpec.describe Samagotchi::SessionSetup do
                                               setup: described_class.new(llm_context: override, thinking: :medium,
                                                                          reasoning_history: :drop,
                                                                          appended_prompt_files: ["/r/a.md"],
-                                                                         bundle_settings: { "x" => { "k" => 1 } }))
+                                                                         bundle_settings: { "x" => { "k" => 1 } },
+                                                                         parent_answers: "hard"))
 
     expect(session).to have_attributes(llm_context: override, thinking: :medium, reasoning_history: :drop,
-                                       appended_prompt_files: ["/r/a.md"], bundle_settings: { "x" => { "k" => 1 } })
+                                       appended_prompt_files: ["/r/a.md"], bundle_settings: { "x" => { "k" => 1 } },
+                                       parent_answers: "hard")
   end
 end

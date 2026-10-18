@@ -295,6 +295,28 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
     end
 
+    it "round-trips its own parent_answers, normalised; none from a file without the field; an unreadable one as written" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                            setup: Samagotchi::SessionSetup.new(parent_answers: "standard"))
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["parent_answers"]).to eq("standard")
+      expect(described_class.load(session.id, state_dir: tmpdir).parent_answers).to eq("standard")
+
+      session.parent_answers = " Hard"
+      expect(session.parent_answers).to eq("hard")
+      session.parent_answers = "default"
+      expect(session.parent_answers).to be_nil
+      session.parent_answers = "loose"
+      session.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["parent_answers"]).to eq("loose")
+      expect(Samagotchi::Guardrails::ParentPolicy.session_level(described_class.load(session.id, state_dir: tmpdir).parent_answers))
+        .to eq("hard")
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("parent_answers")))
+      expect(described_class.load(session.id, state_dir: tmpdir).parent_answers).to be_nil
+    end
+
     it "round-trips its toolkit as given, and reads none (full) from a file without the field" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
                                             setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean")))
