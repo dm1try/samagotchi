@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The `ruby` bundle (`chi bundle install ruby`, or the `dev` profile): an `execute` that ran RSpec and found no
+  examples at all (`0 examples, 0 failures`: a path, a `-e`/`--tag` filter or a `.rspec --pattern` that matched
+  nothing) steers a hint into the turn instead of leaving the run looking green.
+
 ### Changed
 
 - At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,

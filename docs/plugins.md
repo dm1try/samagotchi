@@ -2180,6 +2180,46 @@ skill install card) works the same.
   and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0 (the closing
   wake: the chi released with this bundle).
 
+## The ruby bundle
+
+`chi bundle install ruby` (or the `dev` profile) installs the bundle shipped
+with chi (`lib/samagotchi/bundles/ruby/plugin.rb`): one `chi.on` hook
+(`:after_tool_call`), and no memory file.
+
+An RSpec run that finds no examples prints `0 examples, 0 failures`, which
+reads green: the model takes the suite as passing and moves on with code no
+test ever loaded. It usually means a path that matched no file, a filter
+(`-e`, `--tag`) that matched no example, or a `.rspec --pattern` that hid
+the specs (a nested project's `.rspec` overrides one). The bundle notices
+that run and steers a hint into the running turn, which the user sees as
+`ruby> nudged: …`:
+
+```
+rspec ran 0 examples: check the path, the filter (-e/--tag) or the .rspec --pattern
+```
+
+It is a nudge for the model, not a denial: the turn goes on, and the model
+can say why the run was empty. It never runs anything.
+
+- **The command.** Only an `execute` counts, and its command must run
+  rspec: one of its simple commands (`&&`, `||`, `;`, `|`, a newline, so
+  after a leading `cd x &&` too) starts with `rspec`, a path ending in
+  `/rspec` (`bin/rspec`, `./bin/rspec`), or `parallel_rspec`, once a leading
+  `X=…` assignment, `bundle exec` and `time` are left out. A command that
+  only names rspec (`grep rspec README`, `echo "bundle exec rspec"`) is not
+  a run.
+- **The output.** Every `<N> examples, <M> failures` line in the execute's
+  output counts (RSpec's summary, with or without `, N pending`), and the
+  hint comes when all of them are 0. `parallel_rspec` prints one per
+  process, so a single process with examples leaves its 0 out of the total.
+- **No summary line, no hint.** A spec that fails to load, a path that
+  doesn't exist, a command killed at its limit: the output already says what
+  is wrong, and the hint would only repeat it.
+
+Nothing is remembered, so the next 0-example run hints again: it can be
+the same mistake on another command, or a different one. A hint the model
+answers before joining the turn is dropped, as any steer is.
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
