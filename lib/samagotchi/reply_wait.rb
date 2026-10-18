@@ -194,6 +194,9 @@ module Samagotchi
            !(session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == turn) &&
            (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
            baseline && ended == baseline[:last_turn]
+          # The turn-specific reply lookup above already found its file, if
+          # one exists. Without it, don't use the newest file as a fallback:
+          # it could belong to another turn.
           return no_reply(session, baseline, fresh: true)
         end
 
