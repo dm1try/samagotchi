@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
+require "pathname"
 require "samagotchi/testing"
 require "samagotchi/testing/boundary"
 
@@ -42,9 +43,12 @@ RSpec.describe Samagotchi::Testing::Boundary do
     it "finds internal names and requires in every .rb of the bundle, once per file, and passes the stable ones" do
       FileUtils.mkdir_p(File.join(dir, "hooks"))
       FileUtils.mkdir_p(File.join(dir, "spec"))
+      relative = Pathname.new(File.join(Dir.pwd, "lib/samagotchi/engine")).relative_path_from(Pathname.new(dir)).to_s
       File.write(File.join(dir, "plugin.rb"), <<~RUBY)
         require "samagotchi/plugin/peer"
         require "samagotchi/engine"
+        require_relative "#{relative}"
+        require_relative "local"
         class Plugin < Samagotchi::Plugin::Peer
           def a = Samagotchi::Engine.new
           def b = Samagotchi::Engine.new
@@ -58,7 +62,8 @@ RSpec.describe Samagotchi::Testing::Boundary do
       expect(described_class.scan(dir).map { |finding| [finding.file, finding.reference] }).to eq(
         [["hooks/h.rb", "Samagotchi::Log.error"],
          ["plugin.rb", "Samagotchi::Engine.new"], ["plugin.rb", "Samagotchi::Config.validate_yaml_sections"],
-         ["plugin.rb", "Samagotchi::Tools::Execute.const_get"], ["plugin.rb", 'require "samagotchi/engine"']]
+         ["plugin.rb", "Samagotchi::Tools::Execute.const_get"], ["plugin.rb", 'require "samagotchi/engine"'],
+         ["plugin.rb", %(require_relative "#{relative}")]]
       )
     end
   end
