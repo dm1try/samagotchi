@@ -146,6 +146,21 @@ RSpec.describe "delegate tools" do
       expect([child.model_name, child.model_typed]).to eq(%w[box:gemma-small tiny])
     end
 
+    # P3: a snapshot of the parent's own parent_answers (tighten-only).
+    it "starts the child with its parent's own parent_answers, none when the parent has none" do
+      described_class.call("look", wait: "false", peers: peers)
+      first = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+      expect(first.parent_answers).to be_nil
+
+      s = Samagotchi::Session.load(parent.id, state_dir: tmpdir)
+      s.parent_answers = "standard"
+      s.save(state_dir: tmpdir)
+      described_class.call("look again", wait: "false", peers: peers)
+      second = Samagotchi::Session.load((session_files - [parent.id, first.id]).first, state_dir: tmpdir)
+      expect(second.parent_answers).to eq("standard")
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{second.id}.json")))["parent_answers"]).to eq("standard")
+    end
+
     describe "a toolkit of its own (toolkit:)" do
       let(:kit_peers) { worker_peers.dup.tap { |p| p.toolkit_names = %w[full lean child coding] } }
 

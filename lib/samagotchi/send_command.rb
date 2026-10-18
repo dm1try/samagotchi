@@ -43,7 +43,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set BUNDLE.KEY=VALUE]... [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set BUNDLE.KEY=VALUE]... [--parent-answers LEVEL] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
@@ -95,6 +95,11 @@ module Samagotchi
                     manifest lists in session_settings:; 3, 2.5, true,
                     false and off are typed, the rest is text:
                     --set cost-cap.cap=3)
+        --parent-answers LEVEL
+                    (--new) what a parent agent may answer on its
+                    questions: hard, standard or soft, only stricter than
+                    config.yml's guardrails.parent_answers (a looser one
+                    warns; config.yml's applies)
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -153,6 +158,7 @@ module Samagotchi
       f.value "--tool", key: :tools, repeat: true
       f.value "--no-tool", key: :no_tools, repeat: true
       f.value "--set", key: :sets, repeat: true
+      f.value "--parent-answers", key: :parent_answers
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.switch "--cut"
@@ -306,6 +312,7 @@ module Samagotchi
       TOOLKIT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") unless Array(options[key]).empty? }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("--set needs --new") unless Array(options[:sets]).empty?
+      return usage_error("--parent-answers needs --new") if options[:parent_answers]
       return usage_error("give session ids") if options[:ids].empty?
 
       options
@@ -325,10 +332,10 @@ module Samagotchi
         taken = [("--dir" if options[:dir])] +
                 LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])] +
                 [("--toolkit" if options[:toolkit])] + TOOLKIT_FLAGS.filter_map { |key, flag| flag unless Array(options[key]).empty? } +
-                [("--set" unless Array(options[:sets]).empty?)]
+                [("--set" unless Array(options[:sets]).empty?), ("--parent-answers" if options[:parent_answers])]
         unless taken.compact.empty?
           return usage_error("--continues takes the previous session's folder, LLM context, thinking level, " \
-                             "toolkit and bundle settings; " \
+                             "toolkit, bundle settings and parent_answers; " \
                              "leave out #{taken.compact.join(", ")}")
         end
       end
@@ -347,6 +354,13 @@ module Samagotchi
         end
 
         options[:thinking] = Thinking.session_level(word)
+      end
+      if options[:parent_answers]
+        word = options[:parent_answers].strip.downcase
+        levels = Guardrails::ParentPolicy::ORDER
+        return usage_error("--parent-answers takes #{levels.join(", ")}, not #{options[:parent_answers]}") unless levels.include?(word)
+
+        options[:parent_answers] = word
       end
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit
@@ -405,7 +419,8 @@ module Samagotchi
                                                           setup: SessionSetup.new(llm_context: options[:llm_context],
                                                                                   thinking: options[:thinking],
                                                                                   toolkit: options[:toolkit_value],
-                                                                                  bundle_settings: options[:bundle_settings] || {}),
+                                                                                  bundle_settings: options[:bundle_settings] || {},
+                                                                                  parent_answers: options[:parent_answers]),
                                                           state_dir: @state_dir)
                   end
       rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
@@ -416,6 +431,9 @@ module Samagotchi
         return 1
       end
       error_line("chi send: warning: #{session.model_warning}") if session.model_warning
+      if (capped = Guardrails::ParentPolicy.capped_note(options[:parent_answers]))
+        error_line("chi send: warning: --parent-answers #{capped}")
+      end
       if through_worker
         return 1 unless deliver_new(session, prompt)
       else

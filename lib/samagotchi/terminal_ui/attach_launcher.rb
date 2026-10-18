@@ -53,6 +53,10 @@ module Samagotchi
       #   the line an existing session's run prints (--set too)
       # @param bundle_settings [Hash] --set's values (BundleSessionSettings):
       #   a new session's setup carries them; an existing session keeps its own
+      # @param parent_answers [String, nil] --parent-answers: a new session's
+      #   own guardrails.parent_answers; an existing session keeps its own
+      #   (never sent as a /parent-answers command: that would be a
+      #   loosening route from a command line)
       # @param state_dir [String, nil] where the sessions are (the default
       #   state dir by default): the worker's, for the attached loop too
       # @return [Symbol] :detached, :closed when the worker went away,
@@ -60,12 +64,12 @@ module Samagotchi
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-              toolkit_flags: [], bundle_settings: {}, state_dir: nil)
+              toolkit_flags: [], bundle_settings: {}, parent_answers: nil, state_dir: nil)
         state_dir ||= Session.default_state_dir
         client = connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
                          memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking,
                          appended_prompt_files: appended_prompt_files, toolkit: toolkit, toolkit_flags: toolkit_flags,
-                         bundle_settings: bundle_settings)
+                         bundle_settings: bundle_settings, parent_answers: parent_answers)
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
@@ -139,7 +143,7 @@ module Samagotchi
       # @raise [Error]
       def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
                   memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-                  toolkit_flags: [], bundle_settings: {}, err: $stderr)
+                  toolkit_flags: [], bundle_settings: {}, parent_answers: nil, err: $stderr)
         sd = state_dir || Session.default_state_dir
         if attach || resume
           warn_memory_flags_ignored(attach || resume, memories, muted_memories, err, appended_prompt_files: appended_prompt_files,
@@ -161,7 +165,8 @@ module Samagotchi
                                                  setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
                                                                          thinking: Thinking.session_level(thinking),
                                                                          appended_prompt_files: appended_prompt_files,
-                                                                         toolkit: toolkit, bundle_settings: bundle_settings))
+                                                                         toolkit: toolkit, bundle_settings: bundle_settings,
+                                                                         parent_answers: parent_answers))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")

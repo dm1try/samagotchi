@@ -90,6 +90,27 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(err.string).to include("--no-tool needs --new")
   end
 
+  it "starts the session with its own --parent-answers, warns when config.yml's is stricter, and refuses it without --new" do
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
+    expect(run("--new", "--parent-answers", "Hard", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(parent_answers: "hard"))
+    expect(err.string).not_to include("looser")
+
+    expect(run("--new", "--parent-answers", "soft", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup].parent_answers).to eq("soft")
+    expect(err.string).to include("chi send: warning: --parent-answers soft is looser than config.yml's " \
+                                  "guardrails.parent_answers: standard; standard applies")
+
+    expect(run("--new", "--parent-answers", "loose", "-m", "hi")).to eq(2)
+    expect(err.string).to include("--parent-answers takes hard, standard, soft, not loose")
+    expect(run("--parent-answers", "hard", "-m", "hi", "abcd")).to eq(2)
+    expect(err.string).to include("--parent-answers needs --new")
+    expect(run("--new", "--continues", "abcd", "--parent-answers", "hard", "-m", "hi")).to eq(2)
+    expect(err.string).to include("leave out --parent-answers")
+    expect(described_class::USAGE).to include("--parent-answers LEVEL")
+  end
+
   it "starts the session with its own --thinking level, none for default, and refuses one that isn't a level" do
     expect(run("--new", "--thinking", "Low", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(thinking: :low))
@@ -251,7 +272,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(run("--new", "--continues", previous.id, "--dir", folder, "--model", "M", "--llm-context", "stale",
                  "-m", "x")).to eq(2)
       expect(err.string).to include("--continues takes the previous session's folder, LLM context, thinking level, " \
-                                    "toolkit and bundle settings; leave out --dir, --llm-context")
+                                    "toolkit, bundle settings and parent_answers; leave out --dir, --llm-context")
       expect(run("--new", "--continues", previous.id, "--thinking", "low", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --thinking")
       expect(run("--new", "--continues", previous.id, "--toolkit", "lean", "--tool", "delegate", "-m", "x")).to eq(2)

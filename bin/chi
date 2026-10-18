@@ -82,7 +82,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -129,6 +129,11 @@ parser = OptionParser.new do |opts|
                                   "bundle's manifest lists in session_settings:; numbers, true, false and off are typed, the rest is text; " \
                                   "saved in the session: --set cost-cap.cap=3)") do |v|
     (options[:sets] ||= []) << v
+  end
+  opts.on("--parent-answers LEVEL", "What a parent agent may answer on this session's questions: " \
+                                    "hard|standard|soft, only stricter than config.yml's guardrails.parent_answers (saved in the " \
+                                    "session; only you loosen it, with /parent-answers in the terminal or the web)") do |v|
+    options[:parent_answers] = v
   end
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
   opts.on("--append-system-prompt FILE", "Put FILE's text into the system prompt, after AGENTS.md (repeatable; saved in the session; " \
@@ -232,6 +237,22 @@ if options[:new_token] && !web
 end
 if options[:sets] && web
   warn "Error: --set is a new session's (chi --set, chi send --new --set), not chi web's"
+  exit 2
+end
+# --parent-answers: a level in any case (no abbreviations), else a usage
+# error, as chi send's.
+if options[:parent_answers]
+  require "samagotchi/guardrails/parent_policy"
+  levels = Samagotchi::Guardrails::ParentPolicy::ORDER
+  word = options[:parent_answers].strip.downcase
+  unless levels.include?(word)
+    warn "Error: --parent-answers takes #{levels.join(", ")}, not #{options[:parent_answers]}"
+    exit 2
+  end
+  options[:parent_answers] = word
+end
+if options[:parent_answers] && web
+  warn "Error: --parent-answers is a new session's (chi --parent-answers, chi send --new --parent-answers), not chi web's"
   exit 2
 end
 
@@ -395,6 +416,20 @@ if options[:sets]
   options[:toolkit_flags] = (options[:toolkit_flags] || []) + ["--set"]
 end
 
+# --parent-answers LEVEL: a new session's own guardrails.parent_answers. An
+# existing session's (--attach/--resume) is ignored with the flags' line,
+# never sent as a /parent-answers command: that would loosen it from a
+# command line, which is the user's to do in a UI.
+if options[:parent_answers]
+  if options[:attach] || options[:resume]
+    options[:toolkit_flags] = (options[:toolkit_flags] || []) + ["--parent-answers"]
+  else
+    require "samagotchi/guardrails/parent_policy"
+    note = Samagotchi::Guardrails::ParentPolicy.capped_note(options[:parent_answers])
+    warn "Warning: --parent-answers #{note}" if note
+  end
+end
+
 chi_update_hint.call
 require "samagotchi/launch_mode"
 launch, launch_note = if scratch
@@ -432,7 +467,8 @@ if launch == :attached
                                                        appended_prompt_files: options[:appended_prompt_files] || [],
                                                        toolkit: options[:toolkit_value],
                                                        toolkit_flags: options[:toolkit_flags] || [],
-                                                       bundle_settings: options[:bundle_settings] || {})
+                                                       bundle_settings: options[:bundle_settings] || {},
+                                                       parent_answers: options[:parent_answers])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
@@ -455,6 +491,7 @@ begin
     toolkit: options[:toolkit_value],
     toolkit_flags: options[:toolkit_flags] || [],
     bundle_settings: options[:bundle_settings] || {},
+    parent_answers: options[:parent_answers],
     non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch

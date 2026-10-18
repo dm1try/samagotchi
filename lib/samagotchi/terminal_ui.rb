@@ -105,10 +105,14 @@ module Samagotchi
     # @param bundle_settings [Hash] --set's values (BundleSessionSettings):
     #   a new session's own; a resumed one keeps its own (--set is in
     #   +toolkit_flags+ then)
+    # @param parent_answers [String, nil] --parent-answers: a new session's
+    #   own guardrails.parent_answers; a resumed one keeps its own (named in
+    #   +toolkit_flags+ then)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
-                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [], bundle_settings: {})
+                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [], bundle_settings: {}, parent_answers: nil)
       @scratch        = scratch
+      @parent_answers = parent_answers
       @toolkit        = toolkit
       @toolkit_flags  = toolkit_flags
       @bundle_settings = bundle_settings
@@ -281,7 +285,7 @@ module Samagotchi
         muted_memory_names: @muted_memory_names,
         scratch: @scratch,
         setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured,
-                                bundle_settings: @bundle_settings)
+                                bundle_settings: @bundle_settings, parent_answers: @parent_answers)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

@@ -134,7 +134,10 @@ module Samagotchi
                  "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. #{full_hint(peers)}"
         end
 
-        setup = toolkit.empty? ? SessionSetup.new : SessionSetup.new(toolkit: Toolkit.new(name: toolkit))
+        # The parent's own parent_answers, as it is now (a snapshot): the
+        # child's answers are held at least as tight.
+        setup = SessionSetup.new(toolkit: toolkit.empty? ? nil : Toolkit.new(name: toolkit),
+                                 parent_answers: parent.parent_answers)
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir)

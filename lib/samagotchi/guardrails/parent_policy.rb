@@ -117,6 +117,17 @@ module Samagotchi
         stricter(config, own).equal?(config) ? config : own.with(origin: :session)
       end
 
+      # Why a session's own +value+ doesn't apply: "soft is looser than
+      # config.yml's guardrails.parent_answers: standard; standard applies";
+      # nil when it applies (or is none).
+      # @return [String, nil]
+      def capped_note(value, config: current)
+        level = session_level(value)
+        return nil if level.nil? || effective(level, config: config).name == level
+
+        "#{level} is looser than config.yml's #{config.label}; #{config.name} applies"
+      end
+
       # #effective with +session+'s own value (a Session; nil: config's).
       # @return [Strategy]
       def for_session(session) = effective(session&.parent_answers)
