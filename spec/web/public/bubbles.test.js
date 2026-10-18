@@ -111,13 +111,21 @@ test("a queued-for-after-the-turn bubble draws the remove button; a next-step, s
 
 test("turn_dequeued removes the bubble it names, and only that one", () => {
   const { bubbles, historyEl } = harness();
+  const slot = document.createElement("div");
+  slot.className = "ts-queued";
+  historyEl.append(slot);
   bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "q1", prompt: "first", client_id: "tui", delivery: "queue" });
+  slot.append(bubbles.bubbleById("q1"));
   bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "q2", prompt: "second", client_id: "tui", delivery: "queue" });
+  slot.append(bubbles.bubbleById("q2"));
   bubbles.applyPromptOps({ type: "turn_dequeued", enqueued_id: "q2", client_id: "web:x" });
   assert.ok(bubbles.bubbleById("q2") === null);
   assert.deepEqual([...historyEl.querySelectorAll(".bubble.user")].map((el) => el.dataset.enqueuedId), ["q1"]);
+  assert.ok(slot.isConnected);
   bubbles.applyPromptOps({ type: "turn_dequeued", enqueued_id: "gone" });
   assert.equal(historyEl.querySelectorAll(".bubble.user").length, 1);
+  bubbles.applyPromptOps({ type: "turn_dequeued", enqueued_id: "q1" });
+  assert.equal(slot.isConnected, false);
 });
 
 test("a merge steers its bubble; one with no bubble draws the merged text", () => {

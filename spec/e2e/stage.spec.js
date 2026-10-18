@@ -339,6 +339,16 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
   await expect(page.locator("#prompt")).toHaveValue("QUEUED-LATER second");
   await page.locator("#prompt").fill("");
 
+  // Taking back the last queued bubble removes its empty slot; a later queue
+  // gets a fresh slot so it still appears below the running turn.
+  const first = stageEl(page).locator(".ts-queued .bubble.user").filter({ hasText: "QUEUED-LATER please" });
+  await first.locator("button.unqueue").click();
+  await expect(stageEl(page).locator(".ts-queued")).toHaveCount(0);
+  await expect(page.locator("#prompt")).toHaveValue("QUEUED-LATER please");
+  await page.locator("#prompt").press("Alt+Enter");
+  await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveText(/QUEUED-LATER please/);
+  await page.mouse.move(0, 0);
+
   // The first one's turn runs; nothing waits below it.
   await expect(stageEl(page).locator(".ts-prompt")).toHaveText(/QUEUED-LATER please/, { timeout: 30_000 });
   await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveCount(0);
