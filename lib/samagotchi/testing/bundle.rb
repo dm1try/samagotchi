@@ -168,6 +168,25 @@ module Samagotchi
         payload
       end
 
+      # Build the before_tool_call payload from the real Gate, without firing
+      # this bundle's hooks.
+      # @param call [Hash] the parsed tool call
+      # @param iteration [Integer]
+      # @param params [String] the call's one-line preview
+      # @param context [Guardrails::Context, nil]
+      # @param verdict [Verdict, nil]
+      # @return [Hash]
+      def before_tool_call_event(call, params:, iteration: 1, context: nil, verdict: nil)
+        context ||= Guardrails::Context.new(cwd: @recorder[:cwd], session_id: @recorder[:session_id],
+                                            interface: @recorder[:frontend])
+        dispatched = nil
+        capture = Hooks::Registry.new
+        capture.register(:before_tool_call) { |event| dispatched = event.dup }
+        gate = Guardrails::Gate.new(-> { capture }, context_lookup: -> { context }, tools_lookup: -> { tools })
+        gate.evaluate(call, iteration: iteration, params: params, verdict: verdict || Verdict.new(call: call))
+        dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context, :targets)
+      end
+
       # One tool call through a real Guardrails::Gate: the before_tool_call
       # hooks vote on a Testing::Verdict (pass +verdict+ to start from one,
       # another voter's deny in it), with the context and targets the Gate

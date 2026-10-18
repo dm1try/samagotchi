@@ -1134,6 +1134,7 @@ require "samagotchi/testing"
 bundle = Samagotchi::Testing::Bundle.load("path/to/my-bundle", settings: { "every" => 3 },
                                           host: { session_id: "s1", cwd: Dir.pwd })
 bundle.fire(:after_turn, status: "completed")            # → the event, after the hooks
+event = bundle.before_tool_call_event({ name: "read", path: "a.txt" }, params: "read a.txt")
 bundle.command("/mine stop")                             # → what the command returned
 bundle.tool("my_tool", path: "a.txt")                    # → the text the model reads
 verdict = bundle.tool_call({ name: "execute", content: "rm -rf /" })

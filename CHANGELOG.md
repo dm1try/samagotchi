@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Bundles: the experimental test kit's `before_tool_call_event` builds the real guardrail event without firing
+  bundle hooks.
+
 ### Fixed
 
 - A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates

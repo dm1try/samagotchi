@@ -114,6 +114,30 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(card[:id]).to match(/\A\h{8}\z/)
   end
 
+  it "builds a before_tool_call event with the fields the real gate dispatches" do
+    write_bundle
+    bundle = load(host: { cwd: "/work" })
+    call = { name: "read", path: "notes.md" }
+    context = Samagotchi::Guardrails::Context.new(cwd: "/work", session_id: "test-session",
+                                                  interface: :non_interactive)
+    verdict = Samagotchi::Testing::Verdict.new(call: call)
+    event = bundle.before_tool_call_event(call, iteration: 2, params: "read notes.md",
+                                                context: context, verdict: verdict)
+
+    dispatched = nil
+    hooks = Samagotchi::Hooks::Registry.new
+    hooks.register(:before_tool_call) { |payload| dispatched = payload.dup }
+    gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, context_lookup: -> { context },
+                                                                    tools_lookup: -> { bundle.tools })
+    gate.evaluate(call, iteration: 2, params: "read notes.md", verdict: Samagotchi::Testing::Verdict.new(call: call))
+    real_event = dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context,
+                                  :targets)
+
+    expect(event.keys).to eq(real_event.keys)
+    expect(event.except(:guardrail)).to eq(real_event.except(:guardrail))
+    expect(event[:guardrail]).to be_a(Samagotchi::Testing::Verdict)
+  end
+
   it "records stop_turn and stop_generation in one list, in order, and apart" do
     write_bundle(plugin: plugin)
     bundle = load
