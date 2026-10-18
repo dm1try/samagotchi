@@ -1847,7 +1847,10 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     it "leaves the tokens block and model_segments exactly as the turns alone made them" do
-      other = described_class.new
+      # Both on a frozen clock: gen_ms is timed, and two real-clock runs can
+      # round to different ms (CI run 39130480870 saw 1 vs 0).
+      metrics = described_class.new(clock: -> { 0.0 })
+      other = described_class.new(clock: -> { 0.0 })
       [metrics, other].each do |collector|
         collector.call(type: :turn_started, session_id: "side-sess", prompt: "p", turn_id: "t1")
         collector.call(type: :generation_started, iteration: 1, model_ref: "a:m")
