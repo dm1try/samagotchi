@@ -80,6 +80,14 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(state["cap"]).to eq(12.0)
     end
 
+    it "shows a sub-dime cap and spend with up to four decimals, not as $0.00" do
+      bundle = plugin({ "default" => 0.003 }, cost: 0.0066525)
+      bundle.answer({ selected: ["Stop"] })
+      generation(bundle)
+      expect(bundle.questions.last.question).to eq("Cost cap reached: $0.0067 spent of $0.003. Continue raises it to $0.009.")
+      expect(bundle.command("/cap")).to start_with("cost-cap: $0.0067 spent of $0.003 (reported $0.0067, estimated $0.00")
+    end
+
     it "stops the turn with a card on Stop" do
       bundle = plugin(cost: { reported: 3.0, estimated: 0.04, side: 0.02 })
       bundle.answer({ selected: ["Stop"] })

@@ -6,7 +6,7 @@ description: "A per-session $ cap: at the cap the turn pauses on Continue (anoth
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:ef3bd650ad9a1aced77479f81c5ac914de6279506bd2c4c337d3283481fd8850
+  sha256: sha256:22fbb3dea8d0dc0016bf3a5ee5652f3844c530b999d3b0a9d50623d09a93da81
 # ctx.cost, new in the next release: release:bump raises requires_chi to it
 requires_chi: ">= 0.60.0"
 requires_chi_next: "ctx.cost"

@@ -50,7 +50,13 @@ class Plugin
     number&.positive? ? number : nil
   end
 
-  def self.money(value) = format("$%.2f", value)
+  # Cents, or up to four decimals under $0.10, so a small cap (/cap 0.003)
+  # doesn't read "$0.00 spent of $0.00".
+  def self.money(value)
+    return format("$%.2f", value) if value.zero? || value.abs >= 0.1
+
+    format("$%.4f", value).sub(/(\.\d\d\d*?)0+\z/, '\1')
+  end
 
   private
 
