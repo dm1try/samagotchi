@@ -10,7 +10,7 @@ module Samagotchi
   # subcommands have their own flags).
   class BundleCommand
     USAGE = <<~TEXT
-      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|check> [options]
+      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check> [options]
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -45,6 +45,9 @@ module Samagotchi
 
         new NAME [--dir DIR]
           Start a bundle in DIR/NAME (default ./NAME): manifest, plugin, a passing test, README.
+
+        test [PATH] [-- ARGS]
+          Run a bundle's test/*_test.rb (Minitest) or spec/ (RSpec) on chi's Ruby and lib.
 
         check [PATH] [--fix] [--set KEY=VALUE]
           Check a bundle you're writing (default: the current dir): manifest, files, sha256 lines,
@@ -85,6 +88,15 @@ module Samagotchi
         requires_chi this chi), plugin.rb (a /NAME command and an after_tool_call hook), test/NAME_test.rb
         (passes as written) and README.md. Then: chi bundle test, chi bundle check, chi bundle install.
     TEXT
+    TEST_HELP = <<~TEXT
+      Usage: chi bundle test [PATH] [-- ARGS]
+
+        Run the tests of the bundle at PATH (default: .) on the Ruby and the lib chi runs on, outside any Bundler env:
+        test/**/*_test.rb on Minitest (require "samagotchi/testing/minitest"), or else spec/ on RSpec with the kit
+        (-r samagotchi/testing/rspec). ARGS go to the test runner (-- -n /name/, -- -e "a name").
+        The tests run the bundle's code as written, with your HOME (the kit's sandbox is per test): run code you'd install.
+        Exit status: the tests'; 1 no tests; 2 usage, or minitest / rspec doesn't load.
+    TEXT
     CHECK_HELP = <<~TEXT
       Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
 
@@ -118,6 +130,7 @@ module Samagotchi
     NEW_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.value "--dir"
     end
+    TEST_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A-/)
     CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--fix"
       f.value "--set", key: :set, repeat: true
@@ -154,9 +167,10 @@ module Samagotchi
       when "build" then build(@argv[1..])
       when "trash" then trash(@argv[1..])
       when "new" then new_bundle(@argv[1..])
+      when "test" then test_bundle(@argv[1..])
       when "check" then check(@argv[1..])
       else
-        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, check"
+        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, test, check"
         CLI::Exit::USAGE
       end
     end
@@ -808,6 +822,22 @@ module Samagotchi
           chi bundle install .      then a new session loads it
       TEXT
       CLI::Exit::OK
+    end
+
+    # ARGS after "--" go to the test runner untouched.
+    def test_bundle(rest)
+      split = rest.index("--")
+      own, args = split ? [rest[0...split], rest[(split + 1)..]] : [rest, []]
+      parsed = parse_flags(TEST_FLAGS, own, "test", help: TEST_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      dir = parsed.args.first || "."
+      unless parsed.args.size <= 1 && File.directory?(dir)
+        @stderr.puts parsed.args.size > 1 ? TEST_HELP.lines.first : "chi bundle test: #{dir} isn't a folder"
+        return CLI::Exit::USAGE
+      end
+      require_relative "bundle_command/test_run"
+      TestRun.new(dir, args: args, stdout: @stdout, stderr: @stderr).run
     end
 
     def check(rest)

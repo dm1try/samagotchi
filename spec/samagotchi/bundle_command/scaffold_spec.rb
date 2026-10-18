@@ -7,7 +7,7 @@ require "rbconfig"
 require "tmpdir"
 
 # `chi bundle new`, as an installed chi runs it (ruby -I lib bin/chi, in a
-# folder outside the repo): what it writes checks clean and its test passes.
+# folder outside the repo): what it writes checks clean and `chi bundle test` passes it.
 RSpec.describe "chi bundle new" do
   let(:root) { File.expand_path("../../..", __dir__) }
   let(:tmp) { File.realpath(Dir.mktmpdir("bundle-new-")) }
@@ -34,8 +34,7 @@ RSpec.describe "chi bundle new" do
     expect(out).to include("info registered plugin.rb: command /todo-list\n")
     expect(status.exitstatus).to eq(0)
 
-    test_out, test_status = Open3.capture2e({ "BUNDLE_GEMFILE" => nil, "RUBYOPT" => nil, "HOME" => tmp },
-                                            RbConfig.ruby, "-I", "#{root}/lib", "test/todo_list_test.rb", chdir: dir)
+    test_out, _err, test_status = chi("test", chdir: dir)
     expect(test_out).to include("2 runs, 3 assertions, 0 failures, 0 errors")
     expect(test_status.exitstatus).to eq(0)
   end
