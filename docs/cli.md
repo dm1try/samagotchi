@@ -24,7 +24,7 @@
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles. Run by a session's `execute`, the `model` row (and host, loop, profile, thinking, served model) is **that session's** model, labelled `(this session <id8>; default …)`; elsewhere it is the default, `(default)`. `model key` is the memory overlay key (`<name>.<key>.md`), and `model notes` the model notes a prompt of that model loads (`model_notes_deepseek (system, 612 chars)`, `none`; inside a session its `--mute` list is left out). `chi self --model` prints only the model a new session starts on, an alias resolved to its target (the desktop helper's hint)
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
-- `chi bundle install|upgrade|uninstall|status|diff|list|build|trash` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument
+- `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
 
 ### First setup
 
@@ -86,6 +86,39 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).
   A bundle that fails to install makes the exit 1. `--dry-run` says what it
   would install.
+
+### Writing a bundle: new, test, check
+
+The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bundle-authoring.md)):
+
+- `chi bundle new NAME [--dir DIR]` writes `DIR/NAME/` (default `./NAME`; refused when it exists; `NAME` is
+  `a-z` first, then `a-z`, `0-9`, `-`, `_`, as a slash command): `manifest.yml` (a block-form `plugin:` entry with
+  its sha filled, `requires_chi: ">= <this chi>"`), `plugin.rb` (a `/NAME` command and an `after_tool_call` hook),
+  `test/NAME_test.rb` (Minitest on the bundle test kit, passing as written) and `README.md`, then prints the next
+  steps. Exit 1 when it refuses, 2 for usage.
+- `chi bundle test [PATH] [-- ARGS]` runs the bundle's tests on the Ruby and the lib chi runs on, outside any
+  Bundler env: `test/**/*_test.rb` on Minitest (`-r samagotchi/testing/minitest`), or else `spec/` on RSpec with
+  the kit (`--options /dev/null -r samagotchi/testing/rspec`, as `rake bundles:specs`). `ARGS` go to the runner
+  (`-- -n /name/`). Exit status: the tests'; 1 with no tests; 2 for usage, or when minitest / rspec doesn't load on
+  chi's Ruby. The tests run the bundle's code as written, with your environment (the kit sandboxes each
+  test's HOME and XDG dirs, not the process).
+- `chi bundle check [PATH] [--fix] [--set KEY=VALUE]` (PATH defaults to `.`) checks it as an install takes it, one
+  finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, then `ok|failed: N errors, N
+  warnings`. Exit 1 on any error, 0 otherwise, 2 for usage. It installs and loads the bundle in a temp sandbox
+  (HOME, config and state), not in yours, but in chi's own process: the plugin's and hooks' code runs as written,
+  so run it (and `test`) on code you'd install. The codes, in order: `manifest` (a parse error, verbatim; the run
+  stops), `missing-file`, `unlisted` (warn: a file an install leaves out, by `MemoryFiles`' rules, so a README
+  isn't one), `sha` (a stale or placeholder sha, or a plugin / hook / script entry with no sha line; `--fix`
+  rewrites the first two and prints `fixed sha FILE → sha256:…`), `requires-chi` (this chi doesn't satisfy it:
+  error; missing on a bundle with code: warn), `requires-chi-floor` (warn: the plugin calls an API newer than the
+  oldest chi `requires_chi` admits, from `Plugin::Api::SINCE`), `trust` (warn: `trust_level: reviewed|trusted` on a
+  bundle chi doesn't ship), `clash` (warn: a name chi ships, or one installed from elsewhere; the sandboxed install
+  then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin or hook load failure at
+  the source `file:line`; skipped while a placeholder sha is unfilled), `registered` (info: each command, tool,
+  hook with its priority, init, toolkit, tool source and peer source), `hook-event` (warn: a `chi.on` event chi
+  never fires), `boundary` (warn: a `Samagotchi::` name outside "Stable for bundles"; a shipped bundle's listed
+  exceptions aside) and `tests` (info: how to run them, or "no tests"). `--set KEY=VALUE` (repeatable, typed as
+  `chi --set`) goes to `bundles: <name>:` in the sandbox's config.yml.
 
 ### Listing the models
 

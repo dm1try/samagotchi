@@ -22,7 +22,11 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 
 | Piece | Role |
 |---|---|
-| `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash`; runs the Installer, prints its summary, runs the conflict agent step; refuses a source already installed under another name (`installed_under_another_name?`: a git URL bundle recorded under its repo's name before the manifest named it) |
+| `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash/new/test/check`; runs the Installer, prints its summary, runs the conflict agent step; refuses a source already installed under another name (`installed_under_another_name?`: a git URL bundle recorded under its repo's name before the manifest named it) |
+| `BundleCommand::Check` (bundle_command/check.rb) | `chi bundle check [PATH] [--fix] [--set K=V]`: a bundle being written, checked as an install takes it (docs/cli.md lists the codes); parses the manifest from `Shas.parseable` (a placeholder sha is a `sha` finding, not a YAML error), reads the user's installed bundles only for `clash`, and installs and loads through `Testing::Install` in a `Testing::Sandbox` with `force: true`, the log's echoes swallowed |
+| `BundleCommand::Scaffold` (bundle_command/scaffold.rb) | `chi bundle new NAME`: the starting files (block-form `plugin:` entry, `requires_chi` at this chi, a kit test that passes as written); the manifest's shas are filled through `Shas.refresh` |
+| `BundleCommand::TestRun` (bundle_command/test_run.rb) | `chi bundle test`: `RbConfig.ruby -I <chi's lib>` on `test/**/*_test.rb` (Minitest) or `spec/` (RSpec, as `rake bundles:specs`), under `Bundler.with_unbundled_env` when Bundler's runtime is loaded |
+| `Shas` (shas.rb) | a manifest's `sha256:` lines: `.refresh(dir[, text])` rewrites them line by line (the layout kept; a `files:` entry it can't place raises `Shas::Error`), `.stale` → `[Stale(file, old, new)]` (`old` `""` for a placeholder, nil for a plugin / hook / script entry with no sha line), `.parseable` (a placeholder `sha256: sha256:` isn't YAML). Plain Ruby: `rake bundles:sha` / `bundles:check` (`script/release/release_tools.rb`) and `chi bundle check --fix` share it |
 | `SourceNormalizer` (source.rb) | source → local dir; a git/zip/tar extract is *owned* and removed after the install |
 | `SourceIdentity` (source.rb) | what a source is, for comparing two installs of one name: `shipped:<dir>` (any gem or checkout), `git:<url>` (no `#ref`, trailing `/` or `.git`), `path:<realpath>`; nil when it can't place one |
 | `PreparedSource` (source.rb) | one source normalized once (dir, owned, git commit): `BundleCommand` reads the bundle's name from its `manifest.yml` (the name for every kind of source, a git URL too) and hands it to the Installer (`prepared:`), so a source is cloned or extracted once per command |
@@ -47,7 +51,12 @@ and checks the recorded sha256 (and `requires_chi`) before loading.
 The checks live in `Hooks::BundleLoader.load` and `Plugin::Loader.load_bundle`; the loading itself is
 `BundleLoader.load_hook_file` (one hook file, into a given `namespace:`) and `Plugin::Loader.register_file` (one
 plugin file: build, `register`, `commit!`), which raise instead of logging: the bundle test kit
-(`Samagotchi::Testing::Bundle`) loads a bundle's source through them, unchecked.
+(`Samagotchi::Testing::Bundle`) loads a bundle's source through them, unchecked. `Samagotchi::Testing::Install` is the
+checked path in a sandbox: the Installer, then `ExtensionLoad` (bundle hooks, then `load_plugins`), returning the
+Installer's warnings, this bundle's load failures and what it registered (`Install.registered`, also the parity
+spec's shape). A load failure carries `LoadFailures::Failure#location` (the first backtrace frame inside the
+bundle, or a SyntaxError's own line), which `Install` maps from the installed copy (`.bundles/<name>/plugin/`,
+`hooks/`) back to the source dir.
 
 ## Installer#run, in order
 

@@ -78,7 +78,11 @@ The kit's own specs, in `spec/samagotchi/testing/`, keep it and the bundles hone
   `Testing::Sessions` has `Plugin::Sessions`' methods and parameters, and each `ctx` helper lands in its recorder. A
   member added to the Host fails it until the kit has it.
 - `spec/samagotchi/testing/shipped_bundles_spec.rb`: each shipped bundle with a plugin or hooks registers the same
-  commands, tools, hooks, inits, toolkits and sources loaded by the kit as installed and loaded by chi.
+  commands, tools, hooks, inits, toolkits and sources loaded by the kit as installed and loaded by chi
+  (`Testing::Install`).
+- `spec/samagotchi/bundle_command/check_spec.rb`: `chi bundle check` passes every shipped bundle with no errors (one
+  example per bundle), so a shipped bundle that wouldn't install or load cleanly for a user fails here too. Run it
+  by hand on one with `ruby -Ilib bin/chi bundle check lib/samagotchi/bundles/NAME`.
 - `spec/samagotchi/testing/boundary_spec.rb`, the boundary lint: each bundle's Ruby (plugin, hooks, scripts, specs)
   reaches chi only through `Samagotchi::Testing::Boundary::ALLOWED` (the "Stable for bundles" list) and that
   bundle's `Boundary::EXCEPTIONS` entry, each with why. A new internal reference fails it, and so does an exception

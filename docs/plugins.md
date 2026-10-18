@@ -1209,6 +1209,16 @@ bundle.shutdown
   own sandbox, its bundles shut down after it (chi's shipped bundles keep theirs in `<bundle>/spec/`,
 docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subclass
   `Samagotchi::Testing::Case` (the same helpers).
+- **Installed, not loaded from source:** `Samagotchi::Testing::Install.run(dir, settings: {})` (or
+  `bundle.install`) installs the bundle into the sandbox as `chi bundle install` does (sha256 and `requires_chi`
+  checked) and loads the installed copy with chi's own loaders. It returns `warnings` (the Installer's),
+  `plugin_failures` / `hook_failures` (each with the `location` in your source, `plugin.rb:12`) and `registered`
+  (commands, tools, hooks per event, inits, toolkits, tool and peer sources). A name chi ships raises
+  `MemoryBundle::Installer::InstallError` unless `force: true`.
+- **From the command line:** `chi bundle test [PATH]` runs a bundle's `test/**/*_test.rb` (or `spec/`) on the
+  Ruby and lib chi runs on, and `chi bundle check [PATH] [--fix]` runs `Install` (and the manifest, sha and
+  `requires_chi` checks) in a sandbox ([cli.md](cli.md#writing-a-bundle-new-test-check)). `chi bundle new NAME`
+  writes a test to start from.
 
 ## The btw bundle
 
