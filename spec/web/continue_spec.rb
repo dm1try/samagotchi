@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
 
     expect(create(continues: previous.id, idle: true, model: "x", dir: folder, llm_context: {}))
       .to eq([400, { "error" => "invalid_continues",
-                     "detail" => "continues takes the previous session's folder, llm_context and thinking; " \
+                     "detail" => "continues takes the previous session's folder, llm_context, thinking and bundle_settings; " \
                                  "leave out dir, llm_context" }])
     expect(create(continues: previous.id, idle: true, thinking: "low").last["detail"]).to end_with("leave out thinking")
     expect(create(continues: 7, idle: true).first).to eq(400)

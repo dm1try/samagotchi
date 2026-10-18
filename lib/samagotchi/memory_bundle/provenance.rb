@@ -141,7 +141,7 @@ module Samagotchi
       # @param context_providers [Array<ContextProviders::Provider>]
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
-                scripts_files: {}, context_providers: [], file_descriptions: {})
+                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [])
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -239,6 +239,7 @@ module Samagotchi
           end
         end
         manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        manifest_data["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
 
         write_manifest(manifest_data)
       end

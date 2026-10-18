@@ -12,6 +12,15 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(reasoning_history: :drop)).not_to be_empty
     expect(described_class.new(appended_prompt_files: ["/r/a.md"])).not_to be_empty
     expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))).not_to be_empty
+    expect(described_class.new(bundle_settings: { "cost-cap" => { "cap" => 3 } })).not_to be_empty
+    expect(described_class.new(bundle_settings: {})).to be_empty
+  end
+
+  it "keeps bundle settings frozen, string-keyed" do
+    setup = described_class.new(bundle_settings: { "cost-cap": { cap: 3 } })
+    expect(setup.bundle_settings).to eq("cost-cap" => { "cap" => 3 })
+    expect(setup.bundle_settings).to be_frozen
+    expect(described_class.new.bundle_settings).to eq({})
   end
 
   it "takes a session's own settings, and none from no session" do
@@ -30,6 +39,8 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.of(session).reasoning_history).to eq(:all)
     session.appended_prompt_files = ["/r/a.md"]
     expect(described_class.of(session).appended_prompt_files).to eq(["/r/a.md"])
+    session.bundle_settings = { "cost-cap" => { "cap" => 2 } }
+    expect(described_class.of(session).bundle_settings).to eq("cost-cap" => { "cap" => 2 })
     expect(described_class.of(nil)).to be_empty
   end
 
@@ -38,9 +49,10 @@ RSpec.describe Samagotchi::SessionSetup do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd,
                                               setup: described_class.new(llm_context: override, thinking: :medium,
                                                                          reasoning_history: :drop,
-                                                                         appended_prompt_files: ["/r/a.md"]))
+                                                                         appended_prompt_files: ["/r/a.md"],
+                                                                         bundle_settings: { "x" => { "k" => 1 } }))
 
     expect(session).to have_attributes(llm_context: override, thinking: :medium, reasoning_history: :drop,
-                                       appended_prompt_files: ["/r/a.md"])
+                                       appended_prompt_files: ["/r/a.md"], bundle_settings: { "x" => { "k" => 1 } })
   end
 end

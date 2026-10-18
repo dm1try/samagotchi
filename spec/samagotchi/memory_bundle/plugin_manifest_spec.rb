@@ -72,6 +72,34 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(provenance.record.requires_chi).to eq(">= 0.1.0")
     end
 
+    it "reads session_settings: (the keys a session's --set may give), records them at install and builds them back" do
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path) + "session_settings: [cap, warn_at]\n")
+      expect(described_class.read(dir: src).session_settings).to eq(%w[cap warn_at])
+      expect(described_class.read(dir: write_source).session_settings).to eq([])
+
+      install(src)
+      expect(provenance.record.session_settings).to eq(%w[cap warn_at])
+      expect(provenance.read[:session_settings]).to eq(%w[cap warn_at])
+
+      dir = File.join(tmpdir, "built")
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, session_settings: %w[cap])
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))["session_settings"]).to eq(["cap"])
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {})
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))).not_to have_key("session_settings")
+    end
+
+    it "refuses session_settings: that isn't a list of setting names" do
+      ["session_settings: cap\n", "session_settings: [a.b]\n", "session_settings: [{cap: 1}]\n"].each do |line|
+        src = write_source
+        path = File.join(src, "manifest.yml")
+        File.write(path, File.read(path) + line)
+        expect { described_class.read(dir: src) }
+          .to raise_error(described_class::ValidationError, /session_settings: a list of setting names/), line
+      end
+    end
+
     it "has no plugin when the manifest names none" do
       manifest = described_class.read(dir: write_source(plugin: nil))
       expect(manifest.plugin).to be_nil

@@ -313,6 +313,22 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).toolkit).to be_nil
     end
 
+    it "round-trips its bundle settings (chi --set), and reads {} from a file without the field" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                            setup: Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 0.5, "on" => false } }))
+      expect(session.bundle_settings).to be_frozen
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["bundle_settings"]).to eq("cost-cap" => { "cap" => 0.5, "on" => false })
+      expect(described_class.load(session.id, state_dir: tmpdir).bundle_settings).to eq("cost-cap" => { "cap" => 0.5, "on" => false })
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("bundle_settings")))
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.bundle_settings).to eq({})
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["bundle_settings"]).to eq({})
+    end
+
     it "round-trips its appended prompt files, and reads [] from a file without the field" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       expect(session.appended_prompt_files).to eq([])

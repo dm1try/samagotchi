@@ -17,7 +17,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
         "hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } },
         "guardrails" => { "r.yml" => { "sha256" => "sha256:rr" } }, "scripts" => { "s.rb" => { "sha256" => "sha256:ss" } },
         "plugin" => { "file" => "p.rb", "sha256" => "sha256:pp" }, "needs" => [{ "command" => "gh" }],
-        "includes" => %w[a b], "context_providers" => [{ "match" => "x" }]
+        "includes" => %w[a b], "context_providers" => [{ "match" => "x" }], "session_settings" => ["cap"]
       }
       bundle = described_class.parse("full", JSON.parse(JSON.generate(raw)))
       expect(bundle).to have_attributes(
@@ -27,11 +27,16 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
         hooks: { "g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call", on_error: "fail_closed", priority: 10) },
         guardrails: { "r.yml" => "sha256:rr" }, scripts: { "s.rb" => "sha256:ss" },
         plugin: Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb", sha256: "sha256:pp"),
-        needs: [{ "command" => "gh" }], includes: %w[a b], context_providers: [{ "match" => "x" }]
+        needs: [{ "command" => "gh" }], includes: %w[a b], context_providers: [{ "match" => "x" }],
+        session_settings: ["cap"]
       )
       expect([bundle.effective_scope, bundle.experimental?, bundle.profile?, bundle.needs?, bundle.context_providers?])
         .to eq(["project", false, true, true, true])
       expect([bundle.owns?("a.md"), bundle.owns?(:"a.md"), bundle.owns?("b.md")]).to eq([true, true, false])
+    end
+
+    it "reads session_settings of another shape as none" do
+      expect(described_class.parse("x", { "session_settings" => "cap" }).session_settings).to eq([])
     end
 
     it "reads symbol keys too (a record read with symbolize_names)" do
@@ -44,7 +49,8 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
       bundle = described_class.parse("min", {})
       expect(bundle).to eq(described_class.new(name: "min"))
       expect(bundle).to have_attributes(version: nil, scope: nil, files: {}, hooks: {}, guardrails: {}, scripts: {},
-                                        plugin: nil, needs: nil, includes: nil, context_providers: nil, error: nil)
+                                        plugin: nil, needs: nil, includes: nil, context_providers: nil, error: nil,
+                                        session_settings: [])
       expect([bundle.effective_scope, bundle.experimental?, bundle.profile?, bundle.needs?, bundle.context_providers?, bundle.error?])
         .to eq(["system", true, false, false, false, false])
     end

@@ -2004,6 +2004,39 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions with bundle_settings" do
+    def create(manager, settings, **extra)
+      body = JSON.generate({ "idle" => true, "bundle_settings" => settings, **extra })
+      status, _headers, resp = build_app(manager: manager).call(env_for("/api/sessions", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    before do
+      allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"])
+    end
+
+    it "starts the session with them (chi --set's), none for null" do
+      manager = FakeResponsesManager.new
+      expect(create(manager, { "cost-cap" => { "cap" => 2.5 } }).first).to eq(201)
+      expect(create(manager, nil).first).to eq(201)
+
+      expect(manager.spawn_calls.map { |c| c[:extra][:setup] })
+        .to eq([Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 2.5 } }), nil])
+    end
+
+    it "answers 400 invalid_bundle_settings for another shape, a bundle or key it doesn't offer, and beside continues" do
+      manager = FakeResponsesManager.new
+      expect(create(manager, [1])).to eq([400, { "error" => "invalid_bundle_settings",
+                                                 "detail" => "bundle_settings is an object of bundle => {key => scalar}" }])
+      expect(create(manager, { "cost-cap" => { "default" => 1 } }))
+        .to eq([400, { "error" => "invalid_bundle_settings", "detail" => "bundle_settings cost-cap.default: cost-cap takes cap" }])
+      expect(create(manager, { "nope" => { "x" => 1 } }).last["detail"]).to include("no installed bundle nope")
+      expect(create(manager, { "cost-cap" => { "cap" => 1 } }, continues: "abcd").last["detail"])
+        .to include("leave out bundle_settings")
+      expect(manager.spawn_calls).to be_empty
+    end
+  end
+
   describe "POST /api/sessions idle with a preview" do
     it "names the idle session by the first message it is about to get; a prompted session takes none" do
       manager = FakeResponsesManager.new

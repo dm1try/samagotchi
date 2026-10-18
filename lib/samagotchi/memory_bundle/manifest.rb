@@ -41,6 +41,9 @@ module Samagotchi
     #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
     #       why: GitHub PR      #   optional
     #       every_seconds: 300  #   optional
+    #   session_settings: [cap] # optional — the settings a session may set
+    #                          #   (chi --set cost-cap.cap=3), read by the
+    #                          #   plugin from ctx.settings at call time
     #   includes: [a, b]       # optional — a profile (meta bundle): the
     #                          #   shipped bundles it installs; its dir holds
     #                          #   only manifest.yml (MemoryBundle::Profile)
@@ -60,7 +63,7 @@ module Samagotchi
       # the description a mapping gave, for the files that have one; hooks:
       # name → BundleHook.
       attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
-                  :scripts, :context_providers
+                  :scripts, :context_providers, :session_settings
 
       def initialize(path:)
         @path = path
@@ -84,6 +87,7 @@ module Samagotchi
         @scripts = parse_scripts(raw["scripts"])
         @context_providers = parse_context_providers(raw["context_providers"])
         @includes = parse_includes(raw["includes"])
+        @session_settings = self.class.parse_session_settings(raw["session_settings"])
       end
 
       # A profile: it installs the bundles in includes instead of files.
@@ -136,7 +140,8 @@ module Samagotchi
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       # +file_descriptions+ (name → text) writes those files as mappings.
       def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
-                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], file_descriptions: {})
+                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], file_descriptions: {},
+                     session_settings: [])
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -159,7 +164,24 @@ module Samagotchi
         manifest["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } unless needs.empty?
         manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
         manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        manifest["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+      end
+
+      # A setting key a session may set (BundleSessionSettings::KEY).
+      SESSION_SETTING = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
+
+      # session_settings: → the keys, [] when absent; anything but a list of
+      # plain key names is a ValidationError.
+      def self.parse_session_settings(raw)
+        return [] if raw.nil?
+
+        keys = raw.is_a?(Array) ? raw : nil
+        unless keys&.all? { |key| (key.is_a?(String) || key.is_a?(Symbol)) && key.to_s.match?(SESSION_SETTING) }
+          raise ValidationError, "session_settings: a list of setting names (#{raw.inspect})"
+        end
+
+        keys.map(&:to_s).uniq
       end
 
       # needs: → [{command:, why:, hint:}] (why/hint a String or nil), [] when

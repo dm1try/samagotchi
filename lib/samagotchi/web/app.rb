@@ -649,6 +649,15 @@ module Samagotchi
         thinking, error = request_thinking(body["thinking"])
         return error if error
 
+        # bundle_settings: the session's own bundle settings (chi --set:
+        # {bundle => {key => scalar}}), checked against the installed
+        # bundles the same way.
+        begin
+          bundle_settings = BundleSessionSettings.from_request(body["bundle_settings"])
+        rescue BundleSessionSettings::Error => e
+          return error_response(400, "invalid_bundle_settings", e.message)
+        end
+
         folder = dir ? { working_directory: dir } : {}
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
@@ -659,7 +668,7 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:title] = preview unless preview.empty?
-        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking)
+        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, bundle_settings: bundle_settings)
         folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
@@ -679,7 +688,7 @@ module Samagotchi
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
       # link of that session's chain (SessionManager.continue_session), in its
       # folder and with its own setup (SessionSetup: llm_context, thinking
-      # and reasoning_history levels), so dir, llm_context and thinking are
+      # and reasoning_history levels, bundle settings), so dir, llm_context, thinking and bundle_settings are
       # refused beside it (a create takes no reasoning_history). It runs on
       # model (or model_name) when given, else on the previous link's: one
       # whose host is gone falls back to the default, and the 201's
@@ -694,9 +703,9 @@ module Samagotchi
         unless given.is_a?(String) && !given.strip.empty?
           return error_response(400, "invalid_continues", "continues is a session id")
         end
-        if (fields = %w[dir llm_context thinking].select { |key| body.key?(key) }).any?
+        if (fields = %w[dir llm_context thinking bundle_settings].select { |key| body.key?(key) }).any?
           return error_response(400, "invalid_continues",
-                                "continues takes the previous session's folder, llm_context and thinking; " \
+                                "continues takes the previous session's folder, llm_context, thinking and bundle_settings; " \
                                 "leave out #{fields.join(", ")}")
         end
 

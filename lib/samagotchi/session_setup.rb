@@ -4,6 +4,7 @@ require_relative "llm_context_override"
 require_relative "reasoning_history"
 require_relative "thinking"
 require_relative "toolkit"
+require_relative "bundle_session_settings"
 
 module Samagotchi
   # A session's own settings that come before its model's, carried as one
@@ -15,20 +16,26 @@ module Samagotchi
   # +appended_prompt_files+ the absolute paths chi --append-system-prompt
   # named (their text goes into the system prompt; [] with none),
   # +toolkit+ a Toolkit or nil (SessionManager.spawn_session gives the
-  # session config's toolkit.default then).
+  # session config's toolkit.default then), +bundle_settings+ the bundle
+  # settings chi --set gave ({bundle => {key => value}}, frozen; {} with
+  # none), which Plugin::Context#settings lays over config.yml's.
   #
   # It doesn't save itself: the session keeps each setting in its own field
   # and file key, and resolves it on its own. A delegate child starts
   # without one (but the toolkit its delegate call named); a continue and a
   # fork copy their session's (.of).
-  SessionSetup = Data.define(:llm_context, :thinking, :reasoning_history, :appended_prompt_files, :toolkit) do
-    def initialize(llm_context: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [], toolkit: nil)
+  SessionSetup = Data.define(:llm_context, :thinking, :reasoning_history, :appended_prompt_files, :toolkit,
+                             :bundle_settings) do
+    def initialize(llm_context: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [], toolkit: nil,
+                   bundle_settings: {})
       super(llm_context: llm_context, thinking: thinking, reasoning_history: reasoning_history,
-            appended_prompt_files: Array(appended_prompt_files).map(&:to_s).freeze, toolkit: toolkit)
+            appended_prompt_files: Array(appended_prompt_files).map(&:to_s).freeze, toolkit: toolkit,
+            bundle_settings: BundleSessionSettings.normalize(bundle_settings))
     end
 
     def empty?
-      llm_context.nil? && thinking.nil? && reasoning_history.nil? && appended_prompt_files.empty? && toolkit.nil?
+      llm_context.nil? && thinking.nil? && reasoning_history.nil? && appended_prompt_files.empty? && toolkit.nil? &&
+        bundle_settings.empty?
     end
 
     # A session's own setup, for a session that starts from it. Its
@@ -40,7 +47,8 @@ module Samagotchi
       return new if session.nil?
 
       new(llm_context: session.llm_context, thinking: session.thinking, reasoning_history: session.reasoning_history,
-          appended_prompt_files: session.appended_prompt_files, toolkit: Toolkit.of(session.toolkit))
+          appended_prompt_files: session.appended_prompt_files, toolkit: Toolkit.of(session.toolkit),
+          bundle_settings: session.bundle_settings)
     end
   end
 end

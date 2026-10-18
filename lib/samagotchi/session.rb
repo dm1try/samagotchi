@@ -208,6 +208,18 @@ module Samagotchi
       @toolkit = value.is_a?(Toolkit) ? value : Toolkit.from_file(value)
     end
 
+    # The session's own bundle settings (chi --set BUNDLE.KEY=VALUE):
+    # {bundle => {key => value}}, frozen, {} for none and for a session from
+    # before them. Given when it was created and never changed; a respawn,
+    # a continue and a fork keep them (SessionSetup.of), a delegate child
+    # doesn't. Plugin::Context#settings lays them over config.yml's.
+    attr_reader :bundle_settings
+
+    # @param value [Hash, nil] the session file's form too
+    def bundle_settings=(value)
+      @bundle_settings = BundleSessionSettings.normalize(value)
+    end
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -242,7 +254,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, interrupted_turn: nil)
+                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -272,6 +284,7 @@ module Samagotchi
       self.reasoning_history = reasoning_history
       self.appended_prompt_files = appended_prompt_files
       self.toolkit = toolkit
+      self.bundle_settings = bundle_settings
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -369,6 +382,7 @@ module Samagotchi
         reasoning_history: setup.reasoning_history,
         appended_prompt_files: setup.appended_prompt_files,
         toolkit: setup.toolkit,
+        bundle_settings: setup.bundle_settings,
         continues: continues
       )
     end
@@ -434,6 +448,7 @@ module Samagotchi
       "reasoning_history" => nil,
       "appended_prompt_files" => [],
       "toolkit" => nil,
+      "bundle_settings" => {},
       "interrupted_turn" => nil
     }.freeze
 

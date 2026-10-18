@@ -7,6 +7,7 @@ require_relative "session"
 require_relative "session_commands"
 require_relative "session_inbox"
 require_relative "session_manager"
+require_relative "bundle_session_settings"
 require_relative "session_chain"
 require_relative "context_quote"
 require_relative "reply_wait"
@@ -39,7 +40,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set BUNDLE.KEY=VALUE]... [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
@@ -84,6 +85,11 @@ module Samagotchi
                     (full, lean, child, a config or bundle one; default
                     config's toolkit.default), and tools declared on top
                     of it or left out (repeatable, a comma list too)
+        --set BUNDLE.KEY=VALUE
+                    (--new) a bundle setting for this session, over
+                    config.yml's bundles: (repeatable; a key its bundle's
+                    manifest lists in session_settings:, a YAML scalar:
+                    --set cost-cap.cap=3)
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -141,6 +147,7 @@ module Samagotchi
       f.value "--toolkit"
       f.value "--tool", key: :tools, repeat: true
       f.value "--no-tool", key: :no_tools, repeat: true
+      f.value "--set", key: :sets, repeat: true
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.switch "--cut"
@@ -284,6 +291,7 @@ module Samagotchi
       %i[dir model continues thinking toolkit].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       TOOLKIT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") unless Array(options[key]).empty? }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
+      return usage_error("--set needs --new") unless Array(options[:sets]).empty?
       return usage_error("give session ids") if options[:ids].empty?
 
       options
@@ -302,10 +310,11 @@ module Samagotchi
       if options[:continues]
         taken = [("--dir" if options[:dir])] +
                 LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])] +
-                [("--toolkit" if options[:toolkit])] + TOOLKIT_FLAGS.filter_map { |key, flag| flag unless Array(options[key]).empty? }
+                [("--toolkit" if options[:toolkit])] + TOOLKIT_FLAGS.filter_map { |key, flag| flag unless Array(options[key]).empty? } +
+                [("--set" unless Array(options[:sets]).empty?)]
         unless taken.compact.empty?
-          return usage_error("--continues takes the previous session's folder, LLM context, thinking level and " \
-                             "toolkit; " \
+          return usage_error("--continues takes the previous session's folder, LLM context, thinking level, " \
+                             "toolkit and bundle settings; " \
                              "leave out #{taken.compact.join(", ")}")
         end
       end
@@ -327,6 +336,11 @@ module Samagotchi
       end
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit
+      begin
+        options[:bundle_settings] = BundleSessionSettings.from_flags(options[:sets]) unless Array(options[:sets]).empty?
+      rescue BundleSessionSettings::Error => e
+        return usage_error(e.message)
+      end
 
       if options[:dir]
         options[:dir] = File.expand_path(options[:dir])
@@ -376,7 +390,8 @@ module Samagotchi
                                                           model_name: options[:model],
                                                           setup: SessionSetup.new(llm_context: options[:llm_context],
                                                                                   thinking: options[:thinking],
-                                                                                  toolkit: options[:toolkit_value]),
+                                                                                  toolkit: options[:toolkit_value],
+                                                                                  bundle_settings: options[:bundle_settings] || {}),
                                                           state_dir: @state_dir)
                   end
       rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e

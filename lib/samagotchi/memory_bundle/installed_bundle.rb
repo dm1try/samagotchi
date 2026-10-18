@@ -20,13 +20,15 @@ module Samagotchi
     #               the lists as recorded (nil when absent): Manifest.parse_needs
     #               and ContextProviders.parse_list check them
     #   includes    a profile's recorded members, nil for a plain bundle
+    #   session_settings
+    #               the keys a session may set (chi --set), [] when none
     #   error       why manifest.json couldn't be read (the rest empty), else nil
     class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :trust_level, :source_commit,
                                         :requires_chi, :files, :hooks, :guardrails, :scripts, :plugin, :needs,
-                                        :includes, :context_providers, :error)
+                                        :includes, :context_providers, :session_settings, :error)
       OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, trust_level: nil, source_commit: nil,
                    requires_chi: nil, files: {}, hooks: {}, guardrails: {}, scripts: {}, plugin: nil, needs: nil,
-                   includes: nil, context_providers: nil, error: nil }.freeze
+                   includes: nil, context_providers: nil, session_settings: [], error: nil }.freeze
 
       def initialize(name:, **fields)
         super(name: name, **OPTIONAL, **fields)
@@ -57,7 +59,8 @@ module Samagotchi
             guardrails: mapping(h["guardrails"]) { |meta| sha(meta) },
             scripts: mapping(h["scripts"]) { |meta| sha(meta) },
             plugin: PluginRef.parse(h["plugin"]), needs: h["needs"], context_providers: h["context_providers"],
-            includes: h["includes"].is_a?(Array) ? h["includes"].map(&:to_s) : nil)
+            includes: h["includes"].is_a?(Array) ? h["includes"].map(&:to_s) : nil,
+            session_settings: h["session_settings"].is_a?(Array) ? h["session_settings"].map(&:to_s) : [])
       end
 
       def self.string(value) = value&.to_s

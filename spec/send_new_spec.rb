@@ -48,6 +48,31 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
   end
 
+  describe "--set BUNDLE.KEY=VALUE" do
+    before { allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"]) }
+
+    it "starts the session with the bundle settings, a later --set of a key winning" do
+      expect(run("--new", "--set", "cost-cap.cap=3", "--set=cost-cap.cap=0.5", "-m", "hi")).to eq(0), err.string
+      expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 0.5 } }))
+    end
+
+    it "refuses it without --new, beside --continues, and a bundle or key it doesn't offer" do
+      expect(run("--set", "cost-cap.cap=3", "-m", "hi", "abcd")).to eq(2)
+      expect(err.string).to include("--set needs --new")
+      expect(run("--new", "--set", "nope.x=1", "-m", "hi")).to eq(2)
+      expect(err.string).to include("--set nope.x: no installed bundle nope (bundles that take --set: cost-cap)")
+      expect(run("--new", "--set", "cost-cap.default=1", "-m", "hi")).to eq(2)
+      expect(err.string).to include("--set cost-cap.default: cost-cap takes cap")
+      expect(run("--new", "--set", "cost-cap", "-m", "hi")).to eq(2)
+      expect(err.string).to include("--set takes BUNDLE.KEY=VALUE, not cost-cap")
+      expect(spawned).to be_empty
+    end
+
+    it "names it in usage" do
+      expect(described_class::USAGE).to include("--set BUNDLE.KEY=VALUE")
+    end
+  end
+
   it "starts the session on --toolkit with --tool / --no-tool on top, and refuses them without --new" do
     expect(run("--new", "--toolkit", "lean", "--tool", "delegate,list_sessions", "--no-tool", "web_fetch", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup].toolkit)
@@ -220,12 +245,15 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(err.string).to include("--continues needs --new")
       expect(run("--new", "--continues", previous.id, "--dir", folder, "--model", "M", "--llm-context", "stale",
                  "-m", "x")).to eq(2)
-      expect(err.string).to include("--continues takes the previous session's folder, LLM context, thinking level and " \
-                                    "toolkit; leave out --dir, --llm-context")
+      expect(err.string).to include("--continues takes the previous session's folder, LLM context, thinking level, " \
+                                    "toolkit and bundle settings; leave out --dir, --llm-context")
       expect(run("--new", "--continues", previous.id, "--thinking", "low", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --thinking")
       expect(run("--new", "--continues", previous.id, "--toolkit", "lean", "--tool", "delegate", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --toolkit, --tool")
+      allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"])
+      expect(run("--new", "--continues", previous.id, "--set", "cost-cap.cap=1", "-m", "x")).to eq(2)
+      expect(err.string).to include("leave out --set")
       expect(run("--new", "--continues", previous.id, "--wait")).to eq(2)
       expect(err.string).to include("--wait needs a message to wait for")
       expect(links).to be_empty

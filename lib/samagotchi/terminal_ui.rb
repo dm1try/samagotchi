@@ -100,12 +100,16 @@ module Samagotchi
     # @param toolkit [Toolkit, nil] --toolkit/--tool/--no-tool: a new
     #   session's toolkit (config's toolkit.default without); a resumed one
     #   keeps its own, with a line naming +toolkit_flags+ (the flags given)
+    # @param bundle_settings [Hash] --set's values (BundleSessionSettings):
+    #   a new session's own; a resumed one keeps its own (--set is in
+    #   +toolkit_flags+ then)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
-                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [])
+                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [], bundle_settings: {})
       @scratch        = scratch
       @toolkit        = toolkit
       @toolkit_flags  = toolkit_flags
+      @bundle_settings = bundle_settings
       @thinking_word  = thinking
       @prompt         = prompt
       @llm_context_words = llm_context
@@ -274,7 +278,8 @@ module Samagotchi
         preloaded_memory_names: @requested_memories,
         muted_memory_names: @muted_memory_names,
         scratch: @scratch,
-        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured)
+        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured,
+                                bundle_settings: @bundle_settings)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

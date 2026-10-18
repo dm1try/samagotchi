@@ -420,7 +420,8 @@ module Samagotchi
           conflicts: @conflicts.keys,
           scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
-          file_descriptions: @manifest.file_descriptions
+          file_descriptions: @manifest.file_descriptions,
+          session_settings: @manifest.session_settings
         )
       end
 
