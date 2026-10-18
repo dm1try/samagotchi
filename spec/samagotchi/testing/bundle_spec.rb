@@ -364,7 +364,7 @@ RSpec.describe Samagotchi::Testing::Bundle do
       class Plugin
         def register(chi)
           chi.command("/ask", "asks") do |_args, ctx|
-            picked = ctx.ask_user(question: "which?", options: %w[a b])
+            picked = ctx.ask_user(question: "which?", options: %w[a b], effects: { "b" => :spend })
             answer = ctx.ask_model(messages: ctx.messages, prompt: "why \#{picked&.fetch(:selected)}?", timeout: 5)
             "\#{picked&.fetch(:selected)}: \#{answer}"
           end
@@ -376,10 +376,30 @@ RSpec.describe Samagotchi::Testing::Bundle do
     bundle.model_answers << "because"
     expect(bundle.command("/ask")).to eq("b: because")
     expect(bundle.questions.map { |q| [q.question, q.options, q.hook] }).to eq([["which?", %w[a b], "plugin.rb (bundle kit-test)"]])
+    # The tags as the plugin gave them, for a spec to assert.
+    expect(bundle.questions.first.effects).to eq("b" => :spend)
     expect(bundle.model_requests.first.timeout).to eq(5.0)
     expect(bundle.model_requests.first.request.last[:content]).to include("why b?")
 
     expect { bundle.command("/ask") }.to raise_error(Samagotchi::Plugin::ModelError, /no model answer queued/)
+  end
+
+  it "asks no one for effects chi would refuse, as chi does: nil, nothing recorded" do
+    write_bundle(plugin: <<~RUBY)
+      class Plugin
+        def register(chi)
+          chi.command("/ask", "asks") do |_args, ctx|
+            ctx.ask_user(question: "go on?", options: %w[Continue Stop], effects: { "Contniue" => :spend }).inspect
+          end
+        end
+      end
+    RUBY
+    bundle = load
+    bundle.answer({ selected: ["Continue"] })
+    expect(bundle.command("/ask")).to eq("nil")
+    expect(bundle.questions).to be_empty
+    # The queued answer is still there for the next ask.
+    expect(bundle.recorder.answers.size).to eq(1)
   end
 
   it "gives ctx.sessions the recording Sessions, with scripted answers" do

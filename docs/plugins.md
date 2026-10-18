@@ -742,7 +742,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.prompt_files` | the files whose text is in the session's system prompt now: the AGENTS.md chain (the work tree top down to the cwd) and the appended files (`append_system_prompt:`, `--append-system-prompt`); absolute paths, in prompt order, `[]` before the first build |
 | `ctx.notify(text, level: :info, fallback_for: nil)` | one line to the user, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command). `fallback_for: :display` marks a line that repeats the answer's display (`event[:present]`), which a UI that renders the display leaves out (`fallback_for: :editor`: a file the viewer could open from a ref in its editor): see [Hooks](hooks.md#what-a-hook-can-do-the-runtime). The keyword needs chi 0.35.0 (it raises on an older chi) |
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
-| `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options) |
+| `ctx.ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options or effects). `effects:` tags the options a parent agent's answer is held to (label => `:spend`, `:permit`, `:permit_wide` or `:deny`; untagged = `:answer`): tag every option that spends or permits, and never let text alone or a dismissal do either ([hooks.md](hooks.md#what-a-hook-can-do-the-runtime)). It needs a chi newer than 0.85.0 |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
 | `ctx.steer(text)` | put text into the running turn: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. The model reads it with a header naming your bundle (`[Steer from the my-bundle plugin, mid-task. …]`); the session keeps the raw text. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook (false from `:after_turn`), your own |
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
@@ -1157,6 +1157,7 @@ bundle.tool("my_tool", path: "a.txt")                    # → the text the mode
 verdict = bundle.tool_call({ name: "execute", content: "rm -rf /" })
 verdict.deny?                                            # a real Guardrails::Verdict (votes: verdict.votes)
 bundle.notices.map(&:text)                               # also cards, steers, stops, generation_stops, questions
+bundle.questions.last.effects                            # an ask_user's tags as given: { "Continue" => :spend }
 bundle.answer({ selected: "yes" })                       # the next ask_user's answer
 bundle.model_answers << "a summary"                      # the next ask_model's answer
 bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripted and recorded
@@ -1595,7 +1596,10 @@ bundles:
 - **At the cap** the turn pauses on a question (header "Cost cap"): `Cost cap reached: $3.04 spent of $3.00.
   Continue raises it to $6.00.` with **Continue** (another cap's worth: $3 → $6 → $9, as many steps as it takes to
   pass the spend, saved for the session) and **Stop** (the turn stops, `canceled` with `stopped_by: cost-cap`, and a
-  card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops.
+  card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops. A parent
+  agent answering it (`chi answer`) may Continue under `guardrails.parent_answers: soft` or `standard`, and only Stop
+  under `hard` (Continue is tagged `:spend`; see [Guardrails](guardrails.md#answers-from-a-parent-agent)). `/cap N` is
+  a command, not an answer: a parent that sends it (`chi send ID -m '/cap 10'`) raises the cap under any strategy.
 - **The cap of a session:** the one `/cap` or a Continue set for it, else its own `cap:` (`chi --set
   cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off`, `0` or a negative number for none), else `child:` for a
   delegate child, else `default:`. Delegates and continued links each have their own cap (a continued link keeps

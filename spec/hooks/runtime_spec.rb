@@ -129,6 +129,45 @@ RSpec.describe "The hook runtime through the Engine" do
       expect(result).to be_nil
     end
 
+    it "tags the options with the hook's effects, so a parent's pick is held to guardrails.parent_answers" do
+      engine.interface = :worker
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
+      result = :unset
+      engine.register_hook(:before_turn) do |e|
+        result = e[:ask_user].call(question: "go on?", options: %w[Continue Stop Later], effects: { "Continue" => :spend, Stop: "deny" })
+      end
+
+      thread = Thread.new { engine.run_turn(session, "hi") }
+      pending = wait_for_question(engine)
+      expect(pending.effects).to eq(%w[spend deny answer])
+      parent = Samagotchi::ClientId::CLI_ANSWER
+      expect { engine.answer_question(id: pending.id, selected: ["Continue"], client_id: parent) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e|
+          expect(e.reason).to eq(:spend)
+          expect(e.detail).to include("may not pick Continue here (guardrails.parent_answers: hard)", "--option Stop")
+        }
+      engine.answer_question(id: pending.id, selected: ["Stop"], client_id: parent)
+      thread.join(2)
+
+      expect(result).to eq(selected: ["Stop"], freeform: nil, selected_indices: [1])
+    end
+
+    it "is nil for effects naming a label it doesn't offer or an effect it doesn't know, without asking" do
+      engine.interface = :worker
+      results = []
+      engine.register_hook(:before_turn) do |e|
+        results << e[:ask_user].call(question: "which?", options: %w[a b], effects: { "c" => :spend })
+        results << e[:ask_user].call(question: "which?", options: %w[a b], effects: { "a" => :launch })
+        results << e[:ask_user].call(question: "which?", options: %w[a b], effects: %w[spend deny])
+      end
+
+      engine.run_turn(session, "hi")
+
+      expect(results).to eq([nil, nil, nil])
+      expect(engine.pending_question).to be_nil
+    end
+
     it "is nil for options that are not 2-8 strings, without asking" do
       engine.interface = :worker
       result = :unset

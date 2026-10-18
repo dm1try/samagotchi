@@ -62,6 +62,8 @@ RSpec.describe "The cost-cap bundle", :bundle do
       question = bundle.questions.last
       expect(question).to have_attributes(header: "Cost cap", options: %w[Continue Stop],
                                           question: "Cost cap reached: $3.04 spent of $3.00. Continue raises it to $6.00.")
+      # A parent agent's Continue spends: refused under guardrails.parent_answers: hard.
+      expect(question.effects).to eq("Continue" => :spend, "Stop" => :deny)
       expect(state).to eq("cap" => 6.0, "step" => 3.0)
       expect(bundle.stops).to be_empty
       expect(notices(bundle).last).to eq(["cap raised to $6.00", :info])

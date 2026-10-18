@@ -211,6 +211,23 @@ module Samagotchi
         EFFECTS.include?(value.to_s) ? value.to_s : PERMIT_WIDE
       end
 
+      # A plugin's or a hook's effects (label => effect, ask_user's
+      # effects:) as the options' tags, in option order; a label left out
+      # is answer (QuestionDesk#ask_for_hook, and the test kit's Recorder).
+      # @return [Array<String>, nil, false] the tags; nil for none given;
+      #   false when invalid (not a Hash, a label the options don't have,
+      #   an effect not in EFFECTS)
+      def option_tags(options, effects)
+        return nil if effects.nil?
+        return false unless effects.is_a?(Hash)
+
+        given = effects.to_h { |label, effect| [label.to_s, effect.to_s] }
+        return false unless (given.keys - Array(options).map(&:to_s)).empty?
+        return false unless (given.values - EFFECTS).empty?
+
+        Array(options).map { |label| given.fetch(label.to_s, ANSWER) }
+      end
+
       # When the scopes fit the options: once permits, another scope
       # permits wide, the options past them deny. When they don't (missing,
       # malformed): only a last option labelled Deny denies.

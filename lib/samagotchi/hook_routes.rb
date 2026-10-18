@@ -36,7 +36,9 @@ module Samagotchi
     def runtime
       Hooks::Runtime.new(
         notify: ->(text:, level:, hook:, fallback_for: nil) { notify(text, level, hook, fallback_for: fallback_for) },
-        ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { ask_user(question, options, header, allow_freeform, hook) },
+        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
+          ask_user(question, options, header, allow_freeform, hook, effects: effects)
+        },
         stop_turn: ->(reason:, hook:) { stop_turn(reason, hook) },
         steer: ->(text:, hook:) { @steer.call(text, source(hook)) },
         stop_generation: ->(reason:, hook:) { stop_generation(reason, hook) }
@@ -86,8 +88,8 @@ module Samagotchi
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
-    def ask_user(question, options, header, allow_freeform, hook)
-      @question_desk.call.ask_for_hook(question, options, header, allow_freeform, hook)
+    def ask_user(question, options, header, allow_freeform, hook, effects: nil)
+      @question_desk.call.ask_for_hook(question, options, header, allow_freeform, hook, effects: effects)
     end
 
     # Cancel the running turn (reason :hook), after a notice that says why.

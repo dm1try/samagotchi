@@ -89,9 +89,12 @@ class Watchful
       # A single-select question through the question flow (REPL, attached
       # TUI, web); returns {selected: [...], freeform:, selected_indices:}
       # or nil when there is no one to ask (--non-interactive), the
-      # question was dismissed, or the options were not 2-8 strings.
+      # question was dismissed, or the options (or effects) were invalid.
+      # effects: says what an option does for a parent agent's answer (see
+      # below): Run lets one call through, so it is :permit.
       answer = event[:ask_user].call(question: "#{event[:call][:name]}: #{event[:params]}\nRun it?",
-                                     options: ["Run", "Deny"], header: "my guard", allow_freeform: false)
+                                     options: ["Run", "Deny"], header: "my guard", allow_freeform: false,
+                                     effects: { "Run" => :permit, "Deny" => :deny })
       event[:guardrail].deny!("the user said no") unless answer&.dig(:selected)&.first == "Run"
     when :before_generation
       # Cancel the running turn: a warn notice with the reason, then the
@@ -111,6 +114,19 @@ class Watchful
   end
 end
 ```
+
+**Tag the options that spend or permit.** A question can be answered by a
+parent agent (`chi answer`, a piped `chi --attach`), and
+`guardrails.parent_answers` decides which options it may pick by their
+`effects:` (label => effect): `:spend` (more time or money: a Continue),
+`:permit` (one call), `:permit_wide` (more than one), `:deny` (a Stop or a
+Deny); an option left out is a plain `:answer`, which a parent may always
+pick. A label the options don't have, or an unknown effect, makes the call
+nil (warned), like bad options. Text alone and a dismissal always pass for a
+parent (the worker takes text alone even with `allow_freeform: false`), so
+they must never spend or permit. See
+[Guardrails](guardrails.md#answers-from-a-parent-agent). `effects:` needs a
+chi newer than 0.85.0 (an older one raises on the keyword).
 
 `event[:hook]` is the label the notices carry: `known_names.rb (bundle
 known-names)` for a bundle hook, `audit.rb (config)` for a config hook,

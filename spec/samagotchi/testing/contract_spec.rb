@@ -52,7 +52,7 @@ RSpec.describe "The bundle test kit's contract" do
     expect(recorder.steers.map(&:to_h)).to eq([{ text: "more", hook: label }])
     expect(recorder.stops.map(&:to_h)).to eq([{ kind: :turn, reason: "enough", hook: label },
                                               { kind: :generation, reason: "cut", hook: label }])
-    expect(recorder.questions.map(&:to_h)).to eq([{ question: "q?", options: %w[a b], header: "H", allow_freeform: true, hook: label }])
+    expect(recorder.questions.map(&:to_h)).to eq([{ question: "q?", options: %w[a b], header: "H", allow_freeform: true, hook: label, effects: nil }])
     request = recorder.model_requests.first
     expect([request.timeout, request.max_tokens, request.cancel, request.model, request.source]).to eq([3.0, 9, nil, nil, "b"])
     expect(request.request.last).to include(role: "user")
@@ -90,7 +90,7 @@ RSpec.describe "The bundle test kit's contract" do
       event[:notify].call("from hook")
       event[:steer].call("nudge")
       event[:stop_generation].call("cut")
-      event[:ask_user].call(question: "q", options: ["x"])
+      event[:ask_user].call(question: "q", options: ["x"], effects: { "x" => :permit })
     end
     registry.fire(:before_turn, { type: :before_turn })
     hook = "h.rb (bundle b)"
@@ -98,6 +98,7 @@ RSpec.describe "The bundle test kit's contract" do
     expect(recorder.steers.map(&:hook)).to eq([hook])
     expect(recorder.stops.map(&:to_h)).to eq([{ kind: :generation, reason: "cut", hook: hook }])
     expect(recorder.questions.map(&:hook)).to eq([hook])
+    expect(recorder.questions.map(&:effects)).to eq([{ "x" => :permit }])
   end
 
   it "records every vote on a Testing::Verdict, kept or not" do

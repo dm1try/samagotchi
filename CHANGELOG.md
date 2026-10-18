@@ -13,6 +13,10 @@ and commands may change between minor versions. How releases are made:
 - The `ruby` bundle (`chi bundle install ruby`, or the `dev` profile): an `execute` that ran RSpec and found no
   examples at all (`0 examples, 0 failures`: a path, a `-e`/`--tag` filter or a `.rspec --pattern` that matched
   nothing) steers a hint into the turn instead of leaving the run looking green.
+- A plugin's or a hook's `ask_user` takes `effects:` (option label => `:spend`, `:permit`, `:permit_wide`, `:deny`;
+  untagged = `:answer`), so a parent agent's answer is held to `guardrails.parent_answers`. The bundle test kit
+  records them (`bundle.questions.last.effects`). cost-cap 0.2.0 tags its Continue `:spend` and Stop `:deny`: under
+  `hard` a parent may only Stop it.
 
 ### Changed
 

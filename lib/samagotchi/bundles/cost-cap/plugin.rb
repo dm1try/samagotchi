@@ -28,6 +28,9 @@ require "fileutils"
 class Plugin
   USAGE = "usage: /cap [N | $N | off] (USD; /cap alone shows the spend)"
   OPTIONS = %w[Continue Stop].freeze
+  # For a parent agent's answer (guardrails.parent_answers): Continue
+  # spends more, Stop denies; under hard a parent may only Stop.
+  EFFECTS = { "Continue" => :spend, "Stop" => :deny }.freeze
   WARN_AT = 0.8
 
   def initialize(_settings)
@@ -103,7 +106,7 @@ class Plugin
     raised = raised_cap(cap, resolved[:step] || cap, cost.total)
     answer = ctx.ask_user(question: "Cost cap reached: #{money(cost.total)} spent of #{money(cap)}. " \
                                     "Continue raises it to #{money(raised)}.",
-                          header: "Cost cap", options: OPTIONS)
+                          header: "Cost cap", options: OPTIONS, effects: EFFECTS)
     if continue?(answer)
       save(ctx, resolved[:session], "cap" => raised, "step" => resolved[:step] || cap)
       ctx.notify("cap raised to #{money(raised)}")

@@ -1518,8 +1518,8 @@ module Samagotchi
     private :guardrail_notify
 
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
-    def hook_ask_user(question, options, header, allow_freeform, hook)
-      @hook_routes.ask_user(question, options, header, allow_freeform, hook)
+    def hook_ask_user(question, options, header, allow_freeform, hook, effects: nil)
+      @hook_routes.ask_user(question, options, header, allow_freeform, hook, effects: effects)
     end
     private :hook_ask_user
 
@@ -2553,8 +2553,8 @@ module Samagotchi
         messages: -> { plugin_messages },
         messages_partial: -> { turn_running? && @running_turn_messages.nil? },
         notify: ->(text, level, label, fallback_for: nil) { hook_notify(text, level, label, fallback_for: fallback_for) },
-        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
-          hook_ask_user(question, options, header, allow_freeform, hook)
+        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
+          hook_ask_user(question, options, header, allow_freeform, hook, effects: effects)
         },
         # An init task's is its own (a Ctrl-C ends a turn, not the task).
         cancelled: lambda {

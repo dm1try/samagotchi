@@ -403,9 +403,13 @@ module Samagotchi
     # web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
+    # @param effects [Hash, nil] label => effect for a parent agent's answer
+    #   (Guardrails::ParentPolicy); a label left out is "answer". A label
+    #   the options don't have, or an effect it doesn't know, makes the ask
+    #   invalid (nil, warned), like bad options.
     # @return [Hash, nil] {selected:, freeform:, selected_indices:} (a plain
     #   Hash: the bundle boundary)
-    def ask_for_hook(question, options, header, allow_freeform, hook)
+    def ask_for_hook(question, options, header, allow_freeform, hook, effects: nil)
       return nil if @interface_lookup.call == :non_interactive
 
       opts = Tools::AskUserQuestion.normalize_options(options)
@@ -413,9 +417,16 @@ module Samagotchi
         Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook.to_s)
         return nil
       end
+      tags = Guardrails::ParentPolicy.option_tags(opts, effects)
+      if tags == false
+        Log.warn(:hooks, "ask_user_invalid",
+                 echo: "[samagotchi:hooks] #{hook} asked with invalid effects (option label => " \
+                       "#{Guardrails::ParentPolicy::EFFECTS.join("|")})", hook: hook.to_s)
+        return nil
+      end
 
       fields = { question: question.to_s, options: opts, header: header, multi_select: false,
-                 allow_freeform: !!allow_freeform, kind: "hook", hook: hook.to_s }.compact
+                 allow_freeform: !!allow_freeform, effects: tags, kind: "hook", hook: hook.to_s }.compact
       answer = open_question(fields)
       return nil unless answer.is_a?(QuestionAnswer)
 

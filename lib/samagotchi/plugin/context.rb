@@ -29,7 +29,7 @@ module Samagotchi
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
     # (text, level, label, fallback_for:), +ask_user+ takes (question:, options:, header:,
-    # allow_freeform:, hook:) like the hook runtime's, +card+ takes
+    # allow_freeform:, hook:, and effects: when the plugin gave them) like the hook runtime's, +card+ takes
     # Engine#show_card's keywords and returns the id, +ask_model+ takes
     # (chat messages, timeout:, max_tokens:, cancel_controller:, model:: a
     # configured model ref, nil for the session's) and returns the answer
@@ -355,15 +355,21 @@ module Samagotchi
 
       # A single-select question through the question flow. Inside a
       # stream hook's handler (generation_progress) it asks no one (nil).
+      # @param effects [Hash{String => Symbol}, nil] what an option does, by
+      #   its label, for a parent agent's answer (Guardrails::ParentPolicy):
+      #   :spend (more time or money: a Continue), :permit (one call),
+      #   :permit_wide, :deny (a Stop); a label left out is a plain :answer.
+      #   Tag every option that spends or permits.
       # @return [Hash, nil] {selected:, freeform:, selected_indices:}, or nil
-      #   (no one to ask, cancelled, bad options)
-      def ask_user(question:, options:, header: nil, allow_freeform: false)
+      #   (no one to ask, cancelled, bad options or effects)
+      def ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)
+        tags = effects.nil? ? {} : { effects: effects }
         if (helper = event_helper(:ask_user))
-          return helper.call(question: question, options: options, header: header, allow_freeform: allow_freeform)
+          return helper.call(question: question, options: options, header: header, allow_freeform: allow_freeform, **tags)
         end
 
         @host.ask_user.call(question: question, options: options, header: header, allow_freeform: allow_freeform,
-                            hook: @label)
+                            hook: @label, **tags)
       end
 
       # Whether the running turn was cancelled (a long tool should stop).

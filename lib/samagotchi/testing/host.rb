@@ -27,8 +27,9 @@ module Samagotchi
           messages: -> { recorder[:messages] },
           messages_partial: -> { recorder[:messages_partial] },
           notify: ->(text, level, label, fallback_for: nil) { recorder.notify(text, level, label, fallback_for) },
-          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
-            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook)
+          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
+            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook,
+                              effects: effects)
           },
           cancelled: -> { recorder[:cancelled] },
           card: ->(**card) { recorder.card(**card) },
@@ -88,8 +89,9 @@ module Samagotchi
       def build(recorder)
         Hooks::Runtime.new(
           notify: ->(text:, level:, hook:, fallback_for: nil) { recorder.notify(text, level, hook, fallback_for) },
-          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
-            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook)
+          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
+            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook,
+                              effects: effects)
           },
           stop_turn: ->(reason:, hook:) { recorder.stop(:turn, reason, hook) },
           steer: ->(text:, hook:) { recorder.steer(text, hook) },

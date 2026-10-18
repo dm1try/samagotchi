@@ -111,8 +111,8 @@ module Samagotchi
     # callables, each given the hook's label. +notify+ takes
     # (text:, level:, hook:, and fallback_for: when the hook gave one: what
     # the line stands in for, HookRoutes#notify) and shows one line to the
-    # user; +ask_user+ takes (question:, options:, header:, allow_freeform:, hook:) and
-    # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
+    # user; +ask_user+ takes (question:, options:, header:, allow_freeform:, hook:, and
+    # effects: when the hook gave them) and returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
     # cancels the running turn (true when it did); +steer+ takes (text:,
     # hook:) and puts the text into the running turn (Engine#steer, true
     # when queued); +stop_generation+ takes (reason:, hook:) and cuts the
@@ -270,9 +270,11 @@ module Samagotchi
       #     to the user; fallback_for: :display marks a line that stands in
       #     for the answer's display (event[:present]), which a UI that
       #     renders the display's links leaves out (HookRoutes#notify)
-      #   event[:ask_user].call(question:, options:, header: nil, allow_freeform: false)
+      #   event[:ask_user].call(question:, options:, header: nil, allow_freeform: false, effects: nil)
       #     -> {selected:, freeform:, selected_indices:} or nil (no one to
-      #     ask, cancelled, bad options)
+      #     ask, cancelled, bad options or effects); effects: tags the
+      #     options a parent agent may not simply pick, by label
+      #     ({ "Run it" => :permit }, see Plugin::Context#ask_user)
       #   event[:stop_turn].call(reason) -> true when the turn was cancelled;
       #     in a before_tool_call event it also denies the call; from
       #     after_turn / session_end it does nothing (false)
@@ -383,9 +385,10 @@ module Samagotchi
           @runtime&.notify&.call(**notice)
           nil
         }
-        event[:ask_user] ||= lambda { |question:, options:, header: nil, allow_freeform: false|
+        event[:ask_user] ||= lambda { |question:, options:, header: nil, allow_freeform: false, effects: nil|
           @runtime&.ask_user&.call(question: question, options: options, header: header,
-                                   allow_freeform: allow_freeform, hook: event[:hook])
+                                   allow_freeform: allow_freeform, hook: event[:hook],
+                                   **(effects.nil? ? {} : { effects: effects }))
         }
         event[:stop_turn] ||= lambda { |reason|
           next false if TURN_OVER_EVENTS.include?(event[:type])
