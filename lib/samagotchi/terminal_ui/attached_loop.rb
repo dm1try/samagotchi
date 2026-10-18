@@ -592,10 +592,7 @@ module Samagotchi
       # The worker runs it and every UI renders its :command_ran, this one
       # too, so nothing waits here.
       def send_command(line)
-        # A parent agent's /continue yes goes as chi answer's: the worker
-        # holds it to guardrails.parent_answers.
-        client_id = @as_parent && TurnFlow.continue_yes?(line) ? ClientId::CLI_ANSWER : @client_id
-        reply = @client.post_command(line: line, client_id: client_id)
+        reply = @client.post_command(line: line, client_id: client_id_for(line))
         if reply.status == 202
           # Input from a pipe ends once its output is in (#command_ran).
           command_id = reply.json&.fetch("command_id", nil)
@@ -808,13 +805,27 @@ module Samagotchi
         steer_cut_note(ack["cut"].to_s.to_sym, ack["cut_after"])
       end
 
+      # The client id +line+ goes with, as a command (#send_command) or as a
+      # message the Bridge may run as one (#send_prompt: /cut and /queue
+      # text). A parent agent's /continue yes and /parent-answers go as chi
+      # answer's: the worker holds the first to guardrails.parent_answers and
+      # never takes the second as a user's loosening. The command is the
+      # registry's own match (the worker's), not a pattern of ours.
+      def client_id_for(line)
+        return @client_id unless @as_parent
+        return ClientId::CLI_ANSWER if TurnFlow.continue_yes?(line)
+        return ClientId::CLI_ANSWER if command_registry.lookup(line)&.id == :parent_answers
+
+        @client_id
+      end
+
       def send_prompt(text, delivery: nil)
         persist_recent_history(text)
         images = attach_images(text)
         return own_prompt_failed if images.nil?
 
         running = @running
-        options = { prompt: text, client_id: @client_id }
+        options = { prompt: text, client_id: client_id_for(text) }
         options[:no_interrupt] = true if @no_interrupt
         options[:images] = images unless images.empty?
         options[:delivery] = delivery if delivery

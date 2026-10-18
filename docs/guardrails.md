@@ -150,6 +150,47 @@ approval's block lists the Allow once command next to the deny; under
 `standard` and `hard` it says allowing is up to the user. An invalid value
 warns and is `hard`.
 
+#### A session's own level
+
+A session may carry its own `parent_answers`, set when it is created (`chi
+--parent-answers LEVEL`, `chi send --new --parent-answers LEVEL`) and kept by
+its respawns, forks and continues; a `delegate` child starts with its parent's,
+as it is then. It can only tighten: config.yml's value is the ceiling, and the
+stricter of the two applies, in `chi answer`'s check (from the session file),
+the worker's (from its session) and in what the question block offers. A refusal
+then names it: `a parent agent may only stop this turn here (parent_answers:
+hard (this session))`. A looser one is saved as given with a warning
+(`soft is looser than config.yml's guardrails.parent_answers: standard;
+standard applies`) and takes effect only if config.yml is loosened later. A
+value that isn't a level reads as `hard`.
+
+`/parent-answers` shows the level that applies, the session's own and
+config.yml's; `/parent-answers LEVEL` sets the session's own, `/parent-answers
+default` drops it (config.yml's applies). Anyone may tighten it, a parent too
+(`chi send ID -m "/parent-answers hard"`). Loosening it (toward `soft`, or
+`default`) is yours alone: the line must come from you at the REPL, an attached
+terminal or the web composer. chi refuses it (`loosening parent_answers is the
+user's: …`) from `chi send` (a parent's or yours: the worker can't tell them
+apart), from a piped or marked `chi --attach` or REPL, from `chi -p
+--non-interactive`, from a delegate's follow-up and from a plugin; `chi answer`
+has no command route. `--parent-answers` on `--attach`/`--resume` is ignored,
+never sent as the command.
+
+config.yml is read each time an answer is checked, and a session's own value
+stays as saved: it binds whenever it is the stricter of the two, so one saved
+above config.yml's binds again once config.yml is changed to something looser
+than it, and never follows config.yml either way. A `delegate` child keeps the
+value it started with, whatever its parent changes later.
+
+A parent agent on a real terminal (a PTY: tmux, a kitty window) with no agent
+marker set looks like you, and can loosen it; so can one that edits a session
+file (`<id>.json`, read again by the next worker that wakes for it). That is
+not a security boundary either: config.yml still caps the result.
+
+A setting form waits for a running turn to end, as `/toolkit`'s does: a
+tightening typed while a child's question is pending applies after that turn,
+and a parent may answer the question meanwhile under the level before it.
+
 `soft` suits a capable parent model: it can let a child run one more command
 it asked about, still with every guardrail rule in force. For a weak or
 unknown parent model, set `standard` or `hard` (and see
@@ -177,7 +218,7 @@ A plugin's or a hook's question (`ask_user`) tags its options the same way
 (`effects:`, see [Plugins](plugins.md)); an untagged one is a plain `answer`.
 
 The guardrails settings (`enabled`, `mode`, `small_models`, `parent_answers`) are
-read from config.yml only: they have no environment variable, and a worker
+read from config.yml only (a session's own `parent_answers` can only tighten it): they have no environment variable, and a worker
 chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a
 parent's environment does choose is the config dir: `XDG_CONFIG_HOME` picks
 which config.yml chi reads, and a worker the parent starts or wakes (`chi
@@ -204,7 +245,11 @@ person at a terminal with no marker keeps every scope.
 This guards an honest but eager parent, not a hostile one: it is not a
 security boundary. The worker's Bridge and the web's answer route on localhost
 take an answer from any local process, which can leave the marker out (or
-post through the web) and get every scope. chi's instructions for parents ([chi as a
+post through the web) and get every scope. In the same way a parent can
+loosen a session's own level by posting `/parent-answers` with a forged
+`tui:<pid>` or `web:<tab>` client id to the Bridge or the web's command route,
+by editing the session file, or by running `chi --attach` on a PTY with the
+markers cleared. chi's instructions for parents ([chi as a
 sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 ## Protected paths

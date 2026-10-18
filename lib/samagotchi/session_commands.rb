@@ -13,6 +13,7 @@ require_relative "commands/registry"
 require_relative "llm_context_command"
 require_relative "thinking_command"
 require_relative "toolkit_command"
+require_relative "parent_answers_command"
 require_relative "reasoning_history_command"
 require_relative "guardrails/parent_policy"
 
@@ -35,6 +36,7 @@ module Samagotchi
     LLM_CONTEXT_COMMAND = LLMContextCommand::NAME
     THINKING_COMMAND = ThinkingCommand::NAME
     TOOLKIT_COMMAND = ToolkitCommand::NAME
+    PARENT_ANSWERS_COMMAND = ParentAnswersCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
@@ -77,12 +79,8 @@ module Samagotchi
                         id: :rollback) { |_text| rollback }
       registry.register("!", "run a shell command; its output goes into the conversation",
                         id: :shell, mid_turn: :queue, match: ->(text) { text.match?(/\A!\s*\S/) }) { |text| shell(text) }
-      registry.register(CONTINUE_COMMAND, "answer the continue offer (yes, no or no, <reason>)") do |text|
-        next reply("nothing to continue") unless @turn_flow.awaiting_continue?
-
-        answer = text.delete_prefix(CONTINUE_COMMAND).strip
-        continue_answer(answer.empty? ? CONTINUE_COMMAND : answer, as_parent: @as_parent)
-      end
+      # #run passes who sent it (as_parent:) per call.
+      registry.register(CONTINUE_COMMAND, "answer the continue offer (yes, no or no, <reason>)") { |text| continue_command(text) }
       # It reads the hosts only (the registry is mutex-guarded): mid-turn too.
       registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)", anytime: true) do |text|
         reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
@@ -109,6 +107,11 @@ module Samagotchi
       registry.register(TOOLKIT_COMMAND, "show or change the tools this session declares (NAME, add TOOL, remove TOOL)",
                         id: :toolkit, mid_turn: show_mid_turn(TOOLKIT_COMMAND),
                         match: ->(text) { text.match?(%r{\A/toolkit(?:\s+.*)?\z}) }) { |text| toolkit(text) }
+      # Tighten-only from anyone; loosening is a user's at a UI (#run's user_ui:).
+      registry.register(PARENT_ANSWERS_COMMAND, "show or set what a parent agent may answer here (hard|standard|soft|default; " \
+                                                "never looser than config.yml's)",
+                        id: :parent_answers, mid_turn: show_mid_turn(PARENT_ANSWERS_COMMAND),
+                        match: ->(text) { text.match?(%r{\A/parent-answers(?:\s+.*)?\z}) }) { |text| parent_answers(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -258,9 +261,11 @@ module Samagotchi
     # @param as_parent [Boolean] a parent agent sent it (client cli:answer):
     #   a /continue yes is held to guardrails.parent_answers, as chi
     #   answer --option Continue is (Guardrails::ParentPolicy)
+    # @param user_ui [Boolean] a user at a UI sent it (the REPL, an attached
+    #   TUI, the web; not a piped or marked one): only such a line loosens
+    #   /parent-answers
     # @return [Result, nil] nil when +line+ is not one of these commands
-    def run(line, confirm: true, as_parent: false)
-      @as_parent = as_parent
+    def run(line, confirm: true, as_parent: false, user_ui: false)
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
@@ -268,8 +273,20 @@ module Samagotchi
 
       # The two that may ask take the flag; the rest never ask.
       return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
+      # Who sent it goes to its handler per call, never through an ivar:
+      # an anytime command runs on another thread against this instance.
+      return continue_command(text, as_parent: as_parent) if entry.id == :continue
+      return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
 
       instance_exec(text, &entry.handler)
+    end
+
+    # /continue [yes|no|no, <reason>]: the continue offer's answer.
+    def continue_command(text, as_parent: false)
+      return reply("nothing to continue") unless @turn_flow.awaiting_continue?
+
+      answer = text.delete_prefix(CONTINUE_COMMAND).strip
+      continue_answer(answer.empty? ? CONTINUE_COMMAND : answer, as_parent: as_parent)
     end
 
     # Answer the pending continue offer (yes / no / no, <reason>).
@@ -495,6 +512,14 @@ module Samagotchi
       reply(output, changed: changed ? [:toolkit] : [], confirm: ask)
     rescue ArgumentError => e
       reply(e.message, status: :error)
+    end
+
+    # /parent-answers (ParentAnswersCommand); :parent_answers in changed
+    # when it set the session's own level.
+    def parent_answers(text, user_ui: false)
+      output, changed, status = ParentAnswersCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                                    .run(text.delete_prefix(PARENT_ANSWERS_COMMAND), user_ui: user_ui)
+      reply(output, status: status, changed: changed ? [:parent_answers] : [])
     end
 
     # A session setting changed (/llm-context, /thinking, /reasoning-history):

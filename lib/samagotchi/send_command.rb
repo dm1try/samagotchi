@@ -5,6 +5,7 @@ require_relative "delivery"
 require_relative "terminal_ui/formatting"
 require_relative "session"
 require_relative "session_commands"
+require_relative "parent_answers_command"
 require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "bundle_session_settings"
@@ -257,6 +258,14 @@ module Samagotchi
       # the worker checks it again.
       if prompt && parent_continue?(prompt) && (refusal = continue_refusal_for(options))
         @stderr.puts("chi send: #{refusal}")
+        return CLI::Exit::FAILED
+      end
+      # chi send never loosens a session's own parent_answers (only a user
+      # at a UI does: the worker refuses it too); refused before anything
+      # is sent. Tightening goes.
+      if prompt && SessionCommands.builtin_registry.lookup(prompt)&.id == :parent_answers &&
+         target_parent_answers(options).any? { |value| ParentAnswersCommand.loosens?(prompt, value) }
+        error_line("chi send: refused: #{ParentAnswersCommand::REFUSED}")
         return CLI::Exit::FAILED
       end
       # A file that is not there or not an image: a run-time failure (1),

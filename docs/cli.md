@@ -599,6 +599,18 @@ running turn keeps its tools. `/toolkit` alone answers mid-turn too; a change
 sent while a turn runs waits for the turn's end. The web shows a session that
 isn't on `full` as the `tools` chip. See [Toolkits](configuration.md#toolkits).
 
+`/parent-answers` shows what a parent agent may answer on this session's
+questions: the level that applies, the session's own and config.yml's
+(`parent answers: standard (this session: standard; config.yml
+guardrails.parent_answers: soft)`). `/parent-answers hard|standard|soft` sets the
+session's own, `/parent-answers default` drops it; it is saved at once and
+holds from the next answer. It never goes looser than config.yml's (the reply
+says when config.yml's applies instead). Anyone may tighten it; only you loosen
+it, at the REPL, an attached terminal or the web: `chi send`, a piped or marked
+attach and `chi -p --non-interactive` are refused. `/parent-answers` alone answers
+mid-turn too; a change waits for the turn's end. No chip: its reply is where the
+web shows it. See [Guardrails](guardrails.md#answers-from-a-parent-agent).
+
 A `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`). `--yes` (or `-y`) applies it at once.

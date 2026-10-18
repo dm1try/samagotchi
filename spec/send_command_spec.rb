@@ -255,6 +255,29 @@ RSpec.describe Samagotchi::SendCommand do
     end
   end
 
+  # P3: chi send never loosens a session's own parent_answers (only a user
+  # at a UI does); it refuses before sending, per target. Tightening goes.
+  describe "/parent-answers" do
+    it "refuses a loosening before anything is sent, for any target; a tightening goes" do
+      a = make(owner: "worker")
+      b = make(owner: "worker")
+      b.parent_answers = "standard"
+      b.save(state_dir: tmpdir)
+      queued = []
+      serve(a, on_command: ->(command) { queued << command })
+
+      expect(run("-m", "/parent-answers soft", short(b))).to eq(1)
+      expect(err.string).to include("chi send: refused: loosening parent_answers is the user's")
+      expect(run("-m", "/parent-answers default", short(a), short(b))).to eq(1)
+      expect(queued).to be_empty
+
+      expect(run("-m", "/parent-answers hard", short(a))).to eq(0), err.string
+      expect(run("-m", "/parent-answers soft", short(a))).to eq(0), err.string
+      expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
+        .to eq([{ client_id: "cli:send", line: "/parent-answers hard" }, { client_id: "cli:send", line: "/parent-answers soft" }])
+    end
+  end
+
   it "quotes stdin above the -m message" do
     a = make(owner: "worker")
     serve(a)

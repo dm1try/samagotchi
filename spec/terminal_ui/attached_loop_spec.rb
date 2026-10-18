@@ -1751,6 +1751,58 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     expect(client).to have_received(:post_command).with(line: "/continue no", client_id: "tui:1")
   end
 
+  # P3 (H1): a parent attach's /parent-answers goes as chi answer's
+  # (cli:answer), so the worker never takes it as a user's loosening: typed,
+  # as -p's first prompt, or as /cut and /queue text (which the Bridge runs
+  # as the command). A user's attach sends its own id.
+  describe "a /parent-answers line" do
+    let(:ok) { Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1","enqueued_id":"e1"}') }
+
+    before do
+      allow(client).to receive(:post_command).and_return(ok)
+      allow(client).to receive(:post_turn).and_return(ok)
+    end
+
+    def sent_ids
+      commands = []
+      turns = []
+      allow(client).to receive(:post_command) { |**kw| commands << kw.slice(:line, :client_id); ok }
+      allow(client).to receive(:post_turn) { |**kw| turns << kw.slice(:prompt, :client_id); ok }
+      yield
+      [commands, turns]
+    end
+
+    it "goes as cli:answer from a parent attach, every route" do
+      parent = described_class.new(client: client, screen: screen, client_id: "tui:1", as_parent: true,
+                                   first_prompt: "/parent-answers soft")
+      commands, turns = sent_ids do
+        parent.send(:submit, "/parent-answers soft")
+        parent.send(:submit, "/queue /parent-answers soft")
+        parent.send(:submit, "/cut /parent-answers standard")
+        parent.handle_event({ type: :turn_started, turn_id: "t1" })
+        parent.send(:submit, "/queue /parent-answers soft")
+        parent.send(:send_first_prompt)
+        parent.send(:submit, "/model")
+        parent.send(:submit, "hello")
+      end
+      expect(commands).to include({ line: "/parent-answers soft", client_id: "cli:answer" })
+      expect(commands).to include({ line: "/model", client_id: "tui:1" })
+      expect(commands.count { |c| c[:line] == "/parent-answers soft" }).to eq(2)
+      expect(turns.select { |t| t[:prompt].start_with?("/parent-answers") }.map { |t| t[:client_id] }.uniq).to eq(["cli:answer"])
+      expect(turns.size).to be >= 3
+      expect(turns).to include({ prompt: "hello", client_id: "tui:1" })
+    end
+
+    it "goes with its own id from a user's attach" do
+      commands, turns = sent_ids do
+        attached.send(:submit, "/parent-answers soft")
+        attached.send(:submit, "/queue /parent-answers soft")
+      end
+      expect(commands).to eq([{ line: "/parent-answers soft", client_id: "tui:1" }])
+      expect(turns).to eq([{ prompt: "/parent-answers soft", client_id: "tui:1" }])
+    end
+  end
+
   it "leaves one line with its own answer once the worker resolves the offer" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
     attached.handle_event({ type: :continue_offered, context: {}, no_interrupt: false })

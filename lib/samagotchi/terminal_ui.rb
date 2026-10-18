@@ -880,9 +880,11 @@ module Samagotchi
         command = if command_registry.anytime?(input)
                     @engine.running_anytime { @commands.run(input, confirm: confirm) }
                   else
-                    # A parent's /continue yes is held to guardrails.parent_answers.
-                    parent = TurnFlow.continue_yes?(input) && as_parent? ? { as_parent: true } : {}
-                    @commands.run(input, confirm: confirm, **parent)
+                    # A parent's /continue yes is held to guardrails.parent_answers;
+                    # only a person here (not piped, no agent marker) loosens
+                    # /parent-answers.
+                    parent = as_parent?
+                    @commands.run(input, confirm: confirm, as_parent: parent && TurnFlow.continue_yes?(input), user_ui: !parent)
                   end
         if command
           show_command_result(command)

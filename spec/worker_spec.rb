@@ -1457,6 +1457,39 @@ RSpec.describe Samagotchi::Worker do
         expect(queued[:event_seq]).to be < done[:event_seq]
       end
 
+      # P3: tightening from anyone; loosening only from a user at a UI (a
+      # web tab, a chi TUI), never chi send, chi answer's marker, a
+      # delegate's follow-up, a plugin or an unmarked input.
+      it "lets only a user at a UI loosen /parent-answers; anyone tightens; the session file keeps it" do
+        session.parent_answers = "hard"
+        session.save(state_dir: tmpdir)
+        start_worker(poll_interval: 5)
+        stored = -> { Samagotchi::Session.load(session.id, state_dir: tmpdir).parent_answers }
+
+        ["cli:send", "cli:answer", "delegate:abcd1234", "plugin", nil].each do |client_id|
+          done = ran(JSON.parse(post_command("/parent-answers soft", client_id: client_id).body)["command_id"])
+          expect(done).to include(status: "error"), client_id.inspect
+          expect(done[:output]).to include("loosening parent_answers is the user's"), client_id.inspect
+        end
+        # The same line as a message (chi send -m, /queue TEXT): the Bridge runs it as the command, with its client.
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
+                       JSON.generate(session_id: session.id, prompt: "/parent-answers soft", client_id: "cli:answer"),
+                       "Content-Type" => "application/json")
+        wait_until { events_seen.count { |e| e[:type] == :command_ran } >= 6 }
+        expect(seen.select { |e| e[:type] == :command_ran }.last).to include(status: "error")
+        expect(stored.call).to eq("hard")
+
+        done = ran(JSON.parse(post_command("/parent-answers standard", client_id: "web:1").body)["command_id"])
+        expect(done).to include(status: "ok", changed: ["parent_answers"])
+        expect(wait_until { stored.call == "standard" }).to be(true)
+        done = ran(JSON.parse(post_command("/parent-answers hard", client_id: "cli:send").body)["command_id"])
+        expect(done).to include(status: "ok", changed: ["parent_answers"])
+        expect(wait_until { stored.call == "hard" }).to be(true)
+        done = ran(JSON.parse(post_command("/parent-answers default", client_id: "tui:9").body)["command_id"])
+        expect(done).to include(status: "ok")
+        expect(wait_until { stored.call.nil? }).to be(true)
+      end
+
       it "runs /llm-context: the session keeps its own values, and the command_ran carries what the next turn runs under" do
         start_worker(poll_interval: 5)
 

@@ -794,7 +794,9 @@ module Samagotchi
     #   as its output
     def run_command_line(command)
       @engine.holding_announcements do
-        command_result(command) { @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command)) }
+        command_result(command) do
+          @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
+        end
       end
     end
 
@@ -807,6 +809,12 @@ module Samagotchi
     # send and a parent's attach give a /continue yes too): held to
     # guardrails.parent_answers (SessionCommands#continue_answer).
     def as_parent?(command) = command.client_id.to_s == ClientId::CLI_ANSWER
+
+    # Whether +command+ is a user's at a UI (a web tab, a chi TUI, a card's
+    # click), not a parent agent's: only such a line loosens
+    # /parent-answers. chi send, a delegate's follow-up, a plugin and an
+    # input with no client never do (ParentAnswersCommand).
+    def user_ui?(command) = ClientId.interactive?(command.client_id) && !as_parent?(command)
 
     # The block's Result for +command+; one that raised, or found no
     # command for the line, is an error Result saying so.

@@ -288,7 +288,7 @@ RSpec.describe Samagotchi::TerminalUI do
       commands = agent.instance_variable_get(:@commands)
       allow(agent).to receive_messages(queue_input_prefill: nil, piped_input?: true)
       applied = Samagotchi::SessionCommands::Result.new(status: :ok, output: "thinking: high (session)", changed: [:thinking])
-      expect(commands).to receive(:run).with("/thinking high", confirm: false).and_return(applied)
+      expect(commands).to receive(:run).with("/thinking high", hash_including(confirm: false)).and_return(applied)
       agent.send(:run_input_line, nil, "/thinking high")
 
       asked = applied.dup.tap { |r| r.confirm = Samagotchi::CacheConfirm.confirm("/thinking", "high") }
@@ -402,6 +402,28 @@ RSpec.describe Samagotchi::TerminalUI do
       text = status.rows(120).join
       expect(text).to start_with("status> model=m2")
       expect(text).not_to include("ctx=")
+    end
+  end
+
+  # P3: only a person at the REPL (a terminal, no agent marker) loosens
+  # /parent-answers; a piped or marked one (a parent agent) only tightens.
+  describe "/parent-answers at the prompt" do
+    let(:surface) { RecordingSurface.new }
+    let(:agent) { described_class.new(client: client, surface: surface) }
+
+    it "runs it as the user's only when no parent agent types it" do
+      commands = agent.instance_variable_get(:@commands)
+      result = Samagotchi::SessionCommands::Result.new(status: :ok, output: "parent answers: soft", changed: [])
+      allow(commands).to receive(:run).and_return(result)
+      allow(agent).to receive(:show_command_result)
+
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+      agent.send(:run_input_line, nil, "/parent-answers soft")
+      expect(commands).to have_received(:run).with("/parent-answers soft", hash_including(user_ui: false, as_parent: false))
+
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
+      agent.send(:run_input_line, nil, "/parent-answers soft")
+      expect(commands).to have_received(:run).with("/parent-answers soft", hash_including(user_ui: true))
     end
   end
 

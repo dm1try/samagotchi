@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /reasoning-history /thinking /toolkit /hello /side
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /thinking /toolkit /hello /side
                   /archive /cut /detach /exit /queue /quit /recap /stats /unqueue])
       expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
                                start_with("  /model              show or switch the model  (show: mid-turn too)"),
@@ -826,6 +826,93 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/guardrails revoke 3").to_h).to include(status: :error, output: "no approval 3 (see /guardrails)")
       expect(commands.run("/guardrails revoke x").status).to eq(:error)
       expect(commands.run("/guardrails nope").output).to eq("usage: /guardrails [revoke N]")
+    end
+  end
+
+  # P3: the session's own parent_answers. Tightening from anyone; loosening
+  # only from a user at a UI (user_ui:), passed per call.
+  describe "/parent-answers" do
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+    end
+
+    it "shows the effective level, the session's own and config.yml's" do
+      result = commands.run("/parent-answers")
+      expect(result.output).to eq("parent answers: soft (this session: none; config.yml guardrails.parent_answers: soft)")
+      expect(result.changed).to eq([])
+      session.parent_answers = "standard"
+      expect(commands.run("/parent-answers").output)
+        .to eq("parent answers: standard (this session: standard; config.yml guardrails.parent_answers: soft)")
+    end
+
+    it "says a value it can't read is read as hard" do
+      session.parent_answers = "loose"
+      expect(commands.run("/parent-answers").output)
+        .to eq("parent answers: hard (this session: loose (unreadable value, read as hard); " \
+               "config.yml guardrails.parent_answers: soft)")
+    end
+
+    it "tightens from anyone, saved; the same level again changes nothing" do
+      result = commands.run("/parent-answers standard")
+      expect(result).to have_attributes(status: :ok, changed: [:parent_answers])
+      expect(session.parent_answers).to eq("standard")
+      expect(saved.size).to eq(1)
+      expect(commands.run("/parent-answers HARD", as_parent: true).changed).to eq([:parent_answers])
+      expect(session.parent_answers).to eq("hard")
+      expect(commands.run("/parent-answers hard").changed).to eq([])
+      expect(saved.size).to eq(2)
+    end
+
+    it "refuses a loosening without user_ui, and takes it from a user at a UI" do
+      session.parent_answers = "hard"
+      result = commands.run("/parent-answers soft")
+      expect(result.status).to eq(:error)
+      expect(result.output).to include("loosening parent_answers is the user's")
+      expect(session.parent_answers).to eq("hard")
+      expect(commands.run("/parent-answers default").status).to eq(:error)
+      expect(saved).to be_empty
+
+      expect(commands.run("/parent-answers standard", user_ui: true).changed).to eq([:parent_answers])
+      expect(session.parent_answers).to eq("standard")
+      expect(commands.run("/parent-answers default", user_ui: true).changed).to eq([:parent_answers])
+      expect(session.parent_answers).to be_nil
+      # From none, default is no change.
+      expect(commands.run("/parent-answers default").status).to eq(:ok)
+    end
+
+    it "says when config.yml's caps a looser level, and answers a bad word with the usage" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
+      result = commands.run("/parent-answers soft")
+      expect(result.output).to include("soft is looser than config.yml's guardrails.parent_answers: standard; standard applies")
+      expect(commands.run("/parent-answers loose")).to have_attributes(status: :error,
+                                                                       output: "usage: /parent-answers [hard|standard|soft|default]")
+    end
+
+    # H2: the auth is the call's own; another run in between (an anytime
+    # command on its thread) doesn't change it.
+    it "keeps each call's own auth when another run comes in between" do
+      registry = described_class.register_builtins(Samagotchi::Commands::Registry.new)
+      cmds = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
+                                 save: ->(s) { saved << s.model_name }, registry: registry)
+      # Another run (an anytime /help on its thread) right after the line is
+      # looked up, before its handler runs.
+      inner = false
+      allow(registry).to receive(:lookup).and_wrap_original do |original, line|
+        entry = original.call(line)
+        unless inner || line.start_with?("/help")
+          inner = true
+          cmds.run("/help", as_parent: !line.start_with?("/continue"), user_ui: false)
+          inner = false
+        end
+        entry
+      end
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
+      offered_continue
+      expect(cmds.run("/continue yes", as_parent: true).decision).to eq(:invalid)
+
+      session.parent_answers = "hard"
+      expect(cmds.run("/parent-answers soft", user_ui: true).changed).to eq([:parent_answers])
     end
   end
 end
