@@ -10,7 +10,7 @@ module Samagotchi
   # subcommands have their own flags).
   class BundleCommand
     USAGE = <<~TEXT
-      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|check> [options]
+      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|check> [options]
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -42,6 +42,9 @@ module Samagotchi
         trash [--empty] [--dry-run] [--older-than DAYS]
           List bundle trash (moved files from uninstalls/upgrades).
           --empty deletes all trash folders. --older-than DAYS keeps only recent ones.
+
+        new NAME [--dir DIR]
+          Start a bundle in DIR/NAME (default ./NAME): manifest, plugin, a passing test, README.
 
         check [PATH] [--fix] [--set KEY=VALUE]
           Check a bundle you're writing (default: the current dir): manifest, files, sha256 lines,
@@ -75,6 +78,13 @@ module Samagotchi
           chi bundle build --scope system --out ./my-bundle/ identity.md work.md
     TEXT
     TRASH_HELP = "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
+    NEW_HELP = <<~TEXT
+      Usage: chi bundle new NAME [--dir DIR]
+
+        Start a bundle in DIR/NAME (default ./NAME; refused when it exists): manifest.yml (shas filled,
+        requires_chi this chi), plugin.rb (a /NAME command and an after_tool_call hook), test/NAME_test.rb
+        (passes as written) and README.md. Then: chi bundle test, chi bundle check, chi bundle install.
+    TEXT
     CHECK_HELP = <<~TEXT
       Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
 
@@ -104,6 +114,9 @@ module Samagotchi
     end
     BUILD_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/, dash_values: false) do |f|
       %w[--scope --name --version --description --out].each { |name| f.value name }
+    end
+    NEW_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.value "--dir"
     end
     CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--fix"
@@ -140,9 +153,10 @@ module Samagotchi
       when "list" then list
       when "build" then build(@argv[1..])
       when "trash" then trash(@argv[1..])
+      when "new" then new_bundle(@argv[1..])
       when "check" then check(@argv[1..])
       else
-        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, check"
+        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, check"
         CLI::Exit::USAGE
       end
     end
@@ -767,6 +781,33 @@ module Samagotchi
       else
         "#{(diff / 86_400).to_i} days ago"
       end
+    end
+
+    def new_bundle(rest)
+      parsed = parse_flags(NEW_FLAGS, rest, "new", help: NEW_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      unless parsed.args.size == 1
+        @stderr.puts NEW_HELP.lines.first
+        return CLI::Exit::USAGE
+      end
+      require_relative "bundle_command/scaffold"
+      scaffold = Scaffold.new(parsed.args.first, parent: parsed.options.fetch(:dir, "."))
+      begin
+        written = scaffold.write
+      rescue ArgumentError => e
+        @stderr.puts "chi bundle new: #{e.message}"
+        return CLI::Exit::FAILED
+      end
+      shown = scaffold.dir.start_with?("#{Dir.pwd}/") ? scaffold.dir.delete_prefix("#{Dir.pwd}/") : scaffold.dir
+      @stdout.puts "Created #{shown}/: #{written.join(", ")}"
+      @stdout.puts <<~TEXT
+        Next: cd #{shown}, edit plugin.rb and the test, then
+          chi bundle test           its tests, on chi's Ruby and lib
+          chi bundle check --fix    shas, requires_chi, an install and load in a sandbox
+          chi bundle install .      then a new session loads it
+      TEXT
+      CLI::Exit::OK
     end
 
     def check(rest)
