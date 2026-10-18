@@ -686,6 +686,80 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   end
 
   describe "with no message (wait only)" do
+    it "returns the requested last-ended turn's reply at once with its turn id" do
+      finished = make(status: "idle")
+      update(finished, last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: (Time.now - 2).iso8601(3),
+                                                           enqueued_id: "turn-1"))
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(finished.id, state_dir: tmpdir),
+                                            "the finished answer", enqueued_id: "turn-1")
+
+      expect(run("--wait", "--turn", "turn-1", "--format", "json", finished.id)).to eq(0), err.string
+      expect(JSON.parse(out.string)).to include("status" => "answered", "session_id" => finished.id,
+                                                "text" => "the finished answer", "turn_id" => "turn-1")
+    end
+
+    it "returns the requested last-ended turn's no-reply outcome at once" do
+      failed = make(status: "idle")
+      update(failed, last_turn: Samagotchi::LastTurn.new(outcome: "failed", ended_at: (Time.now - 2).iso8601(3),
+                                                         enqueued_id: "turn-1", error_kind: "server"))
+
+      expect(run("--wait", "--turn", "turn-1", "--format", "json", failed.id)).to eq(1), err.string
+      expect(JSON.parse(out.string)).to include("status" => "failed", "turn_id" => "turn-1", "error_kind" => "server")
+    end
+
+    it "waits for the requested running turn, not a queued turn's reply" do
+      busy = make(status: "running")
+      dir = Samagotchi::Session.session_dir(busy.id, state_dir: tmpdir)
+      s = Samagotchi::Session.load(busy.id, state_dir: tmpdir)
+      s.interrupted_turn = { "iteration" => 1, "enqueued_id" => "running-1" }
+      s.save(state_dir: tmpdir)
+      Samagotchi::SessionInbox.write_input(dir, prompt: "later", enqueued_id: "queued-1", delivery: "queue")
+      FileUtils.mkdir_p(File.join(dir, Samagotchi::SessionInbox::OUTPUT_DIR))
+      File.write(File.join(dir, Samagotchi::SessionInbox::OUTPUT_DIR, "29991231000000000000000-queued-1.txt"), "queued answer")
+      later do
+        Samagotchi::SessionInbox.write_output(dir, "running answer", enqueued_id: "running-1")
+        update(busy, status: "idle",
+                      last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                          enqueued_id: "running-1"))
+      end
+
+      expect(run("--wait", "--turn", "running-1", "--format", "json", busy.id)).to eq(0), err.string
+      expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "running answer",
+                                                "turn_id" => "running-1")
+    end
+
+    it "returns a clear error for an unknown turn instead of waiting for another turn" do
+      idle = make(status: "idle")
+
+      expect(run("--wait", "--turn", "missing", "--format", "json", "--timeout", "1", idle.id)).to eq(1)
+      expect(JSON.parse(out.string)).to include("status" => "error", "session_id" => idle.id,
+                                                "detail" => include("missing"))
+      expect(JSON.parse(out.string)["detail"]).to include("not a running, queued, or last ended turn")
+    end
+
+    it "includes the known turn id in timeout JSON and the text wait-again hint" do
+      busy = make(status: "running")
+      s = Samagotchi::Session.load(busy.id, state_dir: tmpdir)
+      s.interrupted_turn = { "iteration" => 1, "enqueued_id" => "running-1" }
+      s.save(state_dir: tmpdir)
+
+      expect(run("--wait", "--turn", "running-1", "--format", "json", "--timeout", "0.1", busy.id)).to eq(4)
+      expect(JSON.parse(out.string)).to include("status" => "running", "turn_id" => "running-1")
+
+      out.truncate(0)
+      out.rewind
+      expect(run("--wait", "--turn", "running-1", "--timeout", "0.1", busy.id)).to eq(4)
+      expect(err.string).to end_with("chi send: still running after 0.1 s: chi send --wait --turn running-1 #{busy.id}\n")
+    end
+
+    it "rejects --turn with a message" do
+      idle = make(status: "idle")
+
+      expect(run("--wait", "--turn", "turn-1", "-m", "not allowed", idle.id)).to eq(2)
+      expect(err.string).to include("--turn cannot be used with a message")
+      expect(delivered).to be_empty
+    end
+
     it "to an idle session whose last turn finished, prints that turn's reply, not 'running'" do
       finished = make(status: "idle")
       s = Samagotchi::Session.load(finished.id, state_dir: tmpdir)

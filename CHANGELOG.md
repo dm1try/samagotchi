@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `chi send --wait --turn T ID` waits for that exact running, queued or last-ended turn; JSON waits expose `turn_id`.
 - Bundles: the experimental test kit's `before_tool_call_event` builds the real guardrail event without firing
   bundle hooks.
 

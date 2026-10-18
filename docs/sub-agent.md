@@ -30,6 +30,7 @@ sources](context.md#peer-sources-the-peer-loop).
 ```sh
 chi send --new --wait --format json [--dir D] [--model M] [--timeout S] -m "task"
 chi send --wait --format json [--timeout S] [-m "follow-up"] ID
+chi send --wait --format json [--timeout S] --turn T ID
 chi send --queue --wait --format json [--timeout S] -m "follow-up" ID
 chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]
 chi answer ID --question QID --dismiss [--timeout S] [--format json]
@@ -60,6 +61,11 @@ Exit codes, both commands:
 
 With `--format json` stdout is one JSON object (see
 [Starting a session](sessions.md#starting-a-session) for every field):
+when the wait is about a known turn, it includes `turn_id`. Use
+`chi send --wait --format json --turn <turn_id> <session_id>` to wait for
+that exact turn again after exit 4, or after exit 3 if someone else will
+answer the question. A turn id can name the running turn, a queued turn or
+the last turn that ended; any other id is an error.
 
 ```json
 {"status":"question","session_id":"297da360-…","question":{"id":"3f1c…","kind":"question",
@@ -115,7 +121,7 @@ a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
 and tell your user`. For an approval, the question block and `answer_with` give
 the deny command, not `--option N` or `chi --attach`. The block also offers to
 leave it open: tell your user it waits in chi web (the bell and badge show
-it there), and `chi send --wait --format json ID` (no message) waits until
+it there), and `chi send --wait --format json --turn <turn_id> ID` waits until
 they answer it. With
 `guardrails.parent_approvals: once` in chi's config.yml (it has no environment
 variable), "Allow once" goes through; the wider scopes never do,
@@ -189,18 +195,19 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
   user, showing them the question and its options; if you can't ask (no user in
   this run), stop and report the question and options instead of guessing. To
   answer, run the `answer_with` command with `--option N` (1-based, repeat for
-  multi-select) and/or `--text "…"`. It returns the same JSON. If you won't
-  answer, add `--dismiss` instead: chi does nothing it asked about, finishes
-  with what it found, and the reply comes back (exit 0).
+  multi-select) and/or `--text "…"`. It returns the same JSON. If you leave it
+  open for someone else to answer, wait again with `--turn <turn_id>` from the
+  JSON. If you won't answer, add `--dismiss` instead: chi does nothing it asked
+  about, finishes with what it found, and the reply comes back (exit 0).
 - `question.kind: approval`: chi wants to run something its user's guardrails
   flagged, and allowing it is up to your user. Deny it (the `answer_with`
   command: `--option Deny --text "why"`), and tell your user what it wanted to
   run and why. Or leave it open: tell your user it waits in chi web (the
-  session's short id), then `chi send --wait --format json --timeout 500 <session_id>`
+  session's short id), then `chi send --wait --format json --timeout 500 --turn <turn_id> <session_id>`
   waits until they answer it there. Never allow it yourself, through
   `chi answer`, a piped `chi --attach` or chi's web API.
-- `status: running` (exit 4): still working. Wait again:
-  `chi send --wait --format json --timeout 500 <session_id>`.
+- `status: running` (exit 4): still working. Wait for that same turn again:
+  `chi send --wait --format json --timeout 500 --turn <turn_id> <session_id>`.
 - `question.kind: continue`: chi ran out of steps before it answered. If it is
   getting somewhere, continue it (`answer_with`, `--option Continue`, with
   `--text "…"` to steer it on the way); if not,

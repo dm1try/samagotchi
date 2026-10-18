@@ -54,6 +54,17 @@ RSpec.describe Samagotchi::ParentReport do
     expect(described_class.exit_status(result)).to eq(3)
   end
 
+  it "includes the waited-for turn id on every JSON result when it is known" do
+    [
+      Samagotchi::ReplyWait::Result.new(status: :timeout, turn_id: "turn-1"),
+      Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: question, turn_id: "turn-1"),
+      Samagotchi::ReplyWait::Result.new(status: :done, text: "done", turn_id: "turn-1"),
+      Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", turn_id: "turn-1")
+    ].each do |result|
+      expect(json(result)).to include("turn_id" => "turn-1")
+    end
+  end
+
   it "keeps a hook's kind and header" do
     report = json(Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: hook))
     expect(report["question"]).to include("kind" => "hook", "header" => "deploy-guard", "allow_freeform" => true)

@@ -52,8 +52,10 @@ module Samagotchi
     # @!attribute session [Session, nil] the session as the look that
     #   decided the outcome loaded it (a caller's next baseline); nil for
     #   :canceled and :timeout
+    # @!attribute turn_id [String, nil] the id of the turn this result is
+    #   about, when known
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
-                        :stopped_by, :kept_steps, :session, keyword_init: true)
+                        :stopped_by, :kept_steps, :session, :turn_id, keyword_init: true)
 
     module_function
 
@@ -188,6 +190,13 @@ module Samagotchi
           return no_reply(session, baseline, fresh: true)
         end
 
+        if ended_before && turn && session.last_turn&.enqueued_id == turn &&
+           !(session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == turn) &&
+           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
+           baseline && ended == baseline[:last_turn]
+          return no_reply(session, baseline, fresh: true)
+        end
+
         if turn
           # Only the turn's own end: the session runs another turn when the
           # wait starts, and that one's end is not the answer. A last_turn
@@ -284,6 +293,18 @@ module Samagotchi
       return nil unless turn_ids?(session_dir)
 
       session.last_turn&.enqueued_id
+    end
+
+    # Whether +turn+ is a turn the caller can wait for: running now, queued
+    # as its own turn, or the last one to have ended.
+    def known_turn?(session, session_dir:, turn:)
+      id = turn.to_s
+      return false if id.empty?
+
+      running = session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == id
+      queued = SessionInbox.waiting_input(session_dir, id) == :turn_end
+      ended = session.last_turn&.enqueued_id == id
+      running || queued || ended
     end
 
     # Whether the session's worker sidecar names TURN_IDS_FEATURE.

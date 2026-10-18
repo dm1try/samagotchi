@@ -76,6 +76,7 @@ module Samagotchi
     # @return [Hash] the --format json object
     def json(result, session_id:, timeout: nil, extra: {})
       report = { status: status(result), session_id: session_id }
+      report[:turn_id] = result.turn_id unless result.turn_id.to_s.empty?
       case report[:status]
       when "answered" then report[:text] = result.text.to_s
       when "question"
@@ -122,7 +123,7 @@ module Samagotchi
         text = if result.status == :waiting_for_answer
                  question_text(result.question, session_id: session_id)
                else
-                 "#{detail(result, session_id: session_id, timeout: timeout)}\n"
+                 "#{detail(result, session_id: session_id, timeout: timeout, turn_id: result.turn_id)}\n"
                end
         stderr.print("#{command}: #{text}")
       end
@@ -200,7 +201,7 @@ module Samagotchi
     end
 
     # What a wait that ended without an answer says, one line.
-    def detail(result, session_id:, timeout: nil)
+    def detail(result, session_id:, timeout: nil, turn_id: nil)
       attach = "chi --attach #{session_id}"
       case result.status
       when :waiting_for_answer
@@ -217,7 +218,10 @@ module Samagotchi
       when :error then "the worker failed: #{result.text}; #{attach} shows what happened"
       when :worker_gone then "the worker is gone; #{attach} shows what happened"
       when :stopped then "the session was stopped (chi sessions stop)"
-      else timeout ? "still running after #{format("%g", timeout)} s: #{attach}" : "still running: #{attach}"
+      else
+        wait_again = "chi send --wait --turn #{turn_id} #{session_id}" unless turn_id.to_s.empty?
+        hint = wait_again || attach
+        timeout ? "still running after #{format("%g", timeout)} s: #{hint}" : "still running: #{hint}"
       end
     end
 

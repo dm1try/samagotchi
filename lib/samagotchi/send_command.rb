@@ -43,7 +43,7 @@ module Samagotchi
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
-             chi send --wait [--timeout S] [--format json] ID
+             chi send --wait [--timeout S] [--format json] [--turn T] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one takes it at its next step. A stopped session's
         worker starts.
@@ -93,7 +93,8 @@ module Samagotchi
                     reply, a running turn's too (after exit 3, 4 or 130,
                     wait again this way). To an idle session whose last
                     turn already ended, that ended turn is the answer:
-                    its reply, or its end when it left none
+                    its reply, or its end when it left none. --turn T
+                    waits for that running, queued or last-ended turn
         --cut       ask the running turn to cut the generation it is
                     streaming and take the message now (a generation that
                     has streamed only thinking for steer.cut_after; else
@@ -110,10 +111,12 @@ module Samagotchi
                     than queueing (it would steer; restart it)
         --timeout S (--wait) give up after S seconds, exit 4 (the turn
                     goes on); default no limit
+        --turn T    (--wait, no message) wait for this turn id, from the
+                    JSON's turn_id; not with -m
         --format json
                     (--wait) one JSON object on stdout, whatever the end:
                     status answered (text), question (question,
-                    answer_with), running, or failed, canceled,
+                    answer_with), turn_id when known, running, or failed, canceled,
                     limit, no_answer, error, worker_gone, stopped,
                     command (detail); with --cut or --queue also
                     delivery (what the worker applied: next_step, cut,
@@ -144,6 +147,7 @@ module Samagotchi
       f.switch "--queue"
       f.value "--timeout"
       f.value "--format"
+      f.value "--turn"
       # Starting a turn in every live session at once is too easy to do
       # by accident.
       f.refuse "--all", "there is no --all: name the sessions"
@@ -206,6 +210,7 @@ module Samagotchi
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
+      return usage_error("--turn cannot be used with a message") if options[:turn] && prompt
       return run_wait_only(options) if prompt.nil? && options[:wait] && !options[:new]
 
       # The next link of a chain may start idle, waiting for its first message.
@@ -270,6 +275,8 @@ module Samagotchi
         options[:timeout] = Float(options[:timeout], exception: false)
         return usage_error("--timeout takes seconds") unless options[:timeout]&.positive?
       end
+      return usage_error("--turn needs --wait") if options[:turn] && !options[:wait]
+      return usage_error("--turn is only for waiting without a message") if options[:turn] && (options[:new] || options[:queue] || options[:cut])
       return usage_error("--wait takes one session") if options[:wait] && options[:ids].uniq.size > 1
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
@@ -390,7 +397,7 @@ module Samagotchi
       return report_command(session.id) if @sent_command
 
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
-                                 timeout: options[:timeout])
+                                 timeout: options[:timeout], report_turn_id: @sent_enqueued_id)
     end
 
     # The model the new session will run, for the images check: --model
@@ -452,6 +459,9 @@ module Samagotchi
 
       cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
       baseline = baseline_of(session)
+      running_turn = if session.status == Session::STATUS_RUNNING
+                       ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
+                     end
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
@@ -459,7 +469,15 @@ module Samagotchi
       # running at the check ended before it went in (an idle worker's ack
       # says next_step, and the file still runs as that turn).
       turn = @queue ? @sent_enqueued_id : nil
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn, queued: !turn.nil?)
+      report_turn_id = if @queue
+                         turn
+                       elsif session.status == Session::STATUS_RUNNING
+                         running_turn
+                       else
+                         @sent_enqueued_id
+                       end
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn, queued: !turn.nil?,
+                          report_turn_id: report_turn_id)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -479,15 +497,24 @@ module Samagotchi
     def run_wait_only(options)
       id = resolve(options[:ids].first) or return 1
       session = Session.load(id, state_dir: @state_dir)
+      session_dir = Session.session_dir(id, state_dir: @state_dir)
+      requested_turn = options[:turn]&.to_s
+      if requested_turn && !ReplyWait.known_turn?(session, session_dir: session_dir, turn: requested_turn)
+        error_line("chi send: turn #{requested_turn} is not a running, queued, or last ended turn")
+        return 1
+      end
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
-      turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
+      turn = requested_turn || ReplyWait.own_turn(session, session_dir: session_dir)
       # The gate for the settled case: idle, a turn ended (last_turn), no
       # question standing (a continue offer waits for its answer).
       settled = session.status == Session::STATUS_IDLE && session.last_turn && session.pending_question.nil?
+      ended_before = requested_turn ? session.last_turn&.enqueued_id == requested_turn : settled
+      report_turn_id = turn
+      report_turn_id ||= session.last_turn&.enqueued_id if settled
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
                          baseline: baseline_of(session).merge(messages: nil),
                          timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil,
-                         turn: turn, ended_before: settled)
+                         turn: turn, ended_before: ended_before, report_turn_id: report_turn_id)
     end
 
     # The session as it was before the message went in (ReplyWait's
@@ -524,6 +551,8 @@ module Samagotchi
         return false
       end
 
+      ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
+      @sent_enqueued_id = (ack["enqueued_id"] || ack[:enqueued_id])&.to_s
       @sent_command = command_ack?(result[:ack])
       @info.puts("#{session.id}  started#{continued_words(session)}#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
       true

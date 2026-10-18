@@ -65,19 +65,22 @@ module Samagotchi
       # @param ended_before [Boolean] a last_turn that ended before the
       #   baseline is the answer (ReplyWait's ended_before:) — the
       #   --wait-with-no-message's settled session
+      # @param report_turn_id [String, nil] the turn id to include in the
+      #   report, even when ReplyWait uses the next-reply path
       # @return [Integer] the exit status
       def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil,
-                         queued: false, ended_before: false)
+                         queued: false, ended_before: false, report_turn_id: turn)
         result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
                                     owner_grace: owner_grace, poll_interval: self.class::POLL_INTERVAL, turn: turn,
                                     queued: queued, ended_before: ended_before)
+        result.turn_id = report_turn_id if report_turn_id && !report_turn_id.to_s.empty?
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
                                     json: @json, timeout: timeout, extra: report_extra)
       rescue Interrupt
         if @json
-          @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id,
+          @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled, turn_id: report_turn_id), session_id: id,
                                                                                         extra: report_extra))
           @stdout.flush
           @reported = true
