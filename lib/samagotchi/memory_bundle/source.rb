@@ -38,8 +38,16 @@ module Samagotchi
 
       # The bundles shipped with chi (lib/samagotchi/bundles/<name>).
       SHIPPED_DIR = File.expand_path("../bundles", __dir__)
-      # A provenance source that is a shipped dir (in a gem or a checkout).
+      # The path shape of a shipped dir; #chi_copy? verifies its owner.
       SHIPPED_SOURCE = %r{/lib/samagotchi/bundles/[^/]+/?\z}
+
+      # Whether +source+ is a dir in the running chi's shipped bundles dir.
+      def self.chi_copy?(source, shipped_dir: SHIPPED_DIR)
+        path = File.realpath(source.to_s)
+        File.directory?(path) && File.dirname(path) == File.realpath(shipped_dir)
+      rescue SystemCallError
+        false
+      end
 
       # A bare name (no path separator) that isn't a path here names a
       # shipped bundle: `chi bundle install guardrails`. A directory or file
@@ -166,8 +174,8 @@ module Samagotchi
     # What a bundle's source is, for telling whether two installs of one
     # name come from the same place (Installer: a bundle from elsewhere
     # doesn't silently replace an installed one). key is
-    #   shipped:<dir>  a shipped dir (SHIPPED_SOURCE), in any gem or checkout,
-    #                  so `chi update` and a newer chi upgrade it
+    #   shipped:<dir>  a dir in this chi's shipped bundles, so `chi update`
+    #                  and a newer chi upgrade it
     #   git:<url>      a git URL without its #ref, a trailing / or .git
     #   path:<path>    an absolute path, symlinks resolved when it exists
     # .of is nil for a source it can't place (empty, or a relative path an
@@ -180,7 +188,7 @@ module Samagotchi
         if SourceNormalizer.git_url?(s)
           url = SourceNormalizer.strip_git_ref(s).first.sub(%r{/+\z}, "").delete_suffix(".git")
           new(key: "git:#{url}")
-        elsif s.match?(SourceNormalizer::SHIPPED_SOURCE)
+        elsif s.match?(SourceNormalizer::SHIPPED_SOURCE) && SourceNormalizer.chi_copy?(s)
           new(key: "shipped:#{File.basename(s.chomp("/"))}")
         elsif s.start_with?("/")
           new(key: "path:#{real(s)}")

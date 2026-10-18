@@ -221,10 +221,15 @@ RSpec.describe Samagotchi::MemoryBundle::SourceIdentity do
     expect(id("git@github.com:x/y.git")).to eq("git:git@github.com:x/y")
   end
 
-  it "takes a shipped dir by its name, in any gem or checkout" do
+  it "treats only this chi's shipped dir as shipped, not a fork or older gem path" do
     gem_dir = "/gems/samagotchi-0.23.0/lib/samagotchi/bundles/btw"
-    expect(id(gem_dir)).to eq(id("/src/samagotchi/lib/samagotchi/bundles/btw/"))
-    expect(described_class.of(gem_dir)).to be_shipped
+    fork_dir = "/src/fork/lib/samagotchi/bundles/btw"
+    own_dir = File.join(Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR, "btw")
+
+    expect(id(own_dir)).to eq("shipped:btw")
+    expect(described_class.of(gem_dir)).not_to be_shipped
+    expect(id(gem_dir)).to eq("path:#{File.expand_path(gem_dir)}")
+    expect(id(fork_dir)).to eq("path:#{File.expand_path(fork_dir)}")
     expect(described_class.of("/x/btw")).not_to be_shipped
   end
 

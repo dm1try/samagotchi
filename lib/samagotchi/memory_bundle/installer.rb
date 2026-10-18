@@ -158,9 +158,8 @@ module Samagotchi
 
       # Who may install under this name (a manifest can take any name: a
       # repo calling itself guardrails). Sources compare by SourceIdentity
-      # (a shipped dir by name, in any gem or checkout; a git URL without
-      # #ref; a path resolved); one it can't place (an older record's
-      # relative path) never refuses.
+      # (this chi's shipped dirs by name; a git URL without #ref; a resolved
+      # path); old gem sources are handled as legacy provenance.
       #   - a name chi ships comes from a shipped dir only, unless --force
       #     (install and upgrade): the plugin and hooks it replaces are chi's;
       #   - a plain install over a bundle from another source is refused,
@@ -176,6 +175,7 @@ module Samagotchi
         return if now.nil?
 
         was = @existing && SourceIdentity.of(@existing.source)
+        was = now if now.shipped? && legacy_shipped_record?(@existing&.source)
         return if was.nil? || was == now
         return @source_change = [@existing.source, @source.to_s] if @upgrade
 
@@ -192,9 +192,8 @@ module Samagotchi
       end
 
       # A shipped name (in any case) from anything but this chi's own
-      # shipped dir. A recorded source may be an older gem's (SourceIdentity
-      # matches the path); an incoming one must be a dir in SHIPPED_DIR, so
-      # a fork's lib/samagotchi/bundles/btw isn't chi's.
+      # shipped dir. Incoming sources must be a dir in SHIPPED_DIR, so a
+      # fork's lib/samagotchi/bundles/btw isn't chi's.
       def refuse_shipped_name
         return if @force || chi_copy?(@source)
 
@@ -207,8 +206,7 @@ module Samagotchi
 
       # This source's SourceIdentity; one that looks shipped by its path (a
       # fork's lib/samagotchi/bundles/btw) but isn't a dir in the shipped
-      # dir is its path, so it isn't taken for chi's btw. A recorded source
-      # keeps the path match (older gems).
+      # dir is its path, so it isn't taken for chi's btw.
       def incoming_identity
         identity = SourceIdentity.of(@source)
         identity&.shipped? && !chi_copy?(@source) ? SourceIdentity.path(@source) : identity
@@ -216,10 +214,13 @@ module Samagotchi
 
       # Whether +source+ is a dir in the shipped dir.
       def chi_copy?(source)
-        path = File.realpath(source.to_s)
-        File.directory?(path) && File.dirname(path) == File.realpath(@shipped_dir)
-      rescue SystemCallError
-        false
+        SourceNormalizer.chi_copy?(source, shipped_dir: @shipped_dir)
+      end
+
+      # Older provenance records can name the gem directory that shipped
+      # this bundle before chi was upgraded.
+      def legacy_shipped_record?(source)
+        source.to_s.match?(%r{(?:\A|/)gems/samagotchi-[^/]+/lib/samagotchi/bundles/#{Regexp.escape(@name)}/?\z})
       end
 
       # The names of the bundles shipped with chi (their manifests'),

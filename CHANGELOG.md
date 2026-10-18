@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Bundles: source identities distinguish chi's shipped directories from fork paths with the same layout.
 - Bundles: the test kit reports all failing hooks from one call in a single error.
 - Bundles: the test kit's boundary scan catches `require_relative` escapes into chi's `lib/`.
 - HTTP: failed-request messages in logs are now short, single-line UTF-8.
