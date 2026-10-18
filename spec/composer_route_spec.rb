@@ -10,14 +10,38 @@ RSpec.describe Samagotchi::ComposerRoute do
   # The shared cases (the web's composer.test.js runs the same file).
   golden = JSON.parse(File.read(File.expand_path("fixtures/composer_routes.json", __dir__)))
 
-  # The terminals' own words and !cmd (every session has them), then the
-  # listed core entries as their builtins; only plugin commands need stubs.
+  # Every core command with its own matcher (as a worker's session has
+  # them), so a new core command or a changed matcher meets every row; a
+  # listed name core lacks is a plugin's command, matched by its name.
   def registry_for(names)
-    builtins = Samagotchi::SessionCommands.builtin_registry.entries
-    base = builtins.select { |entry| entry.local || entry.id == :shell || names.include?(entry.name) }
     Samagotchi::Commands::Registry.from_listing(names.map { |name| { name: name } },
-                                                base: Samagotchi::Commands::Registry.new(entries: base))
+                                                base: Samagotchi::SessionCommands.builtin_registry)
   end
+
+  # Each core command's bare line, idle and running. A new core command
+  # fails "covers every core command" until it is listed here.
+  CORE_ROUTES = {
+    "!rollback" => %w[command command],
+    "/continue" => %w[command command],
+    "/models" => %w[command command],
+    "/guardrails" => %w[command command],
+    "/context" => %w[command command],
+    "/model" => %w[command command],
+    "/llm-context" => %w[command command],
+    "/thinking" => %w[command command],
+    "/reasoning-history" => %w[command command],
+    "/toolkit" => %w[command command],
+    "/help" => %w[command command],
+    "/stats" => %w[local local],
+    "/recap" => %w[local local],
+    "/exit" => %w[local local],
+    "/quit" => %w[local local],
+    "/archive" => %w[local local],
+    "/detach" => %w[local local],
+    "/cut" => %w[usage usage],
+    "/queue" => %w[usage usage],
+    "/unqueue" => %w[local local]
+  }.freeze
 
   def expect_route(route, expected, row)
     label = "#{row["text"].inspect} running: #{row["running"]}"
@@ -33,6 +57,31 @@ RSpec.describe Samagotchi::ComposerRoute do
       route = described_class.call(row["text"], running: row["running"], registry: registry, images: row["images"] || 0)
 
       expect_route(route, row["expect"], row)
+    end
+  end
+
+  describe "against every core command" do
+    let(:core) { Samagotchi::SessionCommands.builtin_registry }
+
+    it "covers every core command (! is the shell's: a row's !cmd)" do
+      expect(CORE_ROUTES.keys).to match_array(core.entries.map(&:name) - ["!"])
+    end
+
+    CORE_ROUTES.each do |name, (idle, running)|
+      it "routes the bare #{name} as #{idle} idle, #{running} running" do
+        registry = registry_for(golden["commands"])
+        expect(described_class.call(name, running: false, registry: registry).kind.to_s).to eq(idle)
+        expect(described_class.call(name, running: true, registry: registry).kind.to_s).to eq(running)
+        # A glued word is no command of it (a ! line is the shell's anyway).
+        expect(described_class.call("#{name}x", running: false, registry: registry).kind).to eq(:typo).or eq(:prompt) if name.start_with?("/")
+      end
+    end
+
+    it "routes a :local line to its entry's id" do
+      registry = registry_for(golden["commands"])
+      core.entries.select(&:local).reject { |entry| %w[/cut /queue].include?(entry.name) }.each do |entry|
+        expect(described_class.call(entry.name, running: false, registry: registry).local).to eq(entry.id), entry.name
+      end
     end
   end
 

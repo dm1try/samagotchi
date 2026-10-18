@@ -47,7 +47,8 @@ Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both term
 (`composer.js#routeComposerLine`). `spec/fixtures/composer_routes.json` holds the cases both answer: rspec
 (`spec/composer_route_spec.rb`) and `npm test` (`spec/web/public/composer.test.js`) run every row. A change to
 either router adds its row there; a row where a UI differs on purpose (or a found divergence) carries a `web` or
-`repl` override and a `note`.
+`repl` override and a `note`. The Ruby side runs each row with every core command (a new one fails its
+`CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
 A spec that waits for something uses `wait_until(timeout:)`, or `wait_until!(what, timeout:)` where no check
 follows (stubs, helper threads: it raises "timed out after N s waiting for <what>") — never a loop with no deadline.

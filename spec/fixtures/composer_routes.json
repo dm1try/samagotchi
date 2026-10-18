@@ -6,7 +6,8 @@
     "default: commands below), expect {kind, text?, delivery?, local?}. kind is one of ComposerRoute::KINDS;",
     "text is compared only when given, trimmed; delivery is null unless given; local (the registry id) is",
     "Ruby's only (the web's own replies have none). web replaces expect for the page where it differs.",
-    "note says why a row differs, or what a UI does past the route."
+    "note says why a row differs, or what a UI does past the route. Ruby runs each row with every core command",
+    "(SessionCommands.builtin_registry) as well; a listed name core lacks is a plugin's, matched by its name."
   ],
   "commands": ["/model", "/continue", "/help"],
   "rows": [
