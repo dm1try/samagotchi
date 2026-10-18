@@ -174,11 +174,15 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(bundle.command("/cap")).to start_with("cost-cap: $0.60 spent of $4.00")
     end
 
-    it "takes cap: false (--set cost-cap.cap=off) as no cap for the session, over default:" do
+    it "takes cap: false, 0 or a negative number (--set cost-cap.cap=off, 0, -1) as no cap for the session, over default:" do
       bundle = shipped_bundle("cost-cap", settings: { "default" => 0.1 }, session_settings: { cap: false }, host: { cost: 1.0 })
       generation(bundle)
       expect(bundle.questions).to be_empty
       expect(bundle.command("/cap")).to eq("cost-cap: no cap ($1.00 spent)")
+      [0, -1].each do |cap|
+        expect(shipped_bundle("cost-cap", settings: { "default" => 0.1 }, session_settings: { cap: cap }, host: { cost: 1.0 })
+          .command("/cap")).to eq("cost-cap: no cap ($1.00 spent)"), cap.to_s
+      end
     end
 
     it "lists cap as its one session setting" do

@@ -49,11 +49,16 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
   end
 
   describe "--set BUNDLE.KEY=VALUE" do
-    before { allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"]) }
+    before { allow(Samagotchi::BundleSessionSettings).to receive(:availability).and_return(Samagotchi::BundleSessionSettings::Availability.new(offered: { "cost-cap" => ["cap"] }, notes: {})) }
 
     it "starts the session with the bundle settings, a later --set of a key winning" do
       expect(run("--new", "--set", "cost-cap.cap=3", "--set=cost-cap.cap=0.5", "-m", "hi")).to eq(0), err.string
       expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 0.5 } }))
+    end
+
+    it "types the value as chi --set does: 0x10 stays text" do
+      expect(run("--new", "--set", "cost-cap.cap=0x10", "-m", "hi")).to eq(0), err.string
+      expect(spawned.last[:setup].bundle_settings).to eq("cost-cap" => { "cap" => "0x10" })
     end
 
     it "refuses it without --new, beside --continues, and a bundle or key it doesn't offer" do
@@ -251,7 +256,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(err.string).to include("leave out --thinking")
       expect(run("--new", "--continues", previous.id, "--toolkit", "lean", "--tool", "delegate", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --toolkit, --tool")
-      allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"])
+      allow(Samagotchi::BundleSessionSettings).to receive(:availability).and_return(Samagotchi::BundleSessionSettings::Availability.new(offered: { "cost-cap" => ["cap"] }, notes: {}))
       expect(run("--new", "--continues", previous.id, "--set", "cost-cap.cap=1", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --set")
       expect(run("--new", "--continues", previous.id, "--wait")).to eq(2)

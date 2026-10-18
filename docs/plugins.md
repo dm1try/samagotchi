@@ -762,9 +762,11 @@ The Engine itself is never handed to a plugin.
 A bundle's settings are config.yml's, for every session. A setting a session may have of its own (a child's cap,
 say) is one the manifest lists in `session_settings:`; `chi --set BUNDLE.KEY=VALUE` and `chi send --new --set …`
 then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
-doesn't). chi refuses a bundle that isn't installed and a key the manifest doesn't list, so a typo isn't saved.
-Values are YAML scalars: `3`, `2.5`, `true`, text; `off`, `no`, `on` and `yes` read as booleans, so treat `false`
-as off. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
+doesn't). chi refuses a bundle that isn't installed (or whose plugin doesn't load) and a key the manifest doesn't
+list, so a typo isn't saved. Values are typed simply: an integer (`3`, `-1`) or a decimal (`2.5`) is a number,
+`true` is true, `false` and `off` are false, and anything else stays the text as given (`010`, `0x10`, `3:30`,
+`No`, `null`); `POST /api/sessions` `bundle_settings` types its strings the same way and keeps JSON numbers and
+booleans. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
 `cap` replaces the config's `cap`). Read such a key from `ctx.settings` where it is used, not in
 `initialize(settings)`: that runs once at load, before any session, and gets the config only.
 
@@ -1595,7 +1597,7 @@ bundles:
   pass the spend, saved for the session) and **Stop** (the turn stops, `canceled` with `stopped_by: cost-cap`, and a
   card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops.
 - **The cap of a session:** the one `/cap` or a Continue set for it, else its own `cap:` (`chi --set
-  cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off` for none), else `child:` for a
+  cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off`, `0` or a negative number for none), else `child:` for a
   delegate child, else `default:`. Delegates and continued links each have their own cap (a continued link keeps
   the `--set` cap, not a `/cap` or Continue); there is no family cap.
 - **A host it can't watch:** a model that reports no cost and has no configured price (a local server, a free

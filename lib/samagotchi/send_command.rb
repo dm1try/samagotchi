@@ -89,7 +89,8 @@ module Samagotchi
         --set BUNDLE.KEY=VALUE
                     (--new) a bundle setting for this session, over
                     config.yml's bundles: (repeatable; a key its bundle's
-                    manifest lists in session_settings:, a YAML scalar:
+                    manifest lists in session_settings:; 3, 2.5, true,
+                    false and off are typed, the rest is text:
                     --set cost-cap.cap=3)
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an

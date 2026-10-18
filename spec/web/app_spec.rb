@@ -2012,16 +2012,19 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     before do
-      allow(Samagotchi::BundleSessionSettings).to receive(:offered).and_return("cost-cap" => ["cap"])
+      allow(Samagotchi::BundleSessionSettings).to receive(:availability).and_return(Samagotchi::BundleSessionSettings::Availability.new(offered: { "cost-cap" => ["cap"] }, notes: {}))
     end
 
     it "starts the session with them (chi --set's), none for null" do
       manager = FakeResponsesManager.new
       expect(create(manager, { "cost-cap" => { "cap" => 2.5 } }).first).to eq(201)
       expect(create(manager, nil).first).to eq(201)
+      expect(create(manager, { "cost-cap" => { "cap" => "0.5" } }).first).to eq(201)
+      expect(create(manager, { "cost-cap" => {} }).first).to eq(201)
 
       expect(manager.spawn_calls.map { |c| c[:extra][:setup] })
-        .to eq([Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 2.5 } }), nil])
+        .to eq([Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 2.5 } }), nil,
+                Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 0.5 } }), nil])
     end
 
     it "answers 400 invalid_bundle_settings for another shape, a bundle or key it doesn't offer, and beside continues" do

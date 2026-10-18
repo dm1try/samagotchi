@@ -126,7 +126,8 @@ parser = OptionParser.new do |opts|
   # as --tool's negation); this is its help line.
   opts.separator "        --no-tool NAME               Leave this tool out of the toolkit (repeatable; a comma list too)"
   opts.on("--set BUNDLE.KEY=VALUE", "A bundle setting for this session, over config.yml's bundles: (repeatable; a key the " \
-                                  "bundle's manifest lists in session_settings:; saved in the session: --set cost-cap.cap=3)") do |v|
+                                  "bundle's manifest lists in session_settings:; numbers, true, false and off are typed, the rest is text; " \
+                                  "saved in the session: --set cost-cap.cap=3)") do |v|
     (options[:sets] ||= []) << v
   end
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
