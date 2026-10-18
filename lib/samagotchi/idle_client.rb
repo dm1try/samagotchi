@@ -187,13 +187,8 @@ module Samagotchi
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
 
-    # The request's token counts and reported cost (a broadcast's triage
-    # has no session to count them in). The cache counts show whether the
-    # host reused a cached prefix. A side request evicts a session's cached
-    # prompt only on a llama.cpp with no host-memory cache (--cache-ram 0)
-    # or an old single-slot build, or when pinned to the session's slot,
-    # which chi never does; paid hosts and current llama.cpp aren't
-    # affected (docs/internals/prompt-caching.md).
+    # Log reported request usage when cache counts are present; session
+    # side-usage counting is handled separately by #report_usage.
     def log_usage(response, kind)
       usage = response.usage
       fields = usage&.cache_fields || {}
