@@ -369,7 +369,8 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
   read's re-render) and pairs them with the bubble's links and text before the `path:line` scan. A file ref outside the
   session's folder is dropped, as a reload drops it: the folder `/tail` names, else (an older worker) the hub's
-  session list entry's.
+  session list entry's, else (refs to check, no hub entry) the session file's; with no folder known at all, every
+  file ref is dropped rather than shown unchecked.
   A plugin tool's row refs (`refs`, `RowRefs`) ride its tool events and, on a reload, its part (saved as
   `tool_refs`); `turn_view.js` binds them to the row's title (`refs.js bindRowRefs`: the first on the title,
   the others in its menu).

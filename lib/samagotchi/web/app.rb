@@ -926,14 +926,10 @@ module Samagotchi
         state = nil unless state.is_a?(Hash)
         if state
           status, used, notes = state.values_at("status", "used_memory_names", "prompt_notes")
-          # No session file read here: the folder the answer's file refs must
-          # stay under is the worker's (its tail's working_directory), else the
-          # hub's session list entry's (a worker from before the field, or read
-          # through its snapshot); nil then without a hub or before it saw the
-          # session: refs aren't checked.
-          cwd = tail["working_directory"]
-          cwd = @hub&.working_directory(id) unless cwd.is_a?(String) && !cwd.empty?
-          messages = last_assistant_for_display([tail["answer"]].compact, cwd: cwd)
+          answer = tail["answer"]
+          cwd = tail_working_directory(id, tail, answer)
+          answer = without_file_refs(answer) unless cwd
+          messages = last_assistant_for_display([answer].compact, cwd: cwd)
         else
           session = @session_class.load(id, state_dir: default_state_dir)
           status = displayed_status(session)
@@ -954,6 +950,35 @@ module Samagotchi
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # The folder the live tail's answer's file refs must stay under: the
+      # worker's (its tail's working_directory), else the hub's session list
+      # entry's (a worker from before the field, or read through its
+      # snapshot), else, only when the answer has refs to check, the session
+      # file's, as the full read takes it. nil when none is known: the
+      # caller drops the file refs rather than show them unchecked.
+      # @return [String, nil]
+      def tail_working_directory(id, tail, answer)
+        known = ->(dir) { dir.is_a?(String) && !dir.empty? }
+        cwd = tail["working_directory"]
+        cwd = @hub&.working_directory(id) unless known.call(cwd)
+        return cwd if known.call(cwd)
+        return nil unless answer.is_a?(Hash) && (answer[AnswerRefs::KEY.to_s] || answer[AnswerRefs::KEY])
+
+        cwd = @session_class.load(id, state_dir: default_state_dir).working_directory
+        known.call(cwd) ? cwd : nil
+      rescue ArgumentError, KeyError, SystemCallError
+        nil
+      end
+
+      # +answer+ without its file refs (the rest kept), for a read that
+      # knows no folder to check them against.
+      def without_file_refs(answer)
+        return answer unless answer.is_a?(Hash)
+
+        key = [AnswerRefs::KEY.to_s, AnswerRefs::KEY].find { |name| answer[name].is_a?(Array) } or return answer
+        answer.merge(key => answer[key].reject { |ref| ref.is_a?(Hash) && (ref["kind"] || ref[:kind]).to_s == Ref::FILE })
       end
 
       # ?timing=1: the whole timing (every record, analytics.json merged with

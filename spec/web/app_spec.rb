@@ -1216,6 +1216,28 @@ RSpec.describe Samagotchi::Web::App do
         expect(read(app, "?tail=1").last["display_refs"]).to eq([jira, file])
       end
 
+      # Neither the worker's tail (an older worker's) nor a hub names the
+      # folder: the session file's, as the full read takes it.
+      it "drops one from the live tail by the session file's folder when neither the worker nor a hub names it" do
+        outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
+        live["snapshot"]["messages"].last["display_refs"] = [jira, file, outside]
+        app = build_app(state_dir: Dir.mktmpdir)
+        stub_worker(app, live)
+
+        expect(read(app, "?tail=1").last["display_refs"]).to eq([jira, file])
+      end
+
+      it "drops every file ref from the live tail when no folder is known at all, the rest kept" do
+        live["snapshot"]["messages"].last["display_refs"] = [jira, file]
+        loader = Class.new(StubSessionLoader) do
+          define_singleton_method(:load) { |_id, state_dir: nil| raise ArgumentError, "Session file corrupted" }
+        end
+        app = build_app(state_dir: Dir.mktmpdir, session_class: loader)
+        stub_worker(app, live)
+
+        expect(read(app, "?tail=1").last["display_refs"]).to eq([jira])
+      end
+
       it "takes the worker's folder over the hub's entry" do
         outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
         live["snapshot"]["messages"].last["display_refs"] = [jira, file, outside]

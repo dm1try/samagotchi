@@ -19,6 +19,9 @@ and commands may change between minor versions. How releases are made:
 - `chi send --queue --wait` (and a wait for a turn by its id) no longer waits until its timeout when the worker dies
   in the middle of that turn: once the next worker settles it, the wait ends `canceled` with
   `cancel_reason: worker_stopped` ("its worker exited mid-turn"). Another send's wait is not ended by it.
+- `chi web`'s end-of-turn re-read of the answer could keep a plugin's file ref outside the session's folder when
+  neither the worker nor the session hub named the folder (an older worker): it now takes the folder from the session
+  file, as a reload does, and drops the answer's file refs when no folder is known.
 
 ## [0.85.0] - 2026-10-18
 
