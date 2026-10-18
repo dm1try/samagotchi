@@ -97,11 +97,11 @@ test("every stream event type has its handler", () => {
 test("a chunk goes to the turn view; its ctx lands on the session open at that moment", () => {
   const { page, handlers } = fakePage();
   const first = page.current;
-  handlers.generation_chunk({ content: "hi", ctx_pct: 12 });
+  handlers.generation_chunk({ text: "hi", thinking: "", counts: { total_tokens: 120, context_window_tokens: 1000 } });
   assert.equal(first.ctxPct, 12);
   // A session switch mid-stream: the handlers read the new session's fields.
   page.open("s2");
-  handlers.generation_chunk({ content: "there", ctx_pct: 30 });
+  handlers.generation_chunk({ text: "there", thinking: "", counts: { total_tokens: 300, context_window_tokens: 1000 } });
   assert.equal(page.current.ctxPct, 30);
   assert.equal(first.ctxPct, 12);
   assert.deepEqual(page.names().filter((n) => n === "turnDom.chunk").length, 2);
@@ -145,16 +145,16 @@ test("context_status after /model sets the window and the %, and usage null clea
 });
 
 // The old model's window is gone after a switch whose new one didn't
-// resolve: a chunk's usage (no n_ctx in it) counts no % until a window
+// resolve: a chunk's counts (no window in them) count no % until a window
 // comes; a turn's own context_status (no window key) keeps the window.
 test("context_status: after an unresolved /model a chunk sets no %, and a turn's estimate keeps the window", () => {
   const { page, handlers } = fakePage();
   page.current.ctxWindow = 8192;
   handlers.context_status({ usage: null, bucket: null, context_window_tokens: null, context_window_source: null });
-  handlers.generation_chunk({ content: "x", payload: { usage: { prompt_tokens: 6000, completion_tokens: 200 } } });
+  handlers.generation_chunk({ text: "x", thinking: "", counts: { prompt_tokens: 6000, completion_tokens: 200, total_tokens: 6200 } });
   assert.equal(page.current.ctxPct, null);
   handlers.generation_started({ context_window_tokens: 32000, context_window_source: "server" });
-  handlers.generation_chunk({ content: "y", payload: { usage: { prompt_tokens: 6000, completion_tokens: 200 } } });
+  handlers.generation_chunk({ text: "y", thinking: "", counts: { prompt_tokens: 6000, completion_tokens: 200, total_tokens: 6200 } });
   assert.equal(page.current.ctxPct, (6200 / 32000) * 100);
   handlers.context_status({ usage: { estimated_pct: 20 }, bucket: "20to40" });
   assert.equal(page.current.ctxPct, 20);

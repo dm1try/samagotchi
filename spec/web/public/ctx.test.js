@@ -7,33 +7,37 @@ import {
   sideRequestsText,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
-// Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
-const llamaFinal = { stop: true, tokens_evaluated: 120, tokens_predicted: 30, timings: { prompt_n: 3, predicted_n: 30 } };
+// A chunk's counts as the worker's Bridge sends them (Bridge::ClientEvent):
+// llama.cpp's last chunk, which reports no window.
+const llamaFinal = { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 };
 
-test("uses the resolved window when the payload has no n_ctx", () => {
-  assert.equal(extractCtxPct({ payload: llamaFinal }, 1000), 15);
+test("uses the resolved window when the counts have none", () => {
+  assert.equal(extractCtxPct({ counts: llamaFinal }, 1000), 15);
 });
 
 test("returns null without any window", () => {
-  assert.equal(extractCtxPct({ payload: llamaFinal }), null);
+  assert.equal(extractCtxPct({ counts: llamaFinal }), null);
 });
 
-test("a window the payload reports wins over the resolved one", () => {
-  assert.equal(extractCtxPct({ payload: { ...llamaFinal, n_ctx: 300 } }, 1000), 50);
+test("a window the counts report wins over the resolved one", () => {
+  assert.equal(extractCtxPct({ counts: { ...llamaFinal, context_window_tokens: 300 } }, 1000), 50);
 });
 
-test("prefers n_past, then usage totals", () => {
-  assert.equal(extractCtxPct({ payload: { n_past: 500, tokens_evaluated: 1 } }, 1000), 50);
-  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000), 25);
+test("counts total_tokens, not prompt or completion alone", () => {
+  assert.equal(extractCtxPct({ counts: { prompt_tokens: 100, total_tokens: 250 } }, 1000), 25);
+  assert.equal(extractCtxPct({ counts: { prompt_tokens: 100 } }, 1000), null);
 });
 
-test("passes a precomputed pct through", () => {
-  assert.equal(extractCtxPct({ est_pct: 42.5 }, 1000), 42.5);
-  assert.equal(extractCtxPct({ ctx_pct: 7 }), 7);
+test("ignores chunks without counts, and the provider's payload", () => {
+  assert.equal(extractCtxPct({ text: "hi", thinking: "" }, 1000), null);
+  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000), null);
+  assert.equal(extractCtxPct({ payload: { n_past: 500, tokens_evaluated: 1 } }, 1000), null);
 });
 
-test("ignores chunks without token counts", () => {
-  assert.equal(extractCtxPct({ payload: { content: "hi" } }, 1000), null);
+test("a precomputed pct outside :context_status's usage passes no longer", () => {
+  assert.equal(extractCtxPct({ est_pct: 42.5 }, 1000), null);
+  assert.equal(extractCtxPct({ ctx_pct: 7 }), null);
+  assert.equal(extractCtxPct({ context_window_tokens: 1000, total_tokens: 250 }), null);
 });
 
 // Shape of the kernel's :context_status event (kernel_loop emit_context_status_event).
@@ -62,10 +66,10 @@ test("savedCtxPct: counted against the LLM context budget when it is smaller tha
   assert.equal(savedCtxPct({ used_tokens: 16000, window_tokens: null }, 64000), null);
 });
 
-test("extractCtxPct: a fill computed here counts against a smaller budget; a precomputed one passes through", () => {
-  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000, 500), 50);
-  assert.equal(extractCtxPct({ payload: { n_ctx: 300, n_past: 150 } }, 1000, 600), 50);
-  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000, 4000), 25);
+test("extractCtxPct: a fill computed here counts against a smaller budget; a :context_status pct passes through", () => {
+  assert.equal(extractCtxPct({ counts: { total_tokens: 250 } }, 1000, 500), 50);
+  assert.equal(extractCtxPct({ counts: { context_window_tokens: 300, total_tokens: 150 } }, 1000, 600), 50);
+  assert.equal(extractCtxPct({ counts: { total_tokens: 250 } }, 1000, 4000), 25);
   assert.equal(extractCtxPct({ usage: { estimated_pct: 40 } }, 1000, 500), 40);
 });
 

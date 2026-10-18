@@ -2,6 +2,7 @@
 
 require "json"
 
+require_relative "client_event"
 require_relative "event_id"
 
 module Samagotchi
@@ -203,7 +204,7 @@ module Samagotchi
         seq = event[:event_seq]
         return if seq && seq <= @high_water
 
-        write_frame(io, seq: seq, data: event)
+        write_frame(io, seq: seq, data: ClientEvent.project(event))
         @high_water = seq if seq && seq > @high_water
       end
 
