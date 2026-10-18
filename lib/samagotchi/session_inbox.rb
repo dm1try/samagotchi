@@ -6,6 +6,7 @@ require "time"
 require "securerandom"
 require_relative "atomic_file"
 require_relative "delivery"
+require_relative "log"
 require_relative "session"
 
 module Samagotchi
@@ -332,8 +333,8 @@ module Samagotchi
       dir = File.join(session_dir, INPUT_DIR, REMOVED_DIR)
       FileUtils.mkdir_p(dir)
       AtomicFile.write(File.join(dir, id), "")
-    rescue SystemCallError
-      nil
+    rescue SystemCallError => e
+      Log.warn(:bridge, "removed_tombstone_write_failed", error: e.class.name, msg: e.message)
     end
     private_class_method :mark_removed
 

@@ -115,6 +115,20 @@ RSpec.describe Samagotchi::SessionInbox do
         expect(described_class.take_queued_input(session_dir, "id-img").first).to eq(:removed)
       end
 
+      it "warns when writing a removal tombstone fails but still removes the queued input" do
+        write("later", "id-1", delivery: "queue")
+        error = Errno::EACCES.new("tombstone")
+        allow(Samagotchi::AtomicFile).to receive(:write).and_raise(error)
+        allow(Samagotchi::Log).to receive(:warn)
+
+        status, input = described_class.take_queued_input(session_dir, "id-1")
+
+        expect([status, input.prompt]).to eq([:removed, "later"])
+        expect(described_class.find_new_input_files(session_dir)).to be_empty
+        expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "removed_tombstone_write_failed",
+                                                             error: "Errno::EACCES", msg: error.message)
+      end
+
       it "leaves a next-step file where it is: a running turn's drain may merge it any moment" do
         path = write("now", "id-plain")
 
