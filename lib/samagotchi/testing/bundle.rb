@@ -184,6 +184,8 @@ module Samagotchi
         capture.register(:before_tool_call) { |event| dispatched = event.dup }
         gate = Guardrails::Gate.new(-> { capture }, context_lookup: -> { context }, tools_lookup: -> { tools })
         gate.evaluate(call, iteration: iteration, params: params, verdict: verdict || Verdict.new(call: call))
+        raise ArgumentError, "guardrails did not dispatch a before_tool_call event for #{call[:name].inspect}" unless dispatched
+
         dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context, :targets)
       end
 

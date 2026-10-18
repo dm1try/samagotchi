@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Bundles: the test kit explains when guardrails don't dispatch a `before_tool_call` event.
 - A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates
   the deleted old session's folder.
 - Guardrails: `rm` and protected-path checks treat a `$(cat <<'EOF' … EOF)` message body as data, while still
