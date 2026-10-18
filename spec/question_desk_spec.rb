@@ -293,7 +293,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       id = desk.post(continue_fields, on_answer: on_answer).id
 
       expect { desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer") }
-        .to raise_error(described_class::Refused) { |e| expect(e.reason).to eq(:stop_only) }
+        .to raise_error(described_class::Refused) { |e| expect(e.reason).to eq(:spend) }
       expect(desk.pending).to have_attributes(id: id)
       # A person's Continue is theirs to give.
       desk.answer(id: id, selected: ["Continue"], client_id: "web:1")

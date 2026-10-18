@@ -19,6 +19,12 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     v
   end
 
+  it "tags each option's effect for a parent's answer: once permits, a wider scope permits wide, Deny denies" do
+    payload = described_class.payload(ask(scopes: %w[once session repo]))
+    expect(payload[:options].last).to eq("Deny")
+    expect(payload[:effects]).to eq(%w[permit permit_wide permit_wide deny])
+  end
+
   describe ".payload with an edit preview" do
     let(:diff) { { text: "@@ -1 +1 @@\n-a\n+b", added: 3, removed: 1, truncated: false, new_file: false } }
 

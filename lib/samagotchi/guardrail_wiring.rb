@@ -5,6 +5,7 @@ require "yaml"
 require_relative "config"
 require_relative "log"
 require_relative "guardrails"
+require_relative "guardrails/parent_approvals"
 require_relative "memory_bundle/manifest"
 require_relative "version"
 require_relative "hooks"
@@ -236,6 +237,9 @@ module Samagotchi
       # verdict.call is the call that will run (a hook may have replaced it).
       payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
                                                       only: (SCRATCH_SCOPES if @scratch))
+      # A call on chi's own config, hooks or guardrails is the user's to
+      # allow, never a parent agent's (Guardrails::ParentPolicy).
+      payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])
       Guardrails::Approval.settle(verdict, @ask.call(payload), payload[:approval][:scopes])
     end
 

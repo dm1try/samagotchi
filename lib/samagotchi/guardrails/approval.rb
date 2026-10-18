@@ -15,6 +15,7 @@ module Samagotchi
       KIND = "approval"
       HEADER = "Approve tool call?"
       DENY = "Deny"
+      ONCE = "Allow once"
 
       module_function
 
@@ -27,7 +28,9 @@ module Samagotchi
       #   write: the card shows its diff, the question text one change line
       # @param only [Array<String>, nil] offer no scope beyond these (a
       #   scratch session: once, session); "once" when none is left
-      # @return [Hash] open_question fields
+      # @return [Hash] open_question fields; its caller adds user_only:
+      #   (ParentApprovals.protected_facts? on approval:, a file that
+      #   requires this one)
       def payload(verdict, label: nil, preview: nil, only: nil)
         scopes = offered_scopes(verdict, only: only)
         targets = verdict.targets
@@ -37,6 +40,7 @@ module Samagotchi
           header: HEADER,
           multi_select: false,
           allow_freeform: true,
+          effects: effects(scopes),
           kind: KIND,
           approval: {
             tool: targets&.tool || verdict.call[:name].to_s,
@@ -59,6 +63,12 @@ module Samagotchi
             preview: preview
           }.compact
         }
+      end
+
+      # Each option's effect for a parent's answer (ParentPolicy): once
+      # permits one call, a wider scope more, Deny denies.
+      def effects(scopes)
+        scopes.map { |scope| scope == "once" ? "permit" : "permit_wide" } + ["deny"]
       end
 
       def args_for_card(targets)
@@ -101,7 +111,7 @@ module Samagotchi
       def label(scope, verdict)
         place = verdict.targets&.repo_root ? "in this repo (#{verdict.targets.repo_name})" : "in this directory"
         case scope
-        when "once" then "Allow once"
+        when "once" then ONCE
         when "session" then "Allow this call for the session"
         when "repo" then "Allow this call #{place}"
         when "rule" then "Allow rule #{verdict.rule} #{place}"

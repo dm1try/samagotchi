@@ -17,7 +17,7 @@ module Samagotchi
       # broadcast, which is the user's; the bundle's asks before a memory
       # that reaches the system prompt, or a model overlay, is written (a
       # parent model would be writing a model's prompt). Only the user may
-      # allow them (ParentApprovals).
+      # allow them (ParentApprovals.protected?, ParentPolicy's user_only).
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
                            model-overlay-write].freeze
       SCOPES = %w[once session repo rule].freeze

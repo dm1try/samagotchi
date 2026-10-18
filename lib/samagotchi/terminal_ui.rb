@@ -1584,10 +1584,11 @@ module Samagotchi
           close_question_widget(prompt, prompt.answer_text(answer))
           return true
         rescue QuestionDesk::Refused => e
-          # A parent's allow guardrails.parent_approvals doesn't let through:
-          # the question stays open for a deny (or the end of the input).
+          # A parent's pick its strategy doesn't let through
+          # (Guardrails::ParentPolicy): the question stays open for a deny
+          # (or the end of the input).
           echo_choice(raw)
-          @surface.commit(Guardrails::ParentApprovals.message(e.reason, typed: true))
+          @surface.commit(e.detail(typed: true))
           next
         rescue ArgumentError => e
           @surface.commit("Invalid: #{e.message}. Try again.")
@@ -1600,7 +1601,7 @@ module Samagotchi
     end
 
     # Whether the answers typed here are a parent agent's (piped stdin, an
-    # agent marker): QuestionDesk holds them to guardrails.parent_approvals.
+    # agent marker): QuestionDesk holds them to Guardrails::ParentPolicy.
     def as_parent?
       Guardrails::ParentApprovals.parent_process?
     end

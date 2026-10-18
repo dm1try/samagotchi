@@ -58,9 +58,24 @@ RSpec.describe "Engine guardrail wiring" do
       pending = engine.pending_question
       expect(pending).to have_attributes(kind: "approval", header: "Approve tool call?")
       expect(pending.approval).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
+      # Tagged for a parent's answer (ParentPolicy): once permits, repo permits wide.
+      expect(pending).to have_attributes(effects: %w[permit permit_wide deny], user_only: false)
       engine.answer_question(id: pending.id, selected: [pending.options[1]])
       thread.join(2)
       expect([result.decision, result.scope]).to eq([:allow, "repo"])
+    end
+
+    it "marks an approval on chi's own config as the user's alone" do
+      engine.interface = :worker
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "cat ~/.config/samagotchi/config.yml" })
+      v.ask!("reads chi's config", rule: "my-ask", source: "config", scopes: %w[once])
+      v.context = guardrail_context(engine)
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
+      thread = Thread.new { engine.request_approval(v) }
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      expect(engine.pending_question).to have_attributes(effects: %w[permit deny], user_only: true)
+      engine.cancel_question("user")
+      thread.join(2)
     end
 
     it "asks about a plugin tool by its label, as its row shows it" do

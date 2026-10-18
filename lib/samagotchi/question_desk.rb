@@ -10,8 +10,7 @@ require_relative "log"
 require_relative "pending_question"
 require_relative "question_answer"
 require_relative "tools/ask_user_question"
-require_relative "guardrails/parent_approvals"
-require_relative "guardrails/parent_continue"
+require_relative "guardrails/parent_policy"
 
 module Samagotchi
   # An Engine's question flow: the one open question (ask_user_question, a
@@ -36,18 +35,25 @@ module Samagotchi
     class NotPending < ArgumentError; end
 
     # Raised by #answer when a parent agent's answer (chi answer's client
-    # id) allows an approval further than this worker's
-    # guardrails.parent_approvals lets it (Guardrails::ParentApprovals), or
-    # continues a turn turn.parent_continue keeps it from
-    # (Guardrails::ParentContinue). The question stays open; transports map
+    # id) picks an option this worker's strategy keeps parents from
+    # (Guardrails::ParentPolicy). The question stays open; transports map
     # it to 403.
     class Refused < StandardError
-      # @return [Symbol] :off, :once_only, :protected or :stop_only
+      # @return [Symbol] ParentPolicy.refusal's: :user_only, :permit_wide,
+      #   :permit or :spend
       attr_reader :reason
 
-      def initialize(reason)
+      def initialize(reason, pending:, strategy:)
         @reason = reason
-        super(reason == :stop_only ? "a parent may not continue this turn" : "a parent may not allow this approval (#{reason})")
+        @pending = pending
+        @strategy = strategy
+        super("a parent may not pick that option here (#{reason})")
+      end
+
+      # The line for the parent (ParentPolicy.message).
+      # @param typed [Boolean] typed at a ? prompt (the REPL)
+      def detail(typed: false)
+        Guardrails::ParentPolicy.message(reason, pending: @pending, strategy: @strategy, typed: typed)
       end
     end
 
@@ -290,7 +296,7 @@ module Samagotchi
     # @param freeform [String, nil]
     # @param client_id [String, nil] who answers
     # @param parent_agent [Boolean, nil] the answer is a parent agent's, so
-    #   it is held to guardrails.parent_approvals on an approval and doesn't
+    #   it is held to Guardrails::ParentPolicy and doesn't
     #   bring the session back to the lists; nil: chi answer's client id says so
     # @return [QuestionAnswer] the answer; a parent agent's carries by: "parent_agent"
     # @raise [NotPending, ArgumentError, Refused]
@@ -300,8 +306,7 @@ module Samagotchi
       fm = nil if fm.empty?
       parent_agent = client_id.to_s == ClientId::CLI_ANSWER if parent_agent.nil?
       # Read before the lock (config may touch the disk); this worker's own.
-      parent_setting = Guardrails::ParentApprovals.setting if parent_agent
-      parent_continue = Guardrails::ParentContinue.allowed? if parent_agent
+      strategy = Guardrails::ParentPolicy.current if parent_agent
       standing = nil
       answer = @lock.synchronize do
         pending = @pending
@@ -313,10 +318,7 @@ module Samagotchi
         raise NotPending, "question already answered" if @answer
         raise NotPending, "question #{pending.status}" unless pending.status.to_s == "pending"
 
-        answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
-        if parent_agent && (reason = Guardrails::ParentContinue.refusal(pending, sel, allowed: parent_continue))
-          raise Refused, reason
-        end
+        answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, strategy: strategy)
 
         if @standing
           # No waiter: cleared here, so a second answer finds none.
@@ -493,11 +495,11 @@ module Samagotchi
 
     # An answer to +pending+, checked: the selections are its options (value
     # == label in v1), one for a single-select, one or a text when required,
-    # and a parent agent's within guardrails.parent_approvals. Under the
+    # and a parent agent's within its strategy (ParentPolicy). Under the
     # question lock: checked against the question pending now.
     # @return [QuestionAnswer]
     # @raise [ArgumentError, Refused]
-    def validated_answer(pending, sel, fm, parent_agent:, parent_setting:)
+    def validated_answer(pending, sel, fm, parent_agent:, strategy:)
       opts = Array(pending.options)
       invalid = sel.reject { |v| opts.include?(v) }
       raise ArgumentError, "invalid selection: #{invalid.join(", ")} (valid: #{opts.join(", ")})" unless invalid.empty?
@@ -505,10 +507,10 @@ module Samagotchi
       raise ArgumentError, "selection required" if pending.multi_select == false && sel.empty? && fm.nil?
 
       indices = sel.map { |v| opts.index(v) }
-      # The one whose answer settles the approval (Approval.settle, by index).
-      if parent_setting
-        reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
-        raise Refused, reason if reason
+      # By index, as the effects (and Approval.settle) read it.
+      if strategy
+        reason = Guardrails::ParentPolicy.refusal(pending, indices, strategy: strategy)
+        raise Refused.new(reason, pending: pending, strategy: strategy) if reason
       end
       QuestionAnswer.new(id: pending.id.to_s, selected: sel, freeform: fm, selected_indices: indices.compact,
                          by: parent_agent ? "parent_agent" : nil)

@@ -118,7 +118,8 @@ module Samagotchi
 
       # What execute and task_create export into the commands they run: a
       # chi started there answers as a parent agent
-      # (Guardrails::ParentApprovals.parent_process?), even under a PTY
+      # (Guardrails::ParentApprovals.parent_process?, held to
+      # Guardrails::ParentPolicy), even under a PTY
       # wrapper. The session's id, "chi" without one. And the model the
       # session runs on (SAMAGOTCHI_SESSION_MODEL, read live, so right after
       # /model), which chi self reports; unset when unknown, so a value

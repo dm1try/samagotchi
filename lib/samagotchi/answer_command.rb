@@ -6,8 +6,7 @@ require_relative "session_manager"
 require_relative "bridge_client"
 require_relative "reply_wait"
 require_relative "parent_report"
-require_relative "guardrails/parent_approvals"
-require_relative "guardrails/parent_continue"
+require_relative "guardrails/parent_policy"
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
@@ -19,10 +18,10 @@ module Samagotchi
   # how a parent agent running chi as a sub-agent answers; the web and
   # chi --attach answer the same question. See docs/sub-agent.md.
   #
-  # An approval is the user's to allow: a parent may deny it, and allow it
-  # only "once" when guardrails.parent_approvals (config.yml) says so. It is
-  # checked here and again by the worker, which sees the answer marked as
-  # chi answer's. That guards an honest but eager parent, not a boundary:
+  # What a parent may pick is Guardrails::ParentPolicy's: by each option's
+  # effect and this process's config.yml. It is checked here and again by
+  # the worker, which sees the answer marked as chi answer's. That guards
+  # an honest but eager parent, not a boundary:
   # the Bridge and the localhost web take answers from any local process.
   class AnswerCommand
     include CLI::Command
@@ -121,7 +120,7 @@ module Samagotchi
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
 
         selected = selection(pending, options) or return @selection_status
-        refusal = approval_refusal(pending, selected, id) || continue_refusal(pending, selected)
+        refusal = parent_refusal(pending, selected)
         return failure(refusal) if refusal
 
         posted = post(id, qid, selected, options)
@@ -158,21 +157,16 @@ module Samagotchi
       labels.uniq
     end
 
-    # Why a parent may not give this answer to an approval, or nil
-    # (Guardrails::ParentApprovals, with this process's config.yml). A
-    # Deny, text alone or a dismissal always passes: each one denies. The
-    # worker checks it again with its own config.
-    def approval_refusal(pending, selected, _id)
+    # Why a parent may not give this answer, or nil (Guardrails::ParentPolicy,
+    # with this process's config.yml and the question's own tags). A deny,
+    # text alone or a dismissal always passes. The worker checks it again
+    # with its own config.
+    def parent_refusal(pending, selected)
       offered = Array(pending.options).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
-      reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: Guardrails::ParentApprovals.setting)
-      reason && Guardrails::ParentApprovals.message(reason)
-    end
-
-    # Why a parent may not answer Continue (turn.parent_continue: false in
-    # this process's config.yml), or nil; the worker checks it again.
-    def continue_refusal(pending, selected)
-      Guardrails::ParentContinue.refusal(pending, selected) && Guardrails::ParentContinue.message
+      strategy = Guardrails::ParentPolicy.current
+      reason = Guardrails::ParentPolicy.refusal(pending, indices, strategy: strategy)
+      reason && Guardrails::ParentPolicy.message(reason, pending: pending, strategy: strategy)
     end
 
     # A step-limit question can't be left unanswered: the turn waits on it.
@@ -206,7 +200,7 @@ module Samagotchi
 
         not_open(qid)
       when 400 then usage_failure(reply.json&.dig("detail") || "the worker refused the answer")
-      # The worker's own guardrails.parent_approvals refused the allow.
+      # The worker's own strategy refused the option (ParentPolicy).
       when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: deny it, and tell your user")
       when 408 then failure("the worker did not take the answer in time; the question is still open: try again")
       when 404

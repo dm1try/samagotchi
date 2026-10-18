@@ -369,9 +369,9 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       setting("off")
       engine = build_engine
       thread, result, qid = open_approval(engine)
-      ["Allow once", "Allow this call for the session"].each do |label|
+      { "Allow once" => :permit, "Allow this call for the session" => :permit_wide }.each do |label, reason|
         expect { engine.answer_question(id: qid, selected: [label], freeform: "go", client_id: parent) }
-          .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:off) }
+          .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(reason) }
       end
       expect(engine.pending_question).to have_attributes(id: qid, status: "pending")
 
@@ -399,7 +399,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       engine = build_engine
       thread, result, qid = open_approval(engine)
       expect { engine.answer_question(id: qid, selected: ["Allow this call for the session"], client_id: parent) }
-        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:once_only) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit_wide) }
       engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent)
       thread.join(2)
       expect(result[:answer].to_h).to include(selected_indices: [0])
@@ -411,7 +411,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       fields = approval_fields.merge(approval: { tool: "write", rule: "chi-config", source: "core", scopes: %w[once session] })
       thread, result, qid = open_approval(engine, fields)
       expect { engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent) }
-        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:protected) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:user_only) }
       engine.answer_question(id: qid, selected: ["Allow once"])
       thread.join(2)
       expect(result[:answer].to_h).to include(selected_indices: [0])

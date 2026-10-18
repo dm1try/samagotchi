@@ -19,7 +19,6 @@ require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
-require_relative "guardrails/parent_approvals"
 require_relative "session_commands"
 require_relative "queued_command"
 require_relative "steer"
@@ -650,7 +649,7 @@ module Samagotchi
       selected = fetched(parsed, "selected")
       freeform = fetched(parsed, "freeform")
       # chi answer's marker: a parent agent, held to this worker's
-      # guardrails.parent_approvals (QuestionDesk::Refused). Not a boundary:
+      # Guardrails::ParentPolicy (QuestionDesk::Refused). Not a boundary:
       # any local process may post here, with or without it.
       client_id = fetched(parsed, "client_id")
       if qid.to_s.strip.empty?
@@ -669,8 +668,8 @@ module Samagotchi
         [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue QuestionDesk::Refused => e
         Log.info(:bridge, "parent_approval_refused", sid: session_id, id: qid, reason: e.reason)
-        [{}, 403, { error: e.reason == :stop_only ? "parent_continue_refused" : "parent_approval_refused",
-                    detail: Guardrails::ParentApprovals.message(e.reason) }]
+        [{}, 403, { error: e.reason == :spend ? "parent_continue_refused" : "parent_approval_refused",
+                    detail: e.detail }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       end

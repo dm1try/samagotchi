@@ -4,7 +4,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/relay"
 require "samagotchi/session"
-require "samagotchi/guardrails/parent_approvals"
+require "samagotchi/guardrails/parent_policy"
 
 RSpec.describe Samagotchi::Relay do
   let(:tmpdir) { Dir.mktmpdir("relay") }
@@ -54,17 +54,27 @@ RSpec.describe Samagotchi::Relay do
     card = described_class.card(child, as_saved(pending), relay_id: "r-1")
     expect(card[:options]).to eq(["Allow once", "Allow this call for delegate #{short}'s session",
                                   "Allow this call in this repo", "Deny"])
-    # ParentApprovals reads it as it reads the child's: index 0 is once, the last denies.
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [0], setting: "once")).to be_nil
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [1], setting: "once")).to eq(:once_only)
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [3], setting: "off")).to be_nil
+    # ParentPolicy reads it as it reads the child's: index 0 is once, the last denies.
+    once = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once")
+    off = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "off")
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [0], strategy: once)).to be_nil
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [1], strategy: once)).to eq(:permit_wide)
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [3], strategy: off)).to be_nil
+  end
+
+  it "keeps the child's effects in option order, and its user_only" do
+    tagged = pending.merge(effects: %w[permit permit_wide permit_wide deny], user_only: true)
+    card = described_class.card(child, as_saved(tagged), relay_id: "r-1")
+    expect(card).to include(effects: %w[permit permit_wide permit_wide deny], user_only: true)
+    expect(described_class.card(child, as_saved(pending), relay_id: "r-1").keys).not_to include(:effects, :user_only)
   end
 
   it "stays protected when the child's call writes chi's config" do
     config = pending.merge(approval: pending[:approval].merge(rule: "chi-config"))
     card = described_class.card(child, as_saved(config), relay_id: "r-1")
     expect(Samagotchi::Guardrails::ParentApprovals.protected?(as_pending(card))).to be(true)
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(as_pending(card), [0], setting: "once")).to eq(:protected)
+    once = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once")
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [0], strategy: once)).to eq(:user_only)
   end
 
   it "lets the parent add a reason unless the child's question said no (an unset allow_freeform reads as true)" do

@@ -5,7 +5,6 @@ require_relative "session"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "question_desk"
-require_relative "guardrails/parent_approvals"
 require_relative "log"
 
 module Samagotchi
@@ -24,8 +23,8 @@ module Samagotchi
     end
 
     # @return [Array(Hash, Integer, Hash)] headers, status, body: 200
-    #   answered, 409 no longer pending, 403 refused (a parent agent's allow
-    #   beyond this worker's guardrails.parent_approvals), 422
+    #   answered, 409 no longer pending, 403 refused (a parent agent's pick
+    #   beyond this worker's Guardrails::ParentPolicy), 422
     #   relay_unverified (logged; the question stays open)
     def answer(relay_id:, question_id:)
       parent_id = own_parent_id or return unverified("this session has no parent", relay_id)
@@ -60,7 +59,7 @@ module Samagotchi
     rescue QuestionDesk::Refused => e
       log("relay_refused", relay_id, id: question_id, reason: e.reason)
       [{}, 403, { error: "parent_approval_refused", reason: e.reason.to_s,
-                  detail: Guardrails::ParentApprovals.message(e.reason) }]
+                  detail: e.detail }]
     rescue ArgumentError => e
       unverified("the answer doesn't fit the question: #{e.message}", relay_id)
     end

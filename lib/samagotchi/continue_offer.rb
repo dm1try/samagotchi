@@ -195,7 +195,8 @@ module Samagotchi
         text += "\nPrompt: #{prompt}"
       end
       { kind: KIND, header: HEADER, question: text, options: [CONTINUE, STOP], multi_select: false,
-        allow_freeform: true, limit: limit, context: context }.compact
+        # Continue spends time and tokens, Stop denies (ParentPolicy).
+        allow_freeform: true, effects: %w[spend deny], limit: limit, context: context }.compact
     end
 
     # The limit the offer's turn ran out at (Engine's last_turn marker).

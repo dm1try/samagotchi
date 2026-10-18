@@ -3,6 +3,7 @@
 require "tmpdir"
 require "yaml"
 require "samagotchi/guardrails"
+require "samagotchi/guardrails/parent_policy"
 require "samagotchi/model_overlay"
 require "samagotchi/guardrails/parent_approvals"
 require "samagotchi/pending_question"
@@ -11,6 +12,7 @@ require "samagotchi/pending_question"
 # what each one catches and what it lets through, in auto mode (the
 # default) unless a block says strict.
 RSpec.describe "The guardrails bundle's rules" do
+  let(:once) { Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once") }
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
   let(:mode) { "auto" }
   let(:rules) do
@@ -131,7 +133,7 @@ RSpec.describe "The guardrails bundle's rules" do
     v = verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", remove: true })
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "memory-remove", %w[once]])
     pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(pending, [0], setting: "once")).to be_nil
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to be_nil
     expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", content: "x" })).to be_allow
     expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", description: "DONE" })).to be_allow
   end
@@ -207,7 +209,7 @@ RSpec.describe "The guardrails bundle's rules" do
     v = shell("chi broadcast -m 'payments API is down'")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])
     pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
-    expect(Samagotchi::Guardrails::ParentApprovals.refusal(pending, [0], setting: "once")).to eq(:protected)
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only)
   end
 
   describe "a chi context command source that an earlier ask rule also matches" do
@@ -221,7 +223,7 @@ RSpec.describe "The guardrails bundle's rules" do
     it "is offered once only, and a parent may not allow it" do
       pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(shell(command)))
       expect(pending.approval[:scopes]).to eq(%w[once])
-      expect(Samagotchi::Guardrails::ParentApprovals.refusal(pending, [0], setting: "once")).to eq(:protected)
+      expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only)
     end
 
     it "does so after a user's config ask (or a hook's) too, with the narrower scopes" do

@@ -13,7 +13,7 @@ module Samagotchi
     TUI_PREFIX = "tui:"
     # chi send's turns and commands.
     CLI_SEND = "cli:send"
-    # chi answer's answers (a parent agent's, Guardrails::ParentApprovals).
+    # chi answer's answers (a parent agent's, Guardrails::ParentPolicy).
     CLI_ANSWER = "cli:answer"
     # chi restart.
     CLI_RESTART = "cli:restart"

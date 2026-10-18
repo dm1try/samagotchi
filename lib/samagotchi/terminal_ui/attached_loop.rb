@@ -121,7 +121,7 @@ module Samagotchi
         @client_id = client_id
         # A parent agent drives this attach (AttachLauncher:
         # ParentApprovals.parent_process?): its answers go as chi answer's,
-        # so the worker holds them to guardrails.parent_approvals.
+        # so the worker holds them to Guardrails::ParentPolicy.
         @as_parent = as_parent
         @view = AttachedView.new(screen)
         @renderer = EventRenderer.new(@view)

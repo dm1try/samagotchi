@@ -114,8 +114,8 @@ module Samagotchi
     # POST /session/:id/answer. 200 = recorded, 409 = another client answered
     # first (or the question is gone), 400 = invalid selection, 408
     # deadline_passed = read too late and dropped (see DEADLINE_SHARE), 403
-    # parent_approval_refused = a parent's allow (client_id cli:answer)
-    # beyond the worker's guardrails.parent_approvals.
+    # parent_approval_refused (parent_continue_refused) = a parent's pick
+    # (client_id cli:answer) beyond the worker's Guardrails::ParentPolicy.
     # @param client_id [String, nil] who answers (chi answer marks its own)
     # @return [Response]
     def answer(id:, selected:, freeform: nil, client_id: nil)

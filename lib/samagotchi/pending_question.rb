@@ -7,8 +7,12 @@ module Samagotchi
   # step-limit question (kind "continue").
   #
   # id: the question's uuid; question, options, header, multi_select,
-  # allow_freeform: what the UIs show; kind: nil for the model's own,
-  # "hook", "approval" or "continue"; hook: the asking hook's name;
+  # allow_freeform: what the UIs show; effects: each option's effect for
+  # a parent agent's answer, in option order (Guardrails::ParentPolicy;
+  # nil: untagged); user_only: only the user may pick an option that isn't
+  # a deny or a plain answer (an approval on chi's own config); kind: nil
+  # for the model's own, "hook", "approval" or "continue"; hook: the asking
+  # hook's name;
   # approval: the approval's facts (Guardrails::Approval.payload); relay: a
   # relayed approval's facts (Relay.card); limit, context: the step-limit
   # question's turn limit and offer context (ContinueOffer); status:
@@ -20,8 +24,8 @@ module Samagotchi
   # Crosses the process as a Hash: #to_h for an event, a Bridge snapshot or
   # a UI (symbol keys), #to_file for session.json (string keys); both in
   # member order with unset fields left out. .from_file reads either back.
-  PendingQuestion = Data.define(:id, :question, :options, :header, :multi_select, :allow_freeform, :kind, :hook,
-                                :approval, :relay, :limit, :context, :status, :created_at, :relayed_to) do
+  PendingQuestion = Data.define(:id, :question, :options, :header, :multi_select, :allow_freeform, :effects, :user_only,
+                                :kind, :hook, :approval, :relay, :limit, :context, :status, :created_at, :relayed_to) do
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, **fields)
     end

@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     @fail_before_begin = IOError.new("save failed")
 
     continue_offer.run_continue_turn(command_from("web:2"))
-    expect(engine.pending_question).to have_attributes(kind: "continue")
+    expect(engine.pending_question).to have_attributes(kind: "continue", effects: %w[spend deny])
     @fail_before_begin = nil
     engine.run_turn(session, "something else")
 

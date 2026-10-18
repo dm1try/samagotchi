@@ -6,7 +6,9 @@ module Samagotchi
   # A delegate's approval reopened as the parent session's own (the
   # approval relay): the same kind "approval" and the same approval facts,
   # so every UI shows it as it shows the parent's own approvals, the diff
-  # included, and Guardrails::ParentApprovals judges it the same way. The
+  # included, and Guardrails::ParentPolicy judges it the same way: the
+  # child's effects and user_only come along (an older child's question
+  # has none; the policy derives them from the approval facts). The
   # question text names the delegate and its task over the child's own
   # text; `relay:` says which child and which of its questions it answers.
   # A relay of a relay (a grandchild's) grows relay.chain.
@@ -37,6 +39,8 @@ module Samagotchi
         header: header(who, more),
         multi_select: false,
         allow_freeform: pending.allow_freeform.nil? || !!pending.allow_freeform,
+        # Same order: only the session option's label changes.
+        **{ effects: pending.effects, user_only: pending.user_only }.compact,
         kind: Guardrails::Approval::KIND,
         approval: facts,
         relay: { id: relay_id, child_id: child.id, child_short: short, child_question_id: pending.id.to_s,

@@ -200,7 +200,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       _box, qid = ask_child
       response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
       expect(response.status).to eq(403)
-      expect(response.json).to include("error" => "parent_approval_refused", "reason" => "off")
+      expect(response.json).to include("error" => "parent_approval_refused", "reason" => "permit")
       expect(child_engine.pending_question.id).to eq(qid)
 
       expect(relay("answered", parent_relay(qid, indices: [2], by: "parent_agent"), qid).status).to eq(200)
@@ -210,7 +210,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("once")
       _box, qid = ask_child(approval.merge(approval: approval[:approval].merge(rule: "chi-config")))
       response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
-      expect([response.status, response.json["reason"]]).to eq([403, "protected"])
+      expect([response.status, response.json["reason"]]).to eq([403, "user_only"])
     end
 
     it "believes nothing the parent doesn't hold for this child, this question, answered (422, still open)" do
