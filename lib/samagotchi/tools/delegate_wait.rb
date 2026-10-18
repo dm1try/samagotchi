@@ -213,6 +213,10 @@ module Samagotchi
       # @return [String]
       def finish(wait, child_id, timeout:, report: false, reports: "off")
         status = ParentReport.status(wait)
+        # What the parent may pick on the child's question: config.yml
+        # tightened by the child session's own parent_answers (the session
+        # the wait read; none: config.yml's).
+        strategy = Guardrails::ParentPolicy.for_session(wait.session)
         case wait.status
         when :done
           reply_result(child_id, status, wait.text)
@@ -221,11 +225,11 @@ module Samagotchi
         when :stopped
           result(child_id, status, "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
         when :waiting_for_answer
-          result(child_id, status, waiting_text(child_id, wait.question, report: report, reports: reports))
+          result(child_id, status, waiting_text(child_id, wait.question, report: report, reports: reports, strategy: strategy))
         when :canceled
           canceled_result(child_id, reports: reports)
         when :no_reply
-          result(child_id, status, "#{no_reply_text(wait, child_id)}; its session shows what happened")
+          result(child_id, status, "#{no_reply_text(wait, child_id, strategy: strategy)}; its session shows what happened")
         when :worker_gone
           result(child_id, status,
                  "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
@@ -266,8 +270,8 @@ module Samagotchi
       end
 
       # ParentReport's line for a turn that left no reply, about the child.
-      def no_reply_text(wait, child_id)
-        ParentReport.no_reply_line(wait, child_id).sub(/\Athe turn/, "the child's turn")
+      def no_reply_text(wait, child_id, strategy: nil)
+        ParentReport.no_reply_line(wait, child_id, strategy: strategy).sub(/\Athe turn/, "the child's turn")
       end
 
       def result(child_id, status, text)
@@ -303,9 +307,9 @@ module Samagotchi
       # A report's last line differs (+report+): "waits again" made models
       # call delegate_result right after answering Continue.
       # The tool's last line follows #reports_mode.
-      def waiting_text(child_id, pending, report: false, reports: "off")
-        text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}"
-        if ParentReport.continue?(pending) && ParentReport.may_continue?(pending)
+      def waiting_text(child_id, pending, report: false, reports: "off", strategy: nil)
+        text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id, strategy: strategy)}"
+        if ParentReport.continue?(pending) && ParentReport.may_continue?(pending, strategy: strategy)
           text += "The child ran out of steps before it answered. Decide: continue it (run the chi answer command " \
                   "above with execute) if it is getting somewhere; send it a narrower follow-up with delegate " \
                   "session: #{child_id} (that drops the question); or stop it and report back to your user.\n"

@@ -5,6 +5,7 @@ require "json"
 
 require_relative "cli/exit"
 require_relative "pending_question"
+require_relative "session"
 require_relative "guardrails/parent_policy"
 
 module Samagotchi
@@ -77,18 +78,20 @@ module Samagotchi
     # @param extra [Hash] more keys for the object (chi answer's
     #   answered_here: false)
     # @return [Hash] the --format json object
-    def json(result, session_id:, timeout: nil, extra: {})
+    # @param strategy [Guardrails::ParentPolicy::Strategy, nil] what a parent
+    #   may pick on the waited-for session (#strategy_for); nil: config.yml's
+    def json(result, session_id:, timeout: nil, extra: {}, strategy: nil)
       report = { status: status(result), session_id: session_id }
       report[:turn_id] = result.turn_id unless result.turn_id.to_s.empty?
       case report[:status]
       when "answered" then report[:text] = result.text.to_s
       when "question"
-        question = question(result.question)
+        question = question(result.question, strategy: strategy)
         report[:question] = question
         report[:answer_with] = answer_with(session_id, question)
       else
         report.merge!(stop_facts(result))
-        report[:detail] = detail(result, session_id: session_id, timeout: timeout)
+        report[:detail] = detail(result, session_id: session_id, timeout: timeout, strategy: strategy)
       end
       report.merge(extra)
     end
@@ -106,8 +109,8 @@ module Samagotchi
     end
 
     # @return [String] the JSON object as one line
-    def json_line(result, session_id:, timeout: nil, extra: {})
-      JSON.generate(json(result, session_id: session_id, timeout: timeout, extra: extra))
+    def json_line(result, session_id:, timeout: nil, extra: {}, strategy: nil)
+      JSON.generate(json(result, session_id: session_id, timeout: timeout, extra: extra, strategy: strategy))
     end
 
     # Print a wait's end the way the commands do: the JSON object on
@@ -116,17 +119,17 @@ module Samagotchi
     # @param command [String] "chi send", "chi answer"
     # @param extra [Hash] more keys for the JSON object (#json)
     # @return [Integer] the exit status
-    def report(result, session_id:, stdout:, stderr:, command:, json: false, timeout: nil, extra: {})
+    def report(result, session_id:, stdout:, stderr:, command:, json: false, timeout: nil, extra: {}, strategy: nil)
       if json
-        stdout.puts(json_line(result, session_id: session_id, timeout: timeout, extra: extra))
+        stdout.puts(json_line(result, session_id: session_id, timeout: timeout, extra: extra, strategy: strategy))
       elsif result.status == :done
         stdout.puts(result.text)
       else
         stdout.flush
         text = if result.status == :waiting_for_answer
-                 question_text(result.question, session_id: session_id)
+                 question_text(result.question, session_id: session_id, strategy: strategy)
                else
-                 "#{detail(result, session_id: session_id, timeout: timeout, turn_id: result.turn_id)}\n"
+                 "#{detail(result, session_id: session_id, timeout: timeout, turn_id: result.turn_id, strategy: strategy)}\n"
                end
         stderr.print("#{command}: #{text}")
       end
@@ -146,14 +149,14 @@ module Samagotchi
     # kind is "question" for the model's own (the desk stores none),
     # "hook", "approval" or "continue" (the step-limit question, with the
     # turn's limit). allowed_options: the options a parent may pick, by
-    # this process's guardrails.parent_answers (Guardrails::ParentPolicy),
-    # when that is not all of them.
+    # +strategy+ (nil: this process's guardrails.parent_answers;
+    # Guardrails::ParentPolicy), when that is not all of them.
     # @return [Hash]
-    def question(pending)
+    def question(pending, strategy: nil)
       pending = PendingQuestion.from_file(pending) || PendingQuestion.new
       approval = pending.approval.is_a?(Hash) ? symbolize(pending.approval) : nil
       options = Array(pending.options).map(&:to_s)
-      allowed = allowed_options(pending)
+      allowed = allowed_options(pending, strategy: strategy)
       {
         id: pending.id.to_s,
         kind: (pending.kind || "question").to_s,
@@ -189,33 +192,49 @@ module Samagotchi
     DENY_AND_TELL = "deny it, and tell your user"
 
     # The labels a parent may pick on +pending+ (a PendingQuestion, or a
-    # Hash with its fields) by this process's strategy.
+    # Hash with its fields) by +strategy+ (nil: this process's).
     # @return [Array<String>]
-    def allowed_options(pending)
+    def allowed_options(pending, strategy: nil)
       pending = PendingQuestion.from_file(pending) || PendingQuestion.new
-      Guardrails::ParentPolicy.allowed_options(pending, strategy: Guardrails::ParentPolicy.current)
+      Guardrails::ParentPolicy.allowed_options(pending, strategy: policy(strategy))
     end
 
+    # What a parent may pick on the session +session_id+: config.yml's
+    # level tightened by the session file's own parent_answers
+    # (Guardrails::ParentPolicy.for_session); config.yml's when there is no
+    # such session, hard (the strictest) when its file can't be read.
+    # @return [Guardrails::ParentPolicy::Strategy]
+    def strategy_for(session_id, state_dir:)
+      return Guardrails::ParentPolicy.current unless Session.exist?(session_id, state_dir: state_dir)
+
+      Guardrails::ParentPolicy.for_session(Session.load(session_id, state_dir: state_dir))
+    rescue ArgumentError, KeyError, TypeError, NoMethodError, SystemCallError, JSON::ParserError
+      Guardrails::ParentPolicy.strategy(Guardrails::ParentPolicy::HARD)
+    end
+
+    # +strategy+, or this process's config.yml's.
+    def policy(strategy) = strategy || Guardrails::ParentPolicy.current
+
     # An approval's options a parent may allow (Allow once under soft).
-    def allowed_allows(question)
-      question = question(question) unless question.is_a?(Hash) && question.key?(:text)
+    def allowed_allows(question, strategy: nil)
+      question = question(question, strategy: strategy) unless question.is_a?(Hash) && question.key?(:text)
       deny = Guardrails::Approval::DENY
       question.fetch(:allowed_options, question[:options]).reject { |label| label == deny }
     end
 
     # What a parent does with an approval: deny it and tell its user, or
     # give the Allow once its strategy lets it.
-    def approval_advice(question)
-      allows = allowed_allows(question)
+    def approval_advice(question, strategy: nil)
+      allows = allowed_allows(question, strategy: strategy)
       return DENY_AND_TELL if allows.empty?
 
-      "#{allows.join(" or ")} is yours to give (#{Guardrails::ParentPolicy.current.label}); " \
+      "#{allows.join(" or ")} is yours to give (#{policy(strategy).label}); " \
         "anything wider is up to your user: #{DENY_AND_TELL}"
     end
 
     # Whether a parent may answer Continue to a step-limit question.
-    def may_continue?(question)
-      question = question(question) unless question.is_a?(Hash) && question.key?(:text)
+    def may_continue?(question, strategy: nil)
+      question = question(question, strategy: strategy) unless question.is_a?(Hash) && question.key?(:text)
       question.fetch(:allowed_options, question[:options]).include?(Guardrails::ParentPolicy::CONTINUE)
     end
 
@@ -252,23 +271,23 @@ module Samagotchi
     end
 
     # What a wait that ended without an answer says, one line.
-    def detail(result, session_id:, timeout: nil, turn_id: nil)
+    def detail(result, session_id:, timeout: nil, turn_id: nil, strategy: nil)
       attach = "chi --attach #{session_id}"
       case result.status
       when :waiting_for_answer
-        q = question(result.question)
+        q = question(result.question, strategy: strategy)
         if approval?(q)
-          "waiting for an approval: #{first_line(q[:text])}; #{approval_advice(q)}"
+          "waiting for an approval: #{first_line(q[:text])}; #{approval_advice(q, strategy: strategy)}"
         elsif continue?(q) && !may_continue?(q)
           "waiting at the step limit: #{first_line(q[:text])}; a parent may only stop it here " \
-            "(#{Guardrails::ParentPolicy.current.label}): #{stop_command(session_id, q)}, or tell your user it waits"
+            "(#{policy(strategy).label}): #{stop_command(session_id, q)}, or tell your user it waits"
         elsif continue?(q)
           "waiting at the step limit: #{first_line(q[:text])}; " \
             "answer Continue or Stop: chi answer #{session_id} --question #{q[:id]} --option Continue"
         else
           "waiting for an answer: #{first_line(q[:text])}; open it: #{attach} or the web"
         end
-      when :no_reply then "#{no_reply_line(result, session_id)}; #{attach} shows it"
+      when :no_reply then "#{no_reply_line(result, session_id, strategy: strategy)}; #{attach} shows it"
       when :error then "the worker failed: #{result.text}; #{attach} shows what happened"
       when :worker_gone then "the worker is gone; #{attach} shows what happened"
       when :stopped then "the session was stopped (chi sessions stop)"
@@ -282,8 +301,8 @@ module Samagotchi
     # The whole question for stderr: header, text, numbered options, what
     # else it takes, and the commands that answer it.
     # @return [String] lines, newline-terminated
-    def question_text(pending, session_id:)
-      q = question(pending)
+    def question_text(pending, session_id:, strategy: nil)
+      q = question(pending, strategy: strategy)
       lines = ["waiting for an answer (#{q[:kind]}): #{q[:header] || first_line(q[:text])}"]
       text_lines = q[:text].strip.lines.map(&:rstrip)
       text_lines = text_lines.drop(1) unless q[:header]
@@ -294,7 +313,7 @@ module Samagotchi
         if allows.empty?
           lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
         else
-          lines << "  #{approval_advice(q)}"
+          lines << "  #{approval_advice(q, strategy: strategy)}"
           allows.each { |label| lines << "  allow: chi answer #{session_id} --question #{q[:id]} --option #{option_arg(label)}" }
         end
         lines << "  deny: #{answer_with(session_id, q)}"
@@ -303,7 +322,7 @@ module Samagotchi
         lines << if may_continue?(q)
                    "  continue: #{answer_with(session_id, q)}"
                  else
-                   "  continuing it is up to your user (#{Guardrails::ParentPolicy.current.label}): stop it, or tell your user it waits"
+                   "  continuing it is up to your user (#{policy(strategy).label}): stop it, or tell your user it waits"
                  end
         lines << "  stop: #{stop_command(session_id, q)} (the text is optional; the model reads it)"
         lines << "  #{message_drops(session_id)}"
@@ -319,7 +338,7 @@ module Samagotchi
       lines.map { |line| "#{line}\n" }.join
     end
 
-    def no_reply_line(result, session_id = nil)
+    def no_reply_line(result, session_id = nil, strategy: nil)
       case result.outcome
       when "failed" then failed_line(result)
       when "canceled"
@@ -330,7 +349,7 @@ module Samagotchi
       when "removed" then "the queued message was removed before it ran; no turn ran for it"
       when "exhausted"
         ran_out = "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered"
-        strategy = Guardrails::ParentPolicy.current
+        strategy = policy(strategy)
         if strategy.allow?(Guardrails::ParentPolicy::SPEND)
           "#{ran_out}; chi send #{session_id} -m '/continue yes' continues it, a message drops it"
         else

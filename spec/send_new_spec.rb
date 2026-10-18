@@ -363,8 +363,9 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: tmpdir).run
   end
 
-  def make(status:, prompt: "hi", pending_question: nil)
+  def make(status:, prompt: "hi", pending_question: nil, parent_answers: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w").tap do |s|
+      s.parent_answers = parent_answers
       s.status = status
       s.last_prompt = prompt
       s.pending_question = pending_question
@@ -649,6 +650,22 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(run("--wait", "-m", "go on", waiting.id)).to eq(1)
     expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an approval: deny it, and tell your user " \
                              "(chi answer #{waiting.id} --question a1 --option Deny --text WHY)\n")
+  end
+
+  # P3: its guidance follows the session's own, stricter parent_answers.
+  it "offers no Allow once on a waiting approval when the session's own level is standard (config soft)" do
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+    approval = { id: "a1", kind: "approval", question: "execute: x", options: ["Allow once", "Deny"],
+                 approval: { tool: "execute", scopes: ["once"] } }
+    loose = make(status: "running", pending_question: approval)
+    expect(run("--wait", "-m", "go on", loose.id)).to eq(1)
+    expect(err.string).to include("Allow once is yours to give (guardrails.parent_answers: soft)")
+
+    err.truncate(0)
+    tight = make(status: "running", pending_question: approval, parent_answers: "standard")
+    expect(run("--wait", "-m", "go on", tight.id)).to eq(1)
+    expect(err.string).to include("#{tight.id[0, 8]}  waiting for an approval: deny it, and tell your user")
   end
 
   it "ends without a reply when the turn fails before the first look" do

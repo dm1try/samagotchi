@@ -83,7 +83,9 @@ module Samagotchi
         ensure
           close_surface(surface)
         end
-        report_unanswered(attached.unanswered, session_id: client.session_id) if ended == :unanswered && attached.unanswered
+        if ended == :unanswered && attached.unanswered
+          report_unanswered(attached.unanswered, session_id: client.session_id, state_dir: state_dir)
+        end
         report_ended(ended)
         ended
       end
@@ -92,9 +94,12 @@ module Samagotchi
       # --wait` prints it (ParentReport), so a script or a parent agent
       # can answer it with chi answer.
       # @param pending [Hash] the pending question as the Bridge sent it
-      def report_unanswered(pending, session_id:, err: $stderr)
+      # @param state_dir [String, nil] where the session file is: what a
+      #   parent may pick follows its own parent_answers too
+      def report_unanswered(pending, session_id:, err: $stderr, state_dir: nil)
         question = PendingQuestion.from_file(pending)
-        err.print("chi: #{ParentReport.question_text(question, session_id: session_id)}")
+        strategy = ParentReport.strategy_for(session_id, state_dir: state_dir || Session.default_state_dir)
+        err.print("chi: #{ParentReport.question_text(question, session_id: session_id, strategy: strategy)}")
         err.flush
       end
 

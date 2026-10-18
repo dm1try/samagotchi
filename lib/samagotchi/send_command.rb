@@ -474,10 +474,12 @@ module Samagotchi
         # The turn waits on a question: the message would only queue
         # behind it, and the answer goes in with chi answer.
         if (waiting = session.waiting_question(live: owner.worker?))
-          # The whole question (its options, its tags) for what a parent may give.
-          question = ParentReport.question(session.pending_question)
+          # The whole question (its options, its tags) for what a parent may
+          # give: config.yml tightened by the session's own parent_answers.
+          strategy = Guardrails::ParentPolicy.for_session(session)
+          question = ParentReport.question(session.pending_question, strategy: strategy)
           if ParentReport.approval?(waiting)
-            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport.approval_advice(question)} " \
+            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport.approval_advice(question, strategy: strategy)} " \
                        "(#{ParentReport.answer_with(id, question)})")
           else
             error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, question)} (or --text); " \

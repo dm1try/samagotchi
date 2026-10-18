@@ -76,8 +76,10 @@ module Samagotchi
         result.turn_id = report_turn_id if report_turn_id && !report_turn_id.to_s.empty?
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
+        # What a parent may pick there: config.yml tightened by the session's own.
+        strategy = ParentReport.strategy_for(id, state_dir: @state_dir)
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
-                                    json: @json, timeout: timeout, extra: report_extra)
+                                    json: @json, timeout: timeout, extra: report_extra, strategy: strategy)
       rescue Interrupt
         if @json
           @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled, turn_id: report_turn_id), session_id: id,

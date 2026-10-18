@@ -662,6 +662,21 @@ RSpec.describe "delegate tools" do
       expect(report).not_to include("waits again")
     end
 
+    # P3: the guidance follows the child session's own, stricter parent_answers.
+    it "offers only Stop on a child's step-limit question when the child's own level is hard" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+      s.parent_answers = "hard"
+      s.save(state_dir: tmpdir)
+      set_status(child, "idle", pending_question: { id: "c1", kind: "continue", header: "Step limit",
+                                                    question: "The turn ran out of iterations (100 steps). Continue it?",
+                                                    options: %w[Continue Stop], allow_freeform: true, limit: 100 })
+      out = wait
+      expect(out).to include("continuing it is up to your user (parent_answers: hard (this session))")
+      expect(out).not_to include("--option Continue")
+      expect(out).to include("or stop it (the chi answer Stop command above")
+    end
+
     it "says the child's worker is gone, not that its question waits, when the worker died asking" do
       dead = make(parent_id: parent.id, prompt: "task", status: "running")
       set_status(dead, "running", pending_question: { id: "q1", question: "Which one?" })

@@ -4,6 +4,8 @@ require "json"
 require "spec_helper"
 require "samagotchi/parent_report"
 require "samagotchi/reply_wait"
+require "samagotchi/session"
+require "tmpdir"
 
 # What a parent agent reads when chi's wait ends: chi send --wait and
 # chi answer, as JSON or as text on stderr.
@@ -215,6 +217,68 @@ RSpec.describe Samagotchi::ParentReport do
       expect(text).to include("  continue: chi answer #{id} --question c1 --option Continue\n")
       expect(text).to include("  stop: chi answer #{id} --question c1 --option Stop --text WHY")
       expect(text).to include("a message instead (chi send #{id} -m …) drops it and starts a new turn")
+    end
+  end
+
+  # P3: the guidance follows the waited-for session's effective level
+  # (config.yml tightened by its own parent_answers), as the checks do.
+  describe "a session's own, stricter parent_answers (strategy:)" do
+    let(:limit_question) do
+      Samagotchi::PendingQuestion.new(id: "c1", kind: "continue", question: "Continue it?", options: %w[Continue Stop],
+                                      multi_select: false, allow_freeform: true, limit: 100, status: "pending")
+    end
+    let(:hard) { Samagotchi::Guardrails::ParentPolicy.effective("hard") }
+
+    before { strategy("soft") }
+
+    it "offers no Allow once and no Continue under it, naming the session" do
+      approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
+      expect(described_class.detail(approval_wait, session_id: id, strategy: hard))
+        .to eq("waiting for an approval: execute: echo SPIKE_APPROVED; deny it, and tell your user")
+      expect(described_class.question(approval, strategy: hard)).to include(allowed_options: ["Deny"])
+      expect(described_class.approval_advice(described_class.question(approval, strategy: hard))).to eq("deny it, and tell your user")
+      expect(JSON.parse(described_class.json_line(approval_wait, session_id: id, strategy: hard))["question"])
+        .to include("allowed_options" => ["Deny"])
+
+      limit_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: limit_question)
+      q = described_class.question(limit_question, strategy: hard)
+      expect(described_class.answer_with(id, q)).to eq("chi answer #{id} --question c1 --option Stop --text WHY")
+      expect(described_class.may_continue?(limit_question, strategy: hard)).to be(false)
+      expect(described_class.detail(limit_wait, session_id: id, strategy: hard))
+        .to include("a parent may only stop it here (parent_answers: hard (this session))")
+      expect(described_class.question_text(limit_question, session_id: id, strategy: hard))
+        .to include("continuing it is up to your user (parent_answers: hard (this session))")
+      exhausted = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "exhausted", limit: 100)
+      expect(described_class.no_reply_line(exhausted, id, strategy: hard))
+        .to include("continuing it is up to your user (parent_answers: hard (this session))")
+    end
+
+    it "reads it from the session file (strategy_for); no such session is config.yml's" do
+      dir = Dir.mktmpdir("parent-report")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w",
+                                                setup: Samagotchi::SessionSetup.new(parent_answers: "standard"))
+      session.save(state_dir: dir)
+      expect(described_class.strategy_for(session.id, state_dir: dir).name).to eq("standard")
+      expect(described_class.strategy_for(id, state_dir: dir)).to equal(Samagotchi::Guardrails::ParentPolicy.current)
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+
+    it "reads a session file it can't parse as hard, never config.yml's looser level" do
+      dir = Dir.mktmpdir("parent-report")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w")
+      session.save(state_dir: dir)
+      path = File.join(dir, "#{session.id}.json")
+      hard = Samagotchi::Guardrails::ParentPolicy.strategy("hard")
+
+      File.write(path, "{ not json")
+      expect(described_class.strategy_for(session.id, state_dir: dir)).to eq(hard)
+      File.write(path, JSON.generate({ "id" => session.id }))
+      expect(described_class.strategy_for(session.id, state_dir: dir)).to eq(hard)
+      File.write(path, "[]")
+      expect(described_class.strategy_for(session.id, state_dir: dir)).to eq(hard)
+    ensure
+      FileUtils.rm_rf(dir)
     end
   end
 
