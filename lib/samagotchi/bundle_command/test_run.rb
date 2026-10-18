@@ -11,6 +11,8 @@ module Samagotchi
     # on RSpec with the kit's helpers, as `rake bundles:specs` runs the
     # shipped ones. Outside any Bundler env (Bundler.with_unbundled_env, as
     # SessionManager's unbundled_env_changes): chi's gems don't include minitest.
+    # When the framework loads only inside the Bundler env chi itself runs in
+    # (a checkout or a vendored install: its gems in vendor/bundle), there.
     # The tests' exit status is #run's.
     class TestRun
       LIB_DIR = File.expand_path("../..", __dir__)
@@ -58,20 +60,30 @@ module Samagotchi
         CLI::Exit::USAGE
       end
 
+      # Whether +lib+ loads unbundled, else in chi's own Bundler env (then
+      # #spawn stays in it).
       def loads?(lib)
-        unbundled { system(RbConfig.ruby, "-e", "require #{lib.inspect}", out: File::NULL, err: File::NULL) }
+        check = -> { system(RbConfig.ruby, "-e", "require #{lib.inspect}", out: File::NULL, err: File::NULL) }
+        @bundled = false
+        return true if unbundled(&check)
+
+        @bundled = bundler?
+        @bundled && check.call
       end
 
       def spawn(*command)
         @stdout.flush
-        unbundled { system(*command, chdir: @dir) }
+        run = -> { system(*command, chdir: @dir) }
+        @bundled ? run.call : unbundled(&run)
         $?.exitstatus || CLI::Exit::FAILED
       end
 
       def unbundled(&)
-        # Bundler may be defined without its runtime (RubyGems' own stub).
-        defined?(::Bundler) && ::Bundler.respond_to?(:with_unbundled_env) ? ::Bundler.with_unbundled_env(&) : yield
+        bundler? ? ::Bundler.with_unbundled_env(&) : yield
       end
+
+      # Bundler may be defined without its runtime (RubyGems' own stub).
+      def bundler? = defined?(::Bundler) && ::Bundler.respond_to?(:with_unbundled_env)
     end
   end
 end
