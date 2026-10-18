@@ -52,6 +52,13 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
   # Settings whose flag is hand-written in bin/chi, not generated.
   own_flags = { "thinking.level" => "`--thinking`" }
 
+  it "assigns a valid lifecycle to every config-exposed entry" do
+    missing = entries.values.select(&:config_exposed?).reject do |entry|
+      Samagotchi::Config::LIFECYCLES.include?(entry.lifecycle)
+    end
+    expect(missing.map(&:key)).to eq([])
+  end
+
   it "lists every config.yml setting, and only those, in the settings table" do
     documented = settings_rows.call.map(&:first)
     in_config = entries.values.select { |entry| entry.expose.include?(:config) }.map(&:key)

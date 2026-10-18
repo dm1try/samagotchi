@@ -36,7 +36,7 @@ module Samagotchi
   # handled by ConfigFile (same file, below), which reads the *same* parsed YAML
   # through ConfigFile.read_yaml so the file is parsed once per change.
   module Config
-    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, keyword_init: true) do
+    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, :lifecycle, keyword_init: true) do
       def env_key
         "SAMAGOTCHI_" + yaml_path.map { |p| p.upcase }.join("_")
       end
@@ -67,135 +67,141 @@ module Samagotchi
     LEAF_RE    = /\A[a-z0-9_]+\z/
     # The agent CLIs the desktop helper lists in kitty and tmux by default.
     DESKTOP_AGENTS = "claude|codex|gemini|aider|opencode|cursor-agent|amp|goose"
+    LIFECYCLES = %i[
+      new_session session_creation worker_start next_broadcast next_retention_sweep next_invocation next_lifecycle_decision
+      next_matching_use next_tool_or_approval process_start next_context_poll prompt_rebuild next_turn_start
+      next_request_or_turn_end next_update desktop_update web_start next_cli_run next_empty_answer_retry
+      next_history_access next_matching_turn_display_poll_write
+    ].freeze
 
     ENTRIES = [
       # universal – env+config+cli
-      Entry.new(key: "default.model",            yaml_path: %w[default model],            type: :string, default: nil,              expose: %i[env config cli]),
+      Entry.new(key: "default.model",            yaml_path: %w[default model],            type: :string, default: nil,              expose: %i[env config cli], lifecycle: :new_session),
       # The prompt profile for every model in this process (ModelProfile::NAMES).
       # No config key: per-model and per-host profiles live in models: and hosts:.
       Entry.new(key: "model.profile",            yaml_path: %w[model profile],            type: :enum,   default: nil,              expose: %i[env cli], enum_values: %w[qwen36 gemma4]),
-      Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx]),
-      Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli]),
-      Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli]),
-      Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli]),
-      Entry.new(key: "server.read_timeout",      yaml_path: %w[server read_timeout],       type: :integer, default: 600,            expose: %i[env config cli]),
+      Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx], lifecycle: :worker_start),
+      Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "server.read_timeout",      yaml_path: %w[server read_timeout],       type: :integer, default: 600,            expose: %i[env config cli], lifecycle: :worker_start),
       # Seconds a streamed answer may take to show its first text, reasoning
       # or tool call, for every host; 0 = off. Unset: 120 on remote hosts,
       # off on local ones. hosts.<name>.first_token_timeout wins.
-      Entry.new(key: "server.first_token_timeout", yaml_path: %w[server first_token_timeout], type: :integer, default: nil,          expose: %i[env config]),
+      Entry.new(key: "server.first_token_timeout", yaml_path: %w[server first_token_timeout], type: :integer, default: nil,          expose: %i[env config], lifecycle: :worker_start),
 
-      Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config]),
-      Entry.new(key: "recap.model",              yaml_path: %w[recap model],               type: :string, default: nil,              expose: %i[env config cli]),
-      Entry.new(key: "recap.base_url",           yaml_path: %w[recap base_url],            type: :string, default: nil,              expose: %i[env config cli]),
-      Entry.new(key: "recap.host_ref",           yaml_path: %w[recap host_ref],            type: :string, default: nil,              expose: %i[env config cli], yaml_aliases: %w[host]),
-      Entry.new(key: "recap.inactivity",         yaml_path: %w[recap inactivity],          type: :float,   default: nil,             expose: %i[env config cli]),
-      Entry.new(key: "recap.timeout",            yaml_path: %w[recap timeout],             type: :float,   default: nil,             expose: %i[env config cli]),
-      Entry.new(key: "recap.min_user_turns",     yaml_path: %w[recap min_user_turns],      type: :integer, default: nil,             expose: %i[env config cli]),
+      Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config], lifecycle: :worker_start),
+      Entry.new(key: "recap.model",              yaml_path: %w[recap model],               type: :string, default: nil,              expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "recap.base_url",           yaml_path: %w[recap base_url],            type: :string, default: nil,              expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "recap.host_ref",           yaml_path: %w[recap host_ref],            type: :string, default: nil,              expose: %i[env config cli], yaml_aliases: %w[host], lifecycle: :worker_start),
+      Entry.new(key: "recap.inactivity",         yaml_path: %w[recap inactivity],          type: :float,   default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "recap.timeout",            yaml_path: %w[recap timeout],             type: :float,   default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "recap.min_user_turns",     yaml_path: %w[recap min_user_turns],      type: :integer, default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
       # "N-M" or "N" sentences (1-10); unset = 2-4. Parsed by RecapPrompt.sentences_range.
-      Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli]),
+      Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
 
       # chi broadcast (Broadcast::Recipients, Broadcast::Tags): a session that ended no turn in this many hours (and
       # no worker or REPL runs) gets no broadcast; a ticket id in the note and in a session's branch or prompts
       # delivers it there without triage.
-      Entry.new(key: "broadcast.active_hours",   yaml_path: %w[broadcast active_hours],   type: :float,   default: 8.0,             expose: %i[env config]),
-      Entry.new(key: "broadcast.ticket_pattern", yaml_path: %w[broadcast ticket_pattern], type: :string,  default: '\b[A-Z][A-Z0-9]+-\d+\b', expose: %i[env config]),
+      Entry.new(key: "broadcast.active_hours",   yaml_path: %w[broadcast active_hours],   type: :float,   default: 8.0,             expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.ticket_pattern", yaml_path: %w[broadcast ticket_pattern], type: :string,  default: '\b[A-Z][A-Z0-9]+-\d+\b', expose: %i[env config], lifecycle: :next_broadcast),
       # The triage model that judges a recipient no tag matched (Broadcast::TriageModel): unset, recap.*'s, then
       # default.model. At most triage_parallel requests at a time, all within triage_deadline seconds (the rest are
       # delivered unchecked); a logprob P(yes) under threshold skips the session.
-      Entry.new(key: "broadcast.triage_model",   yaml_path: %w[broadcast triage_model],   type: :string,  default: nil,             expose: %i[env config]),
-      Entry.new(key: "broadcast.triage_host_ref", yaml_path: %w[broadcast triage_host_ref], type: :string, default: nil,            expose: %i[env config]),
-      Entry.new(key: "broadcast.triage_base_url", yaml_path: %w[broadcast triage_base_url], type: :string, default: nil,            expose: %i[env config]),
-      Entry.new(key: "broadcast.triage_parallel", yaml_path: %w[broadcast triage_parallel], type: :integer, default: 4,             expose: %i[env config]),
-      Entry.new(key: "broadcast.triage_deadline", yaml_path: %w[broadcast triage_deadline], type: :float,  default: 20.0,           expose: %i[env config]),
-      Entry.new(key: "broadcast.threshold",      yaml_path: %w[broadcast threshold],      type: :float,   default: 0.5,             expose: %i[env config]),
+      Entry.new(key: "broadcast.triage_model",   yaml_path: %w[broadcast triage_model],   type: :string,  default: nil,             expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.triage_host_ref", yaml_path: %w[broadcast triage_host_ref], type: :string, default: nil,            expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.triage_base_url", yaml_path: %w[broadcast triage_base_url], type: :string, default: nil,            expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.triage_parallel", yaml_path: %w[broadcast triage_parallel], type: :integer, default: 4,             expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.triage_deadline", yaml_path: %w[broadcast triage_deadline], type: :float,  default: 20.0,           expose: %i[env config], lifecycle: :next_broadcast),
+      Entry.new(key: "broadcast.threshold",      yaml_path: %w[broadcast threshold],      type: :float,   default: 0.5,             expose: %i[env config], lifecycle: :next_broadcast),
 
-      Entry.new(key: "session.retention_days",        yaml_path: %w[session retention_days],        type: :integer, default: 14,   expose: %i[env config cli]),
-      Entry.new(key: "session.max_count",             yaml_path: %w[session max_count],             type: :integer, default: 500,  expose: %i[env config cli]),
-      Entry.new(key: "session.keep_status",           yaml_path: %w[session keep_status],           type: :string, default: "", expose: %i[env config cli]),
-      Entry.new(key: "session.sweep_interval_hours",  yaml_path: %w[session sweep_interval_hours],  type: :integer, default: 24,   expose: %i[env config cli]),
-      Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli]),
+      Entry.new(key: "session.retention_days",        yaml_path: %w[session retention_days],        type: :integer, default: 14,   expose: %i[env config cli], lifecycle: :next_retention_sweep),
+      Entry.new(key: "session.max_count",             yaml_path: %w[session max_count],             type: :integer, default: 500,  expose: %i[env config cli], lifecycle: :next_retention_sweep),
+      Entry.new(key: "session.keep_status",           yaml_path: %w[session keep_status],           type: :string, default: "", expose: %i[env config cli], lifecycle: :next_retention_sweep),
+      Entry.new(key: "session.sweep_interval_hours",  yaml_path: %w[session sweep_interval_hours],  type: :integer, default: 24,   expose: %i[env config cli], lifecycle: :next_retention_sweep),
+      Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli], lifecycle: :worker_start),
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
-      Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
+      Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_invocation),
       # false: a session nothing happened in is deleted when it is left (SessionManager.discardable?).
-      Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config]),
+      Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config], lifecycle: :next_lifecycle_decision),
       # The most sessions one session may have delegated and still running (the delegate tool); a guard against a runaway model.
-      Entry.new(key: "session.max_children",          yaml_path: %w[session max_children],          type: :integer, default: 4,     expose: %i[env config]),
+      Entry.new(key: "session.max_children",          yaml_path: %w[session max_children],          type: :integer, default: 4,     expose: %i[env config], lifecycle: :next_lifecycle_decision),
       # A delegate child's turn end reaches its parent (ChildReports): wake runs an idle parent's turn for it, queue waits
       # for the parent's next turn, off is the old behaviour (only delegate_result asks).
-      Entry.new(key: "session.delegate_reports",      yaml_path: %w[session delegate_reports],      type: :enum,    default: "wake", expose: %i[env config], enum_values: %w[wake queue off]),
+      Entry.new(key: "session.delegate_reports",      yaml_path: %w[session delegate_reports],      type: :enum,    default: "wake", expose: %i[env config], enum_values: %w[wake queue off], lifecycle: :next_lifecycle_decision),
       # Turns a parent runs for delegate reports in a row with no human input; past it reports wait for the next turn.
-      Entry.new(key: "session.max_wakes",             yaml_path: %w[session max_wakes],             type: :integer, default: 10,    expose: %i[env config]),
+      Entry.new(key: "session.max_wakes",             yaml_path: %w[session max_wakes],             type: :integer, default: 10,    expose: %i[env config], lifecycle: :next_lifecycle_decision),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how
       # many one request carries (older ones become placeholders).
-      Entry.new(key: "image.max_side",           yaml_path: %w[image max_side],           type: :integer, default: 1568,            expose: %i[env config]),
-      Entry.new(key: "image.max_bytes",          yaml_path: %w[image max_bytes],          type: :integer, default: 3_750_000,       expose: %i[env config]),
-      Entry.new(key: "image.max_per_request",    yaml_path: %w[image max_per_request],    type: :integer, default: 20,              expose: %i[env config]),
+      Entry.new(key: "image.max_side",           yaml_path: %w[image max_side],           type: :integer, default: 1568,            expose: %i[env config], lifecycle: :next_matching_use),
+      Entry.new(key: "image.max_bytes",          yaml_path: %w[image max_bytes],          type: :integer, default: 3_750_000,       expose: %i[env config], lifecycle: :next_matching_use),
+      Entry.new(key: "image.max_per_request",    yaml_path: %w[image max_per_request],    type: :integer, default: 20,              expose: %i[env config], lifecycle: :next_matching_use),
 
       # The guardrails settings are config.yml only: a parent agent must not switch a child's guardrails off from its
       # own environment (SAMAGOTCHI_GUARDRAILS_ENABLED=false). SessionManager.spawn_options unsets them for a worker too.
-      Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[config]),
+      Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[config], lifecycle: :next_tool_or_approval),
       # Which rules vote: auto (the default) leaves out the rules tagged `modes: [strict]`; strict runs them all. An unknown
       # value warns and is auto.
-      Entry.new(key: "guardrails.mode",          yaml_path: %w[guardrails mode],          type: :enum,   default: "auto",           expose: %i[config], enum_values: %w[auto strict]),
+      Entry.new(key: "guardrails.mode",          yaml_path: %w[guardrails mode],          type: :enum,   default: "auto",           expose: %i[config], enum_values: %w[auto strict], lifecycle: :next_tool_or_approval),
       # Which models get the rules with `models: small` (Guardrails::ModelSize): auto (32B or less by the name's size, an MoE's
       # active size counting), globs on the bare model name or its key, "|"-separated (a YAML list works too), or "" ([]) for none.
-      Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[config]),
+      Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[config], lifecycle: :next_tool_or_approval),
       # What `chi answer` lets a parent agent allow on an approval: off (deny only) or once ("Allow once", never a wider scope).
-      Entry.new(key: "guardrails.parent_approvals", yaml_path: %w[guardrails parent_approvals], type: :enum, default: "off", expose: %i[config], enum_values: %w[off once]),
+      Entry.new(key: "guardrails.parent_approvals", yaml_path: %w[guardrails parent_approvals], type: :enum, default: "off", expose: %i[config], enum_values: %w[off once], lifecycle: :next_tool_or_approval),
 
-      Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
-      Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),
+      Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli], lifecycle: :process_start),
+      Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :process_start),
       # debug adds payload dumps (model responses, tool args/results) and fetch lines.
-      Entry.new(key: "log.level",                yaml_path: %w[log level],                type: :enum,   default: "info",           expose: %i[env config cli], enum_values: %w[debug info warn error]),
+      Entry.new(key: "log.level",                yaml_path: %w[log level],                type: :enum,   default: "info",           expose: %i[env config cli], enum_values: %w[debug info warn error], lifecycle: :process_start),
 
-      Entry.new(key: "status.line",              yaml_path: %w[status line],              type: :string, default: "on",             expose: %i[env config cli]),
+      Entry.new(key: "status.line",              yaml_path: %w[status line],              type: :string, default: "on",             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
 
-      Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli]),
-      Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli]),
-      Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli]),
+      Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
+      Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
+      Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # The tokens one scope's memory index (sent with every prompt) may hold before a write that crosses it gets a note
       # (MemoryBundle::IndexSize); 0: no note. `memory:` is its own section, not the `memories:` preload list.
-      Entry.new(key: "memory.index_warn_tokens", yaml_path: %w[memory index_warn_tokens], type: :integer, default: 2500,            expose: %i[env config cli]),
-      Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
+      Entry.new(key: "memory.index_warn_tokens", yaml_path: %w[memory index_warn_tokens], type: :integer, default: 2500,            expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
+      Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # Attached context (ContextSources): how often a source's command runs when it names no --every (seconds; less
       # than 30 counts as 30).
-      Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config]),
+      Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config], lifecycle: :next_context_poll),
       # Whether a source's update with wake: true may start a turn in a live, idle session (Worker; one per source per
       # 10 minutes, a peer source per context.peer_turns, within session.max_wakes); false: it waits as a note for the
       # next turn.
-      Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
+      Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # A peer agent's answers (a source a peer bundle declares, claude-outbox): wake turns in a row they may start
       # with no input typed in the web or a TUI (within session.max_wakes; an agreeing answer's closing wake isn't
       # counted here); then they wait as notes. 0: a peer source
       # wakes like any other (once per 10 minutes, the guard line).
-      Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli]),
+      Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
 
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
       # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.
       # models.<key>.llm_context_strategy and hosts.<name>.llm_context_strategy come first.
-      Entry.new(key: "llm_context.strategy",     yaml_path: %w[llm_context strategy],     type: :string, default: "none",           expose: %i[env config]),
+      Entry.new(key: "llm_context.strategy",     yaml_path: %w[llm_context strategy],     type: :string, default: "none",           expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # When a layer's edits reach the prompt (LLMContextApply): payoff, next_request or turn_end;
       # models.<key>.llm_context_apply and hosts.<name>.llm_context_apply come first.
-      Entry.new(key: "llm_context.apply",        yaml_path: %w[llm_context apply],        type: :string, default: "payoff",         expose: %i[env config]),
+      Entry.new(key: "llm_context.apply",        yaml_path: %w[llm_context apply],        type: :string, default: "payoff",         expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # Whether an edit or write of a file makes its earlier reads stale too (opt-in, experimental).
-      Entry.new(key: "llm_context.stale_edits",  yaml_path: %w[llm_context stale_edits],  type: :bool,   default: false,            expose: %i[env config]),
+      Entry.new(key: "llm_context.stale_edits",  yaml_path: %w[llm_context stale_edits],  type: :bool,   default: false,            expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # The steps (tool batches) back whose edited files' reads stale never stubs.
-      Entry.new(key: "llm_context.protect_steps", yaml_path: %w[llm_context protect_steps], type: :integer, default: 3,             expose: %i[env config]),
+      Entry.new(key: "llm_context.protect_steps", yaml_path: %w[llm_context protect_steps], type: :integer, default: 3,             expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # A soft context budget in tokens (64000, 64k; 4k to 10M): the context status bands (and the forget layer's
       # offers) count against it instead of the window; unset, 0 or off: off. models.<key>.llm_context_budget_tokens
       # and hosts.<name>.llm_context_budget_tokens come first. Kept as written: LLMContextStrategy.parse_budget reads it.
-      Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :string, default: nil,           expose: %i[env config]),
+      Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :string, default: nil,           expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
-      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config]),
+      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config], lifecycle: :worker_start),
 
-      Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
+      Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli], lifecycle: :prompt_rebuild),
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag
       # is bin/chi's own --thinking; models: and hosts: entries rank below
       # the flag and the env, above config.yml's value.
-      Entry.new(key: "thinking.level",           yaml_path: %w[thinking level],           type: :string, default: "default",       expose: %i[env config]),
+      Entry.new(key: "thinking.level",           yaml_path: %w[thinking level],           type: :string, default: "default",       expose: %i[env config], lifecycle: :next_turn_start),
       # Which of its reasoning a chat host's model gets back (ReasoningHistory):
       # the environment only, for A/B runs; models: and hosts: entries are
       # the config surface.
@@ -204,94 +210,94 @@ module Samagotchi
       # The toolkit a new session is stored on (Toolkit.configured): the tools
       # its prompts declare. full (every built-in) when unset; child: a
       # delegate child's. toolkit.kits (the user's own) is read by Toolkit.kits.
-      Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config]),
+      Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
+      Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
 
-      Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli]),
-      Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
+      Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli], lifecycle: :next_matching_use),
 
       # The turn-end warm-up (PromptWarmup): auto prefills the next turn's
       # prompt on a local llama.cpp host while the user reads; off never
       # does. A :string, since YAML reads an unquoted off as false.
-      Entry.new(key: "cache.warmup",             yaml_path: %w[cache warmup],             type: :string, default: "auto",           expose: %i[env config]),
+      Entry.new(key: "cache.warmup",             yaml_path: %w[cache warmup],             type: :string, default: "auto",           expose: %i[env config], lifecycle: :next_request_or_turn_end),
       # How long Anthropic keeps a cache breakpoint (PromptCache): 5m, or
       # 1h for long reading gaps (a 1h write costs 2x the input price, a 5m
       # one 1.25x, so it's opt-in).
-      Entry.new(key: "cache.ttl",                yaml_path: %w[cache ttl],                type: :string, default: "5m",             expose: %i[env config]),
+      Entry.new(key: "cache.ttl",                yaml_path: %w[cache ttl],                type: :string, default: "5m",             expose: %i[env config], lifecycle: :next_request_or_turn_end),
       # session sends the session id as `prompt_cache_key` to OpenAI's API
       # and OpenRouter (OpenAIChat), which route and cache by it; off sends
       # none. A :string, since YAML reads an unquoted off as false.
-      Entry.new(key: "cache.key",                yaml_path: %w[cache key],                type: :string, default: "off",            expose: %i[env config]),
+      Entry.new(key: "cache.key",                yaml_path: %w[cache key],                type: :string, default: "off",            expose: %i[env config], lifecycle: :next_request_or_turn_end),
 
-      Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli]),
-      Entry.new(key: "retry.base_delay",         yaml_path: %w[retry base_delay],         type: :float,   default: 0.5,             expose: %i[env config cli]),
-      Entry.new(key: "retry.max_delay",          yaml_path: %w[retry max_delay],          type: :float,   default: 8.0,             expose: %i[env config cli]),
+      Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "retry.base_delay",         yaml_path: %w[retry base_delay],         type: :float,   default: 0.5,             expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "retry.max_delay",          yaml_path: %w[retry max_delay],          type: :float,   default: 8.0,             expose: %i[env config cli], lifecycle: :worker_start),
       # Asks again in the same turn after an empty answer (EmptyAnswerRetry);
       # 0 = off, capped at 3. No CLI flag: workers get no CLI args.
-      Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config]),
+      Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config], lifecycle: :next_empty_answer_retry),
       # Seconds a generation must have streamed only thinking before a message
       # for the running turn (the user's, chi send's, a parent agent's) cuts
       # it (Engine#cut_for_steer); 0 = never. hosts.<name>.steer_cut_after and
       # models.<key>.steer_cut_after win. No CLI flag: workers get no CLI args.
-      Entry.new(key: "steer.cut_after",          yaml_path: %w[steer cut_after],          type: :integer, default: 20,              expose: %i[env config]),
+      Entry.new(key: "steer.cut_after",          yaml_path: %w[steer cut_after],          type: :integer, default: 20,              expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # A turn's step limit: model ↔ tool rounds before it stops and offers to continue (IterationLimit); integer ≥ 1.
       # --no-interrupt turns get max(1000, this). No CLI flag: --no-interrupt is the flag.
-      Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 300,             expose: %i[env config]),
+      Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 300,             expose: %i[env config], lifecycle: :next_turn_start),
       # Whether a parent agent (chi answer) may answer Continue to a session's step-limit question; false: Stop only.
       # config.yml only, like guardrails.parent_approvals: a parent must not decide it from its own environment.
-      Entry.new(key: "turn.parent_continue",     yaml_path: %w[turn parent_continue],     type: :bool,    default: true,            expose: %i[config]),
+      Entry.new(key: "turn.parent_continue",     yaml_path: %w[turn parent_continue],     type: :bool,    default: true,            expose: %i[config], lifecycle: :next_tool_or_approval),
       # What `chi update` touches; its --no-gem/--no-bundles/--no-desktop turn one off for a run.
-      Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config]),
-      Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config]),
-      Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config]),
+      Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
+      Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
+      Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       # The desktop helper's kitty targets (Desktop::MacOS.kitty_settings, one of its terminal_settings): listen_on copied from kitty.conf (unset = none),
       # the kitty binary, and the foreground programs listed, "|"-separated (a YAML list works too; "*" = every window).
-      Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "kitty.binary",             yaml_path: %w[kitty binary],             type: :string, default: "/Applications/kitty.app/Contents/MacOS/kitty", expose: %i[env config]),
-      Entry.new(key: "kitty.agents",             yaml_path: %w[kitty agents],             type: :string, default: DESKTOP_AGENTS,   expose: %i[env config]),
+      Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config], lifecycle: :desktop_update),
+      Entry.new(key: "kitty.binary",             yaml_path: %w[kitty binary],             type: :string, default: "/Applications/kitty.app/Contents/MacOS/kitty", expose: %i[env config], lifecycle: :desktop_update),
+      Entry.new(key: "kitty.agents",             yaml_path: %w[kitty agents],             type: :string, default: DESKTOP_AGENTS,   expose: %i[env config], lifecycle: :desktop_update),
       # Its tmux targets (Desktop::MacOS.tmux_settings): off until enabled; the tmux binary (unset = the tmux on
       # chi's PATH when the launch file is written) and the foreground programs listed, as kitty.agents.
-      Entry.new(key: "tmux.enabled",             yaml_path: %w[tmux enabled],             type: :bool,   default: false,            expose: %i[env config]),
-      Entry.new(key: "tmux.binary",              yaml_path: %w[tmux binary],              type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "tmux.agents",              yaml_path: %w[tmux agents],              type: :string, default: DESKTOP_AGENTS,   expose: %i[env config]),
+      Entry.new(key: "tmux.enabled",             yaml_path: %w[tmux enabled],             type: :bool,   default: false,            expose: %i[env config], lifecycle: :desktop_update),
+      Entry.new(key: "tmux.binary",              yaml_path: %w[tmux binary],              type: :string, default: nil,              expose: %i[env config], lifecycle: :desktop_update),
+      Entry.new(key: "tmux.agents",              yaml_path: %w[tmux agents],              type: :string, default: DESKTOP_AGENTS,   expose: %i[env config], lifecycle: :desktop_update),
 
-      Entry.new(key: "read.truncate_at_bytes",        yaml_path: %w[read truncate_at_bytes],        type: :integer, default: 65_536,   expose: %i[env config cli]),
-      Entry.new(key: "read.preview_bytes",            yaml_path: %w[read preview_bytes],            type: :integer, default: 12_288,   expose: %i[env config cli]),
-      Entry.new(key: "read.hard_max_bytes",           yaml_path: %w[read hard_max_bytes],           type: :integer, default: 2_097_152, expose: %i[env config cli]),
-      Entry.new(key: "read.telemetry_threshold_pct",  yaml_path: %w[read telemetry_threshold_pct],  type: :integer, default: 80,       expose: %i[env config cli]),
+      Entry.new(key: "read.truncate_at_bytes",        yaml_path: %w[read truncate_at_bytes],        type: :integer, default: 65_536,   expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "read.preview_bytes",            yaml_path: %w[read preview_bytes],            type: :integer, default: 12_288,   expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "read.hard_max_bytes",           yaml_path: %w[read hard_max_bytes],           type: :integer, default: 2_097_152, expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "read.telemetry_threshold_pct",  yaml_path: %w[read telemetry_threshold_pct],  type: :integer, default: 80,       expose: %i[env config cli], lifecycle: :next_matching_use),
 
-      Entry.new(key: "execute.truncate_at_bytes",       yaml_path: %w[execute truncate_at_bytes],       type: :integer, default: 65_536, expose: %i[env config cli]),
-      Entry.new(key: "execute.preview_bytes",           yaml_path: %w[execute preview_bytes],           type: :integer, default: 12_288, expose: %i[env config cli]),
+      Entry.new(key: "execute.truncate_at_bytes",       yaml_path: %w[execute truncate_at_bytes],       type: :integer, default: 65_536, expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "execute.preview_bytes",           yaml_path: %w[execute preview_bytes],           type: :integer, default: 12_288, expose: %i[env config cli], lifecycle: :next_matching_use),
       # The head an execute result over max_tool_output_chars keeps (ToolOutputCut): at most this, and a quarter of
       # the room; the tail gets the rest.
-      Entry.new(key: "execute.cut_head_chars",          yaml_path: %w[execute cut_head_chars],          type: :integer, default: 1000,   expose: %i[env config cli]),
-      Entry.new(key: "execute.telemetry_threshold_pct", yaml_path: %w[execute telemetry_threshold_pct], type: :integer, default: 80,     expose: %i[env config cli]),
+      Entry.new(key: "execute.cut_head_chars",          yaml_path: %w[execute cut_head_chars],          type: :integer, default: 1000,   expose: %i[env config cli], lifecycle: :next_matching_use),
+      Entry.new(key: "execute.telemetry_threshold_pct", yaml_path: %w[execute telemetry_threshold_pct], type: :integer, default: 80,     expose: %i[env config cli], lifecycle: :next_matching_use),
       # Seconds one execute command may run before execute.on_timeout applies (Tools::Execute::TIMEOUT_SEC).
-      Entry.new(key: "execute.timeout_sec",             yaml_path: %w[execute timeout_sec],             type: :integer, default: 120,    expose: %i[env config cli]),
+      Entry.new(key: "execute.timeout_sec",             yaml_path: %w[execute timeout_sec],             type: :integer, default: 120,    expose: %i[env config cli], lifecycle: :next_matching_use),
       # What happens to a command still running at that limit (Tools::Execute::ON_TIMEOUT): task hands it over as a
       # background task (task_wait waits for it), kill stops it.
-      Entry.new(key: "execute.on_timeout",              yaml_path: %w[execute on_timeout],              type: :enum,    default: "task", expose: %i[env config cli], enum_values: %w[task kill]),
+      Entry.new(key: "execute.on_timeout",              yaml_path: %w[execute on_timeout],              type: :enum,    default: "task", expose: %i[env config cli], enum_values: %w[task kill], lifecycle: :next_matching_use),
       # Whether execute declares its optional description parameter (a few model-written words, a tool row's title).
-      Entry.new(key: "execute.description",             yaml_path: %w[execute description],             type: :bool,    default: true,   expose: %i[env config]),
+      Entry.new(key: "execute.description",             yaml_path: %w[execute description],             type: :bool,    default: true,   expose: %i[env config], lifecycle: :worker_start),
 
-      Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli]),
-      Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli]),
-      Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli]),
+      Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli], lifecycle: :web_start),
+      Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli], lifecycle: :web_start),
+      Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli], lifecycle: :web_start),
       # The page's view of a turn: stage (the running turn pinned above the composer) or turn (one block of generations, the live one at the bottom); ?view= overrides it per page load.
-      Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "stage",        expose: %i[env config cli], enum_values: %w[stage turn]),
+      Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "stage",        expose: %i[env config cli], enum_values: %w[stage turn], lifecycle: :web_start),
       # Quick replies next to Annotate in the page's selection bubble, "|"-separated (a YAML list works too); "" leaves only Annotate.
-      Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli]),
+      Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli], lifecycle: :web_start),
       # What a file ref (a tool row's file, a diff line) opens on this machine: a preset (vscode, vscode-insiders, cursor, zed, none) or a URL template with {path} and an optional {line} (Web::Editor).
-      Entry.new(key: "web.editor",               yaml_path: %w[web editor],               type: :string, default: "vscode",        expose: %i[env config cli]),
+      Entry.new(key: "web.editor",               yaml_path: %w[web editor],               type: :string, default: "vscode",        expose: %i[env config cli], lifecycle: :web_start),
 
-      Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli]),
-      Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli]),
+      Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
+      Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
 
       # env+config only
-      Entry.new(key: "default.input",            yaml_path: %w[default input],            type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "history.file",             yaml_path: %w[history file],             type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "skip_agents_md",           yaml_path: %w[skip_agents_md],           type: :bool,   default: false,            expose: %i[env config])
-    ].freeze
+      Entry.new(key: "default.input",            yaml_path: %w[default input],            type: :string, default: nil,              expose: %i[env config], lifecycle: :next_cli_run),
+      Entry.new(key: "history.file",             yaml_path: %w[history file],             type: :string, default: nil,              expose: %i[env config], lifecycle: :next_history_access),
+      Entry.new(key: "skip_agents_md",           yaml_path: %w[skip_agents_md],           type: :bool,   default: false,            expose: %i[env config], lifecycle: :prompt_rebuild)
+    ].each(&:freeze).freeze
 
     # Top-level maps and lists read by their own code, whose entry names and
     # contents are the user's: ConfigFile.model_aliases / preloaded_memories /
