@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- HTTP: failed-request messages in logs are now short, single-line UTF-8.
 - Bundles: the test kit explains when guardrails don't dispatch a `before_tool_call` event.
 - A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates
   the deleted old session's folder.

@@ -468,6 +468,22 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] }).to eq([%w[ERROR failed 429]])
     end
 
+    it "logs a failed request message as one short UTF-8 line" do
+      summary = "bad\nline\r#{"\xFF".dup.force_encoding(Encoding::UTF_8)}#{"x" * 400}"
+      error_class = Class.new(StandardError) { define_method(:summary) { summary } }
+      error = error_class.new
+      current = { level: :info, stream: false, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
+                  attempts: 1, log: { host: "fake" } }
+
+      expect { http.send(:logged, current) { raise error } }.to raise_error(error_class)
+
+      message = http_records.last.fields.fetch("msg")
+      expect(message.encoding).to eq(Encoding::UTF_8)
+      expect(message).to start_with("bad line �")
+      expect(message).not_to match(/[\r\n]/)
+      expect(message.length).to be <= 300
+    end
+
     it "writes an ERROR for a first-token timeout" do
       limited = described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
                                     sleeper: ->(seconds) { sleeps << seconds }, first_token_timeout: 0.2)

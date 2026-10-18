@@ -390,7 +390,7 @@ module Samagotchi
                 end
         Log.public_send(failure_level, :http, event, **log_base(current), status: e.is_a?(ProviderError) ? e.status : nil,
                                                      ms: elapsed_ms(current), attempts: current[:attempts], error: e.class.name,
-                                                     msg: (e.respond_to?(:summary) ? e.summary : e.message).to_s[0, 300])
+                                                     msg: log_message(e.respond_to?(:summary) ? e.summary : e.message))
         raise
       end
 
@@ -410,11 +410,16 @@ module Samagotchi
       def retry_after(error, attempts, delay, on_retry, cancel_controller, current)
         Log.warn(:http, "retry", **log_base(current), attempt: attempts, max_retries: @retry_policy.max, delay_s: delay,
                                  status: error.is_a?(ProviderError) ? error.status : nil, error: error.class.name,
-                                 msg: error.message.to_s[0, 300])
+                                 msg: log_message(error.message))
         on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,
                        error_class: error.class.name, error_message: error.message,
                        status: error.is_a?(ProviderError) ? error.status : nil)
         wait(delay, cancel_controller)
+      end
+
+      def log_message(value)
+        value.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "\uFFFD")
+          .gsub(/[[:cntrl:]\u2028\u2029]+/, " ").split.join(" ")[0, 300]
       end
 
       def check_status!(response)
