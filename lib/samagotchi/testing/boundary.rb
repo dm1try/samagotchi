@@ -79,9 +79,6 @@ module Samagotchi
           "Samagotchi::Session.new_session" => "spec: #{SESSION} (ctx.delegate?, ctx.fork?, ctx.context read it)",
           "Samagotchi::ContextSources.session_location" => "spec: reads and removes the session's sources (added_by), " \
                                                             "which ctx.context.list doesn't show",
-          'require "samagotchi/memory_bundle/installer"' => "spec: for Installer",
-          "Samagotchi::MemoryBundle::Installer.new" => "spec: installs the bundle so its context provider resolves: " \
-                                                       "needs a kit install helper",
           'require "samagotchi/context_providers"' => "spec: for ContextProviders",
           "Samagotchi::ContextProviders.resolve" => "spec: the manifest's URL provider through chi's own resolver",
           'require "samagotchi/answer_display"' => "spec: for AnswerDisplay",

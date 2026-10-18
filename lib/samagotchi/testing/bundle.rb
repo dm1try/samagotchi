@@ -240,6 +240,13 @@ module Samagotchi
         failing { entry.handler.call({ name: name.to_s, args: stringify(args) }, nil) }
       end
 
+      # Install this bundle's dir into its sandbox as chi does and load the
+      # installed copy with chi's loaders (Install.run, with its settings):
+      # what a test of the installed bundle needs (its scripts, context
+      # providers), and the install warnings and load failures.
+      # @return [Install::Result]
+      def install(force: false) = Install.run(@dir, settings: @settings, sandbox: @sandbox, force: force)
+
       # Run the chi.init blocks in order, as chi's init tasks do.
       # @return [Array] their results
       def run_inits = failing { @inits.map { |init| init.block.call } }

@@ -4,6 +4,7 @@ require_relative "api"
 require_relative "context"
 require_relative "../hooks"
 require_relative "../log"
+require_relative "../guardrails/load_failures"
 require_relative "../version"
 require_relative "../memory_bundle/manifest"
 require_relative "../memory_bundle/provenance"
@@ -71,7 +72,8 @@ module Samagotchi
       rescue Exception => e # rubocop:disable Lint/RescueException -- a plugin's SyntaxError or exit must not stop chi
         raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 
-        failed(bundle_name, basename, "#{e.class}: #{e.message}", failures)
+        failed(bundle_name, basename, "#{e.class}: #{e.message}", failures,
+               location: file && Guardrails::LoadFailures.location(e, File.dirname(file)))
       end
 
       # Build +file+'s plugin with +settings+ and commit what its #register
@@ -136,10 +138,10 @@ module Samagotchi
         end
       end
 
-      def failed(bundle_name, basename, reason, failures)
+      def failed(bundle_name, basename, reason, failures, location: nil)
         Log.warn(TAG, "plugin_not_loaded", echo: "[samagotchi:plugins] bundle '#{bundle_name}' plugin '#{basename}' not loaded: #{reason}",
                                            bundle: bundle_name, file: basename)
-        failures&.add("plugin #{basename} (bundle #{bundle_name})", reason, required: false)
+        failures&.add("plugin #{basename} (bundle #{bundle_name})", reason, required: false, location: location)
         false
       end
     end

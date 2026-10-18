@@ -26,5 +26,10 @@ module Samagotchi
   #                         event also has context: and targets: (docs/guardrails.md)
   #   :after_tool_call    — after tool execution, before result injection
   module Hooks
+    # Every event a hook can be registered for, in a turn's order
+    # (docs/hooks.md). Plugin::Api#on takes any symbol: `chi bundle check`
+    # warns on one not here.
+    EVENTS = %i[session_start before_turn before_generation generation_progress after_generation before_tool_call
+                after_tool_call after_turn session_end].freeze
   end
 end

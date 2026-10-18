@@ -2,7 +2,6 @@
 
 require "tmpdir"
 require "json"
-require "samagotchi/memory_bundle/installer"
 require "samagotchi/testing/rspec"
 require "samagotchi/context_providers"
 require "samagotchi/answer_display"
@@ -48,7 +47,7 @@ RSpec.describe "The github-pr bundle", :bundle do
   # sandbox puts ENV back after the example).
   before do
     ENV["PATH"] = "#{bin}:/usr/bin:/bin"
-    Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "github-pr", scope: "system", strict: true).run
+    Samagotchi::Testing::Install.run(shipped, sandbox: sandbox)
   end
 
   after { FileUtils.rm_rf(tmpdir) }

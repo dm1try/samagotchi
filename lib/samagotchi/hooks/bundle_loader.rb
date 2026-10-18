@@ -3,6 +3,7 @@
 require_relative "registry"
 require "digest"
 require_relative "../log"
+require_relative "../guardrails/load_failures"
 require_relative "../memory_bundle/bundle_hook"
 require_relative "../memory_bundle/provenance"
 require_relative "../memory_bundle/manifest"
@@ -90,7 +91,8 @@ module Samagotchi
               raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 
               Log.error(:hooks, "bundle_hook_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' failed to load: #{e.class}: #{e.message}", bundle: bundle_name, hook: basename.to_s, error: e.class.name)
-              failures&.add(what, "#{e.class}: #{e.message}", required: fail_closed)
+              failures&.add(what, "#{e.class}: #{e.message}", required: fail_closed,
+                                  location: Guardrails::LoadFailures.location(e, File.dirname(hooks_dir)))
             end
           end
           loaded
