@@ -513,6 +513,115 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(wait(baseline: baseline, turn: "q1").outcome).to eq("failed")
     end
 
+    describe "a turn its worker died in (TurnCheckpoint.settle)" do
+      # The worker claims +id+ and runs it: the session file holds its
+      # checkpoint mark.
+      def run_turn(id)
+        claim(id)
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), at: Time.now.iso8601(3),
+                                                             iteration: 1, enqueued_id: id)
+        s.save(state_dir: tmpdir)
+      end
+
+      # The worker is killed; the next one settles the turn (Worker#settle_interrupted_turn).
+      def die_and_settle
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        Samagotchi::TurnCheckpoint.settle(s, session_dir: dir)
+        s.save(state_dir: tmpdir)
+      end
+
+      before { set(status: "idle") }
+
+      it "ends its queued wait as canceled (worker_stopped), not at the timeout, seen running or not" do
+        queue_input("q1")
+        base = baseline
+        later do
+          run_turn("q1")
+          looked(2)
+          die_and_settle
+        end
+
+        result = wait(baseline: base, turn: "q1", queued: true, timeout: 5)
+        expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+        expect(result.session).to be_a(Samagotchi::Session)
+        expect(Samagotchi::ParentReport.status(result)).to eq("canceled")
+        expect(Samagotchi::ParentReport.detail(result, session_id: session.id)).to include("its worker exited mid-turn")
+
+        # A wait that starts after the settle, for the same turn, ends the same way.
+        expect(described_class.known_turn?(Samagotchi::Session.load(session.id, state_dir: tmpdir), session_dir: dir, turn: "q1"))
+          .to be(true)
+        expect(wait(baseline: baseline, turn: "q1", timeout: 1).to_h).to include(status: :no_reply, cancel_reason: "worker_stopped")
+      end
+
+      it "does not end a later send's wait: B waits for its own turn, past A's settle" do
+        queue_input("a1")
+        queue_input("b1")
+        base = baseline
+        later do
+          run_turn("a1")
+          die_and_settle
+          looked(2)
+          run_turn("b1")
+          write_turn_reply("answer to b1", "b1")
+          end_turn("b1")
+        end
+
+        a = Thread.new { wait(baseline: base, turn: "a1") }
+        b = wait(baseline: base, turn: "b1")
+        expect(b.to_h).to include(status: :done, text: "answer to b1")
+        expect(a.value.to_h).to include(status: :no_reply, cancel_reason: "worker_stopped")
+      end
+
+      it "leaves a wait with no turn: (a plain send's) to its own turn: the settle is no turn's end there" do
+        base = baseline
+        queue_input("a1")
+        later do
+          run_turn("a1")
+          die_and_settle
+        end
+
+        expect(wait(baseline: base, timeout: 0.5).status).to eq(:timeout)
+      end
+
+      it "takes the turn's reply when its worker died after writing it (one outcome: the reply)" do
+        queue_input("q1")
+        base = baseline
+        later do
+          run_turn("q1")
+          write_turn_reply("answer to q1", "q1") # then killed before its idle save
+          die_and_settle
+        end
+
+        result = wait(baseline: base, turn: "q1", queued: true)
+        expect(result.to_h).to include(status: :done, text: "answer to q1", outcome: nil, cancel_reason: nil)
+      end
+
+      it "ends on the settle, not the earlier end its last_turn still holds, for a continue turn that died" do
+        own_by_worker
+        queue_input("q1")
+        later do
+          claim("q1")
+          end_turn("q1", exhausted: true, limit: 30) # the offer's turn
+        end
+        expect(wait(baseline: baseline, turn: "q1").outcome).to eq("exhausted")
+
+        base = baseline # the continue answered
+        later do
+          s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          s.status = "running"
+          s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 1, enqueued_id: "q1")
+          s.save(state_dir: tmpdir)
+          looked(2)
+          die_and_settle
+        end
+
+        result = wait(baseline: base, turn: "q1")
+        expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped", limit: nil)
+      end
+    end
+
     it "does not take the running turn's question asked after the send: it waits on (here to its timeout)" do
       own_by_worker
       queue_input("q1")

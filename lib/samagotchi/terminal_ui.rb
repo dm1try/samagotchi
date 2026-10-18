@@ -295,7 +295,7 @@ module Samagotchi
       claim_session!(session.id) unless @owner_lock
       # A turn a worker died in (TurnCheckpoint): ended as canceled, with its
       # note, before this REPL's first turn appends after it.
-      session.save if @resume_session && TurnCheckpoint.settle(session)
+      session.save if @resume_session && TurnCheckpoint.settle(session, session_dir: Session.session_dir(session.id))
       keep_cards(session)
       # Saved at once, so a process killed before its first turn leaves a
       # file the sweep knows to delete.

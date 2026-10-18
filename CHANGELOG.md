@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi send --queue --wait` (and a wait for a turn by its id) no longer waits until its timeout when the worker dies
+  in the middle of that turn: once the next worker settles it, the wait ends `canceled` with
+  `cancel_reason: worker_stopped` ("its worker exited mid-turn"). Another send's wait is not ended by it.
+
 ## [0.85.0] - 2026-10-18
 
 ### Added

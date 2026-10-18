@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "json"
 require "time"
+require_relative "atomic_file"
 require_relative "interrupted_turn"
+require_relative "last_turn"
 require_relative "log"
 require_relative "session"
+require_relative "session_inbox"
 require_relative "steer"
 require_relative "turn_note"
 
@@ -39,9 +44,12 @@ module Samagotchi
     # last_turn is left as it was: a new last_turn saved idle here, before
     # the turn a `chi send --wait` started this worker for, would end that
     # wait at once as the sent turn's (ReplyWait compares last_turn), with
-    # the dead turn's outcome.
+    # the dead turn's outcome. A mark with an enqueued_id records the dead
+    # turn's end under that id instead (+session_dir+, #settled_turn): only
+    # a wait for that very turn (ReplyWait's turn:) reads it.
+    # @param session_dir [String, nil] where to record it; nil: nowhere
     # @return [InterruptedTurn, nil] the mark settled, nil when there was none
-    def self.settle(session)
+    def self.settle(session, session_dir: nil)
       mark = session.interrupted_turn
       return nil unless mark
 
@@ -54,8 +62,49 @@ module Samagotchi
       session.messages = messages + [note]
       session.status = Session::STATUS_IDLE if session.status == Session::STATUS_RUNNING
       session.interrupted_turn = nil
+      record_settled(session_dir, mark, seconds) if session_dir
       mark
     end
+
+    # Where a settled turn's end is kept: input/settled/<enqueued_id>, its
+    # LastTurn record (outcome canceled, cancel_reason worker_stopped),
+    # outside the *.json glob like SessionInbox's removed tombstones.
+    SETTLED_DIR = "settled"
+    WORKER_STOPPED = "worker_stopped"
+
+    # The end #settle recorded for the turn that ran +enqueued_id+.
+    # @return [LastTurn, nil] nil when no settle recorded one
+    def self.settled_turn(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      return nil unless SessionInbox::ENQUEUED_ID_NAME.match?(id)
+
+      raw = File.read(File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR, id))
+      LastTurn.from_file(JSON.parse(raw)) || settled_record(id)
+    rescue Errno::ENOENT, Errno::ENOTDIR
+      nil
+    rescue JSON::ParserError, SystemCallError
+      # The file says the turn was settled even when it can't be read.
+      settled_record(id)
+    end
+
+    def self.settled_record(id, ended_at: nil, seconds: nil)
+      LastTurn.new(outcome: "canceled", cancel_reason: WORKER_STOPPED, ended_at: ended_at, seconds: seconds, enqueued_id: id)
+    end
+    private_class_method :settled_record
+
+    def self.record_settled(session_dir, mark, seconds)
+      id = mark.enqueued_id.to_s
+      return unless SessionInbox::ENQUEUED_ID_NAME.match?(id)
+
+      dir = File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR)
+      FileUtils.mkdir_p(dir)
+      record = settled_record(id, ended_at: Time.now.iso8601(3), seconds: seconds)
+      AtomicFile.write(File.join(dir, id), JSON.generate(record.to_file))
+    rescue SystemCallError => e
+      # The settle goes on; a wait for that turn runs to its timeout.
+      Log.warn(:worker, "settled_turn_write_failed", error: e.class.name, msg: e.message)
+    end
+    private_class_method :record_settled
 
     # @param session [Session] the worker's session (saved as a whole)
     # @param clock [#call] monotonic seconds (specs)

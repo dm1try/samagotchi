@@ -147,6 +147,49 @@ RSpec.describe Samagotchi::TurnCheckpoint do
       expect(described_class.settle(session)).to be_nil
       expect(session.messages).to eq(history)
     end
+
+    describe "the dead turn's end under its enqueued_id (.settled_turn)" do
+      let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+      it "records it as canceled (worker_stopped), for that id only, with last_turn left as it was" do
+        session.interrupted_turn = mark.with(enqueued_id: "q1")
+        described_class.settle(session, session_dir: dir)
+
+        expect(described_class.settled_turn(dir, "q1"))
+          .to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped", enqueued_id: "q1", seconds: 90.0)
+        expect(described_class.settled_turn(dir, "q2")).to be_nil
+        expect(session.last_turn).to be_nil
+        # Outside the input glob: no worker takes it as a message.
+        expect(Samagotchi::SessionInbox.find_new_input_files(dir)).to be_empty
+      end
+
+      it "records nothing for a turn that ran no input, or with no session_dir" do
+        session.interrupted_turn = mark
+        described_class.settle(session, session_dir: dir)
+        expect(Dir.exist?(File.join(dir, "input", described_class::SETTLED_DIR))).to be(false)
+
+        session.interrupted_turn = mark.with(enqueued_id: "q1")
+        described_class.settle(session)
+        expect(described_class.settled_turn(dir, "q1")).to be_nil
+      end
+
+      it "reads a record it can't parse as the settle's outcome, and an id that isn't one as none" do
+        FileUtils.mkdir_p(File.join(dir, "input", "settled"))
+        File.write(File.join(dir, "input", "settled", "q1"), "{oops")
+        expect(described_class.settled_turn(dir, "q1")).to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped")
+        expect(described_class.settled_turn(dir, "../q1")).to be_nil
+      end
+
+      it "logs a record it can't write and settles all the same" do
+        session.interrupted_turn = mark.with(enqueued_id: "q1")
+        allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::EACCES)
+        allow(Samagotchi::Log).to receive(:warn)
+
+        expect(described_class.settle(session, session_dir: dir)).to eq(mark.with(enqueued_id: "q1"))
+        expect(session).to have_attributes(status: "idle", interrupted_turn: nil)
+        expect(Samagotchi::Log).to have_received(:warn).with(:worker, "settled_turn_write_failed", error: "Errno::EACCES", msg: a_kind_of(String))
+      end
+    end
   end
 
   it "logs a write that fails and goes on" do

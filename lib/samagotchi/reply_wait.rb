@@ -3,6 +3,7 @@
 require_relative "session"
 require_relative "turn_note"
 require_relative "session_inbox"
+require_relative "turn_checkpoint"
 require_relative "worker_sidecar"
 
 module Samagotchi
@@ -47,8 +48,9 @@ module Samagotchi
     #   retry
     # @!attribute cancel_reason [String, nil] a "canceled" turn's reason
     #   (user, hook, ctrl_c, manual, session_stopped: the session was
-    #   stopped mid-turn), passed through as the worker saved it; any
-    #   reason is a "canceled" outcome
+    #   stopped mid-turn; worker_stopped: turn:'s worker died in it and the
+    #   next one settled it, TurnCheckpoint.settled_turn), passed through
+    #   as the worker saved it; any reason is a "canceled" outcome
     # @!attribute stopped_by [String, nil] the hook that canceled it
     #   (loop-guard)
     # @!attribute session [Session, nil] the session as the look that
@@ -155,6 +157,13 @@ module Samagotchi
         if (reply = turn ? reply_for_turn(id, state_dir: state_dir, turn: turn) : reply_past(id, state_dir: state_dir, cursor: cursor))
           reply.session = settled(session, id, state_dir: state_dir)
           return reply
+        end
+        # Its worker died in it and the next one settled it (no reply, no
+        # last_turn of its own: TurnCheckpoint.settle records it under its
+        # id). After the reply check: a worker killed between writing the
+        # reply and its idle save left the reply, the one answer.
+        if turn && (dead = TurnCheckpoint.settled_turn(session_dir, turn))
+          return Result.new(status: :no_reply, outcome: dead.outcome, session: session, **dead.stop_facts)
         end
 
         case session.status
@@ -314,7 +323,7 @@ module Samagotchi
 
       running = session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == id
       queued = SessionInbox.waiting_input(session_dir, id) == :turn_end
-      ended = session.last_turn&.enqueued_id == id
+      ended = session.last_turn&.enqueued_id == id || !TurnCheckpoint.settled_turn(session_dir, id).nil?
       running || queued || ended
     end
 

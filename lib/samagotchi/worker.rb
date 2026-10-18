@@ -453,9 +453,10 @@ module Samagotchi
 
     # A turn an earlier worker died in (TurnCheckpoint's mark in the file):
     # ended now as canceled, with its note, and saved, before the Bridge
-    # serves the session (TurnCheckpoint.settle).
+    # serves the session (TurnCheckpoint.settle). Its queued id's wait
+    # (chi send --queue --wait) reads the end it records in the session dir.
     def settle_interrupted_turn
-      mark = TurnCheckpoint.settle(@session)
+      mark = TurnCheckpoint.settle(@session, session_dir: @session_dir)
       return unless mark
 
       Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)

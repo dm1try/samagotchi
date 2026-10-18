@@ -187,6 +187,17 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.session.messages.last[:content]).to include("worker-stopped")
     end
 
+    it "records a settled queued turn's end under its id in the session dir, for that turn's wait" do
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.interrupted_turn = { "id" => "t1", "started_at" => "2026-10-12T10:00:00.000Z", "iteration" => 1, "enqueued_id" => "q1" }
+      session.save(state_dir: tmpdir)
+
+      start_worker
+
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      expect(Samagotchi::TurnCheckpoint.settled_turn(dir, "q1")).to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped")
+    end
+
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)

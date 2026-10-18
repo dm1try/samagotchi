@@ -257,7 +257,9 @@ module Samagotchi
     def no_reply_line(result, session_id = nil)
       case result.outcome
       when "failed" then failed_line(result)
-      when "canceled" then "the turn was canceled"
+      when "canceled"
+        # A turn its worker died in, settled by the next (TurnCheckpoint.settle).
+        result.cancel_reason == "worker_stopped" ? "the turn was canceled: its worker exited mid-turn" : "the turn was canceled"
       when "completed" then "the turn ended with no visible answer"
       when "not_continued" then "the turn was not continued (Stop); its work so far stays"
       when "removed" then "the queued message was removed before it ran; no turn ran for it"
