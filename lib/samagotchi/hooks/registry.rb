@@ -349,6 +349,10 @@ module Samagotchi
         end
       end
 
+      # The events bundle hooks are registered for (any symbol Api#on took).
+      # @return [Array<Symbol>]
+      def bundle_events = @mutex.synchronize { @bundle_hooks.keys }
+
       # @return [Integer] total number of registered hooks (bundle + plain)
       def size
         @mutex.synchronize do

@@ -80,7 +80,8 @@ module Samagotchi
 
       # What bundle +name+ registered, from the registries it loaded into:
       # commands ([name, mid_turn, annotation labels]), tools, hooks per
-      # event ([bundle, hook, priority]), inits, toolkits, tool sources and
+      # event ([bundle, hook, priority]; Hooks::EVENTS, then any other event
+      # the bundle registered for), inits, toolkits, tool sources and
       # peer sources.
       # @param inits [Array<Hash>] {label:} of each chi.init
       # @return [Hash]
@@ -88,13 +89,20 @@ module Samagotchi
         {
           commands: registries.commands.entries.select { |e| e.source == name }.map { |e| [e.name, e.mid_turn, e.annotations.map(&:label)] },
           tools: registries.tools.by_source(name).map(&:name),
-          hooks: Hooks::EVENTS.to_h { |event| [event, registries.hooks.bundle_hook_names(event).select { |b, _, _| b == name }] },
+          hooks: hooks_of(registries.hooks, name),
           inits: inits.map { |init| init[:label] },
           toolkits: Array(registries.toolkits).map(&:name),
           tool_sources: registries.tool_index.sources.map(&:label),
           peer_sources: registries.peer_sources.names
         }
       end
+
+      def hooks_of(hooks, name)
+        own = ->(event) { hooks.bundle_hook_names(event).select { |bundle, _, _| bundle == name } }
+        others = (hooks.bundle_events - Hooks::EVENTS).to_h { |event| [event, own.call(event)] }.reject { |_, list| list.empty? }
+        Hooks::EVENTS.to_h { |event| [event, own.call(event)] }.merge(others)
+      end
+      private_class_method :hooks_of
 
       # +failures+' entries for bundle +name+, their location moved from the
       # installed copy to the source dir.

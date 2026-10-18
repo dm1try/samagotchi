@@ -10,7 +10,7 @@ module Samagotchi
   # subcommands have their own flags).
   class BundleCommand
     USAGE = <<~TEXT
-      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash> [options]
+      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|check> [options]
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -42,6 +42,10 @@ module Samagotchi
         trash [--empty] [--dry-run] [--older-than DAYS]
           List bundle trash (moved files from uninstalls/upgrades).
           --empty deletes all trash folders. --older-than DAYS keeps only recent ones.
+
+        check [PATH] [--fix] [--set KEY=VALUE]
+          Check a bundle you're writing (default: the current dir): manifest, files, sha256 lines,
+          requires_chi, and an install + load in a sandbox. --fix rewrites stale sha256 lines.
     TEXT
 
     # Each subcommand's --help (and only --help: -h and help are taken as
@@ -71,6 +75,17 @@ module Samagotchi
           chi bundle build --scope system --out ./my-bundle/ identity.md work.md
     TEXT
     TRASH_HELP = "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
+    CHECK_HELP = <<~TEXT
+      Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
+
+        Check the bundle at PATH (default: .) as an install would take it, one finding per line:
+          error|warn|info CODE file[:line]: message (fix: hint)
+        It installs and loads the bundle in a sandbox (temp HOME, config and state), not in yours, but its plugin and
+        hooks run in this process as written: run it on code you'd install.
+        --fix            rewrite stale and placeholder sha256 lines in manifest.yml
+        --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
+        Exit status: 0 no errors, 1 errors, 2 usage.
+    TEXT
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -89,6 +104,10 @@ module Samagotchi
     end
     BUILD_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/, dash_values: false) do |f|
       %w[--scope --name --version --description --out].each { |name| f.value name }
+    end
+    CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.switch "--fix"
+      f.value "--set", key: :set, repeat: true
     end
     TRASH_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--empty"
@@ -121,8 +140,9 @@ module Samagotchi
       when "list" then list
       when "build" then build(@argv[1..])
       when "trash" then trash(@argv[1..])
+      when "check" then check(@argv[1..])
       else
-        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash"
+        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, check"
         CLI::Exit::USAGE
       end
     end
@@ -746,6 +766,38 @@ module Samagotchi
         "#{(diff / 3600).to_i} hours ago"
       else
         "#{(diff / 86_400).to_i} days ago"
+      end
+    end
+
+    def check(rest)
+      parsed = parse_flags(CHECK_FLAGS, rest, "check", help: CHECK_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      settings = check_settings(parsed.options.fetch(:set, [])) or return CLI::Exit::USAGE
+      if parsed.args.size > 1
+        @stderr.puts "chi bundle check takes one PATH (#{parsed.args.join(" ")})"
+        return CLI::Exit::USAGE
+      end
+      dir = parsed.args.first || "."
+      unless File.directory?(dir)
+        @stderr.puts "chi bundle check: #{dir} isn't a folder"
+        return CLI::Exit::USAGE
+      end
+      require_relative "bundle_command/check"
+      Check.new(dir, fix: parsed.options.fetch(:fix, false), settings: settings, stdout: @stdout).run
+    end
+
+    # --set KEY=VALUE values as typed (BundleSessionSettings.typed), or nil
+    # after saying what's wrong.
+    def check_settings(pairs)
+      require_relative "bundle_session_settings"
+      pairs.each_with_object({}) do |pair, out|
+        key, sep, value = pair.partition("=")
+        unless !sep.empty? && key.match?(BundleSessionSettings::KEY)
+          @stderr.puts "chi bundle check: --set takes KEY=VALUE, not #{pair}"
+          return nil
+        end
+        out[key] = BundleSessionSettings.typed(value)
       end
     end
 

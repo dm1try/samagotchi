@@ -1,0 +1,16 @@
+# The base bundle of `chi bundle check`'s spec: the spec copies it, fills
+# the placeholder shas (Shas.refresh) and breaks one thing per example.
+name: check-clean
+version: 0.1.0
+scope: system
+description: "A bundle check passes"
+requires_chi: ">= 0.80.0"
+files:
+  check_note.md: sha256:
+plugin:
+  file: plugin.rb
+  sha256: sha256:
+hooks:
+  watch.rb:
+    sha256: sha256:
+    event: after_turn

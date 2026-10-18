@@ -18,6 +18,22 @@ module Samagotchi
       ANNOTATION_LABEL_MAX = 40
       ANNOTATIONS_MAX = 5
 
+      # The first chi release with each call a plugin may make (from git:
+      # the first release tag holding it), for `chi bundle check`'s
+      # requires-chi-floor: a bundle whose requires_chi admits an older chi.
+      # A call not listed gets no floor check: it came before the first tag
+      # (v0.2.0), or isn't listed yet. Keys have no "?" (API_CALL drops it).
+      SINCE = {
+        "ctx.steer" => "0.3.0", "ctx.stop_turn" => "0.3.0", "ctx.stop_generation" => "0.6.0",
+        "Samagotchi::AtomicFile" => "0.8.0", "ctx.model" => "0.17.0", "ctx.model_key" => "0.17.0",
+        "ctx.context" => "0.32.0", "ctx.delegate" => "0.32.0", "ctx.scratch" => "0.32.0",
+        "fallback_for:" => "0.35.0", "ctx.fork" => "0.45.0", "ctx.frontend" => "0.49.0",
+        "ctx.prompt_files" => "0.60.0", "chi.annotation" => "0.66.0", "chi.toolkit" => "0.66.0",
+        "ctx.use_toolkit" => "0.66.0", "ctx.toolkit" => "0.66.0", "ctx.declared_tools" => "0.66.0",
+        "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
+        "ctx.cost" => "0.83.0"
+      }.freeze
+
       # @param bundle [String]
       # @param label [String] "<file> (bundle <name>)": what hooks and
       #   failures are named by
