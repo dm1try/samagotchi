@@ -59,10 +59,12 @@ module Samagotchi
       # @param bridge [Samagotchi::Bridge, nil] for stop signalling
       # @param max_queue [Integer] bounded-queue capacity
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
+      # @param raw [Boolean] write events as the engine emitted them, not as
+      #   clients get them (ClientEvent): `?raw=1`, for debugging
       def initialize(engine:, ring:, session_id:, last_event_id: nil, epoch: nil,
                      frame_provider: nil, join_with_snapshot: false, bridge: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
-                     heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL)
+                     heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, raw: false)
         @engine = engine
         @ring = ring
         @session_id = session_id
@@ -73,6 +75,7 @@ module Samagotchi
         @bridge = bridge
         @max_queue = max_queue
         @heartbeat_interval = heartbeat_interval
+        @raw = raw
 
         @queue = BoundedQueue.new(capacity: @max_queue)
         cursor_seq, cursor_epoch = EventId.parse(@last_event_id)
@@ -204,7 +207,7 @@ module Samagotchi
         seq = event[:event_seq]
         return if seq && seq <= @high_water
 
-        write_frame(io, seq: seq, data: ClientEvent.project(event))
+        write_frame(io, seq: seq, data: @raw ? event : ClientEvent.project(event))
         @high_water = seq if seq && seq > @high_water
       end
 

@@ -11,7 +11,8 @@ require "samagotchi/session"
 require "samagotchi/bridge"
 
 # What a :generation_chunk looks like on a worker's SSE stream, live and
-# replayed (Bridge::ClientEvent): chi's counts, the ring keeping the raw event.
+# replayed (Bridge::ClientEvent): chi's counts and no provider payload or raw
+# content, the ring keeping the raw event; ?raw=1 writes it as it is.
 RSpec.describe "Bridge SSE generation_chunk" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -70,8 +71,19 @@ RSpec.describe "Bridge SSE generation_chunk" do
     end
     @engine.run_turn(@session, "hi", on_event: ->(_e) {})
 
-    expect(stream_chunk(frames_until_turn_completed(socket))["counts"])
-      .to eq("prompt_tokens" => 489, "completion_tokens" => 2, "total_tokens" => 491)
+    live = stream_chunk(frames_until_turn_completed(socket))
+    expect(live["counts"]).to eq("prompt_tokens" => 489, "completion_tokens" => 2, "total_tokens" => 491)
+    expect(live).to include("text" => "hi", "thinking" => "")
+    expect(live).not_to have_key("payload")
+    expect(live).not_to have_key("content")
+  end
+
+  it "writes the raw event with ?raw=1" do
+    @engine.run_turn(@session, "hi", on_event: ->(_e) {})
+
+    raw = stream_chunk(frames_until_turn_completed(open_stream("?raw=1")))
+    expect(raw).to include("payload" => payload, "content" => "hi")
+    expect(raw).not_to have_key("counts")
   end
 
   it "carries them on replay, and the ring keeps the raw event" do
@@ -79,6 +91,7 @@ RSpec.describe "Bridge SSE generation_chunk" do
 
     replayed = stream_chunk(frames_until_turn_completed(open_stream))
     expect(replayed["counts"]).to eq("prompt_tokens" => 489, "completion_tokens" => 2, "total_tokens" => 491)
+    expect(replayed).not_to have_key("payload")
 
     ring = @bridge.instance_variable_get(:@ring)
     kept = ring.events_in_range(after_seq: 0, to_seq: @engine.event_count).map { |r| r[:data] }

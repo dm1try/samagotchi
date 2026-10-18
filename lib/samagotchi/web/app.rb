@@ -1597,7 +1597,7 @@ module Samagotchi
           return [200, headers.merge("rack.hijack" => hijack), []]
         end
 
-        query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
+        query = stream_query(req)
         [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env,
                                            server_running: @server_running)]
       end
@@ -1641,13 +1641,26 @@ module Samagotchi
         [200, headers, body]
       end
 
+      # The stream's query as the worker's Bridge gets it ("?..." or ""):
+      # every parameter but `raw`. `?raw=1` is the worker port's debugging view
+      # (a chunk's provider payload); a browser never gets it through here.
+      # Keys are compared decoded, as the Bridge reads them.
+      def stream_query(req)
+        pairs = req.query_string.to_s.split("&").reject do |pair|
+          URI.decode_www_form_component(pair.split("=", 2).first.to_s) == "raw"
+        rescue ArgumentError
+          false
+        end
+        pairs.empty? ? "" : "?#{pairs.join("&")}"
+      end
+
       # Rack hijack lambda (env["rack.hijack?"] truthy): pipes the bridge's SSE
       # frames directly to the client socket until it disconnects. The handler
       # (WEBrick via rackup) has already sent the status line + headers, so
       # only body bytes go to the socket here.
       def sse_hijack(id, req, port)
         lambda do |io|
-          query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
+          query = stream_query(req)
           body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
                                      server_running: @server_running)
           body.each { |chunk| io.write(chunk) }

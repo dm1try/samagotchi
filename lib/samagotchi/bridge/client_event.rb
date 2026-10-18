@@ -6,8 +6,12 @@ module Samagotchi
   class Bridge
     # What an SSE client gets for an engine event (SSEWriter#write_event, live
     # and replayed alike). A :generation_chunk carries chi's own counts
-    # (`counts`, ContextUsage.normalize of the provider's payload) so clients
-    # never read a provider's payload shape.
+    # (`counts`, ContextUsage.normalize of the provider's payload) instead of
+    # the provider's raw `payload`, and no raw `content` (the chat loop's is
+    # reasoning + content again, the native loop's the raw stream with its
+    # tool-call bytes and thought tags): clients read `text`, `thinking`,
+    # `tool_call` and `counts`, never a provider's payload shape. `?raw=1` on
+    # the worker's stream skips this (debugging).
     #
     # Pure: the event is the one hash SessionObserver hands every observer
     # (the ring, TurnAccumulator, the other writers, SessionMetrics, hooks),
@@ -23,13 +27,14 @@ module Samagotchi
 
       # @param event [Hash] the engine's event (symbol keys; its payload has
       #   string keys)
-      # @return [Hash] the event as clients get it: the same object for every
-      #   event but a :generation_chunk
+      # @return [Hash] the event as clients get it: a copy for a
+      #   :generation_chunk, the same object for every other event
       def project(event)
         return event unless event.is_a?(Hash) && event[:type].to_s == "generation_chunk"
 
+        projected = event.except(:payload, :content)
         found = counts(event[:payload])
-        found ? event.merge(counts: found) : event
+        found ? projected.merge(counts: found) : projected
       end
 
       # The payload's normalized counts, nil keys left out; nil when the

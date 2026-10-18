@@ -99,13 +99,13 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     expect(request("GET", "/session/s1/stats").values_at(0, 2)).to eq([500, { "error" => "bridge_error", "detail" => "boom" }])
   end
 
-  it "serves a GET stream with the cursor, the snapshot flag and the client id from the query" do
+  it "serves a GET stream with the cursor, the snapshot flag, the client id and the raw flag from the query" do
     _, _, body = request("GET", "/session/abc/stream?from_seq=7-1&snapshot=1&client_id=web%3At1")
     expect(body).to eq("handler" => "serve_sse", "sid" => "abc", "last_event_id" => "7-1", "snapshot" => true,
-                       "client_id" => "web:t1")
-    _, _, body = request("GET", "/session/abc/stream", headers: { "Last-Event-ID" => "3-1" })
+                       "client_id" => "web:t1", "raw" => false)
+    _, _, body = request("GET", "/session/abc/stream?raw=1", headers: { "Last-Event-ID" => "3-1" })
     expect(body).to eq("handler" => "serve_sse", "sid" => "abc", "last_event_id" => "3-1", "snapshot" => false,
-                       "client_id" => nil)
+                       "client_id" => nil, "raw" => true)
   end
 
   it "answers a wrong method or an unknown path with 404, Allow: GET, POST" do

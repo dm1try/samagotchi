@@ -185,6 +185,38 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.instance_variable_get(:@query)).to eq("?from_seq=3")
     end
 
+    # ?raw=1 is the worker port's debugging view (a chunk's provider payload).
+    it "doesn't forward raw, in any spelling, and keeps the other parameters" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(9_999)
+      { "?raw=1&from_seq=3" => "?from_seq=3", "?from_seq=3&r%61w=1&snapshot=1" => "?from_seq=3&snapshot=1",
+        "?raw" => "", "?raw=1" => "" }.each do |given, forwarded|
+        _status, _headers, body = app.call(env_for("/api/sessions/s1/stream#{given}"))
+        expect(body.instance_variable_get(:@query)).to eq(forwarded), given
+      end
+    end
+
+    it "doesn't forward raw on the hijacked stream either" do
+      server = TCPServer.new("127.0.0.1", 0)
+      request_line = Queue.new
+      accept_thread = Thread.new do
+        conn = server.accept
+        request_line << conn.gets
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(server.local_address.ip_port)
+      _status, headers, _body = app.call(env_for("/api/sessions/s1/stream?raw=1&snapshot=1", headers: { "rack.hijack?" => true }))
+      headers["rack.hijack"].call(StringIO.new)
+      accept_thread.join(1)
+      server.close
+
+      expect(request_line.pop(timeout: 1)).to start_with("GET /session/s1/stream?snapshot=1 HTTP/1.1")
+    end
+
     it "forwards the Last-Event-ID header through to the bridge" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_sidecar_port).and_return(9_999)

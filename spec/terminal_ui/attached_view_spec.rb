@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     activity = { action: "reading file", tool: "read", params: "path=a", status: "ok" }
     feed({ type: :turn_started },
          { type: :generation_started, iteration: 1 },
-         { type: :generation_chunk, iteration: 1, content: "Let me look." },
+         { type: :generation_chunk, iteration: 1, thinking: "Let me look.", text: "" },
          { type: :tool_dispatch_started, iteration: 1 },
          { type: :tool_call_started, iteration: 1, call_index: 0, tool: "read" },
          { type: :tool_call_completed, iteration: 1, call_index: 0, tool: "read", activity: activity },
@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
 
   it "cuts a long sentence to the terminal width" do
     feed({ type: :generation_started, iteration: 1 },
-         { type: :generation_chunk, iteration: 1, content: "#{"a" * 60}END. " })
+         { type: :generation_chunk, iteration: 1, thinking: "#{"a" * 60}END. ", text: "" })
 
     status = screen.statuses.last
     expect(status).to start_with("| thinking · aaa").and end_with("a…")
@@ -74,21 +74,21 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     end
 
     it "is the newest complete one, changing at most once per dwell" do
-      chunk(content: "TURN: reading the config\nFirst I read it")
+      chunk(thinking: "TURN: reading the config\nFirst I read it", text: "")
       expect(row).to eq("thinking · reading the config")
-      chunk(content: ". Then 1. ")
-      chunk(content: "Then **the** `log`. And")
+      chunk(thinking: ". Then 1. ", text: "")
+      chunk(thinking: "Then **the** `log`. And", text: "")
       expect(row).to eq("thinking · reading the config")
       now[0] += 0.5
       view.tick
       expect(row).to eq("thinking · Then the log.")
     end
 
-    it "comes from the split lanes when the chunk has them, labelled by its lane" do
-      chunk(content: "<think>raw", thinking: "Check it.\n", text: "")
+    it "comes from the split lanes, labelled by its lane" do
+      chunk(thinking: "Check it.\n", text: "")
       expect(row).to eq("thinking · Check it.")
       now[0] += 2
-      chunk(content: "</think>Hi", thinking: "", text: "Here it is.\n")
+      chunk(thinking: "", text: "Here it is.\n")
       expect(row).to eq("writing · Here it is.")
     end
 
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     end
 
     it "starts over with each generation" do
-      chunk(content: "Done. ")
+      chunk(thinking: "Done. ", text: "")
       view.generation_feedback_finished
       view.generation_feedback_started
       expect(row).to eq("thinking…")
@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     feed({ type: :generation_started, iteration: 1 })
     before = screen.statuses.size
     now[0] += 1.0
-    10.times { |i| view.generation_feedback_chunk(content: i.to_s) }
+    10.times { |i| view.generation_feedback_chunk(thinking: i.to_s, text: "") }
 
     expect(screen.statuses.size - before).to eq(1)
   end
@@ -140,13 +140,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     it "stops counting at the first chunk, and again after a retry" do
       view.generation_feedback_started
       now[0] = 5.0
-      view.generation_feedback_chunk(content: "Hi.")
+      view.generation_feedback_chunk(thinking: "Hi.", text: "")
       now[0] = 9.0
       view.tick
       expect(screen.statuses.last).to eq("| thinking · Hi.")
 
       view.generation_feedback_retrying(attempt: 1)
-      view.generation_feedback_chunk(content: "")
+      view.generation_feedback_chunk(thinking: "", text: "")
       view.generation_feedback_started
       now[0] = 12.0
       view.tick

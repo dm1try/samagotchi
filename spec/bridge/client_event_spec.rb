@@ -87,9 +87,15 @@ RSpec.describe Samagotchi::Bridge::ClientEvent do
     expect(described_class.project(event)).not_to have_key(:counts)
   end
 
-  it "keeps every other field of the chunk, event_seq included" do
-    projected = described_class.project(chunk(fixture_payloads("llamacpp/completion_cached_stream.sse").last, tool_call: true))
-    expect(projected).to include(type: :generation_chunk, iteration: 1, text: "x", thinking: "", tool_call: true, event_seq: 7)
+  it "drops the provider's payload and the raw content, and keeps every other field, event_seq included" do
+    projected = described_class.project(chunk(fixture_payloads("llamacpp/completion_cached_stream.sse").last,
+                                              tool_call: true, later_field: 1))
+    expect(projected.keys).to contain_exactly(:type, :iteration, :text, :thinking, :tool_call, :later_field, :event_seq, :counts)
+  end
+
+  it "drops them from a chunk without counts too" do
+    projected = described_class.project(chunk({ "choices" => [] }))
+    expect(projected).to eq(type: :generation_chunk, iteration: 1, text: "x", thinking: "", event_seq: 7)
   end
 
   it "never changes the event it is given" do

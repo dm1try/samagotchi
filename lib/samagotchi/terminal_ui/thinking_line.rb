@@ -11,9 +11,9 @@ module Samagotchi
     # ThinkingTicker (so it changes at most once per dwell). Both TUIs use it
     # in place of the raw tail of the stream.
     #
-    # A chunk carries :text (and :thinking): both loops split their stream,
-    # for every profile. A chunk without them (an older worker) has its raw
-    # :content, markup stripped, stand for thinking. A switch of lane starts the next sentence from the new
+    # A chunk carries :text and :thinking: both loops split their stream,
+    # for every profile (the raw :content stays in the worker,
+    # Bridge::ClientEvent). A switch of lane starts the next sentence from the new
     # lane's text; the line shown keeps the label of the lane it came from.
     class ThinkingLine
       include Formatting
@@ -43,12 +43,8 @@ module Samagotchi
       # @return [Boolean] whether the line changed
       def chunk(event)
         # The Bridge's TurnAccumulator reads the lanes by the same rule.
-        if event.key?(:text)
-          changed = add(:thinking, event[:thinking])
-          add(:writing, event[:text]) || changed
-        else
-          add(:thinking, event[:content], raw: true)
-        end
+        changed = add(:thinking, event[:thinking])
+        add(:writing, event[:text]) || changed
       end
 
       # A turn joined mid-way: the newest thinking or text part so far.

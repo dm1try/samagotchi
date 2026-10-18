@@ -420,7 +420,7 @@ module Samagotchi
           cursor = reconnect_cursor(headers, request[:query])
           Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
           serve_sse(io, route.last, last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
-                                    client_id: stream_client_id(request[:query]))
+                                    client_id: stream_client_id(request[:query]), raw: raw_requested?(request[:query]))
           break # SSE owns the connection until the client disconnects.
         else
           payload, status, body = dispatch(route.first, route.last, request[:body], request[:query])
@@ -447,7 +447,7 @@ module Samagotchi
 
     # Serve an SSE stream. Owns the connection until the client disconnects.
     # The connection thread IS the writer thread: serve! blocks until then.
-    def serve_sse(io, session_id, last_event_id:, snapshot: false, client_id: nil)
+    def serve_sse(io, session_id, last_event_id:, snapshot: false, client_id: nil, raw: false)
       unless own_session?(session_id)
         write_json(io, 404, {}, { error: "unknown_session" })
         return
@@ -463,7 +463,8 @@ module Samagotchi
         # A reconnect (with a cursor) replays; only a fresh join snapshots.
         join_with_snapshot: snapshot && last_event_id.nil?,
         bridge: self,
-        heartbeat_interval: @heartbeat_interval
+        heartbeat_interval: @heartbeat_interval,
+        raw: raw
       )
       @mutex.synchronize do
         @open_streams += 1
@@ -1175,6 +1176,17 @@ module Samagotchi
       return false unless query
 
       URI.decode_www_form(query).to_h["snapshot"].to_s == "1"
+    rescue StandardError
+      false
+    end
+
+    # `?raw=1`: events as the engine emitted them (a chunk's provider
+    # payload), not as clients get them (ClientEvent). For debugging on the
+    # worker's port: chi web never passes it on.
+    def raw_requested?(query)
+      return false unless query
+
+      URI.decode_www_form(query).to_h["raw"].to_s == "1"
     rescue StandardError
       false
     end
