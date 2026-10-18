@@ -493,12 +493,23 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         expect(plain_lines).to eq(["web> what is it?", image_line])
       end
 
-      # Its own send prints no prompt line: the image lines are its echo.
-      it "keeps the image lines of its own image-only turn" do
+      # The own-send echo already names an image-only prompt.
+      it "does not repeat the images of its own image-only turn" do
         feed({ type: :turn_started, prompt: "[image: shot.png]", origin: { client_id: "tui:1", enqueued_id: "e1" },
                images: [image] })
 
-        expect(plain_lines).to eq([image_line])
+        expect(plain_lines).to be_empty
+      end
+
+      it "does not repeat its echoed image-only prompt when the turn starts" do
+        allow(client).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: "{}"))
+        own_send = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "[image: shot.png]")
+        own_send.handle_event(JSON.parse(JSON.generate(snapshot)))
+        own_send.handle_event(JSON.parse(JSON.generate(
+          type: :turn_started, prompt: "[image: shot.png]", origin: { client_id: "tui:1" }, images: [image]
+        )))
+
+        expect(plain_lines).to eq(["> [image: shot.png]"])
       end
     end
 

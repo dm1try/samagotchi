@@ -1554,14 +1554,13 @@ module Samagotchi
         elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
           @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
-        # Another client's prompt line is up (here or at its enqueue); an
-        # own send has none, so its image lines are its echo.
-        @renderer.call(own?(origin[:client_id]) ? event : without_named_images(event, event[:prompt]))
+        # The own-send echo already names an image-only prompt; another
+        # client's prompt line does too, here or at its enqueue.
+        @renderer.call(without_named_images(event, event[:prompt]))
       end
 
-      # The turn's start without its image lines when the prompt line shown
-      # for it is the web's "[image: name]" text of a turn of images alone:
-      # that line names them already.
+      # The turn's start without its image lines when the shown prompt is
+      # the image-only "[image: name]" placeholder: that line names them.
       def without_named_images(event, shown_prompt)
         ImageRef.placeholder_only?(shown_prompt) ? event.except(:images) : event
       end

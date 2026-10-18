@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- An image-only prompt sent from an attached terminal is no longer echoed again as an image line when its turn starts.
 - `chi send --queue --wait` (and a wait for a turn by its id) no longer waits until its timeout when the worker dies
   in the middle of that turn: once the next worker settles it, the wait ends `canceled` with
   `cancel_reason: worker_stopped` ("its worker exited mid-turn"). Another send's wait is not ended by it.
