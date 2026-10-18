@@ -11,10 +11,10 @@ RSpec.describe Samagotchi::ComposerRoute do
   golden = JSON.parse(File.read(File.expand_path("fixtures/composer_routes.json", __dir__)))
 
   # The terminals' own words and !cmd (every session has them), then the
-  # row's session commands by name, as an attached TUI's registry is built
-  # from a snapshot's listing.
+  # listed core entries as their builtins; only plugin commands need stubs.
   def registry_for(names)
-    base = Samagotchi::SessionCommands.builtin_registry.entries.select { |entry| entry.local || entry.id == :shell }
+    builtins = Samagotchi::SessionCommands.builtin_registry.entries
+    base = builtins.select { |entry| entry.local || entry.id == :shell || names.include?(entry.name) }
     Samagotchi::Commands::Registry.from_listing(names.map { |name| { name: name } },
                                                 base: Samagotchi::Commands::Registry.new(entries: base))
   end
@@ -48,6 +48,11 @@ RSpec.describe Samagotchi::ComposerRoute do
     route = described_class.call("/modle", running: false, registry: registry_for(["/model"]))
 
     expect(route.reply).to eq("Unknown command /modle. Did you mean /model? /help lists the commands.")
+  end
+
+  it "uses a listed core command's builtin matcher, but matches plugin commands by name" do
+    expect(registry_for(["/context"]).lookup("/CONTEXT").id).to eq(:context)
+    expect(registry_for(["/plugin"]).lookup("/plugin argument").name).to eq("/plugin")
   end
 
   it "reads /cut and /queue as the registry's entries match them (any space after the word)" do
