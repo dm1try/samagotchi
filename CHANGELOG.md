@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- chi tells you when changed config.yml settings need a worker or `chi web` restart to take effect.
 - The `ruby` bundle (`chi bundle install ruby`, or the `dev` profile): an `execute` that ran RSpec and found no
   examples at all (`0 examples, 0 failures`: a path, a `-e`/`--tag` filter or a `.rspec --pattern` that matched
   nothing) steers a hint into the turn instead of leaving the run looking green.

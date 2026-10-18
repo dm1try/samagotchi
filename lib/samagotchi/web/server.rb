@@ -120,6 +120,9 @@ module Samagotchi
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path)
+        config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
+          Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
+        end
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
@@ -166,6 +169,7 @@ module Samagotchi
         warn "Error: can't listen on #{lan.ip}:#{port} (#{e.message}); did the address change? Run chi web again"
         false
       ensure
+        config_restart_unsubscribe&.call
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end

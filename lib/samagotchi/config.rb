@@ -747,6 +747,7 @@ module Samagotchi
       cache = @yaml_cache ||= {}
       unless File.file?(path)
         cache.delete(path)
+        notify_restart_settings(path, nil, nil)
         return nil
       end
       stat = File.stat(path)
@@ -761,7 +762,68 @@ module Samagotchi
       end
       data = nil unless data.is_a?(Hash)
       cache[path] = [key, data]
+      notify_restart_settings(path, key, data)
       data
+    end
+
+    # Calls +on_change+ with one line ("server.port changed — applies after a
+    # worker restart") when config.yml changes a setting this process only
+    # reads at its start (Config::Entry#lifecycle: worker_start or web_start,
+    # and process_start). Checked when the file is read again (#read_yaml),
+    # once per key per new value: none at start, none for a value back at its
+    # start value.
+    # @param process [Symbol] :worker or :web
+    # @return [Proc] unsubscribes
+    def watch_restart_settings!(process:, env: ENV, &on_change)
+      lifecycles = case process
+                   when :worker then %i[worker_start process_start]
+                   when :web then %i[web_start process_start]
+                   else raise ArgumentError, "unknown config process #{process.inspect}"
+                   end
+      raise ArgumentError, "a config change callback is required" unless on_change
+
+      path = global_path(env: env)
+      data = read_yaml(env: env, path: path)
+      entries = Config::ENTRIES.select { |entry| entry.config_exposed? && lifecycles.include?(entry.lifecycle) }
+      watcher = {
+        path: path, process: process, entries: entries,
+        values: entries.to_h { |entry| [entry.key, Config.resolve(entry.key, file_data: data, env: {})] },
+        noticed: {},
+        file_key: File.file?(path) ? [File.stat(path).mtime.to_r, File.size(path)] : nil,
+        on_change: on_change
+      }
+      restart_watchers_mutex.synchronize { (@restart_watchers ||= []) << watcher }
+      -> { restart_watchers_mutex.synchronize { @restart_watchers&.delete(watcher) } }
+    end
+
+    # Tells each watcher of +path+ which of its start-only settings the file
+    # read now (+data+, under +file_key+) changes.
+    def notify_restart_settings(path, file_key, data)
+      notices = restart_watchers_mutex.synchronize do
+        Array(@restart_watchers).flat_map do |watcher|
+          next [] unless watcher[:path] == path && watcher[:file_key] != file_key
+
+          watcher[:file_key] = file_key
+          watcher[:entries].filter_map do |entry|
+            value = Config.resolve(entry.key, file_data: data, env: {})
+            if watcher[:values][entry.key] == value
+              watcher[:noticed].delete(entry.key)
+              next
+            end
+            # Already told for this value: a later edit of another key.
+            next if watcher[:noticed].key?(entry.key) && watcher[:noticed][entry.key] == value
+
+            watcher[:noticed][entry.key] = value
+            restart = watcher[:process] == :worker ? "a worker restart" : "restarting chi web"
+            [watcher[:on_change], "#{entry.key} changed — applies after #{restart}"]
+          end
+        end
+      end
+      notices.each { |callback, message| callback.call(message) }
+    end
+
+    def restart_watchers_mutex
+      @restart_watchers_mutex ||= Mutex.new
     end
 
     # Print +message+ to stderr unless this process already did. The config

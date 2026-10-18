@@ -229,6 +229,9 @@ module Samagotchi
       # The running turn, on disk at its iteration boundaries.
       @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)
       @engine = build_engine
+      @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
+        @engine.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
+      end
       settle_interrupted_turn
       # Before the Bridge serves anything: a UI joining a resumed worker's
       # stream gets the session's history and status in its snapshot, not
@@ -415,6 +418,7 @@ module Samagotchi
     # The context poller first: a command it runs goes (its process
     # group) before the Engine does.
     def teardown
+      @config_restart_unsubscribe&.call
       @context_poller&.stop
       drop_queued_commands
       @engine&.shutdown

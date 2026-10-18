@@ -133,6 +133,36 @@ RSpec.describe Samagotchi::Worker do
       turns.pop(timeout: timeout)
     end
 
+    it "announces changed worker-start settings, but not live settings or a return to the startup value" do
+      previous_config_home = ENV["XDG_CONFIG_HOME"]
+      config_home = File.join(tmpdir, "config")
+      config_dir = File.join(config_home, "samagotchi")
+      FileUtils.mkdir_p(config_dir)
+      config_path = File.join(config_dir, "config.yml")
+      ENV["XDG_CONFIG_HOME"] = config_home
+      File.write(config_path, "server:\n  port: 8080\nturn:\n  max_iterations: 10\n")
+      Samagotchi::ConfigFile.clear_yaml_cache!
+      events = []
+      engine.subscribe(observer: ->(event) { events << event })
+
+      start_worker
+      File.write(config_path, "server:\n  port: 8081\nturn:\n  max_iterations: 20\n")
+      File.utime(Time.now + 5, Time.now + 5, config_path)
+      Samagotchi::Config.get("server.port")
+      expect(wait_until { events.any? { |event| event[:hook] == "config" } }).to be(true)
+      expect(events.select { |event| event[:hook] == "config" }.map { |event| event[:text] })
+        .to eq(["server.port changed — applies after a worker restart"])
+
+      File.write(config_path, "server:\n  port: 8080\nturn:\n  max_iterations: 20\n")
+      File.utime(Time.now + 10, Time.now + 10, config_path)
+      Samagotchi::Config.get("server.port")
+      expect(events.select { |event| event[:hook] == "config" }.map { |event| event[:text] })
+        .to eq(["server.port changed — applies after a worker restart"])
+    ensure
+      ENV["XDG_CONFIG_HOME"] = previous_config_home
+      Samagotchi::ConfigFile.clear_yaml_cache!
+    end
+
     it "builds its Engine from the session's preloaded and muted memory lists" do
       session.preloaded_memory_names = ["cli_usage"]
       session.muted_memory_names = ["gh-helper"]

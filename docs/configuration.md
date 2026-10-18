@@ -131,7 +131,8 @@ The config reader checks the file's modification time and size whenever a
 setting is read. That makes a changed value available to a live reader; it
 does not reload every object that already holds a snapshot. "Worker start"
 includes a worker respawn. A running turn keeps the settings it already
-resolved.
+resolved. chi tells you when a changed setting applies only after a worker
+or `chi web` restart.
 
 | Key | Applies | Note |
 |---|---|---|

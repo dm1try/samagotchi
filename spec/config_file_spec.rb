@@ -97,6 +97,62 @@ RSpec.describe Samagotchi::ConfigFile do
     end
   end
 
+  describe ".watch_restart_settings!" do
+    it "watches only chi web's start-time config and ignores changes back to startup values" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        path = File.join(dir, "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(path))
+        env = { "XDG_CONFIG_HOME" => dir }
+        File.write(path, "web:\n  port: 4567\nserver:\n  port: 8080\nstatus:\n  line: on\n")
+        notices = []
+        stop_watching = described_class.watch_restart_settings!(process: :web, env: env) do |message|
+          notices << message
+        end
+        expect(notices).to eq([])
+
+        File.write(path, "web:\n  port: 4568\nserver:\n  port: 8081\nstatus:\n  line: off\n")
+        File.utime(Time.now + 5, Time.now + 5, path)
+        described_class.clear_yaml_cache!(path)
+        described_class.read_yaml(env: env)
+        expect(notices).to eq(["web.port changed — applies after restarting chi web"])
+
+        File.write(path, "web:\n  port: 4567\nserver:\n  port: 8081\nstatus:\n  line: off\n")
+        File.utime(Time.now + 10, Time.now + 10, path)
+        described_class.read_yaml(env: env)
+        expect(notices).to eq(["web.port changed — applies after restarting chi web"])
+      ensure
+        stop_watching&.call
+        described_class.clear_yaml_cache!(path)
+      end
+    end
+
+    it "tells once per new value, not again when the file changes another key" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        path = File.join(dir, "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(path))
+        env = { "XDG_CONFIG_HOME" => dir }
+        write = lambda do |text, at|
+          File.write(path, text)
+          File.utime(Time.now + at, Time.now + at, path)
+          described_class.read_yaml(env: env)
+        end
+        File.write(path, "server:\n  port: 8080\nstatus:\n  line: on\n")
+        notices = []
+        stop_watching = described_class.watch_restart_settings!(process: :worker, env: env) { |message| notices << message }
+
+        write.call("server:\n  port: 8081\nstatus:\n  line: on\n", 5)
+        write.call("server:\n  port: 8081\nstatus:\n  line: off\n", 10)
+        expect(notices).to eq(["server.port changed — applies after a worker restart"])
+
+        write.call("server:\n  port: 8082\nstatus:\n  line: off\n", 15)
+        expect(notices.size).to eq(2)
+      ensure
+        stop_watching&.call
+        described_class.clear_yaml_cache!(path)
+      end
+    end
+  end
+
   describe ".load!" do
     after { Samagotchi::Config.reload!(cli_overrides: {}) }
 
