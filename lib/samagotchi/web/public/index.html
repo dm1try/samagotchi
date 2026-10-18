@@ -853,6 +853,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage .turn-work.outline>.gen.folded{display:block}
 .turn-stage .ts-cloud-body .gen:first-of-type{margin-top:0;border-top:0}
 @media(max-width:600px){
+  .bubble.user.queued[data-delivery="queue"]{flex-wrap:wrap}
+  .bubble.user.queued[data-delivery="queue"] .origin-label,.bubble.user.queued[data-delivery="queue"] .state-badge{order:0}
+  .bubble.user.queued[data-delivery="queue"] .user-message{order:1;flex-basis:100%}
   .ts-status{padding-left:10px}
   .ts-scroll{padding:8px 10px 10px}
   .ts-foot{padding:0 10px 10px}

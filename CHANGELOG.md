@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- On a phone, a queued message's text gets the bubble's full width, with its origin and after-turn badge above it.
 - A plugin's `ctx.settings` reads a session's `--set` values again after a failed read, instead of keeping config.yml's
   alone until the worker restarts.
 - A `before_generation` hook now runs before the generation starts (`:generation_started`) in both loops: a question
