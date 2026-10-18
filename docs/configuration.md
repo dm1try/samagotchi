@@ -144,6 +144,7 @@ resolved.
 | `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
 | Other `models.<key>.*` settings | Next turn or model lookup | Sampling, thinking, vision, context, window, price and steer settings are resolved from the file for their next use. |
 | `thinking.level` | Next turn start | A session's own `/thinking` level is saved in that session and takes precedence; a running turn keeps its level. |
+| `turn.max_iterations` | Next turn start | The configured step limit is resolved when each turn begins. |
 | `cache.*` | Next request or turn-end warm-up | Cache key and TTL are read for a request; warm-up is checked after a turn. |
 | `retry.max`, `retry.base_delay`, `retry.max_delay` | Worker start | The client's network retry policy is built with its HTTP client. |
 | `retry.empty_answer` | Next empty-answer retry | It is checked when a turn needs to retry an empty answer. |
@@ -154,12 +155,12 @@ resolved.
 | `thinking.turn_preamble`, `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
 | `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
-| `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. |
+| `guardrails.*`, `turn.parent_continue` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `turn.parent_continue` is checked when a parent answers a step-limit question. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job once. |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
 | `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
-| `session.retention_*` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. |
+| `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `web.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |

@@ -59,6 +59,69 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
     expect(missing.map(&:key)).to eq([])
   end
 
+  lifecycle_applies = {
+    new_session: "New session",
+    session_creation: "Session creation",
+    next_cli_run: "Next CLI run",
+    next_matching_use: "Next matching request or tool use",
+    worker_start: "Worker start",
+    next_broadcast: "Next `chi broadcast`",
+    next_retention_sweep: "Next retention sweep",
+    next_invocation: "Next `chi` invocation",
+    next_lifecycle_decision: "Worker start or next matching lifecycle decision",
+    next_tool_or_approval: "Next tool call or approval",
+    process_start: "Process start",
+    next_context_poll: "Next context poll",
+    prompt_rebuild: "Prompt rebuild",
+    next_turn_start: "Next turn start",
+    next_request_or_turn_end: "Next request or turn-end warm-up",
+    next_update: "Next `chi update`",
+    desktop_update: "`chi desktop upgrade` or desktop update",
+    web_start: "`chi web` start",
+    next_empty_answer_retry: "Next empty-answer retry",
+    next_history_access: "Next history access",
+    next_matching_turn_display_poll_write: "Next matching turn, display, poll or write"
+  }.freeze
+  applies_rows = lambda do
+    text = File.read(doc_path).split(/^## When a change applies$/, 2).last
+    table = text.split(/^### Environment variables$/, 2).first
+    table.lines.filter_map do |line|
+      key_cell, applies = line.strip.delete_prefix("|").split("|", 3).first(2).map(&:strip)
+      next unless applies
+
+      excluded = key_cell.scan(/except\s+`([^`]+)`/).flatten
+      keys = key_cell.scan(/`([^`]+)`/).flatten - excluded
+      [keys, excluded, applies]
+    end
+  end
+  row_matches = lambda do |key|
+    applies_rows.call.select do |keys, excluded, _applies|
+      !excluded.include?(key) && keys.any? do |candidate|
+        candidate.include?("*") ? File.fnmatch?(candidate, key) : candidate == key
+      end
+    end
+  end
+
+  it "covers each config setting once with the lifecycle's Applies wording" do
+    config_entries = entries.values.select(&:config_exposed?)
+    problems = config_entries.flat_map do |entry|
+      applies = lifecycle_applies[entry.lifecycle]
+      unless applies && Samagotchi::Config::LIFECYCLES.include?(entry.lifecycle)
+        next ["#{entry.key}: invalid lifecycle #{entry.lifecycle.inspect}"]
+      end
+
+      rows = row_matches.call(entry.key)
+      if rows.size != 1
+        ["#{entry.key}: covered by #{rows.size} lifecycle rows, expected one"]
+      elsif !rows.first.last.start_with?(applies)
+        ["#{entry.key}: lifecycle #{entry.lifecycle} expects Applies #{applies.inspect}, got #{rows.first.last.inspect}"]
+      else
+        []
+      end
+    end
+    expect(problems).to eq([])
+  end
+
   it "lists every config.yml setting, and only those, in the settings table" do
     documented = settings_rows.call.map(&:first)
     in_config = entries.values.select { |entry| entry.expose.include?(:config) }.map(&:key)

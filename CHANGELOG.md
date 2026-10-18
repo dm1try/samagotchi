@@ -13,6 +13,7 @@ and commands may change between minor versions. How releases are made:
 - At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,
   next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
   avoid large outputs, delegate broad work to subagents".
+- Each config setting declares when a change applies; a spec keeps the docs/configuration.md table in line with it.
 
 ### Fixed
 
