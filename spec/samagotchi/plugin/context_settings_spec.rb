@@ -52,6 +52,34 @@ RSpec.describe Samagotchi::Plugin::Context, "#settings" do
     expect(setup_calls.first).to eq(2)
   end
 
+  it "retries a setup read after a transient error instead of caching config alone" do
+    attempts = 0
+    transient_host = Samagotchi::Plugin::Host.new(session_id: -> { "s1" },
+                                                  setup: lambda {
+                                                    attempts += 1
+                                                    raise "unavailable" if attempts == 1
+
+                                                    Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 2 } })
+                                                  })
+    context = described_class.new(bundle: "cost-cap", label: "plugin.rb", settings: config, host: transient_host)
+
+    expect(context.settings).to eq(config)
+    expect(context.settings).to include("cap" => 2)
+    expect(attempts).to eq(2)
+  end
+
+  it "warns only once when setup reads keep failing for a session" do
+    session_id[0] = "s1"
+    failing_host = Samagotchi::Plugin::Host.new(session_id: -> { session_id.first }, setup: -> { raise "unavailable" })
+    context = described_class.new(bundle: "cost-cap", label: "plugin.rb", settings: config, host: failing_host)
+    allow(Samagotchi::Log).to receive(:warn)
+
+    3.times { expect(context.settings).to eq(config) }
+
+    expect(Samagotchi::Log).to have_received(:warn)
+      .with(:plugins, "session_settings_unread", bundle: "cost-cap", error: "RuntimeError: unavailable").once
+  end
+
   it "keeps a session value over a config one of the same key, and leaves the config Hash as given" do
     given = { "cap" => 3 }
     session_id[0] = "s1"

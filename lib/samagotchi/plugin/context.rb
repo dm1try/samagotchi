@@ -111,8 +111,9 @@ module Samagotchi
         cached = @session_settings
         return cached.last if cached && cached.first == id
 
-        merged = id ? overlay(@settings, session_values) : @settings
-        @session_settings = [id, merged].freeze
+        values = session_values(id) if id
+        merged = id ? overlay(@settings, values || {}) : @settings
+        @session_settings = [id, merged].freeze unless id && values.nil?
         merged
       end
 
@@ -435,14 +436,17 @@ module Samagotchi
         nil
       end
 
-      # The session's own values for this bundle ({} without any, or when
-      # the Host can't tell them).
-      def session_values
+      # The session's own values for this bundle ({} without any; nil when
+      # the Host couldn't tell them, so #settings can retry).
+      def session_values(id)
         values = @host.setup&.call&.bundle_settings
         values.is_a?(Hash) ? values.fetch(@bundle, {}) : {}
       rescue StandardError => e
-        @log.warn("session_settings_unread", error: "#{e.class}: #{e.message}")
-        {}
+        unless (@session_settings_unread ||= {}).key?(id)
+          @session_settings_unread[id] = true
+          @log.warn("session_settings_unread", error: "#{e.class}: #{e.message}")
+        end
+        nil
       end
 
       def overlay(config, values)

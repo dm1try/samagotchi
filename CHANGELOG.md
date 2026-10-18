@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A plugin's `ctx.settings` reads a session's `--set` values again after a failed read, instead of keeping config.yml's
+  alone until the worker restarts.
+
 ## [0.84.0] - 2026-10-18
 
 ### Added
