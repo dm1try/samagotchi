@@ -138,6 +138,16 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(event[:guardrail]).to be_a(Samagotchi::Testing::Verdict)
   end
 
+  it "explains when the gate doesn't dispatch before_tool_call" do
+    write_bundle
+    bundle = load
+    gate = double(evaluate: nil)
+    allow(Samagotchi::Guardrails::Gate).to receive(:new).and_return(gate)
+
+    expect { bundle.before_tool_call_event({ name: "execute" }, params: "execute") }
+      .to raise_error(ArgumentError, 'guardrails did not dispatch a before_tool_call event for "execute"')
+  end
+
   it "records stop_turn and stop_generation in one list, in order, and apart" do
     write_bundle(plugin: plugin)
     bundle = load
