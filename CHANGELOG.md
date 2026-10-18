@@ -8,12 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-10-18
+
 ### Added
 
 - Bundles: `ctx.cost` reads the session's spend so far (reported + estimated, side requests included).
 - The cost-cap bundle (in the core profile): a per-session $ cap that pauses the turn with Continue / Stop, `/cap`
   to see or set it; config `bundles: cost-cap: default/child/warn_at`. Existing installs get it with `chi update`
   (core 0.3.2, + cost-cap).
+- Docs: docs/configuration.md "When a change applies" says, per config.yml key, whether an edit applies on the
+  next turn, at worker start, at session creation or at `chi web` start.
 
 ### Fixed
 
@@ -3376,7 +3380,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.82.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.83.0...HEAD
+[0.83.0]: https://github.com/dm1try/samagotchi/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/dm1try/samagotchi/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/dm1try/samagotchi/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/dm1try/samagotchi/compare/v0.79.0...v0.80.0

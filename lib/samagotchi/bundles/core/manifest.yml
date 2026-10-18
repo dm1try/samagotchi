@@ -4,9 +4,8 @@ version: 0.3.2
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
-# Its members' highest floor: cost-cap's is raised at the next release
-requires_chi: ">= 0.60.0"
-requires_chi_next: "member cost-cap needs ctx.cost"
+# Its members' highest floor (cost-cap's)
+requires_chi: ">= 0.83.0"
 includes:
 - loop-guard
 - check-in

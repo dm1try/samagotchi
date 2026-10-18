@@ -7,6 +7,5 @@ trust_level: reviewed
 plugin:
   file: plugin.rb
   sha256: sha256:bc6683af0063b90d6a3d7c2796bccf446043dfb1b3f07c04bd54d22d26199e1d
-# ctx.cost, new in the next release: release:bump raises requires_chi to it
-requires_chi: ">= 0.60.0"
-requires_chi_next: "ctx.cost"
+# ctx.cost is new in chi 0.83.0
+requires_chi: ">= 0.83.0"
