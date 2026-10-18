@@ -55,6 +55,36 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(seen.first).to be_frozen
     end
 
+    it "fires before_generation before :generation_started, so the hook's wait isn't the generation's" do
+      registry = Samagotchi::Hooks::Registry.new
+      events = []
+      seen = []
+      registry.register(:before_generation) { |event| seen << [event[:iteration], events.map { |e| e[:type] }] }
+      allow(client).to receive(:complete).and_return("Hello!")
+
+      described_class.new(client: client, hooks: registry).run([{ role: "user", content: "hi" }],
+                                                               on_stream_event: ->(e) { events << e })
+
+      expect(seen.first.first).to eq(1)
+      expect(seen.first.last).not_to include(:generation_started)
+      expect(events.map { |e| e[:type] }).to include(:generation_started)
+    end
+
+    it "starts no generation for a turn cancelled from inside the before_generation hook" do
+      controller = Samagotchi::CancellationController.new
+      registry = Samagotchi::Hooks::Registry.new
+      registry.register(:before_generation) { |_event| controller.cancel! }
+      allow(client).to receive(:complete).and_return("never")
+      events = []
+
+      result = described_class.new(client: client, hooks: registry)
+                              .run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
+                                                                      cancel_controller: controller)
+
+      expect(result).to be_canceled
+      expect(events.map { |e| e[:type] }).not_to include(:generation_started)
+    end
+
     it "keeps image refs on the conversation it returns" do
       ref = { file: "images/0123456789abcdef.png", mime: "image/png", width: 3, height: 2, name: "a.png", source: "user" }
       allow(client).to receive(:complete).and_return("hello")

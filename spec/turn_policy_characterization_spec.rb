@@ -424,15 +424,14 @@ RSpec.describe "Turn policy characterization" do
       queue: [{ on: :generation_completed, iteration: 1, items: [{ text: "steer", source: "check-in" }] }],
       expected: { events: %w[gen done], conversation: ["user:hi", "model:A"], result: res.call("A"), temps: [nil],
                   activity: [] } },
-    # Native formats the next prompt and starts a generation before the
-    # request sees the Stop; chat checks first.
-    { name: "Stop between two tool calls", drift: "#13", stop_between_calls: true,
+    # Both loops see the Stop before they start a generation (native fires
+    # before_generation first, then checks); the conversation differs in format.
+    { name: "Stop between two tool calls", stop_between_calls: true,
       steps: [[:calls, ["probe", { what: "a" }], ["probe", { what: "b" }]], [:text, "late"]],
-      expected: { result: res.call("", canceled: true, reason: :user), temps: [nil], activity: %w[probe probe] },
-      native: { events: ["gen", "done", "tools(2)", "tool:probe", "tool:probe", "gen", "cancelled(user)"],
-                conversation: ["user:hi", "model:", "tool_response"] },
-      chat: { events: ["gen", "done", "tools(2)", "tool:probe", "tool:probe", "cancelled(user)"],
-              conversation: ["user:hi", "model+calls:", "tool_response", "tool_response"] } },
+      expected: { events: ["gen", "done", "tools(2)", "tool:probe", "tool:probe", "cancelled(user)"],
+                  result: res.call("", canceled: true, reason: :user), temps: [nil], activity: %w[probe probe] },
+      native: { conversation: ["user:hi", "model:", "tool_response"] },
+      chat: { conversation: ["user:hi", "model+calls:", "tool_response", "tool_response"] } },
     { name: "max_iterations on tool calls", max_iterations: 2, steps: [[:calls, ["probe", { what: "a" }]]],
       expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done", "tools(1)", "tool:probe"],
                   result: res.call("", exhausted: true), temps: [nil, nil], activity: %w[probe probe] },

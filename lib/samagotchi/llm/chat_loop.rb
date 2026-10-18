@@ -655,10 +655,14 @@ module Samagotchi
           @loop.apply_llm_context!(@conversation, context: @context, emit: method(:emit))
           window = @window = @loop.context_window(@model_name)
           observe_context(iteration, window)
+          # Before the generation starts: a hook that waits (a question)
+          # isn't the generation's time, and a Stop there leaves none started.
+          @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
+          return [@cancel_controller.reason, "", ""] if @cancel_controller&.cancelled?
+
           retry_generation = @empty_retry.take_sampling!
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source, price: @loop.price&.to_h)
-          @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
           thought = +""
           generation_controller = nil

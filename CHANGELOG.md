@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - A plugin's `ctx.settings` reads a session's `--set` values again after a failed read, instead of keeping config.yml's
   alone until the worker restarts.
+- A `before_generation` hook now runs before the generation starts (`:generation_started`) in both loops: a question
+  it asks (the cost-cap's) no longer counts in the generation's time or leaves an empty generation on Stop.
 
 ## [0.84.0] - 2026-10-18
 

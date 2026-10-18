@@ -372,6 +372,11 @@ module Samagotchi
     # Ends with its :generation_completed (and, unless cut, the
     # after_generation hook).
     def generate(turn, request)
+      # Before the generation starts: a hook that waits (a question) isn't
+      # the generation's time, and a Stop there leaves none started.
+      fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
+      raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller&.cancelled?
+
       # Each ask splits its own stream (run_generation rebuilds the
       # splitter), so one that ended inside a thought or a tool call doesn't
       # leave the next one "inside" it.
@@ -383,7 +388,6 @@ module Samagotchi
       # streamed, for the log (a stuck thinking generation shows as
       # thinking_chars=N content_length=…).
       generation = Generation.new(usage: nil, served_model: nil, streamed_thinking: 0)
-      fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
       buffer_mark = generation.buffer_mark = turn.buffer.length
       # A cancel salvages only this generation's thinking: the earlier
       # steps' is on their own messages already.

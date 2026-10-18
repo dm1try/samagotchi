@@ -179,7 +179,7 @@ KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
   │ 1. Queued input (user lines, plugin steers) goes in at the boundary (Steer.inject!)
   │ 2. Format the conversation as prompt text (Prompt.format_with_images); a context
   │    guidance line goes on the tail when the window fills past a threshold
-  │ 3. Stream one generation (:generation_started, :generation_chunk, :generation_completed)
+  │ 3. Fire :before_generation, then stream one generation (:generation_started, :generation_chunk, :generation_completed)
   │ 4. Parse tool calls (ToolCallParser for the profile):
   │    → Gemma 4:  <|tool_call>call:NAME{params}<tool_call|>
   │    → Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>

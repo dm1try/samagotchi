@@ -780,6 +780,32 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(fired).to eq([[:before, 1], [:after, "hello back"]])
     end
 
+    it "fires before_generation before :generation_started, so the hook's wait isn't the generation's" do
+      registry = Samagotchi::Hooks::Registry.new
+      seen = []
+      registry.register(:before_generation) { |event| seen << [event[:iteration], events.map { |e| e[:type] }] }
+      allow(fake_kernel).to receive(:hooks).and_return(registry)
+
+      run
+
+      expect(seen.first.first).to eq(1)
+      expect(seen.first.last).not_to include(:generation_started)
+      expect(events.map { |e| e[:type] }).to include(:generation_started)
+    end
+
+    it "starts no generation for a turn cancelled from inside the before_generation hook" do
+      controller = Samagotchi::CancellationController.new
+      registry = Samagotchi::Hooks::Registry.new
+      registry.register(:before_generation) { |_event| controller.cancel! }
+      allow(fake_kernel).to receive(:hooks).and_return(registry)
+
+      result = run(cancel_controller: controller)
+
+      expect(result).to be_canceled
+      expect(events.map { |e| e[:type] }).not_to include(:generation_started)
+      expect(backend.adapter.requests).to be_empty
+    end
+
     it "gives after_generation a frozen copy of the conversation as sent" do
       registry = Samagotchi::Hooks::Registry.new
       seen = []
