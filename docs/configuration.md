@@ -100,15 +100,15 @@ Behavior:
   `config: unknown key 'default.modle' (did you mean 'default.model'?)`.
   Names you choose under the maps below (host names, model ids) don't warn.
 - Environment variables and CLI flags win over config-file values.
-- An edit to the file needs no restart of `chi web`: a new session's worker
-  reads the file when it starts, and a running chi takes a changed value the
-  next time it reads that setting (a worker keeps `hosts:` and what it set up
-  at its start until it is stopped; the web's model picker lists a `hosts:`
-  edit at once). A worker gets the CLI flags of the chi that started it
-  through its environment.
-- A worker reads `hosts:` from the file as it starts, as every other setting, so a delegate (or any session
-  started later) sees a host added after its parent started. Hosts come only from config.yml: no environment
-  variable sets them.
+- An edit to the file needs no restart of `chi web`. A new worker reads the
+  file when it starts; a running worker sees only settings whose readers check
+  the file again (see [When a change applies](#when-a-change-applies)). The web
+  model picker refreshes `hosts:` when the file changes, but a running worker
+  keeps its host registry until it is restarted. A worker gets the CLI flags of
+  the chi that started it through its environment.
+- A newly started worker reads `hosts:` from the file, so a delegate (or any
+  session started later) sees a host added after its parent started. Hosts
+  come only from config.yml: no environment variable sets them.
 
 This lets you run `chi` without repeating common defaults such as model
 and llama host/port on every invocation.
@@ -124,6 +124,49 @@ the same name shape as `--memory` (bare name or `scope/name`), merged under
 any per-run `--memory` values (config baseline first, deduped). A per-run
 `--mute NAME` removes an entry from the merged list for that session (see
 "Muting a memory" in cli.md).
+
+## When a change applies
+
+The config reader checks the file's modification time and size whenever a
+setting is read. That makes a changed value available to a live reader; it
+does not reload every object that already holds a snapshot. "Worker start"
+includes a worker respawn. A running turn keeps the settings it already
+resolved.
+
+| Key | Applies | Note |
+|---|---|---|
+| `default.model` | New session | Existing sessions keep their saved model; change one with `/model`. |
+| `default.input`, `no_default_input`, `no_interrupt` | Next CLI run | These set up that run's first prompt or turn limit. |
+| `default.max_tokens`, `max_tool_output_chars`, `read.*`, `execute.*` except `execute.description`, `image.*` | Next matching request or tool use | An operation already in progress keeps its resolved limits. |
+| `server.host`, `server.port`, `server.transport`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. The web model picker refreshes `hosts:` on file change; a running worker does not. |
+| `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
+| `model_aliases` | Next model lookup | A session keeps its resolved model unless it is explicitly switched. |
+| `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
+| Other `models.<key>.*` settings | Next turn or model lookup | Sampling, thinking, vision, context, window, price and steer settings are resolved from the file for their next use. |
+| `thinking.level` | Next turn start | A session's own `/thinking` level is saved in that session and takes precedence; a running turn keeps its level. |
+| `cache.*` | Next request or turn-end warm-up | Cache key and TTL are read for a request; warm-up is checked after a turn. |
+| `retry.max`, `retry.base_delay`, `retry.max_delay` | Worker start | The client's network retry policy is built with its HTTP client. |
+| `retry.empty_answer` | Next empty-answer retry | It is checked when a turn needs to retry an empty answer. |
+| `memories` | Worker start | The running engine holds its preload list. The config list is not saved in the session file, so a respawn reads the current list. |
+| `append_system_prompt` | Worker start for the file list | The config list is not saved in the session file. File text is read when the prompt is built; `/model` rebuilds it, while an already-built prompt is cached. CLI `--append-system-prompt` files are saved in the session. |
+| `toolkit.default`, `toolkit.child` | Session creation | The chosen toolkit is saved; changing the defaults does not move existing sessions. |
+| `toolkit.kits`, `execute.description`, `llm_context.policy` | Worker start | These are held by the engine's toolkit or tool registry. |
+| `thinking.turn_preamble`, `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
+| `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. |
+| `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
+| `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. |
+| `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
+| `recap.*` | Worker start | The engine builds its recap job once. |
+| `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
+| `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
+| `session.retention_*` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. |
+| `web.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
+| `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
+| `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
+| `broadcast.*` | Next `chi broadcast` | Each broadcast invocation reads its targeting and triage settings. |
+| `update.*` | Next `chi update` | The command reads which components to update when it runs. |
+| `kitty.*`, `tmux.*` | `chi desktop upgrade` or desktop update | These settings are copied into the desktop helper's launch file. |
+| `model.profile`, `reasoning_history` | Not from config.yml | These are CLI/environment settings; `models:` and `hosts:` provide their model- and host-specific forms. |
 
 ### Environment variables
 
