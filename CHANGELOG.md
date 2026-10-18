@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `--set BUNDLE.KEY=VALUE` on `chi` and `chi send --new`: a bundle setting for this session, saved with it and kept
+  by forks and continued links. A bundle lists the keys a session may set in its manifest's `session_settings:`;
+  its plugin reads them in `ctx.settings`, over config.yml's. `POST /api/sessions` takes `bundle_settings`.
+- The cost-cap bundle takes a session's own cap: `chi send --new --set cost-cap.cap=3 -m "…"` (cost-cap 0.1.1).
+
 ## [0.83.0] - 2026-10-18
 
 ### Added

@@ -66,8 +66,9 @@ module Samagotchi
                     (--new) start the next link of that session's chain:
                     in its folder, on its model (or --model's; one whose
                     host is gone falls back to the default, with a
-                    warning), LLM context, thinking level and toolkit,
-                    with a note carrying its recap; it is archived.
+                    warning), LLM context, thinking level, toolkit and
+                    bundle settings, with a note carrying its recap; it
+                    is archived.
                     last:ID names the chain's latest link.
                     Without -m the new session waits idle. Refused for a
                     session continued already (naming the next link) or

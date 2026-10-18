@@ -28,6 +28,7 @@ plugin:
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
                              # to the chi being released (docs/releasing.md)
+session_settings: [cap]      # optional: the settings a session may set (chi --set my-bundle.cap=3)
 needs: [gh]                  # optional: outside commands it relies on (see memory.md#bundles-that-need-outside-commands)
 ```
 
@@ -733,7 +734,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
-| `ctx.settings` | the bundle's settings, frozen |
+| `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use. A session's own state goes in `sessions/<id>.json` or `sessions/<id>/` there: chi removes it when the session is deleted, discarded or pruned |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
 | `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn |
@@ -755,6 +756,17 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 
 The Engine itself is never handed to a plugin.
+
+### Per-session settings
+
+A bundle's settings are config.yml's, for every session. A setting a session may have of its own (a child's cap,
+say) is one the manifest lists in `session_settings:`; `chi --set BUNDLE.KEY=VALUE` and `chi send --new --set …`
+then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
+doesn't). chi refuses a bundle that isn't installed and a key the manifest doesn't list, so a typo isn't saved.
+Values are YAML scalars: `3`, `2.5`, `true`, text; `off`, `no`, `on` and `yes` read as booleans, so treat `false`
+as off. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
+`cap` replaces the config's `cap`). Read such a key from `ctx.settings` where it is used, not in
+`initialize(settings)`: that runs once at load, before any session, and gets the config only.
 
 ## Cards
 
@@ -1582,8 +1594,10 @@ bundles:
   Continue raises it to $6.00.` with **Continue** (another cap's worth: $3 → $6 → $9, as many steps as it takes to
   pass the spend, saved for the session) and **Stop** (the turn stops, `canceled` with `stopped_by: cost-cap`, and a
   card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops.
-- **The cap of a session:** the one `/cap` or a Continue set for it, else `child:` for a delegate child, else
-  `default:`. Delegates and continued links each have their own cap; there is no family cap.
+- **The cap of a session:** the one `/cap` or a Continue set for it, else its own `cap:` (`chi --set
+  cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off` for none), else `child:` for a
+  delegate child, else `default:`. Delegates and continued links each have their own cap (a continued link keeps
+  the `--set` cap, not a `/cap` or Continue); there is no family cap.
 - **A host it can't watch:** a model that reports no cost and has no configured price (a local server, a free
   model that reports 0) reads unknown: one notice, `the $3.00 cap can't be enforced: <model> reports no cost and has
   no price`, and it never stops for an unknown cost. A session with some priced generations counts the unpriced
@@ -1597,7 +1611,9 @@ bundles:
   spend is allowed: the next generation asks.
 - `/cap off` (or `/cap 0`): no cap for this session, over the config's `default:`.
 
-A parent agent starts a session with a cap by sending `/cap N` as its first message (`chi send --new -m '/cap 3'`).
+A parent agent starts a session with a cap of its own with `--set` (`chi send --new --set cost-cap.cap=3 -m "task"`;
+`cost-cap.cap` is the bundle's one session setting), or by sending `/cap N` as a first message
+(`chi send --new -m '/cap 3'`).
 At the cap, `chi send --wait` exits 3 with a question of kind `hook` (header "Cost cap"); `chi answer ID --question
 Q --option Continue` (or `--option 1`) goes on, `--option Stop` stops the turn ([sub-agent.md](sub-agent.md)). A
 parent may Continue: nothing restricts it, as with the step limit. A background delegate child at its cap waits on

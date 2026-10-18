@@ -36,6 +36,10 @@ chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--f
 chi answer ID --question QID --dismiss [--timeout S] [--format json]
 ```
 
+A child with a bundle setting of its own, such as a $ cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)):
+`chi send --new --wait --format json --set cost-cap.cap=3 -m "task"`. At the cap the wait exits 3 with the cost-cap
+question; `chi answer ID --question QID --option Continue` (or `Stop`) answers it.
+
 `chi answer` waits after answering, the same way `chi send --wait` does, so the
 next question comes back as exit 3 again. What it waits for is the answered
 turn: the turn that asked (or, for the step-limit question, the turn it

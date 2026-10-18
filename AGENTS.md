@@ -54,6 +54,10 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - `--append-system-prompt FILE` (repeatable): FILE's text goes into the system prompt after the
   AGENTS.md chain (root → cwd); config.yml `append_system_prompt:` is its baseline. Saved in the
   session (kept by respawns, forks and continues); ignored with `--attach`/`--resume`, like `--memory`.
+- `--set BUNDLE.KEY=VALUE` (repeatable; also `chi send --new --set`): a bundle setting for a new session, a key the
+  installed bundle's manifest lists in `session_settings:` (others exit 2). Saved in the session (kept by respawns,
+  forks and continues), laid over config.yml's `bundles: <name>:` in `ctx.settings`; ignored with
+  `--attach`/`--resume`.
 - The loop follows the model's host: a host whose `api:` has a chat adapter
   (`LLM::Adapters::BY_API`) uses the chat loop, `LLM::ChatLoop`: `api: openai` on
   `LLM::OpenAIChat` (`/v1/chat/completions`), `api: anthropic` on
