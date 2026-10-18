@@ -31,14 +31,21 @@ module Samagotchi
         return zero unless hash.is_a?(Hash)
 
         hash = hash.transform_keys(&:to_s)
-        kinds = hash["by_kind"].is_a?(Hash) ? hash["by_kind"] : {}
-        new(**COUNTS.to_h { |key| [key, count(hash[key.to_s])] }, cost_sum: cost(hash["cost_sum"]),
-                                                                  cost_estimate_sum: number(hash["cost_estimate_sum"]),
-                                                                  by_kind: kinds.each_with_object({}) do |(kind, row), rows|
-                                                                    row = row.is_a?(Hash) ? row.transform_keys(&:to_s) : {}
-                                                                    rows[kind.to_s] = { requests: count(row["requests"]), cost_sum: cost(row["cost_sum"]),
-                                                                                        cost_estimate_sum: number(row["cost_estimate_sum"]) }.freeze
-                                                                  end.freeze)
+        new(
+          **COUNTS.to_h { |key| [key, count(hash[key.to_s])] },
+          cost_sum: cost(hash["cost_sum"]),
+          cost_estimate_sum: number(hash["cost_estimate_sum"]),
+          by_kind: saved_kinds(hash["by_kind"])
+        )
+      end
+
+      def self.saved_kinds(hash)
+        kinds = hash.is_a?(Hash) ? hash : {}
+        kinds.each_with_object({}) do |(kind, row), rows|
+          row = row.is_a?(Hash) ? row.transform_keys(&:to_s) : {}
+          rows[kind.to_s] = { requests: count(row["requests"]), cost_sum: cost(row["cost_sum"]),
+                              cost_estimate_sum: number(row["cost_estimate_sum"]) }.freeze
+        end.freeze
       end
 
       # These totals with one side request counted in.
@@ -87,7 +94,7 @@ module Samagotchi
 
       def self.cost(value) = value.is_a?(Numeric) ? value : nil
 
-      private_class_method :count, :number, :cost
+      private_class_method :count, :number, :cost, :saved_kinds
 
       private
 
