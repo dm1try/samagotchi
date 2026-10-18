@@ -181,8 +181,9 @@ module Samagotchi
            (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
            baseline && ended == baseline[:last_turn]
           file = newest_reply(id, state_dir: state_dir)
-          if file && reply_is_turns?(file, ended)
-            reply = Result.new(status: :done, text: File.read(File.join(reply_dir(id, state_dir: state_dir), file)), file: file)
+          path = File.join(reply_dir(id, state_dir: state_dir), file) if file
+          if file && reply_is_turns?(path, ended)
+            reply = Result.new(status: :done, text: File.read(path), file: file)
             reply.session = settled(session, id, state_dir: state_dir)
             return reply
           end
@@ -443,18 +444,12 @@ module Samagotchi
       cursor.nil? || file > cursor
     end
 
-    # Whether the reply file +file+ is the turn that ended at +ended_at+'s,
-    # not an earlier turn's: the worker records the ended_at, then writes
-    # the reply (SessionInbox.write_output: the name's timestamp is the
-    # write time, at least the ended_at); every earlier turn's file is
-    # older than the turn's end. The wait and the session run on one
-    # machine, so the name's local-time read is the writer's. A name that
-    # doesn't read as a time isn't the turn's.
-    def reply_is_turns?(file, ended_at)
-      name = file.to_s
-      return false if name.length < 23
-
-      Time.parse(ended_at.to_s) <= Time.strptime(name[0, 14], "%Y%m%d%H%M%S") + (name[14, 9].to_f / (10**9))
+    # Whether the reply file at +path+ is the turn that ended at +ended_at+'s,
+    # not an earlier turn's: the worker records ended_at before writing the
+    # reply, so its mtime is at least the turn's end and earlier replies'
+    # mtimes precede it. Unlike the filename, mtime is independent of TZ.
+    def reply_is_turns?(path, ended_at)
+      File.mtime(path) >= Time.parse(ended_at.to_s)
     rescue ArgumentError
       false
     end

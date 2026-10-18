@@ -314,6 +314,24 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(result.text).to eq("the finished answer")
     end
 
+    it "recognizes a reply written in a different time zone than the reader" do
+      original_tz = ENV["TZ"]
+      begin
+        ENV["TZ"] = "America/Los_Angeles"
+        finish(outcome: "completed")
+        write_reply("the finished answer")
+        cursor = described_class.newest_reply(session.id, state_dir: tmpdir)
+
+        ENV["TZ"] = "UTC"
+        result = wait(cursor: cursor, baseline: baseline, ended_before: true)
+
+        expect(result.status).to eq(:done)
+        expect(result.text).to eq("the finished answer")
+      ensure
+        original_tz ? ENV["TZ"] = original_tz : ENV.delete("TZ")
+      end
+    end
+
     it "returns the finished turn's no-reply outcome when its newest reply is an earlier turn's" do
       # The earlier turn's reply is older than the finished turn's end
       # (it was written at the earlier turn's, so it predates this one).
