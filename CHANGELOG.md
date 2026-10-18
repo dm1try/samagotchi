@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A delegate reply already taken as a report isn't returned again by `delegate_result` in the same turn.
 - `chi send --wait ID` with no message recognizes a finished turn's reply across time zones.
 
 ## [0.82.0] - 2026-10-18

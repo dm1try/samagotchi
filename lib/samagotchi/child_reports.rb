@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "securerandom"
 require_relative "client_id"
 require_relative "session"
 require_relative "session_inbox"
@@ -129,7 +130,7 @@ module Samagotchi
     # (DelegateWait.finish, its report variant), the cursor it moves the child to,
     # and the cursor it was read from (a commit after the model moved it
     # itself, with delegate_result, leaves it alone).
-    Report = Data.define(:child_id, :text, :before, :after, :rings) do
+    Report = Data.define(:child_id, :text, :before, :after, :rings, :claim_id) do
       def line(mark: nil) = Steer::Line.new(text: text, source: ChildReports::SOURCE, mark: mark)
       def origin = { client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}" }
     end
@@ -142,6 +143,7 @@ module Samagotchi
       @state_dir = state_dir
       @session_dir = Session.session_dir(session_id, state_dir: state_dir)
       @predecessor_dir = Session.valid_id?(predecessor) ? Session.session_dir(predecessor, state_dir: state_dir) : nil
+      Tools::DelegateCursors.clear_report_claims(@session_id, state_dir: @state_dir)
       # child id → the Report this turn took for it (rings merged).
       @taken = {}
     end
@@ -177,12 +179,16 @@ module Samagotchi
     end
 
     # The turn that took the reports was kept: move each child's cursor on
-    # (unless something else moved it since: the model's own
-    # delegate_result), then delete the rings.
+    # and delete the rings.
     def commit
       @taken.each_value do |report|
         Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
-          cursor == report.before ? report.after : cursor
+          next cursor unless cursor.report_claim&.fetch("id", nil) == report.claim_id
+
+          before = report.before.with(report_claim: nil)
+          after = report.after.with(report_claim: nil)
+          current = cursor.with(report_claim: nil)
+          current == before ? after : current
         end
         delete_rings(report.rings)
       rescue StandardError => e
@@ -193,6 +199,11 @@ module Samagotchi
 
     # The turn was rolled back: its rings stay for the next one.
     def release
+      @taken.each_value do |report|
+        Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
+          cursor.report_claim&.fetch("id", nil) == report.claim_id ? cursor.with(report_claim: nil) : cursor
+        end
+      end
       @taken = {}
     end
 
@@ -237,13 +248,19 @@ module Samagotchi
                                       timeout: 0, turn: before.turn)
       return nil unless reportable?(wait)
 
+      claim_id = before.report_claim&.fetch("id", nil) || SecureRandom.hex(16)
+      after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
+                          turn: wait.status == :waiting_for_answer ? before.turn : nil, report_claim: nil)
+                    .with_baseline(ReplyWait.baseline_of(wait.session))
+      claim = { "id" => claim_id, "file" => wait.file, "cursor" => after.to_json_hash }
+      return nil unless Tools::DelegateCursors.claim_report(@session_id, child_id, expected: before, claim: claim,
+                                                            state_dir: @state_dir)
+
       # A reported end is the follow-up turn's too (DelegateCursor#turn):
       # a later wait on it would repeat its reply.
-      after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
-                          turn: wait.status == :waiting_for_answer ? before.turn : nil)
-                    .with_baseline(ReplyWait.baseline_of(wait.session))
+      after = after.with(report_claim: claim)
       text = Tools::DelegateWait.finish(wait, child_id, timeout: 0, report: true)
-      Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings)
+      Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings, claim_id: claim_id)
     rescue ArgumentError
       nil # the child is gone
     end

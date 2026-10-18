@@ -7,6 +7,7 @@ require "samagotchi/child_reports"
 require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
 require "samagotchi/archive_store"
+require "samagotchi/tools/delegate_result"
 
 # A delegate child's news reaching its parent: the child rings (ChildRing),
 # the parent reads the rings and asks the child what happened (ChildReports).
@@ -291,6 +292,34 @@ RSpec.describe "delegate reports" do
       expect(rings).to be_empty
     end
 
+    it "doesn't give a reply twice when delegate_result waits after a report took it but before that turn commits" do
+      write_reply(child, "found it")
+      end_turn(child)
+      ring
+      box = reports
+      report = box.take.fetch(0)
+      reply_path = File.join(Samagotchi::ReplyWait.reply_dir(child.id, state_dir: tmpdir), report.after.reply_file)
+
+      result = Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 0, peers: peers)
+
+      expect(result).to include("already reported", report.after.reply_file)
+      expect(result.ref_path).to eq(reply_path)
+      box.commit
+      expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 0, peers: peers)).to include("no reply yet")
+    end
+
+    it "retries a reserved report after a new parent worker takes ownership" do
+      write_reply(child, "found it")
+      end_turn(child)
+      ring
+      reports.take
+      expect(cursor.report_claim).to include("file" => end_with(".txt"))
+
+      restarted = reports
+      expect(restarted.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
+      restarted.commit
+    end
+
     it "still reports the reply after a wait that timed out or was canceled: neither moves the cursor" do
       own(child)
       Samagotchi::Session.load(child.id, state_dir: tmpdir).tap { |s| s.status = "running" }.save(state_dir: tmpdir)
@@ -400,7 +429,7 @@ RSpec.describe "delegate reports" do
       expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to end_with("second")
       moved = cursor
       box.commit
-      expect(cursor).to eq(moved)
+      expect(cursor.with(report_claim: nil)).to eq(moved.with(report_claim: nil))
     end
 
     describe "a ring left in the predecessor (a continue moved the child as it rang)" do

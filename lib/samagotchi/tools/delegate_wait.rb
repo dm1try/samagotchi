@@ -24,6 +24,7 @@ module Samagotchi
     # the wait's first look (a fast failure) still ends it. The cursors are
     # on disk (DelegateCursors), so a respawned worker doesn't repeat a reply.
     module DelegateWait
+      Advance = Data.define(:cursor, :already_reported)
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
       # Seconds with no worker before the child counts as gone: as long as
@@ -66,6 +67,11 @@ module Samagotchi
         reports = reports_mode(peers)
         others = relay && others_for(peers.session_id, child_id, relay, sd)
         cursor = DelegateCursors.get(peers.session_id, child_id, state_dir: sd)
+        report_claim = cursor.report_claim
+        if report_claim
+          cursor = DelegateCursor.from_json_hash(report_claim["cursor"]).with(report_claim: report_claim)
+        end
+
         baseline = cursor.baseline
         left = timeout.to_i
         outcomes = relayed_outcomes.delete(key) || []
@@ -78,7 +84,13 @@ module Samagotchi
           left -= monotonic - started
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             outcomes.concat(relayed_outcomes.delete(key) || [])
-            advance(peers.session_id, child_id, wait, state_dir: sd)
+            movement = advance(peers.session_id, child_id, wait, state_dir: sd)
+            if movement&.already_reported
+              file = movement.cursor.report_claim&.fetch("file", nil) || wait.file
+              return already_reported_result(child_id, file, state_dir: sd)
+            end
+            return already_reported_result(child_id, report_claim["file"], state_dir: sd) if report_claim && wait.status == :timeout
+
             text = with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
             return RefText.wrap(text, reply_path(child_id, wait, state_dir: sd))
           end
@@ -159,15 +171,37 @@ module Samagotchi
       # was reported; a question keeps it. Nothing moves on a timeout or a
       # cancel.
       # @param wait [ReplyWait::Result]
-      # @return [DelegateCursor, nil] the new cursor
+      # @return [Advance, nil] the cursor and whether another path reported it
       def advance(parent_id, child_id, wait, state_dir:)
         return nil unless REPORTED.include?(wait.status) && wait.session
 
-        DelegateCursors.update(parent_id, child_id, state_dir: state_dir) do |cursor|
-          cursor = cursor.with(reply_file: wait.file) if wait.status == :done
-          cursor = cursor.with(turn: nil) unless wait.status == :waiting_for_answer
-          cursor.with_baseline(ReplyWait.baseline_of(wait.session))
+        already_reported = false
+        cursor = DelegateCursors.update(parent_id, child_id, state_dir: state_dir) do |current|
+          if (current.report_claim && current.report_claim["file"] == wait.file) ||
+             (wait.status == :done && current.reply_file == wait.file)
+            already_reported = true
+            next current
+          end
+
+          current = current.with(reply_file: wait.file) if wait.status == :done
+          current = current.with(turn: nil) unless wait.status == :waiting_for_answer
+          current.with_baseline(ReplyWait.baseline_of(wait.session))
         end
+        Advance.new(cursor: cursor, already_reported: already_reported)
+      end
+
+      def already_reported_result(child_id, file, state_dir:)
+        path = if file.to_s.empty?
+                 nil
+               else
+                 File.join(ReplyWait.reply_dir(child_id, state_dir: state_dir), file)
+               end
+        text = if path
+                 "session: #{child_id}\nstatus: reported\nThe reply was already reported to this session (file: #{File.basename(file)})."
+               else
+                 "session: #{child_id}\nstatus: reported\nThe child's latest status was already reported to this session."
+               end
+        RefText.wrap(text, path)
       end
 
       # The tool result for how the wait ended.

@@ -14,8 +14,9 @@ module Samagotchi
     # of the child's turn the last follow-up went to (Delegate.follow_up),
     # whose own reply a wait takes (ReplyWait's turn:); nil once that turn
     # was reported, or when unknown (a new child, an older worker).
-    DelegateCursor = Data.define(:reply_file, :last_turn, :question_id, :messages, :turn) do
-      def initialize(reply_file: nil, last_turn: nil, question_id: nil, messages: nil, turn: nil) = super
+    #   +report_claim+: a report reserved until the parent's turn is settled.
+    DelegateCursor = Data.define(:reply_file, :last_turn, :question_id, :messages, :turn, :report_claim) do
+      def initialize(reply_file: nil, last_turn: nil, question_id: nil, messages: nil, turn: nil, report_claim: nil) = super
 
       def self.empty = new
 
@@ -33,6 +34,13 @@ module Samagotchi
       end
 
       def to_json_hash = to_h.transform_keys(&:to_s).compact
+
+      def self.from_json_hash(data)
+        return empty unless data.is_a?(Hash)
+
+        new(reply_file: data["reply_file"], last_turn: data["last_turn"], question_id: data["question_id"],
+            messages: data["messages"], turn: data["turn"], report_claim: data["report_claim"])
+      end
     end
 
     # The parent's cursors, one per child, in <parent dir>/delegates.json, so
@@ -68,6 +76,36 @@ module Samagotchi
         end
       end
 
+      # Reserve a report only if the cursor read to build it is still current.
+      # @return [DelegateCursor, nil] the reserved cursor, or nil if another path moved it
+      def claim_report(parent_id, child_id, expected:, claim:, state_dir:)
+        locked(parent_id, state_dir: state_dir) do
+          all = read(parent_id, state_dir: state_dir)
+          cursor = get_from(all, child_id)
+          next nil unless cursor == expected
+
+          claimed = cursor.with(report_claim: claim)
+          all[child_id] = claimed.to_json_hash
+          write(parent_id, all, state_dir: state_dir)
+          claimed
+        end
+      end
+
+      # A new owner can retry reports left reserved by a worker that exited
+      # before committing or releasing its turn.
+      def clear_report_claims(parent_id, state_dir:)
+        locked(parent_id, state_dir: state_dir) do
+          all = read(parent_id, state_dir: state_dir)
+          changed = false
+          all.each_value do |data|
+            next unless data.is_a?(Hash)
+
+            changed = true if data.delete("report_claim")
+          end
+          write(parent_id, all, state_dir: state_dir) if changed
+        end
+      end
+
       # Add the cursors of +entries+ (child id → cursor fields, as #read
       # gives them) that the parent has none for; one it has is kept.
       # @return [Array<String>] the child ids added
@@ -94,11 +132,7 @@ module Samagotchi
       end
 
       def get_from(all, child_id)
-        data = all[child_id]
-        return DelegateCursor.empty unless data.is_a?(Hash)
-
-        DelegateCursor.new(reply_file: data["reply_file"], last_turn: data["last_turn"],
-                           question_id: data["question_id"], messages: data["messages"], turn: data["turn"])
+        DelegateCursor.from_json_hash(all[child_id])
       end
 
       def path(parent_id, state_dir:)
