@@ -8,12 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-10-18
+
 ### Added
 
 - A message queued for after the running turn can be taken back before it runs: the × on its bubble in the web,
   `/unqueue` in an attached terminal (its newest queued line). Its text comes back into the input to change and send
-  again. Every UI drops it, and a `chi send --queue --wait` on
-  it ends with `removed` (exit 1). `/queue` is now listed in the attached terminal's Tab and `/help` too.
+  again. Every UI drops it, and a `chi send --queue --wait` on it ends with `removed` (exit 1). `/queue` is now listed
+  in the attached terminal's Tab and `/help` too.
 
 ### Fixed
 
@@ -22,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   alone until the worker restarts.
 - A `before_generation` hook now runs before the generation starts (`:generation_started`) in both loops: a question
   it asks (the cost-cap's) no longer counts in the generation's time or leaves an empty generation on Stop.
+
+Update with `chi update` (the system bundle 0.85.0), then restart `chi web`.
 
 ## [0.84.0] - 2026-10-18
 
@@ -3404,7 +3408,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.84.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.85.0...HEAD
+[0.85.0]: https://github.com/dm1try/samagotchi/compare/v0.84.0...v0.85.0
 [0.84.0]: https://github.com/dm1try/samagotchi/compare/v0.83.0...v0.84.0
 [0.83.0]: https://github.com/dm1try/samagotchi/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/dm1try/samagotchi/compare/v0.81.0...v0.82.0
