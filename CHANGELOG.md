@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,
+  next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
+  avoid large outputs, delegate broad work to subagents".
+
 ### Fixed
 
 - `chi send --queue --wait` (and a wait for a turn by its id) no longer waits until its timeout when the worker dies

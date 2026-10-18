@@ -147,7 +147,7 @@ RSpec.describe Samagotchi::ContextStatus do
       window_counted = described_class.new(llm_context: none.call(500_000))
       window_counted.observe(409_600, iteration_index: 0, window: big)
       expect(window_counted.take_guidance[:content]).to start_with("[CONTEXT: about 80% of the context window is in use")
-        .and end_with("context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents]")
+        .and end_with("context critical — write a short handoff note (state, next step), avoid large outputs, delegate broad work to subagents]")
     end
   end
 

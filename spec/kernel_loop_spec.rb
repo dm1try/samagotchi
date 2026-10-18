@@ -1132,7 +1132,7 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(Samagotchi::ContextStatus.guidance("20plus")).to include("proceed normally")
       expect(Samagotchi::ContextStatus.guidance("40plus")).to include("prefer targeted")
       expect(Samagotchi::ContextStatus.guidance("60plus")).to include("concise")
-      expect(Samagotchi::ContextStatus.guidance("80plus")).to include("summarize")
+      expect(Samagotchi::ContextStatus.guidance("80plus")).to include("handoff note")
       expect(Samagotchi::ContextStatus.guidance("under20")).to include("proceed normally")
     end
 

@@ -62,7 +62,7 @@ module Samagotchi
       "context healthy — proceed normally",
       "context moderate — prefer targeted and range reads over full-file dumps",
       "context elevated — be concise, prefer range reads, avoid re-reading large files",
-      "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
+      "context critical — write a short handoff note (state, next step), avoid large outputs, delegate broad work to subagents"
     ].freeze
     # The top level's words when the buckets count against a budget
     # (llm_context.budget_tokens) and no forget layer: nothing in the
