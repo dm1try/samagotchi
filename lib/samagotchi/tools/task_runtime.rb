@@ -100,15 +100,15 @@ module Samagotchi
       # between (failed, no exit code) is corrected; a stopped task (its
       # stop flag on disk) is left as task_stop records it.
       # The thread is named EXIT_STATUS_THREAD (a spec joins them before it
-      # removes the tasks' folder).
+      # removes the tasks' folder) here, before it returns: named from
+      # inside, a thread not yet scheduled was missed by that join.
       # @return [Thread]
       def record_exit_status(waiter, path, task_id:)
         # Absolute now: safe against a later chdir.
         record_path = File.expand_path(metadata_path(task_id))
         path = File.expand_path(path)
-        Thread.new do
+        thread = Thread.new do
           Thread.current.report_on_exception = false
-          Thread.current.name = EXIT_STATUS_THREAD
           code = status_code(waiter.value)
           next if code.nil? || record_at(record_path)&.stop_requested_by
 
@@ -117,6 +117,8 @@ module Samagotchi
         rescue StandardError => e
           Log.debug(:turn, "task_exit_code_failed", id: task_id, error: e.class.name, msg: e.message)
         end
+        thread.name = EXIT_STATUS_THREAD
+        thread
       end
 
       # A Process::Status as a shell reports one: its exit status, or

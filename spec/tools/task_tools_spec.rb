@@ -947,6 +947,27 @@ RSpec.describe "task tools" do
         record
       end
 
+      # The specs' cleanup joins the recorders by name before the tmpdir
+      # goes: a thread not yet scheduled must carry it already, or it runs
+      # mid-removal, finds exit_code gone and writes it again (ENOTEMPTY).
+      it "returns its thread already named, before the thread has run" do
+        gate = Queue.new
+        allow(Thread).to receive(:new).and_wrap_original do |original, *args, &body|
+          original.call(*args) do
+            gate.pop
+            body.call
+          end
+        end
+        record = finished_without_code
+
+        thread = runtime.record_exit_status(waiter_for(status(exitstatus: 0)), record.exit_code_path, task_id: record.id)
+
+        expect(thread.name).to eq(Samagotchi::Tools::TaskRuntime::EXIT_STATUS_THREAD)
+      ensure
+        gate << true
+        thread&.join(5)
+      end
+
       it "corrects a handed-over record from the status (as execute's hand-over calls it)" do
         record = finished_without_code(handed_over_by: "execute")
 
