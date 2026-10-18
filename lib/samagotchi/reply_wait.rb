@@ -450,7 +450,7 @@ module Samagotchi
     # mtimes precede it. Unlike the filename, mtime is independent of TZ.
     def reply_is_turns?(path, ended_at)
       File.mtime(path) >= Time.parse(ended_at.to_s)
-    rescue ArgumentError
+    rescue ArgumentError, SystemCallError
       false
     end
 

@@ -3,6 +3,7 @@
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/reply_wait"
+require "samagotchi/parent_report"
 require "samagotchi/session_manager"
 
 # A session's next reply: an output/ file past the caller's cursor, or the
