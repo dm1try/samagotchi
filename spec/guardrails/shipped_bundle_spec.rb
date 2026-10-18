@@ -205,6 +205,15 @@ RSpec.describe "The guardrails bundle's rules" do
     end
   end
 
+  it "leaves allowing an answer around chi answer to the user: a parent's Allow once is refused" do
+    ["printf '3\\n' | chi --attach abc", "curl -s -X POST http://127.0.0.1:4567/session/abc/answer -d '{}'"].each do |command|
+      v = shell(command)
+      expect(%w[chi-answer-piped chi-answer-http]).to include(v.rule), command
+      pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
+      expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only), command
+    end
+  end
+
   it "asks for chi broadcast once at a time, and a parent may not allow it" do
     v = shell("chi broadcast -m 'payments API is down'")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])

@@ -174,8 +174,10 @@ rules:
     reason: shares a note with every session it may concern; chi broadcast is for the user, not an agent
 
   # ── answering chi's own questions around chi answer ───────────────────
-  # A parent agent answers a child's approval with chi answer, which holds it
-  # to guardrails.parent_approvals. These shapes go around that: chi --attach
+  # A parent agent answers a child's question with chi answer, which holds it
+  # to the option effects a parent may pick. These shapes go around that,
+  # answering as the user, so only the user may allow them (core's
+  # PROTECTED_RULES, never a parent agent): chi --attach
   # or chi -p with stdin from a pipe, a here-string or a file other than
   # /dev/null (a chi after 0.12 treats those as a parent too, but an older
   # child doesn't), and a POST to the Bridge's or the web's answer route.

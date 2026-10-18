@@ -16,10 +16,13 @@ module Samagotchi
       # command source for attached context (it runs later, ungated); chi
       # broadcast, which is the user's; the bundle's asks before a memory
       # that reaches the system prompt, or a model overlay, is written (a
-      # parent model would be writing a model's prompt). Only the user may
-      # allow them (ParentApprovals.protected?, ParentPolicy's user_only).
+      # parent model would be writing a model's prompt); and the bundle's
+      # asks before answering chi's questions around chi answer (a parent
+      # allowing one would answer a grandchild's question as the user).
+      # Only the user may allow them (ParentApprovals.protected?,
+      # ParentPolicy's user_only).
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
-                           model-overlay-write].freeze
+                           model-overlay-write chi-answer-piped chi-answer-http].freeze
       SCOPES = %w[once session repo rule].freeze
       DO_NOT_RETRY = "Do not retry it or reach the same result another way; ask the user how to proceed."
 

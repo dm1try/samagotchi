@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
   next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
   avoid large outputs, delegate broad work to subagents".
 - Each config setting declares when a change applies; a spec keeps the docs/configuration.md table in line with it.
+- The guardrails bundle's asks before answering chi's questions around `chi answer` (`chi-answer-piped`: `chi
+  --attach` or `chi -p` fed from a pipe or a file; `chi-answer-http`: `curl …/answer`) are the user's alone: a parent
+  agent's Allow is refused, as on chi's own config.
 
 ### Fixed
 
