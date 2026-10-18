@@ -64,6 +64,21 @@ RSpec.describe "Engine#note_side_usage" do
     expect(engine.metrics.snapshot[:side]).to include(requests: 1)
   end
 
+  it "checks the metrics session file when the current session has changed" do
+    old_dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    engine
+    new_session = Samagotchi::Session.new_session(mode: "assist", model_name: "box:m", working_directory: Dir.pwd)
+    new_session.save(state_dir: state_dir)
+    engine.session = new_session
+    FileUtils.rm_rf(old_dir)
+    FileUtils.rm_f(Samagotchi::Session.session_file(session.id, state_dir: state_dir))
+
+    engine.note_side_usage(usage)
+
+    expect(File.exist?(old_dir)).to be(false)
+    expect(engine.metrics.snapshot[:side]).to include(requests: 1)
+  end
+
   it "counts without a session, saving nothing" do
     bare = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m")
     bare.session_state_dir = state_dir

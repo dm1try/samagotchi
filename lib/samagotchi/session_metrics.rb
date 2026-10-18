@@ -351,6 +351,9 @@ module Samagotchi
       end
     end
 
+    # @return [String, nil] the session id #persist writes under
+    def session_id = @mutex.synchronize { @session_id }
+
     # Count one side request (a recap, a plugin's ctx.ask_model) in the
     # side block, apart from the turns' totals. Safe from any thread.
     # @param usage [SideUsage]

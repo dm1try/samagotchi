@@ -569,7 +569,7 @@ module Samagotchi
         block = @metrics.add_side(usage)
         @session_observer.notify(type: :side_usage, kind: usage.kind, side: block)
       end
-      sid = @session&.id
+      sid = @metrics.session_id
       return if sid.nil? || turn_running?
       return unless File.exist?(Session.session_file(sid, state_dir: session_state_dir))
 

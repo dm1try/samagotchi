@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates
+  the deleted old session's folder.
+
 ## [0.81.0] - 2026-10-18
 
 ### Added
