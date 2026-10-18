@@ -36,6 +36,9 @@ class Plugin
 
   def register(chi)
     chi.on(:before_generation) { |_event, ctx| check(ctx) }
+    # Only the "can't be enforced" notice: a turn of one generation (or a
+    # session's last) has no next before_generation to give it.
+    chi.on(:after_generation) { |_event, ctx| check_known(ctx) }
     chi.command("/cap", "see or set this session's cost cap: /cap, /cap 5, /cap off", anytime: true) do |args, ctx|
       command(args, ctx)
     end
@@ -76,6 +79,13 @@ class Plugin
     return unless first_time?(:@warned, [resolved[:session], cap])
 
     ctx.notify("#{money(total)} of #{money(cap)} spent (#{(total / cap * 100).floor}%)", level: :warn)
+  end
+
+  def check_known(ctx)
+    resolved = resolve(ctx)
+    return unless resolved[:cap]
+
+    unenforceable(ctx, resolved[:session], resolved[:cap]) unless ctx.cost.known?
   end
 
   def unenforceable(ctx, session, cap)

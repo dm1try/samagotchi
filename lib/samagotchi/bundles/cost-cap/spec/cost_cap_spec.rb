@@ -21,7 +21,10 @@ RSpec.describe "The cost-cap bundle", :bundle do
     it "reads no cost and asks nothing with no cap" do
       reads = 0
       bundle = plugin({}, cost: -> { reads += 1 })
-      3.times { generation(bundle) }
+      3.times do
+        generation(bundle)
+        bundle.fire(:after_generation, iteration: 1)
+      end
       expect(reads).to eq(0)
       expect(bundle.questions).to be_empty
       expect(bundle.notices).to be_empty
@@ -115,6 +118,27 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(notices(bundle)).to eq([["the $3.00 cap can't be enforced: test:model reports no cost and has no price",
                                       :warn]])
       expect(bundle.questions).to be_empty
+    end
+
+    it "warns after the first unpriced generation, so a one-generation turn gets the notice too" do
+      # Known (nothing ran) at the first generation's start, unknown once it ran unpriced.
+      ran = false
+      bundle = plugin(cost: -> { ran ? { known: false } : 0.0 })
+      generation(bundle)
+      expect(bundle.notices).to be_empty
+
+      ran = true
+      bundle.fire(:after_generation, iteration: 1)
+      expect(bundle.notices.size).to eq(1)
+      generation(bundle)
+      bundle.fire(:after_generation, iteration: 2)
+      expect(bundle.notices.size).to eq(1)
+    end
+
+    it "never asks or stops after a generation, even past the cap (the next generation asks)" do
+      bundle = plugin(cost: 5.0)
+      bundle.fire(:after_generation, iteration: 1)
+      expect([bundle.questions, bundle.stops]).to all(be_empty)
     end
 
     it "uses child: for a delegate, else default:" do
