@@ -92,8 +92,12 @@ module Samagotchi
       end
 
       # A new owner can retry reports left reserved by a worker that exited
-      # before committing or releasing its turn.
+      # before committing or releasing its turn. No cursor file means no
+      # claims: the lock would create the session dir and its lock file, so
+      # an empty session would no longer count as empty.
       def clear_report_claims(parent_id, state_dir:)
+        return unless File.exist?(path(parent_id, state_dir: state_dir))
+
         locked(parent_id, state_dir: state_dir) do
           all = read(parent_id, state_dir: state_dir)
           changed = false
