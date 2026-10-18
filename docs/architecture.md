@@ -281,6 +281,15 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   saved messages, or the running turn's accumulator); answers once the
   task is gone: `200 {status, stop_reason, task_id}`, `404 task_not_found`, `409 not_running`.
   The worker names it in its sidecar features (`task_stop`).
+- `POST /session/:id/turn/dequeue` — `{enqueued_id, client_id?}`: take back a queued message
+  (one that waits for the running turn's end: `--queue`, Alt+Enter, `/queue TEXT`, or a message
+  with images) before a turn takes it (web route `POST /api/sessions/:id/turn/:enqueued_id/dequeue`,
+  the × on a queued bubble; `/unqueue` in the attached TUI). Under the event log, like its enqueue:
+  `SessionInbox.take_queued_input` claims the file as the drain does (one rename wins), deletes it,
+  leaves a tombstone (`input/removed/<enqueued_id>`, for `ReplyWait`'s `turn:`), and the Bridge
+  announces `:turn_dequeued`. `200 {status: "removed", enqueued_id, prompt}`, `409 already_started`
+  (a turn took it), `409 not_queued` (a next-step message: a drain may merge it any moment), `404
+  unknown_enqueued_id`. It never wakes the worker. The worker names it in its sidecar features (`unqueue`).
 - `POST /session/:id/relay` — the approval relay, on a delegated child's worker
   (`{action, relay_id, question_id}`): `opened` / `closed` (with a `reason`) set or clear the
   pending question's `relayed_to` mark (`QuestionDesk#annotate`, `:question_relay`); `answered`
@@ -404,7 +413,7 @@ session every 10 s, so a `kill -9` shows within a second. The summary (`Web::Ses
 shared with `/api/sessions` and the session view) carries `owner`, `project_root` and
 `bridge_up` (the sidecar is there *and* the lock is held: the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
-(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`,
+(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`,
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no

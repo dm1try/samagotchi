@@ -342,6 +342,17 @@ exit: 0"
     expect(acc.queued).to eq([{ enqueued_id: "e3", client_id: "tui:1", prompt: "three" }])
   end
 
+  it "drops a queued turn taken back before it ran (:turn_dequeued), during a turn and between turns" do
+    feed({ type: :turn_started, prompt: "long" },
+         { type: :turn_enqueued, enqueued_id: "e1", client_id: "web:1", prompt: "one", delivery: "queue" },
+         { type: :turn_enqueued, enqueued_id: "e2", client_id: "web:1", prompt: "two", delivery: "queue" },
+         { type: :turn_dequeued, enqueued_id: "e2", client_id: "tui:1" })
+    expect(acc.queued.map { |q| q[:enqueued_id] }).to eq(%w[e1])
+
+    feed({ type: :turn_completed, session_id: "s" }, { type: :turn_dequeued, enqueued_id: "e1", client_id: "web:1" })
+    expect(acc.queued).to eq([])
+  end
+
   it "keeps a queued turn's delivery (a reload draws it as queued for after the turn)" do
     feed({ type: :turn_started, prompt: "long" },
          { type: :turn_enqueued, enqueued_id: "e1", client_id: "web:1", prompt: "later", delivery: "queue" },

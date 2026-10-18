@@ -762,7 +762,7 @@ module Samagotchi
     # Event types #announce accepts: facts about the session's input queue,
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
-    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
                              command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished].freeze
 

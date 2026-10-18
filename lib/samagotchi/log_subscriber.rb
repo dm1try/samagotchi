@@ -16,6 +16,7 @@ module Samagotchi
     # One line each, with a few of their own fields (never text).
     ANNOUNCED = {
       turn_enqueued: %i[enqueued_id client_id],
+      turn_dequeued: %i[enqueued_id client_id],
       command_queued: %i[command_id client_id],
       command_ran: %i[command_id client_id status],
       input_merged: %i[count],

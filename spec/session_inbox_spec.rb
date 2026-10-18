@@ -89,6 +89,65 @@ RSpec.describe Samagotchi::SessionInbox do
         expect(described_class.waits_for_turn_end?(broken)).to be(false)
       end
     end
+
+    describe ".take_queued_input" do
+      def write(prompt, id, **options)
+        described_class.write_input(session_dir, prompt: prompt, client_id: "tui:1", enqueued_id: id, **options)
+      end
+
+      it "takes back a queued input: the file goes, its tombstone stays, and it answers what it held" do
+        write("first", "id-1", delivery: "queue")
+        write("second", "id-2", delivery: "queue")
+
+        status, input = described_class.take_queued_input(session_dir, "id-2")
+
+        expect(status).to eq(:removed)
+        expect(input.prompt).to eq("second")
+        expect(described_class.find_new_input_files(session_dir).map { |f| JSON.parse(File.read(f))["prompt"] }).to eq(["first"])
+        expect(Dir.glob(File.join(input_dir, "*.processing"))).to eq([])
+        expect(described_class.removed?(session_dir, "id-2")).to be(true)
+        expect(described_class.removed?(session_dir, "id-1")).to be(false)
+      end
+
+      it "takes an image message too (it waits for the turn's end as well)" do
+        write("look", "id-img", images: [{ file: "a.png", name: "a" }])
+
+        expect(described_class.take_queued_input(session_dir, "id-img").first).to eq(:removed)
+      end
+
+      it "leaves a next-step file where it is: a running turn's drain may merge it any moment" do
+        path = write("now", "id-plain")
+
+        expect(described_class.take_queued_input(session_dir, "id-plain")).to eq([:not_queued, nil])
+        expect(File.exist?(path)).to be(true)
+        expect(described_class.removed?(session_dir, "id-plain")).to be(false)
+      end
+
+      it "answers :claimed when a turn took the file (renamed to .processing), :none for an unknown id" do
+        path = write("later", "id-1", delivery: "queue")
+        described_class.claim_input_file(path)
+
+        expect(described_class.take_queued_input(session_dir, "id-1")).to eq([:claimed, nil])
+        expect(described_class.take_queued_input(session_dir, "nope")).to eq([:none, nil])
+        expect(described_class.take_queued_input(session_dir, "")).to eq([:none, nil])
+        expect(described_class.removed?(session_dir, "id-1")).to be(false)
+      end
+
+      it "answers :claimed when the drain wins the rename after the file was read" do
+        path = write("later", "id-1", delivery: "queue")
+        allow(described_class).to receive(:claim_input_file).with(path).and_return(nil)
+
+        expect(described_class.take_queued_input(session_dir, "id-1")).to eq([:claimed, nil])
+      end
+
+      it "writes no tombstone for an id unsafe in a file name" do
+        write("later", "../x", delivery: "queue")
+
+        expect(described_class.take_queued_input(session_dir, "../x").first).to eq(:removed)
+        expect(described_class.removed?(session_dir, "../x")).to be(false)
+        expect(Dir.exist?(File.join(input_dir, described_class::REMOVED_DIR))).to be(false)
+      end
+    end
   end
 
   describe "reply files" do

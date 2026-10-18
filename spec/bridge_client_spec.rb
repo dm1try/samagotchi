@@ -126,6 +126,17 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("POST /session/s1/tasks/stop HTTP/1.1\r\n").and end_with('{"task_id":"t1"}')
   end
 
+  it "asks the worker to remove a queued message by its enqueued_id, naming the client" do
+    port, finish = serve_once(json_reply("200 OK", '{"status":"removed","enqueued_id":"e1","prompt":"later"}'))
+
+    reply = described_class.new(session_id: "s1", port: port).dequeue(enqueued_id: "e1", client_id: "tui:1")
+
+    expect(reply.status).to eq(200)
+    expect(reply.json).to include("prompt" => "later")
+    expect(finish.call).to start_with("POST /session/s1/turn/dequeue HTTP/1.1\r\n")
+      .and include('{"enqueued_id":"e1","client_id":"tui:1","deadline":')
+  end
+
   it "posts a session command with the client's id and returns the ACK" do
     port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","command_id":"c1","session_id":"s1"}'))
 
@@ -190,7 +201,8 @@ RSpec.describe Samagotchi::BridgeClient do
   {
     "a command" => ->(c) { c.post_command(line: "!ls") },
     "an answer" => ->(c) { c.answer(id: "q1", selected: ["A"]) },
-    "a dismissal" => ->(c) { c.dismiss_question(id: "q1") }
+    "a dismissal" => ->(c) { c.dismiss_question(id: "q1") },
+    "a removal" => ->(c) { c.dequeue(enqueued_id: "e1") }
   }.each do |what, send_it|
     it "gives #{what} the turn's deadline" do
       port, finish = serve_once(json_reply("202 Accepted", "{}"))

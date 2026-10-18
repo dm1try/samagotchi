@@ -132,6 +132,18 @@ module Samagotchi
       post("question/dismiss", { id: id, deadline: deadline }, read_body: true)
     end
 
+    # POST /session/:id/turn/dequeue: take back a queued message (one that
+    # waits for the running turn's end) before it runs. 200 {status:
+    # "removed", enqueued_id, prompt}; 409 already_started (a turn took
+    # it) or not_queued (a next-step message); 404 unknown_enqueued_id; a
+    # 404 not_found: a worker older than the route (its sidecar lacks
+    # "unqueue"); 408 = too late.
+    # @param client_id [String, nil] the removing UI, in its :turn_dequeued
+    # @return [Response]
+    def dequeue(enqueued_id:, client_id: nil)
+      post("turn/dequeue", { enqueued_id: enqueued_id, client_id: client_id, deadline: deadline }, read_body: true)
+    end
+
     # POST /session/:id/turn. 202 = queued (body carries the enqueued_id the
     # Bridge also announced in :turn_enqueued), 408 deadline_passed = the
     # Bridge read it too late and dropped it (see DEADLINE_SHARE).

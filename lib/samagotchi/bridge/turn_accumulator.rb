@@ -232,6 +232,9 @@ module Samagotchi
           queued[:images] = event[:images] if event[:images]
           queued[:delivery] = event[:delivery] if event[:delivery]
           @queued << queued
+        # Taken back before it ran (Bridge#handle_dequeue_turn).
+        when :turn_dequeued
+          dequeue([{ enqueued_id: event[:enqueued_id] }])
         when :recap_ready
           # One collected just as a turn started describes the chat before it.
           @recap = event[:recap] unless @turn

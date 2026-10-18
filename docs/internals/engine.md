@@ -466,7 +466,8 @@ persistent observers (`Engine#subscribe`), which get a copy with a monotonic `ev
 metrics, the debug log, the thinking tails, and in a worker the Bridge, which streams to the web and the attached
 TUI. Errors in the sink or an observer are caught; they never break the turn.
 
-`Engine#announce` puts an event that belongs to no turn (`ANNOUNCEABLE_EVENTS`: `turn_enqueued`, `card`,
+`Engine#announce` puts an event that belongs to no turn (`ANNOUNCEABLE_EVENTS`: `turn_enqueued`, `turn_dequeued`
+(a queued message taken back before it ran, `{enqueued_id, client_id}`: the remover's), `card`,
 `hook_notice`, `guardrail_warning`, `plugin_init_started`, and more) to the observers only.
 
 Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):

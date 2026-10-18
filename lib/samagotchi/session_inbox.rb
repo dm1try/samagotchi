@@ -276,5 +276,70 @@ module Samagotchi
     rescue Errno::ENOENT, Errno::EACCES
       nil
     end
+
+    # Where a removed queued input leaves its tombstone: input/removed/<id>,
+    # an empty file outside the *.json glob, so a wait for that input's
+    # turn (ReplyWait's turn:) learns it will never run (#removed?).
+    REMOVED_DIR = "removed"
+
+    # Take back the unclaimed input file carrying +enqueued_id+ before a
+    # turn takes it (the Bridge's POST turn/dequeue, under the event log):
+    # only one that waits for the turn's end (a queue or an image message,
+    # #waits_for_turn_end?); a next-step file may be merged at any boundary.
+    # The file is claimed first, as the drain does (the rename is the race's
+    # one winner), then deleted, and its tombstone written.
+    # @return [Array(Symbol, Input)] [:removed, the input it held],
+    #   [:not_queued, nil] for a next-step file, [:claimed, nil] when a
+    #   turn took it (its *.json.processing is there), [:none, nil] for
+    #   none
+    def self.take_queued_input(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      return [:none, nil] if id.empty?
+
+      find_new_input_files(session_dir).sort.each do |file|
+        data = JSON.parse(File.read(file))
+        next unless data.is_a?(Hash) && data["enqueued_id"] == id
+        return [:not_queued, nil] unless Array(data["images"]).any? || Delivery.queue?(data["delivery"])
+
+        claimed = claim_input_file(file) or return [:claimed, nil]
+        input = read_input(claimed)
+        mark_removed(session_dir, id)
+        FileUtils.rm_f(claimed)
+        return [:removed, input]
+      rescue JSON::ParserError, SystemCallError
+        next
+      end
+      claimed_input?(session_dir, id) ? [:claimed, nil] : [:none, nil]
+    end
+
+    # Whether a claimed input file (*.json.processing: a turn's, now or
+    # left by a crash) carries +id+.
+    def self.claimed_input?(session_dir, id)
+      Dir.glob(File.join(session_dir, INPUT_DIR, "*.json.processing")).any? do |file|
+        data = JSON.parse(File.read(file))
+        data.is_a?(Hash) && data["enqueued_id"] == id
+      rescue JSON::ParserError, SystemCallError
+        false
+      end
+    end
+    private_class_method :claimed_input?
+
+    def self.mark_removed(session_dir, id)
+      return unless ENQUEUED_ID_NAME.match?(id)
+
+      dir = File.join(session_dir, INPUT_DIR, REMOVED_DIR)
+      FileUtils.mkdir_p(dir)
+      AtomicFile.write(File.join(dir, id), "")
+    rescue SystemCallError
+      nil
+    end
+    private_class_method :mark_removed
+
+    # @return [Boolean] whether the queued input +enqueued_id+ was removed
+    #   before it ran (#take_queued_input's tombstone)
+    def self.removed?(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      ENQUEUED_ID_NAME.match?(id) && File.exist?(File.join(session_dir, INPUT_DIR, REMOVED_DIR, id))
+    end
   end
 end

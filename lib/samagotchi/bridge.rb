@@ -517,7 +517,11 @@ module Samagotchi
     # turn's end (Delivery::QUEUE_FEATURE). A worker without it would steer.
     # turn_ids: the running turn's checkpoint mark, a continue turn and a
     # Stop's last_turn carry the turn's enqueued_id (ReplyWait.own_turn).
-    FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE].freeze
+    # unqueue: POST turn/dequeue (#handle_dequeue_turn) takes a queued
+    # message back before it runs.
+    UNQUEUE_FEATURE = "unqueue"
+    FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
+                UNQUEUE_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -528,6 +532,7 @@ module Samagotchi
       %w[POST answer] => :handle_answer,
       %w[POST question/dismiss] => :handle_dismiss_question,
       %w[POST turn] => :handle_post_turn,
+      %w[POST turn/dequeue] => :handle_dequeue_turn,
       %w[POST command] => :handle_command,
       %w[POST exit] => :handle_exit_request,
       %w[POST recap] => :handle_recap,
@@ -930,6 +935,55 @@ module Samagotchi
       ack[:cut] = cut.to_s if cut
       ack[:cut_after] = @engine.steer_cut_after if cut == :waits
       [{}, 202, ack]
+    end
+
+    # POST /session/:id/turn/dequeue {enqueued_id, client_id?, deadline?}:
+    # take back a queued message (one that waits for the running turn's
+    # end: a queue or an image message) before a turn takes it. With the
+    # event log held, as its enqueue was, so :turn_dequeued always follows
+    # its :turn_enqueued; the file is claimed as the drain claims it (one
+    # rename wins), deleted, and its tombstone left for a wait on its turn
+    # (SessionInbox.take_queued_input). It never wakes the worker.
+    # 200 {status: "removed", enqueued_id, prompt}; 409 already_started (a
+    # turn took it, or the snapshot still lists it with no file left: taken,
+    # not announced yet), 409 not_queued (a next-step message: a drain may
+    # merge it any moment); 404 unknown_enqueued_id (never not_found: that is
+    # the unrouted path's, what a worker older than the route answers);
+    # 408 past its +deadline+ (see #handle_post_turn), nothing removed.
+    def handle_dequeue_turn(session_id, body)
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      id = fetched(parsed, "enqueued_id").to_s.strip
+      return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "enqueued_id required" }] if id.empty?
+
+      deadline = fetched(parsed, "deadline")
+      return BAD_DEADLINE unless deadline_valid?(deadline)
+
+      client_id = fetched(parsed, "client_id")
+      taken, input = @engine.synchronize_events do
+        raise IntakeClosed if stopped?
+        next [:expired, nil] if expired?("dequeue_expired", deadline, sid: session_id, enqueued_id: id)
+
+        SessionInbox.take_queued_input(session_dir, id).tap do |status, _|
+          @engine.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id) if status == :removed
+        end
+      end
+      dequeue_reply(taken, id, input)
+    end
+
+    def dequeue_reply(taken, id, input)
+      case taken
+      when :removed then [{}, 200, { status: "removed", enqueued_id: id, prompt: input.prompt.to_s, session_id: @session_id }]
+      when :expired then deadline_passed("removal")
+      when :not_queued
+        [{}, 409, { error: "not_queued", detail: "only a message queued for after the turn can be removed", enqueued_id: id }]
+      when :claimed then [{}, 409, { error: "already_started", enqueued_id: id }]
+      else
+        return [{}, 409, { error: "already_started", enqueued_id: id }] if @accumulator.queued.any? { |q| q[:enqueued_id] == id }
+
+        [{}, 404, { error: "unknown_enqueued_id", enqueued_id: id }]
+      end
     end
 
     # Read-only snapshot surface. AC #4: too-old reconnects re-derive state
