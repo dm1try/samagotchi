@@ -58,7 +58,8 @@
   keeps older versions of `skill_*` memories). `chi bundle list`
   shows installed + available; `chi bundle install <name>`. Settings: config.yml `bundles: <name>:`
   (`config_modification_protocol`), read at session start: after an install or a settings change,
-  tell the user to restart the session. API and bundle docs: `docs/plugins.md`.
+  tell the user to restart the session. API and bundle docs: `docs/plugins.md`. Writing one: read
+  `docs/bundle-authoring.md` in my source dir first.
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,

@@ -8,6 +8,9 @@ own.
 This is the first version of the plugin API. More of it comes later: see
 [Not yet](#not-yet).
 
+Writing a bundle? Start with [bundle-authoring.md](bundle-authoring.md): the `chi bundle new` / `test` / `check`
+loop, the event shapes, the kit, the pitfalls.
+
 ## A bundle with a plugin
 
 ```
