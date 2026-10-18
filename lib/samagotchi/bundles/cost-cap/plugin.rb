@@ -10,13 +10,16 @@
 #
 # Settings (config.yml, bundles: cost-cap:), read at each use from
 # ctx.settings, never at load:
+#   cap: 3.00       this session's own cap, set with chi --set cost-cap.cap=3
+#                   (session_settings: in the manifest); 0/off: none
 #   default: 5.00   USD cap for a session with none set; absent/0/off: none
 #   child: 2.00     for delegate children (ctx.delegate?); absent: default
 #   warn_at: 0.8    the share of the cap that warns; 0/off: no warning
 #
 # State: <data_dir>/sessions/<session id>.json, {"cap": 3.0, "step": 3.0},
 # written by /cap and by Continue; "cap": null (or false) is off for the
-# session, over the config. Without a file the cap comes from the settings.
+# session, over the config. Without a file the cap comes from the settings:
+# cap:, else child: for a delegate, else default:.
 # The cap is resolved once per session id (ctx.delegate? parses the session
 # file) and kept until /cap or Continue writes a new one.
 require "json"
@@ -164,8 +167,9 @@ class Plugin
 
   def breakdown(cost) = "#{money(cost.total)} (#{parts(cost)})"
 
-  # The session's cap and step now: the state file's, else child: for a
-  # delegate, else default:. Cached per session id.
+  # The session's cap and step now: the state file's, else the session's
+  # own cap: (--set), else child: for a delegate, else default:. Cached per
+  # session id.
   def resolve(ctx)
     session = ctx.session_id
     cached = @mutex.synchronize { @resolved }
@@ -189,9 +193,12 @@ class Plugin
 
   def configured(ctx)
     settings = ctx.settings
-    return { cap: nil, step: nil } unless settings.key?("default") || settings.key?("child")
+    return { cap: nil, step: nil } unless %w[cap default child].any? { |key| settings.key?(key) }
 
-    key = settings.key?("child") && ctx.delegate? ? "child" : "default"
+    key = if settings.key?("cap") then "cap"
+          elsif settings.key?("child") && ctx.delegate? then "child"
+          else "default"
+          end
     cap = self.class.amount(settings[key])
     { cap: cap, step: cap }
   end

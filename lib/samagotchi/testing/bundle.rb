@@ -11,6 +11,7 @@ require_relative "../peer_sources"
 require_relative "../toolkit"
 require_relative "../guardrails/gate"
 require_relative "../memory_bundle/manifest"
+require_relative "../session_setup"
 require_relative "sandbox"
 require_relative "recorder"
 require_relative "host"
@@ -74,11 +75,15 @@ module Samagotchi
         # @param dir [String] the bundle's folder (its manifest.yml)
         # @param settings [Hash] config.yml `bundles: <name>:`
         # @param host [Hash] session values (Recorder::DEFAULTS' keys)
+        # @param session_settings [Hash] the session's own values for the
+        #   bundle (chi --set), keys its manifest lists in session_settings:;
+        #   ctx.settings lays them over +settings+ (Plugin::Context#settings),
+        #   initialize(settings) doesn't see them
         # @param sandbox [Sandbox, nil] default Sandbox.current, else one of
         #   its own, left at #shutdown
         # @return [Bundle]
-        def load(dir, settings: {}, host: {}, sandbox: nil)
-          new(dir, settings: settings, host: host, sandbox: sandbox).tap(&:load!)
+        def load(dir, settings: {}, host: {}, session_settings: {}, sandbox: nil)
+          new(dir, settings: settings, host: host, session_settings: session_settings, sandbox: sandbox).tap(&:load!)
         end
 
         # A bundle chi ships (lib/samagotchi/bundles/<name>), as #load.
@@ -118,14 +123,16 @@ module Samagotchi
       # @return [Integer] how often chi was told the tools changed
       attr_reader :tools_changes
 
-      def initialize(dir, settings: {}, host: {}, sandbox: nil)
+      def initialize(dir, settings: {}, host: {}, session_settings: {}, sandbox: nil)
         @dir = File.expand_path(dir)
         @manifest = MemoryBundle::Manifest.read(dir: @dir)
         @name = @manifest.name
         @settings = stringify(settings || {})
+        @session_moves = 1
+        own = session_settings.nil? || session_settings.empty? ? {} : { setup: setup_with(session_settings, host[:setup]) }
         @own_sandbox = sandbox.nil? && Sandbox.current.nil?
         @sandbox = sandbox || Sandbox.current || Sandbox.enter
-        @recorder = Recorder.new(cwd: @sandbox.work_dir, **host)
+        @recorder = Recorder.new(cwd: @sandbox.work_dir, **host, **own)
         @sessions = Sessions.new
         @http = FakeHttp.new
         @inits = []
@@ -309,7 +316,16 @@ module Samagotchi
       end
 
       # Change the session's values (cwd:, messages:, running: …).
-      def set(**values)
+      # +session_settings+ changes the session's own values for the bundle
+      # (as Bundle.load's) and moves it to a new session id
+      # ("test-session-2", or the session_id: given beside it): chi never
+      # changes them within a session, and ctx.settings is built once per
+      # session id.
+      def set(session_settings: nil, **values)
+        unless session_settings.nil?
+          values[:setup] = setup_with(session_settings, @recorder[:setup])
+          values[:session_id] ||= "#{@recorder[:session_id] || "test-session"}-#{@session_moves += 1}"
+        end
         @recorder.set(**values)
         self
       end
@@ -361,6 +377,16 @@ module Samagotchi
           raise HookFailed, failures
         end
         result
+      end
+
+      # +setup+ (the recorder's, nil for none) with +session_settings+ as
+      # this bundle's own values, checked against the manifest's
+      # session_settings: as chi --set checks them.
+      # @raise [ArgumentError] a key the manifest doesn't list
+      def setup_with(session_settings, setup)
+        values = { @name => stringify(session_settings) }
+        BundleSessionSettings.check!(values, bundles: { @name => @manifest.session_settings }, flag: "session_settings")
+        (setup || SessionSetup.new).with(bundle_settings: values)
       end
 
       def stringify(value)

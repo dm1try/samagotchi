@@ -80,6 +80,67 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(bundle.ctx.settings).to eq("word" => "hey")
   end
 
+  describe "session_settings (a session's --set values)" do
+    let(:settings_plugin) do
+      <<~RUBY
+        class Plugin
+          def initialize(settings) = @at_load = settings
+
+          def register(chi)
+            chi.command("/seen", "what it sees") { |_args, ctx| [@at_load, ctx.settings] }
+          end
+        end
+      RUBY
+    end
+
+    def write_settings_bundle(session_settings: %w[cap])
+      write_bundle(plugin: settings_plugin)
+      path = File.join(dir, "manifest.yml")
+      File.write(path, YAML.dump(YAML.load_file(path).merge("session_settings" => session_settings)))
+    end
+
+    it "lays them over the config in ctx.settings; the plugin's initialize sees the config only" do
+      write_settings_bundle
+      bundle = load(settings: { cap: 5, warn_at: 0.5 }, session_settings: { cap: 0.25 })
+
+      at_load, seen = bundle.command("/seen")
+      expect(at_load).to eq("cap" => 5, "warn_at" => 0.5)
+      expect(seen).to eq("cap" => 0.25, "warn_at" => 0.5)
+      expect(seen).to be_frozen
+      expect(bundle.recorder[:setup].bundle_settings).to eq("kit-test" => { "cap" => 0.25 })
+    end
+
+    it "changes them mid-test with set(session_settings:), on a new session id so the per-session cache is rebuilt" do
+      write_settings_bundle
+      bundle = load(settings: { cap: 5 })
+      expect(bundle.command("/seen").last).to eq("cap" => 5)
+
+      bundle.set(session_settings: { cap: 1 })
+      expect(bundle.command("/seen").last).to eq("cap" => 1)
+      expect(bundle.ctx.session_id).to eq("test-session-2")
+
+      bundle.set(session_settings: { cap: 2 }, session_id: "other")
+      expect(bundle.command("/seen").last).to eq("cap" => 2)
+      expect(bundle.ctx.session_id).to eq("other")
+    end
+
+    it "gives the config only before the session is bound (no session id yet)" do
+      write_settings_bundle
+      bundle = load(settings: { cap: 5 }, session_settings: { cap: 1 }, host: { session_id: nil })
+      expect(bundle.command("/seen").last).to eq("cap" => 5)
+
+      bundle.set(session_id: "bound")
+      expect(bundle.command("/seen").last).to eq("cap" => 1)
+    end
+
+    it "refuses a key the manifest doesn't list in session_settings:, as chi --set does" do
+      write_settings_bundle(session_settings: %w[cap])
+      expect { load(session_settings: { default: 1 }) }.to raise_error(ArgumentError, "session_settings kit-test.default: kit-test takes cap")
+      write_settings_bundle(session_settings: [])
+      expect { load(session_settings: { cap: 1 }) }.to raise_error(ArgumentError, /kit-test takes no session settings/)
+    end
+  end
+
   it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
     write_bundle(hooks: { "guard.rb" => ["after_turn", "class Guard; def call(e) = e[:first] = true; end"] })
     shared_namespace = Samagotchi::Hooks::BundleLoader.namespace_for("kit-test")

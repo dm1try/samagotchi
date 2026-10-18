@@ -160,6 +160,32 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(bundle.questions.size).to eq(1)
     end
 
+    it "takes a session's own cap: (chi --set cost-cap.cap=N) over child: and default:, under the state file" do
+      bundle = shipped_bundle("cost-cap", settings: { "default" => 5.0, "child" => 2.0 }, session_settings: { cap: 0.5 },
+                                          host: { cost: 0.6 })
+      allow(bundle.ctx).to receive(:delegate?).and_return(true)
+      expect(bundle.command("/cap")).to start_with("cost-cap: $0.60 spent of $0.50")
+      bundle.answer({ selected: ["Continue"] })
+      generation(bundle)
+      expect(bundle.questions.last.question).to end_with("Continue raises it to $1.00.")
+      expect(state).to eq("cap" => 1.0, "step" => 0.5)
+
+      bundle.command("/cap 4")
+      expect(bundle.command("/cap")).to start_with("cost-cap: $0.60 spent of $4.00")
+    end
+
+    it "takes cap: false (--set cost-cap.cap=off) as no cap for the session, over default:" do
+      bundle = shipped_bundle("cost-cap", settings: { "default" => 0.1 }, session_settings: { cap: false }, host: { cost: 1.0 })
+      generation(bundle)
+      expect(bundle.questions).to be_empty
+      expect(bundle.command("/cap")).to eq("cost-cap: no cap ($1.00 spent)")
+    end
+
+    it "lists cap as its one session setting" do
+      expect { shipped_bundle("cost-cap", session_settings: { default: 1 }) }
+        .to raise_error(ArgumentError, "session_settings cost-cap.default: cost-cap takes cap")
+    end
+
     it "resolves the cap once per session: delegate? is read once across generations" do
       bundle = plugin({ "default" => 3.0, "child" => 2.0 }, cost: 1.0)
       allow(bundle.ctx).to receive(:delegate?).and_return(false)

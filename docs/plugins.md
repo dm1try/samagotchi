@@ -70,7 +70,9 @@ of [anytime](#anytime-true) and the `save_note` tool (see `chi.tool` below). Ins
 
 Settings work as they do for hooks ([hooks.md](hooks.md#settings)). An
 `initialize` that takes an argument gets the bundle's section of config.yml
-`bundles:`, as one Hash with string keys.
+`bundles:`, as one Hash with string keys. It runs once, when the plugin loads, before any session: it never
+sees a session's own `--set` values. A value a session may set is read from `ctx.settings` in the handler or
+command that uses it (see [Per-session settings](#per-session-settings)).
 
 ## The API: `register(chi)`
 
@@ -1147,6 +1149,7 @@ bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripte
 bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" })   # ctx.http, never the network
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
 bundle.set(cost: 2.5)                                    # ctx.cost: reported USD, or { reported:, estimated:, side:, known: }
+bundle.set(session_settings: { "cap" => 1 })             # the session's --set values (Bundle.load takes session_settings: too)
 bundle.shutdown
 ```
 
@@ -1173,6 +1176,11 @@ bundle.shutdown
 - **`ctx.cost`** is zero and known unless the test sets it: `bundle.set(cost: 2.5)` (reported USD), a Hash of the
   parts (`reported:`, `estimated:`, `side:`, `known:`; `total` is reported + estimated) or a callable giving either,
   called at each read (a counting lambda shows whether the bundle read it).
+- **`session_settings:`** (on `Bundle.load` and `bundle.set`) are the session's own `--set` values for the bundle,
+  keys its manifest lists in `session_settings:` (another raises `ArgumentError`, as chi refuses it). `ctx.settings`
+  lays them over `settings:` through chi's own `Context#settings`; the plugin's `initialize(settings)` gets
+  `settings:` only. `bundle.set(session_settings:)` moves the session to a new id (`test-session-2`, or the
+  `session_id:` given beside it): chi never changes them within a session, and builds `ctx.settings` once per id.
 - **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
   go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
 - **Sandbox.** A test runs with temp config, state, data and cache homes (config.yml, memories, `ctx.data_dir`, the

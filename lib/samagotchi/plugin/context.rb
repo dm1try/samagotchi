@@ -97,8 +97,24 @@ module Samagotchi
       # @return [String] the bundle the plugin came with
       attr_reader :bundle
 
-      # @return [Hash] config.yml `bundles: <bundle>:` (string keys), frozen
-      attr_reader :settings
+      # config.yml `bundles: <bundle>:` with the session's own values for
+      # the bundle laid over it (chi --set BUNDLE.KEY=VALUE, through the
+      # Host's setup: SessionSetup#bundle_settings), string keys, frozen.
+      # Plugin init and chi.ctx run before the session is bound: with no
+      # session id yet it is the config alone, and it is built again once
+      # per session id (the session's values never change after it starts).
+      # A plugin's initialize(settings) gets the config only: a value a
+      # session may set is read here, at call time.
+      # @return [Hash]
+      def settings
+        id = session_id
+        cached = @session_settings
+        return cached.last if cached && cached.first == id
+
+        merged = id ? overlay(@settings, session_values) : @settings
+        @session_settings = [id, merged].freeze
+        merged
+      end
 
       # @return [Logger]
       attr_reader :log
@@ -417,6 +433,20 @@ module Samagotchi
         Session.load(id, state_dir: @host.state_dir&.call || Session.default_state_dir)
       rescue ArgumentError
         nil
+      end
+
+      # The session's own values for this bundle ({} without any, or when
+      # the Host can't tell them).
+      def session_values
+        values = @host.setup&.call&.bundle_settings
+        values.is_a?(Hash) ? values.fetch(@bundle, {}) : {}
+      rescue StandardError => e
+        @log.warn("session_settings_unread", error: "#{e.class}: #{e.message}")
+        {}
+      end
+
+      def overlay(config, values)
+        values.empty? ? config : deep_freeze(config.merge(values))
       end
 
       def deep_freeze(value)
