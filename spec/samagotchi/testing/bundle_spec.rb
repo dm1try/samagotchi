@@ -186,6 +186,20 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(bundle.errors.map { |failure| failure.error.message }).to eq(["flaky broke"])
   end
 
+  it "reports every failing hook in one HookFailed error" do
+    write_bundle(hooks: {
+      "first.rb" => ["after_turn", "class First; def call(e) = raise('first broke'); end"],
+      "second.rb" => ["after_turn", "class Second; def call(e) = raise('second broke'); end"]
+    })
+    bundle = load
+
+    expect { bundle.fire(:after_turn) }.to raise_error(Samagotchi::Testing::HookFailed) { |error|
+      expect(error.failures.map(&:hook)).to eq(["first.rb (bundle kit-test)", "second.rb (bundle kit-test)"])
+      expect(error.message).to include("first broke", "second broke")
+      expect(error.cause.message).to eq("first broke")
+    }
+  end
+
   it "evaluates a tool call through a real Gate: the hooks vote on a recording Verdict, with context and targets" do
     guard = <<~RUBY
       class Guard

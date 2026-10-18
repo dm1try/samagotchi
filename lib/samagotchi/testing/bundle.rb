@@ -26,12 +26,17 @@ module Samagotchi
     class HookFailed < StandardError
       # @return [Hooks::Failure]
       attr_reader :failure
+      # @return [Array<Hooks::Failure>]
+      attr_reader :failures
 
-      def initialize(failure)
-        @failure = failure
-        error = failure.error
-        super("#{failure.hook} raised on #{failure.event}: #{error.class}: #{error.message}")
-        set_backtrace(error.backtrace) if error.backtrace
+      def initialize(failures)
+        @failures = failures.dup.freeze
+        @failure = @failures.first
+        super(@failures.map do |failure|
+          error = failure.error
+          "#{failure.hook} raised on #{failure.event}: #{error.class}: #{error.message}"
+        end.join("; "))
+        set_backtrace(@failure.error.backtrace) if @failure.error.backtrace
       end
 
       def cause = @failure.error
@@ -352,8 +357,8 @@ module Samagotchi
         result = Hooks.capture_failures(failures, &)
         if @lenient
           @errors.concat(failures)
-        elsif (first = failures.first)
-          raise HookFailed, first
+        elsif failures.any?
+          raise HookFailed, failures
         end
         result
       end
