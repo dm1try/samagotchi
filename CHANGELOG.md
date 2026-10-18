@@ -8,9 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-10-18
+
 ### Added
 
-- chi tells you when changed config.yml settings need a worker or `chi web` restart to take effect.
+- `chi bundle new NAME`, `chi bundle check [PATH] [--fix]` and `chi bundle test [PATH]` for writing a bundle: a
+  scaffold that checks clean and passes its test; a check that installs and loads the bundle in a sandbox and prints
+  one finding per line with a fix hint (manifest, sha256 lines, load errors with file:line, `requires_chi` floor,
+  trust, what it registers), `--fix` filling the sha lines; its tests run on chi's own Ruby and lib. `check` and
+  `test` run the bundle's code in their process: run them on code you'd install. docs/bundle-authoring.md (shipped
+  in the gem) is the first read.
+- chi tells you when a changed config.yml setting applies only after a restart ("server.port changed — applies after
+  a worker restart"; chi web's settings: after restarting chi web).
 - The `ruby` bundle (`chi bundle install ruby`, or the `dev` profile): an `execute` that ran RSpec and found no
   examples at all (`0 examples, 0 failures`: a path, a `-e`/`--tag` filter or a `.rspec --pattern` that matched
   nothing) steers a hint into the turn instead of leaving the run looking green.
@@ -21,12 +30,6 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
-- SSE chunks carry chi's normalized `counts` instead of the provider's raw `payload` (and no `content`). An external
-  SSE client reading them moves to `counts` / `text` / `thinking`; `?raw=1` on the worker's stream shows the raw form.
-- At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,
-  next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
-  avoid large outputs, delegate broad work to subagents".
-- Each config setting declares when a change applies; a spec keeps the docs/configuration.md table in line with it.
 - **What a parent agent may answer is one setting, `guardrails.parent_answers`** (`hard`, `standard`, `soft`), by
   each option's effect, for every question: approvals, the step-limit Continue, relayed delegate approvals and plugin
   and hook questions. **The default `soft` lets a parent give "Allow once"** (before, a parent could only deny an
@@ -34,6 +37,11 @@ and commands may change between minor versions. How releases are made:
   plainly. A wider scope and any allow on chi's own config stay the user's. `chi send --wait`, `chi answer` and
   `delegate_result` list what the parent may give. An invalid value warns and is `hard`. A parent's `/continue yes`
   (`chi send ID -m '/continue yes'`, a piped `chi --attach`) is held to it too, as chi answer's.
+- SSE chunks carry chi's normalized `counts` instead of the provider's raw `payload` (and no `content`). An external
+  SSE client reading them moves to `counts` / `text` / `thinking`; `?raw=1` on the worker's stream shows the raw form.
+- At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,
+  next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
+  avoid large outputs, delegate broad work to subagents".
 - `guardrails.parent_approvals` and `turn.parent_continue` are removed: config.yml warns about them and names
   `guardrails.parent_answers` (`parent_approvals: once` → `soft`; `turn.parent_continue: false` → `hard`). The old
   pair `parent_approvals: once` with `turn.parent_continue: false` (Allow once but no Continue) has no equivalent:
@@ -54,6 +62,9 @@ and commands may change between minor versions. How releases are made:
 - `chi web`'s end-of-turn re-read of the answer could keep a plugin's file ref outside the session's folder when
   neither the worker nor the session hub named the folder (an older worker): it now takes the folder from the session
   file, as a reload does, and drops the answer's file refs when no folder is known.
+
+Update with `chi update` (the system bundle 0.86.0, guardrails 0.9.2, cost-cap 0.2.0, dev 0.6.0 with the new ruby
+bundle 0.1.0), then restart `chi web`.
 
 ## [0.85.0] - 2026-10-18
 
@@ -3455,7 +3466,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.85.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.86.0...HEAD
+[0.86.0]: https://github.com/dm1try/samagotchi/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/dm1try/samagotchi/compare/v0.84.0...v0.85.0
 [0.84.0]: https://github.com/dm1try/samagotchi/compare/v0.83.0...v0.84.0
 [0.83.0]: https://github.com/dm1try/samagotchi/compare/v0.82.0...v0.83.0
