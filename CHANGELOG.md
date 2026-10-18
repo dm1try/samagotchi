@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   the deleted old session's folder.
 - Guardrails: `rm` and protected-path checks treat a `$(cat <<'EOF' … EOF)` message body as data, while still
   checking substitutions that run, piped messages and real commands beside a message.
+- Web: a question or approval card arriving in the stage takes the focus without scrolling it, so the stage no longer
+  snaps to the card before its room eases in; the stage still brings the card into view.
 
 ## [0.81.0] - 2026-10-18
 

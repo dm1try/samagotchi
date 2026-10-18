@@ -55,7 +55,7 @@ class FakeEl {
   getAttribute(name) { return this.attrs?.[name] ?? null; }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   click() { (this.listeners.click || []).forEach((fn) => fn({})); }
-  focus() { this.focused = true; }
+  focus(opts) { this.focused = true; this.focusOpts = opts; }
   matchesOne(sel) {
     const m = sel.match(/^([a-z]*)((?:\.[\w-]+)*)(:checked)?$/);
     if (!m) throw new Error(`selector ${sel}`);
@@ -84,7 +84,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, staged = false } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -98,7 +98,7 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
   const cards = createQuestionCards({
     sessionId: () => "s1",
     clientId: "web-me",
-    place: (card) => { history.appendChild(card); card.isConnected = true; },
+    place: (card) => { history.appendChild(card); card.isConnected = true; return staged; },
     isNearBottom: () => (typeof near === "function" ? near(history) : near),
     scrollToEnd: () => { scrolled += 1; },
     removeHintIfEmpty: () => { hintDrops += 1; },
@@ -557,6 +557,18 @@ test("a new card takes the focus from an empty composer, its first option", asyn
   const [a, b] = cards.questionCard().querySelectorAll(".question-option input");
   assert.equal(a.focused, true);
   assert.equal(b.focused, undefined);
+});
+
+test("a card the stage took takes the focus without scrolling (the stage eases to it); the history's scrolls", async () => {
+  for (const staged of [true, false]) {
+    const prompt = { value: "" };
+    const { cards } = setup({ staged, page: { prompt, activeElement: prompt } });
+    cards.renderQuestion(PQ);
+    await flush();
+    const first = cards.questionCard().querySelector(".question-option input");
+    assert.equal(first.focused, true);
+    assert.deepEqual(first.focusOpts, staged ? { preventScroll: true } : undefined);
+  }
 });
 
 test("with no options the response box takes the focus (the page had it)", async () => {
