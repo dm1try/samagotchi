@@ -608,8 +608,10 @@ REPL alike:
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
   as a normal prompt.
 - `/unqueue` (attached terminal) takes back the newest line this terminal
-  queued that hasn't started: `removed: <its first 60 characters>`, then the one
-  before it on the next `/unqueue`; `(nothing queued: …)` when none waits,
+  queued that hasn't started: `removed: <its first 60 characters>`, and its text
+  goes back into the input to change and send again (not over typed text: then
+  it is in the input history, ↑; not with input from a pipe; its images don't
+  come back), then the one before it on the next `/unqueue`; `(nothing queued: …)` when none waits,
   `(not removed: it already started)` when its turn won the race, `(not removed:
   it is already gone)` when another client removed it. Other terminals that
   showed it say `(a queued message was removed)`; the web drops its bubble. A
@@ -627,7 +629,9 @@ REPL alike:
   running turn's card with the commands queued for its end, until its turn
   starts; its **×** (`Remove from queue`, once the worker acked it) takes it
   back before it runs, in every tab (a toast says why when it can't: it
-  already started, it is gone, no live worker); `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
+  already started, it is gone, no live worker), and puts its text back into an
+  empty composer to change and send again (a draft stays: the text is then in
+  the toast; images don't come back); `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
   thinking away). Cut is enabled only while the step has streamed nothing but
   thinking and cutting is on for the model (the line says `cuts at about 0:25
   if you choose cut in now` until the thinking passes `steer_cut_after`, and

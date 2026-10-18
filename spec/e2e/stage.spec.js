@@ -335,6 +335,9 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
   await second.locator("button.unqueue").click();
   await page.mouse.move(0, 0); // a pointer left over the stage defers its hand-off
   await expect(stageEl(page).locator(".ts-queued .bubble.user")).toHaveText([/QUEUED-LATER please/]);
+  // Its text is back in the empty composer, to change and send again (edit).
+  await expect(page.locator("#prompt")).toHaveValue("QUEUED-LATER second");
+  await page.locator("#prompt").fill("");
 
   // The first one's turn runs; nothing waits below it.
   await expect(stageEl(page).locator(".ts-prompt")).toHaveText(/QUEUED-LATER please/, { timeout: 30_000 });

@@ -15,16 +15,22 @@ function queuedBubble(enqueuedId = "e1") {
   return el;
 }
 
-function harness({ dequeue }) {
+function harness({ dequeue, draft = "" }) {
   const toasts = [];
   const calls = [];
+  const composer = { text: draft };
   const unqueue = createUnqueue({
     sessionId: () => "s1",
     clientId: "web:t1",
     dequeue: (...args) => { calls.push(args); return dequeue(...args); },
     toast: (text) => toasts.push(text),
+    putBack: (text) => {
+      if (composer.text.trim()) return false;
+      composer.text = text;
+      return true;
+    },
   });
-  return { unqueue, toasts, calls };
+  return { unqueue, toasts, calls, composer };
 }
 
 const click = (el) => ({ target: el, stopPropagation() {} });
@@ -71,4 +77,20 @@ test("a click anywhere else, or on a bubble with no enqueued_id yet, posts nothi
   await unqueue.onClick(click(bubble));
   assert.deepEqual(calls, []);
   bubble.remove();
+});
+
+test("edit: the removed text goes back into an empty composer, to change and send again", async () => {
+  const { unqueue, composer, toasts } = harness({ dequeue: async () => ({ status: "removed", prompt: "fix the tests" }) });
+  const bubble = queuedBubble("e3");
+  await unqueue.onClick(click(bubble.querySelector("button.unqueue")));
+  assert.equal(composer.text, "fix the tests");
+  assert.deepEqual(toasts, []);
+});
+
+test("edit: a draft in the composer stays; the removed text is in the toast", async () => {
+  const { unqueue, composer, toasts } = harness({ dequeue: async () => ({ status: "removed", prompt: "fix the tests" }), draft: "my draft" });
+  const bubble = queuedBubble("e4");
+  await unqueue.onClick(click(bubble.querySelector("button.unqueue")));
+  assert.equal(composer.text, "my draft");
+  assert.deepEqual(toasts, ["Removed (your draft stays): fix the tests"]);
 });

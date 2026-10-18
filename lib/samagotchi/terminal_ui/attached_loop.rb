@@ -650,11 +650,22 @@ module Samagotchi
 
         # Removed, started or gone: no longer this run's to take back.
         @my_queued.delete(id) if [200, 404, 409].include?(reply.status)
-        return @screen.commit("removed: #{first_line_clip(reply.json&.fetch("prompt", nil))}") if reply.status == 200
+        return unqueued(reply.json&.fetch("prompt", nil).to_s) if reply.status == 200
 
         @screen.commit(UNQUEUE_REFUSED[error] || "could not remove the queued message (#{[reply.status, error].compact.join(" ")})")
       rescue SystemCallError, IOError => e
         @screen.commit("could not remove the queued message (#{worker_down(e)})")
+      end
+
+      # The removal's line, and its text back in the input to change and
+      # send again (as a failed turn's prompt comes back, #restore_prompt):
+      # not over typed text, and not for lines from a pipe. Its images are
+      # not put back.
+      def unqueued(prompt)
+        @screen.commit("removed: #{first_line_clip(prompt)}")
+        return if @wait_at_eof || prompt.strip.empty?
+
+        @screen.commit("(the removed message is in the input history: ↑)") unless @reader&.prefill(prompt)
       end
 
       def first_line_clip(text, max = 60)

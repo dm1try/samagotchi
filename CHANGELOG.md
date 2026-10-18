@@ -11,7 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - A message queued for after the running turn can be taken back before it runs: the × on its bubble in the web,
-  `/unqueue` in an attached terminal (its newest queued line). Every UI drops it, and a `chi send --queue --wait` on
+  `/unqueue` in an attached terminal (its newest queued line). Its text comes back into the input to change and send
+  again. Every UI drops it, and a `chi send --queue --wait` on
   it ends with `removed` (exit 1). `/queue` is now listed in the attached terminal's Tab and `/help` too.
 
 ### Fixed

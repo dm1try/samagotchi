@@ -1408,6 +1408,45 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
   end
 end
 
+# Edit: /unqueue puts the removed text back in the input, to change and send
+# again, as a failed turn's prompt comes back.
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:typed) { Queue.new }
+  let(:reads) { Queue.new }
+
+  before do
+    allow(client).to receive(:post_turn)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e1","delivery":"queue"}'))
+    allow(client).to receive(:dequeue)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"removed","enqueued_id":"e1","prompt":"fix the tests"}'))
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
+      double("stream", close: nil)
+    end
+    # Each read reports its prefill, then blocks until the spec types.
+    @thread = Thread.new { attached.run(input: ->(_prompt, prefill) { reads << prefill; typed.pop }) }
+    expect(reads.pop(timeout: 2)).to be_nil
+  end
+
+  after do
+    typed << nil
+    @thread.join(2)
+  end
+
+  it "puts the removed text into the next read" do
+    typed << "/queue fix the tests"
+    expect(reads.pop(timeout: 2)).to be_nil
+    typed << "/unqueue"
+
+    # The read after the line opens empty; the removal then restarts it with the text.
+    expect([reads.pop(timeout: 2), reads.pop(timeout: 2)]).to eq([nil, "fix the tests"])
+    expect(screen.lines).to include("removed: fix the tests")
+  end
+end
+
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue offer" do
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
