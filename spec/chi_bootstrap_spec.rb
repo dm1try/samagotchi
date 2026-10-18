@@ -69,7 +69,7 @@ RSpec.describe "chi bootstrap" do
     expect(server.requests.map(&:path)).to include("/props", "/v1/chat/completions")
     expect(out).to include("system bundle: v#{Samagotchi::VERSION} installed\n",
                            "core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n")
-    expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer\)$/)
+    expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby\)$/)
     expect(out).not_to include("optional bundles", "Also install dev")
     expect(Dir.children(bundles_dir).reject { |e| e.end_with?(".lock") }.sort)
       .to eq(%w[agents-md check-in core cost-cap guardrails loop-guard samagotchi-system slow-commands])
@@ -480,10 +480,10 @@ RSpec.describe "chi bootstrap" do
 
       expect([code, err]).to eq([0, ""])
       expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n",
-                             "Also install dev (known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer)? [y/N] ",
-                             "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer\n")
+                             "Also install dev (known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby)? [y/N] ",
+                             "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby\n")
       expect(out).to match(/^ +chi bundle list +# the installed bundles$/)
-      expect(installed).to eq(%w[agents-md btw check-in claude-peer codex-peer coordinator core cost-cap dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills slow-commands source-links])
+      expect(installed).to eq(%w[agents-md btw check-in claude-peer codex-peer coordinator core cost-cap dev github-pr guardrails known-names loop-guard mcp ruby samagotchi-system skills slow-commands source-links])
 
       _, again, = run_command("", target, "--no-test")
       expect(again).not_to include("Also install dev")

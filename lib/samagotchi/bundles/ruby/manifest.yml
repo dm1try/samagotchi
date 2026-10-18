@@ -1,0 +1,11 @@
+---
+name: ruby
+version: 0.1.0
+scope: system
+description: "An RSpec run with no examples at all (`0 examples, 0 failures`) steers a hint into the turn: check the path, the filter (-e/--tag) or the .rspec --pattern"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:f088ae539b1a0c46b35823fb69be42524ce8eac34e185b20ffef7e05d62dbd5f
+# after_tool_call's result: (0.57.0)
+requires_chi: ">= 0.57.0"

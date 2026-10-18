@@ -1,6 +1,6 @@
 ---
 name: dev
-version: 0.5.1
+version: 0.6.0
 scope: system
 description: "Developer tools"
 trust_level: reviewed
@@ -15,3 +15,4 @@ includes:
 - coordinator
 - claude-peer
 - codex-peer
+- ruby
