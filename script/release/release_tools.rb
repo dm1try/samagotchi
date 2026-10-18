@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require "digest"
 require "open3"
 require "yaml"
+require_relative "../../lib/samagotchi/memory_bundle/shas"
 
 # The logic behind the Rakefile's `bundles:` and `release:` tasks, kept out of
 # lib/ (it isn't shipped) and free of Rake so the specs can call it. Every
@@ -37,65 +37,9 @@ module ReleaseTools
     Dir.glob(File.join(root, BUNDLES_DIR, "*", "manifest.yml")).map { |m| File.dirname(m) }.sort
   end
 
-  # The manifest text with every sha256 line recomputed from the file it
-  # names, the layout otherwise untouched. The three shapes:
-  #   files:            a.md: sha256:<hex>             (dir/a.md)
-  #                     a.md:\n    sha256: sha256:<hex> (dir/a.md, with description:)
-  #   hooks:            h.rb:\n    sha256: sha256:<hex> (dir/hooks/h.rb)
-  #   plugin:           file: p.rb\n  sha256: sha256:<hex> (dir/p.rb)
-  #   scripts:          s.rb: sha256:<hex>             (dir/scripts/s.rb)
-  # Returns [text, [[relative file, old sha, new sha], ...]] for the lines
-  # that changed. A named file that's missing raises, and so does a files:
-  # entry none of those shapes matched (a quoted sha, a flow mapping), which
-  # would otherwise be skipped without a word.
-  def refresh_manifest(text, dir)
-    parsed = YAML.safe_load(text) || {}
-    plugin_file = parsed.dig("plugin", "file")
-    top = sub = nil
-    changes = []
-    seen = []
-    lines = text.lines.map do |line|
-      if line.match?(/\A[^\s#]/)
-        top = line[/\A([^\s#][^:]*):/, 1]
-        sub = nil
-      end
-      sub = line[/\A  ([^\s#][^:]*):/, 1] if line.match?(/\A  [^\s#]/)
-      file, prefix = sha_line(line, top, sub, plugin_file)
-      next line unless file
-
-      seen << file if top == "files"
-
-      path = File.join(dir, file)
-      raise Error, "#{File.basename(dir)}/manifest.yml names #{file}, which isn't there" unless File.file?(path)
-
-      old = line[/sha256:(\h*)\s*\z/, 1]
-      new = Digest::SHA256.hexdigest(File.binread(path))
-      changes << [file, old, new] unless old == new
-      "#{prefix}sha256:#{new}#{"\n" if line.end_with?("\n")}"
-    end
-    unread = (parsed["files"].is_a?(Hash) ? parsed["files"].keys.map(&:to_s) : []) - seen
-    unless unread.empty?
-      raise Error, "#{File.basename(dir)}/manifest.yml: no sha line to refresh for files: #{unread.join(", ")} " \
-                   "(write `name: sha256:<hex>`, or a mapping with an unquoted `sha256: sha256:<hex>` line)"
-    end
-    [lines.join, changes]
-  end
-
-  # [file relative to the bundle dir, the line up to its sha256: value] for a
-  # sha line, nil for any other line.
-  def sha_line(line, top, sub, plugin_file)
-    case top
-    when "files"
-      m = line.match(/\A(    sha256: )sha256:\h*\s*\z/) and return sub && [sub.delete("\"'"), m[1]]
-      m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*\s*\z/) and [m[2], m[1]]
-    when "hooks"
-      m = line.match(/\A(    sha256: )sha256:\h*\s*\z/) and sub and [File.join("hooks", sub.delete("\"'")), m[1]]
-    when "plugin"
-      m = line.match(/\A(  sha256: )sha256:\h*\s*\z/) and plugin_file and [plugin_file, m[1]]
-    when "scripts"
-      m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*\s*\z/) and [File.join("scripts", m[2]), m[1]]
-    end
-  end
+  # The manifest text with its sha256 lines recomputed, and the lines that
+  # changed (MemoryBundle::Shas.refresh, which raises Shas::Error).
+  def refresh_manifest(text, dir) = Samagotchi::MemoryBundle::Shas.refresh(dir, text)
 
   # Rewrites every bundle manifest whose sha lines are stale. Returns
   # {"bundle/manifest.yml" => changes}.
@@ -112,8 +56,11 @@ module ReleaseTools
 
   def stale_shas(root)
     bundle_dirs(root).flat_map do |dir|
-      _, changes = refresh_manifest(File.read(File.join(dir, "manifest.yml")), dir)
-      changes.map { |file, _old, _new| "#{File.basename(dir)}: stale sha256 for #{file} (rake bundles:sha)" }
+      Samagotchi::MemoryBundle::Shas.stale(dir).map do |stale|
+        next "#{File.basename(dir)}: no sha256 line for #{stale.file} (add one, then rake bundles:sha)" if stale.old.nil?
+
+        "#{File.basename(dir)}: stale sha256 for #{stale.file} (rake bundles:sha)"
+      end
     end
   end
 

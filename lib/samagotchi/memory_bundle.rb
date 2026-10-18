@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "memory_bundle/manifest"
+require_relative "memory_bundle/shas"
 require_relative "memory_bundle/source"
 require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/placeholder"
