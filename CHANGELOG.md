@@ -8,26 +8,31 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-10-18
+
 ### Added
 
-- `chi send --wait --turn T ID` waits for that exact running, queued or last-ended turn; JSON waits expose `turn_id`.
+- `chi send --wait --format json` names the turn it waited for (`turn_id`), and `chi send --wait --turn T ID` waits
+  for exactly that turn: running, queued or the last one that ended. A parent waiting again after exit 3 or 4 uses it
+  (docs/sub-agent.md).
 - Bundles: the experimental test kit's `before_tool_call_event` builds the real guardrail event without firing
   bundle hooks.
 
 ### Fixed
 
-- Bundles: the test kit reports all failing hooks from one call in a single error.
-- Bundles: the test kit's boundary scan catches `require_relative` escapes into chi's `lib/`.
-- HTTP: failed-request messages in logs are now short, single-line UTF-8.
-- Bundles: the test kit explains when guardrails don't dispatch a `before_tool_call` event.
+- `chi send --wait ID` with no message, on an idle session whose last turn already ended, returns that turn (its
+  reply, or its end when it left none) instead of timing out `running`.
+- Web: a question or approval card arriving in the stage no longer snaps the stage to it; the stage eases it into
+  view.
+- Guardrails: `rm` and protected-path checks treat a `$(cat <<'EOF' … EOF)` commit or PR message as data; a
+  substitution that runs, a piped message and a real command beside it are still checked.
 - A late side request (an idle recap, `ctx.ask_model`) after the engine moved to another session no longer recreates
   the deleted old session's folder.
-- Guardrails: `rm` and protected-path checks treat a `$(cat <<'EOF' … EOF)` message body as data, while still
-  checking substitutions that run, piped messages and real commands beside a message.
-- Web: a question or approval card arriving in the stage takes the focus without scrolling it, so the stage no longer
-  snaps to the card before its room eases in; the stage still brings the card into view.
-- `chi send --wait ID` with no message, on an idle session whose last turn already ended, returns that turn (its reply,
-  or its end when it left none) instead of timing out `running`: a parent waiting again after exit 4 gets the answer.
+- HTTP: failed-request messages in the log are one short UTF-8 line.
+- Bundles, test kit: one `HookFailed` names every hook that failed; the boundary scan catches a `require_relative`
+  into chi's `lib/`; `before_tool_call_event` says when the guardrails didn't dispatch the event.
+
+Update with `chi update` (the system bundle 0.82.0), then restart `chi web`.
 
 ## [0.81.0] - 2026-10-18
 
@@ -3359,7 +3364,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.81.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.82.0...HEAD
+[0.82.0]: https://github.com/dm1try/samagotchi/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/dm1try/samagotchi/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/dm1try/samagotchi/compare/v0.79.0...v0.80.0
 [0.79.0]: https://github.com/dm1try/samagotchi/compare/v0.78.0...v0.79.0
