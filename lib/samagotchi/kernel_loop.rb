@@ -525,8 +525,11 @@ module Samagotchi
     end
 
     # The payload a :generation_chunk event carries: llama.cpp's last chunk
-    # echoes the whole rendered prompt, which nothing reads and every SSE
-    # client would get (the kernel's own reads keep the full payload).
+    # echoes the whole rendered prompt, which nothing reads. SSE clients get
+    # no payload at all (Bridge::ClientEvent), but the event is still written
+    # to the debug log and handed to in-process observers (the ring, which
+    # `?raw=1` replays, SessionMetrics, hooks), so the prompt stays out of
+    # it (the kernel's own reads keep the full payload).
     def event_payload(payload)
       payload.is_a?(Hash) ? payload.except("prompt") : payload
     end

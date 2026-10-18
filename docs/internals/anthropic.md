@@ -97,8 +97,8 @@ index: `message_start` (served model, usage), `content_block_start` (text, think
   back); a `tool_use` input is an object; a thinking block always has a `signature` (`""` when none came).
 - `finish_reason` from `FINISH_REASONS`: `end_turn`/`stop_sequence` → `stop`, `max_tokens` and
   `model_context_window_exceeded` → `length`, `tool_use` → `tool_calls`, `refusal` → `refusal`; anything else as it is.
-- Usage in the OpenAI shape the rest of chi reads (`TokenUsage`, `SessionMetrics`, `ContextStatus`, the web's
-  `ctx.js`): Messages counts `input_tokens` without the cache, so `prompt_tokens` is input + cache reads + cache
+- Usage in the OpenAI shape the rest of chi reads (`TokenUsage`, `SessionMetrics`, `ContextStatus`, and the
+  Bridge's chunk `counts` the web's `ctx.js` reads): Messages counts `input_tokens` without the cache, so `prompt_tokens` is input + cache reads + cache
   writes, with `cached_tokens` and `cache_write_tokens` under `prompt_tokens_details`. Every field is optional and the
   later value wins; all zeros is no usage (`#usage_payload`: Fireworks' `message_start` carries only zeros).
 

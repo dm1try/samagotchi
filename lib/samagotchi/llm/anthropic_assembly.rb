@@ -102,7 +102,7 @@ module Samagotchi
 
       # +event+ as on_delta passes it on: one that carries usage gets the
       # usage so far in the OpenAI shape as its `usage` (SessionMetrics,
-      # ContextStatus and ctx.js read that).
+      # ContextStatus and the Bridge's chunk `counts` read that).
       def with_usage(event)
         return event unless %w[message_start message_delta].include?(event["type"]) && (payload = usage_payload)
 

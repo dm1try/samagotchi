@@ -86,6 +86,23 @@ Configuration:
 
 The `context.*` settings are read once, when the turn's `ContextStatus` is built, so a change counts from the next turn.
 
+Per-chunk counts on the SSE stream: the Bridge sends each `generation_chunk` with chi's own `counts`
+(`Bridge::ClientEvent`, from `ContextUsage.normalize` of the provider's payload) instead of the payload, and the
+web's meter (`ctx.js#extractCtxPct`) counts their `total_tokens` against the window (their
+`context_window_tokens` when the server reported one, else `generation_started`'s) or the budget when smaller, as
+`ContextStatus` does. The rules:
+
+- `ctx_pct` is not in `counts`: normalize computes it without the session's LLM context budget.
+- Counts are cumulative for the request and appear only when the server reported any; a missing key means unknown,
+  never 0. Fireworks' all-zero `message_start` gets no usage (`AnthropicAssembly#usage_payload`), and other zeros
+  read as nil (`TokenUsage.first_positive`).
+- `prompt_tokens` includes cached tokens: the Anthropic assembly adds the cache read and write in, and for llama.cpp
+  `TokenUsage.from_payload` reads `tokens_evaluated` (the whole prompt) before `timings.prompt_n` (the uncached part),
+  an order `spec/bridge/client_event_spec.rb` pins on a real fixture.
+- `context_window_tokens` is there only when the payload reported a window (`n_ctx`, `context_window`); llama.cpp's
+  `/completion` chunks don't.
+- A remote host that reports usage only in its last chunk moves the meter at the generation's end, as before.
+
 Context window lookup (`ContextWindow.resolve`, the first that answers wins; the event's `window_source` / the line's
 `window_src` names it):
 

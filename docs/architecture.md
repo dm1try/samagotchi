@@ -245,10 +245,33 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   too-old reconnects, and cursors from another worker's epoch, receive a `reset` marker carrying
   `session_state_snapshot`. `?snapshot=1` joins with a snapshot frame instead of a replay;
   `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`).
+  Each event goes out as clients get it (`Bridge::ClientEvent.project`, in `SSEWriter#write_event`, live
+  and replayed alike); only a `generation_chunk` changes, to chi's own format (the chunk contract below).
+  `?raw=1` writes events as the engine emitted them, for debugging on the worker's port: `chi web`'s
+  `/api/sessions/:id/stream` never passes it on (`Web::App#stream_query`).
   An attached terminal's stream (`EventStream` with `rediscover:`) looks for the session's live
   worker whenever it drops: a new one (a restart) is followed from its snapshot, and the terminal
   sends its requests there (`worker_changed`); it gives up after ~12 s, or at once when the session
   was stopped.
+
+  The wire chunk (the contract; the engine's own event keeps the provider's `payload` and the raw `content`):
+
+  ```
+  event: generation_chunk
+  data: {"type":"generation_chunk","iteration":2,"text":"…","thinking":"",
+         "tool_call":true,                                   // only when set
+         "counts":{"prompt_tokens":489,"completion_tokens":12,
+                   "total_tokens":501,"context_window_tokens":32768},  // only when the server reported counts
+         "event_seq":812}
+  ```
+
+  `counts` is `ContextUsage.normalize` of the provider's payload without `ctx_pct` (normalize computes it
+  without the session's LLM context budget; a client counts `total_tokens` against the window or budget, as
+  `ContextStatus#generation_done` does for the TUI) and with its nil keys left out: cumulative for the
+  request, a missing key means unknown (never 0), `prompt_tokens` includes cached tokens, and
+  `context_window_tokens` is there only when the payload reported a window itself (llama.cpp's `/completion`
+  doesn't: the client uses `generation_started`'s). Unknown provider fields never cross; a field is added here
+  when a client needs it, never as a catch-all bag. Details: [internals/context-telemetry.md](internals/context-telemetry.md).
 - `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Only the bridge's own session: another id, in the path or the body's
@@ -450,7 +473,9 @@ both go through `ToolRunner` (events, hooks, veto, output cap) and
 chat `tool_calls`) are built by one table, `Tools::BuiltinCalls`, from the
 parsed `{name, args}` (derived from `TOOL_SCHEMAS`), so a call looks the same to
 hooks and tools whichever model made it. Both loops' `generation_chunk` carries
-`thinking:`, `text:` and `content:` (both): the chat loop's thinking is the
+`thinking:`, `text:`, `content:` and the provider's `payload:` (the Bridge projects it for its
+clients: `text`, `thinking`, `tool_call` and chi's `counts`, no `payload` or `content`; see the
+Bridge's stream above): the chat loop's thinking is the
 server's `reasoning_content`; the raw-prompt loop splits each generation's
 stream with a fresh `ThoughtStreamSplitter` (Qwen's `<think>` and Gemma's
 `<|channel>thought … <channel|>` are thinking, tool-call bodies are dropped

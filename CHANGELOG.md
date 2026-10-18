@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- SSE chunks carry chi's normalized `counts` instead of the provider's raw `payload` (and no `content`). An external
+  SSE client reading them moves to `counts` / `text` / `thinking`; `?raw=1` on the worker's stream shows the raw form.
 - At the top context bucket (no forget layer) the model's `[CONTEXT: …]` line asks for a short handoff note (state,
   next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
   avoid large outputs, delegate broad work to subagents".
