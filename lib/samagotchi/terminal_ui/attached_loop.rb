@@ -1528,8 +1528,13 @@ module Samagotchi
         id = event[:enqueued_id]
         @my_queued.delete(id)
         if @open_ids.delete?(id)
-          @own_failed = true
-          @screen.commit("(your queued message was removed before it ran)") unless own?(event[:client_id])
+          if own?(event[:client_id])
+            @own_empty = true
+            @screen.commit("(removed before it ran)")
+          else
+            @own_failed = true
+            @screen.commit("(your queued message was removed before it ran)")
+          end
         elsif @shown_enqueued.delete?(id)
           @screen.commit("(a queued message was removed)")
         end
