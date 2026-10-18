@@ -63,7 +63,7 @@ and commands may change between minor versions. How releases are made:
   neither the worker nor the session hub named the folder (an older worker): it now takes the folder from the session
   file, as a reload does, and drops the answer's file refs when no folder is known.
 
-Update with `chi update` (the system bundle 0.86.0, guardrails 0.9.2, cost-cap 0.2.0, dev 0.6.0 with the new ruby
+Update with `chi update` (the system bundle 0.86.0, core 0.3.3, guardrails 0.9.2, cost-cap 0.2.0, dev 0.6.0 with the new ruby
 bundle 0.1.0), then restart `chi web`.
 
 ## [0.85.0] - 2026-10-18
