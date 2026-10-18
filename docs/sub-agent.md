@@ -99,7 +99,8 @@ question and starts a new turn. It can't be dismissed.
 A parent may Continue by default: Continue grants no permission (every tool
 call still meets the guardrails), it only spends time and tokens. With
 `guardrails.parent_answers: hard` in chi's config.yml (config.yml only, no
-environment variable) a parent may only Stop: `chi answer` and the worker
+environment variable; a session's own `parent_answers` may tighten it, see
+[Guardrails](guardrails.md#a-sessions-own-level)) a parent may only Stop: `chi answer` and the worker
 refuse a Continue (exit 1, `a parent agent may only stop this turn here`), the
 question block's command is the Stop, and the user continues it from the web or
 the terminal. See [Guardrails](guardrails.md#answers-from-a-parent-agent).
@@ -126,7 +127,8 @@ the relay (a `--no-shared` REPL, `--non-interactive`).
 An approval is a guardrail rule with `verdict: ask`: its user said "ask me". A
 parent may always deny it (`--option Deny --text "why"`, `--text` alone, or
 `--dismiss`). By default (`guardrails.parent_answers: soft` in chi's
-config.yml, which has no environment variable) it may also give "Allow once";
+config.yml, which has no environment variable, unless the session's own
+`parent_answers` is stricter) it may also give "Allow once";
 the wider scopes never go, and neither does any allow on chi's own config,
 hooks or guardrail rules: `chi answer` refuses those with exit 1 and a line
 like `only Allow once (guardrails.parent_answers: soft) can be given here: deny
@@ -212,7 +214,8 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
   JSON. If you won't answer, add `--dismiss` instead: chi does nothing it asked
   about, finishes with what it found, and the reply comes back (exit 0).
 - `question.kind: approval`: chi wants to run something its user's guardrails
-  flagged. What you may give follows chi's `guardrails.parent_answers`, and the
+  flagged. What you may give follows chi's `guardrails.parent_answers` (or the
+  session's own, stricter `parent_answers`), and the
   question says it: when its `allowed_options` (and the text block's `allow:`
   line) list "Allow once" (`soft`, the default), you may allow that one call if
   your task clearly needs it; never a wider scope (this session, a repo, a

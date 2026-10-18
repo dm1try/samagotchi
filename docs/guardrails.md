@@ -176,11 +176,11 @@ apart), from a piped or marked `chi --attach` or REPL, from `chi -p
 has no command route. `--parent-answers` on `--attach`/`--resume` is ignored,
 never sent as the command.
 
-config.yml is read each time an answer is checked, and a session's own value
-stays as saved: it binds whenever it is the stricter of the two, so one saved
-above config.yml's binds again once config.yml is changed to something looser
-than it, and never follows config.yml either way. A `delegate` child keeps the
-value it started with, whatever its parent changes later.
+config.yml is read each time an answer is checked; a session's own value stays
+as saved and binds whenever it is the stricter of the two. A session saved as
+`standard` under a `hard` config.yml follows `hard`, and `standard` again once
+config.yml is loosened. A `delegate` child keeps the value it started with,
+whatever its parent changes later.
 
 A parent agent on a real terminal (a PTY: tmux, a kitty window) with no agent
 marker set looks like you, and can loosen it; so can one that edits a session

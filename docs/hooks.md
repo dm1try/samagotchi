@@ -117,7 +117,7 @@ end
 
 **Tag the options that spend or permit.** A question can be answered by a
 parent agent (`chi answer`, a piped `chi --attach`), and
-`guardrails.parent_answers` decides which options it may pick by their
+`guardrails.parent_answers` (or the session's own, stricter one) decides which options it may pick by their
 `effects:` (label => effect): `:spend` (more time or money: a Continue),
 `:permit` (one call), `:permit_wide` (more than one), `:deny` (a Stop or a
 Deny); an option left out is a plain `:answer`, which a parent may always

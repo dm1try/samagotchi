@@ -1611,7 +1611,7 @@ bundles:
   pass the spend, saved for the session) and **Stop** (the turn stops, `canceled` with `stopped_by: cost-cap`, and a
   card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops. A parent
   agent answering it (`chi answer`) may Continue under `guardrails.parent_answers: soft` or `standard`, and only Stop
-  under `hard` (Continue is tagged `:spend`; see [Guardrails](guardrails.md#answers-from-a-parent-agent)). `/cap N` is
+  under `hard` (config.yml's, or the session's own when stricter) (Continue is tagged `:spend`; see [Guardrails](guardrails.md#answers-from-a-parent-agent)). `/cap N` is
   a command, not an answer: a parent that sends it (`chi send ID -m '/cap 10'`) raises the cap under any strategy.
 - **The cap of a session:** the one `/cap` or a Continue set for it, else its own `cap:` (`chi --set
   cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off`, `0` or a negative number for none), else `child:` for a

@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A session's own `parent_answers`, tighten-only: `chi --parent-answers LEVEL` and `chi send --new --parent-answers
+  LEVEL` save it in the new session (kept by respawns, forks and continues; a `delegate` child starts with its
+  parent's), and what a parent agent may answer there is the stricter of it and config.yml's
+  `guardrails.parent_answers`, in `chi answer`, the worker and the guidance. `/parent-answers` shows and sets it;
+  anyone may tighten it, only you loosen it, at the REPL, an attached terminal or the web.
+
 ### Fixed
 
 - The known-names hook treats `#` URL fragments as token boundaries, allowing exact protected names in URLs while
