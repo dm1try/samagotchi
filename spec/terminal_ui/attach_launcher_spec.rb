@@ -221,7 +221,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
             first_command: nil, no_interrupt: false, default_input: false, wait_at_eof: false,
-            parent_answers: false, state_dir: Samagotchi::Session.default_state_dir)
+            as_parent: false, state_dir: Samagotchi::Session.default_state_dir)
     expect(described_class).to have_received(:close_surface).with(surface)
   end
 
@@ -235,7 +235,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
 
     described_class.run(attach: "s1")
 
-    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(parent_answers: true))
+    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(as_parent: true))
   end
 
   it "has the loop wait for the -p turn when the input is a pipe" do

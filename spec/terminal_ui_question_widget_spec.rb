@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
   # A person at the widget; a parent agent's answers (piped stdin, an agent
   # marker) have their own examples below.
-  before { allow(agent).to receive(:parent_answers?).and_return(false) }
+  before { allow(agent).to receive(:as_parent?).and_return(false) }
 
   def answer_with(input, question = pending)
     out = StringIO.new
@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     end
 
     before do
-      allow(agent).to receive(:parent_answers?).and_call_original
+      allow(agent).to receive(:as_parent?).and_call_original
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
     end

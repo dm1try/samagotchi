@@ -1579,7 +1579,7 @@ module Samagotchi
         end
 
         begin
-          parent = parent_answers? ? { client_id: ClientId::CLI_ANSWER } : {}
+          parent = as_parent? ? { client_id: ClientId::CLI_ANSWER } : {}
           @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform, **parent)
           close_question_widget(prompt, prompt.answer_text(answer))
           return true
@@ -1601,7 +1601,7 @@ module Samagotchi
 
     # Whether the answers typed here are a parent agent's (piped stdin, an
     # agent marker): QuestionDesk holds them to guardrails.parent_approvals.
-    def parent_answers?
+    def as_parent?
       Guardrails::ParentApprovals.parent_process?
     end
 

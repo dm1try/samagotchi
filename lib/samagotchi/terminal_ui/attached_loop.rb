@@ -105,7 +105,7 @@ module Samagotchi
       # @param state_dir [String] the state dir the worker was found in: its
       #   session folder (@path images, saved records) is under it
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false, wait_at_eof: false, parent_answers: false,
+                     default_input: false, wait_at_eof: false, as_parent: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
@@ -122,7 +122,7 @@ module Samagotchi
         # A parent agent drives this attach (AttachLauncher:
         # ParentApprovals.parent_process?): its answers go as chi answer's,
         # so the worker holds them to guardrails.parent_approvals.
-        @parent_answers = parent_answers
+        @as_parent = as_parent
         @view = AttachedView.new(screen)
         @renderer = EventRenderer.new(@view)
         @shown_enqueued = Set.new
@@ -990,7 +990,7 @@ module Samagotchi
           return @screen.commit(answer.error)
         end
 
-        parent = @parent_answers ? { client_id: ClientId::CLI_ANSWER } : {}
+        parent = @as_parent ? { client_id: ClientId::CLI_ANSWER } : {}
         reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform, **parent)
         case reply.status
         when 200

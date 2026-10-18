@@ -77,7 +77,7 @@ module Samagotchi
                                     first_command: first_command, no_interrupt: no_interrupt,
                                     default_input: default_input && !prompt && !attach && !resume,
                                     wait_at_eof: !$stdin.tty?,
-                                    parent_answers: Guardrails::ParentApprovals.parent_process?, state_dir: state_dir)
+                                    as_parent: Guardrails::ParentApprovals.parent_process?, state_dir: state_dir)
         ended = begin
           attached.run
         ensure

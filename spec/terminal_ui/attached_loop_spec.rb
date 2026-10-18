@@ -1181,7 +1181,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     # A parent agent driving chi --attach (piped stdin, an agent marker):
     # its answers are a parent's, held to guardrails.parent_approvals.
     context "answered by a parent agent" do
-      let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", parent_answers: true) }
+      let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", as_parent: true) }
 
       it "marks the answer as chi answer's and shows the worker's refusal, the question still open" do
         refusal = { "error" => "parent_approval_refused", "detail" => "allowing a tool call is up to the user" }
