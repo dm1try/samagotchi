@@ -3,6 +3,7 @@
 require "tmpdir"
 require "open3"
 require "stringio"
+require "samagotchi/terminal_ui"
 require "samagotchi/session_manager"
 require "samagotchi/terminal_ui/attach_launcher"
 
