@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-10-18
+
 ### Added
 
 - `--set BUNDLE.KEY=VALUE` on `chi` and `chi send --new`: a bundle setting for this session, saved with it and kept
@@ -3387,7 +3389,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.83.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.84.0...HEAD
+[0.84.0]: https://github.com/dm1try/samagotchi/compare/v0.83.0...v0.84.0
 [0.83.0]: https://github.com/dm1try/samagotchi/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/dm1try/samagotchi/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/dm1try/samagotchi/compare/v0.80.0...v0.81.0
