@@ -132,6 +132,42 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(answer.to_h).to eq(id: id, selected: ["Allow once"], freeform: nil, selected_indices: [0])
       expect(inputs).to eq([session.id])
     end
+
+    # P3: the session's own parent_answers may only tighten config.yml's.
+    it "holds a parent to the session's own level when it is stricter than config.yml's" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      session.parent_answers = "standard"
+      thread, box, id = open_in_background
+      expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
+
+      desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
+      thread.join(2)
+      expect(box[:answer].to_h).to include(selected: ["Deny"])
+    end
+
+    # A child's approval relayed as a card here (DelegateRelay): held to
+    # THIS (the parent's) session's own level; the child re-checks its own.
+    it "holds a relay card to this session's own level, tightened after the child started" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      fields.merge!(relay: { id: "r1", child_id: "c" * 36 })
+      session.parent_answers = "standard"
+      thread, _box, id = open_in_background
+      expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
+      desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
+      thread.join(2)
+    end
+
+    it "keeps config.yml's level when the session's is looser (the ceiling)" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
+      session.parent_answers = "soft"
+      thread, _box, id = open_in_background
+      expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
+      desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
+      thread.join(2)
+    end
   end
 
   # The REPL answers on the turn thread: a handler may return the tool

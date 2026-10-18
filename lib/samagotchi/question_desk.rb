@@ -305,8 +305,9 @@ module Samagotchi
       fm = freeform.to_s.strip
       fm = nil if fm.empty?
       parent_agent = client_id.to_s == ClientId::CLI_ANSWER if parent_agent.nil?
-      # Read before the lock (config may touch the disk); this worker's own.
-      strategy = Guardrails::ParentPolicy.current if parent_agent
+      # Read before the lock (config may touch the disk); this worker's own
+      # config.yml, tightened by its session's own parent_answers.
+      strategy = Guardrails::ParentPolicy.for_session(@session_lookup.call) if parent_agent
       standing = nil
       answer = @lock.synchronize do
         pending = @pending

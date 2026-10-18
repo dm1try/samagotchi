@@ -278,7 +278,8 @@ module Samagotchi
     # @return [Result] resume: true on yes
     def continue_answer(text, as_parent: false)
       decision, reason = TurnFlow.continue_decision(text)
-      if decision == :resume && as_parent && (refusal = Guardrails::ParentPolicy.continue_refusal)
+      if decision == :resume && as_parent &&
+         (refusal = Guardrails::ParentPolicy.continue_refusal(strategy: Guardrails::ParentPolicy.for_session(@engine.session)))
         return reply(refusal, status: :error).tap { |result| result.decision = :invalid }
       end
 

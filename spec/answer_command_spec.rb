@@ -67,8 +67,9 @@ RSpec.describe Samagotchi::AnswerCommand do
     described_class.new(argv, stdout: out, stderr: err, state_dir: tmpdir).run
   end
 
-  def asking(pending, status: "running")
+  def asking(pending, status: "running", parent_answers: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w").tap do |s|
+      s.parent_answers = parent_answers
       s.status = status
       s.last_prompt = "go"
       s.pending_question = pending
@@ -315,6 +316,27 @@ RSpec.describe Samagotchi::AnswerCommand do
       replies_after_answer(s, "ok")
       expect(run(s.id, "--question", "a1", "--option", "Deny", "--text", "no")).to eq(0), err.string
       expect(posted).to eq([[:answer, "a1", ["Deny"], "no"]])
+    end
+
+    # P3: the session file's own parent_answers, tighten-only.
+    it "holds the parent to the session's own level when stricter than config.yml's, never to a looser one" do
+      s = asking(approval, parent_answers: "standard")
+      expect(run(s.id, "--question", "a1", "--option", "1", "--timeout", "0.3")).to eq(1)
+      expect(err.string).to include("allowing a tool call is up to the user")
+      expect(posted).to be_empty
+
+      @parent_answers = "standard"
+      s = asking(approval, parent_answers: "soft")
+      expect(run(s.id, "--question", "a1", "--option", "1", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+
+      # The step-limit refusal names where the level comes from.
+      @parent_answers = "soft"
+      s = asking({ id: "c1", question: "Continue?", options: %w[Continue Stop], kind: "continue", status: "pending" },
+                 parent_answers: "hard")
+      expect(run(s.id, "--question", "c1", "--option", "Continue", "--timeout", "0.3")).to eq(1)
+      expect(err.string).to include("(parent_answers: hard (this session))")
+      expect(posted).to be_empty
     end
 
     it "refuses an allow with --text (the text doesn't make it a deny)" do

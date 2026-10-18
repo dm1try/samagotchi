@@ -246,9 +246,10 @@ module Samagotchi
       end
 
       # A parent agent's /continue yes is chi answer --option Continue by
-      # another route: held to guardrails.parent_answers here, and marked
-      # as chi answer's (#client_id_for) so the worker checks it again.
-      if prompt && parent_continue?(prompt) && (refusal = Guardrails::ParentPolicy.continue_refusal)
+      # another route: held to guardrails.parent_answers (tightened by each
+      # target's own) here, and marked as chi answer's (#client_id_for) so
+      # the worker checks it again.
+      if prompt && parent_continue?(prompt) && (refusal = continue_refusal_for(options))
         @stderr.puts("chi send: #{refusal}")
         return CLI::Exit::FAILED
       end
@@ -602,6 +603,41 @@ module Samagotchi
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
     def client_id_for(prompt) = parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
+
+    # The first refusal of a parent's /continue yes among the targets, each
+    # by config.yml tightened by its own parent_answers; nil when none
+    # refuses.
+    def continue_refusal_for(options)
+      target_parent_answers(options).each do |value|
+        strategy = Guardrails::ParentPolicy.effective(value)
+        refusal = Guardrails::ParentPolicy.continue_refusal(strategy: strategy)
+        return refusal if refusal
+      end
+      nil
+    end
+
+    # The targets' own parent_answers values: a --new session's
+    # --parent-answers, a --continues link's previous session's (the link
+    # keeps it), each id's. An id that doesn't resolve is skipped (#resolve
+    # reports it later); none left is config.yml's alone ([nil]).
+    def target_parent_answers(options)
+      return [options[:parent_answers]] if options[:new] && !options[:continues]
+
+      sessions = if options[:new]
+                   [target_session { SessionChain.resolve(options[:continues], state_dir: @state_dir) }]
+                 else
+                   options[:ids].map { |given| target_session { Session.resolve_id(given, state_dir: @state_dir) } }
+                 end
+      values = sessions.compact.map(&:parent_answers)
+      values.empty? ? [nil] : values
+    end
+
+    # The session the block's id names, or nil when there is none.
+    def target_session
+      Session.load(yield, state_dir: @state_dir)
+    rescue ArgumentError
+      nil
+    end
 
     # A /continue yes (or bare /continue) from a parent agent's process.
     def parent_continue?(prompt) = TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?

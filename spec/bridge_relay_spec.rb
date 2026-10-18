@@ -206,6 +206,20 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(relay("answered", parent_relay(qid, indices: [2], by: "parent_agent"), qid).status).to eq(200)
     end
 
+    # P3: the child's own parent_answers (its parent's, snapshotted at
+    # delegate time): a parent loosened since doesn't loosen the child.
+    it "holds a parent agent's relayed answer to the child session's own, stricter level" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      child.parent_answers = "standard"
+      _box, qid = ask_child
+      response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
+      expect([response.status, response.json["reason"]]).to eq([403, "permit"])
+      expect(child_engine.pending_question.id).to eq(qid)
+
+      child.parent_answers = nil
+      expect(relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid).status).to eq(200)
+    end
+
     it "refuses even Allow once from a parent agent on chi's own config, whatever the setting" do
       allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
       _box, qid = ask_child(approval.merge(approval: approval[:approval].merge(rule: "chi-config")))

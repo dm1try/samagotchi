@@ -592,6 +592,19 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/continue no", as_parent: true).output).to start_with("turn not continued")
     end
 
+    it "holds a parent agent's yes to the session's own, stricter level (P3)" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      session.parent_answers = "hard"
+      offered_continue
+
+      result = commands.run("/continue yes", as_parent: true)
+
+      expect(result).to have_attributes(status: :error, resume: false, decision: :invalid)
+      expect(result.output).to include("(parent_answers: hard (this session))")
+      expect(commands.run("/continue yes").resume).to be(true)
+    end
+
     it "lets a parent agent's yes through under soft and standard" do
       %w[soft standard].each do |strategy|
         allow(Samagotchi::Config).to receive(:get).and_call_original

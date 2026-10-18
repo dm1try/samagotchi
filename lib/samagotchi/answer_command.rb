@@ -122,7 +122,7 @@ module Samagotchi
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
 
         selected = selection(pending, options) or return @selection_status
-        refusal = parent_refusal(pending, selected)
+        refusal = parent_refusal(pending, selected, session)
         return failure(refusal) if refusal
 
         posted = post(id, qid, selected, options)
@@ -160,13 +160,13 @@ module Samagotchi
     end
 
     # Why a parent may not give this answer, or nil (Guardrails::ParentPolicy,
-    # with this process's config.yml and the question's own tags). A deny,
-    # text alone or a dismissal always passes. The worker checks it again
-    # with its own config.
-    def parent_refusal(pending, selected)
+    # with this process's config.yml tightened by the session file's own
+    # parent_answers, and the question's own tags). A deny, text alone or a
+    # dismissal always passes. The worker checks it again with its own.
+    def parent_refusal(pending, selected, session)
       offered = Array(pending.options).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
-      strategy = Guardrails::ParentPolicy.current
+      strategy = Guardrails::ParentPolicy.for_session(session)
       reason = Guardrails::ParentPolicy.refusal(pending, indices, strategy: strategy)
       reason && Guardrails::ParentPolicy.message(reason, pending: pending, strategy: strategy)
     end

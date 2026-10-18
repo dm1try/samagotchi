@@ -234,6 +234,25 @@ RSpec.describe Samagotchi::SendCommand do
       expect(run("-m", "/continue no, enough", short(a))).to eq(0), err.string
       expect(queued.map(&:line)).to eq(["/continue no, enough"])
     end
+
+    # P3: each target's own parent_answers, tighten-only.
+    it "is refused by a target session's own, stricter level; per id" do
+      strategy("soft")
+      a = make(owner: "worker")
+      b = make(owner: "worker")
+      b.parent_answers = "hard"
+      b.save(state_dir: tmpdir)
+      queued = []
+      serve(a, on_command: ->(command) { queued << command })
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+
+      expect(run("-m", "/continue yes", short(b))).to eq(1)
+      expect(err.string).to include("(parent_answers: hard (this session))")
+      expect(run("-m", "/continue yes", short(a), short(b))).to eq(1)
+      expect(queued).to be_empty
+      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+      expect(queued.map(&:line)).to eq(["/continue yes"])
+    end
   end
 
   it "quotes stdin above the -m message" do
