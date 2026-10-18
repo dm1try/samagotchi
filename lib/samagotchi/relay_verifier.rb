@@ -58,7 +58,7 @@ module Samagotchi
       not_pending(question_id)
     rescue QuestionDesk::Refused => e
       log("relay_refused", relay_id, id: question_id, reason: e.reason)
-      [{}, 403, { error: "parent_approval_refused", reason: e.reason.to_s,
+      [{}, 403, { error: "parent_answer_refused", reason: e.reason.to_s,
                   detail: e.detail }]
     rescue ArgumentError => e
       unverified("the answer doesn't fit the question: #{e.message}", relay_id)

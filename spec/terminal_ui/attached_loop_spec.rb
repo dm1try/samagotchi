@@ -1179,12 +1179,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     end
 
     # A parent agent driving chi --attach (piped stdin, an agent marker):
-    # its answers are a parent's, held to guardrails.parent_approvals.
+    # its answers are a parent's, held to guardrails.parent_answers.
     context "answered by a parent agent" do
       let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", as_parent: true) }
 
       it "marks the answer as chi answer's and shows the worker's refusal, the question still open" do
-        refusal = { "error" => "parent_approval_refused", "detail" => "allowing a tool call is up to the user" }
+        refusal = { "error" => "parent_answer_refused", "reason" => "permit_wide", "detail" => "allowing a tool call is up to the user" }
         allow(client).to receive(:answer)
           .and_return(Samagotchi::BridgeClient::Response.new(status: 403, body: JSON.generate(refusal)))
         start(first: snapshot(pending_question: approval))
@@ -1733,6 +1733,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     expect(client).to have_received(:post_command).with(line: "/continue no, too slow", client_id: "tui:1")
     expect(client).to have_received(:post_command).with(line: "/continue", client_id: "tui:1")
     expect(client).to have_received(:post_command).with(line: "/model", client_id: "tui:1")
+  end
+
+  it "sends a parent agent's yes at the offer as chi answer's (cli:answer), its no as its own" do
+    parent = described_class.new(client: client, screen: screen, client_id: "tui:1", as_parent: true)
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    offer = { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [],
+                                                    "continue_offer" => { "context" => {}, "no_interrupt" => false } } }
+    allow(client).to receive(:follow) { |&block| block.call(offer) && double("stream", close: nil) }
+    thread = Thread.new { parent.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
+    wait_for { prompts.last == "? " }
+
+    ["", "no", nil].each { |line| typed << line }
+    thread.join(2)
+
+    expect(client).to have_received(:post_command).with(line: "/continue", client_id: "cli:answer")
+    expect(client).to have_received(:post_command).with(line: "/continue no", client_id: "tui:1")
   end
 
   it "leaves one line with its own answer once the worker resolves the offer" do

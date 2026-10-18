@@ -575,6 +575,32 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(session.messages.last[:content]).to start_with("I chose not to continue the turn that ran out of steps because: too slow")
     end
 
+    # /continue yes as a command (chi send -m, a piped attach) from a parent
+    # agent goes through the same check as its chi answer --option Continue.
+    it "refuses a parent agent's yes under guardrails.parent_answers: hard, and takes its no" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
+      offered_continue
+
+      result = commands.run("/continue yes", as_parent: true)
+
+      expect(result).to have_attributes(status: :error, resume: false, decision: :invalid)
+      expect(result.output).to include("a parent agent may only stop this turn here (guardrails.parent_answers: hard)")
+      expect(turn_flow.awaiting_continue?).to be(true)
+      # A person's yes is theirs to give.
+      expect(commands.run("/continue yes").resume).to be(true)
+      expect(commands.run("/continue no", as_parent: true).output).to start_with("turn not continued")
+    end
+
+    it "lets a parent agent's yes through under soft and standard" do
+      %w[soft standard].each do |strategy|
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(strategy)
+        offered_continue
+        expect(commands.run("/continue yes", as_parent: true).resume).to be(true), strategy
+      end
+    end
+
     it "asks again on anything else" do
       offered_continue
 

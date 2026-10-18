@@ -23,6 +23,16 @@ module Samagotchi
 
     # Read an answer to the continue offer.
     # @return [Array(Symbol, String|nil)] [:resume | :abort | :abort_with_reason | :invalid, reason]
+    # Whether +line+ is a /continue that continues the turn (/continue,
+    # /continue yes): what a parent agent's must be checked for.
+    def self.continue_yes?(line)
+      text = line.to_s.strip
+      return false unless text.match?(/\A#{Regexp.escape(CONTINUE_COMMAND)}(\s|\z)/)
+
+      answer = text.delete_prefix(CONTINUE_COMMAND).strip
+      continue_decision(answer.empty? ? CONTINUE_COMMAND : answer).first == :resume
+    end
+
     def self.continue_decision(input)
       normalized = input.to_s.strip
       return [:resume, nil] if normalized.empty?

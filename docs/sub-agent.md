@@ -59,7 +59,7 @@ Exit codes, both commands:
 | 0 | `not_continued` | (`chi answer`) a Stop answered the step-limit question; the turn's work so far stays |
 | 3 | `question` | chi waits for an answer: `question`, `answer_with` |
 | 4 | `running` | `--timeout` passed; the turn goes on, wait again |
-| 1 | `failed`, `canceled`, `limit`, `removed`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it; `removed`: the `--queue` message waited for was taken back before it ran, no turn ran for it). `failed` adds `error_kind` (the provider error's kind: `credits`, `credits_held`, `rate_limited`, `server`, `auth`, `connection`, …) and `retryable` when known; `canceled` adds `cancel_reason` (`user`: a Stop in the web; `session_stopped`: a session stop, `chi sessions stop` or the web's; `worker_stopped`: the `--queue` turn waited for died with its worker (detail "its worker exited mid-turn"), settled by the next one; `hook`; `ctrl_c`; `manual`) and `stopped_by` (the hook that stopped it, e.g. `loop-guard`) when known |
+| 1 | `failed`, `canceled`, `limit`, `removed`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it, except under `guardrails.parent_answers: hard`, where a parent's `/continue yes` is refused as its `chi answer --option Continue` is; `removed`: the `--queue` message waited for was taken back before it ran, no turn ran for it). `failed` adds `error_kind` (the provider error's kind: `credits`, `credits_held`, `rate_limited`, `server`, `auth`, `connection`, …) and `retryable` when known; `canceled` adds `cancel_reason` (`user`: a Stop in the web; `session_stopped`: a session stop, `chi sessions stop` or the web's; `worker_stopped`: the `--queue` turn waited for died with its worker (detail "its worker exited mid-turn"), settled by the next one; `hook`; `ctrl_c`; `manual`) and `stopped_by` (the hook that stopped it, e.g. `loop-guard`) when known |
 | 2 | (no JSON) | usage error, or an option the question doesn't offer |
 | 130 | `running` | Ctrl-C; the turn goes on |
 
@@ -98,10 +98,11 @@ question and starts a new turn. It can't be dismissed.
 
 A parent may Continue by default: Continue grants no permission (every tool
 call still meets the guardrails), it only spends time and tokens. With
-`turn.parent_continue: false` in chi's config.yml (config.yml only, no
+`guardrails.parent_answers: hard` in chi's config.yml (config.yml only, no
 environment variable) a parent may only Stop: `chi answer` and the worker
-refuse a Continue (exit 1, `a parent agent may only stop this turn here`), and
-the user continues it from the web or the terminal.
+refuse a Continue (exit 1, `a parent agent may only stop this turn here`), the
+question block's command is the Stop, and the user continues it from the web or
+the terminal. See [Guardrails](guardrails.md#answers-from-a-parent-agent).
 
 A chi parent's `delegate_result` gets a child's step-limit question back as a
 `question` with these commands, for its model to decide: continue it (the
@@ -122,23 +123,26 @@ sees only how each was answered. See
 parents (Claude Code, Codex, a script), and for a chi parent that can't host
 the relay (a `--no-shared` REPL, `--non-interactive`).
 
-An approval is a guardrail rule with `verdict: ask`: its user said "ask me". So
-a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
-`--dismiss`) but not allow it: `chi answer` refuses an Allow with exit 1 and
-`allowing a tool call is up to the user: deny it (--option Deny --text WHY),
-and tell your user`. For an approval, the question block and `answer_with` give
-the deny command, not `--option N` or `chi --attach`. The block also offers to
-leave it open: tell your user it waits in chi web (the bell and badge show
-it there), and `chi send --wait --format json --turn <turn_id> ID` waits until
-they answer it. With
-`guardrails.parent_approvals: once` in chi's config.yml (it has no environment
-variable), "Allow once" goes through; the wider scopes never do,
-and neither does any allow on chi's own config, hooks or guardrail rules. See
-[Guardrails](guardrails.md#approvals-from-a-parent-agent).
+An approval is a guardrail rule with `verdict: ask`: its user said "ask me". A
+parent may always deny it (`--option Deny --text "why"`, `--text` alone, or
+`--dismiss`). By default (`guardrails.parent_answers: soft` in chi's
+config.yml, which has no environment variable) it may also give "Allow once";
+the wider scopes never go, and neither does any allow on chi's own config,
+hooks or guardrail rules: `chi answer` refuses those with exit 1 and a line
+like `only Allow once (guardrails.parent_answers: soft) can be given here: deny
+it (--option Deny --text WHY), and tell your user`. With `standard` or `hard`
+no allow goes (`allowing a tool call is up to the user: …`). The question
+block lists what the parent may give: the Allow once command when it may, and
+the deny command (`answer_with` is the deny), never `chi --attach`. The block
+also offers to leave it open: tell your user it waits in chi web (the bell and
+badge show it there), and `chi send --wait --format json --turn <turn_id> ID`
+waits until they answer it. A plugin's question names the options a parent may
+pick when the strategy leaves some out (`allowed_options` in the JSON). See
+[Guardrails](guardrails.md#answers-from-a-parent-agent).
 
 Start a child in the folder it should change (`chi send --new --dir PATH`):
 writes and mutating git outside its own repo ask (`write-outside-repo`,
-`git-outside-repo`), which a parent can only deny.
+`git-outside-repo`), which a parent can at most allow once per call.
 
 An answer typed into `chi --attach` or the REPL counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
@@ -208,12 +212,19 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
   JSON. If you won't answer, add `--dismiss` instead: chi does nothing it asked
   about, finishes with what it found, and the reply comes back (exit 0).
 - `question.kind: approval`: chi wants to run something its user's guardrails
-  flagged, and allowing it is up to your user. Deny it (the `answer_with`
-  command: `--option Deny --text "why"`), and tell your user what it wanted to
-  run and why. Or leave it open: tell your user it waits in chi web (the
-  session's short id), then `chi send --wait --format json --timeout 500 --turn <turn_id> <session_id>`
-  waits until they answer it there. Never allow it yourself, through
-  `chi answer`, a piped `chi --attach` or chi's web API.
+  flagged. What you may give follows chi's `guardrails.parent_answers`, and the
+  question says it: when its `allowed_options` (and the text block's `allow:`
+  line) list "Allow once" (`soft`, the default), you may allow that one call if
+  your task clearly needs it; never a wider scope (this session, a repo, a
+  rule), and never a call on chi's own config, which lists only Deny. Otherwise
+  (`standard`, `hard`, or anything wider) allowing it is up to your user: deny
+  it (the `answer_with` command: `--option Deny --text "why"`), and tell your
+  user what it wanted to run and why. Or leave it open: tell your user it waits
+  in chi web (the session's short id), then
+  `chi send --wait --format json --timeout 500 --turn <turn_id> <session_id>`
+  waits until they answer it there. Never give an answer the question doesn't
+  offer you by another route (a piped `chi --attach`, `chi send -m '/continue
+  yes'`, chi's web API).
 - `status: running` (exit 4): still working. Wait for that same turn again:
   `chi send --wait --format json --timeout 500 --turn <turn_id> <session_id>`.
 - `question.kind: continue`: chi ran out of steps before it answered. If it is

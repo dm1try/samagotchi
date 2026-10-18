@@ -33,6 +33,12 @@ RSpec.describe Samagotchi::ParentReport do
                                     status: "pending")
   end
 
+  # This process's guardrails.parent_answers, which the guidance follows.
+  def strategy(name)
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(name)
+  end
+
   def json(result, timeout: nil)
     JSON.parse(described_class.json_line(result, session_id: id, timeout: timeout))
   end
@@ -80,7 +86,17 @@ RSpec.describe Samagotchi::ParentReport do
     )
   end
 
+  it "says how to continue a turn that ran out of steps only where a parent may (not under hard)" do
+    exhausted = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "exhausted", limit: 100)
+    strategy("hard")
+    expect(described_class.detail(exhausted, session_id: id)).to eq(
+      "the turn ran out of iterations (100 steps) before it answered; continuing it is up to your user " \
+      "(guardrails.parent_answers: hard), a message drops it; chi --attach #{id} shows it"
+    )
+  end
+
   it "maps every other end to its status and a detail line, exit 4 only while it still runs, 0 for a Stop carried out" do
+    strategy("soft")
     cases = {
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "boom") => ["failed", "the turn failed: boom; chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled") => ["canceled", "the turn was canceled; chi --attach #{id} shows it", 1],
@@ -129,13 +145,45 @@ RSpec.describe Samagotchi::ParentReport do
     expect(described_class.no_reply_line(one, id)).to eq("the turn failed after 1 tool step; its work so far stays")
   end
 
-  it "says a waiting approval is the user's to allow, a question where to open it" do
+  it "says a waiting approval is the user's to allow (standard, hard), a question where to open it" do
+    strategy("standard")
     approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
     expect(described_class.detail(approval_wait, session_id: id))
       .to eq("waiting for an approval: execute: echo SPIKE_APPROVED; deny it, and tell your user")
     question_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: question)
     expect(described_class.detail(question_wait, session_id: id))
       .to eq("waiting for an answer: Which file should I read?; open it: chi --attach #{id} or the web")
+  end
+
+  it "says a parent may Allow once under soft (the default), never a wider scope" do
+    strategy("soft")
+    approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
+    expect(described_class.detail(approval_wait, session_id: id))
+      .to eq("waiting for an approval: execute: echo SPIKE_APPROVED; Allow once is yours to give " \
+             "(guardrails.parent_answers: soft); anything wider is up to your user: deny it, and tell your user")
+    expect(json(approval_wait)["question"]).to include("allowed_options" => ["Allow once", "Deny"])
+    text = described_class.question_text(approval, session_id: id)
+    expect(text).to include("  allow: chi answer #{id} --question a1 --option \"Allow once\"\n")
+    expect(text).to include("  deny: chi answer #{id} --question a1 --option Deny --text WHY\n")
+    expect(text).not_to include("allowing it is up to your user")
+  end
+
+  it "offers no allow on an approval only the user may give, whatever the strategy" do
+    strategy("soft")
+    text = described_class.question_text(approval.with(user_only: true), session_id: id)
+    expect(text).to include("allowing it is up to your user: deny it, and tell your user")
+    expect(text).not_to include("allow: ")
+  end
+
+  it "names only the options a parent may pick on a tagged plugin question" do
+    strategy("hard")
+    tagged = hook.with(options: %w[Continue Stop], effects: %w[spend deny])
+    expect(described_class.question(tagged)).to include(allowed_options: %w[Stop])
+    expect(described_class.answer_with(id, described_class.question(tagged))).to eq("chi answer #{id} --question h1 --option Stop")
+    expect(described_class.question_text(tagged, session_id: id))
+      .to include("  a parent may pick Stop; the others are up to your user\n")
+    strategy("standard")
+    expect(described_class.question(tagged)).not_to have_key(:allowed_options)
   end
 
   describe "a step-limit question (kind continue)" do
@@ -152,6 +200,15 @@ RSpec.describe Samagotchi::ParentReport do
       expect(described_class.exit_status(wait)).to eq(3)
     end
 
+    it "says a parent may only stop it under hard, answered with Stop" do
+      strategy("hard")
+      expect(json(wait)).to include("answer_with" => "chi answer #{id} --question c1 --option Stop --text WHY")
+      text = described_class.question_text(limit_question, session_id: id)
+      expect(text).to include("continuing it is up to your user (guardrails.parent_answers: hard)")
+      expect(text).not_to include("--option Continue")
+      expect(described_class.detail(wait, session_id: id)).to include("a parent may only stop it here")
+    end
+
     it "spells out Continue, Stop with a reason, and that a message drops it" do
       text = described_class.question_text(limit_question, session_id: id)
       expect(text).to include("waiting for an answer (continue): Step limit")
@@ -162,6 +219,8 @@ RSpec.describe Samagotchi::ParentReport do
   end
 
   describe ".question_text" do
+    before { strategy("standard") }
+
     it "lists the question, its numbered options and the commands that answer it" do
       expect(described_class.question_text(question, session_id: id)).to eq(<<~TEXT)
         waiting for an answer (question): Which file should I read?

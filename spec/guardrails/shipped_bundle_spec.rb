@@ -12,7 +12,7 @@ require "samagotchi/pending_question"
 # what each one catches and what it lets through, in auto mode (the
 # default) unless a block says strict.
 RSpec.describe "The guardrails bundle's rules" do
-  let(:once) { Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once") }
+  let(:once) { Samagotchi::Guardrails::ParentPolicy.strategy("soft") }
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
   let(:mode) { "auto" }
   let(:rules) do

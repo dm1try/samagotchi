@@ -55,8 +55,8 @@ RSpec.describe Samagotchi::Relay do
     expect(card[:options]).to eq(["Allow once", "Allow this call for delegate #{short}'s session",
                                   "Allow this call in this repo", "Deny"])
     # ParentPolicy reads it as it reads the child's: index 0 is once, the last denies.
-    once = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once")
-    off = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "off")
+    once = Samagotchi::Guardrails::ParentPolicy.strategy("soft")
+    off = Samagotchi::Guardrails::ParentPolicy.strategy("standard")
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [0], strategy: once)).to be_nil
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [1], strategy: once)).to eq(:permit_wide)
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [3], strategy: off)).to be_nil
@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Relay do
     config = pending.merge(approval: pending[:approval].merge(rule: "chi-config"))
     card = described_class.card(child, as_saved(config), relay_id: "r-1")
     expect(Samagotchi::Guardrails::ParentApprovals.protected?(as_pending(card))).to be(true)
-    once = Samagotchi::Guardrails::ParentPolicy.legacy(parent_approvals: "once")
+    once = Samagotchi::Guardrails::ParentPolicy.strategy("soft")
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(as_pending(card), [0], strategy: once)).to eq(:user_only)
   end
 

@@ -5,6 +5,7 @@ require "json"
 
 require_relative "cli/exit"
 require_relative "pending_question"
+require_relative "guardrails/parent_policy"
 
 module Samagotchi
   # How a wait's end (ReplyWait::Result) reads to whoever runs chi as a
@@ -144,37 +145,85 @@ module Samagotchi
     # parent sees it.
     # kind is "question" for the model's own (the desk stores none),
     # "hook", "approval" or "continue" (the step-limit question, with the
-    # turn's limit).
+    # turn's limit). allowed_options: the options a parent may pick, by
+    # this process's guardrails.parent_answers (Guardrails::ParentPolicy),
+    # when that is not all of them.
     # @return [Hash]
     def question(pending)
-      pending ||= PendingQuestion.new
+      pending = PendingQuestion.from_file(pending) || PendingQuestion.new
       approval = pending.approval.is_a?(Hash) ? symbolize(pending.approval) : nil
+      options = Array(pending.options).map(&:to_s)
+      allowed = allowed_options(pending)
       {
         id: pending.id.to_s,
         kind: (pending.kind || "question").to_s,
         header: blank(pending.header),
         text: pending.question.to_s,
-        options: Array(pending.options).map(&:to_s),
+        options: options,
         multi_select: !!pending.multi_select,
         allow_freeform: !!pending.allow_freeform,
+        allowed_options: (allowed unless allowed == options),
         limit: pending.limit,
         approval: approval&.slice(*APPROVAL_KEYS)
       }.compact
     end
 
     # The command that answers +question+; N is the parent's to fill in.
-    # An approval's is a deny: allowing it is the user's
-    # (Guardrails::ParentApprovals). A step-limit question's continues the
-    # turn (its Stop form is in #question_text).
+    # An approval's is a deny: a wider allow is the user's (#question_text
+    # lists an Allow once a parent may give). A step-limit question's
+    # continues the turn, or stops it where a parent may not continue (its
+    # other form is in #question_text).
     def answer_with(session_id, question)
       return "chi answer #{session_id} --question #{question[:id]} --option Deny --text WHY" if approval?(question)
+      return stop_command(session_id, question) if continue?(question) && !may_continue?(question)
       return "chi answer #{session_id} --question #{question[:id]} --option Continue" if continue?(question)
+
+      # The one option a parent may pick (cost-cap's Stop under hard).
+      only = Array(question[:allowed_options])
+      return "chi answer #{session_id} --question #{question[:id]} --option #{option_arg(only.first)}" if only.size == 1
 
       "chi answer #{session_id} --question #{question[:id]} --option N"
     end
 
-    # What a parent does with an approval.
+    # What a parent does with an approval it may not allow.
     DENY_AND_TELL = "deny it, and tell your user"
+
+    # The labels a parent may pick on +pending+ (a PendingQuestion, or a
+    # Hash with its fields) by this process's strategy.
+    # @return [Array<String>]
+    def allowed_options(pending)
+      pending = PendingQuestion.from_file(pending) || PendingQuestion.new
+      Guardrails::ParentPolicy.allowed_options(pending, strategy: Guardrails::ParentPolicy.current)
+    end
+
+    # An approval's options a parent may allow (Allow once under soft).
+    def allowed_allows(question)
+      question = question(question) unless question.is_a?(Hash) && question.key?(:text)
+      deny = Guardrails::Approval::DENY
+      question.fetch(:allowed_options, question[:options]).reject { |label| label == deny }
+    end
+
+    # What a parent does with an approval: deny it and tell its user, or
+    # give the Allow once its strategy lets it.
+    def approval_advice(question)
+      allows = allowed_allows(question)
+      return DENY_AND_TELL if allows.empty?
+
+      "#{allows.join(" or ")} is yours to give (#{Guardrails::ParentPolicy.current.label}); " \
+        "anything wider is up to your user: #{DENY_AND_TELL}"
+    end
+
+    # Whether a parent may answer Continue to a step-limit question.
+    def may_continue?(question)
+      question = question(question) unless question.is_a?(Hash) && question.key?(:text)
+      question.fetch(:allowed_options, question[:options]).include?(Guardrails::ParentPolicy::CONTINUE)
+    end
+
+    def stop_command(session_id, question)
+      "chi answer #{session_id} --question #{question[:id]} --option Stop --text WHY"
+    end
+
+    def option_arg(label) = label.match?(/\A[\w.-]+\z/) ? label : label.inspect
 
     # The other way: the user answers it in chi (the web's bell and badge
     # say it waits), and a wait with no message waits past it.
@@ -209,7 +258,10 @@ module Samagotchi
       when :waiting_for_answer
         q = question(result.question)
         if approval?(q)
-          "waiting for an approval: #{first_line(q[:text])}; #{DENY_AND_TELL}"
+          "waiting for an approval: #{first_line(q[:text])}; #{approval_advice(q)}"
+        elsif continue?(q) && !may_continue?(q)
+          "waiting at the step limit: #{first_line(q[:text])}; a parent may only stop it here " \
+            "(#{Guardrails::ParentPolicy.current.label}): #{stop_command(session_id, q)}, or tell your user it waits"
         elsif continue?(q)
           "waiting at the step limit: #{first_line(q[:text])}; " \
             "answer Continue or Stop: chi answer #{session_id} --question #{q[:id]} --option Continue"
@@ -238,16 +290,29 @@ module Samagotchi
       lines.concat(text_lines.map { |line| "  #{line}" })
       q[:options].each_with_index { |option, i| lines << "    #{i + 1}. #{option}" }
       if approval?(q)
-        lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
+        allows = allowed_allows(q)
+        if allows.empty?
+          lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
+        else
+          lines << "  #{approval_advice(q)}"
+          allows.each { |label| lines << "  allow: chi answer #{session_id} --question #{q[:id]} --option #{option_arg(label)}" }
+        end
         lines << "  deny: #{answer_with(session_id, q)}"
         lines << "  #{leave_open(session_id)}"
       elsif continue?(q)
-        lines << "  continue: #{answer_with(session_id, q)}"
-        lines << "  stop: chi answer #{session_id} --question #{q[:id]} --option Stop --text WHY (the text is optional; the model reads it)"
+        lines << if may_continue?(q)
+                   "  continue: #{answer_with(session_id, q)}"
+                 else
+                   "  continuing it is up to your user (#{Guardrails::ParentPolicy.current.label}): stop it, or tell your user it waits"
+                 end
+        lines << "  stop: #{stop_command(session_id, q)} (the text is optional; the model reads it)"
         lines << "  #{message_drops(session_id)}"
       else
         lines << "  more than one allowed: repeat --option" if q[:multi_select]
         lines << "  free text allowed: --text" if q[:allow_freeform]
+        if q[:allowed_options]
+          lines << "  a parent may pick #{q[:allowed_options].map { |o| option_arg(o) }.join(", ")}; the others are up to your user"
+        end
         lines << "  answer: #{answer_with(session_id, q)}"
         lines << "  or open it: chi --attach #{session_id} or the web"
       end
@@ -264,8 +329,14 @@ module Samagotchi
       when "not_continued" then "the turn was not continued (Stop); its work so far stays"
       when "removed" then "the queued message was removed before it ran; no turn ran for it"
       when "exhausted"
-        "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered; " \
-          "chi send #{session_id} -m '/continue yes' continues it, a message drops it"
+        ran_out = "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered"
+        strategy = Guardrails::ParentPolicy.current
+        if strategy.allow?(Guardrails::ParentPolicy::SPEND)
+          "#{ran_out}; chi send #{session_id} -m '/continue yes' continues it, a message drops it"
+        else
+          # No /continue yes hint: a parent may not continue it here.
+          "#{ran_out}; continuing it is up to your user (#{strategy.label}), a message drops it"
+        end
       else "the turn ended without a reply (canceled, failed or empty)"
       end
     end

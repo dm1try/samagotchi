@@ -36,7 +36,10 @@ module Samagotchi
   # handled by ConfigFile (same file, below), which reads the *same* parsed YAML
   # through ConfigFile.read_yaml so the file is parsed once per change.
   module Config
-    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, :lifecycle, keyword_init: true) do
+    # invalid: what an enum's invalid value falls to, when not the default
+    # (guardrails.parent_answers: the strictest).
+    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, :lifecycle, :invalid,
+                       keyword_init: true) do
       def env_key
         "SAMAGOTCHI_" + yaml_path.map { |p| p.upcase }.join("_")
       end
@@ -148,8 +151,10 @@ module Samagotchi
       # Which models get the rules with `models: small` (Guardrails::ModelSize): auto (32B or less by the name's size, an MoE's
       # active size counting), globs on the bare model name or its key, "|"-separated (a YAML list works too), or "" ([]) for none.
       Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[config], lifecycle: :next_tool_or_approval),
-      # What `chi answer` lets a parent agent allow on an approval: off (deny only) or once ("Allow once", never a wider scope).
-      Entry.new(key: "guardrails.parent_approvals", yaml_path: %w[guardrails parent_approvals], type: :enum, default: "off", expose: %i[config], enum_values: %w[off once], lifecycle: :next_tool_or_approval),
+      # Which options a parent agent (chi answer) may pick on a session's question, by their effect
+      # (Guardrails::ParentPolicy): hard = deny and plain answers; standard = + spend (Continue); soft = + permit (Allow
+      # once). An invalid value is hard, the strictest.
+      Entry.new(key: "guardrails.parent_answers", yaml_path: %w[guardrails parent_answers], type: :enum, default: "soft", expose: %i[config], enum_values: %w[hard standard soft], invalid: "hard", lifecycle: :next_tool_or_approval),
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli], lifecycle: :process_start),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :process_start),
@@ -243,9 +248,6 @@ module Samagotchi
       # A turn's step limit: model ↔ tool rounds before it stops and offers to continue (IterationLimit); integer ≥ 1.
       # --no-interrupt turns get max(1000, this). No CLI flag: --no-interrupt is the flag.
       Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 300,             expose: %i[env config], lifecycle: :next_turn_start),
-      # Whether a parent agent (chi answer) may answer Continue to a session's step-limit question; false: Stop only.
-      # config.yml only, like guardrails.parent_approvals: a parent must not decide it from its own environment.
-      Entry.new(key: "turn.parent_continue",     yaml_path: %w[turn parent_continue],     type: :bool,    default: true,            expose: %i[config], lifecycle: :next_tool_or_approval),
       # What `chi update` touches; its --no-gem/--no-bundles/--no-desktop turn one off for a run.
       Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
@@ -379,8 +381,9 @@ module Samagotchi
           lowered = str.downcase
           allowed = entry.enum_values.map(&:downcase)
           unless allowed.include?(lowered)
-            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(", ")}) — using default", key: entry.key)
-            return entry.default
+            using = entry.invalid ? "using #{entry.invalid}" : "using default"
+            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(", ")}) — #{using}", key: entry.key)
+            return entry.invalid || entry.default
           end
           # return canonical casing from enum_values
           entry.enum_values.find { |v| v.downcase == lowered }
@@ -632,9 +635,18 @@ module Samagotchi
         @known_sections ||= known_config_keys.filter_map { |k| k.split(".").first if k.include?(".") }.to_set.freeze
       end
 
+      # Keys replaced by another: the warning names the new one (no alias).
+      REPLACED_KEYS = {
+        "guardrails.parent_approvals" => "guardrails.parent_answers",
+        "turn.parent_continue" => "guardrails.parent_answers"
+      }.freeze
+
       # nil when +dotted+ is a key the file may hold.
       def key_problem(dotted)
         return nil if known_config_keys.include?(dotted)
+        if (replaced = REPLACED_KEYS[dotted])
+          return "config: unknown key '#{dotted}': replaced by '#{replaced}' (hard, standard or soft; see docs/guardrails.md)"
+        end
 
         entry = find_by_key(dotted)
         if entry

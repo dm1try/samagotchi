@@ -276,7 +276,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   end
 
   # printf '3\n' | chi --no-shared -p …: a piped answer is a parent's, held to
-  # guardrails.parent_approvals by the engine's own QuestionDesk.
+  # guardrails.parent_answers by the engine's own QuestionDesk.
   describe "an approval answered by a parent agent" do
     let(:fields) do
       { question: "execute: echo hi", options: ["Allow once", "Allow this call in this directory", "Deny"],
@@ -287,7 +287,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     before do
       allow(agent).to receive(:as_parent?).and_call_original
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
     end
 
     def open_with(input)

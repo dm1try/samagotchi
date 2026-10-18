@@ -19,7 +19,6 @@ module Samagotchi
     # then on. Also chi's dirs and text for the guardrails' own rules
     # (Targets, the shell rules).
     module ParentApprovals
-      KEY = "guardrails.parent_approvals"
       # Set by chi's execute and task_create for the commands they run: a
       # chi started there answers as a parent (#parent_process?).
       PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"

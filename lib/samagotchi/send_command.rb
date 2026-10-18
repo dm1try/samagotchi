@@ -12,6 +12,9 @@ require_relative "session_chain"
 require_relative "context_quote"
 require_relative "reply_wait"
 require_relative "parent_report"
+require_relative "turn_flow"
+require_relative "guardrails/parent_approvals"
+require_relative "guardrails/parent_policy"
 require_relative "image_store"
 require_relative "host_registry"
 require_relative "model_profile"
@@ -241,6 +244,14 @@ module Samagotchi
       if prompt && (local = local_command(prompt))
         return refuse_local_command(local, options)
       end
+
+      # A parent agent's /continue yes is chi answer --option Continue by
+      # another route: held to guardrails.parent_answers here, and marked
+      # as chi answer's (#client_id_for) so the worker checks it again.
+      if prompt && parent_continue?(prompt) && (refusal = Guardrails::ParentPolicy.continue_refusal)
+        @stderr.puts("chi send: #{refusal}")
+        return CLI::Exit::FAILED
+      end
       # A file that is not there or not an image: a run-time failure (1),
       # reported in the --format json line too; --image itself was fine.
       return CLI::Exit::FAILED unless ingest_images(options[:images])
@@ -462,11 +473,13 @@ module Samagotchi
         # The turn waits on a question: the message would only queue
         # behind it, and the answer goes in with chi answer.
         if (waiting = session.waiting_question(live: owner.worker?))
+          # The whole question (its options, its tags) for what a parent may give.
+          question = ParentReport.question(session.pending_question)
           if ParentReport.approval?(waiting)
-            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport::DENY_AND_TELL} " \
-                       "(#{ParentReport.answer_with(id, waiting)})")
+            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport.approval_advice(question)} " \
+                       "(#{ParentReport.answer_with(id, question)})")
           else
-            error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, waiting)} (or --text); " \
+            error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, question)} (or --text); " \
                        "chi --attach #{id} shows it")
           end
         else
@@ -554,7 +567,7 @@ module Samagotchi
       begin
         refs = copy_images(dir)
         if BridgeClient.wait_for(session.id, session_dir: dir, timeout: SessionManager::TURN_BRIDGE_WAIT)
-          result = SessionManager.deliver_turn(session.id, prompt: prompt, client_id: CLIENT_ID, images: refs,
+          result = SessionManager.deliver_turn(session.id, prompt: prompt, client_id: client_id_for(prompt), images: refs,
                                                            state_dir: @state_dir)
         end
       rescue StandardError => e
@@ -585,6 +598,13 @@ module Samagotchi
     # Whether the worker took the message as a session command (a POST
     # /turn whose line is one answers with its command_id).
     def command_ack?(ack) = ack.is_a?(Hash) && !ack["command_id"].to_s.empty?
+
+    # chi send's client id, or chi answer's for a parent agent's /continue
+    # yes (the worker holds that to its guardrails.parent_answers).
+    def client_id_for(prompt) = parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
+
+    # A /continue yes (or bare /continue) from a parent agent's process.
+    def parent_continue?(prompt) = TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?
 
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).
@@ -653,7 +673,7 @@ module Samagotchi
       delivery = if @queue then Delivery::QUEUE
                  elsif @cut && running then Delivery::CUT
                  end
-      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir,
+      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, state_dir: @state_dir,
                                                delivery: delivery)
       unless result[:status] == :accepted
         # A worker older than queueing would steer it: refused, not sent.

@@ -789,13 +789,20 @@ module Samagotchi
     #   the cards and notices it showed, held: they follow its command_ran,
     #   as its output
     def run_command_line(command)
-      @engine.holding_announcements { command_result(command) { @commands.run(command.line, confirm: confirm?(command)) } }
+      @engine.holding_announcements do
+        command_result(command) { @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command)) }
+      end
     end
 
     # Whether +command+ asks before a costly /thinking or /reasoning-history
     # change (CacheConfirm): only a person at a web tab or a TUI sees the
     # question; chi send, a delegate, a plugin and a card's action apply it.
     def confirm?(command) = ClientId.interactive?(command.client_id) && !command.card
+
+    # Whether +command+ is a parent agent's (chi answer's marker, which chi
+    # send and a parent's attach give a /continue yes too): held to
+    # guardrails.parent_answers (SessionCommands#continue_answer).
+    def as_parent?(command) = command.client_id.to_s == ClientId::CLI_ANSWER
 
     # The block's Result for +command+; one that raised, or found no
     # command for the line, is an error Result saying so.

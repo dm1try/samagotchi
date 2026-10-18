@@ -305,10 +305,15 @@ module Samagotchi
       # The tool's last line follows #reports_mode.
       def waiting_text(child_id, pending, report: false, reports: "off")
         text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}"
-        if ParentReport.continue?(pending)
+        if ParentReport.continue?(pending) && ParentReport.may_continue?(pending)
           text += "The child ran out of steps before it answered. Decide: continue it (run the chi answer command " \
                   "above with execute) if it is getting somewhere; send it a narrower follow-up with delegate " \
                   "session: #{child_id} (that drops the question); or stop it and report back to your user.\n"
+        elsif ParentReport.continue?(pending)
+          # guardrails.parent_answers: hard: continuing is the user's.
+          text += "The child ran out of steps before it answered. Decide: send it a narrower follow-up with delegate " \
+                  "session: #{child_id} (that drops the question); or stop it (the chi answer Stop command above, " \
+                  "with execute) and report back to your user, who may continue it.\n"
         end
         return "#{text}#{REPORT_NEXT_REPLY}" if report
         return "#{text}delegate_result #{child_id} waits again once it is answered." if reports == "off"

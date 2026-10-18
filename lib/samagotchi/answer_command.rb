@@ -45,9 +45,11 @@ module Samagotchi
                         about and finishes its reply
         --timeout S     give up waiting after S seconds (exit 4)
         --format json   one JSON object on stdout (see chi send --help)
-        An approval (a guardrail's ask) can be denied here: deny it, and
-        tell your user; allowing it is the user's. With
-        guardrails.parent_approvals: once, "Allow once" is let through.
+        What a parent may pick follows guardrails.parent_answers in
+        chi's config.yml: soft (the default) lets "Allow once" and
+        Continue through, standard Continue but no allow, hard only a
+        deny, a Stop or a plain answer. A wider allow, and any allow on
+        chi's own config, is the user's: deny it, and tell your user.
         A step-limit question (kind continue): --option Continue [--text
         STEER] (the text joins the continued turn as a steer), or
         --option Stop [--text WHY] (exit 0, status not_continued); it
@@ -201,7 +203,7 @@ module Samagotchi
         not_open(qid)
       when 400 then usage_failure(reply.json&.dig("detail") || "the worker refused the answer")
       # The worker's own strategy refused the option (ParentPolicy).
-      when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: deny it, and tell your user")
+      when 403 then failure(reply.json&.dig("detail") || "the worker refused that option: deny it, and tell your user")
       when 408 then failure("the worker did not take the answer in time; the question is still open: try again")
       when 404
         return failure(worker_gone(id)) if reply.json&.dig("error") == "unknown_session"

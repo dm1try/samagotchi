@@ -14,47 +14,74 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
   end
   let(:continue_question) { { id: "c1", kind: "continue", options: %w[Continue Stop] } }
 
-  def strategy(setting, parent_continue: true)
-    described_class.legacy(parent_approvals: setting, parent_continue: parent_continue)
-  end
+  def strategy(name) = described_class.strategy(name)
 
   def pending_of(pending) = Samagotchi::PendingQuestion.from_file(pending)
 
   # A Hash here is the question's record (symbol or string keys).
-  def refusal(pending, indices, setting, parent_continue: true)
-    described_class.refusal(pending_of(pending), indices, strategy: strategy(setting, parent_continue: parent_continue))
+  def refusal(pending, indices, name)
+    described_class.refusal(pending_of(pending), indices, strategy: strategy(name))
   end
 
-  def message(reason, pending, setting, parent_continue: true, typed: false)
-    described_class.message(reason, pending: pending_of(pending), strategy: strategy(setting, parent_continue: parent_continue),
-                                    typed: typed)
+  def message(reason, pending, name, typed: false)
+    described_class.message(reason, pending: pending_of(pending), strategy: strategy(name), typed: typed)
+  end
+
+  describe "the strategies" do
+    it "lets hard pick deny and answer, standard spend too, soft permit too; never permit_wide" do
+      expect(described_class.allowed_effects(strategy("hard"))).to eq(%w[answer deny])
+      expect(described_class.allowed_effects(strategy("standard"))).to eq(%w[answer deny spend])
+      expect(described_class.allowed_effects(strategy("soft"))).to eq(%w[answer deny spend permit])
+    end
+
+    it "takes an unknown name as hard, the strictest" do
+      expect(strategy("always")).to eq(strategy("hard"))
+      expect(strategy(nil)).to eq(strategy("hard"))
+    end
+
+    it "reads guardrails.parent_answers from config.yml only: soft by default, an invalid value hard" do
+      env = { "SAMAGOTCHI_GUARDRAILS_PARENT_ANSWERS" => "hard" }
+      expect(Samagotchi::Config.resolve("guardrails.parent_answers", file_data: {}, env: env)).to eq("soft")
+      file = ->(value) { { "guardrails" => { "parent_answers" => value } } }
+      expect(Samagotchi::Config.resolve("guardrails.parent_answers", file_data: file.call("standard"), env: {})).to eq("standard")
+      expect(Samagotchi::Config.resolve("guardrails.parent_answers", file_data: file.call("loose"), env: {})).to eq("hard")
+    end
+
+    it "names the new key for the two it replaced, in the unknown-key warning" do
+      problems = Samagotchi::Config.validate_yaml_sections({ "guardrails" => { "parent_approvals" => "once" },
+                                                             "turn" => { "parent_continue" => false } })
+      expect(problems).to contain_exactly(include("'guardrails.parent_approvals': replaced by 'guardrails.parent_answers'"),
+                                          include("'turn.parent_continue': replaced by 'guardrails.parent_answers'"))
+    end
   end
 
   describe "an approval" do
     it "lets a deny through whatever the setting: the Deny option, no option (text alone)" do
-      %w[off once].each do |setting|
-        expect(refusal(approval, [3], setting)).to be_nil
-        expect(refusal(approval, [], setting)).to be_nil
+      %w[hard standard soft].each do |name|
+        expect(refusal(approval, [3], name)).to be_nil
+        expect(refusal(approval, [], name)).to be_nil
       end
     end
 
-    it "refuses every allow with off, and all but the once scope with once" do
-      expect(refusal(approval, [0], "off")).to eq(:permit)
-      [1, 2].each { |index| expect(refusal(approval, [index], "off")).to eq(:permit_wide) }
-      expect(refusal(approval, [0], "once")).to be_nil
-      [1, 2].each { |index| expect(refusal(approval, [index], "once")).to eq(:permit_wide) }
+    it "refuses every allow under hard and standard, and all but the once scope under soft" do
+      %w[hard standard].each do |name|
+        expect(refusal(approval, [0], name)).to eq(:permit)
+        [1, 2].each { |index| expect(refusal(approval, [index], name)).to eq(:permit_wide) }
+      end
+      expect(refusal(approval, [0], "soft")).to be_nil
+      [1, 2].each { |index| expect(refusal(approval, [index], "soft")).to eq(:permit_wide) }
     end
 
     it "checks the scope by index, never by label" do
       relabeled = approval.merge(options: ["Allow once", "Allow once", "Allow once", "Deny"])
-      expect(refusal(relabeled, [1], "once")).to eq(:permit_wide)
+      expect(refusal(relabeled, [1], "soft")).to eq(:permit_wide)
       no_once = approval.merge(options: ["Allow once", "Deny"], approval: { scopes: %w[session] })
-      expect(refusal(no_once, [0], "once")).to eq(:permit_wide)
+      expect(refusal(no_once, [0], "soft")).to eq(:permit_wide)
     end
 
-    it "refuses a mix of deny and allow (a multi-select answer), and any unknown setting as off" do
-      expect(refusal(approval, [3, 0], "off")).to eq(:permit)
-      expect(refusal(approval, [3, 1], "once")).to eq(:permit_wide)
+    it "refuses a mix of deny and allow (a multi-select answer), and any unknown strategy as hard" do
+      expect(refusal(approval, [3, 0], "standard")).to eq(:permit)
+      expect(refusal(approval, [3, 1], "soft")).to eq(:permit_wide)
       expect(refusal(approval, [0], "always")).to eq(:permit)
       expect(refusal(approval, [0], nil)).to eq(:permit)
     end
@@ -63,47 +90,47 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
       [nil, [], "once", [nil], [1], %w[once session rule extra]].each do |scopes|
         pending = approval.merge(approval: { tool: "execute", scopes: scopes })
         [0, 1, 2].each do |index|
-          expect(refusal(pending, [index], "once")).to eq(:permit_wide), "scopes #{scopes.inspect}, option #{index}"
+          expect(refusal(pending, [index], "soft")).to eq(:permit_wide), "scopes #{scopes.inspect}, option #{index}"
         end
-        expect(refusal(pending, [3], "once")).to be_nil
+        expect(refusal(pending, [3], "soft")).to be_nil
       end
-      expect(refusal(approval.except(:approval), [0], "once")).to eq(:permit_wide)
-      expect(refusal(approval.merge(approval: "x"), [0], "off")).to eq(:permit_wide)
+      expect(refusal(approval.except(:approval), [0], "soft")).to eq(:permit_wide)
+      expect(refusal(approval.merge(approval: "x"), [0], "standard")).to eq(:permit_wide)
     end
 
     it "treats a last option that isn't Deny, or an index it can't place, as an allow" do
       pending = approval.merge(options: ["Allow once", "Allow always"], approval: {})
-      expect(refusal(pending, [1], "once")).to eq(:permit_wide)
-      expect(refusal(approval, [nil], "once")).to eq(:permit_wide)
-      expect(refusal(approval, [9], "off")).to eq(:permit_wide)
+      expect(refusal(pending, [1], "soft")).to eq(:permit_wide)
+      expect(refusal(approval, [nil], "soft")).to eq(:permit_wide)
+      expect(refusal(approval, [9], "standard")).to eq(:permit_wide)
     end
 
     it "reads string keys (a session file) and an approval without a kind" do
       pending = { "kind" => "approval", "options" => approval[:options], "approval" => { "scopes" => %w[once session rule] } }
-      expect(refusal(pending, [0], "once")).to be_nil
-      expect(refusal(pending, [1], "once")).to eq(:permit_wide)
-      expect(refusal(approval.except(:kind), [1], "off")).to eq(:permit_wide)
+      expect(refusal(pending, [0], "soft")).to be_nil
+      expect(refusal(pending, [1], "soft")).to eq(:permit_wide)
+      expect(refusal(approval.except(:kind), [1], "standard")).to eq(:permit_wide)
     end
 
     it "reads the tags the asker set over its scopes" do
       tagged = approval.merge(effects: %w[permit permit permit_wide deny])
-      expect(refusal(tagged, [1], "once")).to be_nil
-      expect(refusal(tagged, [2], "once")).to eq(:permit_wide)
+      expect(refusal(tagged, [1], "soft")).to be_nil
+      expect(refusal(tagged, [2], "soft")).to eq(:permit_wide)
       expect(described_class.effects_of(pending_of(approval))).to eq(%w[permit permit_wide permit_wide deny])
     end
 
     it "tells the parent to deny and tell its user, never how to allow it" do
-      expect(message(:permit, approval, "off")).to eq(
+      expect(message(:permit, approval, "standard")).to eq(
         "allowing a tool call is up to the user: deny it (--option Deny --text WHY), and tell your user"
       )
-      expect(message(:permit_wide, approval, "off")).to eq(message(:permit, approval, "off"))
-      expect(message(:permit_wide, approval, "once")).to eq(
-        "only Allow once (guardrails.parent_approvals: once) can be given here: " \
+      expect(message(:permit_wide, approval, "standard")).to eq(message(:permit, approval, "standard"))
+      expect(message(:permit_wide, approval, "soft")).to eq(
+        "only Allow once (guardrails.parent_answers: soft) can be given here: " \
         "deny it (--option Deny --text WHY), and tell your user"
       )
-      expect(message(:user_only, approval, "once")).to start_with("this call changes chi's own config")
-      expect(message(:permit, approval, "off", typed: true)).to end_with("deny it (n; WHY), and tell your user")
-      %i[permit permit_wide user_only].each { |reason| expect(message(reason, approval, "once")).not_to include("--attach", "web") }
+      expect(message(:user_only, approval, "soft")).to start_with("this call changes chi's own config")
+      expect(message(:permit, approval, "standard", typed: true)).to end_with("deny it (n; WHY), and tell your user")
+      %i[permit permit_wide user_only].each { |reason| expect(message(reason, approval, "soft")).not_to include("--attach", "web") }
     end
   end
 
@@ -114,13 +141,13 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
     end
 
     it "is refused for any allow, with once or off; a deny still goes" do
-      %w[off once].each { |setting| expect(refusal(config, [0], setting)).to eq(:user_only) }
-      expect(refusal(config, [2], "once")).to be_nil
-      expect(refusal(config, [], "once")).to be_nil
+      %w[hard standard soft].each { |name| expect(refusal(config, [0], name)).to eq(:user_only) }
+      expect(refusal(config, [2], "soft")).to be_nil
+      expect(refusal(config, [], "soft")).to be_nil
     end
 
     it "takes the flag the worker set, and works it out when it is unset (an older worker's question)" do
-      expect(refusal(approval.merge(user_only: true), [0], "once")).to eq(:user_only)
+      expect(refusal(approval.merge(user_only: true), [0], "soft")).to eq(:user_only)
       expect(described_class.user_only?(pending_of(config))).to be(true)
       expect(described_class.user_only?(pending_of(config.merge(user_only: false)))).to be(false)
     end
@@ -132,27 +159,28 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
     end
 
     it "says only the user can allow it" do
-      expect(message(:user_only, config, "once")).to include("only the user can allow")
+      expect(message(:user_only, config, "soft")).to include("only the user can allow")
     end
   end
 
   describe "the step-limit question (kind continue)" do
-    it "lets a parent Continue unless turn.parent_continue is false; Stop always goes" do
-      expect(refusal(continue_question, [0], "off")).to be_nil
-      expect(refusal(continue_question, [0], "off", parent_continue: false)).to eq(:spend)
-      expect(refusal(continue_question, [1], "off", parent_continue: false)).to be_nil
-      expect(refusal(continue_question, [], "off", parent_continue: false)).to be_nil
+    it "lets a parent Continue under soft and standard, not hard; Stop always goes" do
+      expect(refusal(continue_question, [0], "soft")).to be_nil
+      expect(refusal(continue_question, [0], "standard")).to be_nil
+      expect(refusal(continue_question, [0], "hard")).to eq(:spend)
+      expect(refusal(continue_question, [1], "hard")).to be_nil
+      expect(refusal(continue_question, [], "hard")).to be_nil
     end
 
     it "derives Continue and Stop from the labels when untagged, and reads the tags when set" do
       expect(described_class.effects_of(pending_of(continue_question))).to eq(%w[spend deny])
       tagged = continue_question.merge(effects: %w[spend deny])
-      expect(refusal(tagged, [0], "off", parent_continue: false)).to eq(:spend)
+      expect(refusal(tagged, [0], "hard")).to eq(:spend)
     end
 
     it "tells the parent to stop it or tell its user" do
-      expect(message(:spend, continue_question, "off", parent_continue: false)).to eq(
-        "a parent agent may only stop this turn here (turn.parent_continue: false): answer Stop " \
+      expect(message(:spend, continue_question, "hard")).to eq(
+        "a parent agent may only stop this turn here (guardrails.parent_answers: hard): answer Stop " \
         "(--option Stop --text WHY), or tell your user it waits"
       )
     end
@@ -160,23 +188,23 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
 
   it "has nothing to say about an untagged question that isn't an approval" do
     question = { id: "q1", kind: "hook", options: %w[Yes No] }
-    expect(refusal(question, [0], "off", parent_continue: false)).to be_nil
-    expect(refusal(question.except(:kind), [0], "off")).to be_nil
+    expect(refusal(question, [0], "hard")).to be_nil
+    expect(refusal(question.except(:kind), [0], "standard")).to be_nil
     expect(described_class.effects_of(pending_of(question))).to eq(%w[answer answer])
   end
 
   it "fails closed on an unknown tag" do
     question = { id: "q1", kind: "hook", options: %w[Yes No], effects: %w[launch answer] }
-    expect(refusal(question, [0], "once")).to eq(:permit_wide)
-    expect(refusal(question, [1], "off")).to be_nil
+    expect(refusal(question, [0], "soft")).to eq(:permit_wide)
+    expect(refusal(question, [1], "standard")).to be_nil
   end
 
   it "lists the options a parent may pick" do
-    once = strategy("once")
-    expect(described_class.allowed_options(pending_of(approval), strategy: once)).to eq(["Allow once", "Deny"])
-    expect(described_class.allowed_options(pending_of(approval), strategy: strategy("off"))).to eq(["Deny"])
-    expect(described_class.allowed_options(pending_of(approval.merge(user_only: true)), strategy: once)).to eq(["Deny"])
-    expect(described_class.allowed_options(pending_of(continue_question), strategy: strategy("off", parent_continue: false)))
+    soft = strategy("soft")
+    expect(described_class.allowed_options(pending_of(approval), strategy: soft)).to eq(["Allow once", "Deny"])
+    expect(described_class.allowed_options(pending_of(approval), strategy: strategy("standard"))).to eq(["Deny"])
+    expect(described_class.allowed_options(pending_of(approval.merge(user_only: true)), strategy: soft)).to eq(["Deny"])
+    expect(described_class.allowed_options(pending_of(continue_question), strategy: strategy("hard")))
       .to eq(["Stop"])
   end
 end

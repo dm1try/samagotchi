@@ -667,9 +667,8 @@ module Samagotchi
         # Another client answered first, or the question was cancelled.
         [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue QuestionDesk::Refused => e
-        Log.info(:bridge, "parent_approval_refused", sid: session_id, id: qid, reason: e.reason)
-        [{}, 403, { error: e.reason == :spend ? "parent_continue_refused" : "parent_approval_refused",
-                    detail: e.detail }]
+        Log.info(:bridge, "parent_answer_refused", sid: session_id, id: qid, reason: e.reason)
+        [{}, 403, { error: "parent_answer_refused", reason: e.reason.to_s, detail: e.detail }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       end

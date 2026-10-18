@@ -13,13 +13,6 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
       approval: { tool: "execute", scopes: %w[once session rule] } }
   end
 
-  it "is a config.yml setting only: the parent's environment can't change it" do
-    env = { "SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS" => "once" }
-    expect(Samagotchi::Config.resolve("guardrails.parent_approvals", file_data: {}, env: env)).to eq("off")
-    file = { "guardrails" => { "parent_approvals" => "once" } }
-    expect(Samagotchi::Config.resolve("guardrails.parent_approvals", file_data: file, env: {})).to eq("once")
-  end
-
   it "takes guardrails.enabled and small_models from config.yml only, never the environment" do
     env = { "SAMAGOTCHI_GUARDRAILS_ENABLED" => "false", "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => "" }
     expect(Samagotchi::Config.resolve("guardrails.enabled", file_data: {}, env: env)).to be(true)

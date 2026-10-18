@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../config"
+require_relative "../pending_question"
 require_relative "approval"
 require_relative "parent_approvals"
 
@@ -14,6 +15,9 @@ module Samagotchi
     # posts; the worker's QuestionDesk checks it again, with its own config,
     # for an answer marked as a parent agent's. A convention for an honest
     # but eager parent, not a security boundary.
+    #
+    # Strategies (guardrails.parent_answers, config.yml only): hard = answer
+    # and deny; standard = + spend; soft (the default) = + permit.
     #
     # Effects: answer (an untagged option), deny, spend (more time and
     # tokens: Continue), permit (one call: Allow once), permit_wide (more
@@ -37,33 +41,38 @@ module Samagotchi
       CONTINUE_KIND = "continue"
       CONTINUE = "Continue"
       STOP = "Stop"
+      # Its shape, for a /continue yes sent as a command (#continue_refusal).
+      CONTINUE_QUESTION = PendingQuestion.new(kind: CONTINUE_KIND, options: [CONTINUE, STOP], effects: [SPEND, DENY])
 
-      # What a parent may pick, and how a refusal names the setting that
-      # refused an effect ("guardrails.parent_approvals: once").
-      Strategy = Data.define(:allowed, :labels) do
+      KEY = "guardrails.parent_answers"
+      HARD = "hard"
+      STANDARD = "standard"
+      SOFT = "soft"
+
+      # A strategy: its name and the effects a parent may pick under it.
+      Strategy = Data.define(:name, :allowed) do
         def allow?(effect) = allowed.include?(effect.to_s)
 
-        def label(effect) = labels[effect.to_s]
+        # How a refusal names the setting: "guardrails.parent_answers: hard".
+        def label = "#{KEY}: #{name}"
       end
+
+      STRATEGIES = {
+        HARD => Strategy.new(name: HARD, allowed: ALWAYS),
+        STANDARD => Strategy.new(name: STANDARD, allowed: [*ALWAYS, SPEND].freeze),
+        SOFT => Strategy.new(name: SOFT, allowed: [*ALWAYS, SPEND, PERMIT].freeze)
+      }.freeze
 
       module_function
 
-      # This process's strategy (config.yml only).
+      # This process's strategy (config.yml only; Config makes an invalid
+      # value hard and warns).
       # @return [Strategy]
-      def current
-        legacy(parent_approvals: Config.get(ParentApprovals::KEY), parent_continue: Config.get("turn.parent_continue"))
-      end
+      def current = strategy(Config.get(KEY))
 
-      # The strategy guardrails.parent_approvals and turn.parent_continue
-      # make: answer and deny always; spend unless parent_continue is
-      # false; permit with parent_approvals: once (anything else is off).
-      def legacy(parent_approvals:, parent_continue: true)
-        once = parent_approvals.to_s == "once"
-        allowed = ALWAYS + (parent_continue == false ? [] : [SPEND]) + (once ? [PERMIT] : [])
-        approvals = "#{ParentApprovals::KEY}: #{once ? "once" : "off"}"
-        labels = { SPEND => "turn.parent_continue: false", PERMIT => approvals, PERMIT_WIDE => approvals }
-        Strategy.new(allowed: allowed.freeze, labels: labels.freeze)
-      end
+      # The named strategy; anything else is hard, the strictest.
+      # @return [Strategy]
+      def strategy(name) = STRATEGIES.fetch(name.to_s, STRATEGIES[HARD])
 
       # @return [Array<String>] the effects +strategy+ lets a parent pick
       def allowed_effects(strategy) = strategy.allowed
@@ -124,11 +133,11 @@ module Samagotchi
         case reason.to_sym
         when :spend
           if pending.kind.to_s == CONTINUE_KIND
-            return "a parent agent may only stop this turn here (#{strategy.label(SPEND)}): answer #{STOP} " \
+            return "a parent agent may only stop this turn here (#{strategy.label}): answer #{STOP} " \
                    "(--option #{STOP} --text WHY), or tell your user it waits"
           end
 
-          "a parent agent may not pick #{tagged_labels(pending, SPEND)} here (#{strategy.label(SPEND)}): #{instead(deny, typed, "answer")}"
+          "a parent agent may not pick #{tagged_labels(pending, SPEND)} here (#{strategy.label}): #{instead(deny, typed, "answer")}"
         when :user_only
           "this call changes chi's own config, hooks or guardrails, and only the user can allow it: #{instead(deny, typed)}"
         when :permit_wide
@@ -137,12 +146,21 @@ module Samagotchi
           permits = tagged_labels(pending, PERMIT)
           permits = Approval::ONCE if permits.empty? && ParentApprovals.approval?(pending)
           if strategy.allow?(PERMIT) && !permits.empty?
-            "only #{permits} (#{strategy.label(PERMIT_WIDE)}) can be given here: #{instead(deny, typed)}"
+            "only #{permits} (#{strategy.label}) can be given here: #{instead(deny, typed)}"
           else
             "#{allowing(pending)} is up to the user: #{instead(deny, typed)}"
           end
         else "#{allowing(pending)} is up to the user: #{instead(deny, typed)}"
         end
+      end
+
+      # Why a parent agent may not continue a turn with /continue yes (a
+      # command: chi send -m, a piped attach), or nil: the step-limit
+      # question's Continue, checked the same way.
+      # @return [String, nil] the refusal line
+      def continue_refusal(strategy: current)
+        reason = refusal(CONTINUE_QUESTION, [0], strategy: strategy)
+        reason && message(reason, pending: CONTINUE_QUESTION, strategy: strategy)
       end
 
       # The labels a parent may pick on +pending+ under +strategy+.

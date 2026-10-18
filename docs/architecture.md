@@ -273,8 +273,8 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (`chi answer`, a parent agent) the answer is checked by `Guardrails::ParentPolicy` in
   `QuestionDesk#answer`: the question carries each option's effect (`effects`, set by its asker:
   `Approval.payload`, `ContinueOffer`, `Relay.card`; derived for an untagged one) and `user_only`,
-  and an option beyond the worker's settings is `403 parent_approval_refused` (a Continue:
-  `parent_continue_refused`), the question still open. `chi answer` makes the same check first.
+  and an option beyond the worker's `guardrails.parent_answers` is `403 parent_answer_refused`
+  (with its `reason`), the question still open. `chi answer` makes the same check first.
 - `POST /session/:id/question/dismiss` — leave the question unanswered (an approval: denied);
   `200`, or `409` when it is no longer pending.
 - `POST /session/:id/tasks/stop` — `{task_id}`: stop a background task as the user
@@ -298,7 +298,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   pending question's `relayed_to` mark (`QuestionDesk#annotate`, `:question_relay`); `answered`
   makes the child ask its parent's Bridge for the answer (`RelayVerifier`) and take it only for
   this child and the question pending now. `200`, `409` no longer pending, `403` a parent agent's
-  pick beyond the child's own settings (`ParentPolicy`), `422 relay_unverified` (the question
+  pick beyond the child's own `guardrails.parent_answers` (`parent_answer_refused`), `422 relay_unverified` (the question
   stays open).
 - `POST /session/:id/relay/status` — on a parent's worker, `{relay_id}`: what its `RelayDesk`
   (memory only) holds for that relay (`child_id`, `child_question_id`, `state`, `answer`, `by`);

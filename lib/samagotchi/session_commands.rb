@@ -14,6 +14,7 @@ require_relative "llm_context_command"
 require_relative "thinking_command"
 require_relative "toolkit_command"
 require_relative "reasoning_history_command"
+require_relative "guardrails/parent_policy"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -80,7 +81,7 @@ module Samagotchi
         next reply("nothing to continue") unless @turn_flow.awaiting_continue?
 
         answer = text.delete_prefix(CONTINUE_COMMAND).strip
-        continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
+        continue_answer(answer.empty? ? CONTINUE_COMMAND : answer, as_parent: @as_parent)
       end
       # It reads the hosts only (the registry is mutex-guarded): mid-turn too.
       registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)", anytime: true) do |text|
@@ -254,8 +255,12 @@ module Samagotchi
     #   change asks first (CacheConfirm): true for a person at a web tab or
     #   a TUI; false applies it at once (chi send, a delegate, a plugin,
     #   chi -p)
+    # @param as_parent [Boolean] a parent agent sent it (client cli:answer):
+    #   a /continue yes is held to guardrails.parent_answers, as chi
+    #   answer --option Continue is (Guardrails::ParentPolicy)
     # @return [Result, nil] nil when +line+ is not one of these commands
-    def run(line, confirm: true)
+    def run(line, confirm: true, as_parent: false)
+      @as_parent = as_parent
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
@@ -268,9 +273,15 @@ module Samagotchi
     end
 
     # Answer the pending continue offer (yes / no / no, <reason>).
+    # @param as_parent [Boolean] a parent agent's answer: a yes its strategy
+    #   doesn't allow is refused (the offer stays; decision :invalid)
     # @return [Result] resume: true on yes
-    def continue_answer(text)
+    def continue_answer(text, as_parent: false)
       decision, reason = TurnFlow.continue_decision(text)
+      if decision == :resume && as_parent && (refusal = Guardrails::ParentPolicy.continue_refusal)
+        return reply(refusal, status: :error).tap { |result| result.decision = :invalid }
+      end
+
       result = case decision
                when :resume then Result.new(status: :ok, changed: [], model_name: model_name, resume: true, shell: false)
                when :abort

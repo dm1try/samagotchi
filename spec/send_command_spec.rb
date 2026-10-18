@@ -197,6 +197,45 @@ RSpec.describe Samagotchi::SendCommand do
     expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
   end
 
+  # A parent agent's /continue yes is an answer to the step-limit question:
+  # it goes as chi answer's (cli:answer), so the worker holds it to its
+  # guardrails.parent_answers, and chi send refuses it first under hard.
+  describe "/continue yes from a parent agent" do
+    def strategy(name)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(name)
+    end
+
+    it "goes as cli:answer under soft, and a person's as cli:send" do
+      strategy("soft")
+      a = make(owner: "worker")
+      queued = []
+      serve(a, on_command: ->(command) { queued << command })
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+      expect(run("-m", "/continue no", short(a))).to eq(0), err.string
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
+      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+
+      expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
+        .to eq([{ client_id: "cli:answer", line: "/continue yes" }, { client_id: "cli:send", line: "/continue no" },
+                { client_id: "cli:send", line: "/continue yes" }])
+    end
+
+    it "is refused under hard before anything is sent; a Stop still goes" do
+      strategy("hard")
+      a = make(owner: "worker")
+      queued = []
+      serve(a, on_command: ->(command) { queued << command })
+      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+
+      expect(run("-m", "/continue yes", short(a))).to eq(1)
+      expect(err.string).to include("a parent agent may only stop this turn here (guardrails.parent_answers: hard)")
+      expect(run("-m", "/continue no, enough", short(a))).to eq(0), err.string
+      expect(queued.map(&:line)).to eq(["/continue no, enough"])
+    end
+  end
+
   it "quotes stdin above the -m message" do
     a = make(owner: "worker")
     serve(a)

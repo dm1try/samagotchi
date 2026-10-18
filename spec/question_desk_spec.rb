@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::QuestionDesk do
 
     before do
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
     end
 
     it "holds an answer marked parent_agent to the setting, whatever its client id" do
@@ -287,9 +287,9 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(inputs).to be_empty
     end
 
-    it "refuses a parent agent's Continue with turn.parent_continue: false, and takes its Stop" do
+    it "refuses a parent agent's Continue under guardrails.parent_answers: hard, and takes its Stop" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue").and_return(false)
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
       id = desk.post(continue_fields, on_answer: on_answer).id
 
       expect { desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer") }
@@ -300,7 +300,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(answers.map(&:last)).to eq(["web:1"])
     end
 
-    it "lets a parent agent Continue by default (turn.parent_continue: true)" do
+    it "lets a parent agent Continue by default (soft)" do
       id = desk.post(continue_fields, on_answer: on_answer).id
       desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer")
       expect(answers.map(&:last)).to eq(["cli:answer"])

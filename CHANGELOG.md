@@ -20,6 +20,19 @@ and commands may change between minor versions. How releases are made:
   next step) instead of "summarize aggressively": "context critical — write a short handoff note (state, next step),
   avoid large outputs, delegate broad work to subagents".
 - Each config setting declares when a change applies; a spec keeps the docs/configuration.md table in line with it.
+- **What a parent agent may answer is one setting, `guardrails.parent_answers`** (`hard`, `standard`, `soft`), by
+  each option's effect, for every question: approvals, the step-limit Continue, relayed delegate approvals and plugin
+  and hook questions. **The default `soft` lets a parent give "Allow once"** (before, a parent could only deny an
+  approval); `standard` is the old default (deny, and Continue), `hard` lets a parent only deny, Stop or answer
+  plainly. A wider scope and any allow on chi's own config stay the user's. `chi send --wait`, `chi answer` and
+  `delegate_result` list what the parent may give. An invalid value warns and is `hard`. A parent's `/continue yes`
+  (`chi send ID -m '/continue yes'`, a piped `chi --attach`) is held to it too, as chi answer's.
+- `guardrails.parent_approvals` and `turn.parent_continue` are removed: config.yml warns about them and names
+  `guardrails.parent_answers` (`parent_approvals: once` → `soft`; `turn.parent_continue: false` → `hard`). The old
+  pair `parent_approvals: once` with `turn.parent_continue: false` (Allow once but no Continue) has no equivalent:
+  the nearest is `hard`, which leaves both to the user.
+- The Bridge's and the relay's 403 for a refused parent answer is `parent_answer_refused`, with its `reason`
+  (was `parent_approval_refused` / `parent_continue_refused`).
 - The guardrails bundle's asks before answering chi's questions around `chi answer` (`chi-answer-piped`: `chi
   --attach` or `chi -p` fed from a pipe or a file; `chi-answer-http`: `curl …/answer`) are the user's alone: a parent
   agent's Allow is refused, as on chi's own config.

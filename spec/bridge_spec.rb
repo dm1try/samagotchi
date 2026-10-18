@@ -1692,11 +1692,11 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["error"]).to eq("question_not_pending")
     end
 
-    # The worker's own check of guardrails.parent_approvals for an answer
+    # The worker's own check of guardrails.parent_answers for an answer
     # marked as chi answer's: a direct POST with the marker is held to it too.
-    it "refuses (403) a parent's allow beyond the worker's guardrails.parent_approvals; the web's goes" do
+    it "refuses (403) a parent's allow beyond the worker's guardrails.parent_answers; the web's goes" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("once")
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
       start_bridge
       result = {}
       fields = { question: "execute: echo hi", options: ["Allow once", "Allow this call for the session", "Deny"],
@@ -1708,8 +1708,8 @@ RSpec.describe Samagotchi::Bridge do
 
       status, resp, reason = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"],
                                                        client_id: "cli:answer"))
-      expect([status, reason, resp["error"]]).to eq([403, "Forbidden", "parent_approval_refused"])
-      expect(resp["detail"]).to start_with("only Allow once (guardrails.parent_approvals: once) can be given here")
+      expect([status, reason, resp["error"], resp["reason"]]).to eq([403, "Forbidden", "parent_answer_refused", "permit_wide"])
+      expect(resp["detail"]).to start_with("only Allow once (guardrails.parent_answers: soft) can be given here")
       expect(resp["detail"]).to end_with("deny it (--option Deny --text WHY), and tell your user")
       expect(@engine.pending_question).to have_attributes(id: qid, status: "pending")
 

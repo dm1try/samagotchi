@@ -592,7 +592,10 @@ module Samagotchi
       # The worker runs it and every UI renders its :command_ran, this one
       # too, so nothing waits here.
       def send_command(line)
-        reply = @client.post_command(line: line, client_id: @client_id)
+        # A parent agent's /continue yes goes as chi answer's: the worker
+        # holds it to guardrails.parent_answers.
+        client_id = @as_parent && TurnFlow.continue_yes?(line) ? ClientId::CLI_ANSWER : @client_id
+        reply = @client.post_command(line: line, client_id: client_id)
         if reply.status == 202
           # Input from a pipe ends once its output is in (#command_ran).
           command_id = reply.json&.fetch("command_id", nil)

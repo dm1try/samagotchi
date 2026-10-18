@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
     allow(Samagotchi::BridgeClient).to receive(:discover) { bridge }
     allow(Samagotchi::Config).to receive(:get).and_call_original
-    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals") { @parent_approvals || "off" }
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @parent_answers || "soft" }
   end
 
   after do
@@ -253,7 +253,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     expect(json_out).to include("status" => "running")
   end
 
-  describe "an approval (guardrails.parent_approvals)" do
+  describe "an approval (guardrails.parent_answers)" do
     it "denies with Deny and a reason, or with text alone" do
       s = asking(approval)
       replies_after_answer(s, "I won't run it.")
@@ -274,11 +274,14 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(posted).to eq([[:dismiss, "a1"]])
     end
 
-    it "refuses every Allow by default: that is the user's, so deny and tell the user" do
+    it "refuses every Allow under standard and hard: that is the user's, so deny and tell the user" do
       s = asking(approval)
       # A --timeout, so an Allow that slips through fails rather than hangs.
-      ["1", "Allow once", "2", "3"].each do |option|
-        expect(run(s.id, "--question", "a1", "--option", option, "--timeout", "0.3")).to eq(1)
+      %w[standard hard].each do |strategy|
+        @parent_answers = strategy
+        ["1", "Allow once", "2", "3"].each do |option|
+          expect(run(s.id, "--question", "a1", "--option", option, "--timeout", "0.3")).to eq(1)
+        end
       end
       expect(posted).to be_empty
       expect(err.string).to include("chi answer: allowing a tool call is up to the user: deny it (--option Deny " \
@@ -286,11 +289,10 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(err.string).not_to include("--attach")
     end
 
-    it "with parent_approvals: once lets Allow once through, picked by its scope, never a wider one" do
-      @parent_approvals = "once"
+    it "under soft (the default) lets Allow once through, picked by its scope, never a wider one" do
       s = asking(approval)
       %w[2 3].each { |option| expect(run(s.id, "--question", "a1", "--option", option, "--timeout", "0.3")).to eq(1) }
-      expect(err.string).to include("only Allow once (guardrails.parent_approvals: once)")
+      expect(err.string).to include("only Allow once (guardrails.parent_answers: soft)")
       expect(posted).to be_empty
 
       replies_after_answer(s, "ran it")
@@ -299,7 +301,6 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
 
     it "fails closed on an approval whose scopes are missing, empty or malformed: only Deny goes" do
-      @parent_approvals = "once"
       [nil, [], "once", [nil]].each do |scopes|
         s = asking(approval.merge(approval: approval[:approval].merge(scopes: scopes)))
         %w[1 2 3].each do |option|
@@ -309,7 +310,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       s = asking(approval.except(:approval))
       expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)
       expect(posted).to be_empty
-      expect(err.string).to include("only Allow once (guardrails.parent_approvals: once)")
+      expect(err.string).to include("only Allow once (guardrails.parent_answers: soft)")
 
       replies_after_answer(s, "ok")
       expect(run(s.id, "--question", "a1", "--option", "Deny", "--text", "no")).to eq(0), err.string
@@ -317,22 +318,24 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
 
     it "refuses an allow with --text (the text doesn't make it a deny)" do
+      @parent_answers = "standard"
       s = asking(approval)
       expect(run(s.id, "--question", "a1", "--option", "1", "--text", "fine", "--timeout", "0.3")).to eq(1)
       expect(posted).to be_empty
     end
 
-    it "takes guardrails.parent_approvals from config.yml only, never the parent's environment" do
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_call_original
-      original = ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"]
-      ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"] = "once"
+    it "takes guardrails.parent_answers from config.yml only, never the parent's environment" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_call_original
+      original = ENV["SAMAGOTCHI_GUARDRAILS_PARENT_ANSWERS"]
+      ENV["SAMAGOTCHI_GUARDRAILS_PARENT_ANSWERS"] = "hard"
       Samagotchi::Config.reload!
+      # The environment's hard is not read: soft, the default, lets Allow once through.
       s = asking(approval)
-      expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)
-      expect(posted).to be_empty
-      expect(err.string).to include("allowing a tool call is up to the user")
+      replies_after_answer(s, "ran it")
+      expect(run(s.id, "--question", "a1", "--option", "Allow once")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "a1", ["Allow once"], nil]])
     ensure
-      original ? ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"] = original : ENV.delete("SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS")
+      original ? ENV["SAMAGOTCHI_GUARDRAILS_PARENT_ANSWERS"] = original : ENV.delete("SAMAGOTCHI_GUARDRAILS_PARENT_ANSWERS")
       Samagotchi::Config.reload!
     end
 
@@ -345,12 +348,11 @@ RSpec.describe Samagotchi::AnswerCommand do
 
     context "when the worker refuses the allow (its config is stricter)" do
       let(:replies) do
-        [[403, { error: "parent_approval_refused",
+        [[403, { error: "parent_answer_refused", reason: "permit",
                  detail: "allowing a tool call is up to the user: approve it in the web or chi --attach x" }]]
       end
 
       it "exits 1 with the worker's reason, in the JSON line too" do
-        @parent_approvals = "once"
         s = asking(approval)
         expect(run(s.id, "--question", "a1", "--option", "1", "--format", "json")).to eq(1)
         expect(posted.size).to eq(1)
@@ -360,8 +362,31 @@ RSpec.describe Samagotchi::AnswerCommand do
       end
     end
 
-    it "with parent_approvals: once refuses an approval that doesn't offer once" do
-      @parent_approvals = "once"
+    it "under soft refuses even Allow once on an approval only the user may allow (user_only), before posting" do
+      s = asking(approval.merge(user_only: true))
+      expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("only the user can allow it")
+    end
+
+    it "holds a plugin's tagged question to the strategy: cost-cap's Continue refused under hard, its Stop goes" do
+      @parent_answers = "hard"
+      cap = { id: "h1", kind: "hook", hook: "plugin.rb (bundle cost-cap)", header: "Cost cap",
+              question: "Cost cap reached: $3.04 spent of $3.00. Continue raises it to $6.00.",
+              options: %w[Continue Stop], effects: %w[spend deny], multi_select: false, allow_freeform: false,
+              status: "pending" }
+      s = asking(cap)
+      expect(run(s.id, "--question", "h1", "--option", "Continue", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("a parent agent may not pick Continue here (guardrails.parent_answers: hard): " \
+                                    "answer Stop (--option Stop --text WHY)")
+
+      replies_after_answer(s, "stopped")
+      expect(run(s.id, "--question", "h1", "--option", "Stop")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "h1", ["Stop"], nil]])
+    end
+
+    it "under soft refuses an approval that doesn't offer once" do
       s = asking(approval.merge(options: ["Allow this call for the session", "Deny"],
                                 approval: approval[:approval].merge(scopes: %w[session])))
       expect(run(s.id, "--question", "a1", "--option", "1", "--timeout", "0.3")).to eq(1)
@@ -451,7 +476,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
 
     before do
-      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue") { @parent_continue.nil? || @parent_continue }
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @parent_answers || "soft" }
     end
 
     it "continues it, marked as chi answer's, and prints the continued turn's reply" do
@@ -488,13 +513,13 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(json_out).to include("status" => "not_continued")
     end
 
-    it "refuses Continue when turn.parent_continue is false (stop-only parents), before posting" do
-      @parent_continue = false
+    it "refuses Continue under guardrails.parent_answers: hard (stop-only parents), before posting" do
+      @parent_answers = "hard"
       s = asking(limit_question, status: "idle")
 
       expect(run(s.id, "--question", "c1", "--option", "Continue", "--timeout", "0.3")).to eq(1)
       expect(posted).to be_empty
-      expect(err.string).to include("may only stop this turn").and include("turn.parent_continue: false")
+      expect(err.string).to include("may only stop this turn").and include("guardrails.parent_answers: hard")
     end
 
     it "does not dismiss it: the turn waits on Continue or Stop" do

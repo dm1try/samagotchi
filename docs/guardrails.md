@@ -67,8 +67,9 @@ Who answers:
   answerable too, the first answer wins. The parent's model sees only the
   outcome.
 - A parent agent running chi as a sub-agent (`chi send --wait` exits 3 with
-  the approval): `chi answer` may deny it, never allow it by default, or leave
-  it for the user. See [Approvals from a parent agent](#approvals-from-a-parent-agent).
+  the approval): `chi answer` may deny it, give "Allow once" under
+  `guardrails.parent_answers: soft` (the default; never a wider scope), or
+  leave it for the user. See [Answers from a parent agent](#answers-from-a-parent-agent).
 
 The model gets one line on a deny. A rule's or hook's deny reads
 `[execute] Error: denied by guardrail (rule git-push, bundle guardrails): git push publishes commits. The user was not asked. Do not retry it or reach the same result another way; ask the user how to proceed.`
@@ -99,39 +100,64 @@ with one warning, and chi starts with no stored approvals (more asks, nothing lo
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes one.
 The file tools can't write the store.
 
-### Approvals from a parent agent
+### Answers from a parent agent
 
-A chi parent's `delegate` children don't need any of this: their approvals go
-to the user on the parent's own card (the approval relay). This section is the
-path for other agents, and for a chi parent that can't host the relay (a
-`--no-shared` REPL, `--non-interactive`): there the model gets the approval
+A chi parent's `delegate` children don't need any of this for approvals: they
+go to the user on the parent's own card (the approval relay). This section is
+the path for other agents, and for a chi parent that can't host the relay (a
+`--no-shared` REPL, `--non-interactive`): there the model gets the question
 block and the rules below. With the relay, the same rules still hold for a
 parent model that answers its own relay card (a piped or marked `chi --attach`
 on the parent): that answer is a parent agent's, checked by the parent and
 again by the child.
 
 When another agent (Claude Code, Codex, a script) runs chi with
-`chi send --wait`, an approval comes back to it as exit 3 with `kind:
-approval`, and `chi answer` answers it. A rule with `verdict: ask` means "ask
-me", so by default a parent may only deny: `--option Deny --text "why"`,
-`--text` alone, or `--dismiss`. An Allow is refused (exit 1, `allowing a tool
-call is up to the user: deny it (--option Deny --text WHY), and tell your
-user`). The question block chi prints for an approval says the same: its
-command is a deny, with no `--option N` and no `chi --attach`.
+`chi send --wait`, a question comes back to it as exit 3 and `chi answer`
+answers it. Every question's options carry an **effect**, set by whoever asks:
+
+- `answer`: a plain choice (the model's own questions, an untagged plugin or
+  hook option);
+- `deny`: Deny on an approval, Stop on the step-limit question or a plugin's
+  stop option;
+- `spend`: more time and tokens, no new permission (Continue on the step-limit
+  question, cost-cap's Continue);
+- `permit`: one tool call (an approval's "Allow once");
+- `permit_wide`: more than one call (this session, this repo or directory,
+  the rule).
+
+One setting says which effects a parent may pick:
 
 ```yaml
 guardrails:
-  parent_approvals: once    # default off
+  parent_answers: soft    # hard | standard | soft (the default)
 ```
 
-`once` lets `chi answer --option "Allow once"` through, picked by the
-option's scope, not its label; the wider scopes (this session, this repo or
-directory, the rule) stay with the web and the terminal. An approval that
-doesn't offer "once" can't be allowed from a parent, and neither can one whose
-offered scopes are missing or don't fit its options: then only Deny goes.
+- `hard`: `deny` and `answer` only. A parent can deny an approval
+  (`--option Deny --text "why"`, `--text` alone or `--dismiss`), Stop a
+  step-limit question and answer plain questions.
+- `standard`: also `spend`: a parent may Continue a turn (or cost-cap's cap).
+- `soft` (the default): also `permit`: `chi answer --option "Allow once"`
+  goes through, picked by the option's scope, not its label.
+
+A parent never picks `permit_wide`: the wider scopes stay with the web and the
+terminal. An approval that doesn't offer "once" can't be allowed from a
+parent, and neither can one whose offered scopes are missing or don't fit its
+options: then only Deny goes. A refused pick exits 1 with what to do instead
+(`only Allow once (guardrails.parent_answers: soft) can be given here: deny it
+(--option Deny --text WHY), and tell your user`), never how to allow it. The
+question block chi prints says what the parent may give: under `soft` an
+approval's block lists the Allow once command next to the deny; under
+`standard` and `hard` it says allowing is up to the user. An invalid value
+warns and is `hard`.
+
+`soft` suits a capable parent model: it can let a child run one more command
+it asked about, still with every guardrail rule in force. For a weak or
+unknown parent model, set `standard` or `hard` (and see
+[chi-nah](#an-external-guard-chi-nah) for a deterministic guard on the calls
+themselves).
 
 A child that has to work in another folder (`write-outside-repo`,
-`git-outside-repo`) is denied this way too. Start it in that folder instead
+`git-outside-repo`) gets at most Allow once per call this way. Start it in that folder instead
 (`chi send --new --dir PATH`), or have your user allow "rule … in this repo"
 once on the web (it is stored for later sessions in that repo), or switch the
 rules off: `guardrails: {disable: [write-outside-repo, git-outside-repo]}`.
@@ -140,16 +166,17 @@ Whatever the setting, a parent can't allow a call on chi's own files: a
 `write`, `edit` or `execute` on the config dir (config.yml, installed bundles'
 rules), the hooks dir or the approval store, by its rule (`chi-config`,
 `chi-hooks`, `shell-touches-chi`), its paths or its command. "Allow once" on a
-config.yml rewrite would allow everything from then on, so those stay with the
-user: `chi answer` and the worker refuse the allow with `only the user can
-allow it`.
+config.yml rewrite would allow everything from then on, so those questions are
+the user's alone (`user_only`): `chi answer` and the worker refuse the allow
+with `only the user can allow it`. The same holds for the guardrails bundle's
+other user-only rules (`chi-context-cmd`, `chi-broadcast`,
+`prompt-memory-write`, `model-overlay-write`, and `chi-answer-piped` /
+`chi-answer-http`, which answer a grandchild's question as the user).
 
-A turn's step-limit question (kind `continue`) isn't an approval: Continue
-grants no permission, so a parent may answer it either way by default.
-`turn.parent_continue: false` (config.yml only, like `parent_approvals`)
-makes parents stop-only. See [chi as a sub-agent](sub-agent.md#the-step-limit).
+A plugin's or a hook's question (`ask_user`) tags its options the same way
+(`effects:`, see [Plugins](plugins.md)); an untagged one is a plain `answer`.
 
-The guardrails settings (`enabled`, `mode`, `small_models`, `parent_approvals`) are
+The guardrails settings (`enabled`, `mode`, `small_models`, `parent_answers`) are
 read from config.yml only: they have no environment variable, and a worker
 chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a
 parent's environment does choose is the config dir: `XDG_CONFIG_HOME` picks
@@ -159,11 +186,11 @@ points at (a relative one made absolute from the parent's directory). chi
 doesn't record the config dir per session.
 
 The worker checks it too. `chi answer` marks its answers as a parent's
-(`client_id: "cli:answer"`), and the worker's Bridge refuses such an allow
-beyond what the *worker's* config.yml permits (`403 parent_approval_refused`;
-`chi answer` exits 1 with the reason), checked against the question pending
-at that moment. Answers from the web and an attached terminal keep every
-scope.
+(`client_id: "cli:answer"`), and the worker's Bridge refuses such a pick
+beyond what the *worker's* config.yml permits (`403 parent_answer_refused`
+with its `reason`; `chi answer` exits 1 with the line), checked against the
+question pending at that moment. Answers from the web and an attached
+terminal keep every option.
 
 A parent may also type its answer into chi itself: a piped `chi --attach ID`
 or `printf '2\n' | chi --no-shared -p …`. So chi treats an answer as a

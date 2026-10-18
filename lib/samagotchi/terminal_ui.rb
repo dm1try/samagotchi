@@ -830,7 +830,7 @@ module Samagotchi
     end
 
     def answer_continue_offer(session, input)
-      answer = @commands.continue_answer(input)
+      answer = @commands.continue_answer(input, as_parent: as_parent?)
       if answer.decision == :invalid
         # The read left no echo: the line shows above its error.
         @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{input}")
@@ -876,7 +876,9 @@ module Samagotchi
         command = if command_registry.anytime?(input)
                     @engine.running_anytime { @commands.run(input, confirm: confirm) }
                   else
-                    @commands.run(input, confirm: confirm)
+                    # A parent's /continue yes is held to guardrails.parent_answers.
+                    parent = TurnFlow.continue_yes?(input) && as_parent? ? { as_parent: true } : {}
+                    @commands.run(input, confirm: confirm, **parent)
                   end
         if command
           show_command_result(command)

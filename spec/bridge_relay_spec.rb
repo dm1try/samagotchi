@@ -35,7 +35,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
   before do
     WebMock.allow_net_connect! if defined?(WebMock)
     allow(Samagotchi::Config).to receive(:get).and_call_original
-    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("standard")
     @bridges = []
   end
 
@@ -196,18 +196,18 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(box[:answer].to_h).to include(error: "no answer")
     end
 
-    it "holds a parent agent's answer to the child's own guardrails.parent_approvals (403, still open)" do
+    it "holds a parent agent's answer to the child's own guardrails.parent_answers (403, still open)" do
       _box, qid = ask_child
       response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
       expect(response.status).to eq(403)
-      expect(response.json).to include("error" => "parent_approval_refused", "reason" => "permit")
+      expect(response.json).to include("error" => "parent_answer_refused", "reason" => "permit")
       expect(child_engine.pending_question.id).to eq(qid)
 
       expect(relay("answered", parent_relay(qid, indices: [2], by: "parent_agent"), qid).status).to eq(200)
     end
 
     it "refuses even Allow once from a parent agent on chi's own config, whatever the setting" do
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("once")
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
       _box, qid = ask_child(approval.merge(approval: approval[:approval].merge(rule: "chi-config")))
       response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
       expect([response.status, response.json["reason"]]).to eq([403, "user_only"])

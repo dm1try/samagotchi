@@ -343,7 +343,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
   end
 
   # A parent agent's answer (chi answer, marked cli:answer) to an approval
-  # gets no more than guardrails.parent_approvals allows, by the WORKER's
+  # gets no more than guardrails.parent_answers allows, by the WORKER's
   # config: the check runs again here, against the question pending now.
   describe "a parent's answer to an approval (client_id cli:answer)" do
     let(:approval_fields) do
@@ -362,11 +362,11 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
     def setting(value)
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return(value)
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(value)
     end
 
-    it "refuses every allow with off, leaves the question open, and the user can still allow it" do
-      setting("off")
+    it "refuses every allow under standard, leaves the question open, and the user can still allow it" do
+      setting("standard")
       engine = build_engine
       thread, result, qid = open_approval(engine)
       { "Allow once" => :permit, "Allow this call for the session" => :permit_wide }.each do |label, reason|
@@ -381,7 +381,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
 
     it "takes a deny from a parent: the Deny option, text alone" do
-      setting("off")
+      setting("standard")
       engine = build_engine
       thread, result, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: [], freeform: "no", client_id: parent)
@@ -394,8 +394,8 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(result[:answer].to_h).to include(selected_indices: [2])
     end
 
-    it "with once takes Allow once by its scope, never a wider one" do
-      setting("once")
+    it "under soft takes Allow once by its scope, never a wider one" do
+      setting("soft")
       engine = build_engine
       thread, result, qid = open_approval(engine)
       expect { engine.answer_question(id: qid, selected: ["Allow this call for the session"], client_id: parent) }
@@ -405,8 +405,8 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(result[:answer].to_h).to include(selected_indices: [0])
     end
 
-    it "refuses even Allow once with once on chi's own config (the user's alone)" do
-      setting("once")
+    it "refuses even Allow once under soft on chi's own config (the user's alone)" do
+      setting("soft")
       engine = build_engine
       fields = approval_fields.merge(approval: { tool: "write", rule: "chi-config", source: "core", scopes: %w[once session] })
       thread, result, qid = open_approval(engine, fields)
@@ -418,7 +418,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
 
     it "fails closed on an approval without scopes: only Deny" do
-      setting("once")
+      setting("soft")
       engine = build_engine
       thread, result, qid = open_approval(engine, approval_fields.merge(approval: { tool: "execute" }))
       expect { engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent) }
@@ -429,7 +429,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
 
     it "leaves the model's and hooks' questions, and other clients, alone" do
-      setting("off")
+      setting("standard")
       engine = build_engine
       thread, result, qid = open_approval(engine, payload.merge(kind: "hook"))
       engine.answer_question(id: qid, selected: ["Cats"], client_id: parent)
@@ -443,7 +443,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
 
     it "checks the question pending now: a stale id is not pending, whatever it asked" do
-      setting("once")
+      setting("soft")
       engine = build_engine
       thread, _, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: ["Deny"])

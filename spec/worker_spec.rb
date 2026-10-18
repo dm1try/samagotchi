@@ -1285,6 +1285,31 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { saved_messages == ["long task", "calling ls", "a b"] }).to be(true)
       end
 
+      it "holds a parent agent's /continue yes (cli:answer) to guardrails.parent_answers: hard refuses it, a person's goes" do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(wait_until { saw?(:continue_offered) }).to be(true)
+
+        port = JSON.parse(File.read(sidecar))["port"]
+        post = lambda do |client_id|
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
+                         JSON.generate(line: "/continue yes", client_id: client_id), "Content-Type" => "application/json")
+        end
+        post.call("cli:answer")
+        expect(wait_until { seen.any? { |e| e[:type] == :command_ran } if saw?(:command_ran) }).to be(true)
+        ran = seen.find { |e| e[:type] == :command_ran }
+        expect(ran).to include(status: "error")
+        expect(ran[:output]).to include("a parent agent may only stop this turn here (guardrails.parent_answers: hard)")
+        expect(saw?(:continue_resolved)).to be(false)
+        expect(bridge_snapshot["continue_offer"]).not_to be_nil
+
+        post.call("web:1")
+        expect(wait_until { saw?(:continue_resolved) }).to be(true)
+        expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "resume", client_id: "web:1")
+      end
+
       it "drops the offer when a new prompt is taken, keeping the partial turn (D2)" do
         start_worker(poll_interval: 5)
         post_turn("long task")
