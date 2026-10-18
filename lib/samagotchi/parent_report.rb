@@ -34,8 +34,9 @@ module Samagotchi
     # @param result [ReplyWait::Result]
     # @return [String] answered, question, failed, canceled, limit (the
     #   turn ran out of iterations, nobody asked), not_continued (a Stop
-    #   answered the step-limit question), no_answer, error, worker_gone,
-    #   stopped or running
+    #   answered the step-limit question), removed (the queued message was
+    #   taken back before it ran), no_answer, error, worker_gone, stopped
+    #   or running
     def status(result)
       case result.status
       when :done then "answered"
@@ -46,6 +47,7 @@ module Samagotchi
         when "canceled" then "canceled"
         when "exhausted" then "limit"
         when "not_continued" then "not_continued"
+        when "removed" then "removed"
         else "no_answer"
         end
       when :error then "error"
@@ -258,6 +260,7 @@ module Samagotchi
       when "canceled" then "the turn was canceled"
       when "completed" then "the turn ended with no visible answer"
       when "not_continued" then "the turn was not continued (Stop); its work so far stays"
+      when "removed" then "the queued message was removed before it ran; no turn ran for it"
       when "exhausted"
         "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered; " \
           "chi send #{session_id} -m '/continue yes' continues it, a message drops it"

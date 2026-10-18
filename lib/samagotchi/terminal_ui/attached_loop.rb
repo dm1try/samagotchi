@@ -260,6 +260,7 @@ module Samagotchi
           take_session_state(event[:session_state_snapshot] || {})
           return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
         when :turn_enqueued then show_enqueued(event)
+        when :turn_dequeued then turn_dequeued(event)
         when :turn_started
           @status.take_event(event)
           start_turn(event)
@@ -1451,6 +1452,20 @@ module Samagotchi
         @shown_enqueued << event[:enqueued_id]
         line = prompt_line(event[:client_id], event[:prompt])
         @screen.commit(event[:delivery] == Delivery::QUEUE ? "#{line} #{QUEUED_NOTE}" : line)
+      end
+
+      # A queued prompt was taken back before it ran (the web's ×, /unqueue
+      # in a terminal). One of this run's (wait_at_eof) will have no turn:
+      # it ends the wait, as a failed one does. Another client's shown
+      # line says so.
+      def turn_dequeued(event)
+        id = event[:enqueued_id]
+        if @open_ids.delete?(id)
+          @own_failed = true
+          @screen.commit("(your queued message was removed before it ran)") unless own?(event[:client_id])
+        elsif @shown_enqueued.delete?(id)
+          @screen.commit("(a queued message was removed)")
+        end
       end
 
       def start_turn(event)

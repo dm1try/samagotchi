@@ -96,6 +96,8 @@ RSpec.describe Samagotchi::ParentReport do
     }
     cases[Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "not_continued")] =
       ["not_continued", "the turn was not continued (Stop); its work so far stays; chi --attach #{id} shows it", 0]
+    cases[Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "removed")] =
+      ["removed", "the queued message was removed before it ran; no turn ran for it; chi --attach #{id} shows it", 1]
     cases.each do |result, (status, detail, code)|
       expect(json(result, timeout: 2.5)).to eq("status" => status, "session_id" => id, "detail" => detail)
       expect(described_class.exit_status(result)).to eq(code)

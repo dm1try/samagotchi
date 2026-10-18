@@ -484,6 +484,22 @@ RSpec.describe Samagotchi::ReplyWait do
         .to include('"status":"canceled"', '"cancel_reason":"session_stopped"')
     end
 
+    it "ends with :no_reply, outcome removed, when its queued input is taken back before it runs" do
+      queue_input("q1")
+      base = baseline
+      set(status: "running")
+      later do
+        looked(2)
+        Samagotchi::SessionInbox.take_queued_input(dir, "q1")
+      end
+
+      result = wait(baseline: base, turn: "q1", queued: true, timeout: 5)
+      expect(result.to_h).to include(status: :no_reply, outcome: "removed")
+      expect(result.session).to be_a(Samagotchi::Session)
+      expect(Samagotchi::ParentReport.status(result)).to eq("removed")
+      expect(Samagotchi::ParentReport.detail(result, session_id: session.id)).to include("the queued message was removed")
+    end
+
     it "ends on its own end seen while a next queued turn already runs" do
       queue_input("q1")
       queue_input("q2")

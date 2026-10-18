@@ -35,7 +35,9 @@ module Samagotchi
     #   reply (:no_reply): "failed", "canceled", "completed" (empty),
     #   "exhausted" (it ran out of iterations, with nobody asked whether to
     #   continue) or "not_continued" (a Stop answered the step-limit
-    #   question; no turn ran), from the session's last_turn; nil when unknown. With
+    #   question; no turn ran), from the session's last_turn, or "removed"
+    #   (turn:'s queued input was taken back before it ran, its tombstone:
+    #   SessionInbox.removed?; no turn ran); nil when unknown. With
     #   "failed", text is the failure's summary when the turn note has one.
     # @!attribute limit [Integer, nil] the iteration limit an "exhausted"
     #   turn ran out at
@@ -132,6 +134,11 @@ module Samagotchi
           claimed = waiting.nil?
         end
         session = Session.load(id, state_dir: state_dir)
+        # Taken back before it ran (POST turn/dequeue): no turn will come.
+        if turn && claimed && !seen_own && SessionInbox.removed?(session_dir, turn)
+          return Result.new(status: :no_reply, outcome: "removed", session: session)
+        end
+
         if turn && !seen_own && session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == turn
           seen_own = true
           own_base = session.last_turn&.ended_at

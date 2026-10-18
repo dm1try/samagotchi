@@ -1789,6 +1789,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     expect(screen.lines.grep(/after this/)).to contain_exactly(a_string_ending_with("after this (queued: runs after this turn)"))
   end
 
+  it "says when another client's queued prompt it showed is removed, and nothing for one it never showed" do
+    allow(client).to receive(:follow) do |&block|
+      block.call(snapshot)
+      block.call("type" => "turn_enqueued", "enqueued_id" => "e9", "client_id" => "web:2", "prompt" => "after this",
+                 "delivery" => "queue")
+      block.call("type" => "turn_dequeued", "enqueued_id" => "e9", "client_id" => "web:2")
+      block.call("type" => "turn_dequeued", "enqueued_id" => "e10", "client_id" => "web:2")
+      double("stream", close: nil)
+    end
+    run_inputs
+
+    expect(screen.lines.grep(/removed/)).to eq(["(a queued message was removed)"])
+  end
+
   it "runs /queue TEXT and /cut TEXT at an idle prompt as plain turns (no delivery)" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["session_state_snapshot"]["status"] = "idle"
@@ -2753,6 +2767,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines.last).to eq("A question waits for an answer: chi --attach s-1234")
     # The launcher prints it in full (AttachLauncher.report_unanswered).
     expect(attached.unanswered).to include(id: "q1", question: "Which?")
+  end
+
+  # Queued behind another client's turn, then taken back (the web's ×):
+  # no turn of its will come, so the run ends instead of waiting forever.
+  it "ends with :turn_failed when its queued prompt is removed before it runs" do
+    start(body: '{"enqueued_id":"e1","delivery":"queue"}')
+    @push.call("type" => "turn_started", "prompt" => "other", "origin" => { "client_id" => "web:2", "enqueued_id" => "w1" })
+    expect(@thread.join(0.3)).to be_nil
+    @push.call("type" => "turn_dequeued", "enqueued_id" => "e1", "client_id" => "web:2")
+
+    expect(result).to eq(:turn_failed)
+    expect(screen.lines).to include("(your queued message was removed before it ran)")
   end
 
   it "ends with :turn_failed when the worker refuses the prompt" do
