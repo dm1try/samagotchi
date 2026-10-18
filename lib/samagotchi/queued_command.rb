@@ -9,10 +9,11 @@ module Samagotchi
   # question's answer), whose line the UIs leave out. The worker adds
   # where it waits (Worker#on_command): +mid_turn+ (the policy it got:
   # :queue, :refuse, :loop), +after_seq+ (the event count then, so a
-  # turn's end knows it came before) and +after_file+ (the input file it
-  # runs after, a basename).
-  QueuedCommand = Data.define(:command_id, :client_id, :line, :card, :mid_turn, :after_seq, :after_file) do
-    def initialize(command_id:, line:, client_id: nil, card: false, mid_turn: nil, after_seq: nil, after_file: nil) = super
+  # turn's end knows it came before), +after_file+ (the input file it runs
+  # after, a basename) and +enqueued_id+ (a file-delivered command's sender).
+  QueuedCommand = Data.define(:command_id, :client_id, :line, :card, :mid_turn, :after_seq, :after_file, :enqueued_id) do
+    def initialize(command_id:, line:, client_id: nil, card: false, mid_turn: nil, after_seq: nil, after_file: nil,
+                   enqueued_id: nil) = super
 
     # A new command with a fresh id.
     def self.mint(line, client_id: nil, card: false)

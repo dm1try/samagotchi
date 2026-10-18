@@ -66,13 +66,12 @@ module Samagotchi
       mark
     end
 
-    # Where a settled turn's end is kept: input/settled/<enqueued_id>, its
-    # LastTurn record (outcome canceled, cancel_reason worker_stopped),
+    # Where a per-input terminal outcome is kept: input/settled/<enqueued_id>,
     # outside the *.json glob like SessionInbox's removed tombstones.
     SETTLED_DIR = "settled"
     WORKER_STOPPED = "worker_stopped"
 
-    # The end #settle recorded for the turn that ran +enqueued_id+.
+    # The terminal outcome recorded for +enqueued_id+.
     # @return [LastTurn, nil] nil when no settle recorded one
     def self.settled_turn(session_dir, enqueued_id)
       id = enqueued_id.to_s
@@ -91,6 +90,20 @@ module Samagotchi
       LastTurn.new(outcome: "canceled", cancel_reason: WORKER_STOPPED, ended_at: ended_at, seconds: seconds, enqueued_id: id)
     end
     private_class_method :settled_record
+
+    # A file-delivered command ends its sender's wait without running a
+    # turn. Keep a terminal outcome under the same per-input settled path.
+    def self.record_command_outcome(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      return if id.empty? || !SessionInbox::ENQUEUED_ID_NAME.match?(id)
+
+      dir = File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR)
+      FileUtils.mkdir_p(dir)
+      record = LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id)
+      AtomicFile.write(File.join(dir, id), JSON.generate(record.to_file))
+    rescue SystemCallError, IOError => e
+      Log.warn(:worker, "command_outcome_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
+    end
 
     def self.record_settled(session_dir, mark, seconds)
       id = mark.enqueued_id.to_s

@@ -33,9 +33,10 @@ module Samagotchi
     # @!attribute question [PendingQuestion, nil] the pending question
     #   (:waiting_for_answer)
     # @!attribute outcome [String, nil] how the turn ended when it left no
-    #   reply (:no_reply): "failed", "canceled", "completed" (empty),
+    #   reply (:no_reply): "failed", "canceled", "completed" (empty turn or
+    #   file-delivered command ran without a turn),
     #   "exhausted" (it ran out of iterations, with nobody asked whether to
-    #   continue) or "not_continued" (a Stop answered the step-limit
+    #   continue), "not_continued" (a Stop answered the step-limit
     #   question; no turn ran), from the session's last_turn, or "removed"
     #   (turn:'s queued input was taken back before it ran, its tombstone:
     #   SessionInbox.removed?; no turn ran); nil when unknown. With
@@ -158,12 +159,11 @@ module Samagotchi
           reply.session = settled(session, id, state_dir: state_dir)
           return reply
         end
-        # Its worker died in it and the next one settled it (no reply, no
-        # last_turn of its own: TurnCheckpoint.settle records it under its
-        # id). After the reply check: a worker killed between writing the
-        # reply and its idle save left the reply, the one answer.
-        if turn && (dead = TurnCheckpoint.settled_turn(session_dir, turn))
-          return Result.new(status: :no_reply, outcome: dead.outcome, session: session, **dead.stop_facts)
+        # Its worker died in it and the next one settled it, or an input
+        # command finished without a turn. After the reply check: a worker
+        # killed between writing the reply and its idle save left the reply.
+        if turn && (settled = TurnCheckpoint.settled_turn(session_dir, turn))
+          return Result.new(status: :no_reply, outcome: settled.outcome, session: session, **settled.stop_facts)
         end
 
         case session.status

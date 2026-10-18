@@ -51,7 +51,8 @@ RSpec.describe Samagotchi::WorkerInbound do
   let(:inbound) do
     described_class.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: engine,
                         context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] },
-                        stopped: -> { stopped[0] }, queue_command: ->(line, client_id, _after_file) { queued << [line, client_id] })
+                        stopped: -> { stopped[0] },
+                        queue_command: ->(line, client_id, _after_file, enqueued_id) { queued << [line, client_id, enqueued_id] })
   end
 
   after { FileUtils.rm_rf(tmpdir) }
@@ -116,7 +117,7 @@ RSpec.describe Samagotchi::WorkerInbound do
     it "queues a first prompt that is a command and saves the session idle, unless it was stopped" do
       session.status = Samagotchi::Session::STATUS_RUNNING
       expect(inbound.initial_command?("/model x")).to be(true)
-      expect(queued).to eq([["/model x", nil]])
+      expect(queued).to eq([["/model x", nil, nil]])
       expect(saved.status).to eq(Samagotchi::Session::STATUS_IDLE)
 
       expect(inbound.initial_command?("hello")).to be(false)
@@ -151,11 +152,11 @@ RSpec.describe Samagotchi::WorkerInbound do
 
     it "queues a command without images, and yields nothing for it or an empty line" do
       yielded = []
-      inbound.take_input(write("/model x", client_id: "web:1")) { |p| yielded << p }
+      inbound.take_input(write("/model x", client_id: "web:1", enqueued_id: "e1")) { |p| yielded << p }
       inbound.take_input(write("  ")) { |p| yielded << p }
       inbound.take_input(write("/model y", images: [{ file: "b.png", name: "b" }])) { |p| yielded << p.text }
 
-      expect(queued).to eq([["/model x", "web:1"]])
+      expect(queued).to eq([["/model x", "web:1", "e1"]])
       expect(yielded).to eq(["/model y"])
       expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
     end

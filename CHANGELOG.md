@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi send --wait` no longer times out when a fallback input file carries a session command: the command's completion is recorded as that input's terminal outcome.
 - An image-only prompt sent from an attached terminal is no longer echoed again as an image line when its turn starts.
 - `chi send --queue --wait` (and a wait for a turn by its id) no longer waits until its timeout when the worker dies
   in the middle of that turn: once the next worker settles it, the wait ends `canceled` with

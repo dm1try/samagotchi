@@ -485,6 +485,35 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       expect(JSON.parse(out.string)).to include("status" => "command", "session_id" => a.id)
     end
 
+    it "waits for a command's terminal outcome when it was delivered through a fallback input file" do
+      a = make(status: "idle")
+      enqueued_id = "input-command"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
+        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+      end
+      later(0.05) do
+        Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id)
+      end
+
+      expect(run("--wait", "--format", "json", "--timeout", "0.5", "-m", "/model x", a.id)).to eq(1)
+      expect(JSON.parse(out.string)).to include("status" => "no_answer", "turn_id" => enqueued_id)
+    end
+
+    it "waits for the fallback command outcome on a new session too" do
+      enqueued_id = "new-input-command"
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
+        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+      end
+      later(0.05) do
+        Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(@started.id, state_dir: tmpdir),
+                                                          enqueued_id)
+      end
+
+      expect(run("--new", "--wait", "--format", "json", "--timeout", "0.5", "-m", "/model x")).to eq(1)
+      expect(JSON.parse(out.string)).to include("status" => "no_answer", "turn_id" => enqueued_id)
+    end
+
     # The worker decides what is a command (a bundle's too), so the line
     # goes in as a message to a live worker, whose answer says.
     it "with --new starts the session idle and sends the line through its worker" do

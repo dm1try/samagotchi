@@ -309,10 +309,11 @@ module Samagotchi
     # @param after_file [String, nil] the input file it came in (its
     #   basename): it runs once that file is taken (Worker#on_command)
     # @return [String] its command_id
-    def queue_command(line, client_id: nil, card: false, after_file: nil)
+    def queue_command(line, client_id: nil, card: false, after_file: nil, enqueued_id: nil)
       # A card's action (the step-limit question's answer): the UIs leave
-      # its line out.
-      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card)
+      # its line out. +enqueued_id+: a file-delivered command's input, whose
+      # sender's wait its command_ran settles.
+      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card).with(enqueued_id: enqueued_id)
       @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
       command.command_id
     end

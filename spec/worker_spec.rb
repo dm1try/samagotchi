@@ -1567,6 +1567,19 @@ RSpec.describe Samagotchi::Worker do
         expect(turns).to be_empty
       end
 
+      it "ends a wait for a command delivered through an input file" do
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "/model Qwen3-14B", client_id: "cli:send",
+                                                                enqueued_id: "e1", state_dir: tmpdir)
+        start_worker(poll_interval: 5)
+        wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :command_ran } }
+        expect(turns).to be_empty
+
+        result = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 0.1,
+                                             poll_interval: 0.01, turn: "e1")
+
+        expect([result.status, result.outcome]).to eq([:no_reply, "completed"])
+      end
+
       it "runs a command an input file carries before the next file's turn, not busy" do
         ["one", "/model Qwen3-14B", "two"].each do |prompt|
           Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, client_id: "cli:send", state_dir: tmpdir)

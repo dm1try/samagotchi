@@ -278,8 +278,9 @@ module Samagotchi
                                    context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
-                                   queue_command: lambda { |line, client_id, after_file|
-                                     @bridge.queue_command(line, client_id: client_id, after_file: after_file)
+                                   queue_command: lambda { |line, client_id, after_file, enqueued_id|
+                                     @bridge.queue_command(line, client_id: client_id, after_file: after_file,
+                                                                 enqueued_id: enqueued_id)
                                    })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.  nil when there is no default.model.
@@ -867,6 +868,7 @@ module Samagotchi
     # @param confirm [CacheConfirm::Confirm, nil] the change asks first: the
     #   line that applies it (the TUI's prefill, the web's Apply button)
     def announce_command(command, status:, output:, changed:, anytime: false, confirm: nil)
+      TurnCheckpoint.record_command_outcome(@session_dir, command.enqueued_id)
       text = output.to_s
       event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
                 changed: changed.map(&:to_s), model_name: @engine.effective_model_name }

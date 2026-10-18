@@ -414,7 +414,8 @@ module Samagotchi
       return report_command(session.id) if @sent_command
 
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
-                                 timeout: options[:timeout], report_turn_id: @sent_enqueued_id)
+                                 timeout: options[:timeout], turn: @sent_input_file ? @sent_enqueued_id : nil,
+                                 report_turn_id: @sent_enqueued_id)
     end
 
     # The model the new session will run, for the images check: --model
@@ -485,7 +486,9 @@ module Samagotchi
       # The ack's id names the queued message's turn, also when the turn
       # running at the check ended before it went in (an idle worker's ack
       # says next_step, and the file still runs as that turn).
-      turn = @queue ? @sent_enqueued_id : nil
+      # A file fallback has no delivery field; use its id to see terminal
+      # outcomes for commands that finish without starting a turn.
+      turn = @sent_enqueued_id if @queue || @sent_input_file
       report_turn_id = if @queue
                          turn
                        elsif session.status == Session::STATUS_RUNNING
@@ -493,7 +496,8 @@ module Samagotchi
                        else
                          @sent_enqueued_id
                        end
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn, queued: !turn.nil?,
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn,
+                          queued: @queue && !turn.nil?,
                           report_turn_id: report_turn_id)
     end
 
@@ -569,6 +573,7 @@ module Samagotchi
       end
 
       ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
+      @sent_input_file = !ack.key?("delivery")
       @sent_enqueued_id = (ack["enqueued_id"] || ack[:enqueued_id])&.to_s
       @sent_command = command_ack?(result[:ack])
       @info.puts("#{session.id}  started#{continued_words(session)}#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
@@ -664,6 +669,7 @@ module Samagotchi
       end
 
       ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
+      @sent_input_file = !ack.key?("delivery")
       # What the worker applied, for --format json: its ack's delivery
       # (next_step for an idle session) and a cut's outcome.
       @sent_delivery = ack["delivery"] || delivery
