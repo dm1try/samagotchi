@@ -8,7 +8,16 @@ require "samagotchi/side_usage"
 require "samagotchi/llm/usage"
 
 RSpec.describe Samagotchi::SessionMetrics do
-  let(:metrics) { described_class.new }
+  # A collector whose clocks never move: every timed field (gen_ms, decode_ms,
+  # the durations, the stamp) stays put, so an example can't ride the machine's
+  # speed. On the real monotonic clock two collectors rounded their gen_ms
+  # apart (1 vs 0, CI run 39130480870). An example that asserts a duration
+  # passes its own scripted clocks.
+  def frozen_metrics(monotonic: 0.0, wall: Time.utc(2026, 9, 21, 10, 0, 0))
+    described_class.new(clock: -> { monotonic }, wall_clock: -> { wall })
+  end
+
+  let(:metrics) { frozen_metrics }
 
   describe Samagotchi::SessionMetrics::Totals do
     it "merges counts, cancellations, token sources and the latest speeds" do
@@ -264,7 +273,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       feed(turn(300, 50, window: 4096))
       metrics.persist
 
-      woken = described_class.new
+      woken = frozen_metrics
       woken.state_dir = state_dir
       woken.session_id = "ctx-sess"
 
@@ -291,7 +300,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(JSON.parse(File.read(File.join(state_dir, "index-sess", "analytics.json")))["memory_index"])
         .to eq("system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 })
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.session_id = "index-sess"
       expect(woken.snapshot[:memory_index]).to eq(index)
       woken.memory_index = { system: { tokens: 1, lines: 1 } }
@@ -763,7 +772,7 @@ RSpec.describe Samagotchi::SessionMetrics do
         metrics.call(type: :turn_completed)
         metrics.persist
 
-        woken = described_class.new.tap { |m| m.state_dir = dir }
+        woken = frozen_metrics.tap { |m| m.state_dir = dir }
         woken.session_id = "speed"
         expect(woken.snapshot[:tokens][:cost_sum]).to eq(0.25)
         expect(woken.snapshot[:tokens][:cost_estimate_sum]).to be_within(1e-12).of(estimate_for(10) + estimate_for(20))
@@ -852,7 +861,7 @@ RSpec.describe Samagotchi::SessionMetrics do
         metrics.add_side(side(cost: 0.01))
         metrics.persist
 
-        woken = described_class.new.tap { |m| m.state_dir = dir }
+        woken = frozen_metrics.tap { |m| m.state_dir = dir }
         woken.session_id = "speed"
         expect(woken.cost.reported).to be_within(1e-12).of(0.26)
         expect(woken.cost).to have_attributes(side: 0.01, known?: true)
@@ -878,7 +887,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       saved["turn_records"] << { "id" => "t0", "status" => "completed", "prompt_tokens_sum" => 10, "completion_tokens" => 2 }
       File.write(path, JSON.generate(saved))
 
-      woken = described_class.new.tap { |m| m.state_dir = dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = dir }
       woken.session_id = "speed"
       expect(woken.snapshot[:tokens]).to include(cached_sum: 280, cost_sum: 0.5, decode_tokens_sum: 80,
                                                  last_decode_tps: 30.0, tps_source: "estimate", last_prefill_tps: 900.0,
@@ -1096,7 +1105,7 @@ RSpec.describe Samagotchi::SessionMetrics do
   end
 
   it "saves a guardrail-denied call's record as blocked, not as an error (the web's reload reads it)" do
-    metrics = described_class.new
+    metrics = frozen_metrics
     metrics.call(type: :turn_started, session_id: "denied", prompt: "x")
     metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute")
     metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute",
@@ -1142,7 +1151,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       run_one_generation(metrics)
       expect(metrics.persist(running_turn: true)).to be(true)
 
-      woken = described_class.new
+      woken = frozen_metrics
       woken.state_dir = state_dir
       woken.session_id = "killed"
       record = woken.saved_snapshot[:turn_records].last
@@ -1168,13 +1177,13 @@ RSpec.describe Samagotchi::SessionMetrics do
 
   it "keeps the earlier records in its state dir when a later worker persists analytics" do
     state_dir = Dir.mktmpdir
-    first = described_class.new
+    first = frozen_metrics
     first.state_dir = state_dir
     first.call(type: :turn_started, session_id: "resumed", prompt: "one")
     first.call(type: :turn_completed, result: double(respond_to?: false))
     first.persist
 
-    second = described_class.new
+    second = frozen_metrics
     second.state_dir = state_dir
     second.call(type: :turn_started, session_id: "resumed", prompt: "two")
     second.call(type: :turn_completed, result: double(respond_to?: false))
@@ -1186,7 +1195,7 @@ RSpec.describe Samagotchi::SessionMetrics do
 
   it "brings back the served model a woken collector's session last reported" do
     state_dir = Dir.mktmpdir
-    first = described_class.new
+    first = frozen_metrics
     first.state_dir = state_dir
     first.call(type: :turn_started, session_id: "woken", prompt: "one")
     first.call(type: :generation_started, iteration: 1)
@@ -1194,7 +1203,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     first.call(type: :turn_completed)
     first.persist
 
-    woken = described_class.new
+    woken = frozen_metrics
     woken.state_dir = state_dir
     woken.session_id = "woken"
 
@@ -1204,7 +1213,7 @@ RSpec.describe Samagotchi::SessionMetrics do
 
   it "saves a call still running when its turn is canceled as stopped, so the records match the count" do
     state_dir = Dir.mktmpdir
-    metrics = described_class.new
+    metrics = frozen_metrics
     metrics.state_dir = state_dir
     metrics.call(type: :turn_started, session_id: "cut", prompt: "x")
     metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "read")
@@ -1220,14 +1229,14 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:active_tools]).to be_empty
     metrics.persist
 
-    woken = described_class.new
+    woken = frozen_metrics
     woken.state_dir = state_dir
     woken.session_id = "cut"
     expect(woken.snapshot).to include(tool_calls_total: 2, tool_calls_by_tool: { "read" => 1, "execute" => 1 })
   end
 
   it "saves a call still running when its turn fails as canceled: no one stopped it" do
-    metrics = described_class.new
+    metrics = frozen_metrics
     metrics.call(type: :turn_started, session_id: "broke", prompt: "x")
     metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute")
     metrics.call(type: :turn_failed, error: "boom")
@@ -1261,7 +1270,7 @@ RSpec.describe Samagotchi::SessionMetrics do
   # a new collector for the same session: its totals must cover both.
   it "keeps the aliased-call count across a save and a fresh collector's load" do
     state_dir = Dir.mktmpdir
-    first = described_class.new.tap { |m| m.state_dir = state_dir }
+    first = frozen_metrics.tap { |m| m.state_dir = state_dir }
     first.session_id = "aliased"
     [
       { type: :turn_started, session_id: "aliased", prompt: "p" },
@@ -1279,7 +1288,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(written["tool_calls_aliased"]).to eq("bash" => 1)
     expect(written["tool_records"].first["called_as"]).to eq("bash")
 
-    second = described_class.new.tap { |m| m.state_dir = state_dir }
+    second = frozen_metrics.tap { |m| m.state_dir = state_dir }
     second.session_id = "aliased"
     expect(second.snapshot[:tool_calls_aliased]).to eq("bash" => 1)
   ensure
@@ -1304,8 +1313,8 @@ RSpec.describe Samagotchi::SessionMetrics do
       metrics.persist
     end
 
-    turn.call(described_class.new, 100, "read")
-    second = described_class.new
+    turn.call(frozen_metrics, 100, "read")
+    second = frozen_metrics
     turn.call(second, 150, "shell")
 
     path = File.join(Samagotchi::Session.session_dir("restarted"), "analytics.json")
@@ -1324,7 +1333,7 @@ RSpec.describe Samagotchi::SessionMetrics do
   # totals and only the recent records; analytics.json keeps the history.
   describe "the live snapshot's records" do
     let(:state_dir) { Dir.mktmpdir }
-    let(:metrics) { described_class.new.tap { |m| m.state_dir = state_dir } }
+    let(:metrics) { frozen_metrics.tap { |m| m.state_dir = state_dir } }
 
     def run_turn(metrics, n, tools: 2, sid: "live")
       metrics.call(type: :turn_started, session_id: sid, prompt: "p#{n}", turn_id: "t#{n}")
@@ -1383,7 +1392,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     it "keeps unsaved turns while saving fails, the newest 20 at most" do
-      blocked = described_class.new.tap { |m| m.state_dir = File.join(state_dir, "file") }
+      blocked = frozen_metrics.tap { |m| m.state_dir = File.join(state_dir, "file") }
       File.write(File.join(state_dir, "file"), "not a dir")
       run_turn(blocked, 1, sid: "blocked")
       run_turn(blocked, 2, sid: "blocked")
@@ -1398,7 +1407,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     it "caps a collector with no session id at 20 turns" do
-      bare = described_class.new
+      bare = frozen_metrics
       (1..22).each { |n| run_turn(bare, n, tools: 0, sid: nil) }
       expect(bare.persist).to be(false)
       expect(bare.snapshot[:turn_records].size).to eq(20)
@@ -1406,7 +1415,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     it "a woken collector has no records but every turn in its totals, and saves them all" do
-      first = described_class.new.tap { |m| m.state_dir = state_dir }
+      first = frozen_metrics.tap { |m| m.state_dir = state_dir }
       (1..5).each do |n|
         run_turn(first, n)
         first.persist
@@ -1416,7 +1425,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       first.call(type: :turn_canceled, cancellation_reason: :user)
       first.persist
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.session_id = "live"
       snap = woken.snapshot
       expect(snap[:turn_records]).to eq([])
@@ -1536,13 +1545,13 @@ RSpec.describe Samagotchi::SessionMetrics do
 
     it "keeps the last model across a woken collector" do
       state_dir = Dir.mktmpdir
-      first = described_class.new.tap { |m| m.state_dir = state_dir }
+      first = frozen_metrics.tap { |m| m.state_dir = state_dir }
       first.call(type: :turn_started, session_id: "sess-w", prompt: "p")
       first.call(type: :generation_started, iteration: 1, model_ref: "a:one")
       first.call(type: :turn_completed)
       first.persist
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       [{ type: :turn_started, session_id: "sess-w", prompt: "p" },
        { type: :generation_started, iteration: 1, model_ref: "b:two" },
        { type: :generation_chunk, iteration: 1, content: "a", payload: { "usage" => { "prompt_tokens" => 900 } } },
@@ -1658,7 +1667,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       turn("b:two")
       metrics.persist
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.session_id = "sess-s"
       expect(woken.saved_snapshot[:model_segments].map { |row| row[:model_ref] }).to eq(%w[a:one b:two])
       expect(woken.snapshot[:model_segments]).to eq(metrics.snapshot[:model_segments])
@@ -1754,11 +1763,11 @@ RSpec.describe Samagotchi::SessionMetrics do
     it "equal the sums over every record after each event, across a reload" do
       rng = Random.new(20_261_003)
       state_dir = Dir.mktmpdir
-      metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+      metrics = frozen_metrics.tap { |m| m.state_dir = state_dir }
       30.times do |n|
         if n == 15
           metrics.persist
-          metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+          metrics = frozen_metrics.tap { |m| m.state_dir = state_dir }
           metrics.session_id = "random"
           expect(totals(metrics.snapshot)).to eq(recomputed(metrics))
         end
@@ -1778,7 +1787,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     it "add up per model in a running turn's checkpoint (persist(running_turn: true))" do
       rng = Random.new(20_261_017)
       state_dir = Dir.mktmpdir
-      metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+      metrics = frozen_metrics.tap { |m| m.state_dir = state_dir }
       12.times do |n|
         events = random_events(rng, "t#{n}")
         events.each { |event| metrics.call(event) }
@@ -1847,10 +1856,9 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     it "leaves the tokens block and model_segments exactly as the turns alone made them" do
-      # Both on a frozen clock: gen_ms is timed, and two real-clock runs can
-      # round to different ms (CI run 39130480870 saw 1 vs 0).
-      metrics = described_class.new(clock: -> { 0.0 })
-      other = described_class.new(clock: -> { 0.0 })
+      # Both on the same frozen clock (see frozen_metrics): gen_ms is timed.
+      metrics = frozen_metrics
+      other = frozen_metrics
       [metrics, other].each do |collector|
         collector.call(type: :turn_started, session_id: "side-sess", prompt: "p", turn_id: "t1")
         collector.call(type: :generation_started, iteration: 1, model_ref: "a:m")
@@ -1879,7 +1887,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(saved["side"]).to include("requests" => 2, "cost_sum" => 0.25)
       expect(saved["side"]["by_kind"].keys).to eq(%w[recap btw])
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.session_id = "side-sess"
       expect(woken.snapshot[:side]).to eq(metrics.snapshot[:side])
       expect(woken.snapshot[:tokens]).to eq(metrics.snapshot[:tokens])
@@ -1889,7 +1897,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       metrics.state_dir = state_dir
       turn("t1")
       metrics.persist
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.session_id = "side-sess"
 
       expect(woken.snapshot).not_to have_key(:side)
@@ -1902,7 +1910,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       metrics.add_side(side("recap"))
       metrics.persist
 
-      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken = frozen_metrics.tap { |m| m.state_dir = state_dir }
       woken.add_side(side("btw", cost: 0.1))
       woken.session_id = "side-sess"
 
