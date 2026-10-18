@@ -1,0 +1,12 @@
+---
+name: cost-cap
+version: 0.1.0
+scope: system
+description: "A per-session $ cap: at the cap the turn pauses on Continue (another cap's worth) / Stop, a warning at 80% goes to the user only; /cap shows or sets it"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:ef3bd650ad9a1aced77479f81c5ac914de6279506bd2c4c337d3283481fd8850
+# ctx.cost, new in the next release: release:bump raises requires_chi to it
+requires_chi: ">= 0.60.0"
+requires_chi_next: "ctx.cost"

@@ -68,11 +68,11 @@ RSpec.describe "chi bootstrap" do
                           "hosts" => { "local" => { "host" => "127.0.0.1", "port" => server.port } })
     expect(server.requests.map(&:path)).to include("/props", "/v1/chat/completions")
     expect(out).to include("system bundle: v#{Samagotchi::VERSION} installed\n",
-                           "core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md\n")
+                           "core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n")
     expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer\)$/)
     expect(out).not_to include("optional bundles", "Also install dev")
     expect(Dir.children(bundles_dir).reject { |e| e.end_with?(".lock") }.sort)
-      .to eq(%w[agents-md check-in core guardrails loop-guard samagotchi-system slow-commands])
+      .to eq(%w[agents-md check-in core cost-cap guardrails loop-guard samagotchi-system slow-commands])
   end
 
   it "installs nothing again on a second run, with the config already there" do
@@ -97,7 +97,7 @@ RSpec.describe "chi bootstrap" do
 
     expect([err, status]).to eq(["", 0])
     expect(out).to include("dry run: would write", "system bundle: would install v#{Samagotchi::VERSION}\n",
-                           "core bundles: would install loop-guard, check-in, guardrails, slow-commands, agents-md\n")
+                           "core bundles: would install loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n")
     expect(File.exist?(config)).to be(false)
     expect(Dir.glob(File.join(bundles_dir, "*", "manifest.json"))).to eq([])
   end
@@ -479,11 +479,11 @@ RSpec.describe "chi bootstrap" do
       code, out, err = run_command("y\n", target, "--no-test")
 
       expect([code, err]).to eq([0, ""])
-      expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md\n",
+      expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n",
                              "Also install dev (known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer)? [y/N] ",
                              "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer\n")
       expect(out).to match(/^ +chi bundle list +# the installed bundles$/)
-      expect(installed).to eq(%w[agents-md btw check-in claude-peer codex-peer coordinator core dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills slow-commands source-links])
+      expect(installed).to eq(%w[agents-md btw check-in claude-peer codex-peer coordinator core cost-cap dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills slow-commands source-links])
 
       _, again, = run_command("", target, "--no-test")
       expect(again).not_to include("Also install dev")
@@ -496,7 +496,7 @@ RSpec.describe "chi bootstrap" do
 
       expect(code).to eq(0)
       expect(out).to include("Also install dev", "chi bundle install dev")
-      expect(installed).to eq(%w[agents-md check-in core guardrails loop-guard samagotchi-system slow-commands])
+      expect(installed).to eq(%w[agents-md check-in core cost-cap guardrails loop-guard samagotchi-system slow-commands])
     end
 
     it "exits 1 when a member fails, and still writes the config" do

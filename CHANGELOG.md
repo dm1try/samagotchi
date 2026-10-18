@@ -11,6 +11,9 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - Bundles: `ctx.cost` reads the session's spend so far (reported + estimated, side requests included).
+- The cost-cap bundle (in the core profile): a per-session $ cap that pauses the turn with Continue / Stop, `/cap`
+  to see or set it; config `bundles: cost-cap: default/child/warn_at`. Existing installs get it with `chi update`
+  (core 0.3.2, + cost-cap).
 
 ### Fixed
 

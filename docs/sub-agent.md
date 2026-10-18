@@ -105,6 +105,10 @@ A chi parent's `delegate_result` gets a child's step-limit question back as a
 `delegate session:` (which drops the question), or report back. It isn't
 relayed to the parent's user the way approvals are.
 
+A session at its cost cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)) waits the same way, as a
+question of kind `hook` with header "Cost cap" and options `Continue` and `Stop`: `--option Continue` raises the cap
+by another cap's worth and the turn goes on, `--option Stop` ends it `canceled` with `stopped_by: cost-cap`.
+
 ## Approvals
 
 A chi parent (the `delegate` tool) doesn't go through any of this: its

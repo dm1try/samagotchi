@@ -1,13 +1,16 @@
 ---
 name: core
-version: 0.3.1
+version: 0.3.2
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
+# Its members' highest floor: cost-cap's is raised at the next release
 requires_chi: ">= 0.60.0"
+requires_chi_next: "member cost-cap needs ctx.cost"
 includes:
 - loop-guard
 - check-in
 - guardrails
 - slow-commands
 - agents-md
+- cost-cap

@@ -1547,6 +1547,57 @@ Not caught (yet):
 - loops across turns;
 - alternating calls (A, B, A, B) that each return something new.
 
+## The cost-cap bundle
+
+`chi bundle install cost-cap` installs the bundle shipped with chi (`chi bootstrap` installs it with the `core`
+profile; an existing install gets it with `chi update`). It caps what one session spends, so neither you nor the
+model has to watch `chi sessions stats`: the harness watches the money and the model never sees any of it (no tool,
+no steer, no prompt text). It is inert without a cap, and there is none by default.
+
+```yaml
+# config.yml
+bundles:
+  cost-cap:
+    default: 5.00     # USD cap for a session with none set; absent/0/off: no cap
+    child: 2.00       # for delegate children; absent: default
+    warn_at: 0.8      # tell the user (only) once at this share of the cap; 0/off: no warning
+```
+
+- **What counts:** `ctx.cost`'s total: what the provider reported (`usage.cost`), else the estimate from the
+  model's configured price (`hosts.<name>.models.<id>.price`), plus side requests (the idle recap, `/btw`,
+  `ask_model`), including what earlier workers of the session spent.
+- **When it checks:** before each generation, so before the money is spent. A generation that crosses the cap is
+  caught at the start of the next one: the overshoot is at most one generation (plus any side requests between).
+  A turn whose last generation crossed it ends normally, and the next turn's first generation asks.
+- **At `warn_at` of the cap** you get one notice, `cost-cap> $2.41 of $3.00 spent (80%)`; a raised cap warns again.
+- **At the cap** the turn pauses on a question (header "Cost cap"): `Cost cap reached: $3.04 spent of $3.00.
+  Continue raises it to $6.00.` with **Continue** (another cap's worth: $3 → $6 → $9, as many steps as it takes to
+  pass the spend, saved for the session) and **Stop** (the turn stops, `canceled` with `stopped_by: cost-cap`, and a
+  card shows the spend, reported, estimated and side). With no one to ask (`--non-interactive`) it stops.
+- **The cap of a session:** the one `/cap` or a Continue set for it, else `child:` for a delegate child, else
+  `default:`. Delegates and continued links each have their own cap; there is no family cap.
+- **A host it can't watch:** a model that reports no cost and has no configured price (a local server, a free
+  model that reports 0) reads unknown: one notice, `the $3.00 cap can't be enforced: <model> reports no cost and has
+  no price`, and it never stops for an unknown cost. A session with some priced generations counts the unpriced
+  ones as $0.
+
+**`/cap`** (works while a turn runs; the next generation reads it):
+
+- `/cap`: `cost-cap: $1.20 spent of $3.00 (reported $1.10, estimated $0.10, side $0.02)`, or `cost-cap: no cap
+  ($1.20 spent)`, with `(can't be enforced: no cost reported or priced)` when it can't be.
+- `/cap 5` or `/cap $5`: the cap (and what Continue adds) becomes $5.00 for this session. A cap at or under the
+  spend is allowed: the next generation asks.
+- `/cap off` (or `/cap 0`): no cap for this session, over the config's `default:`.
+
+A parent agent starts a session with a cap by sending `/cap N` as its first message (`chi send --new -m '/cap 3'`).
+At the cap, `chi send --wait` exits 3 with a question of kind `hook` (header "Cost cap"); `chi answer ID --question
+Q --option Continue` (or `--option 1`) goes on, `--option Stop` stops the turn ([sub-agent.md](sub-agent.md)). A
+parent may Continue: nothing restricts it, as with the step limit. A background delegate child at its cap waits on
+its own card and doesn't wake its parent ([sessions.md](sessions.md#delegating)).
+
+The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"cap": 3.0, "step": 3.0}`), removed
+with the session.
+
 ## The check-in bundle
 
 `chi bundle install check-in` installs the bundle shipped with chi (`chi
