@@ -62,12 +62,15 @@ module Samagotchi
       #   a --wait with no message is about (ReplyWait.own_turn)
       # @param queued [Boolean] +turn+ is a queued message's (ReplyWait's
       #   queued:)
+      # @param ended_before [Boolean] a last_turn that ended before the
+      #   baseline is the answer (ReplyWait's ended_before:) — the
+      #   --wait-with-no-message's settled session
       # @return [Integer] the exit status
       def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil,
-                         queued: false)
+                         queued: false, ended_before: false)
         result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
                                     owner_grace: owner_grace, poll_interval: self.class::POLL_INTERVAL, turn: turn,
-                                    queued: queued)
+                                    queued: queued, ended_before: ended_before)
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,

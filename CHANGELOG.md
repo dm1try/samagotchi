@@ -25,6 +25,8 @@ and commands may change between minor versions. How releases are made:
   checking substitutions that run, piped messages and real commands beside a message.
 - Web: a question or approval card arriving in the stage takes the focus without scrolling it, so the stage no longer
   snaps to the card before its room eases in; the stage still brings the card into view.
+- `chi send --wait ID` with no message, on an idle session whose last turn already ended, returns that turn (its reply,
+  or its end when it left none) instead of timing out `running`: a parent waiting again after exit 4 gets the answer.
 
 ## [0.81.0] - 2026-10-18
 

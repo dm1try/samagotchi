@@ -91,7 +91,9 @@ module Samagotchi
                     the web). With no message (no -m, nothing piped)
                     nothing is sent: it waits for the session's next
                     reply, a running turn's too (after exit 3, 4 or 130,
-                    wait again this way)
+                    wait again this way). To an idle session whose last
+                    turn already ended, that ended turn is the answer:
+                    its reply, or its end when it left none
         --cut       ask the running turn to cut the generation it is
                     streaming and take the message now (a generation that
                     has streamed only thinking for steer.cut_after; else
@@ -468,16 +470,24 @@ module Samagotchi
     # waits for whatever wakes one (the web, chi send) rather than calling
     # it gone. The turn running now, or the one whose continue offer
     # stands, is the one waited for (ReplyWait.own_turn): its reply, not a
-    # turn's queued behind it; with none known, the next reply.
+    # turn's queued behind it; with none known, the next reply. An idle
+    # session whose last turn already ended (no question standing) went
+    # idle in the gap between waits: that turn's end is the answer — its
+    # reply, or its no-reply outcome — so the wait returns it at once
+    # (ReplyWait's ended_before:) instead of timing out "running" again.
     # @return [Integer] the exit status
     def run_wait_only(options)
       id = resolve(options[:ids].first) or return 1
       session = Session.load(id, state_dir: @state_dir)
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
       turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
+      # The gate for the settled case: idle, a turn ended (last_turn), no
+      # question standing (a continue offer waits for its answer).
+      settled = session.status == Session::STATUS_IDLE && session.last_turn && session.pending_question.nil?
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
                          baseline: baseline_of(session).merge(messages: nil),
-                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil, turn: turn)
+                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil,
+                         turn: turn, ended_before: settled)
     end
 
     # The session as it was before the message went in (ReplyWait's

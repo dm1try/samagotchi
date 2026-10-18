@@ -94,10 +94,18 @@ module Samagotchi
     # @param queued [Boolean] the turn: input was sent as a queue (or with
     #   images), which a running turn never merges: no fallback, even when
     #   its file was taken before the first look
+    # @param ended_before [Boolean] a last_turn that ended before the
+    #   baseline (chi send --wait with no message, on a session that went
+    #   idle in the gap between waits) is the turn's end too: with the
+    #   session idle and its last_turn still the baseline's, its end is
+    #   the answer — its reply, or its no-reply outcome. Its reply file
+    #   sorts at the cursor, not past it, and its end precedes the
+    #   baseline, so without it the wait would time out "running" again.
+    #   Not for a turn: wait (chi answer) whose own end it waits for.
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
-             baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false)
+             baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false, ended_before: false)
       deadline = timeout && (monotonic + timeout.to_f)
       seen_running = false
       gone_since = nil
@@ -158,6 +166,27 @@ module Samagotchi
         end
 
         return Result.new(status: :canceled) if cancelled.call
+
+        # The turn that ended before this wait (ended_before: chi send
+        # --wait with no message, on a session that went idle in the gap
+        # between waits): its last_turn still stands, the session is idle,
+        # so its end is the answer, not a wait that times out "running"
+        # again. Its reply file sorts at the cursor (the newest), not past
+        # it: it is the turn's when it is at least as new as the turn's
+        # end (the worker writes it after recording the ended_at), else the
+        # turn left no reply and an earlier turn's file is not its.
+        if ended_before && turn.nil? && session.status == Session::STATUS_IDLE &&
+           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
+           baseline && ended == baseline[:last_turn]
+          file = newest_reply(id, state_dir: state_dir)
+          if file && reply_is_turns?(file, ended)
+            reply = Result.new(status: :done, text: File.read(File.join(reply_dir(id, state_dir: state_dir), file)), file: file)
+            reply.session = settled(session, id, state_dir: state_dir)
+            return reply
+          end
+
+          return no_reply(session, baseline, fresh: true)
+        end
 
         if turn
           # Only the turn's own end: the session runs another turn when the
@@ -388,6 +417,22 @@ module Samagotchi
 
     def newer?(file, cursor)
       cursor.nil? || file > cursor
+    end
+
+    # Whether the reply file +file+ is the turn that ended at +ended_at+'s,
+    # not an earlier turn's: the worker records the ended_at, then writes
+    # the reply (SessionInbox.write_output: the name's timestamp is the
+    # write time, at least the ended_at); every earlier turn's file is
+    # older than the turn's end. The wait and the session run on one
+    # machine, so the name's local-time read is the writer's. A name that
+    # doesn't read as a time isn't the turn's.
+    def reply_is_turns?(file, ended_at)
+      name = file.to_s
+      return false if name.length < 23
+
+      Time.parse(ended_at.to_s) <= Time.strptime(name[0, 14], "%Y%m%d%H%M%S") + (name[14, 9].to_f / (10**9))
+    rescue ArgumentError
+      false
     end
 
     def monotonic

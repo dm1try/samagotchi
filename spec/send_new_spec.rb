@@ -686,6 +686,48 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   end
 
   describe "with no message (wait only)" do
+    it "to an idle session whose last turn finished, prints that turn's reply, not 'running'" do
+      finished = make(status: "idle")
+      s = Samagotchi::Session.load(finished.id, state_dir: tmpdir)
+      # The worker's order: the turn ends (last_turn's ended_at), then its reply file is written.
+      s.last_turn = { "outcome" => "completed", "ended_at" => (Time.now - 2).iso8601(3) }
+      s.save(state_dir: tmpdir)
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(finished.id, state_dir: tmpdir),
+                                            "the finished answer")
+
+      expect(run("--wait", "--timeout", "2", "--format", "json", finished.id)).to eq(0), err.string
+      expect(JSON.parse(out.string.lines.first)).to eq("status" => "answered", "session_id" => finished.id,
+                                                       "text" => "the finished answer")
+    end
+
+    it "to an idle session whose last turn finished without a reply, reports the turn's end" do
+      failed = make(status: "idle")
+      s = Samagotchi::Session.load(failed.id, state_dir: tmpdir)
+      s.last_turn = { "outcome" => "failed", "ended_at" => (Time.now - 2).iso8601(3) }
+      s.save(state_dir: tmpdir)
+
+      expect(run("--wait", "--timeout", "2", "--format", "json", failed.id)).to eq(1), err.string
+      object = JSON.parse(out.string.lines.first)
+      expect(object).to include("status" => "failed")
+      expect(object["detail"]).to include("the turn failed")
+    end
+
+    it "with a step-limit question standing, waits for the continued turn, not the exhausted one" do
+      offered = make(status: "idle", pending_question: { id: "cont", kind: "continue", question: "Continue?" })
+      s = Samagotchi::Session.load(offered.id, state_dir: tmpdir)
+      s.last_turn = { "outcome" => "completed", "exhausted" => true, "limit" => 30, "ended_at" => (Time.now - 2).iso8601(3) }
+      s.save(state_dir: tmpdir)
+      later do
+        update(offered, status: "running", pending_question: nil)
+        write_reply(offered, "the continued answer")
+        update(offered, status: "idle", last_turn: { "outcome" => "completed", "ended_at" => Time.now.iso8601(3) })
+      end
+
+      expect(run("--wait", "--timeout", "3", "--format", "json", offered.id)).to eq(0), err.string
+      object = JSON.parse(out.string.lines.first)
+      expect(object).to include("status" => "answered", "text" => "the continued answer")
+    end
+
     it "sends nothing and prints a running session's next reply, past the question already reported" do
       asked = make(status: "running", pending_question: { id: "q1", question: "Which branch?" })
       write_reply(asked, "an older answer")

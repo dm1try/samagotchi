@@ -161,7 +161,11 @@ answers from any local process.
 - `chi send --wait ID` with no message waits past a question already reported
   (the step-limit question too), until someone answers it. It waits for the
   turn running when it starts (or the one the step-limit question continues),
-  and prints that turn's reply, not a queued one's after it.
+  and prints that turn's reply, not a queued one's after it. To an idle
+  session whose last turn already ended (no question standing), that ended
+  turn is the answer: its reply comes back (`answered`), or its end when it
+  left no reply (`failed`, `canceled`, `limit`, …) — so a turn that finished
+  in the gap between waits is reported, not waited for.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next. Its
   JSON then has `"answered_here": false` (absent when the answer went in), so

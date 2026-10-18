@@ -283,6 +283,94 @@ RSpec.describe Samagotchi::ReplyWait do
     end
   end
 
+  # The turn that ended before the baseline (chi send --wait with no message,
+  # on a session that went idle in the gap between waits): its end is the
+  # answer, not a wait that times out "running".
+  describe "with ended_before: (a settled session's finished turn)" do
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+    # The worker's order: the turn ends (last_turn gets its ended_at), then
+    # its reply is written, at least as new.
+    def finish(outcome:, seconds_ago: 2, **facts)
+      Samagotchi::Session.load(session.id, state_dir: tmpdir).tap do |s|
+        s.status = "idle"
+        s.last_turn = Samagotchi::LastTurn.new(outcome: outcome,
+                                               ended_at: (Time.now - seconds_ago).iso8601(3), **facts)
+        s.save(state_dir: tmpdir)
+      end
+    end
+
+    def baseline
+      described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+    end
+
+    it "returns the finished turn's reply, at the cursor, not past it" do
+      finish(outcome: "completed")
+      write_reply("the finished answer")
+
+      result = wait(cursor: described_class.newest_reply(session.id, state_dir: tmpdir),
+                    baseline: baseline, ended_before: true)
+      expect(result.status).to eq(:done)
+      expect(result.text).to eq("the finished answer")
+    end
+
+    it "returns the finished turn's no-reply outcome when its newest reply is an earlier turn's" do
+      # The earlier turn's reply is older than the finished turn's end
+      # (it was written at the earlier turn's, so it predates this one).
+      write_reply("an earlier answer")
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.status = "idle"
+      s.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: Time.now.iso8601(3),
+                                             error_kind: "server")
+      s.save(state_dir: tmpdir)
+
+      result = wait(cursor: described_class.newest_reply(session.id, state_dir: tmpdir),
+                    baseline: baseline, ended_before: true)
+      expect(result.to_h).to include(status: :no_reply, outcome: "failed", error_kind: "server")
+    end
+
+    it "returns the finished turn's no-reply outcome with no reply at all" do
+      finish(outcome: "canceled", cancel_reason: "user")
+
+      result = wait(baseline: baseline, ended_before: true)
+      expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "user")
+    end
+
+    it "with no last_turn at the baseline (a session that never ran), still reports a turn that ends since" do
+      set(status: "idle")
+      base = baseline
+      later do
+        write_reply("the first answer")
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3))
+        s.save(state_dir: tmpdir)
+      end
+
+      expect(wait(baseline: base, ended_before: true).text).to eq("the first answer")
+    end
+
+    it "does not end on the settled turn while another runs; a turn that ends since still comes back" do
+      # A message the user sent from the web in the gap starts before the
+      # first look: the branch wants an idle session, so it waits on, and a
+      # turn that ends since the baseline still comes back as the next reply.
+      finish(outcome: "failed")
+      base = baseline
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.status = "running"
+      s.interrupted_turn = { "iteration" => 1, "enqueued_id" => "n1" }
+      s.save(state_dir: tmpdir)
+      later do
+        write_reply("the new turn's answer")
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "idle"
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: "n1")
+        s.save(state_dir: tmpdir)
+      end
+
+      expect(wait(baseline: base, ended_before: true).text).to eq("the new turn's answer")
+    end
+  end
+
   describe "with turn: (a queued message's own turn)" do
     let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
 
