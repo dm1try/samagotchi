@@ -9,6 +9,8 @@ module Samagotchi
     # why: the APIs to design before that bundle could leave chi's repo
     # (spec/samagotchi/testing/boundary_spec.rb keeps both exact).
     module Boundary
+      LIB_DIR = File.expand_path("../..", __dir__)
+
       # A name a bundle may use, and the file that defines it (a require of
       # it is fine too). A name allows itself, its methods (".x") and what
       # it holds ("::X"); one ending in a method or constant allows only that.
@@ -124,6 +126,8 @@ module Samagotchi
       REFERENCE = /\bSamagotchi(?:::[A-Z]\w*)+(?:\.[a-z_]\w*[?!]?)?/
       # A require of one of chi's files.
       REQUIRE = %r{\brequire\s*\(?\s*["'](samagotchi(?:/[\w/]+)?)["']}
+      # A relative require that may leave the bundle.
+      REQUIRE_RELATIVE = /\brequire_relative\s*\(?\s*["']([^"']+)["']/
 
       # One reference outside ALLOWED, in a file of the bundle.
       Finding = Data.define(:reference, :file)
@@ -140,10 +144,21 @@ module Samagotchi
           text = File.read(path)
           refs = text.scan(REFERENCE).reject { |name| allowed?(name) }
           refs += text.scan(REQUIRE).flatten.reject { |file| ALLOWED_REQUIRES.include?(file) }.map { |file| %(require "#{file}") }
+          refs += text.scan(REQUIRE_RELATIVE).flatten.filter_map do |relative|
+            target = File.expand_path(relative, File.dirname(path))
+            next unless within?(target, LIB_DIR) && !within?(target, File.expand_path(dir))
+
+            %(require_relative "#{relative}")
+          end
           file = path.delete_prefix("#{File.expand_path(dir)}/")
           refs.uniq.map { |reference| Finding.new(reference: reference, file: file) }
         end
       end
+
+      def within?(path, dir)
+        path == dir || path.start_with?("#{dir}#{File::SEPARATOR}")
+      end
+      private_class_method :within?
 
       # Whether a bundle may use +name+ ("Samagotchi::X::Y", maybe ".method").
       def allowed?(name)
