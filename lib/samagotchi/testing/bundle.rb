@@ -142,7 +142,7 @@ module Samagotchi
             @plugin = built
           end
         end
-        @hooks_namespace = Hooks::BundleLoader.namespace_for(@name).const_set(:"KitHooks#{object_id}", Module.new)
+        @hooks_namespace = Module.new
         @manifest.hooks.each do |basename, hook|
           next if hook.event.empty?
 
