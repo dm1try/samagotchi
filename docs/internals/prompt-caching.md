@@ -83,6 +83,10 @@ right-hand column happens.
   finishes booting between load and the first turn changes search answers only, so two sessions on the same
   toolkit with the same MCP cache send the same bytes. Whether find_tools/call_tool are declared at all reads the
   same two things (`Registry#index_needed?`), never live groups.
+- A worker's `execute` and `task_create` descriptions carry the finish wake's sentence ("if you end your turn before
+  it finishes, chi tells you when it does"; `Engine.new(task_finish_notes:)`, set once as the worker builds its
+  Engine); the `--no-shared` REPL's, and a worker's under `session.task_wakes: off`, don't. A session that moves
+  between the two, or whose worker restarts after `task_wakes` changed, misses the cache once.
 - On remote Claude, `LLM::PromptCache.mark` sends the system message as two text parts. The stable part carries
   breakpoint #1, so a **new session** reads it from the cache. The last non-system message carries breakpoint
   #2, so the **next request in the session** reads everything up to it. Mid and tail system messages never take

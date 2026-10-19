@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A background task the model left running (`task_create`, an `execute` handed over at its limit) that finishes
+  unseen wakes the idle session for a short turn opened by a `TASK FINISHED` note (exit code, duration, log tail).
+  `session.task_wakes`: `wake` (default), `queue` (a note for the next turn) or `off`.
+
 ## [0.90.0] - 2026-10-19
 
 ### Changed
