@@ -32,17 +32,30 @@ module Samagotchi
 
       # Where command_word's word is in +words+ (nil when there is none).
       def command_index(words)
-        i = 0
+        each_argument_index(words).find { |i| !assignment?(words[i]) }
+      end
+
+      # Each index of +words+ from +from+ on that is no redirection and no
+      # spaced redirection's target (the "/tmp/x" of "> /tmp/x"); an
+      # Enumerator without a block.
+      def each_argument_index(words, from = 0)
+        return enum_for(:each_argument_index, words, from) unless block_given?
+
+        i = from
         while i < words.size
           word = words[i]
           if word.match?(REDIRECT)
-            i += 1 if word.match?(/\A\d*[<>]{1,2}\z/)
-          elsif !word.match?(/\A[A-Za-z_]\w*=/)
-            return i
+            i += word.match?(/\A\d*[<>]{1,2}\z/) ? 2 : 1
+            next
           end
+          yield i
           i += 1
         end
-        nil
+      end
+
+      # Whether a word is a NAME=value assignment.
+      def assignment?(word)
+        word.match?(/\A[A-Za-z_]\w*=/)
       end
 
       # Whether a cat or tee command sends its output to a file (a file
@@ -97,18 +110,7 @@ module Samagotchi
         verb = command_index(words)
         return false unless verb
 
-        i = verb + 1
-        while i < words.size
-          word = words[i]
-          if word.match?(REDIRECT)
-            i += word.match?(/\A\d*[<>]{1,2}\z/) ? 2 : 1
-            next
-          end
-          return true if filename_word?(word)
-
-          i += 1
-        end
-        false
+        each_argument_index(words, verb + 1).any? { |i| filename_word?(words[i]) }
       end
 
       # Whether a tee argument names a file: not an option, a heredoc's tag,
@@ -152,18 +154,7 @@ module Samagotchi
       # their spaced targets), the <<TAG words and the heredoc bodies left
       # out.
       def arguments(words)
-        args = []
-        i = 0
-        while i < words.size
-          word = words[i]
-          if word.match?(REDIRECT)
-            i += word.match?(/\A\d*[<>]{1,2}\z/) ? 2 : 1
-            next
-          end
-          args << word unless word.match?(/\A[A-Za-z_]\w*=/) || heredoc_word?(word)
-          i += 1
-        end
-        args
+        each_argument_index(words).map { |i| words[i] }.reject { |word| assignment?(word) || heredoc_word?(word) }
       end
 
       # Whether a word is a heredoc's <<TAG or one of its bodies.

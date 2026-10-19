@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/guardrails/data_readers"
+require "samagotchi/guardrails/shell_lex"
 
 # Which commands read their stdin as data and never run it
 # (Guardrails::DataReaders): the lexer's data_sink? and ShellLex.code_text
