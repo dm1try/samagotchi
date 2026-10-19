@@ -89,6 +89,30 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     worker
   end
 
+  # A queue that gets an entry each time +worker+'s loop goes to sleep
+  # (Waker#wait): with a long poll interval, nothing runs after that until
+  # it is woken, so a spec can change a task's record with no pass racing it.
+  def parks(worker)
+    Queue.new.tap do |parked|
+      allow(worker.instance_variable_get(:@waker)).to receive(:wait).and_wrap_original do |original, *args|
+        parked << true
+        original.call(*args)
+      end
+    end
+  end
+
+  # Runs +prompt+'s turn on a worker with a long poll interval and returns
+  # once its loop sleeps after it.
+  def run_prompt_to_sleep(worker, prompt)
+    parked = parks(worker)
+    send_turn(prompt)
+    worker.instance_variable_get(:@waker).wake
+    expect(turns.pop(timeout: 3)&.first).to eq(prompt)
+    parked.clear
+    expect(turns_done.pop(timeout: 3)).to eq(prompt)
+    expect(parked.pop(timeout: 3)).to be(true)
+  end
+
   def record(id, status: "running", exit_code: nil)
     output = File.join(tmpdir, "#{id}.log").tap { |p| File.write(p, "building\ndone\n") }
     Samagotchi::Tools::TaskRecord.running(id: id, command: "sleep 20; echo done", cwd: tmpdir, pid: 1,
@@ -307,10 +331,8 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   it "writes a plain note, no wake turn, for a task that finishes as an exit is asked for" do
     scripts["build"] = [task_create("t1")]
     worker = start_worker(poll_interval: 30)
-    send_turn("build")
-    worker.instance_variable_get(:@waker).wake
-    expect(turns.pop(timeout: 3)&.first).to eq("build")
-    expect(turns_done.pop(timeout: 3)).to eq("build")
+    # Asleep: no idle pass can see the end before the exit request.
+    run_prompt_to_sleep(worker, "build")
 
     finish("t1")
     expect(worker.send(:exit_request, "web:tab")).to be_nil
@@ -340,9 +362,8 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   it "gives a finished task to a prompt's turn as a plain note when the prompt comes first" do
     scripts["build"] = [task_create("t1")]
     worker = start_worker(poll_interval: 30)
-    send_turn("build")
-    worker.instance_variable_get(:@waker).wake
-    expect(turns.pop(timeout: 3)&.first).to eq("build")
+    # Asleep: no idle pass can see the end before the prompt is there.
+    run_prompt_to_sleep(worker, "build")
 
     finish("t1")
     send_turn("next")
