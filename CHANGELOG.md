@@ -42,6 +42,9 @@ and commands may change between minor versions. How releases are made:
   the next one. Run `chi update` (cost-cap 0.2.1).
 - An attached-context wake turn stopped before the model call keeps its note as a plain one and pauses wakes until
   you write, as delegate and task wake turns do; it left the note marked as a turn's start.
+- A background task that finished just as the idle worker was about to exit still wakes the session (the worker
+  stays up for its wake); one that finished before the worker left for another reason is a note for the next turn.
+  A task whose turn you stopped no longer keeps the worker up or holds `/exit`.
 
 ## [0.91.0] - 2026-10-19
 

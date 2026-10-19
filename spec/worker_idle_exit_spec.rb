@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/task_watch"
 require "samagotchi/worker_idle_exit"
 require "samagotchi/reminder_store"
 require "samagotchi/relay_desk"
@@ -16,6 +17,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   end
   let(:tasks) { [[]] }
   let(:watched) { [[]] }
+  let(:watched_running) { [[]] }
   let(:bridge) { double("bridge", open_streams: 0, last_client_activity_at: 1000.0) }
   let(:queued) { [false] }
   let(:offer) { [false] }
@@ -23,7 +25,8 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   def policy(minutes: 1.0, bridge: self.bridge)
     described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
                         input_pending: -> { queued.first }, awaiting_continue: -> { offer.first },
-                        running_tasks: -> { tasks.first }, watched_tasks: -> { watched.first }, clock: clock)
+                        running_tasks: -> { tasks.first }, watched_tasks: -> { watched.first },
+                        watched_running: -> { watched_running.first }, clock: clock)
   end
 
   def advance(seconds)
@@ -88,8 +91,8 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(policy(minutes: 0.001).hold).to eq(:reminders)
     end
 
-    it "while a background task it watches for a finish wake runs (D3)" do
-      watched[0] = [{ id: "t1", command: "rails s" }]
+    it "while a background task it watches for a finish wake runs or waits for its wake (D3)" do
+      watched[0] = [Samagotchi::TaskWatch::Entry.new(id: "t1")]
       expect(policy(minutes: 0.001).hold).to eq(:background_tasks)
     end
 
@@ -148,8 +151,10 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:reminders)
     end
 
-    it "holds while a background task it watches runs" do
-      watched[0] = [{ id: "t1", command: "rails s" }]
+    it "holds while a background task it watches runs, not for one that finished (a note as it leaves)" do
+      watched[0] = [Samagotchi::TaskWatch::Entry.new(id: "t1")]
+      expect(policy.hold_for_request(requester: "tui:1")).to be_nil
+      watched_running[0] = [{ id: "t1", command: "rails s" }]
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:background_tasks)
     end
   end

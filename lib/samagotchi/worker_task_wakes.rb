@@ -113,11 +113,14 @@ module Samagotchi
 
     # Only the tasks the conversation still holds (a !rollback, a restored
     # turn may have dropped the result that started one). A failure to
-    # read them is logged: they wait for the next look.
+    # read them is logged and counted (TaskWatch#look_failed: past
+    # TaskWatch::MAX_FAILURES they no longer hold the worker up): they wait
+    # for the next look.
     def take_finished
       @watch.take_finished(keep: Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint))
     rescue StandardError => e
       Log.warn(:worker, "task_watch_failed", error: e.class.name, msg: e.message)
+      @watch.look_failed
       []
     end
 

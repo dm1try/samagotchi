@@ -172,6 +172,48 @@ RSpec.describe Samagotchi::TaskWatch do
     expect(watch.entry("b").limit_sec).to eq(5)
   end
 
+  describe "what holds the worker up" do
+    before do
+      watch.observe(created("old"))
+      watch.turn_started
+      watch.observe(created("stopped"))
+      watch.turn_canceled(:user)
+      watch.observe(created("done"))
+      allow(Samagotchi::Tools::TaskRuntime).to receive(:get_record) do |id|
+        [instance_double(Samagotchi::Tools::TaskRecord, running?: id != "done", command: "make #{id}"), nil]
+      end
+    end
+
+    it "holds the idle exit for every task a finish wakes for, finished or not, with no ps; not a note-only one" do
+      expect(watch.holding.map(&:id)).to eq(%w[old done])
+      expect(Samagotchi::Tools::TaskRuntime).not_to have_received(:get_record)
+    end
+
+    it "holds /exit only for those still running" do
+      expect(watch.running).to eq([{ id: "old", command: "make old" }])
+    end
+
+    it "stops holding for a task whose note failed MAX_FAILURES times" do
+      entry = watch.entry("old")
+      watch.remove("old")
+      (Samagotchi::TaskWatch::MAX_FAILURES - 1).times do
+        watch.put_back([entry])
+        entry = watch.entry("old")
+        watch.remove("old")
+      end
+      watch.put_back([entry])
+      expect(watch.entry("old").failures).to eq(Samagotchi::TaskWatch::MAX_FAILURES)
+      expect(watch.holding.map(&:id)).to eq(%w[done])
+      expect(watch.ids).to include("old")
+    end
+
+    it "stops holding once the look for finished tasks failed MAX_FAILURES times, every task counted" do
+      Samagotchi::TaskWatch::MAX_FAILURES.times { watch.look_failed }
+      expect(watch.holding).to be_empty
+      expect(watch.ids).to eq(%w[old stopped done])
+    end
+  end
+
   it "says whether a watched task finished, taking nothing" do
     watch.observe(created("a"))
     finished = [false]

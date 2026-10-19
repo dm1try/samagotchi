@@ -365,6 +365,98 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(@thread.join(5)&.value).to eq(:idle_exit)
   end
 
+  # The pass's look found it running and it ended right after, before the
+  # idle exit's check: still watched, so it holds the exit until the next
+  # pass wakes for it.
+  it "wakes for a task that finishes between the pass's look and the idle exit's check" do
+    scripts["build"] = [task_create("t1")]
+    worker = start_worker(idle_exit_minutes: 0.002)
+    allow_any_instance_of(Samagotchi::TaskWatch).to receive(:take_finished).and_wrap_original do |original, **kwargs|
+      taken = original.call(**kwargs)
+      idle_exit = worker.instance_variable_get(:@idle_exit)
+      # Only the task holds now: the idle timeout has passed.
+      if taken.empty? && records["t1"].running? && idle_exit.hold == :background_tasks && idle_exit.idle_seconds > 0.2
+        finish("t1")
+      end
+      taken
+    end
+    run_prompt("build")
+
+    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+  end
+
+  it "lets the idle exit go once the look for finished tasks kept failing (the hold has a bound)" do
+    scripts["build"] = [task_create("t1")]
+    start_worker(idle_exit_minutes: 0.002)
+    run_prompt("build")
+    allow(Samagotchi::Log).to receive(:warn).and_call_original
+    allow(Samagotchi::Tools::TaskRuntime).to receive(:created_ids_in).and_raise(IOError, "unreadable")
+    finish("t1")
+
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(Samagotchi::Log).to have_received(:warn).with(:worker, "task_watch_failed", error: "IOError", msg: "unreadable")
+      .at_least(Samagotchi::TaskWatch::MAX_FAILURES).times
+    expect(turns.pop(timeout: 0.2)).to be_nil
+  end
+
+  context "with a note-only task (its turn stopped by the user)" do
+    before { scripts["build"] = [task_create("t1"), task_wait("t1", wait_result: "canceled"), stopped_by_user] }
+
+    it "doesn't hold the idle exit" do
+      start_worker(idle_exit_minutes: 0.002)
+      run_prompt("build")
+
+      expect(@thread.join(5)&.value).to eq(:idle_exit)
+    end
+
+    it "doesn't hold /exit" do
+      worker = start_worker
+      run_prompt("build")
+
+      expect(worker.send(:exit_request, "web:tab")).to be_nil
+      expect(@thread.join(5)&.value).to eq(:exit_requested)
+    end
+  end
+
+  # Nothing holds the exit for it (queue), but it ended before the worker
+  # left: its note goes in as the worker leaves, not lost with the watch.
+  it "notes a task that finished unseen as the worker leaves with session.task_wakes: queue" do
+    config["session.task_wakes"] = "queue"
+    scripts["build"] = [task_create("t1")]
+    start_worker(idle_exit_minutes: 0.002)
+    # It ends as the exit comes due, after the pass's look (which found it
+    # running): the look can't tell when the timeout will pass.
+    allow_any_instance_of(Samagotchi::WorkerIdleExit).to receive(:due?).and_wrap_original do |original|
+      due = original.call
+      finish("t1") if due && records["t1"]&.running?
+      due
+    end
+    run_prompt("build")
+
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(saved_task_notes.size).to eq(1)
+    expect(saved_task_notes.first).not_to include(:turn_start)
+  end
+
+  # A note-only task (it doesn't hold /exit): the pass before leaving found
+  # it running and it ended right after. The session is deleted next, so
+  # no note is written into it (or saved).
+  it "writes no note as the worker leaves for /exit --delete" do
+    scripts["build"] = [task_create("t1"), task_wait("t1", wait_result: "canceled"), stopped_by_user]
+    worker = start_worker(poll_interval: 30)
+    run_prompt_to_sleep(worker, "build")
+    allow_any_instance_of(Samagotchi::TaskWatch).to receive(:take_finished).and_wrap_original do |original, **kwargs|
+      taken = original.call(**kwargs)
+      finish("t1") if taken.empty? && records["t1"].running?
+      taken
+    end
+
+    expect(worker.send(:exit_request, "tui:1", delete: true)).to be_nil
+    expect(@thread.join(5)&.value).to eq(:exit_requested)
+    expect(saved_task_notes).to be_empty
+  end
+
   it "doesn't hold the idle exit with session.task_wakes: queue (nothing would wake for the task)" do
     config["session.task_wakes"] = "queue"
     scripts["build"] = [task_create("t1")]

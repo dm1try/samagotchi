@@ -14,7 +14,8 @@ module Samagotchi
   #   until the agent cancels them, so an exit would drop them for good;
   # * a continue offer waits for an answer; it too lives only in memory;
   # * a background task the worker watches for a finish wake (TaskWatch)
-  #   still runs: its end would go unnoticed after an exit (D3);
+  #   still runs, or finished and waits for the next pass's wake: its end
+  #   would go unnoticed after an exit (D3);
   # * less than the timeout has passed since the worker started, the Engine's
   #   last activity, or the last client request or disconnect.
   #
@@ -31,11 +32,15 @@ module Samagotchi
     # @param awaiting_continue [#call] true while a continue offer waits
     # @param running_tasks [#call] the background tasks this conversation
     #   started that still run (Tools::TaskRuntime.running_created_in)
-    # @param watched_tasks [#call] the ones a finish wake watches that still
-    #   run (TaskWatch#running): they hold the idle exit and /exit too
+    # @param watched_tasks [#call] the ones a finish wake would wake for,
+    #   running or not yet taken (TaskWatch#holding): they hold the idle exit
+    # @param watched_running [#call] those of them still running
+    #   (TaskWatch#running): they hold /exit (one that finished is a note
+    #   as the worker leaves)
     # @param clock [#call] monotonic seconds, the Engine's and Bridge's clock
     def initialize(engine:, bridge:, timeout_minutes:, input_pending:, awaiting_continue: -> { false },
-                   running_tasks: -> { [] }, watched_tasks: -> { [] }, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                   running_tasks: -> { [] }, watched_tasks: -> { [] }, watched_running: -> { [] },
+                   clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @engine = engine
       @bridge = bridge
       @timeout = timeout_minutes.to_f * 60
@@ -43,6 +48,7 @@ module Samagotchi
       @awaiting_continue = awaiting_continue
       @running_tasks = running_tasks
       @watched_tasks = watched_tasks
+      @watched_running = watched_running
       @clock = clock
       @started_at = clock.call
     end
@@ -85,7 +91,7 @@ module Samagotchi
       return :continue_offered if @awaiting_continue.call
       return :client_connected if streams && @bridge && @bridge.open_streams_except(requester).positive?
       return :reminders if @engine.reminder_store&.any?
-      return :background_tasks if @watched_tasks.call.any?
+      return :background_tasks if @watched_running.call.any?
 
       nil
     end

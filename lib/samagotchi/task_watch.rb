@@ -18,10 +18,17 @@ module Samagotchi
   class TaskWatch
     # A watched task: +limit_sec+, the limit an execute handed it over at
     # (nil for task_create's); +note_only+, the user stopped the turn that
-    # started or waited on it (M5): its finish is a plain note, no wake.
-    Entry = Data.define(:id, :limit_sec, :note_only) do
-      def initialize(id:, limit_sec: nil, note_only: false) = super
+    # started or waited on it (M5): its finish is a plain note, no wake;
+    # +failures+, how often its note couldn't be written (#put_back) or the
+    # look for it failed (#look_failed).
+    Entry = Data.define(:id, :limit_sec, :note_only, :failures) do
+      def initialize(id:, limit_sec: nil, note_only: false, failures: 0) = super
     end
+
+    # A task whose note or look failed this often still gets tried at each
+    # look, but no longer holds the worker up (#holding): a failure that
+    # never passes must not keep it alive for good.
+    MAX_FAILURES = 3
 
     # The cancel reasons that are the user's own Stop (Bridge::CANCEL_REASONS
     # less session_stopped, and the TUI's ctrl_c).
@@ -129,9 +136,19 @@ module Samagotchi
     end
 
     # +entries+ taken by #take_finished whose note couldn't be written:
-    # watched again (an id watched meanwhile keeps its own entry).
+    # watched again, the failure counted (an id watched meanwhile keeps its
+    # own entry).
     def put_back(entries)
-      @mutex.synchronize { entries.each { |entry| @entries[entry.id] ||= entry } }
+      @mutex.synchronize do
+        entries.each { |entry| @entries[entry.id] ||= entry.with(failures: entry.failures + 1) }
+      end
+    end
+
+    # The look for finished tasks failed before it could tell which ended
+    # (the conversation's task ids couldn't be read): every watched task
+    # counts a failure.
+    def look_failed
+      @mutex.synchronize { @entries.transform_values! { |entry| entry.with(failures: entry.failures + 1) } }
     end
 
     # Whether a watched task has finished (#take_finished would take it):
@@ -143,13 +160,26 @@ module Samagotchi
       end
     end
 
-    # The watched tasks still running ({id:, command:}), for the idle exit
-    # and /exit (WorkerIdleExit's running_tasks).
+    # The watched tasks a finish would wake for, running or finished and
+    # not yet taken (#take_finished takes them at the idle loop's next
+    # look): they hold the worker's idle exit (WorkerIdleExit's
+    # watched_tasks). Not a note-only one (no wake would come for it), nor
+    # one whose note or look failed MAX_FAILURES times. No `ps`: in memory.
+    # @return [Array<Entry>]
+    def holding
+      @mutex.synchronize do
+        @entries.values.reject { |entry| entry.note_only || entry.failures >= MAX_FAILURES }
+      end
+    end
+
+    # The #holding tasks still running ({id:, command:}), for /exit
+    # (WorkerIdleExit's watched_running): one finished meanwhile is noted
+    # as the worker leaves. One `ps` per task.
     # @return [Array<Hash>]
     def running
-      ids.filter_map do |id|
-        record, = Tools::TaskRuntime.get_record(id)
-        { id: id, command: record.command.to_s } if record&.running?
+      holding.filter_map do |entry|
+        record, = Tools::TaskRuntime.get_record(entry.id)
+        { id: entry.id, command: record.command.to_s } if record&.running?
       end
     end
 

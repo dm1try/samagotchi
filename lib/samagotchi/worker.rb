@@ -328,8 +328,11 @@ module Samagotchi
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
         running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) },
         # Only when a finish would wake the session (D3): with queue its end
-        # is just a note, not worth keeping the worker up for.
-        watched_tasks: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.running : [] }
+        # is just a note, not worth keeping the worker up for. One that
+        # finished since the pass looked holds too, until the next pass
+        # wakes for it (#run_task_wake).
+        watched_tasks: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.holding : [] },
+        watched_running: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.running : [] }
       )
     end
 
@@ -1303,10 +1306,17 @@ module Samagotchi
     # A restart keeps even an empty session (a new worker takes it over at
     # once) and leaves the recap to the conversation's next real pause.
     def left(result)
+      deleting = result == :exit_requested && @exit_deletes
+      # The watch goes with this process: a task that finished since the
+      # last look (nothing held the exit for it: queue, a note-only task,
+      # /exit) is a plain note for the next turn, not lost. Not into a
+      # session /exit --delete deletes next: its save could land after the
+      # delete and write the session back.
+      @task_wakes.absorb unless deleting
       return result if result == :restart
 
       @discard = empty_session?
-      write_recap_on_leave unless @discard || (result == :exit_requested && @exit_deletes)
+      write_recap_on_leave unless @discard || deleting
       result
     end
 
