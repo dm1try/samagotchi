@@ -205,6 +205,11 @@ module Samagotchi
         return CLI::Exit::USAGE
       end
       expanded_source = dev ? File.realpath(source) : expand_source(source)
+      if dev && File.dirname(expanded_source) == File.realpath(Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR)
+        @stderr.puts "chi bundle install --dev cannot be used with chi-shipped bundles or profiles; " \
+                     "use chi bundle install #{File.basename(expanded_source)} instead"
+        return CLI::Exit::USAGE
+      end
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
       end

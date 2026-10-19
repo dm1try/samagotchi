@@ -542,6 +542,19 @@ Hooks removed: 1\n\z})
       expect(Dir.exist?(memories)).to be(false)
     end
 
+    it "refuses shipped bundles and profiles with a usage hint" do
+      shipped_dir = Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR
+      sources = %w[guardrails core].map { |name| File.join(shipped_dir, name) }
+      expect(Samagotchi::MemoryBundle::Profile.shipped_meta?(sources.last)).to be(true)
+
+      sources.each do |source|
+        expect(chi("install", "--dev", source)).to eq([
+          "", "chi bundle install --dev cannot be used with chi-shipped bundles or profiles; " \
+              "use chi bundle install #{File.basename(source)} instead\n", 2
+        ])
+      end
+    end
+
     it "links the plugin and hooks to PATH, so an edit applies with no re-install and its sha isn't checked" do
       out, err, code = chi("install", "--dev", @plugin_src)
       expect([err, code]).to eq(["", 0])
