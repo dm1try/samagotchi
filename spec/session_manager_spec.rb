@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/engine"
 require "samagotchi/session_manager"
 require "samagotchi/reminder_store"
 
