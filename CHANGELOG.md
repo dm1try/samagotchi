@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
   tool calls with their arguments.
 - `chi --help` lists `chi sessions restart`, `chi bundle trash` and the bundle authoring subcommands (`new`, `test`,
   `check`, `try`).
+- Web: removing a queued message (its ×) and opening another session before the worker answered no longer puts the
+  removed text into that session's composer; a toast names the session it came from and stays until
+  dismissed, with Copy for the full text.
 
 ## [0.91.0] - 2026-10-19
 

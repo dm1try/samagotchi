@@ -15,22 +15,24 @@ function queuedBubble(enqueuedId = "e1", parent = document.body) {
   return el;
 }
 
-function harness({ dequeue, draft = "" }) {
+function harness({ dequeue, draft = "", open = { id: "s1" }, copyWorks = true }) {
+  const copied = [];
   const toasts = [];
   const calls = [];
   const composer = { text: draft };
   const unqueue = createUnqueue({
-    sessionId: () => "s1",
+    sessionId: () => open.id,
     clientId: "web:t1",
     dequeue: (...args) => { calls.push(args); return dequeue(...args); },
-    toast: (text) => toasts.push(text),
+    toast: (text, action = null, options = {}) => toasts.push(action || options.sticky ? { text, action, options } : text),
+    copy: async (text) => { copied.push(text); return copyWorks; },
     putBack: (text) => {
       if (composer.text.trim()) return false;
       composer.text = text;
       return true;
     },
   });
-  return { unqueue, toasts, calls, composer };
+  return { unqueue, toasts, calls, composer, copied };
 }
 
 const click = (el) => ({ target: el, stopPropagation() {} });
@@ -113,4 +115,39 @@ test("edit: a draft in the composer stays; the removed text is in the toast", as
   await unqueue.onClick(click(bubble.querySelector("button.unqueue")));
   assert.equal(composer.text, "my draft");
   assert.deepEqual(toasts, ["Removed (your draft stays): fix the tests"]);
+});
+
+test("a switch to another session before the 200: the removed text stays out of its composer, in a toast naming the session", async () => {
+  const open = { id: "s1aaaaaaaaaa" };
+  let answer;
+  const { unqueue, composer, toasts } = harness({ dequeue: () => new Promise((resolve) => { answer = resolve; }), open });
+  const bubble = queuedBubble("e5");
+  const pending = unqueue.onClick(click(bubble.querySelector("button.unqueue")));
+  open.id = "s2bbbbbbbbbb";
+  answer({ status: "removed", prompt: "fix the tests" });
+  await pending;
+  assert.equal(composer.text, "");
+  assert.equal(toasts.length, 1);
+  assert.equal(toasts[0].text, "Removed from s1aaaaaa: fix the tests");
+  // Sticky (the text is nowhere else); Copy takes the whole text, unclipped.
+  assert.deepEqual(toasts[0].options, { sticky: true });
+  assert.equal(toasts[0].action.label, "Copy");
+});
+
+test("after a switch: Copy copies the full removed text; a failed copy shows it again", async () => {
+  const long = "x".repeat(300);
+  for (const copyWorks of [true, false]) {
+    const open = { id: "s1aaaaaaaaaa" };
+    let answer;
+    const { unqueue, toasts, copied } = harness({ dequeue: () => new Promise((resolve) => { answer = resolve; }), open, copyWorks });
+    const pending = unqueue.onClick(click(queuedBubble("e6").querySelector("button.unqueue")));
+    open.id = "s2bbbbbbbbbb";
+    answer({ status: "removed", prompt: long });
+    await pending;
+    assert.ok(toasts[0].text.endsWith("\u2026"));
+    await toasts[0].action.run();
+    assert.deepEqual(copied, [long]);
+    if (copyWorks) assert.deepEqual(toasts.slice(1), ["Copied"]);
+    else assert.deepEqual(toasts[1], toasts[0]);
+  }
 });
