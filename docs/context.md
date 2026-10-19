@@ -250,7 +250,7 @@ you're away from the terminal. All of these must hold:
   question or continue offer waiting, not just started;
 - under `session.max_wakes` turns in a row with no message from you (the
   budget delegate reports and finished background tasks use too; a turn that
-  failed pauses wakes until you write);
+  failed, or was stopped before the model call, pauses wakes until you write);
 - the source hasn't woken the session in the last 10 minutes (a peer
   source has its own limit instead: below).
 
@@ -266,7 +266,9 @@ notifications count it as a finished turn however short.
 A wake turn that fails goes back to before it and keeps its note as a
 plain one; the model reads `[SYSTEM: the previous turn failed before any
 answer: … The wake turn for the change in attached context <name> was not
-answered; chi starts no other wake turn until the user writes.]`.
+answered; chi starts no other wake turn until the user writes.]`. One
+stopped before the model call (a Stop, a `before_turn` hook's cancel) goes
+back the same way, its note plain, and pauses wakes too.
 
 ### Peer sources: the peer loop
 

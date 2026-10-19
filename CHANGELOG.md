@@ -40,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   cost-cap.cap=five` is refused (exit 2) instead of silently running without a cap. A `cap:`, `child:` or `default:`
   in config.yml that isn't a number (or is infinite, `1e400`) now warns once, and a bad `cap:`/`child:` falls back to
   the next one. Run `chi update` (cost-cap 0.2.1).
+- An attached-context wake turn stopped before the model call keeps its note as a plain one and pauses wakes until
+  you write, as delegate and task wake turns do; it left the note marked as a turn's start.
 
 ## [0.91.0] - 2026-10-19
 

@@ -539,8 +539,7 @@ module Samagotchi
     def run_context_wake_turn(context_wake)
       name = context_wake.name
       Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
-      run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake,
-               unmark_restored: false)
+      run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake)
     end
 
     # The first prompt (spawn_session's): a delegate child's task, which is
@@ -652,7 +651,7 @@ module Samagotchi
     # (WorkerInbound#unmark_wake), unless the failed turn kept its steps.
     # +failed+ names the wake in the failed turn's note, +kept+ says what
     # happens to it (TurnFlow#prompt_turn_failed).
-    def run_wake(origin:, failed:, kept: nil, mark: nil, unmark_restored: true)
+    def run_wake(origin:, failed:, kept: nil, mark: nil)
       @turn_flow.before_prompt_turn
       restores = @turn_flow.restores
       run_engine_turn(nil, continue: true, origin: origin, id: mark&.turn_id,
@@ -664,8 +663,8 @@ module Samagotchi
         else
           @continue_offer.after_turn(result)
           if result.canceled? && @turn_flow.restores != restores
-            @inbound.unmark_wake(mark) if mark && unmark_restored
-            @wakes.pause! if unmark_restored
+            @inbound.unmark_wake(mark) if mark
+            @wakes.pause!
           end
         end
       end

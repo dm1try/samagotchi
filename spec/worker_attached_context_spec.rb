@@ -383,6 +383,31 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(wake_turns.pop(timeout: 0.5)).to be_nil
     end
 
+    # A Stop (or a before_turn hook's cancel) before the model call restores
+    # the conversation to before the turn: the wake note stays, as a plain
+    # one, and wakes pause as after a failure (the delegate and task wakes' rule).
+    it "unmarks a wake turn stopped before the model call and pauses wakes until a human's input" do
+      stopped = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: true, resumable?: false,
+                                                              conversation: nil)
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        wake_turns << [prompt, kwargs, turn_session.messages.last]
+        @stopped_once ? result : (@stopped_once = true) && stopped
+      end
+      start_worker
+      attach_seen("a")
+      attach_seen("b")
+      push("a", "v2", wake: true)
+      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+      expect(wait_until { saved_context_notes.last.then { |m| m[:context_source] == "a" && !m.key?(:turn_start) } })
+        .to be(true)
+      expect(saved_context_notes.last).not_to include(:turn_id)
+
+      push("b", "v2", wake: true)
+      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
+      expect(saved_context_notes.last).not_to include(:turn_start)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
     it "keeps a failed wake turn that got to tool steps, its wake mark too, and still pauses wakes" do
       start_worker
       attach_seen("a")
