@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- minitest is now a dependency of the gem, so `chi bundle test` runs a bundle's Minitest tests (and the one
+  `chi bundle new` writes) on a slim or vendored install without `gem install minitest`.
+
 ## [0.88.0] - 2026-10-19
 
 ### Added

@@ -6,6 +6,7 @@ require "stringio"
 require "tmpdir"
 require "samagotchi/bundle_command"
 require "samagotchi/bundle_command/scaffold"
+require "samagotchi/bundle_command/test_run"
 
 # `chi bundle test`: a bundle's tests on chi's Ruby and lib, the runner's
 # exit status passed through.
@@ -63,6 +64,13 @@ RSpec.describe "chi bundle test" do
 
     status, output = run_quietly(File.join(tmp, "b"))
     expect([status, output]).to match([0, a_string_including("1 example, 0 failures")])
+  end
+
+  it "exits 2 telling to reinstall chi when minitest doesn't load (a broken install)" do
+    runner = Samagotchi::BundleCommand::TestRun.new(bundle, stdout: out, stderr: err)
+    allow(runner).to receive(:loads?).with("minitest").and_return(false)
+    expect(runner.run).to eq(2)
+    expect(err.string).to include("minitest doesn't load on chi's Ruby").and include("reinstall chi (gem install samagotchi)")
   end
 
   it "exits 1 with a hint when there are no tests, 2 for a PATH that isn't a folder" do

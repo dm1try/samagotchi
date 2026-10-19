@@ -51,6 +51,7 @@ Gem::Specification.new do |spec|
 
   # Runtime dependencies
   spec.add_dependency "json", ">= 2.9" # Ruby 3.3's json 2.7 pretty-prints {} as "{\n}" in the tool schemas of the prompt
+  spec.add_dependency "minitest", ">= 5.20", "< 7" # `chi bundle test` and the scaffold's test run on it (never required by chi itself)
   spec.add_dependency "nokogiri"
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "rackup"

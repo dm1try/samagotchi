@@ -3,6 +3,7 @@ PATH
   specs:
     samagotchi (0.88.0)
       json (>= 2.9)
+      minitest (>= 5.20, < 7)
       nokogiri
       rack (>= 2.0)
       rackup
@@ -115,7 +116,6 @@ PLATFORMS
 
 DEPENDENCIES
   commonmarker
-  minitest
   parallel_tests
   rake (~> 13)
   rspec (~> 3)

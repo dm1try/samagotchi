@@ -100,7 +100,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   Bundler env: `test/**/*_test.rb` on Minitest (`-r samagotchi/testing/minitest`), or else `spec/` on RSpec with
   the kit (`--options /dev/null -r samagotchi/testing/rspec`, as `rake bundles:specs`). `ARGS` go to the runner
   (`-- -n /name/`). Exit status: the tests'; 1 with no tests; 2 for usage, or when minitest / rspec doesn't load on
-  chi's Ruby. The tests run the bundle's code as written, with your environment (the kit sandboxes each
+  chi's Ruby (minitest is one of chi's gems; rspec is optional). The tests run the bundle's code as written, with your environment (the kit sandboxes each
   test's HOME and XDG dirs, not the process).
 - `chi bundle check [PATH] [--fix] [--set KEY=VALUE]` (PATH defaults to `.`) checks it as an install takes it, one
   finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, then `ok|failed: N errors, N
