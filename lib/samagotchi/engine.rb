@@ -1401,6 +1401,7 @@ module Samagotchi
       source = if client_id.start_with?(ClientId::DELEGATE_PREFIX) then "delegate"
                elsif client_id.start_with?(ClientId::CHILD_PREFIX) then "delegate_report"
                elsif client_id.start_with?(ClientId::CONTEXT_PREFIX) then "context"
+               elsif client_id.start_with?(ClientId::TASK_PREFIX) then "task"
                elsif client_id == ClientId::REMINDER then "reminder"
                else "client"
                end

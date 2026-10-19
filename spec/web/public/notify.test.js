@@ -44,6 +44,11 @@ test("a turn chi ran for an attached context change is done however short, as a 
   assert.equal(attentionFor(base, { ...base, last_turn: wake }).reason, "done");
 });
 
+test("a turn chi ran for a finished background task is done however short, as a report's", () => {
+  const wake = { ...turn("completed", 3), origin: "task" };
+  assert.equal(attentionFor(base, { ...base, last_turn: wake }).reason, "done");
+});
+
 test("a failed turn, however short; a canceled one never", () => {
   assert.equal(attentionFor(base, { ...base, last_turn: turn("failed", 1) }).reason, "failed");
   assert.equal(attentionFor(base, { ...base, last_turn: turn("canceled", 60) }), null);

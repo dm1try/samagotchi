@@ -9,8 +9,9 @@ module Samagotchi
   # outcome: "completed", "failed", "canceled" or "not_continued";
   # ended_at: iso8601; seconds: Float; origin: "client", "reminder",
   # "delegate", "delegate_report" (a turn a parent ran for its delegate
-  # children's reports) or "context" (one an attached context source's
-  # change started); exhausted/limit: the turn ran out of iterations at
+  # children's reports), "context" (one an attached context source's
+  # change started) or "task" (one a finished background task started: the
+  # Worker's finish wake); exhausted/limit: the turn ran out of iterations at
   # limit. The rest are its stop facts (LastTurn::STOP_FACTS), only what is
   # known. enqueued_id: the input's id when the turn ran one (a POST /turn
   # ack's, an input file's), so a wait for a queued message (`chi send

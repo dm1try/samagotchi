@@ -9,6 +9,7 @@ require_relative "../steer_cut"
 require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
 require_relative "../prompt_files"
+require_relative "../tools/task_record"
 require_relative "model_segments_text"
 
 module Samagotchi
@@ -207,14 +208,18 @@ module Samagotchi
 
       # Who sent a line, by its client_id: CLIENT_LABELS by the whole id or
       # its prefix, a turn an attached context source started
-      # (context:<name>) as "context <name> changed", AUTOMATIC_LABEL for
-      # an id chi doesn't know; +fallback+ for none (the user's own).
+      # (context:<name>) as "context <name> changed", a finished background
+      # task's (task:<id>) as "task <id8> finished", AUTOMATIC_LABEL for an
+      # id chi doesn't know; +fallback+ for none (the user's own).
       def client_label(client_id, fallback = "user")
         return fallback unless client_id
 
         id = client_id.to_s
         name = id.delete_prefix(ClientId::CONTEXT_PREFIX)
         return "context #{name} changed" if id.start_with?(ClientId::CONTEXT_PREFIX) && !name.empty?
+
+        task = id.delete_prefix(ClientId::TASK_PREFIX)
+        return "task #{Tools::TaskRecord.short_id(task)} finished" if id.start_with?(ClientId::TASK_PREFIX) && !task.empty?
 
         prefix = id[/\A[^:]*:/]
         CLIENT_LABELS[id] || (prefix && CLIENT_LABELS[prefix]) || AUTOMATIC_LABEL

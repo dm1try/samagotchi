@@ -1703,6 +1703,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(screen.lines.last).to eq("context pr-12 changed>")
   end
 
+  it "renders a finished task's wake turn by its label alone, live and from a join" do
+    feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "task:3f9a2c1d-0000" } })
+    expect(screen.lines.last).to eq("task 3f9a2c1d finished>")
+
+    other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+    turn = { prompt: nil, continue: true, origin: { client_id: "task:3f9a2c1d-0000" }, parts: [] }
+    other.handle_event(JSON.parse(JSON.generate(joined.merge(snapshot: joined[:snapshot].merge(current_turn: turn)))))
+    expect(screen.lines.last).to eq("task 3f9a2c1d finished>")
+  end
+
   it "points at !rollback after a cancelled prompt turn, not after a cancelled continue" do
     feed({ type: :turn_started, prompt: "go", origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
     expect(screen.lines.last(2)).to eq(["■ turn canceled (Ctrl-C)", "  partial progress kept; !rollback restores the pre-turn state"])
