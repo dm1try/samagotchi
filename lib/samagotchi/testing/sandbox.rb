@@ -39,7 +39,16 @@ module Samagotchi
           sandbox&.leave
         end
 
+        # +value+ with every Hash key a String, as config.yml and a
+        # handler's args read (Bundle uses it too).
         # @api private
+        def stringify(value)
+          case value
+          when Hash then value.to_h { |key, item| [key.to_s, stringify(item)] }
+          when Array then value.map { |item| stringify(item) }
+          else value
+          end
+        end
       end
 
       # @return [String] the temp folder holding everything
@@ -148,13 +157,7 @@ module Samagotchi
         Dir.chdir(dir, &)
       end
 
-      def stringify(value)
-        case value
-        when Hash then value.to_h { |key, item| [key.to_s, stringify(item)] }
-        when Array then value.map { |item| stringify(item) }
-        else value
-        end
-      end
+      def stringify(value) = Sandbox.stringify(value)
     end
   end
 end

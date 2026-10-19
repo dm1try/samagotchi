@@ -11,6 +11,7 @@ require_relative "../peer_sources"
 require_relative "../toolkit"
 require_relative "../guardrails/gate"
 require_relative "../memory_bundle/manifest"
+require_relative "../memory_bundle/source"
 require_relative "../session_setup"
 require_relative "sandbox"
 require_relative "recorder"
@@ -69,7 +70,7 @@ module Samagotchi
     # raises HookFailed after the call (chi would log it and go on);
     # #lenient collects them in #errors instead.
     class Bundle
-      SHIPPED_DIR = File.expand_path("../bundles", __dir__)
+      SHIPPED_DIR = MemoryBundle::SourceNormalizer::SHIPPED_DIR
 
       class << self
         # @param dir [String] the bundle's folder (its manifest.yml)
@@ -398,13 +399,7 @@ module Samagotchi
         (setup || SessionSetup.new).with(bundle_settings: values)
       end
 
-      def stringify(value)
-        case value
-        when Hash then value.to_h { |key, item| [key.to_s, stringify(item)] }
-        when Array then value.map { |item| stringify(item) }
-        else value
-        end
-      end
+      def stringify(value) = Sandbox.stringify(value)
     end
   end
 end
