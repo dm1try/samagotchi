@@ -5,6 +5,7 @@ require "tmpdir"
 require "yaml"
 require_relative "../log"
 require_relative "../paths"
+require_relative "../sandbox_layout"
 require_relative "fake_executable"
 
 module Samagotchi
@@ -55,16 +56,15 @@ module Samagotchi
       def enter
         raise ArgumentError, "the sandbox was entered already" if @root
 
-        @root = File.realpath(Dir.mktmpdir("chi-bundle-test-"))
+        layout = SandboxLayout.create("chi-bundle-test-", extra: %w[data cache home bin])
+        @root = layout.root
         @saved = ENV.to_h
         @outer = Sandbox.current
         ENV.each_key.select { |key| key.start_with?("SAMAGOTCHI_") && !KEPT.include?(key) }.each { |key| ENV.delete(key) }
-        %w[config state data cache home work bin].each { |dir| FileUtils.mkdir_p(File.join(@root, dir)) }
         File.write(File.join(@root, "gitconfig"), "")
         ENV.update(
+          **layout.env,
           "HOME" => File.join(@root, "home"),
-          "XDG_CONFIG_HOME" => File.join(@root, "config"),
-          "XDG_STATE_HOME" => File.join(@root, "state"),
           "XDG_DATA_HOME" => File.join(@root, "data"),
           "XDG_CACHE_HOME" => File.join(@root, "cache"),
           "CLAUDE_CONFIG_DIR" => File.join(@root, "home", ".claude"),
@@ -73,8 +73,6 @@ module Samagotchi
           "GIT_CONFIG_NOSYSTEM" => "1",
           "SAMAGOTCHI_KEYCHAIN" => "off",
           "SAMAGOTCHI_ENV" => "test",
-          "SAMAGOTCHI_RECAP_ENABLED" => "false",
-          "SAMAGOTCHI_CACHE_WARMUP" => "off",
           "PATH" => [bin_dir, ENV.fetch("PATH", nil)].compact.join(File::PATH_SEPARATOR)
         )
         # The log resolves its file from the (now temp) state home.
@@ -97,10 +95,7 @@ module Samagotchi
       # Write config.yml (what Config.get reads): a Hash or YAML text.
       # @return [String] its path
       def config(data)
-        path = File.join(Paths.config_home, Paths::APP_DIR, "config.yml")
-        FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, data.is_a?(String) ? data : YAML.dump(stringify(data)))
-        path
+        SandboxLayout.new(@root).write_config(data.is_a?(String) ? data : stringify(data), config_home: Paths.config_home)
       end
 
       # @return [String] $XDG_STATE_HOME/samagotchi (ctx.data_dir's parent)

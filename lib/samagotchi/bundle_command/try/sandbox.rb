@@ -13,6 +13,7 @@ require_relative "../../memory_bundle"
 require_relative "../../memory_bundle/shas"
 require_relative "../../owner_lock"
 require_relative "../../process_group"
+require_relative "../../sandbox_layout"
 require_relative "../../session"
 require_relative "../../session_manager"
 require_relative "../../tools/task_record"
@@ -58,12 +59,11 @@ module Samagotchi
           @cost_cap = cost_cap
           @cost_cap_override = cost_cap_override
           read_manifest
-          @root = File.realpath(Dir.mktmpdir("chi-bundle-try-"))
-          @config_home = File.join(root, "config")
-          @state_home = File.join(root, "state")
-          @work_dir = File.join(root, "work")
-          [config_home, state_home, work_dir].each { |dir| FileUtils.mkdir_p(dir) }
-          @work_dir = File.realpath(@work_dir)
+          @layout = SandboxLayout.create("chi-bundle-try-")
+          @root = @layout.root
+          @config_home = @layout.config_home
+          @state_home = @layout.state_home
+          @work_dir = @layout.work_dir
           write_config
           @child_env = build_child_env
         rescue StandardError
@@ -118,9 +118,7 @@ module Samagotchi
           data["bundles"][@manifest.name] ||= {}
           data["bundles"][@manifest.name].merge!(@bundle_settings)
           data["bundles"]["cost-cap"]["cap"] = @cost_cap if @cost_cap_override
-          path = File.join(config_home, "samagotchi", "config.yml")
-          FileUtils.mkdir_p(File.dirname(path))
-          File.write(path, YAML.dump(data))
+          @layout.write_config(data)
         end
 
         def read_manifest
@@ -207,10 +205,7 @@ module Samagotchi
           env.merge!(
             "HOME" => Dir.home,
             "SAMAGOTCHI_KEYCHAIN" => "on",
-            "XDG_CONFIG_HOME" => config_home,
-            "XDG_STATE_HOME" => state_home,
-            "SAMAGOTCHI_RECAP_ENABLED" => "false",
-            "SAMAGOTCHI_CACHE_WARMUP" => "off"
+            **@layout.env
           )
           env.merge!(ChildEnv.unbundled(env))
           env
