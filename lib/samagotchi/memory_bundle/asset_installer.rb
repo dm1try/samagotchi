@@ -256,6 +256,8 @@ module Samagotchi
           src = File.join(@bundle_dir, "scripts", file)
           raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have" unless File.file?(src)
           raise Installer::InstallError, "scripts/#{file} is a symlink (not installed)" if linked?(src)
+
+          @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src)
         end
         return {} if @dry_run
 

@@ -102,6 +102,18 @@ RSpec.describe "Bundle scripts and context providers: manifest, install, provena
       expect(installer.warnings.join).to match(/Checksum mismatch for script pr.rb/)
     end
 
+    it "warns with a chmod hint for a non-executable dev script without changing its source mode" do
+      source = write_source
+      script_path = File.join(source, "scripts", "pr.rb")
+      FileUtils.chmod(0o644, script_path)
+
+      installer = install(source, dev: true)
+
+      expect(installer.warnings).to include("scripts/pr.rb is not executable; chmod +x #{script_path}")
+      expect(File.executable?(script_path)).to be(false)
+      expect(File.symlink?(File.join(bundles_dir, "prs", "scripts", "pr.rb"))).to be(true)
+    end
+
     it "removes the scripts and providers when an upgrade drops them" do
       install(write_source)
       install(write_source(scripts: nil, providers: nil), upgrade: true)
