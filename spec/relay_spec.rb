@@ -102,4 +102,40 @@ RSpec.describe Samagotchi::Relay do
     expect(card[:options][1]).to eq("Allow this call for delegate #{m} → #{short}'s session")
     expect(card[:approval]).to eq(pending[:approval])
   end
+
+  # P4: a delegate's hook question its parent can't usefully answer.
+  describe "a hook's question" do
+    let(:hook) do
+      { id: "h-1", status: "pending", kind: "hook", hook: "cost-cap", header: "Cost cap", multi_select: false,
+        allow_freeform: false, question: "This session spent $5.00 of its $5.00 cap.", options: %w[Continue Stop],
+        effects: %w[spend deny] }
+    end
+
+    it "keeps its kind, options and effects, carries no approval facts, and names the delegate" do
+      card = described_class.card(child, as_saved(hook), relay_id: "r-2", more: 1)
+
+      expect(card[:kind]).to eq("hook")
+      expect(card[:hook]).to eq("cost-cap")
+      expect(card).not_to have_key(:approval)
+      expect(card[:options]).to eq(%w[Continue Stop])
+      expect(card[:effects]).to eq(%w[spend deny])
+      expect(card[:header]).to eq("delegate #{short} asks: Cost cap (+1 more delegate waiting)")
+      expect(card[:question]).to start_with("delegate #{short} (")
+      expect(card[:question]).to end_with("asks:\n  This session spent $5.00 of its $5.00 cap.")
+      expect(card[:relay]).to include(child_id: child.id, child_question_id: "h-1")
+    end
+
+    it "is judged by the parent policy as the child's own question is" do
+      policy = Samagotchi::Guardrails::ParentPolicy
+      own = as_saved(hook)
+      relayed = as_pending(described_class.card(child, own, relay_id: "r-2"))
+      expect(Samagotchi::Guardrails::ParentApprovals.approval?(relayed)).to be(false)
+      %w[hard standard soft].each do |level|
+        strategy = policy.strategy(level)
+        expect(policy.allowed_options(relayed, strategy: strategy)).to eq(policy.allowed_options(own, strategy: strategy))
+      end
+      expect(policy.effects_of(relayed)).to eq(policy.effects_of(own))
+      expect(policy.user_only?(relayed)).to be(false)
+    end
+  end
 end

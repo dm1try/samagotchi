@@ -100,6 +100,38 @@ RSpec.describe "approval relay, two hops" do
     expect(top_outcome[:value].line).to eq("approval relayed to your user: execute: git push --tags → allowed once")
   end
 
+  # P4: a hook's question the parent can't usefully answer (the leaf's own
+  # parent_answers: hard on a Continue/Stop) goes hop by hop as approvals do.
+  it "carries a hook's question up both hops, its own header on each card" do
+    leaf_session = Samagotchi::Session.load(leaf.id, state_dir: state_dir)
+    leaf_session.parent_answers = "hard"
+    leaf_session.save(state_dir: state_dir)
+    hook = { question: "Spent $5.00 of $5.00.", header: "Cost cap", options: %w[Continue Stop],
+             effects: %w[spend deny], multi_select: false, allow_freeform: false, kind: "hook", hook: "cost-cap" }
+    top_engine = worker(top)
+    middle_engine = worker(middle)
+    leaf_engine = worker(leaf)
+
+    leaf_answer = in_thread { leaf_engine.open_question(hook) }
+    wait_until(timeout: 2) { pending_of(leaf) }
+    middle_outcome = in_thread do
+      Samagotchi::Tools::DelegateRelay.call(leaf.id, pending_of(leaf), relay: middle_engine.relay_peer, state_dir: state_dir)
+    end
+    wait_until(timeout: 2) { pending_of(middle)&.relay }
+    top_outcome = in_thread do
+      Samagotchi::Tools::DelegateRelay.call(middle.id, pending_of(middle), relay: top_engine.relay_peer, state_dir: state_dir)
+    end
+    card = wait_until(timeout: 2) { top_engine.pending_question }
+    expect(card.kind).to eq("hook")
+    expect(card.header).to eq("delegate #{middle.id[0, 8]} → #{leaf.id[0, 8]} asks: Cost cap")
+
+    top_engine.answer_question(id: card.id, selected: ["Stop"])
+    wait_until(timeout: 5) { leaf_answer.key?(:value) && top_outcome.key?(:value) && middle_outcome.key?(:value) }
+    expect(leaf_answer[:value].to_h).to include(selected: ["Stop"])
+    expect(top_outcome[:value].line).to eq("hook question relayed to your user: Cost cap → Stop")
+    expect(middle_outcome[:value].line).to eq("hook question relayed to your user: Cost cap → Stop")
+  end
+
   it "stops the chain where a hop goes: the middle's card closes and the leaf's question waits where it is" do
     top_engine = worker(top)
     middle_engine = worker(middle)

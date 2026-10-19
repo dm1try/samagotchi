@@ -433,4 +433,46 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.pending).to be_nil
     end
   end
+
+  # P4's command-route twin: a delegate's hook question relayed to the
+  # parent is answered through the same #answer check on the parent (its
+  # relay card) and again on the child (RelayVerifier, parent_agent: true).
+  describe "a relayed hook question answered by a parent agent" do
+    let(:child) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", parent_id: session.id)
+                         .tap { |s| s.save(state_dir: tmpdir) }
+    end
+    let(:cost_cap) do
+      { question: "Spent $5.00 of $5.00.", header: "Cost cap", options: %w[Continue Stop], effects: %w[spend deny],
+        multi_select: false, allow_freeform: false, kind: "hook", hook: "cost-cap" }
+    end
+    let(:child_desk) do
+      described_class.new(session: -> { child }, state_dir: -> { tmpdir }, emit: ->(_e) {},
+                          cancel_controller: -> {}, interface: -> { :worker }, user_input: ->(_sid) {})
+    end
+
+    before do
+      require "samagotchi/relay"
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("hard")
+    end
+
+    it "refuses Continue on the parent's relay card and on the child, and takes Stop" do
+      child_thread = Thread.new { child_desk.open_question(cost_cap) }
+      wait_until!("the child's question", timeout: 2) { child_desk.pending }
+      card = Samagotchi::Relay.card(child, child_desk.pending, relay_id: "r-1")
+      expect(card[:kind]).to eq("hook")
+
+      parent_thread = Thread.new { desk.open_question(card) }
+      wait_until!("the relay card", timeout: 2) { desk.pending }
+      expect { desk.answer(id: desk.pending.id, selected: ["Continue"], client_id: "cli:answer") }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:spend) }
+      expect { child_desk.answer(id: child_desk.pending.id, selected: ["Continue"], client_id: "relay:x", parent_agent: true) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:spend) }
+
+      desk.answer(id: desk.pending.id, selected: ["Stop"], client_id: "cli:answer")
+      child_desk.answer(id: child_desk.pending.id, selected: ["Stop"], client_id: "relay:x", parent_agent: true)
+      expect([parent_thread, child_thread].map { |t| t.join(2)&.value&.selected }).to eq([["Stop"], ["Stop"]])
+    end
+  end
 end

@@ -63,6 +63,19 @@ module Samagotchi
       end
     end
 
+    # Whether the parent's user (or a parent agent) answered or dismissed a
+    # relay of this child's question: it isn't relayed again (a refused
+    # answer leaves it on the child's card). A closed one (a Stop, the
+    # child gone) is not settled. Forgotten after KEEP_SECONDS or a restart.
+    def settled?(child_id, child_question_id)
+      @mutex.synchronize do
+        prune
+        @relays.each_value.any? do |relay|
+          relay[:state] == "answered" && relay[:child_id] == child_id.to_s && relay[:child_question_id] == child_question_id.to_s
+        end
+      end
+    end
+
     # Whether a relay is open, or settled recently enough that its child
     # may still ask about it: a restart would drop them.
     def active?

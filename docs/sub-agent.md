@@ -13,6 +13,15 @@ worker keeps the turn paused. The parent answers with `chi answer`, from what it
 knows or after asking its own user, and chi goes on from there. The model gets
 the answer as its tool result, as if you had answered in the web.
 
+A chi parent's own `delegate` children work the same way, with one shortcut:
+their approvals, and the hook questions the parent may only deny under the
+child's `guardrails.parent_answers`, go to the parent's user as a card in the
+parent's UIs instead (the relay, [Sessions](sessions.md#delegating)). When an
+agent runs that parent with `chi send --wait`, the relay card is the parent's
+own question: exit 3 with its text (`delegate ab12 … asks:`), options and
+`answer_with`; the JSON has no `relay` key. Its `chi answer` is held to the
+parent's setting, then to the child's.
+
 The other direction, chi sending a part of its work to a Claude Code session
 you already work with (to validate, as context, or with a question), is the
 [claude-peer bundle](plugins.md#the-claude-peer-bundle): Claude pairs with the

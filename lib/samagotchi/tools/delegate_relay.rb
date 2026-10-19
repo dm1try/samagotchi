@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "../bridge_client"
 require_relative "../relay"
 require_relative "../guardrails/approval"
+require_relative "../guardrails/parent_policy"
 require_relative "../log"
 require_relative "../question_answer"
 
@@ -42,8 +43,15 @@ module Samagotchi
       # @param strategy [Guardrails::ParentPolicy::Strategy] the child's
       #   (ParentPolicy.for_session(child))
       # @return [Boolean] a relay can take this question
-      def relayable?(relay, question, strategy:)
-        !relay.nil? && relay?(question, strategy: strategy)
+      # @param child_id [String, nil] the asking child: a hook's question
+      #   already answered on one of this parent's relays
+      #   (RelayDesk#settled?) isn't relayed again; an approval is (as before
+      #   P4: a refused or undelivered answer is offered again)
+      def relayable?(relay, question, strategy:, child_id: nil)
+        return false if relay.nil? || !relay?(question, strategy: strategy)
+        return true unless child_id && question.kind.to_s == HOOK_KIND
+
+        !relay.relay_desk.settled?(child_id, question.id)
       end
 
       # Whether a delegate's question goes to the parent's user rather than
@@ -101,10 +109,11 @@ module Samagotchi
 
       # Record the parent's answer, tell the child, and say what came of it.
       def settle(answer, fields, client:, desk:, relay_id:, qid:)
-        what = what_text(fields[:approval])
+        what = fields[:kind] == HOOK_KIND ? hook_what(fields) : what_text(fields[:approval])
+        hook = fields[:kind] == HOOK_KIND
         if answer.is_a?(Hash) && answer[:error] == "cancelled"
           desk.close(relay_id)
-          return closed(answer[:reason].to_s, what, client: client, relay_id: relay_id, qid: qid)
+          return closed(answer[:reason].to_s, what, client: client, relay_id: relay_id, qid: qid, hook: hook)
         end
 
         dismissed = !answer.is_a?(QuestionAnswer)
@@ -112,17 +121,18 @@ module Samagotchi
         desk.record(relay_id, selected_indices: dismissed ? [] : answer.selected_indices,
                               freeform: dismissed ? nil : answer.freeform, dismissed: dismissed, by: by)
         response = post(client, "answered", relay_id, qid)
-        Outcome.new(line: line(what, delivered(response, answer, fields, dismissed)), stopped: false)
+        Outcome.new(line: line(what, delivered(response, answer, fields, dismissed), hook: hook), stopped: false)
       end
 
-      def closed(reason, what, client:, relay_id:, qid:)
+      def closed(reason, what, client:, relay_id:, qid:, hook: false)
         case reason
-        when "answered_on_child" then Outcome.new(line: line(what, "answered on the child"), stopped: false)
-        when "child_gone" then Outcome.new(line: line(what, "not delivered (the child's worker is gone)"), stopped: false)
+        when "answered_on_child" then Outcome.new(line: line(what, "answered on the child", hook: hook), stopped: false)
+        when "child_gone"
+          Outcome.new(line: line(what, "not delivered (the child's worker is gone)", hook: hook), stopped: false)
         else
           # A Stop: the child's question stays open there.
           post(client, "closed", relay_id, qid, reason: "stopped")
-          Outcome.new(line: line(what, "still open (your turn was stopped)"), stopped: true)
+          Outcome.new(line: line(what, "still open (your turn was stopped)", hook: hook), stopped: true)
         end
       end
 
@@ -130,10 +140,16 @@ module Samagotchi
       def delivered(response, answer, fields, dismissed)
         return "not delivered (the child's worker is gone)" unless response
 
+        hook = fields[:kind] == HOOK_KIND
         case response.status
-        when 200 then dismissed ? "dismissed (denied)" : verdict(answer, fields)
+        when 200
+          # A dismissed hook question: the hook decides what no answer means.
+          return dismissed ? "dismissed" : answer.selected.join(", ") if hook
+
+          dismissed ? "dismissed (denied)" : verdict(answer, fields)
         when 409 then "answered on the child"
-        when 403 then "refused by the child (a parent agent may not allow it); it waits for the user there"
+        when 403
+          "refused by the child (a parent agent may not #{hook ? "pick it" : "allow it"}); it waits for the user there"
         else "not delivered (#{response.json&.fetch("error", nil) || response.status})"
         end
       end
@@ -156,7 +172,15 @@ module Samagotchi
         why.empty? ? "denied" : "denied (#{why.inspect})"
       end
 
-      def line(what, outcome) = "approval relayed to your user: #{what} → #{outcome}"
+      def line(what, outcome, hook: false)
+        "#{hook ? "hook question" : "approval"} relayed to your user: #{what} → #{outcome}"
+      end
+
+      # A hook card's header as the child asked it (Cost cap), or its hook.
+      def hook_what(fields)
+        header = fields.dig(:relay, :header).to_s
+        header.empty? ? fields[:hook].to_s : header
+      end
 
       # execute: git push origin main
       def what_text(facts)
@@ -173,6 +197,9 @@ module Samagotchi
       # (DelegateWait.relayed_outcomes). Every question is relayed once per
       # wait.
       class Others
+        # The kinds of question a relay may carry (DelegateRelay.relay? decides).
+        KINDS = [Guardrails::Approval::KIND, HOOK_KIND].freeze
+
         # @param parent_id [String]
         # @param except [String] the child waited on (its own approvals come
         #   through ReplyWait)
@@ -213,11 +240,16 @@ module Samagotchi
         #   oldest question first
         def waiting
           rows = SessionManager.children_of(@parent_id, state_dir: @state_dir).select do |row|
-            row[:id] != @except && row[:waiting] == Guardrails::Approval::KIND && !@done[row[:waiting_id].to_s]
+            row[:id] != @except && KINDS.include?(row[:waiting].to_s) && !@done[row[:waiting_id].to_s]
           end
           rows.filter_map do |row|
-            pending = Session.load(row[:id], state_dir: @state_dir).pending_question
-            [row[:id], pending] if pending && pending.id.to_s == row[:waiting_id].to_s
+            child = Session.load(row[:id], state_dir: @state_dir)
+            pending = child.pending_question
+            next nil unless pending && pending.id.to_s == row[:waiting_id].to_s
+            next nil unless DelegateRelay.relayable?(@relay, pending, strategy: Guardrails::ParentPolicy.for_session(child),
+                                                                      child_id: row[:id])
+
+            [row[:id], pending]
           rescue ArgumentError
             nil
           end.sort_by { |_, pending| pending.created_at.to_s }

@@ -338,6 +338,102 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     end
   end
 
+  # P4: a hook's question the parent can't usefully answer under the
+  # child's strategy goes to the parent's user; one it can comes back to the
+  # model as before.
+  describe "a hook's question (P4)" do
+    let(:cost_cap) do
+      { id: "h1", kind: "hook", hook: "cost-cap", status: "pending", header: "Cost cap",
+        question: "This session spent $5.00 of its $5.00 cap.", options: %w[Continue Stop], effects: %w[spend deny],
+        multi_select: false, allow_freeform: false }
+    end
+
+    it "relays it under the child's own hard, the outcome line naming the pick" do
+      update(child, pending_question: cost_cap, parent_answers: "hard")
+      user_answers("Stop", 1)
+      client.on_answered = -> { finish_child("stopped at the cap") }
+
+      expect(wait).to eq("session: #{child.id}\nstatus: answered\n" \
+                         "hook question relayed to your user: Cost cap → Stop\n---\nstopped at the cap")
+      card = relay.cards.first
+      expect(card).to include(kind: "hook", header: "delegate #{child.id[0, 8]} asks: Cost cap", effects: %w[spend deny])
+      expect(card).not_to have_key(:approval)
+    end
+
+    it "says dismissed (not denied: the hook decides) and refused by the child" do
+      update(child, pending_question: cost_cap, parent_answers: "hard")
+      relay.answer = ->(_fields, _watch) { { error: "no answer", id: "pq" } }
+      client.on_answered = -> { finish_child("dropped") }
+      expect(wait).to include("hook question relayed to your user: Cost cap → dismissed\n---\ndropped")
+
+      update(child, pending_question: cost_cap.merge(id: "h2"), status: "running")
+      answer = Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Continue"], selected_indices: [0], by: "parent_agent")
+      relay.answer = ->(_f, _w) { answer }
+      client.status = 403
+      client.on_answered = -> { finish_child("still capped") }
+      expect(wait).to include("Cost cap → refused by the child (a parent agent may not pick it); it waits for the user there")
+    end
+
+    it "gives it back to the model under soft, as before" do
+      update(child, pending_question: cost_cap)
+      expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (hook): Cost cap")
+      expect(relay.cards).to be_empty
+    end
+
+    it "doesn't relay again a hook question already answered on a relay (a refused one waits on the child)" do
+      update(child, pending_question: cost_cap, parent_answers: "hard")
+      id = relay.relay_desk.open(child_id: child.id, child_question_id: "h1")
+      relay.relay_desk.record(id, selected_indices: [0], by: "parent_agent")
+      expect(wait).to include("waiting for an answer (hook): Cost cap")
+      expect(relay.cards).to be_empty
+    end
+
+    it "relays a refused approval again at the next wait, as before P4" do
+      update(child, pending_question: approval)
+      answer = Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0], by: "parent_agent")
+      relay.answer = ->(_f, _w) { answer }
+      client.status = 403
+      expect(wait(timeout: 0.5)).to include("→ refused by the child (a parent agent may not allow it)")
+
+      client.status = 200
+      user_answers("Deny", 2)
+      client.on_answered = -> { finish_child("not pushing") }
+      expect(wait).to include("approval relayed to your user: execute: git push → denied\n---\nnot pushing")
+      expect(relay.cards.size).to eq(2)
+    end
+
+    # M-c: the look at the other children asks the same rule: a cost cap the
+    # parent may answer (soft) isn't relayed, a deny-only one (hard) is.
+    it "relays another child's hook question only when the parent may only deny it" do
+      stub_const("Samagotchi::Tools::DelegateRelay::OTHERS_EVERY", 0.05)
+      soft_child = make(parent_id: parent.id, prompt: "lint it", status: "running", owner: true)
+      hard_child = make(parent_id: parent.id, prompt: "fmt it", status: "running", owner: true)
+      update(soft_child, pending_question: cost_cap.merge(id: "s1", created_at: "2026-01-01T00:00:01Z"))
+      update(hard_child, pending_question: cost_cap.merge(id: "x1", created_at: "2026-01-01T00:00:02Z"),
+                         parent_answers: "hard")
+      user_answers("Stop", 1)
+      client.on_answered = lambda do
+        update(hard_child, pending_question: nil)
+        finish_child("child done")
+      end
+      expect(wait).to eq("session: #{child.id}\nstatus: answered\n---\nchild done")
+      expect(relay.cards.map { |c| c[:relay][:child_question_id] }).to eq(["x1"])
+    end
+
+    it "relays another running child's hook question while the parent waits on this one" do
+      stub_const("Samagotchi::Tools::DelegateRelay::OTHERS_EVERY", 0.05)
+      other = make(parent_id: parent.id, prompt: "lint it", status: "running", owner: true)
+      update(other, pending_question: cost_cap.merge(id: "o1"), parent_answers: "hard")
+      user_answers("Stop", 1)
+      client.on_answered = lambda do
+        update(other, pending_question: nil)
+        finish_child("child done")
+      end
+      expect(wait).to eq("session: #{child.id}\nstatus: answered\n---\nchild done")
+      expect(relay.cards.map { |c| [c[:kind], c[:relay][:child_id]] }).to eq([["hook", other.id]])
+    end
+  end
+
   it "keeps today's path for the model's own questions, and without a relay" do
     update(child, pending_question: { id: "q1", question: "Which one?", options: %w[A B] })
     expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?")

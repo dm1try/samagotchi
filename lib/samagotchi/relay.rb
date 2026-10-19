@@ -16,6 +16,8 @@ module Samagotchi
     # How much of the child's task the card keeps, and the question line.
     TASK_CHARS = 200
     TASK_LINE_CHARS = 80
+    # A hook's question (QuestionDesk#ask_for_hook), relayed as such (P4).
+    HOOK_KIND = "hook"
 
     module_function
 
@@ -33,6 +35,14 @@ module Samagotchi
       asked = inner ? inner[:asked].to_s : pending.question.to_s
       task = inner ? inner[:task].to_s : task_of(child)
       who = chain.reverse.join(" → ")
+      relay = { id: relay_id, child_id: child.id, child_short: short, child_question_id: pending.id.to_s,
+                task: task, chain: chain, asked: asked, more: more.to_i }
+      if pending.kind.to_s == HOOK_KIND
+        # The asking hook's own header, kept down a chain (a relay of a relay).
+        relay[:header] = inner ? inner[:header].to_s : pending.header.to_s
+        return hook_card(pending, who, more, relay)
+      end
+
       {
         question: question_text(who, task, asked),
         options: relabel(Array(pending.options), facts[:scopes], who),
@@ -43,9 +53,31 @@ module Samagotchi
         **{ effects: pending.effects, user_only: pending.user_only }.compact,
         kind: Guardrails::Approval::KIND,
         approval: facts,
-        relay: { id: relay_id, child_id: child.id, child_short: short, child_question_id: pending.id.to_s,
-                 task: task, chain: chain, asked: asked, more: more.to_i }
+        relay: relay
       }
+    end
+
+    # A hook's question (P4: one its parent can't usefully answer): its
+    # kind, hook, options and effects as the child asked them, and no
+    # approval facts (ParentApprovals.approval? stays false on it, so the
+    # policy judges it by its own tags, as on the child).
+    def hook_card(pending, who, more, relay)
+      {
+        question: question_text(who, relay[:task], relay[:asked]),
+        options: Array(pending.options).map(&:to_s),
+        header: hook_header(who, relay[:header], more),
+        multi_select: !!pending.multi_select,
+        allow_freeform: !!pending.allow_freeform,
+        **{ effects: pending.effects, user_only: pending.user_only, hook: pending.hook }.compact,
+        kind: HOOK_KIND,
+        relay: relay
+      }
+    end
+
+    # delegate ab12 asks: Cost cap (+1 more delegate waiting)
+    def hook_header(who, header, more)
+      text = "delegate #{who} asks: #{header.to_s.strip.empty? ? "a question" : header}"
+      more.to_i.positive? ? "#{text} (+#{more} more delegate#{"s" if more.to_i > 1} waiting)" : text
     end
 
     # delegate ab12 ("fix the flaky spec in …") asks:

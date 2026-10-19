@@ -103,7 +103,12 @@ The file tools can't write the store.
 ### Answers from a parent agent
 
 A chi parent's `delegate` children don't need any of this for approvals: they
-go to the user on the parent's own card (the approval relay). This section is
+go to the user on the parent's own card (the approval relay), as do the hook
+questions (the cost cap's Continue/Stop, a bundle's `ctx.ask_user`) where the
+parent may pick nothing but a deny under the child's `parent_answers`; the
+others come back to the parent's model with the block below. A dismissal
+always passes (the hook decides what no answer means): the strategy is a
+convention for an honest parent, not a barrier. This section is
 the path for other agents, and for a chi parent that can't host the relay (a
 `--no-shared` REPL, `--non-interactive`): there the model gets the question
 block and the rules below. With the relay, the same rules still hold for a

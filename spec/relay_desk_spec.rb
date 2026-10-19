@@ -50,4 +50,21 @@ RSpec.describe Samagotchi::RelayDesk do
     now[0] += 2
     expect(desk).not_to be_active
   end
+
+  # P4: a delegate's question the parent's user (or agent) already answered
+  # on a relay isn't relayed again; one whose relay closed (a Stop, the
+  # child gone) is.
+  it "says whether a child's question was answered on a relay (settled?)" do
+    expect(desk.settled?("c", "q")).to be(false)
+    open_one = desk.open(child_id: "c", child_question_id: "q")
+    expect(desk.settled?("c", "q")).to be(false)
+    desk.close(open_one)
+    expect(desk.settled?("c", "q")).to be(false)
+
+    answered = desk.open(child_id: "c", child_question_id: "q")
+    desk.record(answered, selected_indices: [], dismissed: true, by: "user")
+    expect(desk.settled?("c", "q")).to be(true)
+    expect(desk.settled?("c", "q2")).to be(false)
+    expect(desk.settled?("other", "q")).to be(false)
+  end
 end

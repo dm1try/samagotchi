@@ -82,8 +82,9 @@ module Samagotchi
                                           owner_grace: owner_grace, interject: others && -> { others.poll },
                                           turn: cursor.turn)
           left -= monotonic - started
-          unless wait.status == :waiting_for_answer && wait.question.kind.to_s == Guardrails::Approval::KIND &&
-                 DelegateRelay.relayable?(relay, wait.question, strategy: Guardrails::ParentPolicy.for_session(wait.session))
+          unless wait.status == :waiting_for_answer &&
+                 DelegateRelay.relayable?(relay, wait.question, strategy: Guardrails::ParentPolicy.for_session(wait.session),
+                                                                child_id: child_id)
             outcomes.concat(relayed_outcomes.delete(key) || [])
             movement = advance(peers.session_id, child_id, wait, state_dir: sd)
             if movement&.already_reported
