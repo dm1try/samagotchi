@@ -8,15 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Fixed
-
-- `chi -p` followed by one of chi's own flags (`chi -p --non-interactive "text"`, `-p -v`) now exits 2 with a usage
-  error instead of taking the flag as the prompt.
+## [0.90.0] - 2026-10-19
 
 ### Changed
 
 - SSE `tool_call_started` carries no `call`, `turn_completed` no `result`; read `tool`/`params`/`view` and
   `turn_summary.output`. `?raw=1` on the worker's stream shows them.
+- docs/bundle-authoring.md (the guide chi reads to write a bundle) makes edit → `check --fix` → `test` → `try` the
+  loop, with `install --dev .` while iterating and `try` as the live check; its test example runs as written.
+
+### Fixed
+
+- `chi -p` followed by one of chi's own flags (`chi -p --non-interactive "text"`, `-p -v`) now exits 2 with a usage
+  error instead of taking the flag as the prompt.
+
+Update with `chi update` (the system bundle 0.90.0), then restart `chi web`.
 
 ## [0.89.0] - 2026-10-19
 
@@ -3523,7 +3529,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.89.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.90.0...HEAD
+[0.90.0]: https://github.com/dm1try/samagotchi/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/dm1try/samagotchi/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/dm1try/samagotchi/compare/v0.87.0...v0.88.0
 [0.87.0]: https://github.com/dm1try/samagotchi/compare/v0.86.0...v0.87.0
