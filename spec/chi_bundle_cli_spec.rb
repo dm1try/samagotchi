@@ -78,8 +78,8 @@ RSpec.describe "chi bundle (CLI)" do
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
-        their sha256 isn't checked, for this bundle only. Its memories are copied; re-install to pick up memory
-        edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
+        their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
+        pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
   TEXT
 
   BUILD_USAGE = <<~TEXT
@@ -593,12 +593,18 @@ Hooks removed: 1\n\z})
     end
 
     it "reinstalls the same dev source cleanly, pruning dropped hooks without changing source files" do
-      chi("install", "--dev", @hooks_src)
       manifest_path = File.join(@hooks_src, "manifest.yml")
       manifest = YAML.safe_load_file(manifest_path)
-      manifest.delete("hooks")
+      guardrails_hook = File.join(@hooks_src, "hooks", "guardrails.rb")
+      kept_hook = File.join(@hooks_src, "hooks", "kept.rb")
+      FileUtils.cp(guardrails_hook, kept_hook)
+      manifest["hooks"]["kept.rb"] = manifest["hooks"]["guardrails.rb"].dup
       File.write(manifest_path, YAML.dump(manifest))
-      FileUtils.rm(File.join(@hooks_src, "hooks", "guardrails.rb"))
+      chi("install", "--dev", @hooks_src)
+
+      manifest = YAML.safe_load_file(manifest_path)
+      manifest["hooks"].delete("guardrails.rb")
+      File.write(manifest_path, YAML.dump(manifest))
       source_files = -> { Dir.glob(File.join(@hooks_src, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
       before = source_files.call.to_h { |path| [path, File.binread(path)] }
 
@@ -608,7 +614,10 @@ Hooks removed: 1\n\z})
       expect(out).to include("Skipped: identity.md")
       expect(out).not_to include("no longer includes hook") # only a link went, not a local file
       expect(File.exist?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb"))).to be(false)
-      with_sandbox_env { expect(record("sample-hooks-bundle").hooks).to be_empty }
+      expect(File.symlink?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "kept.rb"))).to be(true)
+      with_sandbox_env do
+        expect(record("sample-hooks-bundle").hooks.keys).to eq(["kept.rb"])
+      end
       after = source_files.call.to_h { |path| [path, File.binread(path)] }
       expect(after).to eq(before)
     end
