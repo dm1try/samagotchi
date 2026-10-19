@@ -10,7 +10,7 @@ module Samagotchi
   # subcommands have their own flags).
   class BundleCommand
     USAGE = <<~TEXT
-      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check> [options]
+      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try> [options]
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -52,6 +52,9 @@ module Samagotchi
         check [PATH] [--fix] [--set KEY=VALUE]
           Check a bundle you're writing (default: the current dir): manifest, files, sha256 lines,
           requires_chi, and an install + load in a sandbox. --fix rewrites stale sha256 lines.
+
+        try PATH -p TEXT [options]
+          Run one non-interactive model turn with a bundle installed in an isolated sandbox.
     TEXT
 
     # Each subcommand's --help (and only --help: -h and help are taken as
@@ -114,6 +117,19 @@ module Samagotchi
         --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
         Exit status: 0 no errors, 1 errors, 2 usage.
     TEXT
+    TRY_HELP = <<~TEXT
+      Usage: chi bundle try PATH -p TEXT [--model NAME] [--memory NAME] [--mute NAME] [--toolkit NAME]
+             [--thinking LEVEL] [--set KEY=VALUE] [--json] [--keep] [--timeout SECONDS]
+
+        Install PATH and run one non-interactive turn in an isolated temporary config, state and work directory.
+        The user's hosts, keys and ordinary runtime settings are retained; their bundles, hooks, guardrails,
+        memories, prompt additions, sessions and attached context sources are not. Shipped guardrails and a
+        $1 cost cap are installed for the run. --set KEY=VALUE sets the tried bundle's config.yml bundles entry;
+        --set cost-cap.cap=N overrides the cap (unlike chi --set BUNDLE.KEY=VALUE, these are config settings).
+        --memory and --mute accept comma-separated names and repeat. --keep retains the sandbox and debug log.
+        --json prints the experimental machine-readable trace.
+        Exit status: child turn's status; 1 on install failure or timeout; 2 for usage; 130 on Ctrl-C.
+    TEXT
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -144,6 +160,19 @@ module Samagotchi
     CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--fix"
       f.value "--set", key: :set, repeat: true
+    end
+    TRY_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A-/) do |f|
+      f.value "-p", "--prompt", key: :prompt
+      f.value "--model"
+      f.value "--memory", repeat: true
+      f.value "--mute", repeat: true
+      f.value "--toolkit"
+      f.value "--thinking"
+      f.value "--set", repeat: true
+      f.switch "--json"
+      f.switch "--keep"
+      f.value "--timeout"
+      f.refuse "--attach", "--shared", "chi bundle try can't use --attach or --shared"
     end
     TRASH_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--empty"
@@ -179,8 +208,9 @@ module Samagotchi
       when "new" then new_bundle(@argv[1..])
       when "test" then test_bundle(@argv[1..])
       when "check" then check(@argv[1..])
+      when "try" then try_bundle(@argv[1..])
       else
-        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, test, check"
+        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, test, check, try"
         CLI::Exit::USAGE
       end
     end
@@ -883,6 +913,91 @@ module Samagotchi
       end
       require_relative "bundle_command/check"
       Check.new(dir, fix: parsed.options.fetch(:fix, false), settings: settings, stdout: @stdout).run
+    end
+
+    def try_bundle(rest)
+      parsed = parse_flags(TRY_FLAGS, rest, "try", help: TRY_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      options = parsed.options
+      if options[:prompt].nil? || parsed.args.size != 1
+        @stderr.puts "Usage: chi bundle try PATH -p TEXT [options]"
+        return CLI::Exit::USAGE
+      end
+      path = parsed.args.first
+      unless File.directory?(path)
+        @stderr.puts "chi bundle try: #{path} isn't a folder"
+        return CLI::Exit::USAGE
+      end
+      if options.values_at(:model, :toolkit, :thinking, :memory, :mute).flatten.compact.any?(&:empty?)
+        @stderr.puts "chi bundle try: model, toolkit, thinking, memory and mute values cannot be empty"
+        return CLI::Exit::USAGE
+      end
+      require_relative "thinking"
+      if options[:thinking] && !Thinking::LEVELS.map(&:to_s).include?(options[:thinking])
+        @stderr.puts "chi bundle try: --thinking takes #{Thinking::LEVELS.join(", ")}, not #{options[:thinking]}"
+        return CLI::Exit::USAGE
+      end
+
+      timeout = parse_try_timeout(options[:timeout])
+      return CLI::Exit::USAGE unless timeout
+
+      set_pairs = []
+      cost_cap = 1
+      require_relative "bundle_session_settings"
+      Array(options[:set]).each do |pair|
+        key, sep, value = pair.partition("=")
+        if sep.empty?
+          @stderr.puts "chi bundle try: --set takes KEY=VALUE, not #{pair}"
+          return CLI::Exit::USAGE
+        end
+        if key == "cost-cap.cap"
+          cost_cap = BundleSessionSettings.typed(value)
+          unless (cost_cap.is_a?(Numeric) && cost_cap >= 0) || cost_cap == false
+            @stderr.puts "chi bundle try: --set cost-cap.cap takes a non-negative number or off"
+            return CLI::Exit::USAGE
+          end
+        else
+          set_pairs << pair
+        end
+      end
+      settings = check_settings(set_pairs, label: "try")
+      return CLI::Exit::USAGE unless settings
+
+      require_relative "bundle_command/try/sandbox"
+      require_relative "bundle_command/try/run"
+      sandbox = nil
+      begin
+        sandbox = Try::Sandbox.new(path, bundle_settings: settings, cost_cap: cost_cap)
+        sandbox.install
+        result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
+        @stdout.write(result.stdout)
+        @stderr.write(result.stderr)
+        @stderr.puts "chi bundle try: timed out after #{timeout} seconds" if result.timed_out
+        if options[:keep]
+          @stderr.puts "sandbox: #{sandbox.root}"
+          @stderr.puts "debug log: #{File.join(sandbox.state_home, "samagotchi", "samagotchi.log")}"
+        end
+        result.exit_status
+      rescue Try::Sandbox::Error => e
+        @stderr.puts e.message
+        e.status
+      ensure
+        sandbox&.cleanup unless options[:keep]
+      end
+    end
+
+    def parse_try_timeout(value)
+      return 300 unless value
+
+      timeout = Float(value)
+      return timeout if timeout.positive? && timeout.finite?
+
+      @stderr.puts "chi bundle try: --timeout must be a positive number"
+      nil
+    rescue ArgumentError
+      @stderr.puts "chi bundle try: --timeout must be a positive number"
+      nil
     end
 
     # --set KEY=VALUE values as typed (BundleSessionSettings.typed), or nil

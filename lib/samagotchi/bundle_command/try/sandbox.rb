@@ -49,6 +49,7 @@ module Samagotchi
           @state_home = File.join(root, "state")
           @work_dir = File.join(root, "work")
           [config_home, state_home, work_dir].each { |dir| FileUtils.mkdir_p(dir) }
+          @work_dir = File.realpath(@work_dir)
           write_config
           @child_env = build_child_env
         end
@@ -126,8 +127,11 @@ module Samagotchi
           env.delete("SAMAGOTCHI_LOG_DISABLE")
           env.delete("SAMAGOTCHI_SKIP_SYSTEM_BUNDLE")
           env.delete("SAMAGOTCHI_SESSION_SHARED")
+          env.delete("SAMAGOTCHI_ENV") if env["SAMAGOTCHI_ENV"] == "test"
           env.delete("SAMAGOTCHI_INSTALLED_VERSION")
-          env.delete_if { |key, _| key.start_with?("SAMAGOTCHI_GUARDRAILS_") }
+          env.delete_if do |key, _|
+            key.start_with?("SAMAGOTCHI_GUARDRAILS_", "SAMAGOTCHI_WORKER_") || key == "SAMAGOTCHI_BOOT_FALLBACK"
+          end
           env.merge!(
             "HOME" => Dir.home,
             "SAMAGOTCHI_KEYCHAIN" => "on",

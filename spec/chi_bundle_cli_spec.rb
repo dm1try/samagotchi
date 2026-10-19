@@ -23,7 +23,7 @@ RSpec.describe "chi bundle (CLI)" do
   BUNDLE_FIXTURES = File.expand_path("fixtures", __dir__)
 
   TOP_USAGE = <<~TEXT
-    Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check> [options]
+    Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try> [options]
 
       install <source> [--scope system|project] [--force]
         Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -65,6 +65,9 @@ RSpec.describe "chi bundle (CLI)" do
       check [PATH] [--fix] [--set KEY=VALUE]
         Check a bundle you're writing (default: the current dir): manifest, files, sha256 lines,
         requires_chi, and an install + load in a sandbox. --fix rewrites stale sha256 lines.
+
+      try PATH -p TEXT [options]
+        Run one non-interactive model turn with a bundle installed in an isolated sandbox.
   TEXT
 
   INSTALL_USAGE = <<~TEXT
@@ -489,7 +492,7 @@ Hooks removed: 1\n\z})
     end
 
     it "refuses an unknown subcommand" do
-      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, test, check\n", 2])
+      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build, trash, new, test, check, try\n", 2])
     end
 
     it "status and diff with nothing installed" do

@@ -3,6 +3,8 @@
 require "fileutils"
 require "json"
 require "samagotchi/bundle_command/try/sandbox"
+require "support/chi_cli"
+require "support/fake_provider_server"
 
 RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
   def bundle_at(dir, name: "try-fixture")
@@ -107,6 +109,47 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         expect(Dir.children(installed).sort).to include("try-fixture", "guardrails", "cost-cap")
         sandbox.cleanup
       end
+    end
+  end
+
+  describe "chi bundle try" do
+    include ChiCli
+
+    it "requires exactly one bundle path and a prompt" do
+      Dir.mktmpdir do |dir|
+        _out, err, status = run_chi("bundle", "try", env: isolated_chi_env(dir), chdir: dir)
+        expect(status.exitstatus).to eq(2)
+        expect(err).to include("Usage: chi bundle try PATH")
+
+        _out, err, status = run_chi("bundle", "try", File.join(dir, "missing"), "-p", "run",
+                                    env: isolated_chi_env(dir), chdir: dir)
+        expect(status.exitstatus).to eq(2)
+        expect(err).to include("isn't a folder")
+      end
+    end
+
+    it "runs one prompt with the inherited model settings in the sandbox child" do
+      server = FakeProviderServer.start
+      server.default("/completion", sse: ["data: #{JSON.generate(content: "PONG", stop: true)}\n\n"])
+      Dir.mktmpdir do |dir|
+        source = bundle_at(File.join(dir, "source"))
+        env = isolated_chi_env(
+          dir,
+          "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model",
+          "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1",
+          "SAMAGOTCHI_SERVER_PORT" => server.port.to_s,
+          "SAMAGOTCHI_RETRY_MAX" => "0"
+        )
+        out, err, status = run_chi("bundle", "try", source, "-p", "say PONG", "--timeout", "20",
+                                   env: env, chdir: dir)
+
+        expect(status.exitstatus).to eq(0), err
+        expect(out).to eq("PONG\n")
+        expect(err).to match(/\ASession: \S+\n/)
+        expect(server.requests.map(&:path)).to include("/completion")
+      end
+    ensure
+      server&.stop
     end
   end
 end
