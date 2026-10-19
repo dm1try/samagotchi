@@ -27,6 +27,14 @@ Telemetry uses existing context estimation settings:
 - `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` (`context.window_tokens`)
 - `SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN` (`context.chars_per_token`)
 
+Line ranges (`read` and `edit`; env only, no config key):
+
+- `SAMAGOTCHI_READ_END_OPTIONAL` / `SAMAGOTCHI_EDIT_END_OPTIONAL` (default `true`): a `start_line` without
+  `end_line` means "to the end of the file"; `false` makes it an error.
+- `SAMAGOTCHI_READ_ALLOW_OOR_END` / `SAMAGOTCHI_EDIT_ALLOW_OOR_END` (default `true`): an `end_line` past the end is
+  clamped to the last line and the result says so; `false` makes it `Error: range out of bounds`. A `start_line`
+  past the end is always an error.
+
 ## Execute Tool Output Guardrails
 
 The `execute` tool applies the same guardrail model to command output:
@@ -64,8 +72,8 @@ built-in name; a tool with none gets `:head`):
 everything else the cap leaves, so a larger `max_tool_output_chars` keeps a longer tail. Both are snapped to whole
 lines when that keeps at least half of each. execute's stdout and stderr blocks are cut each on its own (stdout gets
 about two thirds of the room when both are long, a block that needs less gives the rest to the other); the `exit:`
-line is always kept. The whole stays within the cap; a cap too small for a tail of `ToolOutputCut::MIN_TAIL` (200)
-characters gets the `:head` cut, and so does one whose gap lines leave no room for that tail (checked with the
+line is always kept. The whole stays within the cap; a cap under three times `ToolOutputCut::MIN_TAIL` (200), so
+under 600 characters, gets the `:head` cut, and so does one whose gap lines leave no room for a 200-char tail (checked with the
 file's planned path before anything is written): nothing is saved then, and the event has no `output_file:`.
 
 The gap line says what was left out and where the whole output is:

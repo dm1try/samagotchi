@@ -301,10 +301,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   An optional `deadline` (epoch seconds; `BridgeClient` sends 5/6 of its read timeout ahead) makes
   a request read after it (a worker frozen by sleep or SIGSTOP) answer `408 deadline_passed` and
   not run: a client that timed out has said the message was not sent. `/answer`,
-  `/question/dismiss` and `/command` take the same `deadline` (a command is checked with the event
-  log held, as a turn is), and the Bridge logs `turn_expired`, `answer_expired`, `dismiss_expired`
-  or `command_expired`. The web app answers either kind of timeout with `504 worker_timeout`
-  ("… so the command was not run"). `/cancel`, `/recap` and `/exit` take none.
+  `/question/dismiss`, `/command`, `/turn/dequeue` and `/exit` take the same `deadline` (a command is
+  checked with the event log held, as a turn is), and the Bridge logs `turn_expired`, `answer_expired`,
+  `dismiss_expired`, `command_expired`, `dequeue_expired` or `exit_expired`. The web app answers either
+  kind of timeout with `504 worker_timeout` ("… so the command was not run"). `/cancel` and `/recap` take none.
   The web relays answer, dismiss, command and cancel the same way (`App#relay`): a 408 or a read
   timeout is `504 worker_timeout`; a Bridge 404 for a route an older worker lacks is
   `501 not_supported` with the restart hint; a Bridge `404 unknown_session`, no bridge or a
@@ -330,7 +330,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   saved messages, or the running turn's accumulator); answers once the
   task is gone: `200 {status, stop_reason, task_id}`, `404 task_not_found`, `409 not_running`.
   The worker names it in its sidecar features (`task_stop`).
-- `POST /session/:id/turn/dequeue` — `{enqueued_id, client_id?}`: take back a queued message
+- `POST /session/:id/turn/dequeue` — `{enqueued_id, client_id?, deadline?}`: take back a queued message
   (one that waits for the running turn's end: `--queue`, Alt+Enter, `/queue TEXT`, or a message
   with images) before a turn takes it (web route `POST /api/sessions/:id/turn/:enqueued_id/dequeue`,
   the × on a queued bubble; `/unqueue` in the attached TUI). Under the event log, like its enqueue:
@@ -356,7 +356,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (the summaries the next turn runs under) when the command changed them or the model, and
   `confirm: {line, text}` when a `/thinking` or `/reasoning-history` change from a `web:` or `tui:`
   client asks first (`CacheConfirm`; nothing changed, `line` applies it).
-- `POST /session/:id/exit` — ask the worker to exit now (`{client_id:}`). The worker checks with
+- `POST /session/:id/exit` — ask the worker to exit now (`{client_id:, delete?, restart?, deadline?}`; `delete`:
+  `/exit --delete`, no recap written; `restart: true`: hand the session to a new worker on the newest chi
+  installed, `200 {status: "restarting"}`; an empty session's `exiting` carries `discard: true`). The worker checks with
   the event log held (`WorkerIdleExit#hold_for_request`): `200 {status: "exiting"}` and it leaves
   like an idle exit, or `409 {status: "held", reason:}` with `turn_running`, `input_queued`,
   `continue_offered`, `client_connected` (a stream not named by the asker), `reminders`,
@@ -585,18 +587,20 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Config | `config.rb` | Every setting as an `Entry`: env, config.yml and CLI layers ([configuration.md](configuration.md)). |
 | Paths | `paths.rb` (`Paths`) | The XDG base dirs chi's files live under, read from the env on every call: `Paths.state_home` (`$XDG_STATE_HOME`, else `~/.local/state`) and `Paths.config_home` (`$XDG_CONFIG_HOME`, else `~/.config`), both defaults under `Dir.home`; a blank variable counts as unset, a relative one is made absolute from the current directory. `Paths.tilde` shows a path with `~` for the home folder. `SessionManager` hands a spawned worker the spawner's `XDG_STATE_HOME` / `XDG_CONFIG_HOME`, when set, made absolute, so a relative one isn't read from the session's folder. |
 | MemoryBundle | `memory_bundle.rb`, `memory_bundle/{installer,builder,installed_bundle,plugin_ref,bundle_hook}.rb` (`Installer`, `Builder`, `InstalledBundle`, `PluginRef`, `BundleHook`) | Installing, building and reading bundles of memories, hooks and plugins. |
-| Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/tool_spec.rb` (`Plugin::ToolSpec`: a checked tool declaration, how it is registered), `plugin/loader.rb` | What a bundle's plugin registers: tools, commands, annotation actions, hooks, services, toolkits, peer sources ([plugins.md](plugins.md)). |
+| Bundle authoring | `bundle_command.rb` (`BundleCommand`), `bundle_command/{scaffold,check,test_run}.rb`, `bundle_command/try/{run,sandbox,trace}.rb`, `testing.rb` + `testing/` (the test kit) | `chi bundle new`, `check`, `test` and `try`, and the kit a bundle's tests load it with ([bundle-authoring.md](bundle-authoring.md), [internals/bundles.md](internals/bundles.md)). |
+| Bundle session settings | `bundle_session_settings.rb` (`BundleSessionSettings`) | A session's own `--set BUNDLE.KEY=VALUE` values, checked against the manifest's `session_settings:`, laid over `bundles: <name>:` in `ctx.settings` ([plugins.md](plugins.md)). |
+| Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/tool_spec.rb` (`Plugin::ToolSpec`: a checked tool declaration, how it is registered), `plugin/loader.rb`, `plugin/context.rb` (`ctx`), `plugin/http.rb` + `plugin/http_transport.rb` (`ctx.http`), `plugin/card.rb` (`Plugin::Card`) | What a bundle's plugin registers: tools, commands, annotation actions, hooks, services, toolkits, peer sources; what its handlers get as `ctx` ([plugins.md](plugins.md)). |
 | Peer bundles' base | `plugin/peer.rb` (`Plugin::Peer`) | What claude-peer and codex-peer share (the send tool, the command, the cards, payloads); each bundle's subclass sets its strings and transport ([plugins.md](plugins.md#the-claude-peer-bundle)). |
 | Shipped bundles | `bundles/` (`mcp`, `github-pr`, `loop-guard`, `skills`, `source-links`, …) | Bundles that ship with chi. |
 | Hooks | `hooks/registry.rb` (`Hooks::Registry`), `hooks/loader.rb`, `hook_routes.rb` (`HookRoutes`), `event_routes.rb` (`EventRoutes`) | Hook registration and dispatch; what a hook or plugin does beyond reading its event (notice, question, stop, steer) routed to the UIs (cards and notices through one set of routes) ([hooks.md](hooks.md)). |
-| Guardrails | `guardrails.rb`, `guardrails/shell_lex.rb`, `guardrails/rules.rb`, `guardrail_wiring.rb` | The gate before every tool call: shell lexing, YAML rules, approvals ([guardrails.md](guardrails.md)). |
-| Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `relay_desk.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
+| Guardrails | `guardrails.rb`, `guardrails/shell_lex.rb`, `guardrails/data_readers.rb`, `guardrails/rules.rb`, `guardrails/protected_paths.rb`, `guardrails/parent_policy.rb` + `guardrails/parent_approvals.rb`, `guardrail_wiring.rb` | The gate before every tool call: shell lexing (and the commands that only read a heredoc as data), YAML rules, the core checks on chi's own files, approvals, what a parent agent may answer (`guardrails.parent_answers`) ([guardrails.md](guardrails.md)). |
+| Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `tools/delegate_relay.rb`, `relay_desk.rb`, `relay_verifier.rb`, `relay_watcher.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
 | send / broadcast | `send_command.rb` (`SendCommand`), `broadcast_command.rb` (`BroadcastCommand`), `broadcast/` | `chi send` and `chi broadcast` ([broadcast.md](broadcast.md), [sub-agent.md](sub-agent.md)). |
 | Idle work | `idle_scheduler.rb` (`IdleScheduler`), `idle_recap.rb` (`IdleRecap`), `idle_reminders.rb` | One poller for an idle session's recap and reminders. |
 | Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
 | LLM context strategies | `llm_context_strategy.rb`, `llm_context_view.rb`, `llm_context_stale.rb`, `llm_context_forget.rb` | What a request sends of the history (none, stale, forget) ([internals/llm-context-forget.md](internals/llm-context-forget.md)). |
 | Session chains | `session_continue.rb` (`SessionContinue`), `session_chain.rb` (`SessionChain`) | A session that continues an earlier one. `SessionChain.opener_for` gives the text web `continue →` prefills in the new link: the previous link's own first typed message when that link continues one itself, else nil (the 201's `opener`; not saved) ([sessions.md](sessions.md)). |
-| Analytics | `analytics_file.rb` (`AnalyticsFile`), `session_metrics/totals.rb` (`SessionMetrics::Totals`), `session_metrics/model_segment.rb` (`SessionMetrics::ModelSegment`) | A session's `analytics.json` (`SessionMetrics#persist`); the sums over its turn records (`Totals`: tokens, cost, speeds, kept as running counters) and their split per model after a `/model` switch (`ModelSegment`: a run of turns on one model, the `model_segments` rows). `session_metrics/side_totals.rb` (`SessionMetrics::SideTotals`) and `side_usage.rb` (`SideUsage`): the side requests' sums, apart from the turns'. |
+| Analytics | `analytics_file.rb` (`AnalyticsFile`), `session_metrics/totals.rb` (`SessionMetrics::Totals`), `session_metrics/model_segment.rb` (`SessionMetrics::ModelSegment`) | A session's `analytics.json` (`SessionMetrics#persist`); the sums over its turn records (`Totals`: tokens, cost, speeds, kept as running counters) and their split per model after a `/model` switch (`ModelSegment`: a run of turns on one model, the `model_segments` rows); `session_metrics/cost.rb` (`SessionMetrics::Cost`): the spend `ctx.cost` reads. `session_metrics/side_totals.rb` (`SessionMetrics::SideTotals`) and `side_usage.rb` (`SideUsage`): the side requests' sums, apart from the turns'. |
 | Images / vision | `image_store.rb` (`ImageStore`), `vision_support.rb`, `vision_context.rb` | Stored prompt images and whether a model takes them. |
 | Toolkits | `toolkit.rb` (`Toolkit`), `toolkit_binding.rb` (`ToolkitBinding`, the Engine's seam), `toolkit_command.rb` (`/toolkit`), `tools/registry.rb` (`Registry#toolkit`, `#left_out_names`), `web/public/toolkit_chip.js` | Which registered tools a session's prompts declare: saved in the session, resolved at a turn's start (`Engine#apply_toolkit!`), named in the prompt's not-loaded line, a kit's prompt text after the appended files; `chi.toolkit` and `ctx.use_toolkit` for plugins ([configuration.md](configuration.md#toolkits)). |
 | Tool index | `tools/tool_index.rb` (`Tools::ToolIndex`) | `find_tools` and `call_tool`: the tools a session knows but doesn't declare one by one (an mcp bundle's servers through `chi.tool_source`, the built-ins its toolkit leaves out), searched and called by name ([plugins.md](plugins.md)). |

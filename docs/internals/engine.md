@@ -472,7 +472,9 @@ TUI. Errors in the sink or an observer are caught; they never break the turn.
 
 `Engine#announce` puts an event that belongs to no turn (`ANNOUNCEABLE_EVENTS`: `turn_enqueued`, `turn_dequeued`
 (a queued message taken back before it ran, `{enqueued_id, client_id}`: the remover's), `card`,
-`hook_notice`, `guardrail_warning`, `plugin_init_started`, and more) to the observers only.
+`hook_notice`, `guardrail_warning`, `plugin_init_started`, and more) to the observers only. `:side_usage`
+(`{kind, side}`: a side request's usage, the recap's, `/btw`'s or `ask_model`'s, and the session's side sums) goes
+to the observers the same way from `Engine#note_side_usage` (any thread), without being announceable.
 
 Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 
@@ -495,6 +497,8 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |
 | `:tool_call_started` | before a call runs | Engine event includes `call` (see ToolRunner); the Bridge's SSE frame omits it |
 | `:tool_call_completed` | after a call ran | see ToolRunner |
+| `:question_requested` / `:question_answered` / `:question_cancelled` | `QuestionDesk`: a question is asked (an approval, `ask_user_question`, a hook's or plugin's `ask_user`, the step-limit Continue), answered, or withdrawn | `{pending_question}` / `{id, answer}` / `{id, reason}` |
+| `:plugin_init_wait` | a turn waits for plugin init tasks that provide tools (`PluginTasks`) | `{tasks: [{bundle, id, label}]}` |
 | `:used_memories_updated` | a memory was read, and after the loop | `{used_memory_names, read_names?}` |
 | `:hook_notice` | a hook's or plugin's notify during a turn | `{hook, text, level}` (announced with `between_turns: true` outside a turn) |
 | `:guardrail_warning` | a guardrails line during a turn | `{message}` |
@@ -753,3 +757,8 @@ Paths are under `lib/samagotchi/`.
 | `turn_checkpoint.rb` | `TurnCheckpoint`: a worker's running turn saved at the loop's iteration boundaries (`Session#turn_checkpoint`), so a killed worker loses at most `INTERVAL` of it |
 | `context_status.rb` | `ContextStatus`: one turn's context tracking (the status line's value, the `:context_status` event, the model's guidance line) ([context-telemetry.md](context-telemetry.md)) |
 | `session_manager.rb` | Background session processes (workers) and their IPC |
+| `worker_wakes.rb` | `WorkerWakes`: a worker's wake budget for the turns nobody typed (`session.max_wakes`) |
+| `task_watch.rb`, `task_finish_note.rb` | `TaskWatch`: the background tasks a worker's session started that the model hasn't seen finish; `TaskFinishNote`: the note one leaves when it does ([background-tasks.md](background-tasks.md#finish-wake)) |
+| `side_usage.rb` | `SideUsage`: one side request's usage (a recap, `ctx.ask_model`), folded into the session's side sums (`:side_usage`) |
+| `bridge/client_event.rb` | `Bridge::ClientEvent.project`: what an SSE client gets for an engine event ([architecture.md](../architecture.md)) |
+| `guardrails/parent_policy.rb` | `Guardrails::ParentPolicy`: which options of a question a parent agent may pick (`guardrails.parent_answers`) |

@@ -249,8 +249,8 @@ you're away from the terminal. All of these must hold:
 - the session's worker is up and idle: no turn running, nothing queued, no
   question or continue offer waiting, not just started;
 - under `session.max_wakes` turns in a row with no message from you (the
-  budget delegate reports use too; a turn that failed pauses wakes until you
-  write);
+  budget delegate reports and finished background tasks use too; a turn that
+  failed pauses wakes until you write);
 - the source hasn't woken the session in the last 10 minutes (a peer
   source has its own limit instead: below).
 
