@@ -208,6 +208,39 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
       .to eq(["Stop"])
   end
 
+  # P4: whether a delegate's question goes to the parent's model (it may
+  # pick something other than a deny) or to the parent's user.
+  describe ".parent_decides?" do
+    let(:cost_cap) { { id: "h1", kind: "hook", options: %w[Continue Stop], effects: %w[spend deny] } }
+    let(:untagged) { { id: "h2", kind: "hook", options: %w[Yes No] } }
+    let(:permit_hook) { { id: "h3", kind: "hook", options: %w[Allow Deny], effects: %w[permit deny] } }
+    let(:wide_hook) { { id: "h4", kind: "hook", options: %w[Always Deny], effects: %w[permit_wide deny] } }
+
+    def decides(pending, name) = described_class.parent_decides?(pending_of(pending), strategy: strategy(name))
+
+    {
+      cost_cap: { "hard" => false, "standard" => true, "soft" => true },
+      untagged: { "hard" => true, "standard" => true, "soft" => true },
+      permit_hook: { "hard" => false, "standard" => false, "soft" => true },
+      wide_hook: { "hard" => false, "standard" => false, "soft" => false }
+    }.each do |question, by_level|
+      by_level.each do |level, expected|
+        it "#{question} under #{level}: #{expected ? "the parent's model" : "the parent's user"}" do
+          expect(decides(send(question), level)).to be(expected)
+        end
+      end
+    end
+
+    it "doesn't count free text: a deny-only question with free text is the user's" do
+      expect(decides(cost_cap.merge(allow_freeform: true), "hard")).to be(false)
+    end
+
+    it "counts only deny and answer on a user_only question" do
+      expect(decides(approval.merge(user_only: true), "soft")).to be(false)
+      expect(decides(untagged.merge(user_only: true), "hard")).to be(true)
+    end
+  end
+
   # P3: a session's own parent_answers may only tighten config.yml's.
   describe "a session's own level (tighten-only)" do
     before { allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @config || "soft" } }

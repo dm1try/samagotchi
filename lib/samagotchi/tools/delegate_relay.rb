@@ -35,10 +35,32 @@ module Samagotchi
 
       module_function
 
+      # Kinds a relay may carry.
+      HOOK_KIND = "hook"
+
       # @param relay [#open_question, #relay_desk] Peers#relay
+      # @param strategy [Guardrails::ParentPolicy::Strategy] the child's
+      #   (ParentPolicy.for_session(child))
       # @return [Boolean] a relay can take this question
-      def relayable?(relay, question)
-        !relay.nil? && question.is_a?(PendingQuestion) && question.kind.to_s == Guardrails::Approval::KIND
+      def relayable?(relay, question, strategy:)
+        !relay.nil? && relay?(question, strategy: strategy)
+      end
+
+      # Whether a delegate's question goes to the parent's user rather than
+      # its model: every approval, and a hook's question the parent can't
+      # usefully answer under the child's strategy
+      # (Guardrails::ParentPolicy.parent_decides?). The one place that says
+      # which kinds the relay carries: the wait (DelegateWait.call), the
+      # look at the other children (Others#waiting) and the delegate
+      # reports (ChildReports) all ask it.
+      def relay?(question, strategy:)
+        return false unless question.is_a?(PendingQuestion)
+
+        case question.kind.to_s
+        when Guardrails::Approval::KIND then true
+        when HOOK_KIND then !Guardrails::ParentPolicy.parent_decides?(question, strategy: strategy)
+        else false
+        end
       end
 
       # Relay the child's pending approval and wait until it settles.

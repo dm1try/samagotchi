@@ -349,3 +349,32 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(relay.cards).to be_empty
   end
 end
+
+# P4: which of a delegate's questions the parent relays to its user: every
+# approval, and a hook's question the parent can't usefully answer under the
+# child's strategy (Guardrails::ParentPolicy.parent_decides?).
+RSpec.describe Samagotchi::Tools::DelegateRelay, ".relayable?" do
+  let(:relay) { Object.new }
+  let(:cost_cap) do
+    Samagotchi::PendingQuestion.new(id: "h1", kind: "hook", options: %w[Continue Stop], effects: %w[spend deny])
+  end
+
+  def strategy(name) = Samagotchi::Guardrails::ParentPolicy.strategy(name)
+
+  it "relays a hook question only when the parent may pick nothing but a deny" do
+    expect(described_class.relayable?(relay, cost_cap, strategy: strategy("hard"))).to be(true)
+    expect(described_class.relayable?(relay, cost_cap, strategy: strategy("standard"))).to be(false)
+    expect(described_class.relayable?(relay, cost_cap, strategy: strategy("soft"))).to be(false)
+  end
+
+  it "relays every approval, never the model's question or the step-limit continue, and nothing without a relay" do
+    approval = Samagotchi::PendingQuestion.new(id: "a1", kind: "approval", options: ["Allow once", "Deny"])
+    question = Samagotchi::PendingQuestion.new(id: "q1", options: %w[A B])
+    continue = Samagotchi::PendingQuestion.new(id: "c1", kind: "continue", options: %w[Continue Stop])
+    hard = strategy("hard")
+    expect(described_class.relayable?(relay, approval, strategy: strategy("soft"))).to be(true)
+    expect(described_class.relayable?(relay, question, strategy: hard)).to be(false)
+    expect(described_class.relayable?(relay, continue, strategy: hard)).to be(false)
+    expect(described_class.relayable?(nil, cost_cap, strategy: hard)).to be(false)
+  end
+end

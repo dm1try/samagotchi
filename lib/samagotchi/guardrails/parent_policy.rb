@@ -250,6 +250,19 @@ module Samagotchi
         end
       end
 
+      # Whether a parent may usefully answer +pending+ under +strategy+:
+      # some option it may pick is not a deny (free text alone is a deny
+      # with a reason). A delegate's question it may is reported to the
+      # parent's model; one it may not goes to the parent's user
+      # (Tools::DelegateRelay.relay?). Who may answer what stays #refusal's.
+      def parent_decides?(pending, strategy:)
+        deny = deny_labels(pending)
+        allowed_options(pending, strategy: strategy).any? { |label| !deny.include?(label) }
+      end
+
+      # The deny-tagged options' labels.
+      def deny_labels(pending) = Array(pending.options).zip(effects_of(pending)).filter_map { |label, tag| label.to_s if tag == DENY }
+
       # The question's deny-tagged option's label, or nil.
       def deny_label(pending)
         index = effects_of(pending).index(DENY)
