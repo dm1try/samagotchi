@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-10-19
+
 ### Added
 
 - A session's own `parent_answers`, tighten-only: `chi --parent-answers LEVEL` and `chi send --new --parent-answers
@@ -3479,7 +3481,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.86.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.87.0...HEAD
+[0.87.0]: https://github.com/dm1try/samagotchi/compare/v0.86.0...v0.87.0
 [0.86.0]: https://github.com/dm1try/samagotchi/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/dm1try/samagotchi/compare/v0.84.0...v0.85.0
 [0.84.0]: https://github.com/dm1try/samagotchi/compare/v0.83.0...v0.84.0
