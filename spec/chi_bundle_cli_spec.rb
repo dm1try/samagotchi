@@ -6,6 +6,7 @@ require "tmpdir"
 require "digest"
 require "json"
 require "fileutils"
+require "yaml"
 require "stringio"
 require "spec_helper"
 require "samagotchi/bundle_command"
@@ -563,6 +564,40 @@ Hooks removed: 1\n\z})
         hook_sha = record("sample-hooks-bundle").hooks.fetch("guardrails.rb").sha256
         expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(hook, hook_sha, required: true)).to be_nil
       end
+    end
+
+    it "refuses a different dev source for the same bundle name" do
+      other = File.join(@root, "src", "other-hooks")
+      FileUtils.cp_r(@hooks_src, other)
+      expect(chi("install", "--dev", @hooks_src)[2]).to eq(0)
+
+      out, err, code = chi("install", "--dev", other)
+
+      expect([out, err, code]).to eq([
+        "", "Install failed: sample-hooks-bundle is a dev install of #{File.realpath(@hooks_src)}; " \
+            "uninstall it before installing from #{File.realpath(other)}\n", 1
+      ])
+    end
+
+    it "reinstalls the same dev source cleanly, pruning dropped hooks without changing source files" do
+      chi("install", "--dev", @hooks_src)
+      manifest_path = File.join(@hooks_src, "manifest.yml")
+      manifest = YAML.safe_load_file(manifest_path)
+      manifest.delete("hooks")
+      File.write(manifest_path, YAML.dump(manifest))
+      FileUtils.rm(File.join(@hooks_src, "hooks", "guardrails.rb"))
+      source_files = -> { Dir.glob(File.join(@hooks_src, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
+      before = source_files.call.to_h { |path| [path, File.binread(path)] }
+
+      out, err, code = chi("install", "--dev", @hooks_src)
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Skipped: identity.md")
+      expect(out).not_to include("no longer includes hook") # only a link went, not a local file
+      expect(File.exist?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb"))).to be(false)
+      with_sandbox_env { expect(record("sample-hooks-bundle").hooks).to be_empty }
+      after = source_files.call.to_h { |path| [path, File.binread(path)] }
+      expect(after).to eq(before)
     end
 
     it "checks every other bundle as before: an edited plugin of a normal install still mismatches" do

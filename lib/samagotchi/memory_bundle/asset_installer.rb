@@ -55,7 +55,7 @@ module Samagotchi
       #   script the bundle doesn't have
       def run
         install_hooks
-        prune_dropped_hooks if @upgrade && @existing && !@dry_run
+        prune_dropped_hooks if (@upgrade || (@dev && @existing&.dev)) && @existing && !@dry_run
         verify_hook_checksums if @manifest && @strict && !@dev
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
@@ -143,13 +143,13 @@ module Samagotchi
       end
 
       # An upgrade removes the hooks the previous version shipped and this
-      # one doesn't (a local file too, with a warning).
+      # one doesn't (a local file too, with a warning; a dev link silently).
       def prune_dropped_hooks
         @existing.hooks.each_key do |old_key_str|
           next if @bundle_hooks.include?(old_key_str)
 
           old_dest = File.join(@provenance.hooks_dir, old_key_str)
-          if File.exist?(old_dest) && !@force
+          if File.exist?(old_dest) && !@force && !File.symlink?(old_dest)
             @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
           end
           FileUtils.rm_f(old_dest)

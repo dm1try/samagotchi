@@ -175,9 +175,12 @@ module Samagotchi
         refuse_shipped_name
         refuse_dev_mismatch
         now = incoming_identity
-        return if now.nil? || (@dev && @existing&.dev)
+        return if now.nil?
 
         was = @existing && SourceIdentity.of(@existing.source)
+        if @dev && @existing&.dev && was != now
+          raise InstallError, "#{@name} is a dev install of #{@existing.source}; uninstall it before installing from #{@source}"
+        end
         return if was.nil? || was == now
         return @source_change = [@existing.source, @source.to_s] if @upgrade
 
