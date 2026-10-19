@@ -336,11 +336,10 @@ the `<<TAG` word and the terminator line stay in the text, so a rule on
 anything else (`bash`, an interpreter, `ssh`, a wrapper), an unquoted one
 whose body holds `$(…)` or backticks, a piped one, a file-writing
 `cat`/`tee` (a `>&2` or `>&-` writes no file; `>& file` does), a
-here-string and an unterminated heredoc all stay in it. An fd opened
-earlier and written to by number (`exec 3>r.sh; cat <<E >&3`) isn't
-followed, so that body counts as data: out of scope here, which is
-chi-nah's job for a model that goes looking. Approvals, the approval
-question and hooks see the whole command.
+here-string and an unterminated heredoc all stay in it, and so does every
+`cat`/`tee` body after an `exec` that sent the shell's output to a file
+(`exec >r.sh; cat <<E`, `exec 3>r.sh; cat <<E >&3`). Approvals, the
+approval question and hooks see the whole command.
 
 `memory: remove` matches a `memory_write` with `remove: true` (it moves a
 memory into the bundle trash). Nothing else asks about it: a memory's file is

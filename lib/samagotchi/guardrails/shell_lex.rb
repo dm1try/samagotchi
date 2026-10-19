@@ -95,6 +95,7 @@ module Samagotchi
 
         bodies = lexer.heredoc_spans.map { |doc| doc[:span] }
         cuts = []
+        redirected = false
         each_command(tokens) do |indices|
           words = indices.map { |i| tokens[i][1] }
           indices.each_with_index do |i, position|
@@ -103,12 +104,13 @@ module Samagotchi
 
             span = lexer.spans[i]
             cut = if bodies.include?(span)
-                    body_cut(text, span, words) if value == HEREDOC
+                    body_cut(text, span, words, redirected) if value == HEREDOC
                   elsif value == SUBST
                     substitution_cut(text, tokens, i, span, words, position)
                   end
             cuts << cut if cut
           end
+          redirected ||= exec_redirect?(tokens, indices, words)
         end
         cuts.sort_by { |span, _| -span.begin }.each_with_object(+text) do |(span, replacement), out|
           out[span] = replacement
@@ -134,24 +136,43 @@ module Samagotchi
 
       # [span, what it becomes] for a data heredoc's body at +span+ (its
       # command's +words+), or nil when the body stays in the code text: a
-      # cat or tee writing a file may be run later (D1).
-      def self.body_cut(text, span, words)
-        return nil unless cut_body?(words)
+      # cat or tee writing a file may be run later (D1), and so may one
+      # printing after an earlier exec sent the shell's output to a file
+      # (+redirected+).
+      def self.body_cut(text, span, words, redirected)
+        return nil unless cut_body?(words, redirected)
 
         [span, terminator_line(text[span])]
       end
       private_class_method :body_cut
 
       # Whether a body a data reader reads leaves the code text: a cat or tee
-      # sending it to a file keeps it (D1); a body any other command reads as
+      # sending it to a file keeps it (D1), as does any cat or tee once an
+      # exec redirected the shell's output (+redirected+: its stdout, or the
+      # fd a >&3 names, may be a file); a body any other command reads as
       # data is one the lexer's data_sink? approved.
-      def self.cut_body?(words)
+      def self.cut_body?(words, redirected)
         verb = DataReaders.command_word(words)
         return true unless DataReaders::SINKS.include?(File.basename(verb.to_s))
 
-        !DataReaders.writes_file?(words)
+        !redirected && !DataReaders.writes_file?(words)
       end
       private_class_method :cut_body?
+
+      # Whether the simple command at +indices+ may be an exec that redirects
+      # the shell's own output to a file (exec >run.sh, exec 3>run.sh,
+      # exec {fd}>run.sh, exec 3<>run.sh): what a later cat or tee prints may
+      # land there. Any exec word counts, not only the command word ({ exec
+      # …; }, then exec …, command exec …, a function's body), and so does an
+      # exec backgrounded (exec &>run.sh, which the lexer reads as "exec &"
+      # and ">run.sh"): the conservative reading.
+      def self.exec_redirect?(tokens, indices, words)
+        return false unless words.include?("exec")
+
+        following = tokens[indices.last + 1]
+        DataReaders.output_file?(words) || following == [:op, "&"]
+      end
+      private_class_method :exec_redirect?
 
       # [span, what it becomes] for the body of a "$(cat <<'EOF' … EOF)" given
       # as a message (-m, --body, …) of a data reader (D2), or nil: eval,

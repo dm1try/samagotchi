@@ -62,8 +62,21 @@ module Samagotchi
       # ">& -". A >& with any other target does write one: bash reads
       # ">& file" and ">&file" as "&>file".
       def stdout_file?(words)
+        redirects_to_file?(words, /\A1?(>>?)(&?)(.*)\z/m)
+      end
+
+      # Whether one of +words+ sends any fd's output to a file (3>run.sh,
+      # 2>>log, {fd}>run.sh, 3<>run.sh as well as stdout_file?'s forms),
+      # /dev/null and fd dups left out as there.
+      def output_file?(words)
+        redirects_to_file?(words, /\A(?:\d*|\{\w+\})(>>?|<>)(&?)(.*)\z/m)
+      end
+
+      # stdout_file? and output_file?: a word matching +pattern+ (its
+      # captures: the operator, an &, the target) that writes a file.
+      def redirects_to_file?(words, pattern)
         words.each_with_index do |word, i|
-          match = word.match(/\A1?(>>?)(&?)(.*)\z/m)
+          match = word.match(pattern)
           next unless match
 
           amp = match[2]

@@ -61,6 +61,21 @@ RSpec.describe Samagotchi::Guardrails::DataReaders do
     end
   end
 
+  describe ".output_file?" do
+    [%w[exec 3>run.sh], %w[exec 2>> log], %w[exec >run.sh], %w[exec >& run.sh], %w[exec 3>],
+     %w[exec {fd}>run.sh], %w[exec {fd}>> log], %w[exec 3<>run.sh]].each do |words|
+      it "writes a file: #{words.inspect}" do
+        expect(described_class.output_file?(words)).to be(true)
+      end
+    end
+
+    [%w[exec 2>/dev/null], %w[exec 3>&1], %w[exec >&2], %w[exec <in], %w[exec {fd}>&2]].each do |words|
+      it "writes no file: #{words.inspect}" do
+        expect(described_class.output_file?(words)).to be(false)
+      end
+    end
+  end
+
   describe ".data_reader?" do
     reading = [%w[git commit -F -], %w[git commit -F-], %w[git commit --file=-], %w[git commit -a --file -],
                %w[git -C /tmp/x commit -F -], %w[git -c user.name=x commit -F -], %w[git tag -a v1 -F -],

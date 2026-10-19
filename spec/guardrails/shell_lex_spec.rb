@@ -165,6 +165,26 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       end
     end
 
+    it "keeps a cat's body after an earlier exec sent the shell's output to a file" do
+      ["exec >run.sh; cat <<EOF\nrm -rf /\nEOF\n", "exec 3>run.sh; cat <<EOF >&3\nrm -rf /\nEOF\n",
+       "exec >& run.sh; cat <<EOF\nrm -rf /\nEOF\n", "exec &>run.sh; cat <<EOF\nrm -rf /\nEOF\n",
+       "exec 2>>log; tee <<EOF\nrm -rf /\nEOF\n", "{ exec >run.sh; }; cat <<EOF\nrm -rf /\nEOF\n",
+       "if true; then exec >run.sh; fi; cat <<EOF\nrm -rf /\nEOF\n",
+       "f() { exec >run.sh; }; f; cat <<EOF\nrm -rf /\nEOF\n", "command exec >run.sh; cat <<EOF\nrm -rf /\nEOF\n",
+       "exec {fd}>run.sh; cat <<EOF >&{fd}\nrm -rf /\nEOF\n", "exec 3<>run.sh; cat <<EOF\nrm -rf /\nEOF\n"].each do |text|
+        expect(described_class.code_text(text)).to eq(text), text
+      end
+    end
+
+    it "still cuts after an exec that writes no file, before one, and a git -F - after one" do
+      expect(described_class.code_text("exec 2>/dev/null; cat <<EOF\nrm -rf /\nEOF\n"))
+        .to eq("exec 2>/dev/null; cat <<EOF\nEOF\n")
+      expect(described_class.code_text("exec >&2; cat <<EOF\nrm -rf /\nEOF\n")).to eq("exec >&2; cat <<EOF\nEOF\n")
+      expect(described_class.code_text("cat <<EOF\nrm -rf /\nEOF\nexec >run.sh\n")).to eq("cat <<EOF\nEOF\nexec >run.sh\n")
+      expect(described_class.code_text("exec >run.sh; git commit -F - <<EOF\nx\nEOF\n"))
+        .to eq("exec >run.sh; git commit -F - <<EOF\nEOF\n")
+    end
+
     it "only removes lines, and changes nothing of a text without <<" do
       corpus = JSON.parse(File.read(File.expand_path("../fixtures/command_steps/corpus.json", __dir__)))
       corpus.each do |text|

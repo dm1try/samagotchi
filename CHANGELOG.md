@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Guardrail rules' `command:` keeps a `cat`/`tee` heredoc body after an `exec` that sends the shell's output to a
+  file (`exec >run.sh; cat <<EOF …`, `exec 3>run.sh; cat <<EOF >&3 …`): the body may be run later, as with
+  `cat <<EOF >run.sh`; before, it was left out as data.
+
 ## [0.92.0] - 2026-10-19
 
 ### Added
