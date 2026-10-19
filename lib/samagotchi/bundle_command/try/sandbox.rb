@@ -39,6 +39,29 @@ module Samagotchi
                    end
           prefix
         end.freeze
+        # `chi bundle install PATH --force` for each PATH in ARGV, in one
+        # process (bin/chi's start, once): an install that fails prints
+        # what it printed and exits with its status; the ones before it
+        # print nothing.
+        INSTALL_SCRIPT = <<~RUBY
+          require "stringio"
+          require "samagotchi/utf8_default"
+          Samagotchi::Utf8Default.apply!
+          require "samagotchi/config"
+          Samagotchi::ConfigFile.load!
+          require "samagotchi"
+          require "samagotchi/bundle_command"
+          ARGV.each do |path|
+            out = StringIO.new
+            err = StringIO.new
+            status = Samagotchi::BundleCommand.new(["install", path, "--force"], stdout: out, stderr: err).run
+            next if status.zero?
+
+            $stdout.write(out.string)
+            $stderr.write(err.string)
+            exit(status)
+          end
+        RUBY
         # How long a leftover worker or task gets after TERM (a worker saves
         # its session) before ProcessGroup.stop KILLs it.
         LEFTOVER_GRACE = 3.0
@@ -74,12 +97,19 @@ module Samagotchi
 
         def child_env = @child_env.dup
 
+        # Installs the tried bundle, then the shipped guardrails and
+        # cost-cap (unless it is one of them), each as `chi bundle install
+        # PATH --force` in one child chi with the sandbox's environment.
+        # @return [MemoryBundle::Manifest]
+        # @raise [Error] what the first install that failed printed
         def install
-          install_path(@path)
-          %w[guardrails cost-cap].each do |name|
-            next if @manifest.name == name
-
-            install_path(File.join(SHIPPED_DIR, name))
+          paths = [@path] + %w[guardrails cost-cap].reject { |name| @manifest.name == name }
+                                                     .map { |name| File.join(SHIPPED_DIR, name) }
+          out, err, status = Open3.capture3(child_env, RbConfig.ruby, "-I", LIB_DIR, "-e", INSTALL_SCRIPT, *paths,
+                                            chdir: work_dir)
+          unless status.success?
+            message = [out, err].reject(&:empty?).join("\n").strip
+            raise Error, "chi bundle try: #{message.empty? ? "bundle install failed" : message}"
           end
           @manifest
         end
@@ -144,15 +174,6 @@ module Samagotchi
           raise Error, "chi bundle try: #{e.message}"
         rescue Psych::Exception => e
           raise Error, "chi bundle try: manifest.yml is not valid YAML (#{e.message})"
-        end
-
-        def install_path(path)
-          out, err, status = Open3.capture3(child_env, RbConfig.ruby, "-I", LIB_DIR, CHI,
-                                            "bundle", "install", path, "--force", chdir: work_dir)
-          return if status.success?
-
-          message = [out, err].reject(&:empty?).join("\n").strip
-          raise Error, "chi bundle try: #{message.empty? ? "bundle install failed" : message}"
         end
 
         def leftover_workers
