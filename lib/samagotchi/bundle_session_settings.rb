@@ -211,24 +211,14 @@ module Samagotchi
       end)
     end
 
-    # Why +bundle+'s plugin doesn't load (as Plugin::Loader checks it), nil
-    # when it does or has none.
+    # Why +bundle+'s plugin doesn't load, as chi's loader decides it
+    # (Plugin::Loader.unloadable_reason), nil when it does or has none.
     def unloadable(dir, name, bundle)
       return nil unless bundle.plugin
 
-      failure = MemoryBundle::Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION)
-      return failure if failure
-
-      file = File.join(dir, name, "plugin", bundle.plugin.file.to_s)
-      return "the file is missing" unless File.file?(file)
-
-      return nil if MemoryBundle::Provenance.unchecked?(bundle.plugin.sha256)
-
-      expected = MemoryBundle::Provenance.recorded_sha(bundle.plugin.sha256)
-      return "no sha256 recorded for it (reinstall the bundle)" if expected.empty?
-
-      actual = MemoryBundle::Provenance.file_sha(file)
-      "its sha256 differs from the installed one (edited after install? reinstall the bundle)" unless actual == expected
+      require_relative "plugin/loader"
+      # +dir+, not Provenance#plugin_path's bundles_dir: a spec's records live elsewhere.
+      Plugin::Loader.unloadable_reason(File.join(dir, name, "plugin", bundle.plugin.file.to_s), bundle)
     end
 
     # Whether chi ships a bundle +name+ whose manifest lists session_settings.
@@ -239,7 +229,7 @@ module Samagotchi
       raw = YAML.safe_load_file(path)
       listed = raw.is_a?(Hash) ? raw["session_settings"] : nil
       (listed.is_a?(Array) || listed.is_a?(Hash)) && !listed.empty?
-    rescue StandardError
+    rescue Psych::Exception, SystemCallError
       false
     end
 
