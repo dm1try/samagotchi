@@ -38,6 +38,15 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
     adapter.chat(messages: messages, tools: tools, model: model, **)
   end
 
+  describe ".api_root" do
+    it "drops a trailing / and /v1, and keeps any other path" do
+      expect(%w[https://api.anthropic.com https://api.anthropic.com/ https://api.anthropic.com/v1
+                https://api.anthropic.com/v1/ https://gw.example/anthropic].map { |u| described_class.api_root(u) })
+        .to eq(%w[https://api.anthropic.com https://api.anthropic.com https://api.anthropic.com
+                  https://api.anthropic.com https://gw.example/anthropic])
+    end
+  end
+
   describe "the request" do
     it "posts a text turn to {base}/v1/messages: the system on top, max_tokens, no tools" do
       answer

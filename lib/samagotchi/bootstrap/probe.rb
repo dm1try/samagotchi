@@ -141,8 +141,8 @@ module Samagotchi
       end
 
       # The Messages API root: the OpenAI base without its trailing /v1
-      # (HostEntry#api_base_url's rule), e.g. https://api.anthropic.com.
-      def self.api_root(candidate) = candidate.base.chomp("/").delete_suffix("/v1")
+      # (LLM::AnthropicMessages.api_root), e.g. https://api.anthropic.com.
+      def self.api_root(candidate) = LLM::AnthropicMessages.api_root(candidate.base)
 
       # Fireworks by its host (fireworks.ai or a subdomain), or by a model id
       # in its accounts/fireworks/ namespace.

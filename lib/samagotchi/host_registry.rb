@@ -68,7 +68,7 @@ module Samagotchi
       def api_base_url
         return openai_base_url unless api&.to_sym == :anthropic
 
-        (url || root_url).chomp("/").delete_suffix("/v1")
+        LLM::AnthropicMessages.api_root(url || root_url)
       end
 
       # The header the host's key goes in: auth: when set, else the api's

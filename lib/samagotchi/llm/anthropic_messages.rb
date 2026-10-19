@@ -87,6 +87,11 @@ module Samagotchi
 
       attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :dialect
 
+      # The Messages API root a base URL names: without a trailing / and a
+      # trailing /v1 (as ANTHROPIC_BASE_URL), so requests never go to
+      # /v1/v1. HostEntry#api_base_url and the bootstrap probe both use it.
+      def self.api_root(url) = url.to_s.chomp("/").delete_suffix("/v1")
+
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **)
         new(base_url: entry.api_base_url, host_name: entry.name, api_key_env: entry.api_key_env, auth: entry.auth,
