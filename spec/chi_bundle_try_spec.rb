@@ -5,6 +5,7 @@ require "json"
 require "samagotchi/bundle_command/try/sandbox"
 require "support/chi_cli"
 require "support/fake_provider_server"
+require "samagotchi/bundle_command/try/trace"
 
 RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
   def bundle_at(dir, name: "try-fixture")
@@ -129,6 +130,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     end
 
     it "runs one prompt with the inherited model settings in the sandbox child" do
+      kept_root = nil
       server = FakeProviderServer.start
       server.default("/completion", sse: ["data: #{JSON.generate(content: "PONG", stop: true)}\n\n"])
       Dir.mktmpdir do |dir|
@@ -144,12 +146,87 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
                                    env: env, chdir: dir)
 
         expect(status.exitstatus).to eq(0), err
-        expect(out).to eq("PONG\n")
-        expect(err).to match(/\ASession: \S+\n/)
+        expect(out).to include("answer:\n  PONG\n")
+        expect(err).to include("cost-cap> warning: the $1.00 cap can't be enforced")
+        expect(err).not_to include("Session:")
         expect(server.requests.map(&:path)).to include("/completion")
+
+        json_out, json_err, json_status = run_chi("bundle", "try", source, "-p", "say PONG", "--json",
+                                                  "--timeout", "20", "--memory", "foo", "--mute", "bar",
+                                                  "--set", "cost-cap.cap=2", "--keep", env: env, chdir: dir)
+        report = JSON.parse(json_out)
+        kept_root = json_err[/^sandbox: (.+)$/, 1]
+        expect(json_status.exitstatus).to eq(0), json_err
+        expect(json_out.lines.size).to eq(1)
+        expect(report.keys).to include("session_id", "exit_code", "answer", "tools", "notices", "cards", "questions",
+                                       "interactive_blocked", "used_memories", "tokens", "cost", "model", "sandbox",
+                                       "denied", "stderr_tail")
+        expect(report["answer"]).to eq("PONG\n")
+        expect(report["model"]).to eq("spec-model")
+        expect(json_err).to include("tools:")
+        expect(File).to exist(kept_root)
+        saved = JSON.parse(File.read(File.join(kept_root, "state", "samagotchi", "sessions",
+                                               "#{report["session_id"]}.json")))
+        expect(saved["preloaded_memory_names"]).to eq(["foo"])
+        expect(saved["muted_memory_names"]).to eq(["bar"])
+        config = YAML.safe_load_file(File.join(kept_root, "config", "samagotchi", "config.yml"))
+        expect(config.dig("bundles", "cost-cap", "cap")).to eq(2)
       end
     ensure
+      FileUtils.rm_rf(kept_root) if kept_root
       server&.stop
+    end
+  end
+
+  describe Samagotchi::BundleCommand::Try::TraceReader do
+    it "joins saved tool timing to calls and reports hook notices, unanswerable questions and denials" do
+      Dir.mktmpdir do |state_home|
+        id = "trace-fixture"
+        sessions = File.join(state_home, "samagotchi", "sessions")
+        session_dir = File.join(sessions, id)
+        FileUtils.mkdir_p(session_dir)
+        File.write(File.join(sessions, "#{id}.json"), JSON.generate(
+          "model_name" => "host:model", "used_memory_names" => ["preloaded"],
+          "messages" => [
+            { "role" => "model", "tool_calls" => [
+              { "id" => "call-1", "name" => "execute", "arguments" => { "command" => "git push" } }
+            ] },
+            { "role" => "tool_response", "tool_call_id" => "call-1",
+              "content" => "No one to approve it (non-interactive run)." },
+            { "role" => "model", "content" => "done" }
+          ]
+        ))
+        File.write(File.join(session_dir, "analytics.json"), JSON.generate(
+          "tokens" => { "prompt_sum" => 120, "completion_sum" => 8, "cost_sum" => 0,
+                        "cost_estimate_sum" => 0.025 },
+          "tool_records" => [
+            { "iteration" => 1, "call_index" => 0, "tool" => "execute", "status" => "error", "duration_ms" => 120 }
+          ]
+        ))
+        File.write(File.join(session_dir, "cards.json"), JSON.generate(
+          "entries" => [
+            { "type" => "hook_notice", "hook" => "fixture.rb", "text" => "hook ran" },
+            { "type" => "question", "pending_question" => { "question" => "Continue?" },
+              "cancelled" => true, "reason" => "non_interactive" },
+            { "type" => "card", "title" => "Fixture", "body" => "card body" }
+          ]
+        ))
+
+        trace = described_class.new(state_home: state_home, session_id: id)
+                               .read(exit_code: 0, answer: "done\n", stderr: "Session: #{id}\n", sandbox: nil)
+        expect(trace.tools).to eq([{ index: 1, name: "execute", args: "git push", status: "denied", duration_ms: 120 }])
+        expect(trace.denied).to eq([1])
+        expect(trace.interactive_blocked).to be(true)
+        expect(trace.notices.first["text"]).to eq("hook ran")
+        expect(trace.cards.first["title"]).to eq("Fixture")
+        expect(trace.questions.first["reason"]).to eq("non_interactive")
+        expect(trace.used_memories).to eq(["preloaded"])
+        expect(trace.tokens).to eq(prompt: 120, completion: 8)
+        expect(trace.cost).to eq(0.025)
+        expect(trace.cost_is_estimate).to be(true)
+        expect(trace.model).to eq("host:model")
+        expect(trace.stderr_tail).to eq("Session: #{id}\n")
+      end
     end
   end
 end

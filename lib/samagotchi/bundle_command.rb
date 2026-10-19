@@ -966,18 +966,17 @@ module Samagotchi
 
       require_relative "bundle_command/try/sandbox"
       require_relative "bundle_command/try/run"
+      require_relative "bundle_command/try/trace"
       sandbox = nil
       begin
         sandbox = Try::Sandbox.new(path, bundle_settings: settings, cost_cap: cost_cap)
         sandbox.install
         result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
-        @stdout.write(result.stdout)
-        @stderr.write(result.stderr)
+        trace = Try::TraceReader.new(state_home: sandbox.state_home, session_id: result.session_id)
+                              .read(exit_code: result.exit_status, answer: result.stdout, stderr: result.stderr,
+                                    sandbox: options[:keep] ? sandbox.root : nil)
+        render_try_trace(trace, json: options[:json], child_stderr: result.stderr, keep: options[:keep], sandbox: sandbox)
         @stderr.puts "chi bundle try: timed out after #{timeout} seconds" if result.timed_out
-        if options[:keep]
-          @stderr.puts "sandbox: #{sandbox.root}"
-          @stderr.puts "debug log: #{File.join(sandbox.state_home, "samagotchi", "samagotchi.log")}"
-        end
         result.exit_status
       rescue Try::Sandbox::Error => e
         @stderr.puts e.message
@@ -985,6 +984,60 @@ module Samagotchi
       ensure
         sandbox&.cleanup unless options[:keep]
       end
+    end
+
+    def render_try_trace(trace, json:, child_stderr:, keep:, sandbox:)
+      error_lines = child_stderr.lines.reject { |line| line.start_with?("Session: ") }
+      @stderr.write(error_lines.join)
+      if json
+        render_trace_lines(trace, @stderr, include_answer: false)
+        @stdout.puts JSON.generate(trace.to_h.transform_keys(&:to_s))
+      else
+        render_trace_lines(trace, @stdout, include_answer: true)
+      end
+      return unless keep
+
+      @stderr.puts "sandbox: #{sandbox.root}"
+      @stderr.puts "debug log: #{File.join(sandbox.state_home, "samagotchi", "samagotchi.log")}"
+    end
+
+    def render_trace_lines(trace, output, include_answer:)
+      output.puts "tools:"
+      trace.tools.each do |tool|
+        output.puts format("  %d %-16s %-7s %dms  %s", tool[:index], tool[:name], tool[:status],
+                           tool[:duration_ms], JSON.generate(tool[:args].to_s[0, 60]))
+      end
+      trace.notices.each { |notice| output.puts "notices: [#{notice["hook"] || "hook"}] #{notice["text"]}" }
+      trace.cards.each do |card|
+        output.puts "card: #{[card["title"], card["body"]].compact.join(" — ")}"
+      end
+      trace.questions.each do |entry|
+        question = entry.dig("pending_question", "question").to_s
+        outcome = if entry["cancelled"] && entry["reason"] == "non_interactive"
+                    "unanswerable (non_interactive)"
+                  elsif entry["cancelled"]
+                    "cancelled (#{entry["reason"]})"
+                  elsif entry["answer"]
+                    "answered"
+                  else
+                    "unanswered"
+                  end
+        output.puts "questions: #{JSON.generate(question)} -> #{outcome}"
+      end
+      if trace.interactive_blocked
+        count = trace.denied.size + trace.questions.count { |question| question["cancelled"] && question["reason"] == "non_interactive" }
+        output.puts "warn: #{count} question(s)/call(s) couldn't be answered"
+      end
+      if include_answer
+        answer_lines = trace.answer.lines
+        output.puts "answer:"
+        answer_lines.first(10).each { |line| output.puts "  #{line.chomp}" }
+        output.puts "  … (truncated)" if answer_lines.size > 10
+      end
+      tokens = trace.tokens
+      cost = trace.cost ? "#{"~" if trace.cost_is_estimate}$#{format("%.4f", trace.cost)}" : "unknown"
+      output.puts "tokens: #{tokens[:prompt]} in / #{tokens[:completion]} out  cost #{cost}  exit #{trace.exit_code}" \
+                  "#{"  (#{trace.session_id})" if trace.session_id}"
     end
 
     def parse_try_timeout(value)
