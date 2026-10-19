@@ -1218,7 +1218,8 @@ docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subc
 - **From the command line:** `chi bundle test [PATH]` runs a bundle's `test/**/*_test.rb` (or `spec/`) on the
   Ruby and lib chi runs on, and `chi bundle check [PATH] [--fix]` runs `Install` (and the manifest, sha and
   `requires_chi` checks) in a sandbox ([cli.md](cli.md#writing-a-bundle-new-test-check)). `chi bundle new NAME`
-  writes a test to start from.
+  writes a test to start from. `chi bundle try PATH -p TEXT` runs it against a real model for one turn
+  ([cli.md](cli.md#trying-a-bundle)), and `chi bundle install --dev PATH` links it into your own sessions.
 
 ## The btw bundle
 
@@ -2254,7 +2255,7 @@ crash, TERM), chi shuts the session's Engine down:
 Plugins load when a session starts (`Engine.new`, in the REPL or a
 worker), after the bundle hooks. The steps are:
 
-1. The file must match the sha256 recorded at install.
+1. The file must match the sha256 recorded at install (not checked for a bundle installed with `--dev`).
 2. chi must meet `requires_chi`.
 3. The file is `module_eval`'d into a new module in the bundle's namespace
    (`Samagotchi::Bundles::<bundle>`).
@@ -2280,9 +2281,11 @@ a bundle's hooks. **Installing a bundle means trusting it**, as you would a
 gem.
 
 - The sha256 is an integrity check, not proof of who wrote the file. A file
-  edited after install is not loaded until you reinstall the bundle.
-- Install only copies the file. The code first runs at the next session
-  start.
+  edited after install is not loaded until you reinstall the bundle. A
+  `--dev` install skips that check for its own bundle: its files are the
+  source directory's, and an edit loads at the next start.
+- Install only copies the file (`--dev` links it). The code first runs at the
+  next session start.
 - Guardrail rules keyed by a tool's name apply to plugin tools, as they do to
   chi's own tools; path and command rules see what `targets:` says.
 
@@ -2301,6 +2304,12 @@ gem.
   `requires_chi`, its `scripts/` and `context_providers:`) into the built
   bundle.
 - `chi bundle uninstall <name>`: removes the plugin with the bundle.
+- `chi bundle install --dev <dir>`: links the bundle's plugin, hooks, rules and scripts to `<dir>` instead of
+  copying them, with no sha256 check, so an edit applies at the next worker start
+  ([cli.md](cli.md#writing-a-bundle-new-test-check)).
+- `chi bundle new`, `test` and `check`: start a bundle, run its tests on chi's Ruby, check it as an install takes
+  it ([cli.md](cli.md#writing-a-bundle-new-test-check)); `chi bundle try PATH -p TEXT`: run it for one turn in a
+  sandbox and trace what it did ([cli.md](cli.md#trying-a-bundle)). The path: [bundle-authoring.md](bundle-authoring.md).
 
 ## Not yet
 

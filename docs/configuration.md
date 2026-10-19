@@ -118,7 +118,9 @@ Besides the settings sections, the file holds maps that are read by their
 own subsystems: `hosts:` (below), `models:` (see "Prompt profile" and
 "Images"), `model_aliases:`, `hooks:` (see [Hooks](hooks.md)),
 `guardrails:` (see [Guardrails](guardrails.md)), `bundles:` (a bundle's
-settings for its hooks, see [Hooks: Settings](hooks.md#settings)),
+settings for its hooks, see [Hooks: Settings](hooks.md#settings); a session's own
+`--set BUNDLE.KEY=VALUE`, for a key the bundle's manifest lists in `session_settings:`, lays over them, see
+[Per-session settings](plugins.md#per-session-settings)),
 `memories:` and `append_system_prompt:` (see "Appended prompt files"). Their entry names (host names, model ids, aliases) are yours to
 choose. The `memories:` list is the persistent baseline for preloaded memory entries —
 the same name shape as `--memory` (bare name or `scope/name`), merged under

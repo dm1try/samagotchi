@@ -308,6 +308,12 @@ for a file another bundle installed.
   with neither and no terminal it keeps your edits and says so. Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version.
+- **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
+  plugin and scripts to `PATH` but still copies the memories at install, so
+  an edit to one of them in `PATH` isn't seen until the next install.
+- **The rest of the manifest** (`plugin:`, `requires_chi`, `session_settings:`,
+  `context_providers:`, `requires_chi_next`) is in
+  [Plugins](plugins.md) and [internals/bundles.md](internals/bundles.md).
 
 ## Bundle profiles: core and dev
 

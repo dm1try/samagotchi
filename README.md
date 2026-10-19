@@ -80,7 +80,8 @@ the config. With a config already there, it adds a `hosts:` entry and keeps
 the rest of the file. Then it installs the `core` bundles (loop-guard,
 check-in, guardrails, slow-commands, agents-md, cost-cap: the safety set for a
 small local model, the cost cap inert until you set one) and, on a terminal, offers `dev` (known-names, mcp, btw, skills,
-source-links). Edit the
+source-links, github-pr, coordinator, claude-peer, codex-peer, ruby; see
+[Bundle profiles](docs/memory.md#bundle-profiles-core-and-dev)). Edit the
 file later as in [Configure](#configure); `chi bootstrap --help` has the
 options.
 
@@ -216,8 +217,10 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
 - [Plugins](docs/plugins.md): bundle plugins (commands, tools, hooks)
+- [Writing a bundle](docs/bundle-authoring.md): `chi bundle new`, `test`, `check`, `try`, `install --dev`
+- [Testing](docs/testing.md): specs, affected specs, lint, worktrees
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web
-- Internals: [Engine](docs/internals/engine.md), [Gemma 4 contract](docs/internals/gemma4-contract.md), [prompt caching](docs/internals/prompt-caching.md), [context telemetry](docs/internals/context-telemetry.md), [LLM context: forget layer](docs/internals/llm-context-forget.md), [replay benchmark](docs/internals/llm-context-bench.md), [live runs](docs/internals/llm-context-live.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
+- Internals: [Engine](docs/internals/engine.md), [Gemma 4 contract](docs/internals/gemma4-contract.md), [prompt caching](docs/internals/prompt-caching.md), [context telemetry](docs/internals/context-telemetry.md), [LLM context: forget layer](docs/internals/llm-context-forget.md), [replay benchmark](docs/internals/llm-context-bench.md), [live runs](docs/internals/llm-context-live.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md), [bundles](docs/internals/bundles.md), [Anthropic Messages API](docs/internals/anthropic.md)
 
 ## Development
 
