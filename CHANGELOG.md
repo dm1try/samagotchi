@@ -62,7 +62,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle check` warns (`clash`) about an installed bundle of the same name whose record can't be read, instead
   of skipping the clash check without a word.
 
-Update with `chi update` (the system bundle 0.92.0, cost-cap 0.2.1), then restart `chi web`.
+Update with `chi update` (the system bundle 0.92.0, cost-cap 0.2.1, core 0.3.4), then restart `chi web`.
 
 ## [0.91.0] - 2026-10-19
 

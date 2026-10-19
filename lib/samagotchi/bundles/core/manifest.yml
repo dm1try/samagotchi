@@ -1,11 +1,11 @@
 ---
 name: core
-version: 0.3.3
+version: 0.3.4
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
 # Its members' highest floor (cost-cap's)
-requires_chi: ">= 0.86.0"
+requires_chi: ">= 0.92.0"
 includes:
 - loop-guard
 - check-in
