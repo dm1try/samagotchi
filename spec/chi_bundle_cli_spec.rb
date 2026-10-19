@@ -9,6 +9,7 @@ require "fileutils"
 require "stringio"
 require "spec_helper"
 require "samagotchi/bundle_command"
+require "samagotchi/hooks"
 
 # `chi bundle` as a user runs it: the text on each stream and the exit
 # codes, pinned before the command moved out of bin/chi. Each run gets its
@@ -67,11 +68,17 @@ RSpec.describe "chi bundle (CLI)" do
 
   INSTALL_USAGE = <<~TEXT
     Usage: chi bundle install <source> [--scope system|project] [--force]
+           chi bundle install --dev PATH
 
       install <source> [--scope system|project] [--force]
         Install a memory bundle from a directory, zip, tar archive, or git URL,
         or a bundle shipped with chi by name (see: chi bundle list).
         --force overwrites existing entries; default skips them.
+      install --dev PATH
+        Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
+        are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
+        their sha256 isn't checked, for this bundle only. Its memories are copied. Upgrade refuses it;
+        uninstall removes the link, never PATH's files.
   TEXT
 
   BUILD_USAGE = <<~TEXT
@@ -493,6 +500,120 @@ Hooks removed: 1\n\z})
       expect(chi("diff")).to eq(["", "Usage: chi bundle diff <bundle> [file]\n", 2])
       expect(chi("diff", "nope")).to eq(["", "Bundle 'nope' not installed\n", 1])
       expect(chi("diff", "-h")).to eq(["", "Bundle '-h' not installed\n", 1])
+    end
+  end
+
+  # `chi bundle install --dev PATH`: the bundle's hooks, rules, plugin and
+  # scripts are links to PATH, its sha256 check skipped (that bundle only).
+  context "install --dev" do
+    before do
+      @root = self.class.sandbox
+      @plugin_src = File.join(@root, "src", "plugin")
+      @hooks_src = File.join(@root, "src", "hooks")
+      FileUtils.mkdir_p(File.dirname(@plugin_src))
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"), @plugin_src)
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"), @hooks_src)
+    end
+
+    after { FileUtils.rm_rf(@root) }
+
+    def bundle_dir(name) = File.join(memories, ".bundles", name)
+    def record(name) = Samagotchi::MemoryBundle::Provenance.new(name: name).record
+
+    # The process-wide state dirs the record is read from.
+    def with_sandbox_env(&)
+      env = self.class.sandbox_env(@root)
+      saved = env.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+      env.each { |key, value| ENV[key] = value }
+      yield
+    ensure
+      saved&.each { |key, value| ENV[key] = value }
+    end
+
+    it "takes a local directory only: no PATH, a git URL, a name, an archive or a missing dir is a usage error" do
+      archive = File.join(@root, "b.zip")
+      File.write(archive, "x")
+      expect(chi("install", "--dev")).to eq(["", "Usage: chi bundle install <source> [--scope system|project] [--force]\n", 2])
+      ["https://example.com/b.git", "git@example.com:o/b.git", "guardrails", archive, File.join(@root, "nope")].each do |source|
+        out, err, code = chi("install", "--dev", source)
+        expect([out, err, code]).to eq(["", "chi bundle install --dev takes a local directory (the bundle's source), not #{source}\n", 2]), source
+      end
+      expect(Dir.exist?(memories)).to be(false)
+    end
+
+    it "links the plugin and hooks to PATH, so an edit applies with no re-install and its sha isn't checked" do
+      out, err, code = chi("install", "--dev", @plugin_src)
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Plugin: plugin.rb (loads at the next chi start)")
+      expect(chi("install", "--dev", @hooks_src)[2]).to eq(0)
+
+      plugin = File.join(bundle_dir("sample-plugin"), "plugin", "plugin.rb")
+      hook = File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb")
+      expect(File.symlink?(plugin)).to be(true)
+      expect(File.realpath(plugin)).to eq(File.realpath(File.join(@plugin_src, "plugin.rb")))
+      expect(File.realpath(hook)).to eq(File.realpath(File.join(@hooks_src, "hooks", "guardrails.rb")))
+
+      File.write(File.join(@plugin_src, "plugin.rb"), "# edited\n")
+      File.write(File.join(@hooks_src, "hooks", "guardrails.rb"), "# edited\n")
+      expect(File.read(plugin)).to eq("# edited\n")
+      with_sandbox_env do
+        expect(record("sample-plugin")).to have_attributes(dev: true, source: File.realpath(@plugin_src))
+        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(plugin, record("sample-plugin").plugin.sha256, required: true)).to be_nil
+        expect(Samagotchi::MemoryBundle::Provenance.sha_matches?(plugin, record("sample-plugin").plugin.sha256)).to be(true)
+        hook_sha = record("sample-hooks-bundle").hooks.fetch("guardrails.rb").sha256
+        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(hook, hook_sha, required: true)).to be_nil
+      end
+    end
+
+    it "checks every other bundle as before: an edited plugin of a normal install still mismatches" do
+      other = File.join(@root, "src", "other")
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"), other)
+      File.write(File.join(other, "manifest.yml"), File.read(File.join(other, "manifest.yml")).sub("name: sample-plugin", "name: other"))
+      expect(chi("install", "--dev", @plugin_src)[2]).to eq(0)
+      expect(chi("install", other)[2]).to eq(0)
+
+      File.write(File.join(bundle_dir("other"), "plugin", "plugin.rb"), "# edited\n")
+      with_sandbox_env do
+        expect(record("other")).to have_attributes(dev: false)
+        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(File.join(bundle_dir("other"), "plugin", "plugin.rb"),
+                                                            record("other").plugin.sha256, required: true)).to include("differs")
+      end
+    end
+
+    it "status shows it as dev with the source path, in the list and for NAME" do
+      chi("install", "--dev", @plugin_src)
+      source = File.realpath(@plugin_src)
+
+      expect(chi("status")).to eq(["  sample-plugin v1.0.0 dev → #{source} scope=system files=0 plugin=plugin.rb issues=0\n", "", 0])
+      out, = chi("status", "sample-plugin")
+      expect(out.lines.first).to match(/\ABundle: sample-plugin v1\.0\.0 dev → #{Regexp.escape(source)} scope=system installed=\S+\n/)
+      expect(out).to include("  Plugin: plugin.rb [ok]\n")
+    end
+
+    it "refuses an upgrade of a dev bundle with a one-line hint, and a plain install over it (and --dev over a plain one)" do
+      chi("install", "--dev", @plugin_src)
+      hint = "Upgrade failed: sample-plugin is a dev install of #{File.realpath(@plugin_src)}: it follows its source already " \
+             "(to leave dev mode: chi bundle uninstall sample-plugin, then chi bundle install without --dev)\n"
+      expect(chi("upgrade", @plugin_src)).to eq(["", hint, 1])
+      expect(chi("install", @plugin_src)[1]).to start_with("Install failed: sample-plugin is a dev install")
+
+      chi("install", @hooks_src)
+      expect(chi("install", "--dev", @hooks_src)[1]).to start_with("Install failed: sample-hooks-bundle is installed normally")
+    end
+
+    it "uninstalls the link and the record, never the files under PATH" do
+      chi("install", "--dev", @plugin_src)
+      chi("install", "--dev", @hooks_src)
+      before = Dir.glob(File.join(@root, "src", "**", "*"), File::FNM_DOTMATCH).select { |p| File.file?(p) }.to_h { |p| [p, File.read(p)] }
+
+      expect(chi("uninstall", "sample-plugin")[2]).to eq(0)
+      expect(chi("uninstall", "sample-hooks-bundle", "--force")[2]).to eq(0)
+
+      expect(Dir.exist?(bundle_dir("sample-plugin"))).to be(false)
+      expect(Dir.exist?(bundle_dir("sample-hooks-bundle"))).to be(false)
+      after = Dir.glob(File.join(@root, "src", "**", "*"), File::FNM_DOTMATCH).select { |p| File.file?(p) }.to_h { |p| [p, File.read(p)] }
+      expect(after).to eq(before)
+      expect(before.keys.size).to eq(5)
     end
   end
 

@@ -17,6 +17,8 @@ module Samagotchi
     # scripts/*. Each replaces what an earlier version installed. Installer
     # runs it after the memories; it adds to the installer's results and
     # warnings, and #run returns what the record (Provenance#write) keeps.
+    # A dev install (+dev+, `chi bundle install --dev`) links each file to
+    # the source instead of copying it, and warns of no checksum mismatch.
     class AssetInstaller
       # What was installed: the paths Provenance#write records (each
       # empty / nil on a dry run).
@@ -32,7 +34,7 @@ module Samagotchi
       # @param results, warnings, conflicts the Installer's (results and
       #   warnings are added to)
       def initialize(name:, source_dir:, manifest:, provenance:, existing:, results:, warnings:, conflicts:,
-                     force: false, strict: true, upgrade: false, dry_run: false)
+                     force: false, strict: true, upgrade: false, dry_run: false, dev: false)
         @name = name
         @bundle_dir = source_dir
         @manifest = manifest
@@ -45,6 +47,7 @@ module Samagotchi
         @strict = strict
         @upgrade = upgrade
         @dry_run = dry_run
+        @dev = dev
       end
 
       # @return [Installed]
@@ -53,7 +56,7 @@ module Samagotchi
       def run
         install_hooks
         prune_dropped_hooks if @upgrade && @existing && !@dry_run
-        verify_hook_checksums if @manifest && @strict
+        verify_hook_checksums if @manifest && @strict && !@dev
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
         guardrail_files = install_guardrails(incoming_rules)
@@ -109,7 +112,7 @@ module Samagotchi
 
         FileUtils.mkdir_p(@provenance.hooks_dir)
         unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
-        FileUtils.cp(src, dest)
+        place(src, dest)
         @results[basename] = if unchanged
                                { status: "skipped", reason: "already up to date" }
                              elsif @upgrade && @existing
@@ -132,7 +135,7 @@ module Samagotchi
           else
             FileUtils.mkdir_p(@provenance.hooks_dir)
             dest = File.join(@provenance.hooks_dir, basename)
-            FileUtils.cp(src, dest)
+            place(src, dest)
             @results[basename] = { status: "installed" }
             @hook_files[basename] = dest
           end
@@ -193,7 +196,7 @@ module Samagotchi
         FileUtils.mkdir_p(target)
         incoming_rules.to_h do |src|
           dest = File.join(target, File.basename(src))
-          FileUtils.cp(src, dest)
+          place(src, dest)
           @results["guardrails/#{File.basename(src)}"] =
             unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
           [File.basename(src), dest]
@@ -227,7 +230,7 @@ module Samagotchi
         unchanged = File.file?(dest) && FileUtils.identical?(src, dest)
         FileUtils.rm_rf(@provenance.plugin_dir)
         FileUtils.mkdir_p(@provenance.plugin_dir)
-        FileUtils.cp(src, dest)
+        place(src, dest)
         @results[plugin[:file]] = if unchanged
                                     { status: "skipped", reason: "already up to date" }
                                   elsif @upgrade && @provenance.installed?
@@ -237,7 +240,7 @@ module Samagotchi
                                   end
         expected = @manifest.checksum_for_plugin
         actual = Digest::SHA256.hexdigest(File.binread(dest))
-        if @strict && expected && actual != expected
+        if @strict && !@dev && expected && actual != expected
           @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
         end
         dest
@@ -266,19 +269,26 @@ module Samagotchi
         FileUtils.mkdir_p(@provenance.scripts_dir)
         scripts.to_h do |file, declared|
           dest = File.join(@provenance.scripts_dir, file)
-          FileUtils.cp(File.join(@bundle_dir, "scripts", file), dest)
+          place(File.join(@bundle_dir, "scripts", file), dest)
           @results["scripts/#{file}"] = if unchanged.include?(file) then { status: "skipped", reason: "already up to date" }
                                         elsif @upgrade && @provenance.installed? then { status: "updated" }
                                         else { status: "installed" }
                                         end
-          FileUtils.chmod(0o755, dest)
+          FileUtils.chmod(0o755, dest) unless @dev
           actual = Digest::SHA256.hexdigest(File.binread(dest))
           expected = declared.to_s.delete_prefix("sha256:")
-          if @strict && !expected.empty? && actual != expected
+          if @strict && !@dev && !expected.empty? && actual != expected
             @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
           end
           [file, dest]
         end
+      end
+
+      # Copies +src+ to +dest+, or (a dev install) links +dest+ to it. An
+      # existing link goes first: a copy over it would write into the source.
+      def place(src, dest)
+        FileUtils.rm_f(dest) if File.symlink?(dest)
+        @dev ? File.symlink(File.realpath(src), dest) : FileUtils.cp(src, dest)
       end
 
       # Whether the bundle file +src+ reads through a symlink: it is one, or

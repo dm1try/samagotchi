@@ -134,8 +134,7 @@ module Samagotchi
 
       record.scripts.each do |file, sha|
         path = File.join(provenance.scripts_dir, file)
-        recorded = MemoryBundle::Provenance.recorded_sha(sha)
-        next if File.file?(path) && MemoryBundle::Provenance.file_sha(path) == recorded
+        next if File.file?(path) && MemoryBundle::Provenance.sha_matches?(path, sha)
 
         raise Invalid, "bundle #{source.provider}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
       end

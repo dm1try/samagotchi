@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi bundle install --dev PATH` installs a bundle you are writing as a link to its folder: edits to its plugin,
+  hooks, rules and scripts apply at the next session with no re-install, and their sha256 isn't checked (that
+  bundle only). `chi bundle status` shows `dev → PATH`; `upgrade` refuses it; `uninstall` never touches PATH.
+
 ### Changed
 
 - minitest is now a dependency of the gem, so `chi bundle test` runs a bundle's Minitest tests (and the one

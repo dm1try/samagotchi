@@ -58,11 +58,17 @@ module Samagotchi
     # the source or name).
     INSTALL_HELP = <<~TEXT
       Usage: chi bundle install <source> [--scope system|project] [--force]
+             chi bundle install --dev PATH
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL,
           or a bundle shipped with chi by name (see: chi bundle list).
           --force overwrites existing entries; default skips them.
+        install --dev PATH
+          Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
+          are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
+          their sha256 isn't checked, for this bundle only. Its memories are copied. Upgrade refuses it;
+          uninstall removes the link, never PATH's files.
     TEXT
     UPGRADE_HELP = "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
     UNINSTALL_HELP = "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
@@ -115,8 +121,12 @@ module Samagotchi
     INSTALL_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.value "--scope"
       f.switch "--force"
+      f.switch "--dev"
     end
-    UNINSTALL_FLAGS = INSTALL_FLAGS
+    UNINSTALL_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.value "--scope"
+      f.switch "--force"
+    end
     UPGRADE_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.value "--scope"
       f.switch "--force"
@@ -185,11 +195,16 @@ module Samagotchi
       source = parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
+      dev = opts.fetch(:dev, false)
       if source.nil? || source.empty?
         @stderr.puts "Usage: chi bundle install <source> [--scope system|project] [--force]"
         return CLI::Exit::USAGE
       end
-      expanded_source = expand_source(source)
+      if dev && (Samagotchi::MemoryBundle::SourceNormalizer.git_url?(source) || !File.directory?(source))
+        @stderr.puts "chi bundle install --dev takes a local directory (the bundle's source), not #{source}"
+        return CLI::Exit::USAGE
+      end
+      expanded_source = dev ? File.realpath(source) : expand_source(source)
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
       end
@@ -198,7 +213,7 @@ module Samagotchi
       return 1 unless prepared
       return 1 if installed_under_another_name?(expanded_source, bundle_name, prepared, "Install")
 
-      installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force)
+      installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dev: dev)
       run_installer(installer, failed: "Install") do |manifest|
         print_hooks_and_plugin(manifest)
         print_provenance(bundle_name, manifest)
@@ -457,7 +472,7 @@ module Samagotchi
           @stdout.puts "Bundle '#{name}' not installed."
           return 0
         end
-        @stdout.puts "Bundle: #{name} v#{st[:provenance].version} scope=#{status_scope(st)} installed=#{st[:provenance].installed_at}"
+        @stdout.puts "Bundle: #{name} v#{st[:provenance].version}#{dev_label(st[:provenance])} scope=#{status_scope(st)} installed=#{st[:provenance].installed_at}"
         if st[:scope_error]
           @stdout.puts "Target: (unknown scope: this chi can't resolve it; upgrade chi or reinstall the bundle)"
         else
@@ -519,11 +534,14 @@ module Samagotchi
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st[:provenance].includes
           includes_info = includes ? " includes=#{includes.join(",")}" : ""
-          @stdout.puts "  #{bname} v#{st[:provenance].version} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
+          @stdout.puts "  #{bname} v#{st[:provenance].version}#{dev_label(st[:provenance])} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
       0
     end
+
+    # " dev → /path" for a dev install (install --dev), else "".
+    def dev_label(record) = record.dev ? " dev → #{record.source}" : ""
 
     # "team (unknown)" for a scope this chi can't resolve (Status#bundle_status).
     def status_scope(st) = st[:scope_error] ? "#{st[:scope]} (unknown)" : st[:scope]

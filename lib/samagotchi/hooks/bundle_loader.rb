@@ -126,6 +126,8 @@ module Samagotchi
         # Why the file doesn't match the sha256 recorded at install, or nil.
         # With none recorded, only a required hook counts as a mismatch.
         def sha_mismatch(file, recorded, required:)
+          return nil if MemoryBundle::Provenance.unchecked?(recorded)
+
           expected = MemoryBundle::Provenance.recorded_sha(recorded)
           return (required ? "no sha256 recorded for it (reinstall the bundle)" : nil) if expected.empty?
 

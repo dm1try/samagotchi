@@ -116,9 +116,20 @@ module Samagotchi
         Digest::SHA256.hexdigest(File.binread(path))
       end
 
-      # Whether the file's content is the one recorded (either format).
+      # What a dev install (`chi bundle install --dev`) records instead of
+      # a sha256: its files are links to the source, which change under it.
+      # Not a hex digest, so no file can be mistaken for it.
+      DEV_SHA = "sha256:dev"
+
+      # Whether +recorded+ is DEV_SHA: the file isn't checked.
+      def self.unchecked?(recorded)
+        recorded_sha(recorded) == recorded_sha(DEV_SHA)
+      end
+
+      # Whether the file's content is the one recorded (either format); a
+      # dev install's (DEV_SHA) always is.
       def self.sha_matches?(path, recorded)
-        file_sha(path) == recorded_sha(recorded)
+        unchecked?(recorded) || file_sha(path) == recorded_sha(recorded)
       end
 
       # Writes provenance for an installation: merges into existing manifest.json
@@ -139,9 +150,11 @@ module Samagotchi
       # @param scripts_files [Hash] file name => installed script; the
       #   sha256 of each is recorded (ContextFetch checks it before a run)
       # @param context_providers [Array<ContextProviders::Provider>]
+      # @param dev [Boolean] a dev install: its files are links to the
+      #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
-                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [])
+                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], dev: false)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -196,6 +209,7 @@ module Samagotchi
         normalized_hooks.each do |k, hook|
           src = hooks_files[k] || hooks_files[k.to_sym]
           hook = hook.with(sha256: BundleHook.of_file(src.to_s).sha256) if src && File.exist?(src.to_s)
+          hook = hook.with(sha256: DEV_SHA) if dev
           hooks_map[k] = hook.to_record
           next unless src && File.exist?(src.to_s)
 
@@ -216,9 +230,10 @@ module Samagotchi
           "hooks" => hooks_map
         }
         manifest_data["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        manifest_data["dev"] = true if dev
         if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
           manifest_data["guardrails"] = guardrails_files.sort.to_h do |basename, path|
-            [basename.to_s, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(File.read(path.to_s))}" }]
+            [basename.to_s, { "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(File.read(path.to_s))}" }]
           end
         end
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
@@ -226,7 +241,7 @@ module Samagotchi
         if plugin_file
           content = File.binread(plugin_file.to_s)
           manifest_data["plugin"] = { "file" => File.basename(plugin_file.to_s),
-                                      "sha256" => "sha256:#{Digest::SHA256.hexdigest(content)}" }
+                                      "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(content)}" }
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end
@@ -235,7 +250,7 @@ module Samagotchi
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
         unless scripts_files.empty?
           manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
-            [file.to_s, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(File.binread(path.to_s))}" }]
+            [file.to_s, { "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(File.binread(path.to_s))}" }]
           end
         end
         manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?

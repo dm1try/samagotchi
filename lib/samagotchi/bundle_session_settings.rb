@@ -176,6 +176,8 @@ module Samagotchi
       file = File.join(dir, name, "plugin", bundle.plugin.file.to_s)
       return "the file is missing" unless File.file?(file)
 
+      return nil if MemoryBundle::Provenance.unchecked?(bundle.plugin.sha256)
+
       expected = MemoryBundle::Provenance.recorded_sha(bundle.plugin.sha256)
       return "no sha256 recorded for it (reinstall the bundle)" if expected.empty?
 

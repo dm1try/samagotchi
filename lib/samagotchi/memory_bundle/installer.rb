@@ -40,7 +40,7 @@ module Samagotchi
       # installs from a dir in it only, unless force); ShippedUpdate,
       # Profile and SystemBundle pass the one they install from.
       def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil,
-                     shipped_dir: SourceNormalizer::SHIPPED_DIR)
+                     shipped_dir: SourceNormalizer::SHIPPED_DIR, dev: false)
         @source = source
         @shipped_dir = shipped_dir
         @prepared = prepared
@@ -50,6 +50,7 @@ module Samagotchi
         @strict = strict
         @upgrade = upgrade
         @dry_run = dry_run
+        @dev = dev
         @results = {}
         @warnings = []
         @placeholder_warnings = []
@@ -98,7 +99,7 @@ module Samagotchi
         installed = AssetInstaller.new(
           name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
           results: @results, warnings: @warnings, conflicts: @conflicts,
-          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run
+          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev
         ).run
 
         # Files the previous version shipped and this one doesn't.
@@ -172,8 +173,9 @@ module Samagotchi
       def check_source
         refuse_case_twin
         refuse_shipped_name
+        refuse_dev_mismatch
         now = incoming_identity
-        return if now.nil?
+        return if now.nil? || (@dev && @existing&.dev)
 
         was = @existing && SourceIdentity.of(@existing.source)
         return if was.nil? || was == now
@@ -189,6 +191,19 @@ module Samagotchi
       def refuse_case_twin
         twin, = Provenance.each_installed.find { |name, _| name != @name && name.casecmp?(@name) }
         raise InstallError, "#{@name} differs only in case from the installed #{twin}" if twin
+      end
+
+      # A dev install (--dev, linked to its source) and a normal one don't
+      # replace each other: neither an upgrade nor a plain install over a
+      # dev bundle, nor --dev over a normal one.
+      def refuse_dev_mismatch
+        return if @existing.nil? || @existing.dev == @dev
+
+        if @existing.dev
+          raise InstallError, "#{@name} is a dev install of #{@existing.source}: it follows its source already " \
+                              "(to leave dev mode: chi bundle uninstall #{@name}, then chi bundle install without --dev)"
+        end
+        raise InstallError, "#{@name} is installed normally; `chi bundle uninstall #{@name}` first, then chi bundle install --dev"
       end
 
       # A shipped name (in any case) from anything but this chi's own
@@ -421,7 +436,8 @@ module Samagotchi
           scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
           file_descriptions: @manifest.file_descriptions,
-          session_settings: @manifest.session_settings
+          session_settings: @manifest.session_settings,
+          dev: @dev
         )
       end
 

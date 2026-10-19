@@ -45,6 +45,15 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `IndexSize` | one scope's memory index as the prompt carries it (tokens, lines, bytes): `memory.index_warn_tokens`' crossing note after a memory write, `chi self`'s summary, the prompt's figures (`SystemPrompt`) |
 | `Placeholder` | `{{placeholder}}` patterns left in an installed memory, one line per file from `Installer#detect_placeholders`; a hint, never a gate |
 
+A dev install (`chi bundle install --dev PATH`, `Installer#initialize(dev: true)`) links instead of copying:
+`AssetInstaller#place` symlinks each hook, rule file, plugin and script into `.bundles/<name>/` to its realpath in
+the source (memories are still copied: their bases and the index are the install's), and the record gets `"dev": true`
+(`InstalledBundle#dev`, `source` the realpath) with `Provenance::DEV_SHA` (`sha256:dev`, never a hex digest) in
+place of every hook, rule, plugin and script sha256. `Provenance.sha_matches?` / `.unchecked?` read it as "not
+checked", which is how the readers below skip it for that bundle only. `Installer#refuse_dev_mismatch` keeps a dev
+and a normal install from replacing each other (this is also why `chi bundle upgrade` refuses a dev bundle);
+`Uninstaller` removes links with `rm_rf`/`rm_f`, which never follow them into the source.
+
 Readers of the installed state: `Hooks::BundleLoader` (Engine), `GuardrailWiring#bundle_rules`, `Plugin::Loader`,
 `ContextProviders` (scripts), `BundleNeeds` (index markers). Each goes through `Provenance.each_installed` / `#record`
 and checks the recorded sha256 (and `requires_chi`) before loading.

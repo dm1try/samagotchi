@@ -100,8 +100,16 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   Bundler env: `test/**/*_test.rb` on Minitest (`-r samagotchi/testing/minitest`), or else `spec/` on RSpec with
   the kit (`--options /dev/null -r samagotchi/testing/rspec`, as `rake bundles:specs`). `ARGS` go to the runner
   (`-- -n /name/`). Exit status: the tests'; 1 with no tests; 2 for usage, or when minitest / rspec doesn't load on
-  chi's Ruby (minitest is one of chi's gems; rspec is optional). The tests run the bundle's code as written, with your environment (the kit sandboxes each
-  test's HOME and XDG dirs, not the process).
+  chi's Ruby (minitest is one of chi's gems; rspec is optional). The tests run the bundle's code as written, with
+  your environment (the kit sandboxes each test's HOME and XDG dirs, not the process).
+- `chi bundle install --dev PATH` installs the bundle in the local directory `PATH` (not a git URL, archive or name:
+  exit 2) as a link to it: its plugin, hooks, rules and scripts are `PATH`'s own files, so an edit applies at the
+  next worker or `chi web` restart with no re-install, and their sha256 isn't checked, for this bundle only (the
+  record says `dev`; every other bundle is checked as before). Its memories are copied at install. `chi bundle
+  status` shows `NAME vX dev → /abs/path`. `chi bundle upgrade NAME` refuses it (it follows its source already; to
+  leave dev mode: `chi bundle uninstall NAME`, then `chi bundle install` without `--dev`), as does a plain install
+  over it, and `--dev` over a normal install. `uninstall` removes the links and the record, never `PATH`'s files.
+  `check PATH` and `test PATH` are unchanged.
 - `chi bundle check [PATH] [--fix] [--set KEY=VALUE]` (PATH defaults to `.`) checks it as an install takes it, one
   finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, then `ok|failed: N errors, N
   warnings`. Exit 1 on any error, 0 otherwise, 2 for usage. It installs and loads the bundle in a temp sandbox

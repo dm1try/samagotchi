@@ -12,7 +12,11 @@ cd my-bundle                 # edit plugin.rb and the test
 chi bundle test              # the tests, on chi's own Ruby and lib (exit status: the tests')
 chi bundle check --fix       # manifest, files, shas (--fix rewrites them), requires_chi, install + load in a sandbox
 chi bundle install .         # into the user's chi; a NEW session loads it (a running one doesn't)
+chi bundle install --dev .   # or as a link to this folder: edits apply at the next session, no re-install
 ```
+
+While you write it, `install --dev .` (once; `uninstall NAME` leaves dev mode) then try it in chi: a new session
+loads the plugin and hooks from the folder as they are, with no sha check (that bundle only; memories are copied).
 
 `check` prints one finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, and exits 1 on any
 error. Run it after every edit: an install takes exactly what it checks. It installs into a temp sandbox, not
