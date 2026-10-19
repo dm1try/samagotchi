@@ -5,9 +5,11 @@ require "tmpdir"
 require "json"
 require "digest"
 require "rbconfig"
+require "yaml"
 require "samagotchi/context_providers"
 require "samagotchi/context_sources"
 require "samagotchi/context_fetch"
+require "samagotchi/memory_bundle/installer"
 
 # A URL resolves through the installed bundles' declarative providers
 # (their provenance's context_providers); a provider's source finds its
@@ -34,6 +36,19 @@ RSpec.describe Samagotchi::ContextProviders do
       "context_providers" => providers
     ))
     dir
+  end
+
+  def install_normally
+    source_dir = File.join(tmpdir, "normal-source")
+    FileUtils.mkdir_p(File.join(source_dir, "scripts"))
+    File.write(File.join(source_dir, "scripts", "pr.rb"), script)
+    File.write(File.join(source_dir, "manifest.yml"), YAML.dump(
+      "name" => "prs", "version" => "1.0.0", "scope" => "system", "files" => {},
+      "scripts" => { "pr.rb" => "sha256:#{Digest::SHA256.hexdigest(script)}" },
+      "context_providers" => [provider]
+    ))
+    Samagotchi::MemoryBundle::Installer.new(source: source_dir, name: "prs", scope: "system", strict: true).run
+    File.join(bundles_dir, "prs")
   end
 
   describe ".resolve" do
@@ -102,6 +117,16 @@ RSpec.describe Samagotchi::ContextProviders do
       expect { described_class.command_for(source) }.to raise_error(described_class::Invalid, "bundle prs isn't installed")
       dir = install
       File.write(File.join(dir, "scripts", "pr.rb"), "puts 'edited'\n")
+      expect { described_class.command_for(source) }
+        .to raise_error(described_class::Invalid, %r{bundle prs's scripts/pr.rb differs from the installed one})
+    end
+
+    it "refuses a script edited after a normal bundle install" do
+      dir = install_normally
+      script_path = File.join(dir, "scripts", "pr.rb")
+      expect(File.symlink?(script_path)).to be(false)
+      File.write(script_path, "puts 'edited after install'\n")
+
       expect { described_class.command_for(source) }
         .to raise_error(described_class::Invalid, %r{bundle prs's scripts/pr.rb differs from the installed one})
     end

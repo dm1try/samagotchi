@@ -39,8 +39,8 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     src
   end
 
-  def install_bundle(src, name)
-    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", force: false, strict: true)
+  def install_bundle(src, name, dev: false)
+    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", force: false, strict: true, dev: dev)
     inst.run
   end
 
@@ -53,6 +53,22 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     expect(File.exist?(File.join(bundles_dir, "hook-uninstall", "hooks", "guardrails.rb"))).to be false
     expect(Dir.exist?(File.join(bundles_dir, "hook-uninstall"))).to be false
     expect(uninstaller.removed_files).to include("hooks/guardrails.rb")
+  end
+
+  it "moves a dev bundle's memory copies to trash without changing its source files" do
+    src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, { "g.rb" => "class G; def call(e); end; end" }, name: "dev-trash")
+    install_bundle(src, "dev-trash", dev: true)
+    source_files = -> { Dir.glob(File.join(src, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
+    before = source_files.call.to_h { |path| [path, File.binread(path)] }
+
+    uninstaller = described_class.new(name: "dev-trash")
+    uninstaller.run
+
+    expect(File.exist?(File.join(system_dir, "notes.md"))).to be(false)
+    expect(File.read(File.join(uninstaller.trash_dir, "notes.md"))).to eq("# Notes\n")
+    expect(File.read(File.join(src, "notes.md"))).to eq("# Notes\n")
+    expect(source_files.call.to_h { |path| [path, File.binread(path)] }).to eq(before)
+    expect(Dir.exist?(File.join(bundles_dir, "dev-trash"))).to be(false)
   end
 
   it "removes the entry's index line, including a legacy name.md line" do
