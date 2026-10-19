@@ -531,26 +531,15 @@ module Samagotchi
     # A turn nobody typed for a changed source (a context wake): a continue
     # turn from context:<name> whose first message is the wake note already
     # in the conversation (named by +turn_id+), on the same rules as a
-    # delegate report's wake turn: it counts toward session.max_wakes (a
-    # peer's answer toward context.peer_turns too, unless it agrees), and a failure goes back
-    # to before the turn (the note stays, as a plain one:
-    # WorkerInbound#unmark_wake) and pauses wakes until a human's input.
+    # delegate report's wake turn (#run_wake): it counts toward
+    # session.max_wakes (a peer's answer toward context.peer_turns too,
+    # unless it agrees).
     # +context_wake+: a WorkerInbound::ContextWake.
     def run_context_wake_turn(context_wake)
       name = context_wake.name
       Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
-      @turn_flow.before_prompt_turn
-      run_engine_turn(nil, continue: true, origin: context_wake.origin,
-                           id: context_wake.turn_id, max_iterations: IterationLimit.for) do |result, error|
-        if error
-          kept = @turn_flow.prompt_turn_failed(error: error, wake: "the change in attached context #{name}") == :kept
-          # A turn that got somewhere stays, its wake mark with it.
-          @inbound.unmark_wake(context_wake) unless kept
-          @wakes.pause!
-        else
-          @continue_offer.after_turn(result)
-        end
-      end
+      run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake,
+               unmark_restored: false)
     end
 
     # The first prompt (spawn_session's): a delegate child's task, which is
@@ -640,30 +629,45 @@ module Samagotchi
 
       @wakes.hand_over(reports)
       Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes.count!)
-      @turn_flow.before_prompt_turn
-      restores = @turn_flow.restores
-      run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
-        if error
-          # Rolled back, the rings stay (settle_child_reports): the user's
-          # next turn takes them. A turn that got somewhere stays, and read them.
-          @turn_flow.prompt_turn_failed(
-            error: error, wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
-            wake_kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
-                       "again with the user's next message."
-          )
-          @wakes.pause!
-        else
-          @continue_offer.after_turn(result)
-          # Stopped before it got anywhere (a Stop or a before_turn hook's
-          # cancel before the model call) and restored: its rings stay, and
-          # wait for the user's next message as after a failure, rather
-          # than waking again at once.
-          @wakes.pause! if result.canceled? && @turn_flow.restores != restores
-        end
-      end
+      # Rolled back, the rings stay (settle_child_reports): the user's next
+      # turn takes them. A turn that got somewhere stays, and read them.
+      run_wake(origin: reports.first.origin,
+               failed: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
+               kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
+                     "again with the user's next message.")
       true
     ensure
       @wakes.drop_handed
+    end
+
+    # A wake turn (a delegate report's, an attached context change's, a
+    # finished task's): a continue turn nobody typed, from +origin+. A
+    # failure goes back to before the turn and pauses wakes until a human's
+    # input (a provider outage doesn't loop); so does a Stop before it got
+    # anywhere (a Stop or a before_turn hook's cancel before the model
+    # call, restored by TurnFlow), rather than waking again at once. Either
+    # way +mark+ (a WorkerInbound::ContextWake or TaskWake: its wake note,
+    # the turn's first message) goes back to a plain note
+    # (WorkerInbound#unmark_wake), unless the failed turn kept its steps.
+    # +failed+ names the wake in the failed turn's note, +kept+ says what
+    # happens to it (TurnFlow#prompt_turn_failed).
+    def run_wake(origin:, failed:, kept: nil, mark: nil, unmark_restored: true)
+      @turn_flow.before_prompt_turn
+      restores = @turn_flow.restores
+      run_engine_turn(nil, continue: true, origin: origin, id: mark&.turn_id,
+                           max_iterations: IterationLimit.for) do |result, error|
+        if error
+          steps_kept = @turn_flow.prompt_turn_failed(error: error, wake: failed, wake_kept: kept) == :kept
+          @inbound.unmark_wake(mark) if mark && !steps_kept
+          @wakes.pause!
+        else
+          @continue_offer.after_turn(result)
+          if result.canceled? && @turn_flow.restores != restores
+            @inbound.unmark_wake(mark) if mark && unmark_restored
+            @wakes.pause! if unmark_restored
+          end
+        end
+      end
     end
 
     # The Engine's raw events feed the task watch (session.task_wakes not
@@ -776,30 +780,13 @@ module Samagotchi
 
     # A turn nobody typed for a finished task: a continue turn from
     # task:<id> whose first message is the wake note, on the delegate wake's
-    # rules (counted toward session.max_wakes). A failure that kept nothing,
-    # or a Stop that restored the conversation, leaves the note as a plain
-    # one (WorkerInbound#unmark_wake) and pauses wakes until a human's input (M4).
+    # rules (#run_wake; counted toward session.max_wakes): a failure that
+    # kept nothing, or a Stop that restored the conversation, leaves the
+    # note as a plain one (M4).
     def run_task_wake_turn(task_wake)
       Log.info(:worker, "task_wake_turn", task_id: task_wake.ids.first, in_a_row: @wakes.count!)
-      @turn_flow.before_prompt_turn
-      restores = @turn_flow.restores
-      run_engine_turn(nil, continue: true, origin: task_wake.origin, id: task_wake.turn_id,
-                           max_iterations: IterationLimit.for) do |result, error|
-        if error
-          kept = @turn_flow.prompt_turn_failed(
-            error: error, wake: "a finished background task (#{task_wake.name.delete_prefix("task ")})",
-            wake_kept: "Its note stays for the user's next message."
-          ) == :kept
-          @inbound.unmark_wake(task_wake) unless kept
-          @wakes.pause!
-        else
-          @continue_offer.after_turn(result)
-          if result.canceled? && @turn_flow.restores != restores
-            @inbound.unmark_wake(task_wake)
-            @wakes.pause!
-          end
-        end
-      end
+      run_wake(origin: task_wake.origin, failed: "a finished background task (#{task_wake.name.delete_prefix("task ")})",
+               kept: "Its note stays for the user's next message.", mark: task_wake)
     end
 
     # The wake budget is spent: the UIs hear once that finished tasks wait
