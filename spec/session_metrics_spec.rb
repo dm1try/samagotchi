@@ -1045,6 +1045,34 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(File.exist?(File.join(dir, "analytics.json"))).to be(true)
   end
 
+  it "swallows a failed persist, logging each error class once" do
+    metrics.state_dir = Dir.mktmpdir
+    metrics.session_id = "fail-sess"
+    errors = [Errno::ENOSPC.new, Errno::ENOSPC.new, Errno::EACCES.new]
+    allow(Samagotchi::AtomicFile).to receive(:write) { raise errors.shift }
+    allow(Samagotchi::Log).to receive(:warn)
+
+    expect(Array.new(3) { metrics.persist }).to eq([false, false, false])
+    expect(Samagotchi::Log).to have_received(:warn).twice
+    expect(Samagotchi::Log).to have_received(:warn)
+      .with(:turn, "analytics_persist_failed", error: "Errno::ENOSPC", msg: a_string_including("No space"))
+    expect(Samagotchi::Log).to have_received(:warn)
+      .with(:turn, "analytics_persist_failed", error: "Errno::EACCES", msg: a_string_including("Permission"))
+  end
+
+  it "still returns false when logging the failure raises, or the persist re-enters" do
+    metrics.state_dir = Dir.mktmpdir
+    metrics.session_id = "fail-sess"
+    allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::ENOSPC)
+    allow(Samagotchi::Log).to receive(:warn).and_raise(IOError, "log closed")
+    expect(metrics.persist).to be(false)
+
+    inner = nil
+    allow(Samagotchi::AtomicFile).to receive(:write) { inner = metrics.persist }
+    expect { metrics.persist }.not_to raise_error
+    expect(inner).to be(false) # a ThreadError from the re-entered mutex
+  end
+
   # Two persists on two threads (a turn's end, a checkpoint, a side request
   # between turns) never land out of order: the older snapshot can't be
   # written over the newer one.

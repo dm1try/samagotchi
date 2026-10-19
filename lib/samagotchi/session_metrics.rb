@@ -7,6 +7,7 @@ require "fileutils"
 require "securerandom"
 require_relative "analytics_file"
 require_relative "atomic_file"
+require_relative "log"
 require_relative "token_usage"
 require_relative "model_price"
 require_relative "session"
@@ -278,6 +279,8 @@ module Samagotchi
       # in snapshot order. Taken before @mutex, never under it: the write's
       # IO doesn't hold up the events.
       @persist_mutex = Mutex.new
+      # The error classes #persist has logged (under @persist_mutex).
+      @persist_failures = Set.new
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @wall_clock = wall_clock || -> { Time.now }
       @session_id = nil
@@ -481,7 +484,8 @@ module Samagotchi
 
     # Persist the summary snapshot, with every record, to a sibling
     # analytics.json in the session directory. Atomic write; failures are
-    # swallowed (analytics must never break the running session).
+    # swallowed (analytics must never break the running session), each
+    # error class logged once (WARN turn analytics_persist_failed).
     # @param state_dir [String, nil]
     # @param running_turn [Boolean] also save the running turn's record so
     #   far (a worker's turn checkpoint): as the turn a worker killed now
@@ -490,12 +494,27 @@ module Samagotchi
     #   turn's own end writes over it. Only the file has it.
     # @return [Boolean] true on success
     def persist(state_dir: nil, running_turn: false)
-      @persist_mutex.synchronize { persist_now(state_dir, running_turn) }
-    rescue StandardError
+      @persist_mutex.synchronize do
+        persist_now(state_dir, running_turn)
+      rescue StandardError => e
+        note_persist_failure(e)
+        false
+      end
+    rescue StandardError # a ThreadError from the mutex, a log that raised: still never raises
       false
     end
 
     private
+
+    # Logs a #persist failure the first time its error class is seen (under
+    # the persist mutex): side requests and checkpoints persist too, so a
+    # lasting failure (a full disk, a read-only dir) would log on every one.
+    def note_persist_failure(error)
+      return if @persist_failures.include?(error.class)
+
+      @persist_failures << error.class
+      Log.warn(:turn, "analytics_persist_failed", error: error.class.name, msg: error.message.to_s[0, 300])
+    end
 
     # #persist's work, under the persist mutex.
     def persist_now(state_dir, running_turn)
