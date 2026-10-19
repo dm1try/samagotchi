@@ -8,6 +8,7 @@ require_relative "../memory_bundle/shas"
 require_relative "../memory_bundle/memory_files"
 require_relative "../plugin/api"
 require_relative "../version"
+require_relative "../cli/flags"
 
 module Samagotchi
   class BundleCommand
@@ -23,6 +24,22 @@ module Samagotchi
     # sha256 lines (MemoryBundle::Shas). #run returns 0 without errors, 1
     # with any.
     class Check
+      HELP = <<~TEXT
+        Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
+
+          Check the bundle at PATH (default: .) as an install would take it, one finding per line:
+            error|warn|info CODE file[:line]: message (fix: hint)
+          It installs and loads the bundle in a sandbox (temp HOME, config and state), not in yours, but its plugin and
+          hooks run in this process as written: run it on code you'd install.
+          --fix            rewrite stale and placeholder sha256 lines in manifest.yml
+          --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
+          Exit status: 0 no errors, 1 errors, 2 usage.
+      TEXT
+      FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+        f.switch "--fix"
+        f.value "--set", key: :set, repeat: true
+      end
+
       Finding = Data.define(:level, :code, :file, :line, :message, :fix) do
         def error? = level == :error
 

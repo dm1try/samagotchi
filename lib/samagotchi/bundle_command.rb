@@ -90,33 +90,6 @@ module Samagotchi
           chi bundle build --scope system --out ./my-bundle/ identity.md work.md
     TEXT
     TRASH_HELP = "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
-    NEW_HELP = <<~TEXT
-      Usage: chi bundle new NAME [--dir DIR]
-
-        Start a bundle in DIR/NAME (default ./NAME; refused when it exists): manifest.yml (shas filled,
-        requires_chi this chi), plugin.rb (a /NAME command and an after_tool_call hook), test/NAME_test.rb
-        (passes as written) and README.md. Then: chi bundle test, chi bundle check, chi bundle install.
-    TEXT
-    TEST_HELP = <<~TEXT
-      Usage: chi bundle test [PATH] [-- ARGS]
-
-        Run the tests of the bundle at PATH (default: .) on the Ruby and the lib chi runs on, outside any Bundler env:
-        test/**/*_test.rb on Minitest (require "samagotchi/testing/minitest"), or else spec/ on RSpec with the kit
-        (-r samagotchi/testing/rspec). ARGS go to the test runner (-- -n /name/, -- -e "a name").
-        The tests run the bundle's code as written, with your HOME (the kit's sandbox is per test): run code you'd install.
-        Exit status: the tests'; 1 no tests; 2 usage, or minitest / rspec doesn't load.
-    TEXT
-    CHECK_HELP = <<~TEXT
-      Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
-
-        Check the bundle at PATH (default: .) as an install would take it, one finding per line:
-          error|warn|info CODE file[:line]: message (fix: hint)
-        It installs and loads the bundle in a sandbox (temp HOME, config and state), not in yours, but its plugin and
-        hooks run in this process as written: run it on code you'd install.
-        --fix            rewrite stale and placeholder sha256 lines in manifest.yml
-        --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
-        Exit status: 0 no errors, 1 errors, 2 usage.
-    TEXT
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -139,14 +112,6 @@ module Samagotchi
     end
     BUILD_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/, dash_values: false) do |f|
       %w[--scope --name --version --description --out].each { |name| f.value name }
-    end
-    NEW_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
-      f.value "--dir"
-    end
-    TEST_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A-/)
-    CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
-      f.switch "--fix"
-      f.value "--set", key: :set, repeat: true
     end
     TRASH_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--empty"
@@ -829,14 +794,14 @@ module Samagotchi
     end
 
     def new_bundle(rest)
-      parsed = parse_flags(NEW_FLAGS, rest, "new", help: NEW_HELP)
+      require_relative "bundle_command/scaffold"
+      parsed = parse_flags(Scaffold::FLAGS, rest, "new", help: Scaffold::HELP)
       return parsed if parsed.is_a?(Integer)
 
       unless parsed.args.size == 1
-        @stderr.puts NEW_HELP.lines.first
+        @stderr.puts Scaffold::HELP.lines.first
         return CLI::Exit::USAGE
       end
-      require_relative "bundle_command/scaffold"
       scaffold = Scaffold.new(parsed.args.first, parent: parsed.options.fetch(:dir, "."))
       begin
         written = scaffold.write
@@ -859,20 +824,21 @@ module Samagotchi
     def test_bundle(rest)
       split = rest.index("--")
       own, args = split ? [rest[0...split], rest[(split + 1)..]] : [rest, []]
-      parsed = parse_flags(TEST_FLAGS, own, "test", help: TEST_HELP)
+      require_relative "bundle_command/test_run"
+      parsed = parse_flags(TestRun::FLAGS, own, "test", help: TestRun::HELP)
       return parsed if parsed.is_a?(Integer)
 
       dir = parsed.args.first || "."
       unless parsed.args.size <= 1 && File.directory?(dir)
-        @stderr.puts parsed.args.size > 1 ? TEST_HELP.lines.first : "chi bundle test: #{dir} isn't a folder"
+        @stderr.puts parsed.args.size > 1 ? TestRun::HELP.lines.first : "chi bundle test: #{dir} isn't a folder"
         return CLI::Exit::USAGE
       end
-      require_relative "bundle_command/test_run"
       TestRun.new(dir, args: args, stdout: @stdout, stderr: @stderr).run
     end
 
     def check(rest)
-      parsed = parse_flags(CHECK_FLAGS, rest, "check", help: CHECK_HELP)
+      require_relative "bundle_command/check"
+      parsed = parse_flags(Check::FLAGS, rest, "check", help: Check::HELP)
       return parsed if parsed.is_a?(Integer)
 
       settings = check_settings(parsed.options.fetch(:set, []), label: "check") or return CLI::Exit::USAGE
@@ -885,7 +851,6 @@ module Samagotchi
         @stderr.puts "chi bundle check: #{dir} isn't a folder"
         return CLI::Exit::USAGE
       end
-      require_relative "bundle_command/check"
       Check.new(dir, fix: parsed.options.fetch(:fix, false), settings: settings, stdout: @stdout).run
     end
 

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rbconfig"
+require_relative "../cli/flags"
 
 module Samagotchi
   class BundleCommand
@@ -15,6 +16,17 @@ module Samagotchi
     # (a checkout or a vendored install: its gems in vendor/bundle), there.
     # The tests' exit status is #run's.
     class TestRun
+      HELP = <<~TEXT
+        Usage: chi bundle test [PATH] [-- ARGS]
+
+          Run the tests of the bundle at PATH (default: .) on the Ruby and the lib chi runs on, outside any Bundler env:
+          test/**/*_test.rb on Minitest (require "samagotchi/testing/minitest"), or else spec/ on RSpec with the kit
+          (-r samagotchi/testing/rspec). ARGS go to the test runner (-- -n /name/, -- -e "a name").
+          The tests run the bundle's code as written, with your HOME (the kit's sandbox is per test): run code you'd install.
+          Exit status: the tests'; 1 no tests; 2 usage, or minitest / rspec doesn't load.
+      TEXT
+      FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A-/)
+
       LIB_DIR = File.expand_path("../..", __dir__)
 
       def initialize(dir, args: [], stdout: $stdout, stderr: $stderr)

@@ -3,6 +3,7 @@
 require "fileutils"
 require_relative "../memory_bundle/shas"
 require_relative "../version"
+require_relative "../cli/flags"
 
 module Samagotchi
   class BundleCommand
@@ -12,6 +13,17 @@ module Samagotchi
     # Minitest test on the kit that passes as written, and a README. The
     # test is the pattern to copy (docs/bundle-authoring.md).
     class Scaffold
+      HELP = <<~TEXT
+        Usage: chi bundle new NAME [--dir DIR]
+
+          Start a bundle in DIR/NAME (default ./NAME; refused when it exists): manifest.yml (shas filled,
+          requires_chi this chi), plugin.rb (a /NAME command and an after_tool_call hook), test/NAME_test.rb
+          (passes as written) and README.md. Then: chi bundle test, chi bundle check, chi bundle install.
+      TEXT
+      FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+        f.value "--dir"
+      end
+
       # A name that is also a slash command (Plugin::Api::COMMAND_NAME).
       NAME = /\A[a-z][a-z0-9_-]{0,31}\z/
 
