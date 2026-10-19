@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-10-19
+
 ### Added
 
 - `chi bundle try PATH -p TEXT` runs one real model turn in an isolated sandbox with the bundle and shipped
@@ -3511,7 +3513,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.88.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.89.0...HEAD
+[0.89.0]: https://github.com/dm1try/samagotchi/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/dm1try/samagotchi/compare/v0.87.0...v0.88.0
 [0.87.0]: https://github.com/dm1try/samagotchi/compare/v0.86.0...v0.87.0
 [0.86.0]: https://github.com/dm1try/samagotchi/compare/v0.85.0...v0.86.0
