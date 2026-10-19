@@ -2,10 +2,20 @@
 
 require "open3"
 require "rbconfig"
+require_relative "../../process_group"
 
 module Samagotchi
   class BundleCommand
     module Try
+      # The sandboxed child chi of `chi bundle try`, in a process group of
+      # its own (ProcessGroup). A --timeout sends it INT (a Ctrl-C: the turn
+      # is saved), then after INTERRUPT_GRACE ProcessGroup.stop stops the
+      # group and the groups its processes started. After any exit the
+      # group is stopped only while something of the child's is still in it
+      # (#stop_stragglers): a group signal to a leader reaped with nothing
+      # left would reach whatever reuses its pid. What left the group and
+      # its parent (a delegate's worker, a task once the child exited) is
+      # Sandbox#stop_leftovers', by the records in the sandbox.
       class Run
         Result = Data.define(:exit_status, :stdout, :stderr, :session_id, :timed_out)
         INTERRUPT_GRACE = 5
@@ -30,18 +40,19 @@ module Samagotchi
               streams = [stdout, stderr]
               stdin.close
               readers = streams.map { |stream| Thread.new { read_stream(stream) } }
-              attach_child(trap_state, pid)
+              attach_child(trap_state, pid, wait)
               timed_out = false
               status = wait_for(wait, timeout)
               if status == :timeout
                 timed_out = true
-                signal_group(pid, "INT")
+                ProcessGroup.signal(pid, "INT")
                 status = wait_for(wait, INTERRUPT_GRACE)
                 if status == :timeout
-                  terminate_group(pid)
+                  ProcessGroup.stop(pid, grace: GROUP_TERM_GRACE, poll: POLL_INTERVAL, stopped: -> { !wait.alive? })
                   status = wait.value
                 end
               end
+              trap_state[:pid] = nil
               out, err = finish_readers(readers, streams)
               code = timed_out ? CLI::Exit::FAILED : process_exit_status(status)
               Result.new(exit_status: code, stdout: out, stderr: err, session_id: err[/^Session: (\S+)/, 1],
@@ -50,7 +61,8 @@ module Samagotchi
           rescue SystemCallError => e
             raise Sandbox::Error, "chi bundle try: couldn't run chi: #{e.message}"
           ensure
-            terminate_group(pid) if pid
+            trap_state[:pid] = nil
+            stop_stragglers(pid) if pid
             close_streams(streams)
             stop_readers(readers)
             restore_traps(old_traps)
@@ -79,12 +91,13 @@ module Samagotchi
         end
 
         def trap_forwarding
-          state = { pid: nil, pending: nil }
+          state = { pid: nil, wait: nil, pending: nil }
           old = {}
           %w[INT TERM].each do |signal|
             old[signal] = Signal.trap(signal) do
               if state[:pid]
-                signal_group(state[:pid], signal)
+                # Not once its waiter reaped it: that group may be gone.
+                ProcessGroup.signal(state[:pid], signal) if state[:wait]&.alive?
               else
                 state[:pending] ||= signal
               end
@@ -93,27 +106,32 @@ module Samagotchi
           [state, old]
         end
 
-        def attach_child(state, pid)
+        def attach_child(state, pid, wait)
+          state[:wait] = wait
           state[:pid] = pid
           pending = state[:pending]
           state[:pending] = nil
-          signal_group(pid, pending) if pending
+          ProcessGroup.signal(pid, pending) if pending
         end
 
         def restore_traps(old)
           old.each { |signal, handler| Signal.trap(signal, handler) }
         end
 
-        def signal_group(pid, signal)
-          Process.kill(signal, -pid)
-        rescue Errno::ESRCH
-          nil
-        end
+        # Stops what is left in the child's group once the child (its
+        # leader) is reaped: a descendant still holding its pipes. Only
+        # while one is in it: no process left means no group, and the pid
+        # may be reused by now. While a member is left the group's id
+        # can't be reused; the reaped leader's pid can, so a group whose
+        # member is the pid itself is someone else's.
+        def stop_stragglers(pid)
+          return unless ProcessGroup.signalable?(pid) && ProcessGroup.group_alive?(pid)
 
-        def terminate_group(pid)
-          signal_group(pid, "TERM")
-          sleep(GROUP_TERM_GRACE)
-          signal_group(pid, "KILL")
+          members = ProcessGroup.process_table.select { |_pid, _ppid, group| group == pid }.map(&:first)
+          return if members.empty? || members.include?(pid)
+
+          ProcessGroup.stop(pid, grace: GROUP_TERM_GRACE, poll: POLL_INTERVAL,
+                                 stopped: -> { !ProcessGroup.group_alive?(pid) })
         end
 
         def read_stream(stream)

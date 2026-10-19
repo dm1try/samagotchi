@@ -10,7 +10,12 @@ require_relative "../../cli/exit"
 require_relative "../../installed_gem"
 require_relative "../../memory_bundle"
 require_relative "../../memory_bundle/shas"
+require_relative "../../owner_lock"
+require_relative "../../process_group"
+require_relative "../../session"
 require_relative "../../session_manager"
+require_relative "../../tools/task_record"
+require_relative "../../tools/task_runtime"
 
 module Samagotchi
   class BundleCommand
@@ -31,6 +36,10 @@ module Samagotchi
                    end
           prefix
         end.freeze
+        # How long a leftover worker or task gets after TERM (a worker saves
+        # its session) before ProcessGroup.stop KILLs it.
+        LEFTOVER_GRACE = 3.0
+        LEFTOVER_POLL = 0.05
         class Error < StandardError
           attr_reader :status
 
@@ -74,7 +83,23 @@ module Samagotchi
         end
 
         def cleanup
+          stop_leftovers
           FileUtils.rm_rf(root) if root && File.exist?(root)
+        end
+
+        # Stops what the run started that outlives its child chi: the
+        # workers of its delegates (they leave the child's process tree,
+        # SessionManager.detach_from_spawner) and its tasks (a group of
+        # their own each, reparented once the child exits). Found by their
+        # records in the sandbox, so nothing outside it: a session's lock
+        # held by a group leader, a running task's record whose pid still
+        # leads its group and started when the record says (#same_process?). Workers
+        # first: one may start a task as it stops.
+        def stop_leftovers
+          return unless root && File.directory?(root)
+
+          leftover_workers.each { |pid| stop_group(pid) }
+          leftover_tasks.each { |pid| stop_group(pid) }
         end
 
         private
@@ -128,6 +153,40 @@ module Samagotchi
 
           message = [out, err].reject(&:empty?).join("\n").strip
           raise Error, "chi bundle try: #{message.empty? ? "bundle install failed" : message}"
+        end
+
+        def leftover_workers
+          sessions = File.join(state_home, Session::STATE_SUBDIR)
+          Dir.glob(File.join(sessions, "*", OwnerLock::FILE)).filter_map do |lock|
+            pid = OwnerLock.owner(File.dirname(lock))&.pid
+            pid if ProcessGroup.leader?(pid)
+          end
+        end
+
+        def leftover_tasks
+          pattern = File.join(work_dir, Tools::TaskRuntime::TASKS_DIR, "*", Tools::TaskRuntime::METADATA_FILENAME)
+          Dir.glob(pattern).filter_map do |file|
+            record = Tools::TaskRecord.from_file(JSON.parse(File.read(file)))
+            record.pid if record&.running? && same_process?(record)
+          rescue JSON::ParserError, SystemCallError
+            nil
+          end
+        end
+
+        # Stricter than TaskRuntime.chis_group?: a record with no start time
+        # (a hand-over not adopted yet) or a start time that can't be read
+        # now is skipped, never a group whose leader may reuse the pid.
+        def same_process?(record)
+          started = record.pid_started
+          return false unless started && ProcessGroup.signalable?(record.pid)
+
+          ProcessGroup.start_time(record.pid) == started && ProcessGroup.leader?(record.pid)
+        end
+
+        def stop_group(pid)
+          ProcessGroup.stop(pid, grace: LEFTOVER_GRACE, poll: LEFTOVER_POLL)
+        rescue ArgumentError, SystemCallError
+          nil
         end
 
         def build_child_env

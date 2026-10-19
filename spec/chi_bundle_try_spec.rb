@@ -144,6 +144,87 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     end
   end
 
+  it "stops the delegate workers and tasks a run left in the sandbox, and nothing that isn't running" do
+    pids = []
+    Dir.mktmpdir do |dir|
+      sandbox = described_class.new(bundle_at(File.join(dir, "source")))
+      # A delegate's worker: its own session and group, holding its session's lock.
+      session_dir = File.join(sandbox.state_home, Samagotchi::Session::STATE_SUBDIR, "delegate-1")
+      lib = File.expand_path("../lib", __dir__)
+      worker = Process.spawn(RbConfig.ruby, "-I", lib, "-rsamagotchi/owner_lock", "-e",
+                             "Samagotchi::OwnerLock.acquire(#{session_dir.inspect}, kind: 'worker'); sleep 30",
+                             pgroup: true)
+      Process.detach(worker)
+      pids << worker
+      wait_until!("the worker's lock", timeout: 10) do
+        Samagotchi::OwnerLock.owner(session_dir)&.pid == worker
+      end
+      # A task the turn started, by its record.
+      task = Process.spawn("sleep", "30", pgroup: true)
+      Process.detach(task)
+      pids << task
+      record = Samagotchi::Tools::TaskRecord.running(
+        id: "task-1", command: "sleep 30", cwd: sandbox.work_dir, pid: task,
+        pid_started: Samagotchi::ProcessGroup.start_time(task), started_at: Time.now.iso8601,
+        output_path: "out", exit_code_path: "code"
+      )
+      task_dir = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, "task-1")
+      FileUtils.mkdir_p(task_dir)
+      File.write(File.join(task_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME), JSON.generate(record.to_file))
+      # A finished task's record names a pid that isn't signalled.
+      done_dir = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, "task-2")
+      FileUtils.mkdir_p(done_dir)
+      File.write(File.join(done_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME),
+                 JSON.generate(record.with(id: "task-2", status: "completed", pid: Process.pid).to_file))
+      allow(Process).to receive(:kill).and_call_original
+
+      sandbox.stop_leftovers
+
+      expect(wait_until(timeout: 5) { pids.none? { |pid| alive?(pid) } }).to be(true)
+      expect(Process).not_to have_received(:kill).with(anything, Process.pid)
+      expect(Process).not_to have_received(:kill).with(anything, -Process.pid)
+      sandbox.cleanup
+    end
+  ensure
+    pids.each { |pid| Process.kill("KILL", pid) if alive?(pid) }
+  end
+
+  def alive?(pid)
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  end
+
+  it "leaves a running task record's group alone without a start time, or with another process's" do
+    foreign = Process.spawn("sleep", "30", pgroup: true)
+    Process.detach(foreign)
+    Dir.mktmpdir do |dir|
+      sandbox = described_class.new(bundle_at(File.join(dir, "source")))
+      tasks = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR)
+      base = Samagotchi::Tools::TaskRecord.running(
+        id: "task-1", command: "sleep 30", cwd: sandbox.work_dir, pid: foreign, pid_started: nil,
+        started_at: Time.now.iso8601, output_path: "out", exit_code_path: "code"
+      )
+      # A hand-over not adopted yet (no start time), and a pid reused since.
+      { "unadopted" => base, "reused" => base.with(id: "reused", pid_started: "Mon Jan  1 00:00:00 2001") }
+        .each do |id, record|
+          FileUtils.mkdir_p(File.join(tasks, id))
+          File.write(File.join(tasks, id, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME),
+                     JSON.generate(record.to_file))
+        end
+      allow(Samagotchi::ProcessGroup).to receive(:stop).and_call_original
+
+      sandbox.stop_leftovers
+
+      expect(Samagotchi::ProcessGroup).not_to have_received(:stop)
+      expect(process_gone?(foreign)).to be(false)
+      sandbox.cleanup
+    end
+  ensure
+    Process.kill("KILL", -foreign) if foreign && !process_gone?(foreign)
+  end
+
   describe "chi bundle try" do
     include ChiCli
 
@@ -547,13 +628,65 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           expect(result.exit_status).to eq(0)
           expect(result.stdout).to include("child started")
           expect(elapsed).to be < 4
-          wait_until(timeout: 2) do
-            Process.kill(0, descendant_pid)
-            false
-          rescue Errno::ESRCH
-            true
-          end
+          expect(wait_until(timeout: 2) { gone?(descendant_pid) }).to be(true)
         end
+      end
+
+      def stub_child(dir, source)
+        script = File.join(dir, "chi_stub.rb")
+        File.write(script, source)
+        stub_const("Samagotchi::BundleCommand::Try::Sandbox::CHI", script)
+        stub_const("Samagotchi::BundleCommand::Try::Sandbox::LIB_DIR", dir)
+        Struct.new(:child_env, :work_dir).new({}, dir)
+      end
+
+      def gone?(pid)
+        Process.kill(0, pid)
+        false
+      rescue Errno::ESRCH
+        true
+      end
+
+      it "signals no process group after a child that exited with nothing left in its group" do
+        Dir.mktmpdir do |dir|
+          sandbox = stub_child(dir, "puts 'done'\n")
+          allow(Process).to receive(:kill).and_call_original
+
+          result = described_class.new(sandbox).run(prompt: "test", options: {}, timeout: 5)
+
+          expect(result.exit_status).to eq(0)
+          # kill(0) only asks; no signal goes to a group.
+          expect(Process).not_to have_received(:kill).with(satisfy { |signal| signal != 0 },
+                                                           satisfy { |pid| pid.is_a?(Integer) && pid.negative? })
+        end
+      end
+
+      it "stops the groups the child started (a task's) when the turn times out" do
+        task_pid = nil
+        Dir.mktmpdir do |dir|
+          pid_file = File.join(dir, "task.pid")
+          sandbox = stub_child(dir, <<~RUBY)
+            trap("INT") {}
+            pid = Process.spawn("sleep", "30", pgroup: true)
+            File.write(#{pid_file.inspect}, pid)
+            sleep 30
+          RUBY
+          stub_const("#{described_class}::INTERRUPT_GRACE", 0.2)
+          run = described_class.new(sandbox)
+          allow(run).to receive(:wait_for).and_wrap_original do |wait_for, wait, seconds|
+            # The turn's wait ends once the task runs, not on the clock.
+            wait_until!("the task", timeout: 10) { File.size?(pid_file) || !wait.alive? } if seconds == 600
+            wait_for.call(wait, seconds == 600 ? 0 : seconds)
+          end
+
+          result = run.run(prompt: "test", options: {}, timeout: 600)
+
+          task_pid = Integer(File.read(pid_file))
+          expect(result.timed_out).to be(true)
+          expect(wait_until(timeout: 3) { gone?(task_pid) }).to be(true)
+        end
+      ensure
+        Process.kill("KILL", task_pid) if task_pid && !gone?(task_pid)
       end
     end
   end

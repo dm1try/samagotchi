@@ -975,6 +975,8 @@ module Samagotchi
                                    cost_cap_override: cost_cap_override)
         sandbox.install
         result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
+        # Before the trace: a delegate's worker saves its session as it stops.
+        sandbox.stop_leftovers
         trace = Try::TraceReader.new(state_home: sandbox.state_home, session_id: result.session_id)
                               .read(exit_code: result.exit_status, answer: result.stdout, stderr: result.stderr,
                                     sandbox: options[:keep] ? sandbox.root : nil, timed_out: result.timed_out)
@@ -985,7 +987,10 @@ module Samagotchi
         @stderr.puts e.message
         e.status
       ensure
-        report_try_sandbox(sandbox) if options[:keep] && sandbox
+        if options[:keep] && sandbox
+          sandbox.stop_leftovers
+          report_try_sandbox(sandbox)
+        end
         sandbox&.cleanup unless options[:keep]
       end
     end

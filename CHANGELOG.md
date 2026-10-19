@@ -48,6 +48,10 @@ and commands may change between minor versions. How releases are made:
 - `chi send --wait` on a session command delivered as a file reads the command's real outcome (failed, or canceled
   when it was refused mid-turn or dropped), not always completed, and says so as the command's ("the command
   failed"), not a turn's.
+- `chi bundle try` no longer signals its child's process group after the child exited (the group id may name
+  another process by then), and no longer waits 0.1 s after every run. A `--timeout` stops the background tasks the
+  turn started along with the child, and the delegate workers and tasks a run leaves behind are stopped before the
+  sandbox is deleted.
 
 ## [0.91.0] - 2026-10-19
 
