@@ -8,16 +8,25 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-10-19
+
 ### Added
 
 - A background task the model left running (`task_create`, an `execute` handed over at its limit) that finishes
   unseen wakes the idle session for a short turn opened by a `TASK FINISHED` note (exit code, duration, log tail).
   `session.task_wakes`: `wake` (default), `queue` (a note for the next turn) or `off`.
 
+### Changed
+
+- The bundle-authoring doc says `chi bundle try` is the live check; its `chi send` recipe for checking the installed
+  copy is gone.
+
 ### Fixed
 
 - `chi bundle try --json` reports always carry `timed_out`; a run cut by `--timeout` lists the tool calls it made
   (name, status and duration; their arguments aren't saved) instead of an empty `tools`.
+
+Update with `chi update` (the system bundle 0.91.0), then restart `chi web`.
 
 ## [0.90.0] - 2026-10-19
 
@@ -3540,7 +3549,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.90.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.91.0...HEAD
+[0.91.0]: https://github.com/dm1try/samagotchi/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/dm1try/samagotchi/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/dm1try/samagotchi/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/dm1try/samagotchi/compare/v0.87.0...v0.88.0
