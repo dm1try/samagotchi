@@ -9,6 +9,8 @@ require "samagotchi/task_watch"
 RSpec.describe Samagotchi::TaskWatch do
   subject(:watch) { described_class.new }
 
+  def entry(id) = watch.entries.find { |e| e.id == id }
+
   def completed(tool, output) = { type: :tool_call_completed, tool: tool, output: output }
 
   def created(id) = completed("task_create", "task_id: #{id}\nstatus: running\noutput_path: tmp/tasks/#{id}/output.log")
@@ -29,8 +31,8 @@ RSpec.describe Samagotchi::TaskWatch do
       watch.observe(handed_over("bbb", limit: 5))
 
       expect(watch.ids).to eq(%w[aaa bbb])
-      expect(watch.entry("aaa").limit_sec).to be_nil
-      expect(watch.entry("bbb").limit_sec).to eq(5)
+      expect(entry("aaa").limit_sec).to be_nil
+      expect(entry("bbb").limit_sec).to eq(5)
     end
 
     it "reads past the [tool] lead and a gate-corrected call's ran-as line" do
@@ -103,9 +105,9 @@ RSpec.describe Samagotchi::TaskWatch do
       watch.observe(waited("other", status: "running", wait_result: "canceled"))
       watch.turn_canceled(:user)
 
-      expect(watch.entry("new").note_only).to be(true)
-      expect(watch.entry("other").note_only).to be(true)
-      expect(watch.entry("old").note_only).to be(false)
+      expect(entry("new").note_only).to be(true)
+      expect(entry("other").note_only).to be(true)
+      expect(entry("old").note_only).to be(false)
     end
 
     it "leaves them waking for a cancel that wasn't the user's (a signal, a hook)" do
@@ -114,7 +116,7 @@ RSpec.describe Samagotchi::TaskWatch do
       watch.turn_canceled(:signal)
       watch.turn_canceled(:hook)
 
-      expect(watch.entry("new").note_only).to be(false)
+      expect(entry("new").note_only).to be(false)
     end
   end
 
@@ -170,13 +172,13 @@ RSpec.describe Samagotchi::TaskWatch do
 
   it "puts back taken entries whose note couldn't be written, keeping an entry watched meanwhile" do
     watch.observe(created("a"))
-    taken = watch.entry("a")
+    taken = entry("a")
     watch.remove("a")
     watch.observe(handed_over("b", limit: 5))
     watch.put_back([taken, Samagotchi::TaskWatch::Entry.new(id: "b")])
 
     expect(watch.ids).to eq(%w[b a])
-    expect(watch.entry("b").limit_sec).to eq(5)
+    expect(entry("b").limit_sec).to eq(5)
   end
 
   describe "what holds the worker up" do
@@ -201,15 +203,15 @@ RSpec.describe Samagotchi::TaskWatch do
     end
 
     it "stops holding for a task whose note failed MAX_FAILURES times" do
-      entry = watch.entry("old")
+      entry = entry("old")
       watch.remove("old")
       (Samagotchi::TaskWatch::MAX_FAILURES - 1).times do
         watch.put_back([entry])
-        entry = watch.entry("old")
+        entry = entry("old")
         watch.remove("old")
       end
       watch.put_back([entry])
-      expect(watch.entry("old").failures).to eq(Samagotchi::TaskWatch::MAX_FAILURES)
+      expect(entry("old").failures).to eq(Samagotchi::TaskWatch::MAX_FAILURES)
       expect(watch.holding.map(&:id)).to eq(%w[done])
       expect(watch.ids).to include("old")
     end

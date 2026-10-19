@@ -59,11 +59,11 @@ module Samagotchi
     # A task finish wake turn to run (TaskWatch, TaskFinishNote): its wake
     # note is in the conversation as the start of the turn +turn_id+;
     # +plain_note+ is the same note without the turn start or the ask, which
-    # #unmark_wake puts back after a failed or restored wake turn. +ids+: the
-    # finished tasks it runs for (the first one names it).
-    TaskWake = Data.define(:ids, :turn_id, :plain_note) do
-      def name = "task #{Tools::TaskRecord.short_id(ids.first)}"
-      def origin = { client_id: "#{ClientId::TASK_PREFIX}#{ids.first}" }
+    # #unmark_wake puts back after a failed or restored wake turn. +id+: the
+    # finished task it runs for (the others finished with it are plain notes).
+    TaskWake = Data.define(:id, :turn_id, :plain_note) do
+      def name = "task #{Tools::TaskRecord.short_id(id)}"
+      def origin = { client_id: "#{ClientId::TASK_PREFIX}#{id}" }
       def note = plain_note
     end
 

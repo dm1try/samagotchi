@@ -81,8 +81,8 @@ RSpec.describe Samagotchi::WorkerWakes do
       3.times { wakes.count! }
       expect(wakes.task_open?(awaiting_continue: false)).to be(false)
       wakes.human_input!
+      expect(wakes.task_open?(awaiting_continue: false)).to be(true)
       wakes.pause!
-      expect(wakes.paused?).to be(true)
       expect(wakes.task_open?(awaiting_continue: false)).to be(false)
     end
   end

@@ -143,7 +143,7 @@ module Samagotchi
     def add_wake_note(entry, record)
       turn_id = SecureRandom.uuid
       @engine.add_context_note(@session, note(entry, record, wake: true, turn_id: turn_id))
-      WorkerInbound::TaskWake.new(ids: [entry.id], turn_id: turn_id, plain_note: note(entry, record, wake: false))
+      WorkerInbound::TaskWake.new(id: entry.id, turn_id: turn_id, plain_note: note(entry, record, wake: false))
     end
 
     # The wake budget is spent: the UIs hear once that finished tasks wait

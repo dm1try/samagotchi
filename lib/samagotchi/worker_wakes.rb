@@ -117,9 +117,6 @@ module Samagotchi
       !@paused && !awaiting_continue && !in_grace? && @in_a_row < max
     end
 
-    # Whether wakes are paused (a failed wake turn) until a human's input.
-    def paused? = @paused
-
     # A wake turn starts; +peer+: for a peer's answer, which counts toward
     # both budgets. @return [Integer] the wake turns in a row now
     def count!(peer: false)

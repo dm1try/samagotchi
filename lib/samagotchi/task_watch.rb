@@ -108,7 +108,9 @@ module Samagotchi
 
     def ids = @mutex.synchronize { @entries.keys }
 
-    def entry(id) = @mutex.synchronize { @entries[id] }
+    # The watched tasks, oldest first (a copy).
+    # @return [Array<Entry>]
+    def entries = @mutex.synchronize { @entries.values }
 
     def any? = @mutex.synchronize { @entries.any? }
 
@@ -121,10 +123,10 @@ module Samagotchi
     # running task (TaskRuntime.get_record); nothing with an empty watch.
     # @return [Array<Array(Entry, Tools::TaskRecord)>]
     def take_finished(keep: nil)
-      entries = @mutex.synchronize { @entries.values }
-      return [] if entries.empty?
+      watched = entries
+      return [] if watched.empty?
 
-      entries.filter_map do |entry|
+      watched.filter_map do |entry|
         # Safe for any llm_context strategy: stale and forget stubs are drawn
         # in the view sent to the model (LLMContextView, the entry's edits),
         # never written over the saved tool_response text; only a !rollback
@@ -178,11 +180,7 @@ module Samagotchi
     # watched_tasks). Not a note-only one (no wake would come for it), nor
     # one whose note or look failed MAX_FAILURES times. No `ps`: in memory.
     # @return [Array<Entry>]
-    def holding
-      @mutex.synchronize do
-        @entries.values.reject { |entry| entry.note_only || entry.failures >= MAX_FAILURES }
-      end
-    end
+    def holding = entries.reject { |entry| entry.note_only || entry.failures >= MAX_FAILURES }
 
     # The #holding tasks still running ({id:, command:}), for /exit
     # (WorkerIdleExit's watched_running): one finished meanwhile is noted

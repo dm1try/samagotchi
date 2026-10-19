@@ -691,7 +691,7 @@ module Samagotchi
     # kept nothing, or a Stop that restored the conversation, leaves the
     # note as a plain one (M4).
     def run_task_wake_turn(task_wake)
-      Log.info(:worker, "task_wake_turn", task_id: task_wake.ids.first, in_a_row: @wakes.count!)
+      Log.info(:worker, "task_wake_turn", task_id: task_wake.id, in_a_row: @wakes.count!)
       run_wake(origin: task_wake.origin, failed: "a finished background task (#{task_wake.name.delete_prefix("task ")})",
                kept: "Its note stays for the user's next message.", mark: task_wake)
     end
