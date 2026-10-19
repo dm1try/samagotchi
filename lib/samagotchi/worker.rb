@@ -5,6 +5,7 @@ require "fileutils"
 require_relative "client_id"
 require_relative "config"
 require_relative "engine"
+require_relative "guardrails/parent_policy"
 require_relative "events"
 require_relative "session"
 require_relative "session_inbox"
@@ -308,6 +309,7 @@ module Samagotchi
       # What failed to load and what plugins showed as they loaded, now that
       # a UI can be there (a late one gets them in the snapshot).
       @engine.announce_load_events!
+      announce_session_warnings
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
@@ -466,6 +468,16 @@ module Samagotchi
 
       Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)
       save_or_log(:interrupted_turn) { save_session }
+    end
+
+    # A saved parent_answers that isn't a level reads as hard on every
+    # answer without a word; said once here, as the session loads.
+    def announce_session_warnings
+      value = @session.parent_answers
+      return unless Guardrails::ParentPolicy.unknown_level?(value)
+
+      @engine.announce({ type: :guardrail_warning, label: "parent_answers",
+                         message: "parent_answers #{value.inspect} in session #{@session_id} isn't hard/standard/soft; hard applies" })
     end
 
     # A question saved by a worker that died while it waited (an

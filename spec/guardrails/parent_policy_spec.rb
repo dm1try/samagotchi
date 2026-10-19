@@ -221,6 +221,11 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
       expect(described_class.stricter(strategy("hard"), session_hard)).to equal(strategy("hard"))
     end
 
+    it "tells a set value that isn't a level from none and the levels" do
+      expect([nil, "", "default", " Soft ", "hard"].map { |v| described_class.unknown_level?(v) }).to all(be(false))
+      expect(%w[sofft loose].map { |v| described_class.unknown_level?(v) }).to all(be(true))
+    end
+
     it "reads a session value: nil unset, a level, anything else hard" do
       expect(described_class.session_level(nil)).to be_nil
       expect(described_class.session_level("")).to be_nil

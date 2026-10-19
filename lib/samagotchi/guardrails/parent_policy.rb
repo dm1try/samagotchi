@@ -105,6 +105,13 @@ module Samagotchi
         STRATEGIES.key?(word) ? word : HARD
       end
 
+      # Whether a session's own value is set but not a level (a hand-edited
+      # file: read as hard); the worker says so once when it loads.
+      def unknown_level?(value)
+        word = value.to_s.strip.downcase
+        !word.empty? && word != UNSET && !STRATEGIES.key?(word)
+      end
+
       # What a parent may answer on a session whose own value is
       # +session_value+: config.yml's (+config+) unless the session's is
       # stricter. Config's own object when it binds, so its label stays.

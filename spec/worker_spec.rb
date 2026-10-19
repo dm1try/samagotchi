@@ -1262,6 +1262,34 @@ RSpec.describe Samagotchi::Worker do
       end
     end
 
+    describe "a session file's parent_answers that isn't a level" do
+      let(:seen) { [] }
+
+      before { engine.subscribe(observer: ->(event) { seen << event }) }
+
+      def warnings = seen.select { |e| e[:type] == :guardrail_warning && e[:label] == "parent_answers" }
+
+      it "warns once as the worker loads it: hard applies" do
+        session.parent_answers = "sofft"
+        session.save(state_dir: tmpdir)
+        start_worker(poll_interval: 5)
+
+        expect(warnings.map { |e| e[:message] })
+          .to eq(["parent_answers \"sofft\" in session #{session.id} isn't hard/standard/soft; hard applies"])
+        post_turn("hello")
+        expect(wait_until { !turns.empty? }).to be(true)
+        expect(warnings.size).to eq(1)
+      end
+
+      it "says nothing for a level or none" do
+        session.parent_answers = "soft"
+        session.save(state_dir: tmpdir)
+        start_worker(poll_interval: 5)
+
+        expect(warnings).to be_empty
+      end
+    end
+
     describe "a turn that runs out of iterations" do
       let(:kernel) { engine.instance_variable_get(:@kernel) }
       let(:events) { Queue.new }

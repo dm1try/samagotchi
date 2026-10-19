@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A session file whose `parent_answers` isn't `hard`, `standard` or `soft` (a hand edit) now gets one warning when
+  its worker loads it, instead of being read as `hard` silently.
+
 ## [0.87.0] - 2026-10-19
 
 ### Added
