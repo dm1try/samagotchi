@@ -5,16 +5,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { turnOutput, workerGoneText } from "../../../lib/samagotchi/web/public/turn_events.js";
 
-test("turnOutput reads turn_summary.output (result is a string on the wire)", () => {
-  const data = { type: "turn_completed", result: "\nPONG", turn_summary: { output: "\nPONG" } };
+test("turnOutput reads turn_summary.output", () => {
+  const data = { type: "turn_completed", turn_summary: { output: "\nPONG" } };
   assert.equal(turnOutput(data), "PONG");
 });
 
-test("turnOutput falls back to a string result, then content/output", () => {
-  assert.equal(turnOutput({ result: " ANSWER " }), "ANSWER");
-  assert.equal(turnOutput({ result: { output: "OBJ" } }), "OBJ");
-  assert.equal(turnOutput({ content: "C" }), "C");
-  assert.equal(turnOutput({ output: "O" }), "O");
+test("turnOutput ignores result, content and output without a turn summary", () => {
+  assert.equal(turnOutput({ result: "ANSWER", content: "C", output: "O" }), "");
 });
 
 test("turnOutput is empty for a turn with no text", () => {

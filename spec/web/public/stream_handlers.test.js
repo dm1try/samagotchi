@@ -126,6 +126,13 @@ test("generation_started and generation_completed set the window, served model a
   assert.ok(page.names().includes("turnDom.generationCompleted"));
 });
 
+test("turn_completed appends an unstreamed answer from turn_summary.output", async () => {
+  const { page, handlers } = fakePage();
+  await handlers.turn_completed({ turn_summary: { output: "answer", empty_answer: null } });
+
+  assert.ok(page.calls.some(([name, text]) => name === "appendChunk" && text === "answer"));
+});
+
 // After /model (Engine#announce_switched_context!): the new model's window
 // and its %, or usage null when the window didn't resolve.
 test("context_status after /model sets the window and the %, and usage null clears the %", () => {

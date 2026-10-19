@@ -57,7 +57,7 @@ test("openStream dispatches JSON events to the right typed handler", () => {
         seen.chunk = data.content;
       },
       turn_completed: (data) => {
-        seen.completed = data.result.output;
+        seen.completed = data.turn_summary.output;
       },
       reset: (data) => {
         seen.reset = data.session_state_snapshot;
@@ -78,7 +78,7 @@ test("openStream dispatches JSON events to the right typed handler", () => {
 
   es.dispatch("generation_chunk", { data: JSON.stringify({ content: "hel" }) });
   es.dispatch("turn_completed", {
-    data: JSON.stringify({ result: { output: "done" } }),
+    data: JSON.stringify({ turn_summary: { output: "done" } }),
   });
   es.dispatch("reset", {
     data: JSON.stringify({ type: "reset", session_state_snapshot: { status: "idle" } }),
