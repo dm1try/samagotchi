@@ -28,6 +28,18 @@ RSpec.describe Samagotchi::ContextNote do
     end
   end
 
+  describe "a header of its own (a task finish note)" do
+    it "frames the note under that header, which text_of reads past as it does the context one" do
+      message = described_class.message(note_id: "task-1", text: "exit 0", source: "task 3f9a2c1d", created_at: at,
+                                        header: "TASK FINISHED", turn_start: true, turn_id: "t1")
+
+      expect(message[:content]).to eq("[TASK FINISHED from task 3f9a2c1d, 14:02]\nexit 0\n[END NOTE]")
+      expect(message).not_to have_key(:header)
+      expect(message).to include(turn_start: true, turn_id: "t1")
+      expect(described_class.text_of(message)).to eq("exit 0")
+    end
+  end
+
   describe ".label and .text_of" do
     it "names the sender and gives the note's own text back" do
       message = described_class.message(note_id: "n", text: "line one\nline two", source: "session", created_at: at,

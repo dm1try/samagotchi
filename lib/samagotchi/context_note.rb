@@ -15,25 +15,32 @@ module Samagotchi
     # context_source: the attached context source a note is about
     # (ContextAbsorber), so the UIs can tie it to its chip.
     KEYS = %i[kind note_id source from_session from_cwd context_source].freeze
+    HEADER = "CONTEXT NOTE"
+    # A finished background task's note (TaskFinishNote): a header of its own.
+    TASK_HEADER = "TASK FINISHED"
+    HEADERS = [HEADER, TASK_HEADER].freeze
+
+    FRAME_HEAD = /\A\[(?:#{HEADERS.map { |h| Regexp.escape(h) }.join("|")})[^\n]*\n/
 
     module_function
 
     # Takes SessionInbox.read_note's keys. +turn_start+ / +turn_id+: the
     # note starts a turn chi runs for it (a context wake), as a wake turn's
-    # delegate report does (Steer.turn_prompt?).
+    # delegate report does (Steer.turn_prompt?). +header+: the frame's
+    # (HEADERS), not kept as a key: the content carries it.
     # @return [Hash] the conversation message
     def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil,
-                turn_start: nil, turn_id: nil, **)
+                turn_start: nil, turn_id: nil, header: HEADER, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,
         from_cwd: from_cwd, context_source: context_source, turn_start: (true if turn_start == true), turn_id: turn_id,
         content: frame(text, source: source, created_at: created_at, from_session: from_session,
-                             from_cwd: from_cwd) }.compact
+                             from_cwd: from_cwd, header: header) }.compact
     end
 
-    def frame(text, source:, created_at: nil, from_session: nil, from_cwd: nil)
+    def frame(text, source:, created_at: nil, from_session: nil, from_cwd: nil, header: HEADER)
       time = clock(created_at)
       from = label(source: source, from_session: from_session, from_cwd: from_cwd)
-      "[CONTEXT NOTE from #{from}#{", #{time}" if time}]\n#{text}\n[END NOTE]"
+      "[#{header || HEADER} from #{from}#{", #{time}" if time}]\n#{text}\n[END NOTE]"
     end
 
     # Who sent a note: its source, or the sending session and its folder.
@@ -49,7 +56,7 @@ module Samagotchi
 
     # The note's own text, without its frame.
     def text_of(message)
-      fetch(message, :content).to_s.sub(/\A\[CONTEXT NOTE[^\n]*\n/, "").delete_suffix("\n[END NOTE]")
+      fetch(message, :content).to_s.sub(FRAME_HEAD, "").delete_suffix("\n[END NOTE]")
     end
 
     def fetch(message, key)
