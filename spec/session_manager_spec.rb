@@ -704,7 +704,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "hands the worker an idle exit set on the command line" do
-      Samagotchi::Config.set_cli_overrides("session.idle_exit_minutes" => "0.5")
+      Samagotchi::Config.reload!(cli_overrides: { "session.idle_exit_minutes" => "0.5" })
       spawned_env = nil
       allow(Process).to receive(:spawn) do |*args, **_opts|
         spawned_env = args.first if args.first.is_a?(Hash)
@@ -715,7 +715,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(spawned_env).to include("SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.5")
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     # Its default for this run (the worker's /model reset), marked as the
@@ -727,15 +727,15 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      Samagotchi::Config.set_cli_overrides("default.model" => "gemma4")
+      Samagotchi::Config.reload!(cli_overrides: { "default.model" => "gemma4" })
       described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
       described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned[0]).to include("SAMAGOTCHI_DEFAULT_MODEL" => "gemma4", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => "1")
       expect(spawned[1].keys).not_to include("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI")
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     describe "the worker's debug log" do
@@ -749,10 +749,10 @@ RSpec.describe Samagotchi::SessionManager do
         env
       end
 
-      after { Samagotchi::Config.set_cli_overrides({}) }
+      after { Samagotchi::Config.reload!(cli_overrides: {}) }
 
       it "is the spawner's log.file, made absolute against the spawner's directory" do
-        Samagotchi::Config.set_cli_overrides("log.file" => "logs/chi.log")
+        Samagotchi::Config.reload!(cli_overrides: { "log.file" => "logs/chi.log" })
 
         # In tmpdir: the spawn itself is logged there.
         Dir.chdir(tmpdir) do
@@ -761,14 +761,14 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       it "is disabled when the spawner's log is" do
-        Samagotchi::Config.set_cli_overrides("log.disable" => true)
+        Samagotchi::Config.reload!(cli_overrides: { "log.disable" => true })
 
         expect(spawned_env).to include("SAMAGOTCHI_LOG_DISABLE" => "true")
         expect(spawned_env).not_to have_key("SAMAGOTCHI_LOG_FILE")
       end
 
       it "passes on a --log-level flag" do
-        Samagotchi::Config.set_cli_overrides("log.level" => "debug")
+        Samagotchi::Config.reload!(cli_overrides: { "log.level" => "debug" })
 
         expect(spawned_env).to include("SAMAGOTCHI_LOG_LEVEL" => "debug")
       end
@@ -967,14 +967,14 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "writes the spawn to the log, with the session's sid and the worker's pid" do
       log = File.join(tmpdir, "chi.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
       session = nil
       spawned_opts { session = described_class.spawn_session(prompt: nil, model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir) }
 
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "spawn" } }
       expect(record.to_h).to include(level: "INFO", tag: "worker", sid: session.id[0, 8], fields: { "child_pid" => "12345" })
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     it "starts the worker in the session's directory, so its tools run there" do
@@ -987,7 +987,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "falls back to the spawner's directory, with a log line, when the session's is gone" do
       log = File.join(tmpdir, "chi.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: File.join(tmpdir, "gone"))
       session.save(state_dir: tmpdir)
 
@@ -998,7 +998,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(record.to_h).to include(level: "WARN", tag: "worker", sid: session.id[0, 8])
       expect(record.fields).to eq("dir" => File.join(tmpdir, "gone"), "cwd" => Dir.pwd)
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
   end
 
@@ -1229,7 +1229,7 @@ RSpec.describe Samagotchi::SessionManager do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       log = File.join(tmpdir, "chi.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
       worker = instance_double(Samagotchi::Worker, run: :signal, discard?: true, wake_due?: true)
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
       allow(described_class).to receive(:resume_session)
@@ -1243,7 +1243,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).not_to have_received(:resume_session)
       expect(described_class).not_to have_received(:delete_session)
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     it "wakes a new worker after a signal when input is queued (behind the turn the signal stopped), once the lock is free" do
@@ -1369,7 +1369,7 @@ RSpec.describe Samagotchi::SessionManager do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       log = File.join(tmpdir, "chi.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
       worker = instance_double(Samagotchi::Worker)
       allow(worker).to receive(:run).and_raise(NoMethodError, "undefined method 'x'")
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
@@ -1383,7 +1383,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(records.last.fields).to include("error" => "NoMethodError")
       expect(records.last.payload.lines.size).to be_between(1, 20)
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     it "initializes Engine with supported keywords" do

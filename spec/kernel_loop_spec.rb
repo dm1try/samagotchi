@@ -973,7 +973,7 @@ RSpec.describe Samagotchi::KernelLoop do
     it "uses the configured window when the server reports usage but no n_ctx" do
       # llama.cpp's final /completion chunk carries token counts but no n_ctx.
       ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
-      Samagotchi::Config.set_cli_overrides("context.window_tokens" => 200_000)
+      Samagotchi::Config.reload!(cli_overrides: { "context.window_tokens" => 200_000 })
       allow(client).to receive(:context_window).and_return(nil)
       events = []
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
@@ -987,11 +987,11 @@ RSpec.describe Samagotchi::KernelLoop do
 
       expect(status.last).to include("src=server", "window_tokens=200000", "window_src=config", "est_pct=60.0")
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     it "sizes context against the window the server reports, over config" do
-      Samagotchi::Config.set_cli_overrides("context.window_tokens" => 200_000)
+      Samagotchi::Config.reload!(cli_overrides: { "context.window_tokens" => 200_000 })
       allow(client).to receive(:context_window).with(model: "Gemma-4B-it").and_return(128_000)
       events = []
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
@@ -1009,7 +1009,7 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(status.last[:status]).to include("window_tokens=128000", "window_src=server", "est_pct=50.0")
       expect(status.last[:usage]).to include(window_tokens: 128_000, window_source: :server)
     ensure
-      Samagotchi::Config.set_cli_overrides({})
+      Samagotchi::Config.reload!(cli_overrides: {})
     end
 
     it "still falls back to the synthetic estimate when the server reports no usage" do

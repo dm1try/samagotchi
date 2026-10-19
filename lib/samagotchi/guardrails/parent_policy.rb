@@ -150,9 +150,6 @@ module Samagotchi
         level.nil? ? ORDER.size : ORDER.index(level)
       end
 
-      # @return [Array<String>] the effects +strategy+ lets a parent pick
-      def allowed_effects(strategy) = strategy.allowed
-
       # Each option's effect, in option order. Tagged questions carry them;
       # an untagged one (asked by an older worker, a relayed card built
       # from an older child's question) gets them derived as before:

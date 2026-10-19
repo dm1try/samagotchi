@@ -48,14 +48,14 @@ RSpec.describe Samagotchi::Log do
   end
 
   describe "the lazy default" do
-    after { Samagotchi::Config.set_cli_overrides({}) }
+    after { Samagotchi::Config.reload!(cli_overrides: {}) }
 
     it "resolves the file from Config once, and again after Config.reload!" do
       first = File.join(dir, "first.log")
       second = File.join(dir, "second.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => first)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => first })
       described_class.info(:worker, "one")
-      Samagotchi::Config.set_cli_overrides("log.file" => second)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => second })
       described_class.info(:worker, "two")
 
       expect(File.read(first)).to include(" one")
@@ -63,14 +63,14 @@ RSpec.describe Samagotchi::Log do
     end
 
     it "writes nothing with log.disable" do
-      Samagotchi::Config.set_cli_overrides("log.file" => path, "log.disable" => true)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => path, "log.disable" => true })
       described_class.warn(:worker, "x")
 
       expect(File.exist?(path)).to be(false)
     end
 
     it "only echoes a record logged while it resolves (Config warning about itself)" do
-      Samagotchi::Config.set_cli_overrides("log.file" => path)
+      Samagotchi::Config.reload!(cli_overrides: { "log.file" => path })
       allow(Samagotchi::LogPath).to receive(:resolve).and_wrap_original do |original|
         described_class.warn(:config, "bad_value", echo: "Warning: bad value")
         original.call

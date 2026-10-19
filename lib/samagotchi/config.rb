@@ -556,10 +556,6 @@ module Samagotchi
         resolve_with_origin(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides)
       end
 
-      def set_cli_overrides(overrides)
-        reload!(cli_overrides: overrides)
-      end
-
       # Problems with the keys of a parsed config.yml, one message per key the
       # code doesn't read (with a "did you mean" when a known key is close).
       # Every config-exposed entry in ENTRIES is known as written; names under

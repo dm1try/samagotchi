@@ -29,9 +29,9 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
 
   describe "the strategies" do
     it "lets hard pick deny and answer, standard spend too, soft permit too; never permit_wide" do
-      expect(described_class.allowed_effects(strategy("hard"))).to eq(%w[answer deny])
-      expect(described_class.allowed_effects(strategy("standard"))).to eq(%w[answer deny spend])
-      expect(described_class.allowed_effects(strategy("soft"))).to eq(%w[answer deny spend permit])
+      expect(strategy("hard").allowed).to eq(%w[answer deny])
+      expect(strategy("standard").allowed).to eq(%w[answer deny spend])
+      expect(strategy("soft").allowed).to eq(%w[answer deny spend permit])
     end
 
     it "takes an unknown name as hard, the strictest" do
