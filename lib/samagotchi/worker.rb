@@ -612,7 +612,9 @@ module Samagotchi
       budget_notice if state == :budget
       return false unless state == :due
 
-      reports, = take_child_reports
+      # Unresolved: a relay among them opens its card at the turn's first
+      # boundary, on the turn thread (a Stop closes it).
+      reports, = take_child_reports(resolve: false)
       # The turn must not generate with nothing to say: the drain gets this
       # exact list at its first boundary.
       return false if reports.empty?
@@ -1132,15 +1134,35 @@ module Samagotchi
     # the turn as its own).
     # @return [Array(Array<ChildReports::Report>, Hash|nil)] the reports
     #   and the mark of their message
-    def take_child_reports
+    # A report whose question goes to the parent's user is relayed here
+    # (ChildReports#resolve), before the boundary announces or merges
+    # anything; one whose card a Stop closed is held back until a human's
+    # input (no wake turn re-offers it at once; other wakes go on).
+    # +resolve+ false: a wake turn's take before the turn starts.
+    def take_child_reports(resolve: true)
       if (reports = @wakes.take_handed)
-        return [reports, { turn_start: true, turn_id: @turn_id }.compact]
+        return [resolve_relays(reports), { turn_start: true, turn_id: @turn_id }.compact]
       end
 
-      [@child_reports.take, nil]
+      taken = @child_reports.take
+      [resolve ? resolve_relays(taken) : taken, nil]
     rescue StandardError => e
       Log.warn(:worker, "delegate_reports_failed", error: e.class.name, msg: e.message)
       [[], nil]
+    end
+
+    def resolve_relays(reports)
+      return reports if reports.none?(&:relay)
+
+      relay = @engine.relay_peer
+      stopped = false
+      reports.filter_map do |report|
+        next report unless report.relay
+        # The turn stopped on an earlier card: no more cards in it.
+        next @child_reports.hold_back(report) if stopped
+
+        @child_reports.resolve(report, relay: relay).tap { |resolved| stopped = resolved.nil? }
+      end
     end
 
     # Check again with the event log held, which the Bridge holds while it
@@ -1264,6 +1286,7 @@ module Samagotchi
 
       ArchiveStore.user_input(@session_id, state_dir: @state_dir)
       @wakes.human_input!(interactive: ClientId.interactive?(client_id))
+      @child_reports&.release_holds
     end
 
     def stopped_on_disk?

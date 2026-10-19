@@ -707,6 +707,164 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       end
     end
 
+    # P4 (3b): a child's hook question the parent may only deny under the
+    # child's strategy is relayed to the parent's user at a boundary, on the
+    # turn thread, before the boundary merges anything (M6); the model gets
+    # the outcome line as the report.
+    describe "a child's hook question it may only deny" do
+      let(:cost_cap) do
+        { "id" => "h1", "kind" => "hook", "hook" => "cost-cap", "header" => "Cost cap", "question" => "Spent $5.",
+          "options" => %w[Continue Stop], "effects" => %w[spend deny], "status" => "pending" }
+      end
+      let(:relayed) { [] }
+
+      after { @child_lock&.release }
+
+      # The child's live worker holds its question (ReplyWait reports only those).
+      def child_asks(pending = cost_cap)
+        @child_lock ||= Samagotchi::OwnerLock.acquire(child_dir, kind: "worker")
+        Samagotchi::Tools::DelegateWait.mark_started(parent.id, child, state_dir: tmpdir)
+        s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+        s.parent_answers = "hard"
+        s.pending_question = pending
+        s.save(state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_ring(parent_dir, child_id: child.id, why: "question")
+      end
+
+      def relay_outcome(line: "hook question relayed to your user: Cost cap → Stop", stopped: false, &before)
+        allow(Samagotchi::Tools::DelegateRelay).to receive(:call) do |child_id, question, relay:, **|
+          before&.call
+          relayed << [child_id, question.id, relay.class, drain.map { |e| e[:type] }]
+          Samagotchi::Tools::DelegateRelay::Outcome.new(line: line, stopped: stopped)
+        end
+      end
+
+      def report_text(line)
+        "session: #{child.id}\nstatus: question\n#{line}\n#{Samagotchi::Tools::DelegateWait::REPORT_NEXT_REPLY}"
+      end
+
+      it "relays it at a boundary and merges the outcome line as the report, announced after the card settles" do
+        relay_outcome
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          child_asks
+          turns << [prompt, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(parent)
+        send_turn(parent, "keep going", "web:tab1")
+
+        _prompt, lines = next_turn
+        expect(lines.map(&:text)).to eq([report_text("hook question relayed to your user: Cost cap → Stop")])
+        expect(relayed.size).to eq(1)
+        child_id, qid, peer, seen = relayed.first
+        expect([child_id, qid, peer]).to eq([child.id, "h1", Samagotchi::Engine::RelayPeer])
+        expect(seen).not_to include(:input_merged)
+        expect(wait_until { drain.any? { |e| e[:type] == :input_merged } }).to be(true)
+        expect(wait_until { rings.empty? }).to be(true)
+      end
+
+      it "opens no card for a question answered on the child after the ring was taken (M1)" do
+        relay_outcome
+        allow_any_instance_of(Samagotchi::ChildReports).to receive(:take).and_wrap_original do |original|
+          original.call.tap do
+            s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+            s.pending_question = nil
+            s.save(state_dir: tmpdir)
+          end
+        end
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          child_asks
+          turns << [prompt, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(parent)
+        send_turn(parent, "keep going", "web:tab1")
+
+        _prompt, lines = next_turn
+        expect(relayed).to be_empty
+        expect(lines.map(&:text)).to eq([report_text("hook question relayed to your user: Cost cap → answered on the child")])
+      end
+
+      it "keeps the ring and the cursor when the card is stopped, and offers it again at the user's next turn (H1)" do
+        relay_outcome(line: "hook question relayed to your user: Cost cap → still open (your turn was stopped)", stopped: true)
+        calls = 0
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          calls += 1
+          child_asks if calls == 1
+          turns << [prompt, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(parent)
+        send_turn(parent, "keep going", "web:tab1")
+
+        _prompt, lines = next_turn
+        expect(lines).to eq([])
+        loop_rounds
+        # No wake turn re-offers it at once after a Stop: the user's next turn does.
+        expect(turns).to be_empty
+        expect(rings.size).to eq(1)
+        expect(cursor.report_claim).to be_nil
+        expect(cursor.baseline&.dig(:question_id) || cursor.baseline&.dig("question_id")).not_to eq("h1")
+
+        relay_outcome
+        send_turn(parent, "again", "web:tab1")
+        _prompt, lines = next_turn
+        expect(lines.map(&:text)).to eq([report_text("hook question relayed to your user: Cost cap → Stop")])
+        # Offered again: the stopped card's, then this one.
+        expect(relayed.map { |row| row[1] }).to eq(%w[h1 h1])
+      end
+
+      # M-a: a Stop holds back only that question: no wake turn offers it
+      # again until the user's next input, while another child's report
+      # still wakes the parent.
+      it "holds back only the stopped question after a Stop in a wake turn, until the user's next input" do
+        relay_outcome(line: "hook question relayed to your user: Cost cap → still open (your turn was stopped)", stopped: true)
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          turns << [prompt, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(parent)
+        child_asks
+
+        expect(next_turn).to eq([nil, []])
+        loop_rounds(3)
+        expect(turns).to be_empty
+        expect(rings.size).to eq(1)
+
+        other = make_child
+        Samagotchi::Tools::DelegateWait.mark_started(parent.id, other, state_dir: tmpdir)
+        other_dir = Samagotchi::Session.session_dir(other.id, state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_output(other_dir, "linted")
+        s = Samagotchi::Session.load(other.id, state_dir: tmpdir)
+        s.last_turn = { "outcome" => "completed", "ended_at" => Time.now.iso8601(6) }
+        s.save(state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_ring(parent_dir, child_id: other.id, why: "turn_end")
+        _prompt, lines = next_turn
+        expect(lines.map(&:text)).to eq(["session: #{other.id}\nstatus: answered\n---\nlinted"])
+        expect(relayed.size).to eq(1)
+
+        relay_outcome
+        send_turn(parent, "again", "web:tab1")
+        _prompt, lines = next_turn
+        expect(lines.map(&:text)).to eq([report_text("hook question relayed to your user: Cost cap → Stop")])
+      end
+
+      it "relays it in a wake turn at the turn's first boundary, not before the turn" do
+        relay_outcome
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          turns << [prompt, relayed.size, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(parent)
+        child_asks
+
+        prompt, before, lines = next_turn
+        expect(prompt).to be_nil
+        expect(before).to eq(0)
+        expect(lines.map(&:text)).to eq([report_text("hook question relayed to your user: Cost cap → Stop")])
+      end
+    end
+
     def drain
       list = []
       list << events.pop until events.empty?

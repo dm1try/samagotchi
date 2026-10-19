@@ -8,6 +8,7 @@ require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
 require "samagotchi/archive_store"
 require "samagotchi/tools/delegate_result"
+require "samagotchi/relay_desk"
 
 # A delegate child's news reaching its parent: the child rings (ChildRing),
 # the parent reads the rings and asks the child what happened (ChildReports).
@@ -501,6 +502,54 @@ RSpec.describe "delegate reports" do
 
     def peers
       Samagotchi::Tools::Peers.new(session_id: parent.id, state_dir: tmpdir, cancelled: -> { false })
+    end
+  end
+
+  # P4: the report-vs-relay decision is made on the parent's side in three
+  # places, all on the child's strategy: the delegate report
+  # (ChildReports), the wait (DelegateWait.call) and the look at the other
+  # children (DelegateRelay::Others#waiting). A child tightened to hard on
+  # its own, under config.yml's soft, goes to the relay on each.
+  describe "the routing twin (child's own hard under config soft)" do
+    let(:cost_cap) do
+      { id: "h1", kind: "hook", hook: "cost-cap", header: "Cost cap", question: "Spent $5.",
+        options: %w[Continue Stop], effects: %w[spend deny], status: "pending" }
+    end
+    let(:cards) { [] }
+    let(:relay) do
+      desk = Samagotchi::RelayDesk.new
+      opened = cards
+      Struct.new(:relay_desk) do
+        define_method(:open_question) do |fields, watch:|
+          opened << fields
+          { error: "cancelled", reason: "child_gone" }
+        end
+      end.new(desk)
+    end
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      own(child)
+      s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+      s.parent_answers = "hard"
+      s.save(state_dir: tmpdir)
+      started
+      end_turn(child, pending_question: cost_cap)
+    end
+
+    it "relays on all three paths" do
+      waiting = Samagotchi::Tools::DelegateRelay::Others.new(parent_id: parent.id, except: "none", relay: relay,
+                                                             state_dir: tmpdir, on_outcome: ->(*) {}).waiting
+      expect(waiting.map { |id, q| [id, q.id] }).to eq([[child.id, "h1"]])
+
+      peers = Samagotchi::Tools::Peers.new(session_id: parent.id, cwd: "/w", state_dir: tmpdir, cancelled: -> { false },
+                                           relay: relay)
+      Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0.3, poll_interval: 0.05, owner_grace: 0.3)
+      expect(cards.map { |c| c[:kind] }).to eq(["hook"])
+
+      ring(why: "question")
+      expect(reports.take.first.relay&.id).to eq("h1")
     end
   end
 end

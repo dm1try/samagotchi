@@ -130,7 +130,13 @@ module Samagotchi
     # (DelegateWait.finish, its report variant), the cursor it moves the child to,
     # and the cursor it was read from (a commit after the model moved it
     # itself, with delegate_result, leaves it alone).
-    Report = Data.define(:child_id, :text, :before, :after, :rings, :claim_id) do
+    # +relay+: the child's question when it goes to the parent's user
+    # (Tools::DelegateRelay.relay?): #resolve relays it on the turn thread
+    # and gives the report its outcome line; +text+ is the question's
+    # report until then (what a parent with no relay gets).
+    Report = Data.define(:child_id, :text, :before, :after, :rings, :claim_id, :relay) do
+      def initialize(relay: nil, **) = super
+
       def line(mark: nil) = Steer::Line.new(text: text, source: ChildReports::SOURCE, mark: mark)
       def origin = { client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}" }
     end
@@ -146,14 +152,19 @@ module Samagotchi
       Tools::DelegateCursors.clear_report_claims(@session_id, state_dir: @state_dir)
       # child id → the Report this turn took for it (rings merged).
       @taken = {}
+      # child id → the question id whose relay card a Stop closed (#hold_back).
+      @held = {}
     end
+
+    # The user's next input: questions held back after a Stop are offered again.
+    def release_holds = @held.clear
 
     # Whether a ring this turn hasn't taken waits (the idle loop's check).
     def waiting?
       return false if ChildRing.mode == "off"
 
       taken = taken_rings
-      ring_files.any? { |file| !taken.include?(file) }
+      ring_files.any? { |file| !taken.include?(file) && !held?(file) }
     end
 
     # The reports for rings this turn hasn't taken yet, recorded as taken.
@@ -164,7 +175,7 @@ module Samagotchi
       return [] if ChildRing.mode == "off"
 
       taken = taken_rings
-      fresh = ring_files.reject { |file| taken.include?(file) }
+      fresh = ring_files.reject { |file| taken.include?(file) || held?(file) }
       by_child = fresh.group_by { |file| SessionInbox.read_ring(file)&.dig(:child_id) }
       by_child.filter_map do |child_id, rings|
         report = child_id && report_for(child_id, rings)
@@ -207,7 +218,78 @@ module Samagotchi
       @taken = {}
     end
 
+    # A report whose question goes to the parent's user, settled: relayed
+    # through +relay+ (DelegateRelay.call: blocks until the card is
+    # answered, closed or the turn stopped) and given the outcome line as
+    # its text. Runs on the turn thread, before the boundary merges it.
+    # The child's question answered since the ring was taken opens no card;
+    # nor does one already answered on a relay (RelayDesk#settled?).
+    # @param relay [#open_question, #relay_desk, nil] Engine#relay_peer;
+    #   nil: the report's question text, as without P4's relay
+    # @return [Report, nil] nil when the parent's turn was stopped with the
+    #   card open: the report is released (its ring and the cursor stay), so
+    #   the next turn offers it again
+    def resolve(report, relay:)
+      return report unless report.relay
+      return report.with(relay: nil) unless relay
+
+      question = report.relay
+      what = question.header.to_s.empty? ? question.hook.to_s : question.header.to_s
+      line = if Session.load(report.child_id, state_dir: @state_dir).pending_question&.id.to_s != question.id.to_s
+               Tools::DelegateRelay.line(what, "answered on the child", hook: true)
+             elsif relay.relay_desk.settled?(report.child_id, question.id)
+               Tools::DelegateRelay.line(what, "answered on a relay already; it waits for the user on the child", hook: true)
+             else
+               outcome = Tools::DelegateRelay.call(report.child_id, question, relay: relay, state_dir: @state_dir)
+               return hold_back(report) if outcome.stopped
+
+               outcome.line
+             end
+      resolved = report.with(relay: nil, text: relayed_text(report.child_id, line))
+      @taken[report.child_id] = resolved if @taken[report.child_id]&.claim_id == report.claim_id
+      resolved
+    rescue ArgumentError => e
+      # The child is gone (or a bug): its question's report, as without a relay.
+      Log.info(:worker, "delegate_relay_unresolved", child: report.child_id[0, 8], error: e.message)
+      report.with(relay: nil)
+    end
+
+    # A relay report the parent's turn stopped on, or one behind it in the
+    # same take: released (its ring and the cursor stay) and held back, so
+    # no wake turn offers that question again until the user's next input
+    # (#release_holds); other children's rings go on.
+    # @return [nil]
+    def hold_back(report)
+      @held[report.child_id] = report.relay.id.to_s
+      release_report(report)
+    end
+
     private
+
+    # A ring of a child whose held-back question still waits.
+    def held?(file)
+      child_id = SessionInbox.read_ring(file)&.dig(:child_id)
+      question_id = @held[child_id] or return false
+      Session.load(child_id, state_dir: @state_dir).pending_question&.id.to_s == question_id
+    rescue ArgumentError
+      false
+    end
+
+    # A relayed question's report: the outcome line, then the next reply's
+    # promise (as a report's question text ends).
+    def relayed_text(child_id, line)
+      Tools::DelegateWait.result(child_id, "question", "#{line}\n#{Tools::DelegateWait::REPORT_NEXT_REPLY}")
+    end
+
+    # One taken report back: its cursor claim goes, its rings stay untaken.
+    # @return [nil]
+    def release_report(report)
+      @taken.delete(report.child_id)
+      Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
+        cursor.report_claim&.fetch("id", nil) == report.claim_id ? cursor.with(report_claim: nil) : cursor
+      end
+      nil
+    end
 
     def taken_rings
       @taken.values.flat_map(&:rings)
@@ -246,7 +328,7 @@ module Samagotchi
       # reply, as delegate_result takes it, not a newer queued turn's.
       wait = ReplyWait.call(child_id, state_dir: @state_dir, cursor: before.reply_file, baseline: before.baseline,
                                       timeout: 0, turn: before.turn)
-      return nil unless reportable?(wait) && !relay?(wait)
+      return nil unless reportable?(wait)
 
       claim_id = before.report_claim&.fetch("id", nil) || SecureRandom.hex(16)
       after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
@@ -260,7 +342,8 @@ module Samagotchi
       # a later wait on it would repeat its reply.
       after = after.with(report_claim: claim)
       text = Tools::DelegateWait.finish(wait, child_id, timeout: 0, report: true)
-      Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings, claim_id: claim_id)
+      Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings, claim_id: claim_id,
+                 relay: relay?(wait) ? wait.question : nil)
     rescue ArgumentError
       nil # the child is gone
     end
