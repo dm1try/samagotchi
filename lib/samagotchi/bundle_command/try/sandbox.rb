@@ -6,8 +6,9 @@ require "rbconfig"
 require "tmpdir"
 require "yaml"
 require_relative "../../config"
+require_relative "../../child_env"
 require_relative "../../cli/exit"
-require_relative "../../installed_gem"
+require_relative "../../memory_bundle/system_bundle"
 require_relative "../../memory_bundle"
 require_relative "../../memory_bundle/shas"
 require_relative "../../owner_lock"
@@ -30,7 +31,7 @@ module Samagotchi
         ].freeze
         CONFIG_DENYLIST_ENV_PREFIXES = CONFIG_DENYLIST.map do |section|
           prefix = if section == "guardrails"
-                     SessionManager::GUARDRAILS_ENV_PREFIX.delete_suffix("_")
+                     ChildEnv::GUARDRAILS_PREFIX.delete_suffix("_")
                    else
                      "SAMAGOTCHI_#{section.upcase}"
                    end
@@ -189,16 +190,18 @@ module Samagotchi
           nil
         end
 
+        # The user's environment (their hosts and keys) minus what no child
+        # chi takes from its spawner (ChildEnv), the worker markers, this
+        # chi's log and test settings, and the env forms of the config
+        # sections the sandbox drops.
         def build_child_env
-          env = ENV.to_h
-          SessionManager::SESSION_MARKER_ENV.each { |key| env.delete(key) }
+          env = ChildEnv.scrub(ENV.to_h)
           env.delete("SAMAGOTCHI_LOG_FILE")
           env.delete("SAMAGOTCHI_LOG_DISABLE")
-          env.delete("SAMAGOTCHI_SKIP_SYSTEM_BUNDLE")
+          env.delete(MemoryBundle::SystemBundle::SKIP_ENV)
           env.delete("SAMAGOTCHI_ENV") if env["SAMAGOTCHI_ENV"] == "test"
-          env.delete("SAMAGOTCHI_INSTALLED_VERSION")
           env.delete_if do |key, _|
-            key.start_with?(SessionManager::WORKER_ENV_PREFIX) || key == SessionManager::BOOT_FALLBACK_ENV ||
+            key.start_with?(ChildEnv::WORKER_PREFIX) || key == SessionManager::BOOT_FALLBACK_ENV ||
               CONFIG_DENYLIST_ENV_PREFIXES.any? { |prefix| key == prefix || key.start_with?("#{prefix}_") }
           end
           env.merge!(
@@ -209,7 +212,7 @@ module Samagotchi
             "SAMAGOTCHI_RECAP_ENABLED" => "false",
             "SAMAGOTCHI_CACHE_WARMUP" => "off"
           )
-          env.merge!(InstalledGem.unbundled_env_changes(env)) if InstalledGem.spec
+          env.merge!(ChildEnv.unbundled(env))
           env
         end
       end

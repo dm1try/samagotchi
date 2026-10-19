@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "securerandom"
 require "rbconfig"
+require_relative "child_env"
 require_relative "client_id"
 require_relative "analytics_file"
 require_relative "atomic_file"
@@ -210,7 +211,7 @@ module Samagotchi
     # is when the worker starts); opts[:env] adds to it (merged, not
     # replaced) what it can't read there: this `chi`'s CLI settings
     # (Config.cli_env) and the absolute log file. It unsets
-    # SAMAGOTCHI_GUARDRAILS_* and the session markers (SESSION_MARKER_ENV).
+    # what ChildEnv lists (SAMAGOTCHI_GUARDRAILS_*, the session markers).
     # XDG_CONFIG_HOME passes: whoever starts or
     # wakes the worker picks which config.yml it reads (docs/guardrails.md).
     # XDG_STATE_HOME and XDG_CONFIG_HOME, when set, pass made absolute
@@ -244,18 +245,15 @@ module Samagotchi
       # And the spawner's XDG dirs, absolute: a relative XDG_STATE_HOME or
       # XDG_CONFIG_HOME would otherwise be read from the session's directory.
       child_env.merge!(Paths.absolute_xdg)
-      # The spawner's environment must not reach the worker's guardrails (a
-      # parent agent starting or waking a session): Process.spawn unsets a
-      # key mapped to nil. config.yml no longer reads them; this keeps an
-      # older or future env-exposed one out as well.
-      ENV.each_key { |key| child_env[key] = nil if key.start_with?(GUARDRAILS_ENV_PREFIX) }
-      # The markers a session's execute exports (Tools::Builtins.parent_env)
-      # are that session's: a worker started from its commands (chi send)
-      # is another session. Its execute and tasks set its own; nothing else
-      # it runs (a user's !cmd, an MCP server, a context command) has one.
-      SESSION_MARKER_ENV.each { |key| child_env[key] = nil }
-      # A smoke's fake "newest installed" is for this process's notices only.
-      child_env[InstalledVersions::ENV_KEY] = nil
+      # Unset (Process.spawn unsets a key mapped to nil) what no child chi
+      # takes from its spawner (ChildEnv): the spawner's guardrails settings
+      # (a parent agent starting or waking a session; config.yml no longer
+      # reads them, this keeps an older or future env-exposed one out as
+      # well); the session markers, a session's own (a worker started from
+      # its commands, chi send, is another session: its execute and tasks
+      # set its own; nothing else it runs has one); and a smoke's fake
+      # "newest installed", for this process's notices only.
+      child_env.merge!(ChildEnv.unset)
       # A worker process: run_session_loop traps signals, and leaves this
       # process's tree.
       child_env[WORKER_PROCESS_ENV] = "1"
@@ -263,16 +261,10 @@ module Samagotchi
       # A gem-mode worker activates the newest installed chi itself: under
       # `bundle exec` (a Gemfile that has samagotchi) Bundler's RUBYOPT would
       # hold it to the bundle's version, and its badge would never clear.
-      child_env.merge!(InstalledGem.unbundled_env_changes) if InstalledGem.spec
+      child_env.merge!(ChildEnv.unbundled)
       opts[:env] = child_env unless child_env.empty?
       opts
     end
-
-    GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"
-    WORKER_ENV_PREFIX = "SAMAGOTCHI_WORKER_"
-    # Tools::Builtins.parent_env's (Tools::TaskRuntime::MARKER_ENV_KEYS).
-    SESSION_MARKER_ENV = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING
-                            SAMAGOTCHI_SESSION_REASONING_HISTORY].freeze
 
     # List all sessions, reading status from persisted session.json files.
     # +project_root+: only that project's sessions (nil: every session).
