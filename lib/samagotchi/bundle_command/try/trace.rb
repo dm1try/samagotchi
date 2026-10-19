@@ -2,6 +2,8 @@
 
 require "json"
 require_relative "../../analytics_file"
+require_relative "../../bridge/card_store"
+require_relative "../../session"
 require_relative "../../session_metrics"
 require_relative "../../tool_response"
 
@@ -16,21 +18,19 @@ module Samagotchi
 
       class TraceReader
         DENIAL_TEXT = "No one to approve it (non-interactive run)."
-        SESSION_ID = /\A[A-Za-z0-9_-]+\z/
         STDERR_LIMIT = 4000
 
         def initialize(state_home:, session_id:)
           @state_home = state_home
-          @session_id = session_id if session_id.to_s.match?(SESSION_ID)
+          @session_id = session_id if Session.valid_id?(session_id)
         end
 
         def read(exit_code:, answer:, stderr:, sandbox:, timed_out: false)
           return empty_trace(exit_code, answer, stderr, sandbox, timed_out) unless @session_id
 
-          sessions_dir = File.join(@state_home, "samagotchi", "sessions")
-          session_path = File.join(sessions_dir, "#{@session_id}.json")
-          session_dir = File.join(sessions_dir, @session_id)
-          session = json_file(session_path) || {}
+          sessions_dir = File.join(@state_home, Session::STATE_SUBDIR)
+          session_dir = Session.session_dir(@session_id, state_dir: sessions_dir)
+          session = json_file(Session.session_file(@session_id, state_dir: sessions_dir)) || {}
           messages = Array(session["messages"]).select { |message| message.is_a?(Hash) }
           analytics = AnalyticsFile.read(session_dir) || {}
           entries = card_entries(session_dir)
@@ -123,10 +123,13 @@ module Samagotchi
           args.to_s.gsub(/\s+/, " ").strip[0, 200]
         end
 
+        # The listing's placement fields: nothing to place in a one-turn run.
+        LISTING_FIELDS = %w[turns_since current earlier].freeze
+
+        # The saved cards as the web reads them (CardStore.saved), with
+        # string keys and values, as the JSON trace prints them.
         def card_entries(session_dir)
-          data = json_file(File.join(session_dir, "cards.json"))
-          entries = data.is_a?(Hash) ? data["entries"] : []
-          Array(entries).select { |entry| entry.is_a?(Hash) }
+          JSON.parse(JSON.generate(Bridge::CardStore.saved(session_dir))).map { |entry| entry.except(*LISTING_FIELDS) }
         end
 
         def unanswerable?(question)

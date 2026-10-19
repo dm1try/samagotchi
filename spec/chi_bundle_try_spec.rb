@@ -445,12 +445,13 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
             { "iteration" => 1, "call_index" => 1, "tool" => "execute", "status" => "error", "duration_ms" => 120 }
           ]
         ))
+        # As Bridge::CardStore saves it.
         File.write(File.join(session_dir, "cards.json"), JSON.generate(
-          "entries" => [
-            { "type" => "hook_notice", "hook" => "fixture.rb", "text" => "hook ran" },
+          "version" => 1, "turns" => 1, "entries" => [
+            { "type" => "hook_notice", "hook" => "fixture.rb", "text" => "hook ran", "turns" => 0 },
             { "type" => "question", "pending_question" => { "question" => "Continue?" },
-              "cancelled" => true, "reason" => "non_interactive" },
-            { "type" => "card", "title" => "Fixture", "body" => "card body" }
+              "cancelled" => true, "reason" => "non_interactive", "turns" => 0 },
+            { "type" => "card", "title" => "Fixture", "body" => "card body", "turns" => 0 }
           ]
         ))
 
