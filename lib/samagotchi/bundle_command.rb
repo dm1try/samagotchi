@@ -545,8 +545,12 @@ module Samagotchi
       0
     end
 
-    # " dev → /path" for a dev install (install --dev), else "".
-    def dev_label(record) = record.dev ? " dev → #{record.source}" : ""
+    # " dev → /path (missing)" when a dev install's source isn't there, else "".
+    def dev_label(record)
+      return "" unless record.dev
+
+      " dev → #{record.source}#{" (missing)" unless File.directory?(record.source)}"
+    end
 
     # "team (unknown)" for a scope this chi can't resolve (Status#bundle_status).
     def status_scope(st) = st[:scope_error] ? "#{st[:scope]} (unknown)" : st[:scope]

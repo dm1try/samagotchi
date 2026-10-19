@@ -13,7 +13,8 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle install --dev PATH` installs a bundle you are writing as a link to its folder: edits to its plugin,
   hooks, rules and scripts apply at the next session with no re-install, and their sha256 isn't checked (that
   bundle only). It refuses chi-shipped bundles and profiles. A re-install must use the same PATH and prunes dropped
-  hooks; `upgrade` refuses it; `uninstall` never touches PATH. `chi bundle status` shows `dev → PATH`.
+  hooks; `upgrade` refuses it; `uninstall` never touches PATH. `chi bundle status` shows `dev → PATH (missing)` if
+  the source is gone.
 
 ### Changed
 

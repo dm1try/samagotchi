@@ -638,6 +638,30 @@ Hooks removed: 1\n\z})
       expect(out).to include("  Plugin: plugin.rb [ok]\n")
     end
 
+    it "marks a moved dev source missing and uninstalls its dangling links without touching it" do
+      chi("install", "--dev", @plugin_src)
+      source = File.realpath(@plugin_src)
+      moved = File.join(@root, "src", "moved-plugin")
+      FileUtils.mv(@plugin_src, moved)
+      source_files = -> { Dir.glob(File.join(moved, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
+      before = source_files.call.to_h { |path| [path, File.binread(path)] }
+      plugin = File.join(bundle_dir("sample-plugin"), "plugin", "plugin.rb")
+      expect(File.symlink?(plugin)).to be(true)
+      expect(File.exist?(plugin)).to be(false)
+
+      expect(chi("status")[0].lines).to include(
+        "  sample-plugin v1.0.0 dev → #{source} (missing) scope=system files=0 plugin=plugin.rb issues=1\n"
+      )
+      out, = chi("status", "sample-plugin")
+      expect(out.lines.first).to include("dev → #{source} (missing)")
+
+      _out, err, code = chi("uninstall", "sample-plugin")
+
+      expect([err, code]).to eq(["", 0])
+      expect(File.exist?(bundle_dir("sample-plugin"))).to be(false)
+      expect(source_files.call.to_h { |path| [path, File.binread(path)] }).to eq(before)
+    end
+
     it "refuses an upgrade of a dev bundle with a one-line hint, and a plain install over it (and --dev over a plain one)" do
       chi("install", "--dev", @plugin_src)
       hint = "Upgrade failed: sample-plugin is a dev install of #{File.realpath(@plugin_src)}: it follows its source already " \
