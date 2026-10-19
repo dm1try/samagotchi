@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-10-19
+
 ### Added
 
 - A `delegate` child's hook question (the cost cap's Continue/Stop, a bundle's `ctx.ask_user`) now reaches its parent,
@@ -3493,7 +3495,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.87.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.88.0...HEAD
+[0.88.0]: https://github.com/dm1try/samagotchi/compare/v0.87.0...v0.88.0
 [0.87.0]: https://github.com/dm1try/samagotchi/compare/v0.86.0...v0.87.0
 [0.86.0]: https://github.com/dm1try/samagotchi/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/dm1try/samagotchi/compare/v0.84.0...v0.85.0
