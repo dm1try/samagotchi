@@ -28,19 +28,35 @@ module Samagotchi
 
     # Runs +calls+ in order (ToolRunner#run each), yielding each run and its
     # index as it finishes. +emit+ takes the dispatch events, the runner's
-    # own go to +on_stream_event+.
+    # own go to +on_stream_event+. An Interrupt (Ctrl-C) mid-batch yields an
+    # #interrupted run for every call left (the one it cut short too), so
+    # the loop's conversation answers each call, then goes on up: the turn
+    # keeps its progress (Engine#ctrl_c_messages).
     # @return [Array<ToolRun>] the runs
     def run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
+      # Before anything can be interrupted: the rescue counts it.
+      runs = []
       emit.call({ type: :tool_dispatch_started, iteration: iteration, call_count: calls.length })
-      runs = calls.each_with_index.map do |call, index|
-        run = runner.run(call, iteration: iteration, call_index: index + 1, call_count: calls.length,
-                               on_stream_event: on_stream_event, max_tool_output_chars: cap)
-        yield run, index if block_given?
-        run
+      calls.each_with_index do |call, index|
+        runs << runner.run(call, iteration: iteration, call_index: index + 1, call_count: calls.length,
+                                 on_stream_event: on_stream_event, max_tool_output_chars: cap)
+        yield runs.last, index if block_given?
       end
       emit.call({ type: :tool_dispatch_completed, iteration: iteration, call_count: calls.length })
       runs
+    rescue Interrupt
+      calls.each_with_index.drop(runs.size).each { |call, index| yield interrupted(call[:name]), index } if block_given?
+      raise
     end
+
+    # The result of a call an Interrupt cut short (or never started): the
+    # model reads that it may have partly run.
+    def interrupted(name)
+      text = interrupted_text(name)
+      ToolRun.new(output: text, capped_output: text)
+    end
+
+    def interrupted_text(name) = "[#{name}] Interrupted (Ctrl-C) before it returned: it may have partly run."
 
     # The runs' activity, for the turn's tool list (none for a call whose
     # dispatcher raised).

@@ -52,6 +52,21 @@ RSpec.describe Samagotchi::ToolResponse do
       expect(yielded).to eq([["[shots]\none shot", 0], ["[write]\nwrote", 1]])
       expect(runs.size).to eq(2)
     end
+
+    it "yields an interrupted run for every call left on an Interrupt, the dispatch event's own too" do
+      calls = [{ name: "shots" }, { name: "write" }]
+      yielded = []
+      emit = ->(event) { raise Interrupt if event[:type] == :tool_dispatch_started }
+
+      expect do
+        described_class.run_batch(runner, calls, iteration: 2, emit: emit, on_stream_event: :sink, cap: 50) do |run, index|
+          yielded << [run.output, index]
+        end
+      end.to raise_error(Interrupt)
+
+      expect(runner.calls).to be_empty
+      expect(yielded).to eq([[described_class.interrupted_text("shots"), 0], [described_class.interrupted_text("write"), 1]])
+    end
   end
 
   describe ".activities" do

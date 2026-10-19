@@ -97,11 +97,14 @@ StandardError in run_turn:
 Interrupt (Ctrl-C; the REPL only: a worker traps INT, see the signal row below):
   → if turn.ended: re-raised only
   → turn.controller.cancel!(:ctrl_c)
-  → end_turn(turn, "canceled"): ctrl_c_messages keeps turn.messages with TurnNote.cancelled(:ctrl_c)
-     # Both loops work on their own copy of the conversation, and Interrupt is not a
-     # StandardError, so nothing attaches the loop's conversation: only what the Engine
-     # built before the loop (system head, history, reminders, the prompt) survives.
-     # Tasks the turn started are missed in the cancel note for the same reason.
+  → end_turn(turn, "canceled"): ctrl_c_messages keeps the loop's conversation, else turn.messages
+     # (it came before the loop), with TurnNote.cancelled(:ctrl_c) at the tail.
+     # Both loops attach their conversation to the Interrupt as to a failure
+     # (LLM::FailedTurn.attach), so the turn's finished iterations stay, as after a Stop,
+     # and the cancel note names the tasks the turn started. One mid-tool is answered:
+     # ToolResponse.run_batch gives every call left an interrupted result (the native
+     # loop's batch entry joins them after the finished ones), so no call is kept without
+     # its result. A half-streamed reply is not kept (a Stop keeps it, [interrupted]).
   → :turn_canceled {cancellation_reason: :ctrl_c, duration_ms}
   → re-raised (the caller decides whether to exit)
 
@@ -191,7 +194,8 @@ KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
 ```
 
 `turn.conversation` is the loop's own copy, not the Engine's `turn.messages`. A failure attaches it to the error
-(`LLM::FailedTurn.attach`), so `Engine#failed_messages` can keep it; a Ctrl-C does not (see Error paths).
+(`LLM::FailedTurn.attach`), so `Engine#failed_messages` can keep it; an Interrupt (Ctrl-C) too, for
+`Engine#ctrl_c_messages` (see Error paths).
 
 ### ChatLoop (the chat APIs)
 
@@ -681,7 +685,7 @@ prompt starts with what the server has cached).
    and config.yml hooks survive.
 3. **Each loop works on its own copy of the conversation.** The Engine's `turn.messages` is what it sent. After
    a normal end or a Stop it keeps `result.conversation`; after a failure, the copy attached with
-   `FailedTurn.attach`; after a Ctrl-C, only `turn.messages`.
+   `FailedTurn.attach` (a Ctrl-C's too); `turn.messages` only when it ended before the loop.
 4. **Events are the contract.** UIs read events, not internal state. `on_event` is per turn; observers are
    persistent.
 5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine, keyed by

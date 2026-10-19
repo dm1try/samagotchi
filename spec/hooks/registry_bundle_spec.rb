@@ -145,4 +145,13 @@ RSpec.describe Samagotchi::Hooks, ".capture_failures" do
     expect(failures.map { |f| f.error.message }).to eq(["boom"])
     expect(verdict.deny?).to be true
   end
+
+  it "lets a Ctrl-C (a SignalException) through a fail-closed hook: no denial, no failure recorded" do
+    verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "x" })
+    handler = described_class.wrap(label: "guard.rb", event: :before_tool_call, policy: :deny) { raise Interrupt }
+    failures = []
+    expect { described_class.capture_failures(failures) { handler.call({ guardrail: verdict }) } }.to raise_error(Interrupt)
+    expect(failures).to be_empty
+    expect(verdict.deny?).to be false
+  end
 end

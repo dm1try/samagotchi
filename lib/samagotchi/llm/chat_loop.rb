@@ -90,7 +90,9 @@ module Samagotchi
         conversation = Array(messages).map(&:dup)
         Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: reasoning_since)
            .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
-      rescue StandardError => e
+      rescue StandardError, Interrupt => e
+        # A failure, or a Ctrl-C (its calls answered: ToolResponse.run_batch),
+        # carries the conversation so far for the Engine to keep.
         FailedTurn.attach(e, conversation && plain(conversation))
         raise
       end

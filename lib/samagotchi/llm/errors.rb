@@ -547,10 +547,10 @@ module Samagotchi
       end
     end
 
-    # Marks an error that ended a turn with the conversation the loop had
-    # built by then (the prompt plus completed tool iterations; a half
-    # streamed reply is not kept), so the caller can keep it, as a cancel's
-    # salvage does.
+    # Marks an error that ended a turn (or the Interrupt of a Ctrl-C) with
+    # the conversation the loop had built by then (the prompt plus completed
+    # tool iterations; a half streamed reply is not kept), so the caller can
+    # keep it, as a cancel's salvage does.
     module FailedTurn
       # +kept_steps+: set by the Engine when the turn's work stays
       # (Engine#failed_messages): the tool results it got to; nil when it

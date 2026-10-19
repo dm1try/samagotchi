@@ -327,9 +327,9 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         report = JSON.parse(out.string)
         expect(report["timed_out"]).to be(true)
         expect(report["session_id"]).not_to be_nil
-        # Ctrl-C keeps only the messages before the turn: the call comes
-        # from its tool record, without arguments.
-        expect(report["tools"]).to eq([{ "index" => 1, "name" => "execute", "args" => "", "status" => "ok",
+        # Ctrl-C keeps the turn's finished iterations: the call is saved,
+        # with its arguments, and shows once.
+        expect(report["tools"]).to eq([{ "index" => 1, "name" => "execute", "args" => "echo hi", "status" => "ok",
                                          "duration_ms" => report.dig("tools", 0, "duration_ms") }])
         expect(err.string).to include("tools:\n  1 execute          ok", "timed out after 600.0 seconds")
       end

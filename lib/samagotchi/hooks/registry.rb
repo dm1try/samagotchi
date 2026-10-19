@@ -93,6 +93,8 @@ module Samagotchi
       lambda do |payload|
         yield(payload)
       rescue Exception => e # rubocop:disable Lint/RescueException -- :deny fails closed on anything
+        # Ctrl-C and kill signals are the user's, whatever the policy.
+        raise if e.is_a?(SignalException)
         raise unless policy == :deny || e.is_a?(StandardError) || e.is_a?(ScriptError)
 
         Hooks.record_failure(label, event, e)

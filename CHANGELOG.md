@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A Ctrl-C during a turn keeps what the turn did, as a Stop does: its finished tool calls and their results stay in
+  the session with the cancel note (a call it cut short reads as interrupted), so the next turn knows what already
+  ran and the note lists the background tasks the turn started. `chi bundle try --timeout` now shows that turn's
+  tool calls with their arguments.
+
 ## [0.91.0] - 2026-10-19
 
 ### Added

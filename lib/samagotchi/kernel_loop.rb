@@ -243,7 +243,9 @@ module Samagotchi
                                                    streamed_thinking: turn.streamed_thinking)
       end
       finish(turn)
-    rescue StandardError => e
+    rescue StandardError, Interrupt => e
+      # A failure, or a Ctrl-C, carries the conversation so far: the
+      # Engine keeps the turn's finished iterations.
       LLM::FailedTurn.attach(e, turn && duplicate_conversation(turn.conversation))
       raise
     end
@@ -671,8 +673,17 @@ module Samagotchi
     def dispatch_calls(turn, calls)
       turn.qwen_attempts = 0
       turn.qwen_partial = nil
-      runs = ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
-                                                        on_stream_event: turn.on_stream_event, cap: turn.cap)
+      runs = []
+      begin
+        ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
+                                                   on_stream_event: turn.on_stream_event, cap: turn.cap) { |run, _| runs << run }
+      rescue Interrupt
+        # A Ctrl-C mid-batch: the entry still answers every call (the
+        # finished runs, then run_batch's interrupted ones), for #run to
+        # hand on with the conversation.
+        turn.conversation << ToolResponse.joined(runs, ids: ToolIds.next_ids(turn.conversation, runs.size))
+        raise
+      end
       turn.tool_activity.concat(ToolResponse.activities(runs))
       # One entry for the batch: the capped outputs joined (ToolResponse.joined),
       # an id per run (ToolIds).

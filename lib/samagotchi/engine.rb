@@ -1828,8 +1828,9 @@ module Samagotchi
     #   that put the turn's first message in the session already (a context
     #   wake's note) names it with this id
     #
-    # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
-    # the prompt is kept in the session and :turn_canceled is emitted, then the
+    # An Interrupt (SIGINT) cancels the turn: what it got to is kept in the
+    # session as after a Stop (the prompt, the loop's finished tool
+    # iterations, a cancel note) and :turn_canceled is emitted, then the
     # Interrupt is re-raised so the caller still decides whether to exit. One
     # after the turn's end event (in its after_turn/session_end hooks) is
     # only re-raised: the turn already ended; so is any error there. Any
@@ -1856,14 +1857,14 @@ module Samagotchi
         complete_turn(turn, result)
         warm_up_next_turn(turn, result)
         result
-      rescue Interrupt
+      rescue Interrupt => e
         # After the end event (in the after_turn/session_end hooks) the
         # turn is over: no second ending, the answer stays.
         raise if turn.ended
 
         turn.controller.cancel!(:ctrl_c)
         end_turn(turn, "canceled") do |seconds|
-          [ctrl_c_messages(turn, seconds), { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
+          [ctrl_c_messages(turn, e, seconds), { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
         end
         raise
       rescue StandardError => e
@@ -2263,16 +2264,25 @@ module Samagotchi
     end
     private :kept_messages
 
-    # A Ctrl-C keeps the turn's messages so far with a cancel note (nil
-    # before there are any). Only the pre-turn messages survive here, so
-    # tasks this turn started are missed (plan wait-stop §6).
-    def ctrl_c_messages(turn, seconds)
-      return nil unless turn.messages
+    # A Ctrl-C keeps the loop's conversation so far, as a Stop does (its
+    # finished tool iterations, every call answered: ToolResponse.run_batch),
+    # else the turn's messages so far (it came before the loop), with a
+    # cancel note naming the tasks still running; nil before there are any.
+    def ctrl_c_messages(turn, interrupt, seconds)
+      kept = loop_conversation(interrupt) || turn.messages
+      return nil unless kept
 
-      note = TurnNote.cancelled(:ctrl_c, seconds: seconds, running_tasks: Tools::TaskRuntime.running_created_in(turn.messages))
-      TurnNote.replace_trailing(turn.messages, note)
+      note = TurnNote.cancelled(:ctrl_c, seconds: seconds, running_tasks: Tools::TaskRuntime.running_created_in(kept))
+      TurnNote.replace_trailing(kept, note)
     end
     private :ctrl_c_messages
+
+    # The conversation the loop had built when +error+ ended the turn
+    # (LLM::FailedTurn), or nil.
+    def loop_conversation(error)
+      error.partial_conversation if error.respond_to?(:partial_conversation) && error.partial_conversation.is_a?(Array)
+    end
+    private :loop_conversation
 
     # A failure keeps the loop's partial conversation (else the turn's
     # messages so far) with a failed note; nil when the turn never reached
@@ -2283,7 +2293,7 @@ module Samagotchi
     # turn (TurnFlow#prompt_turn_failed), and roll back the others, with a
     # note of their own; -p --non-interactive keeps what this keeps.
     def failed_messages(turn, error)
-      kept = error.respond_to?(:partial_conversation) && error.partial_conversation.is_a?(Array) ? error.partial_conversation : turn.messages
+      kept = loop_conversation(error) || turn.messages
       return nil unless kept
 
       steps = LLM::FailedTurn.progress(turn.session.messages, kept)
