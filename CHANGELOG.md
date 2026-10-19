@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   dismissed, with Copy for the full text.
 - Web: images added to the composer while a message with images was still uploading or sending stay after it is sent,
   instead of vanishing with the sent ones.
+- Web: when the model list can't be read, the start page says so in a toast (a new session starts on the default
+  model) instead of just leaving out the model picker.
 
 ## [0.91.0] - 2026-10-19
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pickModel, MODEL_KEY } from "../../../lib/samagotchi/web/public/model_pick.js";
+import { modelsFailedText, pickModel, MODEL_KEY } from "../../../lib/samagotchi/web/public/model_pick.js";
 
 const named = (...names) => names.map((name) => ({ name }));
 const names = named("Gemma-4B-it", "Qwen3-14B", "box:gemma4-26b");
@@ -240,4 +240,18 @@ test("rowNote and rowTitle say a row's host is down", () => {
   assert.equal(rowNote(down, "down:rr/x"), "default · host down");
   assert.equal(rowTitle(down),
     "served by config (hosts.down.models); host down didn't list its models (down?); a chat on it may fail");
+});
+
+test("modelsFailedText: why the start page has no model picker, and what a new session starts on", () => {
+  assert.equal(modelsFailedText(new Error("Bad Gateway (502)")),
+               "Can't list the models: Bad Gateway (502). A new session starts on the default model.");
+});
+
+test("modelsFailedText: silent in a session (no picker shown), after an aborted fetch and while the page unloads", () => {
+  const down = new Error("Bad Gateway (502)");
+  assert.equal(modelsFailedText(down, { startPage: false }), "");
+  // + new session asked for the list: the start page shows next.
+  assert.match(modelsFailedText(down, { startPage: false, asked: true }), /^Can't list the models/);
+  assert.equal(modelsFailedText(Object.assign(new Error("aborted"), { name: "AbortError" })), "");
+  assert.equal(modelsFailedText(new TypeError("Failed to fetch"), { leaving: true }), "");
 });
