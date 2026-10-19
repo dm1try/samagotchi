@@ -52,15 +52,31 @@ RSpec.describe Samagotchi::BundleSessionSettings do
   end
 
   describe ".typed" do
-    it "types integers, decimals, true, false and off; keeps everything else as the string given" do
+    it "types integers, decimals (.5, 5., 1e3 too) and YAML's booleans; keeps everything else as the string given" do
       {
-        "3" => 3, "-1" => -1, "0" => 0, "2.5" => 2.5, "-0.25" => -0.25, "true" => true, "false" => false, "off" => false,
-        "3:30" => "3:30", "010" => "010", "0x10" => "0x10", "No" => "No", "no" => "no", "on" => "on", "yes" => "yes",
-        "null" => "null", "~" => "~", "1_000" => "1_000", "1e3" => "1e3", "2026-10-18" => "2026-10-18", "$3" => "$3",
-        "[1, 2]" => "[1, 2]", "True" => "True", ".5" => ".5", "5." => "5.", "00.5" => "00.5"
+        "3" => 3, "-1" => -1, "0" => 0, "2.5" => 2.5, "-0.25" => -0.25, ".5" => 0.5, "-.5" => -0.5, "5." => 5.0,
+        "1e3" => 1000.0, "1E1" => 10.0, "2.5e-1" => 0.25, "-1e1" => -10.0,
+        "true" => true, "True" => true, "yes" => true, "on" => true, "ON" => true,
+        "false" => false, "off" => false, "Off" => false, "no" => false, "No" => false, "NO" => false,
+        "3:30" => "3:30", "010" => "010", "0x10" => "0x10", "00.5" => "00.5", "e3" => "e3", "1e" => "1e", "." => ".",
+        "y" => "y", "n" => "n", "null" => "null", "~" => "~", "1_000" => "1_000", "2026-10-18" => "2026-10-18",
+        "$3" => "$3", "[1, 2]" => "[1, 2]", "five" => "five"
       }.each do |given, value|
         expect(described_class.typed(given)).to eql(value), given
       end
+    end
+
+    it "keeps 1e400 as text: Infinity is no number a setting can use or JSON save" do
+      expect(described_class.typed("1e400")).to eq("1e400")
+      expect(described_class.typed("-1e400")).to eq("-1e400")
+    end
+
+    it "reads 5. and 5.e1 as Ruby 3.3's Float does (a 0 after a bare point)" do
+      expect(described_class.float_text("5.")).to eq("5.0")
+      expect(described_class.float_text("5.e1")).to eq("5.0e1")
+      expect(described_class.float_text("-5.E1")).to eq("-5.0E1")
+      expect(described_class.float_text("2.5e1")).to eq("2.5e1")
+      expect(described_class.typed("5.e1")).to eq(50.0)
     end
 
     it "keeps what isn't a String (a JSON number or boolean) as it is" do
@@ -86,6 +102,41 @@ RSpec.describe Samagotchi::BundleSessionSettings do
         .to raise_error(described_class::Error, "--set cost-cap.default: cost-cap takes cap")
       expect { described_class.check!(parse("loop-guard.limit=3"), bundles: offered) }
         .to raise_error(described_class::Error, "--set loop-guard.limit: loop-guard takes no session settings")
+    end
+
+    it "refuses a value of the wrong type for a key the manifest types (session_settings: {cap: number})" do
+      types = { "cost-cap" => { "cap" => "number" } }
+      %w[cap=3 cap=0.5 cap=.5 cap=1e1 cap=-1 cap=0 cap=off cap=false].each do |pair|
+        settings = parse("cost-cap.#{pair}")
+        expect(described_class.check!(settings, bundles: offered, types: types)).to equal(settings), pair
+      end
+      { "five" => "\"five\"", "0x10" => "\"0x10\"", "on" => "true", "$3" => "\"$3\"" }.each do |value, shown|
+        expect { described_class.check!(parse("cost-cap.cap=#{value}"), bundles: offered, types: types) }
+          .to raise_error(described_class::Error, "--set cost-cap.cap: cost-cap takes a number (or off) for cap, not #{shown}"), value
+      end
+      expect { described_class.check!({ "cost-cap" => { "cap" => "x" } }, bundles: offered, types: types, flag: "bundle_settings") }
+        .to raise_error(described_class::Error, /\Abundle_settings cost-cap\.cap: cost-cap takes a number/)
+    end
+
+    it "refuses a number that isn't finite under number" do
+      expect do
+        described_class.check!({ "cost-cap" => { "cap" => Float::INFINITY } }, bundles: offered,
+                                                                                  types: { "cost-cap" => { "cap" => "number" } })
+      end
+        .to raise_error(described_class::Error, "--set cost-cap.cap: cost-cap takes a number (or off) for cap, not Infinity")
+      expect { described_class.check!(parse("cost-cap.cap=1e400"), bundles: offered, types: { "cost-cap" => { "cap" => "number" } }) }
+        .to raise_error(described_class::Error, /takes a number \(or off\) for cap, not "1e400"/)
+    end
+
+    it "checks boolean and string types, and takes any value for an untyped key" do
+      bundles = { "b" => %w[flag name free] }
+      types = { "b" => { "flag" => "boolean", "name" => "string" } }
+      settings = parse("b.flag=no", "b.name=fast", "b.free=3")
+      expect(described_class.check!(settings, bundles: bundles, types: types)).to equal(settings)
+      expect { described_class.check!(parse("b.flag=3"), bundles: bundles, types: types) }
+        .to raise_error(described_class::Error, "--set b.flag: b takes true or false for flag, not 3")
+      expect { described_class.check!(parse("b.name=3"), bundles: bundles, types: types) }
+        .to raise_error(described_class::Error, "--set b.name: b takes text for name, not 3")
     end
 
     it "names the request field instead of --set when given one" do
@@ -121,6 +172,7 @@ RSpec.describe Samagotchi::BundleSessionSettings do
       available = described_class.availability(dir: dir)
       expect(available.offered).to eq("mine" => ["cap"], "plain" => [])
       expect(available.notes).to eq({})
+      expect(available.types).to eq({})
       expect(described_class.offered(dir: dir)).to eq("mine" => ["cap"], "plain" => [])
     end
 
@@ -134,6 +186,28 @@ RSpec.describe Samagotchi::BundleSessionSettings do
         .to raise_error(described_class::Error, /\A--set future\.cap: future is installed but its plugin doesn't load: it requires chi >= 99\.0/)
       expect { described_class.check!(parse("edited.cap=1"), bundles: available.offered, notes: available.notes) }
         .to raise_error(described_class::Error, /\A--set edited\.cap: edited is installed but its plugin doesn't load: its sha256/)
+    end
+
+    it "keeps a string key's text as given: yes, 5, 1.10 and 1e3 aren't typed for it" do
+      available = described_class::Availability.new(offered: { "b" => %w[name free] }, notes: {},
+                                                    types: { "b" => { "name" => "string" } })
+      %w[yes 5 1.10 1e3].each do |text|
+        expect(described_class.from_flags(["b.name=#{text}", "b.free=#{text}"], available: available)["b"])
+          .to eq("name" => text, "free" => described_class.typed(text)), text
+        expect(described_class.from_request({ "b" => { "name" => text } }, bundles: available.offered, types: available.types))
+          .to eq("b" => { "name" => text }), text
+      end
+      expect(described_class.from_flags(["b.free=yes"], available: available)).to eq("b" => { "free" => true })
+    end
+
+    it "keeps the types a record lists (session_setting_types), and from_flags checks them" do
+      record("mine", session_settings: %w[cap note], session_setting_types: { "cap" => "number" })
+
+      available = described_class.availability(dir: dir)
+      expect(available.types).to eq("mine" => { "cap" => "number" })
+      expect(described_class.from_flags(["mine.cap=.5"], available: available)).to eq("mine" => { "cap" => 0.5 })
+      expect { described_class.from_flags(["mine.cap=five"], available: available) }
+        .to raise_error(described_class::Error, "--set mine.cap: mine takes a number (or off) for cap, not \"five\"")
     end
 
     it "says how to refresh a record from before session_settings when the shipped bundle lists them" do
@@ -157,6 +231,14 @@ RSpec.describe Samagotchi::BundleSessionSettings do
       expect(described_class.from_request({ "cost-cap" => { "cap" => "off" } }, bundles: offered)).to eq("cost-cap" => { "cap" => false })
       expect(described_class.from_request({ "cost-cap" => { "cap" => "010" } }, bundles: offered)).to eq("cost-cap" => { "cap" => "010" })
       expect(described_class.from_request(nil, bundles: offered)).to eq({})
+    end
+
+    it "checks the types as --set does" do
+      types = { "cost-cap" => { "cap" => "number" } }
+      expect(described_class.from_request({ "cost-cap" => { "cap" => ".5" } }, bundles: offered, types: types))
+        .to eq("cost-cap" => { "cap" => 0.5 })
+      expect { described_class.from_request({ "cost-cap" => { "cap" => "five" } }, bundles: offered, types: types) }
+        .to raise_error(described_class::Error, "bundle_settings cost-cap.cap: cost-cap takes a number (or off) for cap, not \"five\"")
     end
 
     it "drops an empty bundle entry before checking it" do

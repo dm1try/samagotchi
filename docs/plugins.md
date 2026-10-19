@@ -31,7 +31,8 @@ plugin:
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
                              # to the chi being released (docs/releasing.md)
-session_settings: [cap]      # optional: the settings a session may set (chi --set my-bundle.cap=3)
+session_settings: [cap]      # optional: the settings a session may set (chi --set my-bundle.cap=3);
+                             # {cap: number} types them: number (or off), boolean, string or any
 needs: [gh]                  # optional: outside commands it relies on (see memory.md#bundles-that-need-outside-commands)
 ```
 
@@ -766,10 +767,13 @@ A bundle's settings are config.yml's, for every session. A setting a session may
 say) is one the manifest lists in `session_settings:`; `chi --set BUNDLE.KEY=VALUE` and `chi send --new --set …`
 then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
 doesn't). chi refuses a bundle that isn't installed (or whose plugin doesn't load) and a key the manifest doesn't
-list, so a typo isn't saved. Values are typed simply: an integer (`3`, `-1`) or a decimal (`2.5`) is a number,
-`true` is true, `false` and `off` are false, and anything else stays the text as given (`010`, `0x10`, `3:30`,
-`No`, `null`); `POST /api/sessions` `bundle_settings` types its strings the same way and keeps JSON numbers and
-booleans. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
+list, so a typo isn't saved. A manifest that types a key (`session_settings: {cap: number}`: `number`, which
+takes off too, `boolean`, `string`, or `any`) gets only a value of that type: `--set my-bundle.cap=five` is refused,
+exit 2, as a key it doesn't list is (a mapping needs a chi newer than 0.91.0). Values are typed simply: an integer (`3`, `-1`) or a decimal (`2.5`, `.5`, `1e1`)
+is a number, `true`, `yes` and `on` are true, `false`, `no` and `off` are false (any case, as config.yml's YAML reads
+them), and anything else stays the text as given (`010`, `0x10`, `3:30`, `y`, `null`; YAML would read the first
+three as numbers and `null` as nothing); a key typed `string` keeps its text as given (`yes`, `5`, `1.10`); `POST /api/sessions` `bundle_settings` types its strings the same way and
+keeps JSON numbers and booleans. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
 `cap` replaces the config's `cap`). Read such a key from `ctx.settings` where it is used, not in
 `initialize(settings)`: that runs once at load, before any session, and gets the config only.
 
@@ -1195,7 +1199,8 @@ bundle.shutdown
   parts (`reported:`, `estimated:`, `side:`, `known:`; `total` is reported + estimated) or a callable giving either,
   called at each read (a counting lambda shows whether the bundle read it).
 - **`session_settings:`** (on `Bundle.load` and `bundle.set`) are the session's own `--set` values for the bundle,
-  keys its manifest lists in `session_settings:` (another raises `ArgumentError`, as chi refuses it). `ctx.settings`
+  keys its manifest lists in `session_settings:` (another key, or a value of another type than the manifest gives
+  it, raises `ArgumentError`, as chi refuses it). `ctx.settings`
   lays them over `settings:` through chi's own `Context#settings`; the plugin's `initialize(settings)` gets
   `settings:` only. `bundle.set(session_settings:)` moves the session to a new id (`test-session-2`, or the
   `session_id:` given beside it): chi never changes them within a session, and builds `ctx.settings` once per id.

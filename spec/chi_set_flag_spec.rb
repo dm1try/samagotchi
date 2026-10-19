@@ -19,11 +19,12 @@ RSpec.describe "chi --set" do
   end
 
   # A bundle record as an install leaves it (no plugin: only the record is read).
-  def install_record(config, name, session_settings)
+  def install_record(config, name, session_settings, types = {})
     dir = File.join(config, "samagotchi", "memories", ".bundles", name)
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "manifest.json"), JSON.generate("name" => name, "version" => "1.0.0",
-                                                              "session_settings" => session_settings))
+                                                              "session_settings" => session_settings,
+                                                              "session_setting_types" => types))
   end
 
   # chi with *args (and one --non-interactive turn against a fake llama.cpp
@@ -33,7 +34,7 @@ RSpec.describe "chi --set" do
     server.default("/completion", sse: ["data: #{JSON.generate(content: "ok", stop: true)}\n\n"])
     Dir.mktmpdir do |dir|
       config = File.join(dir, "config")
-      install_record(config, "cost-cap", ["cap"])
+      install_record(config, "cost-cap", ["cap"], { "cap" => "number" })
       install_record(config, "plain", [])
       env = { "XDG_CONFIG_HOME" => config, "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
@@ -53,6 +54,15 @@ RSpec.describe "chi --set" do
     expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 0.25 })
   end
 
+  it "reads .5 and 1e1 as numbers" do
+    err, status, saved = run_chi("--set", "cost-cap.cap=.5")
+    expect(status).to eq(0), err
+    expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 0.5 })
+    err, status, saved = run_chi("--set", "cost-cap.cap=1e1")
+    expect(status).to eq(0), err
+    expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 10.0 })
+  end
+
   it "saves none without the flag" do
     err, status, saved = run_chi
     expect(status).to eq(0), err
@@ -65,7 +75,8 @@ RSpec.describe "chi --set" do
       "a.b.c=1" => "one key under the bundle",
       "nope.x=1" => "--set nope.x: no installed bundle nope (bundles that take --set: cost-cap)",
       "cost-cap.default=1" => "--set cost-cap.default: cost-cap takes cap",
-      "plain.x=1" => "--set plain.x: plain takes no session settings"
+      "plain.x=1" => "--set plain.x: plain takes no session settings",
+      "cost-cap.cap=five" => "--set cost-cap.cap: cost-cap takes a number (or off) for cap, not \"five\""
     }.each do |arg, message|
       err, status, saved = run_chi("--set", arg)
       expect(status).to eq(2), "#{arg}: #{err}"

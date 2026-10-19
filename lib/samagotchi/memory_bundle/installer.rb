@@ -440,6 +440,7 @@ module Samagotchi
           context_providers: @manifest.context_providers,
           file_descriptions: @manifest.file_descriptions,
           session_settings: @manifest.session_settings,
+          session_setting_types: @manifest.session_setting_types,
           dev: @dev
         )
       end

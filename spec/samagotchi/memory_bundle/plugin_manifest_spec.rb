@@ -90,14 +90,39 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(YAML.load_file(File.join(dir, "manifest.yml"))).not_to have_key("session_settings")
     end
 
-    it "refuses session_settings: that isn't a list of setting names" do
-      ["session_settings: cap\n", "session_settings: [a.b]\n", "session_settings: [{cap: 1}]\n"].each do |line|
+    it "reads session_settings: as a mapping of setting names to types, records the types and builds them back" do
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path) + "session_settings: {cap: number, flag: boolean, note: string, free: any}\n")
+      manifest = described_class.read(dir: src)
+      expect(manifest.session_settings).to eq(%w[cap flag note free])
+      expect(manifest.session_setting_types).to eq("cap" => "number", "flag" => "boolean", "note" => "string")
+      expect(described_class.read(dir: write_source).session_setting_types).to eq({})
+
+      install(src)
+      expect(provenance.record.session_settings).to eq(%w[cap flag note free])
+      expect(provenance.record.session_setting_types).to eq("cap" => "number", "flag" => "boolean", "note" => "string")
+
+      dir = File.join(tmpdir, "built")
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, session_settings: %w[cap free],
+                            session_setting_types: { "cap" => "number" })
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))["session_settings"]).to eq("cap" => "number", "free" => "any")
+    end
+
+    it "refuses session_settings: that isn't a list of setting names or a mapping of them to types" do
+      ["session_settings: cap\n", "session_settings: [a.b]\n", "session_settings: [{cap: 1}]\n",
+       "session_settings: {a.b: number}\n", "session_settings: {cap: 1}\n"].each do |line|
         src = write_source
         path = File.join(src, "manifest.yml")
         File.write(path, File.read(path) + line)
         expect { described_class.read(dir: src) }
           .to raise_error(described_class::ValidationError, /session_settings: a list of setting names/), line
       end
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path) + "session_settings: {cap: money}\n")
+      expect { described_class.read(dir: src) }
+        .to raise_error(described_class::ValidationError, "session_settings: cap's type is number, boolean, string or any, not \"money\"")
     end
 
     it "has no plugin when the manifest names none" do

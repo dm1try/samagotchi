@@ -388,11 +388,13 @@ module Samagotchi
 
       # +setup+ (the recorder's, nil for none) with +session_settings+ as
       # this bundle's own values, checked against the manifest's
-      # session_settings: as chi --set checks them.
-      # @raise [ArgumentError] a key the manifest doesn't list
+      # session_settings: (keys and types) as chi --set checks them.
+      # @raise [ArgumentError] a key the manifest doesn't list, or a value
+      #   of another type than it gives the key
       def setup_with(session_settings, setup)
         values = { @name => stringify(session_settings) }
-        BundleSessionSettings.check!(values, bundles: { @name => @manifest.session_settings }, flag: "session_settings")
+        BundleSessionSettings.check!(values, bundles: { @name => @manifest.session_settings },
+                                             types: { @name => @manifest.session_setting_types }, flag: "session_settings")
         (setup || SessionSetup.new).with(bundle_settings: values)
       end
 

@@ -57,7 +57,8 @@ plugin:
 
 `plugin.rb` defines `class Plugin` with `register(chi)`; `initialize(settings)` (optional) gets config.yml
 `bundles: my-bundle:` as a Hash with string keys, once, when the plugin loads. A value a session may set
-(`chi --set my-bundle.KEY=V`, listed in the manifest's `session_settings:`) is read from `ctx.settings` at call
+(`chi --set my-bundle.KEY=V`, listed in the manifest's `session_settings:`, typed with `{KEY: number}` so a
+value of another type is refused) is read from `ctx.settings` at call
 time. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
 
 ## What a hook sees

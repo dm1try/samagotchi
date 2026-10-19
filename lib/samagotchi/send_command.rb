@@ -93,9 +93,9 @@ module Samagotchi
         --set BUNDLE.KEY=VALUE
                     (--new) a bundle setting for this session, over
                     config.yml's bundles: (repeatable; a key its bundle's
-                    manifest lists in session_settings:; 3, 2.5, true,
-                    false and off are typed, the rest is text:
-                    --set cost-cap.cap=3)
+                    manifest lists in session_settings:; numbers (3,
+                    .5) and booleans (true, off, no) are typed, the
+                    rest is text: --set cost-cap.cap=3)
         --parent-answers LEVEL
                     (--new) what a parent agent may answer on its
                     questions: hard, standard or soft, only stricter than
