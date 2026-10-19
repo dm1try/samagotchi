@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
 - Web: removing a queued message (its ×) and opening another session before the worker answered no longer puts the
   removed text into that session's composer; a toast names the session it came from and stays until
   dismissed, with Copy for the full text.
+- Web: images added to the composer while a message with images was still uploading or sending stay after it is sent,
+  instead of vanishing with the sent ones.
 
 ## [0.91.0] - 2026-10-19
 

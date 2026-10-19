@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   MAX_IMAGE_MB, MAX_TURN_IMAGES, admitImages,
-  chipName, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText, uploadChips,
+  chipName, chipsAfterSend, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText, uploadChips,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
 import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -195,4 +195,13 @@ test("uploadChips fetches a restored chip's image (it has no file) to upload it 
   assert.deepEqual(fetched, [["/api/sessions/s1/images/0123456789abcdef.png", "shot.png"]]);
   assert.deepEqual(u.calls, [["s2", "FETCHED", "shot.png"]]);
   assert.equal(chips[0].session, "s2");
+});
+
+test("chipsAfterSend drops only the sent chips: one added while the send was in flight stays", () => {
+  const sent = { name: "a.png", src: "blob:a" };
+  const later = { name: "b.png", src: "blob:b" };
+  const sending = [sent];
+  assert.deepEqual(chipsAfterSend([sent, later], sending), [later]);
+  assert.deepEqual(chipsAfterSend([sent], sending), []);
+  assert.deepEqual(chipsAfterSend([], sending), []);
 });
