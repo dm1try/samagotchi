@@ -197,6 +197,19 @@ RSpec.describe "task tools" do
     end
   end
 
+  describe Samagotchi::Tools::TaskWait, ".finished_text" do
+    it "is the text a wait gives for the finished task, with its own tail length" do
+      create_result = Samagotchi::Tools::TaskCreate.call("ruby -e '1.upto(5) { |i| puts i }'")
+      task_id = extract_field(create_result, "task_id")
+      waited = described_class.call(task_id, timeout: 10)
+      record, = Samagotchi::Tools::TaskRuntime.get_record(task_id)
+
+      expect(described_class.finished_text(record)).to eq(waited)
+      expect(described_class.finished_text(record, tail_lines: 2)).to end_with("output_tail:\n4\n5")
+      expect(described_class.finished_text(record).ref_path).to eq(record.output_path)
+    end
+  end
+
   describe Samagotchi::Tools::TaskGet do
     it "returns full metadata for an existing task" do
       create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"get\"'")

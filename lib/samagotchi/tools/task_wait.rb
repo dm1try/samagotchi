@@ -80,12 +80,19 @@ module Samagotchi
       end
       private_class_method :cancelled_response
 
-      # Always give the log's last lines: a test run's summary, an error. A
-      # task the user stopped also says so.
-      def self.finished_response(record, tail_lines)
+      # A finished task's text, as task_wait gives it: its status lines and
+      # always the log's last lines (a test run's summary, an error), then a
+      # stderr_tail when the record has a non-empty one. A task the user
+      # stopped also says so. Public: a task finish wake's note
+      # (TaskFinishNote) carries the same text.
+      # @param record [TaskRecord] a finished one
+      # @return [String] a RefText of its output_path when it has one
+      def self.finished_text(record, tail_lines: TAIL_LINES_DEFAULT)
         extra = record.stopped_by_user? ? [TaskRuntime::USER_STOP_NOTE] : []
         format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines, extra: extra)
       end
+
+      def self.finished_response(record, tail_lines) = finished_text(record, tail_lines: tail_lines)
       private_class_method :finished_response
 
       def self.output_tail(record, tail_lines)
