@@ -1023,18 +1023,25 @@ module Samagotchi
     end
 
     # The Engine published a question (after the question desk saved it).
-    # In a turn that reports to the parent, the model's own question and
-    # the step-limit continue ring it; approvals and hooks' questions are
-    # the user's, on this session's card.
+    # In a turn that reports to the parent, the model's own question, the
+    # step-limit continue and a hook's question ring it (the parent reports
+    # or relays a hook's: ChildReports). Approvals don't: the relay takes
+    # them while the parent waits. Nor does a card relayed from this
+    # session's own child (relay set): the hop is the parent's wait.
     def ring_question(event)
       return unless @reporting_turn
 
-      kind = event.dig(:pending_question, :kind).to_s
-      return unless ["", ContinueOffer::KIND].include?(kind)
+      pending = event[:pending_question] || {}
+      kind = pending[:kind].to_s
+      return unless RINGING_KINDS.include?(kind)
+      return if pending[:relay]
 
       ChildRing.ring(@session, why: "question", state_dir: @state_dir)
       @asked_parent = true
     end
+
+    # The kinds of question that ring a delegate child's parent (#ring_question).
+    RINGING_KINDS = ["", ContinueOffer::KIND, "hook"].freeze
 
     # WorkerInbound.save_or_log: a failed save between turns is logged.
     def save_or_log(at, &) = WorkerInbound.save_or_log(at, &)

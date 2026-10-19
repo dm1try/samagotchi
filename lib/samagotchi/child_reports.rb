@@ -246,7 +246,7 @@ module Samagotchi
       # reply, as delegate_result takes it, not a newer queued turn's.
       wait = ReplyWait.call(child_id, state_dir: @state_dir, cursor: before.reply_file, baseline: before.baseline,
                                       timeout: 0, turn: before.turn)
-      return nil unless reportable?(wait)
+      return nil unless reportable?(wait) && !relay?(wait)
 
       claim_id = before.report_claim&.fetch("id", nil) || SecureRandom.hex(16)
       after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
@@ -266,14 +266,24 @@ module Samagotchi
     end
 
     # A reply, a turn that left none, a crash, or a question the parent's
-    # model decides (its own ask_user_question, the step-limit continue).
-    # Approvals and hooks' questions are the user's, on the child's card.
+    # model decides (its own ask_user_question, the step-limit continue, a
+    # hook's question). Approvals are the user's (the relay, while the
+    # parent waits; else on the child's card).
     def reportable?(wait)
       case wait.status
       when :done, :no_reply, :error then true
-      when :waiting_for_answer then [nil, "", "continue"].include?(wait.question&.kind&.to_s)
+      when :waiting_for_answer then REPORTED_KINDS.include?(wait.question&.kind&.to_s)
       else false
       end
+    end
+
+    REPORTED_KINDS = [nil, "", "continue", Tools::DelegateRelay::HOOK_KIND].freeze
+
+    # Whether the child's question goes to this parent's user rather than
+    # its model (Tools::DelegateRelay.relay?, under the child's strategy).
+    def relay?(wait)
+      wait.status == :waiting_for_answer && wait.question.kind.to_s == Tools::DelegateRelay::HOOK_KIND &&
+        Tools::DelegateRelay.relay?(wait.question, strategy: Guardrails::ParentPolicy.for_session(wait.session))
     end
 
     def delete_rings(rings)

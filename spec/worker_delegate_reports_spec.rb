@@ -84,9 +84,9 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
   def rings = Samagotchi::SessionInbox.find_ring_files(parent_dir)
   def ring_whys = rings.map { |f| Samagotchi::SessionInbox.read_ring(f)[:why] }
 
-  def question(kind)
+  def question(kind, **more)
     engine.instance_variable_get(:@session_observer)
-          .notify(type: :question_requested, pending_question: { id: "q-#{kind}", kind: kind, question: "?" }.compact)
+          .notify(type: :question_requested, pending_question: { id: "q-#{kind}", kind: kind, question: "?", **more }.compact)
   end
 
   def next_turn(timeout: 3) = turns.pop(timeout: timeout)
@@ -149,11 +149,16 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       expect(wait_until { ring_whys == ["turn_end"] }).to be(true)
     end
 
-    it "rings on the model's question and the continue offer in its parent's turn, not on an approval or a hook's" do
+    # P4: a hook's question rings too (the parent reports or relays it); an
+    # approval doesn't (the relay takes it while the parent waits), nor a
+    # relay card (a hook card relayed from a grandchild: the hop is the
+    # grandparent's wait, as for approvals).
+    it "rings on the model's question, the continue offer and a hook's question in its parent's turn, not on an approval or a relay card" do
       child = make_child
       allow(engine).to receive(:run_turn) do |_session, prompt, **|
-        %w[approval hook].each { |kind| question(kind) }
-        question(nil)
+        question("approval")
+        question("hook", relay: { id: "r1", child_id: "c" })
+        question("hook")
         turns << [prompt]
         result
       end
@@ -162,6 +167,20 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
       expect(next_turn&.first).to eq("go")
       expect(wait_until { ring_whys == %w[question turn_end] }).to be(true)
+    end
+
+    it "doesn't ring on a hook's question in a turn its user typed into it" do
+      child = make_child
+      allow(engine).to receive(:run_turn) do |_session, prompt, **|
+        question("hook")
+        turns << [prompt]
+        result
+      end
+      start_worker(child)
+      send_turn(child, "from the web", "web:tab1")
+      expect(next_turn&.first).to eq("from the web")
+      loop_rounds
+      expect(rings).to be_empty
     end
 
     it "rings after a turn that follows a question it rang about, whoever starts that turn (D10)" do

@@ -374,12 +374,22 @@ RSpec.describe "delegate reports" do
       expect(reports.take.first.text).to include("status: error\nthe child's worker failed: boom")
     end
 
-    it "reports the model's question and the step-limit continue, not an approval or a hook's question" do
+    # P4: a hook's question the parent may usefully answer under the
+    # child's strategy is reported; an approval isn't (the relay takes it).
+    it "reports the model's question, the step-limit continue and a hook's question the parent may answer, not an approval" do
       own(child)
       end_turn(child, pending_question: { id: "a1", kind: "approval", question: "Run rm?" })
       ring(why: "question")
       expect(reports.take).to eq([])
       expect(rings).to be_empty
+
+      end_turn(child, pending_question: { id: "h1", kind: "hook", header: "Cost cap", question: "Spent $5.",
+                                          options: %w[Continue Stop], effects: %w[spend deny] })
+      ring(why: "question")
+      text = reports.take.first.text
+      expect(text).to include("status: question\nChild #{child.id} is waiting for an answer (hook): Cost cap")
+      expect(text).to include("    1. Continue\n    2. Stop\n")
+      expect(text).to include("answer: chi answer #{child.id} --question h1")
 
       end_turn(child, pending_question: { id: "c1", kind: "continue", header: "Step limit", question: "Continue it?",
                                           options: %w[Continue Stop] })
