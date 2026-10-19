@@ -56,6 +56,8 @@ and commands may change between minor versions. How releases are made:
   another process by then), and no longer waits 0.1 s after every run. A `--timeout` stops the background tasks the
   turn started along with the child, and the delegate workers and tasks a run leaves behind are stopped before the
   sandbox is deleted.
+- `chi bundle check` warns (`clash`) about an installed bundle of the same name whose record can't be read, instead
+  of skipping the clash check without a word.
 
 ## [0.91.0] - 2026-10-19
 

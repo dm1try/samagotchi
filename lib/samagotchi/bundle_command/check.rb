@@ -251,13 +251,26 @@ module Samagotchi
         # A shipped bundle installed from any chi's copy is that bundle.
         return if shipped?
 
-        record = MemoryBundle::Provenance.new(name: name).record
-        return unless record && File.expand_path(record.source.to_s) != @dir
+        record = installed_record(name)
+        return unless record
+        return unreadable_clash(name, record.error) if record.error
+        return if File.expand_path(record.source.to_s) == @dir
 
         add(:warn, :clash, "manifest.yml", "a bundle named #{name} is installed from #{record.source}",
             line: manifest_line("name"), fix: "rename the bundle, or chi bundle upgrade #{display(@dir)} to replace it")
-      rescue StandardError
-        nil
+      end
+
+      # The installed same-named bundle's record; an unreadable one as
+      # InstalledBundle.unreadable.
+      def installed_record(name)
+        MemoryBundle::Provenance.new(name: name).record
+      rescue JSON::ParserError, SystemCallError => e
+        MemoryBundle::InstalledBundle.unreadable(name, "#{e.class}: #{e.message.lines.first&.strip}")
+      end
+
+      def unreadable_clash(name, error)
+        add(:warn, :clash, "manifest.yml", "a bundle named #{name} is installed, but its record can't be read (#{error})",
+            line: manifest_line("name"), fix: "rename the bundle, or chi bundle install --force #{display(@dir)} to replace it")
       end
 
       # An unfilled `sha256: sha256:` isn't YAML: the Installer can't read

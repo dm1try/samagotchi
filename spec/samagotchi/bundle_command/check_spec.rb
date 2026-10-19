@@ -170,6 +170,17 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     expect(@status).to eq(0)
   end
 
+  it "clash: a same-named bundle installed whose record can't be read is a warning, not skipped" do
+    with_env("XDG_CONFIG_HOME" => File.join(tmp, "user-config")) do
+      record = File.join(Samagotchi::MemoryPaths.bundles_dir, "check-clean", "manifest.json")
+      FileUtils.mkdir_p(File.dirname(record))
+      File.write(record, "{broken")
+      expect(findings(:warn)).to contain_exactly(
+        a_string_matching(/\Awarn clash manifest\.yml:\d+: a bundle named check-clean is installed, but its record can't be read \(.+\) \(fix: rename the bundle/)
+      )
+    end
+  end
+
   it "trust: a trust_level the author set" do
     edit("manifest.yml") { |text| "#{text}trust_level: reviewed\n" }
     expect(findings(:warn)).to eq(["warn trust manifest.yml:17: trust_level: reviewed is set by the bundle's author " \
