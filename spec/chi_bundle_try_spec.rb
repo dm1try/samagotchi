@@ -180,20 +180,13 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
 
       sandbox.stop_leftovers
 
-      expect(wait_until(timeout: 5) { pids.none? { |pid| alive?(pid) } }).to be(true)
+      expect(wait_until(timeout: 5) { pids.all? { |pid| process_gone?(pid) } }).to be(true)
       expect(Process).not_to have_received(:kill).with(anything, Process.pid)
       expect(Process).not_to have_received(:kill).with(anything, -Process.pid)
       sandbox.cleanup
     end
   ensure
-    pids.each { |pid| Process.kill("KILL", pid) if alive?(pid) }
-  end
-
-  def alive?(pid)
-    Process.kill(0, pid)
-    true
-  rescue Errno::ESRCH
-    false
+    pids.each { |pid| Process.kill("KILL", pid) unless process_gone?(pid) }
   end
 
   it "leaves a running task record's group alone without a start time, or with another process's" do
@@ -629,7 +622,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           expect(result.exit_status).to eq(0)
           expect(result.stdout).to include("child started")
           expect(elapsed).to be < 4
-          expect(wait_until(timeout: 2) { gone?(descendant_pid) }).to be(true)
+          expect(wait_until(timeout: 2) { process_gone?(descendant_pid) }).to be(true)
         end
       end
 
@@ -639,13 +632,6 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         stub_const("Samagotchi::BundleCommand::Try::Sandbox::CHI", script)
         stub_const("Samagotchi::BundleCommand::Try::Sandbox::LIB_DIR", dir)
         Struct.new(:child_env, :work_dir).new({}, dir)
-      end
-
-      def gone?(pid)
-        Process.kill(0, pid)
-        false
-      rescue Errno::ESRCH
-        true
       end
 
       it "signals no process group after a child that exited with nothing left in its group" do
@@ -684,10 +670,10 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
 
           task_pid = Integer(File.read(pid_file))
           expect(result.timed_out).to be(true)
-          expect(wait_until(timeout: 3) { gone?(task_pid) }).to be(true)
+          expect(wait_until(timeout: 3) { process_gone?(task_pid) }).to be(true)
         end
       ensure
-        Process.kill("KILL", task_pid) if task_pid && !gone?(task_pid)
+        Process.kill("KILL", task_pid) if task_pid && !process_gone?(task_pid)
       end
     end
   end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../process_group"
+
 module Samagotchi
   module Testing
     # Waiting with a deadline, for a test that waits on a thread or a
@@ -24,13 +26,9 @@ module Samagotchi
       end
 
       # Whether no process +pid+ is left (a killed grandchild is reaped a
-      # moment later: wait_until { process_gone?(pid) }).
-      def process_gone?(pid)
-        Process.kill(0, pid)
-        false
-      rescue Errno::ESRCH
-        true
-      end
+      # moment later: wait_until { process_gone?(pid) }). One that isn't
+      # ours to signal is still there (ProcessGroup.alive?).
+      def process_gone?(pid) = !ProcessGroup.alive?(pid)
     end
   end
 end
