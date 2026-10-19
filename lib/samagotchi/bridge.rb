@@ -84,8 +84,8 @@ module Samagotchi
     # @param on_exit_request [#call, nil] a client asks the worker to exit
     #   now: takes the client_id and delete: (the exit is to delete the
     #   session, /exit --delete), returns nil when the worker will leave or
-    #   the Symbol that keeps it up (WorkerIdleExit#hold_for_request); called
-    #   with the event log held. Without one, POST /exit answers 501
+    #   what keeps it up (a WorkerIdleExit::Hold: #reason, #tasks, #hint);
+    #   called with the event log held. Without one, POST /exit answers 501
     # @param exit_discards [#call, nil] after an exit the worker agreed to:
     #   whether it will delete the session as empty (the 200 says
     #   +discard+); without one the reply leaves the field out
@@ -823,15 +823,15 @@ module Samagotchi
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
-      reason = @engine.synchronize_events do
+      hold = @engine.synchronize_events do
         raise IntakeClosed if stopped?
         next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
 
         @on_exit_request.call(client_id, **options)
       end
-      return deadline_passed("exit request") if reason == :expired
+      return deadline_passed("exit request") if hold == :expired
 
-      if reason.nil?
+      if hold.nil?
         return [{}, 200, { status: "restarting", session_id: @session_id }] if restart
 
         body = { status: "exiting", session_id: @session_id }
@@ -839,10 +839,9 @@ module Samagotchi
         return [{}, 200, body]
       end
 
-      # A hold may name what it waits for ({reason:, tasks:}: the background
-      # tasks a finish wake watches).
-      held = reason.is_a?(Hash) ? reason : { reason: reason }
-      [{}, 409, { status: "held", reason: held[:reason].to_s, tasks: held[:tasks], hint: held[:hint],
+      # A hold may name what it waits for (tasks: the background tasks a
+      # finish wake watches).
+      [{}, 409, { status: "held", reason: hold.reason.to_s, tasks: hold.tasks, hint: hold.hint,
                   session_id: @session_id }.compact]
     end
 

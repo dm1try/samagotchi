@@ -1088,7 +1088,7 @@ RSpec.describe Samagotchi::Worker do
 
       it "answers :starting before the idle-exit policy exists" do
         worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
-        expect(worker.send(:exit_request, "tui:1")).to eq(:starting)
+        expect(worker.send(:exit_request, "tui:1")).to eq(Samagotchi::WorkerIdleExit::Hold.new(reason: :starting))
       end
     end
 

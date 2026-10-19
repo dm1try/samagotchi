@@ -11,6 +11,7 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "samagotchi/worker_idle_exit"
 require "samagotchi/bridge_client"
 
 # Minimal SSE/HTTP client for the bridge integration specs. Talks a raw
@@ -2034,7 +2035,7 @@ RSpec.describe Samagotchi::Bridge do
       end
 
       it "answers 409 with what keeps the worker up" do
-        start_bridge(on_exit_request: ->(_, **) { :client_connected })
+        start_bridge(on_exit_request: ->(_, **) { Samagotchi::WorkerIdleExit::Hold.new(reason: :client_connected) })
 
         expect(post_exit(JSON.generate(client_id: "tui:1")))
           .to eq([409, { "status" => "held", "reason" => "client_connected", "session_id" => @session.id }])
@@ -2042,7 +2043,9 @@ RSpec.describe Samagotchi::Bridge do
 
       it "names the background tasks a finish wake waits for when they hold it" do
         tasks = [{ id: "t1", command: "rails s" }]
-        start_bridge(on_exit_request: ->(_, **) { { reason: :background_tasks, tasks: tasks, hint: "stop them" } })
+        start_bridge(on_exit_request: lambda { |_, **|
+          Samagotchi::WorkerIdleExit::Hold.new(reason: :background_tasks, tasks: tasks, hint: "stop them")
+        })
 
         expect(post_exit(JSON.generate(client_id: "tui:1")))
           .to eq([409, { "status" => "held", "reason" => "background_tasks",

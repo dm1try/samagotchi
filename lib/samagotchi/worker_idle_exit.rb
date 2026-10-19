@@ -24,6 +24,15 @@ module Samagotchi
   # the timeout and leaves out the asking client's own stream. A restart
   # (POST /exit restart: true) has its own rules, #hold_for_restart.
   class WorkerIdleExit
+    # What keeps the worker up when a client asks it to exit (Worker#exit_request,
+    # the Bridge's 409): +reason+, a #hold_for_request (or #hold_for_restart)
+    # Symbol, or :starting before this policy exists; for :background_tasks
+    # the watched tasks still running ({id:, command:}) and a +hint+ on
+    # stopping them.
+    Hold = Data.define(:reason, :tasks, :hint) do
+      def initialize(reason:, tasks: nil, hint: nil) = super
+    end
+
     # @param engine [Engine] #turn_running?, #last_activity_at, #reminder_store
     # @param bridge [Bridge, nil] #open_streams, #last_client_activity_at; nil
     #   when the worker's Bridge failed to start

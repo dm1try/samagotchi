@@ -493,8 +493,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     expect(worker.send(:exit_request, "web:tab"))
-      .to eq({ reason: :background_tasks, tasks: [{ id: "t1", command: "sleep 20; echo done" }],
-               hint: Samagotchi::Worker::TASK_STOP_HINT })
+      .to eq(Samagotchi::WorkerIdleExit::Hold.new(reason: :background_tasks,
+                                                  tasks: [{ id: "t1", command: "sleep 20; echo done" }],
+                                                  hint: Samagotchi::Worker::TASK_STOP_HINT))
     config["session.task_wakes"] = "queue"
     expect(worker.send(:exit_request, "web:tab")).to be_nil
   end

@@ -1249,17 +1249,19 @@ module Samagotchi
     # +delete+: the session is deleted after (/exit --delete), so no recap.
     # +restart+: a new worker takes over (on the newest chi installed), so
     # WorkerIdleExit#hold_for_restart's rules, and no recap or discard.
-    # @return [Symbol, Hash, nil] what keeps the worker up ({reason:
-    #   :background_tasks, tasks:} names the watched tasks still running),
-    #   nil when it will leave
+    # @return [WorkerIdleExit::Hold, nil] what keeps the worker up (for
+    #   :background_tasks, the watched tasks still running), nil when it
+    #   will leave
     def exit_request(client_id, delete: false, restart: false)
       # The Bridge serves before the idle-exit policy exists.
-      return :starting unless @idle_exit
+      return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
 
       hold = restart ? @idle_exit.hold_for_restart : @idle_exit.hold_for_request(requester: client_id)
-      # /exit names the tasks it waits for (D3).
-      return { reason: hold, tasks: @task_wakes.watch.running, hint: TASK_STOP_HINT } if hold == :background_tasks && !restart
-      return hold if hold
+      if hold == :background_tasks && !restart
+        # /exit names the tasks it waits for (D3).
+        return WorkerIdleExit::Hold.new(reason: hold, tasks: @task_wakes.watch.running, hint: TASK_STOP_HINT)
+      end
+      return WorkerIdleExit::Hold.new(reason: hold) if hold
 
       @exit_requested = true
       @exit_requested_by = client_id
