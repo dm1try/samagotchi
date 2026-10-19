@@ -10,6 +10,7 @@ require_relative "../../cli/exit"
 require_relative "../../installed_gem"
 require_relative "../../memory_bundle"
 require_relative "../../memory_bundle/shas"
+require_relative "../../session_manager"
 
 module Samagotchi
   class BundleCommand
@@ -22,12 +23,14 @@ module Samagotchi
           bundles hooks guardrails memories append_system_prompt recap session log web update kitty tmux broadcast
           context_sources
         ].freeze
-        SESSION_MARKER_ENV = %w[
-          SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING
-          SAMAGOTCHI_SESSION_REASONING_HISTORY
-        ].freeze
-        WORKER_ENV = %w[SAMAGOTCHI_WORKER_PROCESS SAMAGOTCHI_WORKER_DETACH SAMAGOTCHI_BOOT_FALLBACK].freeze
-
+        CONFIG_DENYLIST_ENV_PREFIXES = CONFIG_DENYLIST.map do |section|
+          prefix = if section == "guardrails"
+                     SessionManager::GUARDRAILS_ENV_PREFIX.delete_suffix("_")
+                   else
+                     "SAMAGOTCHI_#{section.upcase}"
+                   end
+          prefix
+        end.freeze
         class Error < StandardError
           attr_reader :status
 
@@ -39,10 +42,11 @@ module Samagotchi
 
         attr_reader :root, :config_home, :state_home, :work_dir, :manifest
 
-        def initialize(path, bundle_settings: {}, cost_cap: 1)
+        def initialize(path, bundle_settings: {}, cost_cap: 1, cost_cap_override: false)
           @path = File.realpath(path)
           @bundle_settings = bundle_settings
           @cost_cap = cost_cap
+          @cost_cap_override = cost_cap_override
           read_manifest
           @root = File.realpath(Dir.mktmpdir("chi-bundle-try-"))
           @config_home = File.join(root, "config")
@@ -52,6 +56,9 @@ module Samagotchi
           @work_dir = File.realpath(@work_dir)
           write_config
           @child_env = build_child_env
+        rescue StandardError
+          cleanup
+          raise
         end
 
         def child_env = @child_env.dup
@@ -75,14 +82,16 @@ module Samagotchi
         def write_config
           source = ConfigFile.read_yaml(env: ENV.to_h) || {}
           data = source.to_h { |key, value| [key.to_s, value] }
-          # Keep the user's model and runtime settings, but never load their
-          # code, memory, or session policy into an isolated bundle try.
+          # Drop bundles, hooks, guardrails, memories, append_system_prompt,
+          # recap, session, log, web, update, kitty, tmux, broadcast and
+          # context sources; keep model and ordinary runtime settings.
           CONFIG_DENYLIST.each { |key| data.delete(key) }
           data["context"] = data["context"].dup if data["context"].is_a?(Hash)
           data["context"]&.delete("sources")
-          data["bundles"] = {}
-          data["bundles"][@manifest.name] = @bundle_settings unless @bundle_settings.empty?
-          data["bundles"]["cost-cap"] = { "cap" => @cost_cap }
+          data["bundles"] = { "cost-cap" => { "cap" => @cost_cap } }
+          data["bundles"][@manifest.name] ||= {}
+          data["bundles"][@manifest.name].merge!(@bundle_settings)
+          data["bundles"]["cost-cap"]["cap"] = @cost_cap if @cost_cap_override
           path = File.join(config_home, "samagotchi", "config.yml")
           FileUtils.mkdir_p(File.dirname(path))
           File.write(path, YAML.dump(data))
@@ -108,6 +117,8 @@ module Samagotchi
           raise Error, "chi bundle try: #{e.message}"
         rescue MemoryBundle::Shas::Error => e
           raise Error, "chi bundle try: #{e.message}"
+        rescue Psych::Exception => e
+          raise Error, "chi bundle try: manifest.yml is not valid YAML (#{e.message})"
         end
 
         def install_path(path)
@@ -121,16 +132,15 @@ module Samagotchi
 
         def build_child_env
           env = ENV.to_h
-          SESSION_MARKER_ENV.each { |key| env.delete(key) }
-          WORKER_ENV.each { |key| env.delete(key) }
+          SessionManager::SESSION_MARKER_ENV.each { |key| env.delete(key) }
           env.delete("SAMAGOTCHI_LOG_FILE")
           env.delete("SAMAGOTCHI_LOG_DISABLE")
           env.delete("SAMAGOTCHI_SKIP_SYSTEM_BUNDLE")
-          env.delete("SAMAGOTCHI_SESSION_SHARED")
           env.delete("SAMAGOTCHI_ENV") if env["SAMAGOTCHI_ENV"] == "test"
           env.delete("SAMAGOTCHI_INSTALLED_VERSION")
           env.delete_if do |key, _|
-            key.start_with?("SAMAGOTCHI_GUARDRAILS_", "SAMAGOTCHI_WORKER_") || key == "SAMAGOTCHI_BOOT_FALLBACK"
+            key.start_with?(SessionManager::WORKER_ENV_PREFIX) || key == SessionManager::BOOT_FALLBACK_ENV ||
+              CONFIG_DENYLIST_ENV_PREFIXES.any? { |prefix| key == prefix || key.start_with?("#{prefix}_") }
           end
           env.merge!(
             "HOME" => Dir.home,

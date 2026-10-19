@@ -26,6 +26,9 @@
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
 - `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
 
+- `chi bundle try PATH -p TEXT [options]` — install a bundle in a temporary, filtered sandbox, run one real model turn,
+  and print its trace (see [Trying a bundle](#trying-a-bundle)).
+
 ### First setup
 
 `chi bootstrap TARGET` names the model server and writes the config for it:
@@ -127,6 +130,34 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   never fires), `boundary` (warn: a `Samagotchi::` name outside "Stable for bundles"; a shipped bundle's listed
   exceptions aside) and `tests` (info: how to run them, or "no tests"). `--set KEY=VALUE` (repeatable, typed as
   `chi --set`) goes to `bundles: <name>:` in the sandbox's config.yml.
+
+### Trying a bundle
+
+`chi bundle try PATH -p TEXT [--model NAME] [--memory NAME] [--mute NAME] [--toolkit NAME] [--thinking LEVEL]
+[--set KEY=VALUE] [--json] [--keep] [--timeout SECONDS]` installs and runs the bundle in a temporary config, state
+and work directory, then prints a trace of tool calls, notices, questions, the answer, token totals and cost. The
+child's working directory is outside your repository, so project memories and `AGENTS.md` / `CLAUDE.md` files in
+your current directory aren't loaded. Your hosts, API-key environment variables, Keychain and other runtime
+settings are retained, but your configured bundles, hooks, guardrails, memories, appended system prompts and
+attached context sources are not copied. Chi installs its shipped `guardrails` and `cost-cap` bundles for the run;
+the default cap is $1 and `--set cost-cap.cap=N` changes it. Other `--set KEY=VALUE` entries are typed config
+values under `bundles: <tried-bundle>:`; unlike `chi --set BUNDLE.KEY=VALUE`, they are not session settings and
+aren't checked against `session_settings:`. `--memory` and `--mute` accept comma-separated names and repeat.
+`--timeout` defaults to 300 seconds. An ask that no one can answer or a guardrail denial is traced and warned
+about without changing the child's exit status; hook questions made with `ctx.ask_user` are invisible in
+non-interactive mode. `--keep` retains the temporary sandbox and prints its path and debug log. `--json` writes
+one experimental JSON object to stdout and human trace lines to stderr; its keys are `session_id`, `exit_code`,
+`answer`, `tools` (`index`, `name`, `args`, `status`, `duration_ms`), `notices`, `cards`, `questions`,
+`interactive_blocked`, `used_memories`, `tokens` (`prompt`, `completion`), `cost`, `cost_is_estimate`, `model`,
+`sandbox`, `denied` (1-based tool indexes) and `stderr_tail` (last 4,000 characters). Exit status: 2 for usage,
+1 for install/turn failure or timeout, 130 for Ctrl-C, otherwise the child's status.
+
+`try` runs the bundle's code and the model's tools with your real HOME, account and keys. Its temporary working
+directory and filtered config do not make untrusted code safe: a plugin, hook or model tool can still access files
+and services available to your account. Use it only for code you trust.
+
+Tool arguments are capped to 60 characters in the text trace and 200 in JSON; the text trace shows at most 10 answer
+lines, while JSON includes the full answer. Either may contain secrets.
 
 ### Listing the models
 

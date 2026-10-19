@@ -263,18 +263,13 @@ module Samagotchi
       # A gem-mode worker activates the newest installed chi itself: under
       # `bundle exec` (a Gemfile that has samagotchi) Bundler's RUBYOPT would
       # hold it to the bundle's version, and its badge would never clear.
-      child_env.merge!(unbundled_env_changes) if InstalledGem.spec
+      child_env.merge!(InstalledGem.unbundled_env_changes) if InstalledGem.spec
       opts[:env] = child_env unless child_env.empty?
       opts
     end
 
-    # Shared with foreground child commands (bundle test/try) so gem-mode
-    # subprocesses do not inherit the app's Bundler activation.
-    private_class_method def self.unbundled_env_changes(env = ENV.to_h)
-      InstalledGem.unbundled_env_changes(env)
-    end
-
     GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"
+    WORKER_ENV_PREFIX = "SAMAGOTCHI_WORKER_"
     # Tools::Builtins.parent_env's (Tools::TaskRuntime::MARKER_ENV_KEYS).
     SESSION_MARKER_ENV = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING
                             SAMAGOTCHI_SESSION_REASONING_HISTORY].freeze

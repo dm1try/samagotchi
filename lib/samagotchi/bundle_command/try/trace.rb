@@ -44,7 +44,7 @@ module Samagotchi
             session_id: @session_id, exit_code: exit_code, answer: answer.to_s, tools: tool_rows, notices: notices,
             cards: cards, questions: questions, denied: denied, interactive_blocked: blocked_count.positive?,
             used_memories: Array(session["used_memory_names"]), tokens: {
-                                                                  prompt: summary&.prompt_sum || 0, completion: summary&.completion_sum || 0
+                                                                  prompt: summary&.prompt_sum, completion: summary&.completion_sum
                                                                 },
             cost: cost, cost_is_estimate: estimate, model: session["model_name"], sandbox: sandbox,
             stderr_tail: tail(stderr)
@@ -56,34 +56,43 @@ module Samagotchi
         def empty_trace(exit_code, answer, stderr, sandbox)
           Trace.new(session_id: nil, exit_code: exit_code, answer: answer.to_s, tools: [], notices: [], cards: [],
                     questions: [], denied: [], interactive_blocked: false, used_memories: [], tokens: {
-                      prompt: 0, completion: 0
+                      prompt: nil, completion: nil
                     }, cost: nil, cost_is_estimate: false, model: nil, sandbox: sandbox, stderr_tail: tail(stderr))
         end
 
         def tools(messages, analytics)
-          calls = messages.flat_map do |message|
-            next [] unless %w[model assistant].include?(message["role"])
-
-            Array(message["tool_calls"]).select { |call| call.is_a?(Hash) }
-          end
           records = Array(analytics["tool_records"]).select { |record| record.is_a?(Hash) }
-                                                    .sort_by { |record| [record["iteration"].to_i, record["call_index"].to_i] }
+                                                    .to_h do |record|
+            [[record["iteration"].to_i, record["call_index"].to_i], record]
+          end
           tool_responses = messages.select { |message| %w[tool_response tool].include?(message["role"]) }
           denied = []
-          rows = records.each_with_index.map do |record, index|
-            call = calls[index] || {}
-            id = call["id"]
-            response = tool_responses.find { |message| message["tool_call_id"] == id } if id
-            response ||= tool_responses[index]
-            is_denied = response && response["content"].to_s.include?(DENIAL_TEXT)
-            denied << (index + 1) if is_denied
-            {
-              index: index + 1,
-              name: record["called_as"] || record["tool"] || call_name(call),
-              args: argument_text(call),
-              status: is_denied ? "denied" : record["status"].to_s,
-              duration_ms: record["duration_ms"].to_i
-            }
+          index = 0
+          iteration = 0
+          rows = messages.flat_map do |message|
+            next [] unless %w[model assistant].include?(message["role"])
+
+            iteration += 1
+            Array(message["tool_calls"]).each_with_index.filter_map do |call, call_index|
+              next unless call.is_a?(Hash)
+
+              index += 1
+              record = records[[iteration, call_index + 1]]
+              id = call["id"]
+              response = tool_responses.find { |entry| entry["tool_call_id"] == id } if id
+              response ||= tool_responses[index - 1] unless id
+              is_denied = response && response["content"].to_s.include?(DENIAL_TEXT)
+              denied << index if is_denied
+              status = is_denied ? "denied" : record&.dig("status").to_s
+              status = "unknown" if status.empty?
+              {
+                index: index,
+                name: record&.[]("called_as") || record&.[]("tool") || call_name(call),
+                args: argument_text(call),
+                status: status,
+                duration_ms: record&.[]("duration_ms").to_i
+              }
+            end
           end
           [rows, denied]
         end
@@ -121,7 +130,8 @@ module Samagotchi
 
           reported = summary.cost_sum.to_f
           estimate = summary.cost_estimate_sum.to_f
-          return [reported, false] if reported.positive? || !estimate.positive?
+          return [reported, false] if reported.positive?
+          return [nil, false] unless estimate.positive?
 
           [estimate, true]
         end

@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `chi bundle try PATH -p TEXT` runs one real model turn in an isolated sandbox with the bundle and shipped
+  `guardrails` installed and a $1 cost cap; `--json` exposes an experimental machine-readable trace.
 - `chi bundle install --dev PATH` installs a bundle you are writing as a link to its folder: edits to its plugin,
   hooks, rules and scripts apply at the next session with no re-install, and their sha256 isn't checked (that
   bundle only). Memories are copied; re-install with `--force` to pick up memory edits. A re-install from the same

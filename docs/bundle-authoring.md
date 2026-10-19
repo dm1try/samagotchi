@@ -11,6 +11,7 @@ chi bundle new my-bundle     # ./my-bundle: manifest.yml, plugin.rb, test/my_bun
 cd my-bundle                 # edit plugin.rb and the test
 chi bundle test              # the tests, on chi's own Ruby and lib (exit status: the tests')
 chi bundle check --fix       # manifest, files, shas (--fix rewrites them), requires_chi, install + load in a sandbox
+chi bundle try . -p "Say hello"  # one real model turn; trace the bundle in an isolated install sandbox
 chi bundle install .         # into the user's chi; a NEW session loads it (a running one doesn't)
 chi bundle install --dev .   # or as a link to this folder: edits apply at the next session, no re-install
 ```
@@ -25,6 +26,17 @@ hint when a listed script isn't executable; set that bit on the source script.
 error. Run it after every edit: an install takes exactly what it checks. It installs into a temp sandbox, not
 the user's config or state, but `check` and `test` run the bundle's plugin and hooks in their own process, as
 written: run them on code you'd install.
+
+## Trying a bundle
+
+After `chi bundle check --fix`, run `chi bundle try . -p "Say hello"` for one real model call using the user's
+configured hosts and keys. It installs the bundle plus chi's shipped guardrails and a default $1 cost cap, then
+prints tool calls, hook notices, cards, questions, the answer, token totals and cost.
+
+The child uses a temporary config, state and working directory; the user's other bundles and memories aren't loaded,
+nor are the current project's `AGENTS.md` / `CLAUDE.md` files. This is not a security sandbox: the bundle and tools
+run with the user's real HOME and account, and can access files and services available there. Use `try` only with
+code you trust. See [CLI: Trying a bundle](cli.md#trying-a-bundle) for flags, `--json`, `--keep` and exit statuses.
 
 ## The files
 

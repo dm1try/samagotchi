@@ -9,6 +9,8 @@ module Samagotchi
       class Run
         Result = Data.define(:exit_status, :stdout, :stderr, :session_id, :timed_out)
         INTERRUPT_GRACE = 5
+        READER_GRACE = 2
+        GROUP_TERM_GRACE = 0.1
         POLL_INTERVAL = 0.05
 
         def initialize(sandbox)
@@ -18,34 +20,41 @@ module Samagotchi
         def run(prompt:, options:, timeout:)
           command = [RbConfig.ruby, "-I", Sandbox::LIB_DIR, Sandbox::CHI,
                      "--no-shared", "--non-interactive", "-p", prompt, *child_options(options)]
-          Open3.popen3(@sandbox.child_env, *command, chdir: @sandbox.work_dir, pgroup: true, in: File::NULL) do |stdin, stdout, stderr, wait|
-            stdin.close
-            out_reader = Thread.new { stdout.read }
-            err_reader = Thread.new { stderr.read }
-            timed_out = false
-            interrupt = trap_forwarding(wait.pid)
-            begin
+          trap_state, old_traps = trap_forwarding
+          pid = nil
+          streams = []
+          readers = []
+          begin
+            Open3.popen3(@sandbox.child_env, *command, chdir: @sandbox.work_dir, pgroup: true, in: File::NULL) do |stdin, stdout, stderr, wait|
+              pid = wait.pid
+              streams = [stdout, stderr]
+              stdin.close
+              readers = streams.map { |stream| Thread.new { read_stream(stream) } }
+              attach_child(trap_state, pid)
+              timed_out = false
               status = wait_for(wait, timeout)
               if status == :timeout
                 timed_out = true
-                interrupt_child(wait.pid)
+                signal_group(pid, "INT")
                 status = wait_for(wait, INTERRUPT_GRACE)
                 if status == :timeout
-                  kill_group(wait.pid)
+                  terminate_group(pid)
                   status = wait.value
                 end
               end
-            ensure
-              restore_traps(interrupt)
+              out, err = finish_readers(readers, streams)
+              code = timed_out ? CLI::Exit::FAILED : process_exit_status(status)
+              Result.new(exit_status: code, stdout: out, stderr: err, session_id: err[/^Session: (\S+)/, 1],
+                         timed_out: timed_out)
             end
-            out = out_reader.value
-            err = err_reader.value
-            code = timed_out ? CLI::Exit::FAILED : process_exit_status(status)
-            Result.new(exit_status: code, stdout: out, stderr: err, session_id: err[/^Session: (\S+)/, 1],
-                       timed_out: timed_out)
+          rescue SystemCallError => e
+            raise Sandbox::Error, "chi bundle try: couldn't run chi: #{e.message}"
+          ensure
+            terminate_group(pid) if pid
+            close_streams(streams)
+            stop_readers(readers)
+            restore_traps(old_traps)
           end
-        rescue SystemCallError => e
-          raise Sandbox::Error, "chi bundle try: couldn't run chi: #{e.message}"
         end
 
         private
@@ -69,28 +78,79 @@ module Samagotchi
           end
         end
 
-        def trap_forwarding(pid)
+        def trap_forwarding
+          state = { pid: nil, pending: nil }
           old = {}
           %w[INT TERM].each do |signal|
-            old[signal] = Signal.trap(signal) { interrupt_child(pid, signal) }
+            old[signal] = Signal.trap(signal) do
+              if state[:pid]
+                signal_group(state[:pid], signal)
+              else
+                state[:pending] ||= signal
+              end
+            end
           end
-          old
+          [state, old]
+        end
+
+        def attach_child(state, pid)
+          state[:pid] = pid
+          pending = state[:pending]
+          state[:pending] = nil
+          signal_group(pid, pending) if pending
         end
 
         def restore_traps(old)
           old.each { |signal, handler| Signal.trap(signal, handler) }
         end
 
-        def interrupt_child(pid, signal = "INT")
-          Process.kill(signal, pid)
+        def signal_group(pid, signal)
+          Process.kill(signal, -pid)
         rescue Errno::ESRCH
           nil
         end
 
-        def kill_group(pid)
-          Process.kill("KILL", -pid)
-        rescue Errno::ESRCH
-          nil
+        def terminate_group(pid)
+          signal_group(pid, "TERM")
+          sleep(GROUP_TERM_GRACE)
+          signal_group(pid, "KILL")
+        end
+
+        def read_stream(stream)
+          output = +""
+          loop { output << stream.readpartial(16_384) }
+        rescue EOFError
+          output
+        rescue IOError
+          raise unless stream.closed?
+
+          output
+        end
+
+        def finish_readers(readers, streams)
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + READER_GRACE
+          readers.each do |reader|
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            reader.join([remaining, 0].max)
+          end
+          close_streams(streams)
+          readers.each do |reader|
+            reader.join(0.1) if reader.alive?
+            reader.kill if reader.alive?
+          end
+          readers.map { |reader| reader.value.to_s }
+        end
+
+        def close_streams(streams)
+          streams.each { |stream| stream.close unless stream.closed? }
+        end
+
+        def stop_readers(readers)
+          readers.each do |reader|
+            reader.join(0.1)
+            reader.kill if reader.alive?
+          end
+          readers.each(&:join)
         end
 
         def process_exit_status(status)

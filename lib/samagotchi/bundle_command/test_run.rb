@@ -10,7 +10,7 @@ module Samagotchi
     # *_test.rb runs on Minitest with the kit's Case; a spec/ with no test/
     # on RSpec with the kit's helpers, as `rake bundles:specs` runs the
     # shipped ones. Outside any Bundler env (Bundler.with_unbundled_env, as
-    # SessionManager's unbundled_env_changes), where chi's own gem dependency minitest loads.
+    # InstalledGem.unbundled_env_changes), where chi's own gem dependency minitest loads.
     # When the framework loads only inside the Bundler env chi itself runs in
     # (a checkout or a vendored install: its gems in vendor/bundle), there.
     # The tests' exit status is #run's.

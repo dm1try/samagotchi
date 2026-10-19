@@ -944,6 +944,7 @@ module Samagotchi
 
       set_pairs = []
       cost_cap = 1
+      cost_cap_override = false
       require_relative "bundle_session_settings"
       Array(options[:set]).each do |pair|
         key, sep, value = pair.partition("=")
@@ -953,6 +954,7 @@ module Samagotchi
         end
         if key == "cost-cap.cap"
           cost_cap = BundleSessionSettings.typed(value)
+          cost_cap_override = true
           unless (cost_cap.is_a?(Numeric) && cost_cap >= 0) || cost_cap == false
             @stderr.puts "chi bundle try: --set cost-cap.cap takes a non-negative number or off"
             return CLI::Exit::USAGE
@@ -969,24 +971,26 @@ module Samagotchi
       require_relative "bundle_command/try/trace"
       sandbox = nil
       begin
-        sandbox = Try::Sandbox.new(path, bundle_settings: settings, cost_cap: cost_cap)
+        sandbox = Try::Sandbox.new(path, bundle_settings: settings, cost_cap: cost_cap,
+                                   cost_cap_override: cost_cap_override)
         sandbox.install
         result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
         trace = Try::TraceReader.new(state_home: sandbox.state_home, session_id: result.session_id)
                               .read(exit_code: result.exit_status, answer: result.stdout, stderr: result.stderr,
                                     sandbox: options[:keep] ? sandbox.root : nil)
-        render_try_trace(trace, json: options[:json], child_stderr: result.stderr, keep: options[:keep], sandbox: sandbox)
+        render_try_trace(trace, json: options[:json], child_stderr: result.stderr)
         @stderr.puts "chi bundle try: timed out after #{timeout} seconds" if result.timed_out
         result.exit_status
       rescue Try::Sandbox::Error => e
         @stderr.puts e.message
         e.status
       ensure
+        report_try_sandbox(sandbox) if options[:keep] && sandbox
         sandbox&.cleanup unless options[:keep]
       end
     end
 
-    def render_try_trace(trace, json:, child_stderr:, keep:, sandbox:)
+    def render_try_trace(trace, json:, child_stderr:)
       error_lines = child_stderr.lines.reject { |line| line.start_with?("Session: ") }
       @stderr.write(error_lines.join)
       if json
@@ -995,8 +999,9 @@ module Samagotchi
       else
         render_trace_lines(trace, @stdout, include_answer: true)
       end
-      return unless keep
+    end
 
+    def report_try_sandbox(sandbox)
       @stderr.puts "sandbox: #{sandbox.root}"
       @stderr.puts "debug log: #{File.join(sandbox.state_home, "samagotchi", "samagotchi.log")}"
     end
@@ -1035,8 +1040,14 @@ module Samagotchi
         output.puts "  … (truncated)" if answer_lines.size > 10
       end
       tokens = trace.tokens
-      cost = trace.cost ? "#{"~" if trace.cost_is_estimate}$#{format("%.4f", trace.cost)}" : "unknown"
-      output.puts "tokens: #{tokens[:prompt]} in / #{tokens[:completion]} out  cost #{cost}  exit #{trace.exit_code}" \
+      prompt = tokens[:prompt] || "unknown"
+      completion = tokens[:completion] || "unknown"
+      cost = if trace.cost
+               "#{"~" if trace.cost_is_estimate}$#{format("%.4f", trace.cost)}"
+             else
+               "unknown"
+             end
+      output.puts "tokens: #{prompt} in / #{completion} out  cost #{cost}  exit #{trace.exit_code}" \
                   "#{"  (#{trace.session_id})" if trace.session_id}"
     end
 
