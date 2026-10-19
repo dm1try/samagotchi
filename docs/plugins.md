@@ -1621,7 +1621,10 @@ bundles:
   a command, not an answer: a parent that sends it (`chi send ID -m '/cap 10'`) raises the cap under any strategy.
 - **The cap of a session:** the one `/cap` or a Continue set for it, else its own `cap:` (`chi --set
   cost-cap.cap=3`, `chi send --new --set cost-cap.cap=3`; `--set cost-cap.cap=off`, `0` or a negative number for none), else `child:` for a
-  delegate child, else `default:`. Delegates and continued links each have their own cap (a continued link keeps
+  delegate child, else `default:`. A cap is a number (`3`, `.5`, `1e1`; in config.yml and `/cap`, `"$2"` too, which `--set` refuses). `--set` refuses
+  another value (`cost-cap.cap=five`: exit 2); one in config.yml (or set before this check) that doesn't read
+  (`default: five`) gets one notice, `cost-cap: default: "five" isn't a number or off; no cap`, and a `cap:` or
+  `child:` that doesn't read gives way to the next key (`…; using default: ($5.00)`), never a silent no cap. Delegates and continued links each have their own cap (a continued link keeps
   the `--set` cap, not a `/cap` or Continue); there is no family cap.
 - **A host it can't watch:** a model that reports no cost and has no configured price (a local server, a free
   model that reports 0) reads unknown: one notice, `the $3.00 cap can't be enforced: <model> reports no cost and has
@@ -1632,7 +1635,7 @@ bundles:
 
 - `/cap`: `cost-cap: $1.20 spent of $3.00 (reported $1.10, estimated $0.10, side $0.02)`, or `cost-cap: no cap
   ($1.20 spent)`, with `(can't be enforced: no cost reported or priced)` when it can't be.
-- `/cap 5` or `/cap $5`: the cap (and what Continue adds) becomes $5.00 for this session. A cap at or under the
+- `/cap 5`, `/cap $5` or `/cap .5`: the cap (and what Continue adds) becomes $5.00 for this session. A cap at or under the
   spend is allowed: the next generation asks.
 - `/cap off` (or `/cap 0`): no cap for this session, over the config's `default:`.
 

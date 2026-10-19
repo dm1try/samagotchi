@@ -187,9 +187,63 @@ RSpec.describe "The cost-cap bundle", :bundle do
       end
     end
 
-    it "lists cap as its one session setting" do
+    it "lists cap as its one session setting, a number or off (the manifest types it, so --set refuses another value)" do
       expect { shipped_bundle("cost-cap", session_settings: { default: 1 }) }
         .to raise_error(ArgumentError, "session_settings cost-cap.default: cost-cap takes cap")
+      expect { shipped_bundle("cost-cap", session_settings: { cap: "five" }) }
+        .to raise_error(ArgumentError, "session_settings cost-cap.cap: cost-cap takes a number (or off) for cap, not \"five\"")
+    end
+
+    it "reads a cap written .5, 1e1 or $2 (a value config.yml's YAML or an older session kept as text)" do
+      { { "default" => "1e1" } => [10.5, "$10.50 spent of $10.00"], { "default" => 3.0, "cap" => ".5" } => [0.6, "$0.60 spent of $0.50"],
+        { "child" => "$2", "default" => "2E1" } => [2.5, "$2.50 spent of $2.00"] }.each do |settings, (cost, asked)|
+        bundle = plugin(settings, cost: cost)
+        allow(bundle.ctx).to receive(:delegate?).and_return(true)
+        generation(bundle)
+        expect(bundle.questions.last&.question).to include(asked), settings.inspect
+        expect(bundle.notices).to be_empty
+      end
+    end
+
+    it "warns once when cap: can't be read, and uses child: or default: instead of no cap" do
+      bundle = plugin({ "cap" => "five", "default" => 5.0 }, cost: 9.0)
+      bundle.answer({ selected: ["Stop"] })
+      2.times { generation(bundle) }
+      expect(notices(bundle).first).to eq(["cost-cap: cap: \"five\" isn't a number or off; using default: ($5.00)", :warn])
+      expect(notices(bundle).count { |text, _| text.include?("isn't a number") }).to eq(1)
+      expect(bundle.questions.first.question).to include("$9.00 spent of $5.00")
+
+      delegate = plugin({ "cap" => true, "child" => "2x", "default" => 1.0 }, cost: 9.0)
+      allow(delegate.ctx).to receive(:delegate?).and_return(true)
+      generation(delegate)
+      expect(notices(delegate).first)
+        .to eq(["cost-cap: cap: true and child: \"2x\" aren't a number or off; using default: ($1.00)", :warn])
+    end
+
+    it "reads 5. as 5 on any Ruby, and takes an infinite cap (1e400) as one it can't read" do
+      bundle = plugin({ "default" => "5." }, cost: 6.0)
+      expect(%w[5. 5.e1 2.5e1].map { |text| bundle.namespace::Plugin.float_text(text) }).to eq(%w[5.0 5.0e1 2.5e1])
+      generation(bundle)
+      expect(bundle.questions.last.question).to include("$6.00 spent of $5.00")
+
+      %w[1e400 $1e400].each do |text|
+        unread = plugin({ "default" => text }, cost: 9.0)
+        generation(unread)
+        expect(unread.questions).to be_empty, text
+        expect(notices(unread)).to eq([["cost-cap: default: #{text.inspect} isn't a number or off; no cap", :warn]]), text
+      end
+      infinite = plugin({ "default" => Float::INFINITY }, cost: 9.0)
+      generation(infinite)
+      expect(notices(infinite).first.first).to start_with("cost-cap: default: Infinity isn't a number")
+      expect(plugin(cost: 0.1).command("/cap 1e400")).to eq("usage: /cap [N | $N | off] (USD; /cap alone shows the spend)")
+    end
+
+    it "warns when default: can't be read: no cap, but not silently" do
+      bundle = plugin({ "default" => "five" }, cost: 9.0)
+      generation(bundle)
+      expect(bundle.questions).to be_empty
+      expect(notices(bundle)).to eq([["cost-cap: default: \"five\" isn't a number or off; no cap", :warn]])
+      expect(bundle.command("/cap")).to eq("cost-cap: no cap ($9.00 spent)")
     end
 
     it "resolves the cap once per session: delegate? is read once across generations" do
@@ -236,6 +290,23 @@ RSpec.describe "The cost-cap bundle", :bundle do
       generation(bundle)
       expect(bundle.questions).to be_empty
       expect(bundle.command("/cap")).to eq("cost-cap: no cap ($9.00 spent)")
+    end
+
+    it "takes .5 and 1e1 as /cap does any number" do
+      bundle = plugin(cost: 0.1)
+      expect(bundle.command("/cap .5")).to eq("cost-cap: cap set to $0.50 ($0.10 spent)")
+      expect(bundle.command("/cap 1e1")).to eq("cost-cap: cap set to $10.00 ($0.10 spent)")
+      expect(state).to eq("cap" => 10.0, "step" => 10.0)
+    end
+
+    it "logs why the command failed (a state file it can't write), and says so" do
+      bundle = plugin(cost: 0.1)
+      blocker = File.join(sandbox.root, "not-a-dir")
+      File.write(blocker, "")
+      allow(bundle.ctx).to receive(:data_dir).and_return(blocker)
+      allow(bundle.ctx.log).to receive(:warn)
+      expect(bundle.command("/cap 5")).to start_with("cost-cap: ")
+      expect(bundle.ctx.log).to have_received(:warn).with(:cap_command_failed, error: start_with("Errno::"))
     end
 
     it "answers a bad value with the usage line" do

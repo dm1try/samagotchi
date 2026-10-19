@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A bundle's manifest can type its session settings (`session_settings: {cap: number}`: `number`, `boolean`,
+  `string` or `any`); `--set` and `POST /api/sessions` refuse a value of another type (exit 2 / 400), and a
+  `string` key keeps its text as given.
+
+### Changed
+
+- `--set BUNDLE.KEY=VALUE` (and `bundle_settings` strings in `POST /api/sessions`) type values as config.yml does:
+  for a bundle that lists its keys plainly (or types them `any`), `yes`/`on` are now `true`, `no` is now `false`
+  (any case: `No`, `ON`), and `.5`, `5.`, `1e3` are now numbers; before they reached the plugin as text. A bundle
+  that wants the text types the key `string`.
+
 ### Fixed
 
 - A Ctrl-C during a turn keeps what the turn did, as a Stop does: its finished tool calls and their results stay in
@@ -23,6 +36,10 @@ and commands may change between minor versions. How releases are made:
   instead of vanishing with the sent ones.
 - Web: when the model list can't be read, the start page says so in a toast (a new session starts on the default
   model) instead of just leaving out the model picker.
+- `--set cost-cap.cap=.5` and `=1e1` set a cap (they were read as text and turned the cap off); `--set
+  cost-cap.cap=five` is refused (exit 2) instead of silently running without a cap. A `cap:`, `child:` or `default:`
+  in config.yml that isn't a number (or is infinite, `1e400`) now warns once, and a bad `cap:`/`child:` falls back to
+  the next one. Run `chi update` (cost-cap 0.2.1).
 
 ## [0.91.0] - 2026-10-19
 

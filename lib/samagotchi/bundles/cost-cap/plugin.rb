@@ -15,6 +15,9 @@
 #   default: 5.00   USD cap for a session with none set; absent/0/off: none
 #   child: 2.00     for delegate children (ctx.delegate?); absent: default
 #   warn_at: 0.8    the share of the cap that warns; 0/off: no warning
+# A cap reads as a number (3, .5, 1e1, "$2" as text too); one that doesn't
+# (cap: five) warns the user once and the next key is used, so a typo is
+# never a silent "no cap".
 #
 # State: <data_dir>/sessions/<session id>.json, {"cap": 3.0, "step": 3.0},
 # written by /cap and by Continue; "cap": null (or false) is off for the
@@ -32,12 +35,15 @@ class Plugin
   # spends more, Stop denies; under hard a parent may only Stop.
   EFFECTS = { "Continue" => :spend, "Stop" => :deny }.freeze
   WARN_AT = 0.8
+  # A cap as text: 3, 2.5, .5, 1e1, -1 (a negative is none), after a "$".
+  NUMBER = /\A-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?\z/i
 
   def initialize(_settings)
     @mutex = Mutex.new
     @resolved = nil        # {session:, cap:, step:}
     @warned = nil          # [session id, cap] the share warning was given for
     @unknown_warned = nil  # the session id the "can't be enforced" notice was given for
+    @unread_warned = nil   # the session id the "isn't a number" notice was given for
   end
 
   def register(chi)
@@ -50,13 +56,39 @@ class Plugin
     end
   end
 
-  # The cap in USD (a positive Float) or nil (none, 0, off, false).
+  # The cap in USD (a positive Float) or nil (none, 0, off, false, or a
+  # value that isn't a number: .readable? tells them apart).
   def self.amount(value)
+    number = number(value)
+    number&.positive? ? number : nil
+  end
+
+  # +value+ as a finite Float (a number, or text NUMBER reads after a "$"),
+  # else nil. "5." gets its 0 first (.float_text: Ruby 3.3's Float wants
+  # one); 1e400 (Infinity) is no cap anyone reaches.
+  def self.number(value)
     number = case value
              when Numeric then value.to_f
-             when String then value.strip.delete_prefix("$").then { |s| s.match?(/\A\d+(\.\d+)?\z/) ? s.to_f : nil }
+             when String
+               text = value.strip.delete_prefix("$")
+               Float(float_text(text)) if text.match?(NUMBER)
              end
-    number&.positive? ? number : nil
+    number if number&.finite?
+  end
+
+  # A NUMBER as Float reads it on every Ruby: a bare point ("5.", "5.e1")
+  # gets a 0 after it.
+  def self.float_text(text) = text.sub(/\.(?=e|\z)/i, ".0")
+
+  # Whether +value+ reads as a cap or as none: a number (text too), off,
+  # false or nil; not "five", true or a list.
+  def self.readable?(value)
+    case value
+    when false, nil then true
+    when Numeric then value.finite?
+    when String then value.strip.casecmp?("off") || !number(value).nil?
+    else false
+    end
   end
 
   # Cents, or up to four decimals under $0.10, so a small cap (/cap 0.003)
@@ -71,6 +103,7 @@ class Plugin
 
   def check(ctx)
     resolved = resolve(ctx)
+    unreadable(ctx, resolved)
     cap = resolved[:cap]
     return unless cap
 
@@ -99,6 +132,16 @@ class Plugin
 
     ctx.notify("the #{money(cap)} cap can't be enforced: #{ctx.model || "the model"} reports no cost and has no price",
                level: :warn)
+  end
+
+  # Once per session: the settings whose cap didn't read, and what is used.
+  def unreadable(ctx, resolved)
+    bad = resolved[:unreadable]
+    return if bad.nil? || bad.empty? || !first_time?(:@unread_warned, resolved[:session])
+
+    named = bad.map { |key, value| "#{key}: #{value.inspect}" }.join(" and ")
+    used = resolved[:cap] ? "using #{resolved[:key]}: (#{money(resolved[:cap])})" : "no cap"
+    ctx.notify("cost-cap: #{named} #{bad.size == 1 ? "isn't" : "aren't"} a number or off; #{used}", level: :warn)
   end
 
   def at_cap(ctx, resolved, cost)
@@ -148,12 +191,13 @@ class Plugin
       save(ctx, session, "cap" => nil)
       return "cost-cap: no cap for this session"
     end
-    value = arg.match?(/\A\$?\d+(\.\d+)?\z/) ? self.class.amount(arg) : nil
+    value = self.class.amount(arg)
     return USAGE unless value
 
     save(ctx, session, "cap" => value, "step" => value)
     "cost-cap: cap set to #{money(value)} (#{money(ctx.cost.total)} spent)"
   rescue StandardError => e
+    ctx.log.warn(:cap_command_failed, error: "#{e.class}: #{e.message}")
     "cost-cap: #{e.message}"
   end
 
@@ -194,16 +238,17 @@ class Plugin
     nil
   end
 
+  # The first of cap:, child: (a delegate's) and default: that is set and
+  # reads (.readable?); the ones set that don't read are kept for the
+  # notice (#unreadable).
   def configured(ctx)
     settings = ctx.settings
-    return { cap: nil, step: nil } unless %w[cap default child].any? { |key| settings.key?(key) }
-
-    key = if settings.key?("cap") then "cap"
-          elsif settings.key?("child") && ctx.delegate? then "child"
-          else "default"
-          end
-    cap = self.class.amount(settings[key])
-    { cap: cap, step: cap }
+    keys = %w[cap child default].select { |key| settings.key?(key) }
+    keys.delete("child") if keys.include?("child") && !ctx.delegate?
+    bad = keys.reject { |key| self.class.readable?(settings[key]) }
+    key = (keys - bad).first
+    cap = key && self.class.amount(settings[key])
+    { cap: cap, step: cap, key: key, unreadable: bad.to_h { |name| [name, settings[name]] } }
   end
 
   def warn_share(ctx)
