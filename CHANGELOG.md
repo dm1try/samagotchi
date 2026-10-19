@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-10-19
+
 ### Added
 
 - A bundle's manifest can type its session settings (`session_settings: {cap: number}`: `number`, `boolean`,
@@ -59,6 +61,8 @@ and commands may change between minor versions. How releases are made:
   sandbox is deleted.
 - `chi bundle check` warns (`clash`) about an installed bundle of the same name whose record can't be read, instead
   of skipping the clash check without a word.
+
+Update with `chi update` (the system bundle 0.92.0, cost-cap 0.2.1), then restart `chi web`.
 
 ## [0.91.0] - 2026-10-19
 
@@ -3601,7 +3605,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.91.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.92.0...HEAD
+[0.92.0]: https://github.com/dm1try/samagotchi/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/dm1try/samagotchi/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/dm1try/samagotchi/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/dm1try/samagotchi/compare/v0.88.0...v0.89.0
