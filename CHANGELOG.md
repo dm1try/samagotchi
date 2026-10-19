@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A `delegate` child's hook question (the cost cap's Continue/Stop, a bundle's `ctx.ask_user`) now reaches its parent,
+  in the background too: reported to the parent's model when it may pick something other than a deny under the
+  child's `parent_answers` (so under the default `soft` a background parent may Continue its child's cost cap), else
+  relayed to the parent's user as a card, as approvals are.
+
 ### Fixed
 
 - A session file whose `parent_answers` isn't `hard`, `standard` or `soft` (a hand edit) now gets one warning when
