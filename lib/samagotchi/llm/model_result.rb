@@ -4,9 +4,8 @@ module Samagotchi
   module LLM
     # Normalized result returned by every ModelBackend downstream of the agentic
     # loop (the loop lives inside the backend). What Engine#run_turn and the
-    # renderers (TerminalUI / Bridge) read: .output (= .text, and .to_s, which
-    # is how the Engine event's :turn_completed `result:` reaches JSON; the
-    # Bridge omits it from SSE, retaining `turn_summary.output`), .conversation,
+    # renderers (TerminalUI / Bridge) read: .output (= .text, and .to_s: the
+    # Engine's :turn_completed `result:`; clients get turn_summary.output), .conversation,
     # .canceled?, .cancellation_reason, .exhausted?, .resumable?,
     # .empty_answer?, plus the native loop's .tool_activity, .context_status
     # and .pending_tool_calls, which the interactive renderer needs.

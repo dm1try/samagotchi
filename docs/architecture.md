@@ -187,7 +187,8 @@ higher-level events so UIs get clean turn boundaries without inferring them:
   model's thinking, `0` = never; plus `continue: true` for a continue turn, `resumed: true` for a step-limit Continue,
   `images:` with the prompt's image refs)
 - `:turn_completed` — `{ result:, turn_summary:, display_pending: }` (`result`: the final
-  `LLM::ModelResult`; `display_pending`: `after_turn` hooks may still present the answer)
+  `LLM::ModelResult`; Engine event (clients get it without `result`); `display_pending`: `after_turn` hooks may still
+  present the answer)
 - `:turn_canceled` — `{ cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that
   stopped it, for `cancellation_reason: :hook`; else nil)
 
