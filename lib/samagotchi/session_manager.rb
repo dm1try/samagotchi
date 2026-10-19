@@ -268,13 +268,10 @@ module Samagotchi
       opts
     end
 
-    # What Bundler changed in ENV (RUBYOPT, BUNDLE_*), mapped back to the
-    # values from before it (nil: unset); {} outside Bundler.
+    # Shared with foreground child commands (bundle test/try) so gem-mode
+    # subprocesses do not inherit the app's Bundler activation.
     private_class_method def self.unbundled_env_changes(env = ENV.to_h)
-      return {} unless defined?(::Bundler) && ::Bundler.respond_to?(:unbundled_env)
-
-      clean = ::Bundler.unbundled_env
-      (env.keys | clean.keys).each_with_object({}) { |key, changes| changes[key] = clean[key] unless clean[key] == env[key] }
+      InstalledGem.unbundled_env_changes(env)
     end
 
     GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"

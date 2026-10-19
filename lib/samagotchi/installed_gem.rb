@@ -29,6 +29,17 @@ module Samagotchi
       File.file?(path) ? path : nil
     end
 
+    # What Bundler changed in ENV, mapped back to the values from before it
+    # (nil: unset); {} outside Bundler. Child chi commands use this in gem
+    # mode so they load the same installed gem without inheriting this app's
+    # bundle.
+    def unbundled_env_changes(env = ENV.to_h)
+      return {} unless defined?(::Bundler) && ::Bundler.respond_to?(:unbundled_env)
+
+      clean = ::Bundler.unbundled_env
+      (env.keys | clean.keys).each_with_object({}) { |key, changes| changes[key] = clean[key] unless clean[key] == env[key] }
+    end
+
     def real_path(path)
       File.realpath(path)
     rescue SystemCallError

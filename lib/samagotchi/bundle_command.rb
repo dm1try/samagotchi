@@ -871,7 +871,7 @@ module Samagotchi
       parsed = parse_flags(CHECK_FLAGS, rest, "check", help: CHECK_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      settings = check_settings(parsed.options.fetch(:set, [])) or return CLI::Exit::USAGE
+      settings = check_settings(parsed.options.fetch(:set, []), label: "check") or return CLI::Exit::USAGE
       if parsed.args.size > 1
         @stderr.puts "chi bundle check takes one PATH (#{parsed.args.join(" ")})"
         return CLI::Exit::USAGE
@@ -887,12 +887,12 @@ module Samagotchi
 
     # --set KEY=VALUE values as typed (BundleSessionSettings.typed), or nil
     # after saying what's wrong.
-    def check_settings(pairs)
+    def check_settings(pairs, label:)
       require_relative "bundle_session_settings"
       pairs.each_with_object({}) do |pair, out|
         key, sep, value = pair.partition("=")
         unless !sep.empty? && key.match?(BundleSessionSettings::KEY)
-          @stderr.puts "chi bundle check: --set takes KEY=VALUE, not #{pair}"
+          @stderr.puts "chi bundle #{label}: --set takes KEY=VALUE, not #{pair}"
           return nil
         end
         out[key] = BundleSessionSettings.typed(value)
