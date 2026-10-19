@@ -2597,6 +2597,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
+  it "names the background tasks that keep the worker up" do
+    body = '{"status":"held","reason":"background_tasks","tasks":[{"id":"3f9a2c1d-77","command":"rails s"},' \
+           '{"id":"aa11bb22-0","command":"sleep 99"}]}'
+    allow(client).to receive(:request_exit).and_return(response(409, body))
+
+    expect(run_lines("/exit")).to eq(:detached)
+
+    expect(screen.lines.last).to eq("Detached; the session keeps running (background tasks it started are still running: " \
+                                    "3f9a2c1d (rails s), aa11bb22 (sleep 99); stop one with the web's stop-task button " \
+                                    "or by asking for task_stop). Re-attach with: chi --attach s-1234")
+  end
+
   it "says how to stop an older worker that has no exit route" do
     allow(client).to receive(:request_exit).and_return(response(404, '{"error":"not_found"}'))
 

@@ -805,7 +805,8 @@ module Samagotchi
     # event log held, so no POST /turn lands between its check and its
     # answer; it leaves from its loop after this reply.
     # 200 {status: "exiting", discard?: the session is empty and goes} ({status: "restarting"} for a restart), or 409
-    # {status: "held", reason:} naming what keeps it up. A past +deadline+
+    # {status: "held", reason:} naming what keeps it up (with tasks: [{id:,
+    # command:}] and a hint: how to stop them, for background_tasks). A past +deadline+
     # (see #handle_post_turn), checked with the event log held: 408
     # deadline_passed, the worker not asked (its client said it didn't stop).
     # Returns [headers, status, body].
@@ -838,7 +839,11 @@ module Samagotchi
         return [{}, 200, body]
       end
 
-      [{}, 409, { status: "held", reason: reason.to_s, session_id: @session_id }]
+      # A hold may name what it waits for ({reason:, tasks:}: the background
+      # tasks a finish wake watches).
+      held = reason.is_a?(Hash) ? reason : { reason: reason }
+      [{}, 409, { status: "held", reason: held[:reason].to_s, tasks: held[:tasks], hint: held[:hint],
+                  session_id: @session_id }.compact]
     end
 
     # Queue a turn for this session through its file IPC (the worker polls

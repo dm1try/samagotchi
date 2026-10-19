@@ -15,6 +15,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
                      anytime_running?: false, relay_desk: relays)
   end
   let(:tasks) { [[]] }
+  let(:watched) { [[]] }
   let(:bridge) { double("bridge", open_streams: 0, last_client_activity_at: 1000.0) }
   let(:queued) { [false] }
   let(:offer) { [false] }
@@ -22,7 +23,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   def policy(minutes: 1.0, bridge: self.bridge)
     described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
                         input_pending: -> { queued.first }, awaiting_continue: -> { offer.first },
-                        running_tasks: -> { tasks.first }, clock: clock)
+                        running_tasks: -> { tasks.first }, watched_tasks: -> { watched.first }, clock: clock)
   end
 
   def advance(seconds)
@@ -87,6 +88,11 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(policy(minutes: 0.001).hold).to eq(:reminders)
     end
 
+    it "while a background task it watches for a finish wake runs (D3)" do
+      watched[0] = [{ id: "t1", command: "rails s" }]
+      expect(policy(minutes: 0.001).hold).to eq(:background_tasks)
+    end
+
     it "while a continue offer waits (only the worker's memory has it)" do
       offer[0] = true
       expect(policy(minutes: 0.001).hold).to eq(:continue_offered)
@@ -140,6 +146,11 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "holds while a reminder is registered" do
       reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:reminders)
+    end
+
+    it "holds while a background task it watches runs" do
+      watched[0] = [{ id: "t1", command: "rails s" }]
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:background_tasks)
     end
   end
 

@@ -347,4 +347,36 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(last).not_to include(:turn_start)
     expect(turns.pop(timeout: 0.3)).to be_nil
   end
+
+  it "keeps an idle worker up while a task it watches runs, and lets it go after the task's wake turn" do
+    scripts["build"] = [task_create("t1")]
+    start_worker(idle_exit_minutes: 0.002)
+    run_prompt("build")
+
+    expect(@thread.join(0.5)).to be_nil
+    finish("t1")
+    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+  end
+
+  it "doesn't hold the idle exit with session.task_wakes: queue (nothing would wake for the task)" do
+    config["session.task_wakes"] = "queue"
+    scripts["build"] = [task_create("t1")]
+    start_worker(idle_exit_minutes: 0.002)
+    run_prompt("build")
+
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+  end
+
+  it "holds /exit while a watched task runs, saying how to stop it; not with session.task_wakes: queue" do
+    scripts["build"] = [task_create("t1")]
+    worker = start_worker
+    run_prompt("build")
+
+    expect(worker.send(:exit_request, "web:tab"))
+      .to eq({ reason: :background_tasks, tasks: [{ id: "t1", command: "sleep 20; echo done" }],
+               hint: Samagotchi::Worker::TASK_STOP_HINT })
+    config["session.task_wakes"] = "queue"
+    expect(worker.send(:exit_request, "web:tab")).to be_nil
+  end
 end

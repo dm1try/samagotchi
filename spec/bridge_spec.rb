@@ -2040,6 +2040,16 @@ RSpec.describe Samagotchi::Bridge do
           .to eq([409, { "status" => "held", "reason" => "client_connected", "session_id" => @session.id }])
       end
 
+      it "names the background tasks a finish wake waits for when they hold it" do
+        tasks = [{ id: "t1", command: "rails s" }]
+        start_bridge(on_exit_request: ->(_, **) { { reason: :background_tasks, tasks: tasks, hint: "stop them" } })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1")))
+          .to eq([409, { "status" => "held", "reason" => "background_tasks",
+                         "tasks" => [{ "id" => "t1", "command" => "rails s" }], "hint" => "stop them",
+                         "session_id" => @session.id }])
+      end
+
       it "refuses bad JSON and other sessions" do
         start_bridge(on_exit_request: ->(_, **) { raise "must not be called" })
 

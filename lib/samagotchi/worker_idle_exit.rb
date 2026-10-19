@@ -13,6 +13,8 @@ module Samagotchi
   # * a reminder is registered. Reminders live only in the Engine and repeat
   #   until the agent cancels them, so an exit would drop them for good;
   # * a continue offer waits for an answer; it too lives only in memory;
+  # * a background task the worker watches for a finish wake (TaskWatch)
+  #   still runs: its end would go unnoticed after an exit (D3);
   # * less than the timeout has passed since the worker started, the Engine's
   #   last activity, or the last client request or disconnect.
   #
@@ -29,15 +31,18 @@ module Samagotchi
     # @param awaiting_continue [#call] true while a continue offer waits
     # @param running_tasks [#call] the background tasks this conversation
     #   started that still run (Tools::TaskRuntime.running_created_in)
+    # @param watched_tasks [#call] the ones a finish wake watches that still
+    #   run (TaskWatch#running): they hold the idle exit and /exit too
     # @param clock [#call] monotonic seconds, the Engine's and Bridge's clock
     def initialize(engine:, bridge:, timeout_minutes:, input_pending:, awaiting_continue: -> { false },
-                   running_tasks: -> { [] }, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                   running_tasks: -> { [] }, watched_tasks: -> { [] }, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @engine = engine
       @bridge = bridge
       @timeout = timeout_minutes.to_f * 60
       @input_pending = input_pending
       @awaiting_continue = awaiting_continue
       @running_tasks = running_tasks
+      @watched_tasks = watched_tasks
       @clock = clock
       @started_at = clock.call
     end
@@ -49,7 +54,8 @@ module Samagotchi
 
     # What keeps the worker up, or nil when nothing does.
     # @return [Symbol, nil] :disabled, :turn_running, :input_queued,
-    #   :continue_offered, :client_connected, :reminders or :recent_activity
+    #   :continue_offered, :client_connected, :reminders, :background_tasks
+    #   or :recent_activity
     def hold
       return :disabled unless @timeout.positive?
       return :turn_running if @engine.turn_running?
@@ -57,6 +63,7 @@ module Samagotchi
       return :continue_offered if @awaiting_continue.call
       return :client_connected if @bridge && @bridge.open_streams.positive?
       return :reminders if @engine.reminder_store&.any?
+      return :background_tasks if @watched_tasks.call.any?
       return :recent_activity if idle_seconds < @timeout
 
       nil
@@ -71,13 +78,14 @@ module Samagotchi
     #   either (the last check before leaving, when the asker's stream may
     #   still be open, untagged)
     # @return [Symbol, nil] :turn_running, :input_queued, :continue_offered,
-    #   :client_connected or :reminders
+    #   :client_connected, :reminders or :background_tasks
     def hold_for_request(requester:, streams: true)
       return :turn_running if @engine.turn_running?
       return :input_queued if @input_pending.call
       return :continue_offered if @awaiting_continue.call
       return :client_connected if streams && @bridge && @bridge.open_streams_except(requester).positive?
       return :reminders if @engine.reminder_store&.any?
+      return :background_tasks if @watched_tasks.call.any?
 
       nil
     end

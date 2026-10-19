@@ -60,8 +60,12 @@ module Samagotchi
       HELD_REASONS = {
         "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
         "continue_offered" => "a continue offer is pending", "client_connected" => "another UI is attached",
-        "reminders" => "reminders are set", "starting" => "the worker is still starting"
+        "reminders" => "reminders are set", "starting" => "the worker is still starting",
+        "background_tasks" => "background tasks it started are still running"
       }.freeze
+      # How to end a background task that holds the worker up (an older
+      # worker's 409 has no hint of its own).
+      TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
       JOIN_ANSWER_CHARS = 1200
@@ -556,7 +560,8 @@ module Samagotchi
           "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
         when 409
           reason = reply.json&.fetch("reason", nil).to_s
-          "Detached; the session keeps running (#{HELD_REASONS.fetch(reason, reason)}). Re-attach with: chi --attach #{id}"
+          "Detached; the session keeps running (#{held_words(reason, reply.json&.fetch("tasks", nil))}). " \
+            "Re-attach with: chi --attach #{id}"
         when 0 then exit_failed_line("no reply")
         when 408 then exit_failed_line(LATE)
         else
@@ -565,6 +570,14 @@ module Samagotchi
 
           exit_failed_line([reply.status, reply.json&.fetch("detail", nil) || error].compact.join(" "))
         end
+      end
+
+      # Why the worker stayed up; the background tasks it waits for by
+      # their short id and command (a finish wake's, D3), and how to stop one.
+      def held_words(reason, tasks)
+        words = HELD_REASONS.fetch(reason, reason)
+        listed = Array(tasks).filter_map { |t| "#{Tools::TaskRecord.short_id(t["id"])} (#{t["command"]})" if t.is_a?(Hash) }
+        listed.empty? ? words : "#{words}: #{listed.join(", ")}; #{TASK_STOP_HINT}"
       end
 
       # An older worker leaves the field out.

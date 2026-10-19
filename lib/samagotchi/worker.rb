@@ -78,6 +78,8 @@ module Samagotchi
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
+    # /exit held by background tasks a finish wake waits for: how to end them.
+    TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"
     # !rollback mid-turn would mean "the turn I'm in".
     ROLLBACK_BUSY_OUTPUT = "busy: Ctrl-C the turn first, then !rollback"
     # How long a signalled worker's turn has to end (it is canceled at once,
@@ -323,7 +325,10 @@ module Samagotchi
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
         input_pending: -> { !@command_queue.empty? || !SessionInbox.find_new_input_files(@session_dir).empty? },
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
-        running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) }
+        running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) },
+        # Only when a finish would wake the session (D3): with queue its end
+        # is just a note, not worth keeping the worker up for.
+        watched_tasks: -> { TaskWatch.mode == "wake" ? @task_watch.running : [] }
       )
     end
 
@@ -1358,12 +1363,16 @@ module Samagotchi
     # +delete+: the session is deleted after (/exit --delete), so no recap.
     # +restart+: a new worker takes over (on the newest chi installed), so
     # WorkerIdleExit#hold_for_restart's rules, and no recap or discard.
-    # @return [Symbol, nil] what keeps the worker up, nil when it will leave
+    # @return [Symbol, Hash, nil] what keeps the worker up ({reason:
+    #   :background_tasks, tasks:} names the watched tasks still running),
+    #   nil when it will leave
     def exit_request(client_id, delete: false, restart: false)
       # The Bridge serves before the idle-exit policy exists.
       return :starting unless @idle_exit
 
       hold = restart ? @idle_exit.hold_for_restart : @idle_exit.hold_for_request(requester: client_id)
+      # /exit names the tasks it waits for (D3).
+      return { reason: hold, tasks: @task_watch.running, hint: TASK_STOP_HINT } if hold == :background_tasks && !restart
       return hold if hold
 
       @exit_requested = true
