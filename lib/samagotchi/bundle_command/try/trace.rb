@@ -3,6 +3,7 @@
 require "json"
 require_relative "../../analytics_file"
 require_relative "../../session_metrics"
+require_relative "../../tool_response"
 
 module Samagotchi
   class BundleCommand
@@ -33,7 +34,7 @@ module Samagotchi
           messages = Array(session["messages"]).select { |message| message.is_a?(Hash) }
           analytics = AnalyticsFile.read(session_dir) || {}
           entries = card_entries(session_dir)
-          tool_rows, denied = tools(messages, analytics, timed_out)
+          tool_rows, denied = tools(messages, analytics)
           summary = SessionMetrics.saved_summary(session_dir)
           cost, estimate = cost_summary(summary)
           questions = entries.select { |entry| entry["type"] == "question" }
@@ -62,7 +63,11 @@ module Samagotchi
                     timed_out: timed_out)
         end
 
-        def tools(messages, analytics, timed_out)
+        # One row per saved call. A turn a --timeout interrupt cut (a
+        # Ctrl-C) saves its calls too, the one it cut short answered as
+        # interrupted (ToolResponse.interrupted): a record has no row of its
+        # own, so no call shows twice.
+        def tools(messages, analytics)
           records = Array(analytics["tool_records"]).select { |record| record.is_a?(Hash) }
                                                     .to_h do |record|
             [[record["iteration"].to_i, record["call_index"].to_i], record]
@@ -86,6 +91,7 @@ module Samagotchi
               is_denied = response && response["content"].to_s.include?(DENIAL_TEXT)
               denied << index if is_denied
               status = is_denied ? "denied" : record&.dig("status").to_s
+              status = "interrupted" if status.empty? && response && ToolResponse.interrupted_text?(response["content"])
               status = "unknown" if status.empty?
               {
                 index: index,
@@ -96,22 +102,7 @@ module Samagotchi
               }
             end
           end
-          rows += unsaved_rows(records, iteration, index) if timed_out
           [rows, denied]
-        end
-
-        # A turn cut by a --timeout interrupt saves only the messages before
-        # it (a Ctrl-C), while its tool records stay: the records past the
-        # last saved model message are its calls, without their arguments.
-        # Only then: a normal run's loop also counts iterations it saves no
-        # model message for (a cut's retry, an empty-answer nudge).
-        def unsaved_rows(records, saved_iterations, index)
-          records.select { |(iteration, _), _| iteration > saved_iterations }.sort.map do |_, record|
-            index += 1
-            status = record["status"].to_s
-            { index: index, name: record["called_as"] || record["tool"] || "tool", args: "",
-              status: status.empty? ? "unknown" : status, duration_ms: record["duration_ms"].to_i }
-          end
         end
 
         def call_name(call)

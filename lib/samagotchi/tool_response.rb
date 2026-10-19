@@ -56,7 +56,13 @@ module Samagotchi
       ToolRun.new(output: text, capped_output: text)
     end
 
-    def interrupted_text(name) = "[#{name}] Interrupted (Ctrl-C) before it returned: it may have partly run."
+    INTERRUPTED = "Interrupted (Ctrl-C) before it returned: it may have partly run."
+
+    def interrupted_text(name) = "[#{name}] #{INTERRUPTED}"
+
+    # Whether +content+ is an #interrupted result, whatever tool it names
+    # (an aliased call's saved name is the model's, the text the tool's).
+    def interrupted_text?(content) = content.to_s.match?(/\A\[[^\]\s]+\] #{Regexp.escape(INTERRUPTED)}\z/)
 
     # The runs' activity, for the turn's tool list (none for a call whose
     # dispatcher raised).

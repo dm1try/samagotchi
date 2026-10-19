@@ -69,6 +69,15 @@ RSpec.describe Samagotchi::ToolResponse do
     end
   end
 
+  describe ".interrupted_text?" do
+    it "matches an interrupted result whatever tool it names, and nothing else" do
+      expect(described_class.interrupted_text?(described_class.interrupted_text("execute"))).to be(true)
+      expect(described_class.interrupted_text?(described_class.interrupted_text("chrome_shot"))).to be(true)
+      expect(described_class.interrupted_text?("[execute]\nstdout:\nInterrupted")).to be(false)
+      expect(described_class.interrupted_text?(nil)).to be(false)
+    end
+  end
+
   describe ".activities" do
     it "leaves out a call with no activity (a dispatcher that raised)" do
       expect(described_class.activities(batch(%w[shots broken write]))).to eq([{ tool: "shots" }, { tool: "write" }])

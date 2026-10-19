@@ -151,8 +151,8 @@ one experimental JSON object to stdout and human trace lines to stderr; its keys
 `interactive_blocked`, `used_memories`, `tokens` (`prompt`, `completion`), `cost`, `cost_is_estimate`, `model`,
 `sandbox`, `denied` (1-based tool indexes), `stderr_tail` (last 4,000 characters) and `timed_out`. A run past
 `--timeout` is interrupted like a Ctrl-C and still prints the trace it got to, with `timed_out: true` (text output:
-the trace lines, then `timed out after N seconds` on stderr). That turn's messages aren't saved, so its tool calls
-come from their timing records: name, status and duration, with empty `args`. Exit status: 2 for usage,
+the trace lines, then `timed out after N seconds` on stderr). That turn keeps its tool calls, as a Ctrl-C does, so
+they show with their `args`; a call the interrupt cut short has status `interrupted`. Exit status: 2 for usage,
 1 for install/turn failure or timeout, 130 for Ctrl-C, otherwise the child's status.
 
 `try` runs the bundle's code and the model's tools with your real HOME, account and keys. Its temporary working

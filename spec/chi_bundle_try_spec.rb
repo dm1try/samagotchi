@@ -460,24 +460,46 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       end
     end
 
-    it "adds the records past the saved messages as rows when the run timed out" do
+    it "shows a timed-out turn's saved calls once each, the one it cut short as interrupted" do
       Dir.mktmpdir do |state_home|
         write_trace_session(state_home, "trace-timeout", [
           { "role" => "user", "content" => "go" },
+          { "role" => "model", "content" => "", "tool_calls" => [
+            { "id" => "call-1", "name" => "execute", "arguments" => { "command" => "ls" } },
+            { "id" => "call-2", "name" => "execute", "arguments" => { "command" => "sleep 9" } }
+          ] },
+          { "role" => "tool_response", "tool_call_id" => "call-1", "content" => "[execute]\nok" },
+          { "role" => "tool_response", "tool_call_id" => "call-2",
+            "content" => Samagotchi::ToolResponse.interrupted_text("execute") },
           { "role" => "system", "content" => "[SYSTEM: the previous turn was cancelled (ctrl-c).]" }
-        ], [
-          { "iteration" => 1, "call_index" => 1, "tool" => "execute", "status" => "ok", "duration_ms" => 5 },
-          { "iteration" => 2, "call_index" => 1, "called_as" => "rg", "duration_ms" => 7 }
-        ])
+        ], [{ "iteration" => 1, "call_index" => 1, "tool" => "execute", "status" => "ok", "duration_ms" => 5 }])
 
         trace = described_class.new(state_home: state_home, session_id: "trace-timeout")
                                .read(exit_code: 1, answer: "", stderr: "", sandbox: nil, timed_out: true)
 
         expect(trace.tools).to eq([
-          { index: 1, name: "execute", args: "", status: "ok", duration_ms: 5 },
-          { index: 2, name: "rg", args: "", status: "unknown", duration_ms: 7 }
+          { index: 1, name: "execute", args: "ls", status: "ok", duration_ms: 5 },
+          { index: 2, name: "execute", args: "sleep 9", status: "interrupted", duration_ms: 0 }
         ])
         expect(trace.timed_out).to be(true)
+      end
+    end
+
+    it "marks an aliased call cut short interrupted (saved as the model's name, answered as the tool's)" do
+      Dir.mktmpdir do |state_home|
+        write_trace_session(state_home, "trace-alias", [
+          { "role" => "user", "content" => "go" },
+          { "role" => "model", "content" => "", "tool_calls" => [
+            { "id" => "call-1", "name" => "bash", "arguments" => { "command" => "sleep 9" } }
+          ] },
+          { "role" => "tool_response", "tool_call_id" => "call-1",
+            "content" => Samagotchi::ToolResponse.interrupted_text("execute") }
+        ], [])
+
+        trace = described_class.new(state_home: state_home, session_id: "trace-alias")
+                               .read(exit_code: 1, answer: "", stderr: "", sandbox: nil, timed_out: true)
+
+        expect(trace.tools).to eq([{ index: 1, name: "bash", args: "sleep 9", status: "interrupted", duration_ms: 0 }])
       end
     end
 
