@@ -105,9 +105,37 @@ RSpec.describe Samagotchi::Bridge::ClientEvent do
     expect(event).to eq(before)
   end
 
+  it "drops a tool call from the client event without changing the raw event" do
+    call = { name: "write", content: "x" * 20_000 }
+    event = { type: :tool_call_started, iteration: 2, call_index: 1, tool: "write", call: call,
+              params: "path=large.txt", view: { description: "Writing" }, ref: "file", title: "Write",
+              event_seq: 9 }
+
+    projected = described_class.project(event)
+
+    expect(projected).to eq(event.except(:call))
+    expect(projected).not_to have_key(:call)
+    expect(event[:call]).to equal(call)
+  end
+
+  it "drops the completed result while keeping the turn summary" do
+    summary = { output: "the answer", empty_answer: nil }
+    event = { type: :turn_completed, result: "the answer", turn_summary: summary, display_pending: true, event_seq: 10 }
+
+    projected = described_class.project(event)
+
+    expect(projected).to eq(event.except(:result))
+    expect(projected[:turn_summary]).to equal(summary)
+    expect(event[:result]).to eq("the answer")
+  end
+
   it "hands back every other event as the same object" do
     event = { type: :generation_completed, iteration: 1, payload: { "usage" => { "total_tokens" => 5 } }, event_seq: 3 }
     expect(described_class.project(event)).to be(event)
+    %i[tool_call_completed turn_canceled turn_failed].each do |type|
+      other = { type: type, event_seq: 4 }
+      expect(described_class.project(other)).to be(other)
+    end
     expect(described_class.project("not a hash")).to eq("not a hash")
   end
 

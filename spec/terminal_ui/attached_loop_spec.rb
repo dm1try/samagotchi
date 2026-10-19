@@ -149,6 +149,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    it "renders a call-less started event and a result-less completed event" do
+      feed({ type: :turn_started, prompt: "write it", origin: { client_id: "tui:1" } },
+           { type: :tool_call_started, iteration: 1, call_index: 1, tool: "write", params: "path=out.txt" },
+           { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "write", duration_ms: 5,
+             activity: { tool: "write", params: "path=out.txt", status: "ok" }, output: "written" },
+           { type: :turn_completed, turn_summary: summary("done") })
+
+      expect(screen.lines.first).to include("(write path=out.txt): ok")
+      expect(screen.lines.last).to eq("done")
+    end
+
     # Shared with the web: spec/shared/turn_snapshot.json.
     it "replays the joined turn as it was drawn live: tool rows with their action and duration" do
       fixture = JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__)))

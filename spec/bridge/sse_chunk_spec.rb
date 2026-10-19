@@ -10,10 +10,9 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
 
-# What a :generation_chunk looks like on a worker's SSE stream, live and
-# replayed (Bridge::ClientEvent): chi's counts and no provider payload or raw
-# content, the ring keeping the raw event; ?raw=1 writes it as it is.
-RSpec.describe "Bridge SSE generation_chunk" do
+# What projected events look like on a worker's SSE stream, live and replayed
+# (Bridge::ClientEvent), the ring keeping raw events; ?raw=1 writes them as emitted.
+RSpec.describe "Bridge SSE event projection" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:state_dir) { Dir.mktmpdir }
@@ -98,5 +97,47 @@ RSpec.describe "Bridge SSE generation_chunk" do
                 .find { |e| e[:type] == :generation_chunk }
     expect(kept[:payload]).to eq(payload)
     expect(kept).not_to have_key(:counts)
+  end
+
+  it "projects tool calls and completed results live and on replay, retaining the raw events for ?raw=1" do
+    call = { name: "write", content: "x" * 20_000 }
+    allow(kernel).to receive(:run) do |_messages, **kwargs|
+      kwargs[:on_stream_event].call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "write",
+                                    call: call, params: "path=large.txt")
+      Samagotchi::LLM::ModelResult.new(text: "answer", conversation: [], exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
+    end
+
+    live_socket = open_stream
+    SpecWaiting.wait_until! "the stream" do
+      @bridge.open_streams == 1
+    end
+    @engine.run_turn(@session, "write", on_event: ->(_e) {})
+
+    live_frames = frames_until_turn_completed(live_socket)
+    live_started = live_frames.find { |frame| frame["type"] == "tool_call_started" }
+    live_completed = live_frames.find { |frame| frame["type"] == "turn_completed" }
+    expect(live_started).to include("tool" => "write", "params" => "path=large.txt")
+    expect(live_started).not_to have_key("call")
+    expect(live_completed.dig("turn_summary", "output")).to eq("answer")
+    expect(live_completed).not_to have_key("result")
+
+    replay_frames = frames_until_turn_completed(open_stream)
+    replay_started = replay_frames.find { |frame| frame["type"] == "tool_call_started" }
+    replay_completed = replay_frames.find { |frame| frame["type"] == "turn_completed" }
+    expect(replay_started).not_to have_key("call")
+    expect(replay_completed).not_to have_key("result")
+
+    ring_events = @bridge.instance_variable_get(:@ring).events_in_range(after_seq: 0, to_seq: @engine.event_count)
+    raw_started = ring_events.map { |row| row[:data] }.find { |event| event[:type] == :tool_call_started }
+    raw_completed = ring_events.map { |row| row[:data] }.find { |event| event[:type] == :turn_completed }
+    expect(raw_started[:call]).to equal(call)
+    expect(raw_completed[:result].to_s).to eq("answer")
+
+    raw_frames = frames_until_turn_completed(open_stream("?raw=1"))
+    raw_started_frame = raw_frames.find { |frame| frame["type"] == "tool_call_started" }
+    raw_completed_frame = raw_frames.find { |frame| frame["type"] == "turn_completed" }
+    expect(raw_started_frame.dig("call", "content")).to eq("x" * 20_000)
+    expect(raw_completed_frame["result"]).to eq("answer")
   end
 end
