@@ -977,7 +977,7 @@ module Samagotchi
         result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
         trace = Try::TraceReader.new(state_home: sandbox.state_home, session_id: result.session_id)
                               .read(exit_code: result.exit_status, answer: result.stdout, stderr: result.stderr,
-                                    sandbox: options[:keep] ? sandbox.root : nil)
+                                    sandbox: options[:keep] ? sandbox.root : nil, timed_out: result.timed_out)
         render_try_trace(trace, json: options[:json], child_stderr: result.stderr)
         @stderr.puts "chi bundle try: timed out after #{timeout} seconds" if result.timed_out
         result.exit_status

@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "samagotchi/bundle_command"
 require "samagotchi/bundle_command/try/sandbox"
 require "support/chi_cli"
 require "support/fake_provider_server"
@@ -271,8 +272,69 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         expect(json_status.exitstatus).to eq(0), json_err
         expect(report.dig("tools", 0, "status")).to eq("denied")
         expect(report["denied"]).to eq([1])
+        expect(report["timed_out"]).to be(false)
       end
     ensure
+      server&.stop
+    end
+
+    it "prints the partial trace and timed_out when the child turn times out" do
+      server = FakeProviderServer.start
+      tool_call = {
+        "choices" => [{ "index" => 0, "delta" => { "tool_calls" => [
+          { "index" => 0, "id" => "call-echo", "type" => "function",
+            "function" => { "name" => "execute", "arguments" => JSON.generate(command: "echo hi") } }
+        ] } }]
+      }
+      finish = { "choices" => [{ "index" => 0, "delta" => {}, "finish_reason" => "tool_calls" }] }
+      response = [tool_call, finish].map { |event| "data: #{JSON.generate(event)}\n\n" }.join + "data: [DONE]\n\n"
+      started = { "choices" => [{ "index" => 0, "delta" => { "content" => "thinking" } }] }
+      server.enqueue("/v1/chat/completions", sse: response)
+      server.enqueue("/v1/chat/completions", sse: ["data: #{JSON.generate(started)}\n\n"], hold: true)
+      # The --timeout wait ends once the held second request arrives (the
+      # tool ran, its record is kept), not on the clock: a loaded machine
+      # can't interrupt the child before then.
+      allow(Samagotchi::BundleCommand::Try::Run).to receive(:new).and_wrap_original do |make, *args|
+        make.call(*args).tap do |run|
+          allow(run).to receive(:wait_for).and_wrap_original do |wait_for, wait, seconds|
+            if seconds == 600
+              deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
+              sleep 0.05 until server.requests.count { |request| request.path == "/v1/chat/completions" } >= 2 ||
+                               !wait.alive? ||
+                               Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+              seconds = 0
+            end
+            wait_for.call(wait, seconds)
+          end
+        end
+      end
+      Dir.mktmpdir do |dir|
+        source = bundle_at(File.join(dir, "source"))
+        env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "oai:spec-model", "SAMAGOTCHI_RETRY_MAX" => "0")
+        config = File.join(env.fetch("XDG_CONFIG_HOME"), "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(config))
+        File.write(config, "hosts:\n  oai:\n    host: 127.0.0.1\n    port: #{server.port}\n    api: openai\n")
+        out = StringIO.new
+        err = StringIO.new
+
+        status = with_env(env) do
+          Samagotchi::BundleCommand.new(["try", source, "-p", "say hi", "--timeout", "600", "--json"],
+                                        stdin: StringIO.new(""), stdout: out, stderr: err).run
+        end
+
+        expect(status).to eq(1)
+        expect(out.string).not_to be_empty, err.string
+        report = JSON.parse(out.string)
+        expect(report["timed_out"]).to be(true)
+        expect(report["session_id"]).not_to be_nil
+        # Ctrl-C keeps only the messages before the turn: the call comes
+        # from its tool record, without arguments.
+        expect(report["tools"]).to eq([{ "index" => 1, "name" => "execute", "args" => "", "status" => "ok",
+                                         "duration_ms" => report.dig("tools", 0, "duration_ms") }])
+        expect(err.string).to include("tools:\n  1 execute          ok", "timed out after 600.0 seconds")
+      end
+    ensure
+      server&.release
       server&.stop
     end
   end
@@ -367,6 +429,55 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           { index: 4, name: "write", args: "next.txt", status: "error", duration_ms: 33 }
         ])
         expect(trace.denied).to eq([1])
+      end
+    end
+
+    def write_trace_session(state_home, id, messages, records)
+      sessions = File.join(state_home, "samagotchi", "sessions")
+      FileUtils.mkdir_p(File.join(sessions, id))
+      File.write(File.join(sessions, "#{id}.json"), JSON.generate("messages" => messages))
+      File.write(File.join(sessions, id, "analytics.json"), JSON.generate("tool_records" => records))
+    end
+
+    it "adds no row for a record a retry's iteration skews on a run that didn't time out" do
+      Dir.mktmpdir do |state_home|
+        # Iteration 1 was cut and retried: the call ran in the loop's
+        # iteration 2, the first saved model message.
+        write_trace_session(state_home, "trace-retry", [
+          { "role" => "user", "content" => "go" },
+          { "role" => "model", "tool_calls" => [
+            { "id" => "call-1", "name" => "execute", "arguments" => { "command" => "ls" } }
+          ] },
+          { "role" => "tool_response", "tool_call_id" => "call-1", "content" => "ok" },
+          { "role" => "model", "content" => "done" }
+        ], [{ "iteration" => 2, "call_index" => 1, "tool" => "execute", "status" => "ok", "duration_ms" => 5 }])
+
+        trace = described_class.new(state_home: state_home, session_id: "trace-retry")
+                               .read(exit_code: 0, answer: "done", stderr: "", sandbox: nil)
+
+        expect(trace.tools).to eq([{ index: 1, name: "execute", args: "ls", status: "unknown", duration_ms: 0 }])
+        expect(trace.timed_out).to be(false)
+      end
+    end
+
+    it "adds the records past the saved messages as rows when the run timed out" do
+      Dir.mktmpdir do |state_home|
+        write_trace_session(state_home, "trace-timeout", [
+          { "role" => "user", "content" => "go" },
+          { "role" => "system", "content" => "[SYSTEM: the previous turn was cancelled (ctrl-c).]" }
+        ], [
+          { "iteration" => 1, "call_index" => 1, "tool" => "execute", "status" => "ok", "duration_ms" => 5 },
+          { "iteration" => 2, "call_index" => 1, "called_as" => "rg", "duration_ms" => 7 }
+        ])
+
+        trace = described_class.new(state_home: state_home, session_id: "trace-timeout")
+                               .read(exit_code: 1, answer: "", stderr: "", sandbox: nil, timed_out: true)
+
+        expect(trace.tools).to eq([
+          { index: 1, name: "execute", args: "", status: "ok", duration_ms: 5 },
+          { index: 2, name: "rg", args: "", status: "unknown", duration_ms: 7 }
+        ])
+        expect(trace.timed_out).to be(true)
       end
     end
 

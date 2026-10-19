@@ -14,6 +14,11 @@ and commands may change between minor versions. How releases are made:
   unseen wakes the idle session for a short turn opened by a `TASK FINISHED` note (exit code, duration, log tail).
   `session.task_wakes`: `wake` (default), `queue` (a note for the next turn) or `off`.
 
+### Fixed
+
+- `chi bundle try --json` reports always carry `timed_out`; a run cut by `--timeout` lists the tool calls it made
+  (name, status and duration; their arguments aren't saved) instead of an empty `tools`.
+
 ## [0.90.0] - 2026-10-19
 
 ### Changed

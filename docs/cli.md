@@ -149,7 +149,10 @@ non-interactive mode. `--keep` retains the temporary sandbox and prints its path
 one experimental JSON object to stdout and human trace lines to stderr; its keys are `session_id`, `exit_code`,
 `answer`, `tools` (`index`, `name`, `args`, `status`, `duration_ms`), `notices`, `cards`, `questions`,
 `interactive_blocked`, `used_memories`, `tokens` (`prompt`, `completion`), `cost`, `cost_is_estimate`, `model`,
-`sandbox`, `denied` (1-based tool indexes) and `stderr_tail` (last 4,000 characters). Exit status: 2 for usage,
+`sandbox`, `denied` (1-based tool indexes), `stderr_tail` (last 4,000 characters) and `timed_out`. A run past
+`--timeout` is interrupted like a Ctrl-C and still prints the trace it got to, with `timed_out: true` (text output:
+the trace lines, then `timed out after N seconds` on stderr). That turn's messages aren't saved, so its tool calls
+come from their timing records: name, status and duration, with empty `args`. Exit status: 2 for usage,
 1 for install/turn failure or timeout, 130 for Ctrl-C, otherwise the child's status.
 
 `try` runs the bundle's code and the model's tools with your real HOME, account and keys. Its temporary working

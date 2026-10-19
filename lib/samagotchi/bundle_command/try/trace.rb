@@ -9,7 +9,8 @@ module Samagotchi
     module Try
       Trace = Data.define(
         :session_id, :exit_code, :answer, :tools, :notices, :cards, :questions, :denied,
-        :interactive_blocked, :used_memories, :tokens, :cost, :cost_is_estimate, :model, :sandbox, :stderr_tail
+        :interactive_blocked, :used_memories, :tokens, :cost, :cost_is_estimate, :model, :sandbox, :stderr_tail,
+        :timed_out
       )
 
       class TraceReader
@@ -22,8 +23,8 @@ module Samagotchi
           @session_id = session_id if session_id.to_s.match?(SESSION_ID)
         end
 
-        def read(exit_code:, answer:, stderr:, sandbox:)
-          return empty_trace(exit_code, answer, stderr, sandbox) unless @session_id
+        def read(exit_code:, answer:, stderr:, sandbox:, timed_out: false)
+          return empty_trace(exit_code, answer, stderr, sandbox, timed_out) unless @session_id
 
           sessions_dir = File.join(@state_home, "samagotchi", "sessions")
           session_path = File.join(sessions_dir, "#{@session_id}.json")
@@ -32,7 +33,7 @@ module Samagotchi
           messages = Array(session["messages"]).select { |message| message.is_a?(Hash) }
           analytics = AnalyticsFile.read(session_dir) || {}
           entries = card_entries(session_dir)
-          tool_rows, denied = tools(messages, analytics)
+          tool_rows, denied = tools(messages, analytics, timed_out)
           summary = SessionMetrics.saved_summary(session_dir)
           cost, estimate = cost_summary(summary)
           questions = entries.select { |entry| entry["type"] == "question" }
@@ -47,20 +48,21 @@ module Samagotchi
                                                                   prompt: summary&.prompt_sum, completion: summary&.completion_sum
                                                                 },
             cost: cost, cost_is_estimate: estimate, model: session["model_name"], sandbox: sandbox,
-            stderr_tail: tail(stderr)
+            stderr_tail: tail(stderr), timed_out: timed_out
           )
         end
 
         private
 
-        def empty_trace(exit_code, answer, stderr, sandbox)
+        def empty_trace(exit_code, answer, stderr, sandbox, timed_out)
           Trace.new(session_id: nil, exit_code: exit_code, answer: answer.to_s, tools: [], notices: [], cards: [],
                     questions: [], denied: [], interactive_blocked: false, used_memories: [], tokens: {
                       prompt: nil, completion: nil
-                    }, cost: nil, cost_is_estimate: false, model: nil, sandbox: sandbox, stderr_tail: tail(stderr))
+                    }, cost: nil, cost_is_estimate: false, model: nil, sandbox: sandbox, stderr_tail: tail(stderr),
+                    timed_out: timed_out)
         end
 
-        def tools(messages, analytics)
+        def tools(messages, analytics, timed_out)
           records = Array(analytics["tool_records"]).select { |record| record.is_a?(Hash) }
                                                     .to_h do |record|
             [[record["iteration"].to_i, record["call_index"].to_i], record]
@@ -94,7 +96,22 @@ module Samagotchi
               }
             end
           end
+          rows += unsaved_rows(records, iteration, index) if timed_out
           [rows, denied]
+        end
+
+        # A turn cut by a --timeout interrupt saves only the messages before
+        # it (a Ctrl-C), while its tool records stay: the records past the
+        # last saved model message are its calls, without their arguments.
+        # Only then: a normal run's loop also counts iterations it saves no
+        # model message for (a cut's retry, an empty-answer nudge).
+        def unsaved_rows(records, saved_iterations, index)
+          records.select { |(iteration, _), _| iteration > saved_iterations }.sort.map do |_, record|
+            index += 1
+            status = record["status"].to_s
+            { index: index, name: record["called_as"] || record["tool"] || "tool", args: "",
+              status: status.empty? ? "unknown" : status, duration_ms: record["duration_ms"].to_i }
+          end
         end
 
         def call_name(call)
