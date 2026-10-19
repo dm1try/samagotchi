@@ -6,10 +6,10 @@ require_relative "child_reports"
 
 module Samagotchi
   # A worker's wake budget: turns nobody typed (a delegate report's wake
-  # turn, an attached context source's) run only past the start grace, at
-  # most session.max_wakes in a row with no human input, and not after a
-  # failed one until a human's input (a provider outage doesn't loop).
-  # Shared by both kinds of wake; the Worker asks it before each and tells
+  # turn, a finished background task's, an attached context source's) run
+  # only past the start grace, at most session.max_wakes in a row with no
+  # human input, and not after a failed one until a human's input (a
+  # provider outage doesn't loop). Shared by every kind of wake; the Worker asks it before each and tells
   # it what happened. It also holds the reports a delegate wake turn was
   # started for until the turn's first boundary takes them (#hand_over,
   # #take_handed).
@@ -109,6 +109,16 @@ module Samagotchi
       end
       true
     end
+
+    # For a background task that finished unseen (TaskWatch): no continue
+    # offer, not paused, past the start grace and under the budget. #count!
+    # when its wake turn starts.
+    def task_open?(awaiting_continue:)
+      !@paused && !awaiting_continue && !in_grace? && @in_a_row < max
+    end
+
+    # Whether wakes are paused (a failed wake turn) until a human's input.
+    def paused? = @paused
 
     # A wake turn starts; +peer+: for a peer's answer, which counts toward
     # both budgets. @return [Integer] the wake turns in a row now

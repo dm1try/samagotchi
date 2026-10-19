@@ -132,6 +132,9 @@ module Samagotchi
       # A delegate child's turn end reaches its parent (ChildReports): wake runs an idle parent's turn for it, queue waits
       # for the parent's next turn, off is the old behaviour (only delegate_result asks).
       Entry.new(key: "session.delegate_reports",      yaml_path: %w[session delegate_reports],      type: :enum,    default: "wake", expose: %i[env config], enum_values: %w[wake queue off], lifecycle: :next_lifecycle_decision),
+      # A background task this session started that finishes unseen (TaskWatch): wake runs an idle session's turn for
+      # it, queue leaves a plain note for the next turn, off is the old behaviour (the model looks when it chooses).
+      Entry.new(key: "session.task_wakes",            yaml_path: %w[session task_wakes],            type: :enum,    default: "wake", expose: %i[env config], enum_values: %w[wake queue off], lifecycle: :next_lifecycle_decision),
       # Turns a parent runs for delegate reports in a row with no human input; past it reports wait for the next turn.
       Entry.new(key: "session.max_wakes",             yaml_path: %w[session max_wakes],             type: :integer, default: 10,    expose: %i[env config], lifecycle: :next_lifecycle_decision),
 

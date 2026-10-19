@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "securerandom"
 
 require_relative "client_id"
 require_relative "config"
@@ -31,6 +32,9 @@ require_relative "child_reports"
 require_relative "child_move"
 require_relative "context_absorber"
 require_relative "context_poller"
+require_relative "kernel_loop"
+require_relative "task_finish_note"
+require_relative "task_watch"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -242,7 +246,7 @@ module Samagotchi
       # a command queued mid-turn (/thinking, /model, /llm-context) changes
       # what it starts with: no turn-end warm-up then.
       @engine.next_turn_waiting = lambda {
-        !@command_queue.empty? || SessionInbox.find_new_input_files(@session_dir).any? || wake_due?
+        !@command_queue.empty? || SessionInbox.find_new_input_files(@session_dir).any? || wake_due? || task_wake_due?
       }
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
@@ -258,6 +262,9 @@ module Samagotchi
       # The seq of the last turn's end event: a command queued before it was
       # queued while that turn ran.
       @turn_end_seq = 0
+      # The background tasks this session started and hasn't seen finish:
+      # one that finishes unseen wakes the idle session (#run_task_wake).
+      @task_watch = TaskWatch.new
       @engine.subscribe(observer: lambda { |event|
         if Events::TURN_END.include?(event[:type])
           @turn_end_seq = event[:event_seq]
@@ -269,6 +276,7 @@ module Samagotchi
           @turn_ending = false
         end
         ring_question(event) if event[:type] == :question_requested
+        watch_tasks(event)
       })
       # This session's own delegate children's news (rings in children/).
       @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir,
@@ -371,12 +379,13 @@ module Samagotchi
       run_input_files(input_files)
     end
 
-    # Nothing queued: a delegate wake turn or a due reminder runs, else
-    # the worker leaves when the idle exit or a client's exit is due, else
-    # it sleeps until woken or the fallback tick.
+    # Nothing queued: a delegate wake turn, a task finish wake turn or a due
+    # reminder runs, else the worker leaves when the idle exit or a client's
+    # exit is due, else it sleeps until woken or the fallback tick.
     # @return [Symbol, nil] as #pass
     def idle_pass
       return if run_wake_turn
+      return if run_task_wake
       return if run_due_reminders
       return left(:idle_exit) if @idle_exit.due? && leave_idle
       return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
@@ -552,8 +561,10 @@ module Samagotchi
     # @param prompt [WorkerInbound::Prompt]
     def run_prompt(prompt)
       origin = prompt.origin
-      # A first turn sees the context attached before it.
+      # A first turn sees the context attached before it, and any turn the
+      # background tasks that finished since the last look.
       absorb_context(before_turn: true)
+      absorb_task_notes
       user_input(origin&.dig(:client_id))
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
@@ -645,6 +656,153 @@ module Samagotchi
       true
     ensure
       @wakes.drop_handed
+    end
+
+    # The Engine's raw events feed the task watch (session.task_wakes not
+    # off): a result that started a task or showed its end, a turn's start,
+    # a user's Stop of it (M5).
+    def watch_tasks(event)
+      case event[:type]
+      when :tool_call_completed then @task_watch.observe(event) unless TaskWatch.mode == "off"
+      when :turn_started then @task_watch.turn_started
+      when :turn_canceled then @task_watch.turn_canceled(event[:cancellation_reason])
+      end
+    end
+
+    # Whether a finished task would start a wake turn now: the Engine skips
+    # the turn-end warm-up then (next_turn_waiting).
+    def task_wake_due?
+      TaskWatch.mode == "wake" && @task_watch.any? && @wakes.task_open?(awaiting_continue: @turn_flow&.awaiting_continue?) &&
+        @task_watch.finished?
+    end
+
+    # The background tasks this session started that finished unseen
+    # (TaskWatch#take_finished), each as a TASK FINISHED note
+    # (TaskFinishNote): the first one not note-only starts a wake turn from
+    # task:<id> when session.task_wakes is wake, nothing is queued, no exit
+    # was asked for and the wake budget is open (WorkerWakes#task_open?);
+    # the others, and every one otherwise, are plain notes for the next
+    # turn (M2). A spent budget is announced once.
+    # @return [Boolean] whether a wake turn ran
+    def run_task_wake
+      return false if @wakes.in_grace? || !@task_watch.any?
+
+      finished = take_finished_tasks
+      return false if finished.empty?
+
+      waking = finished.find { |entry, _| !entry.note_only } if task_wake_open?
+      task_wake = note_finished_tasks(finished, waking: waking)
+      return false if task_wake == :failed
+
+      save_or_log(:task_notes) { save_session }
+      unless task_wake
+        task_budget_notice(finished.count { |entry, _| !entry.note_only }) if TaskWatch.mode == "wake" && @wakes.spent?
+        return false
+      end
+
+      run_task_wake_turn(task_wake)
+      true
+    end
+
+    # Before a prompt's turn: the finished tasks join it as plain notes.
+    def absorb_task_notes
+      return unless @task_watch.any?
+
+      finished = take_finished_tasks
+      return if finished.empty?
+      return if note_finished_tasks(finished) == :failed
+
+      save_or_log(:task_notes) { save_session }
+    end
+
+    # Each finished task's note into the conversation: +waking+'s as the
+    # wake turn's start, the others plain. A note that can't be written (a
+    # log that can't be read, say) puts it and the ones after it back in
+    # the watch for the next look.
+    # @return [WorkerInbound::TaskWake, nil, :failed]
+    def note_finished_tasks(finished, waking: nil)
+      written = []
+      (finished - [waking]).each do |entry, record|
+        add_task_note(entry, record)
+        written << entry
+      end
+      waking && add_task_wake_note(*waking)
+    rescue StandardError => e
+      Log.warn(:worker, "task_note_failed", error: e.class.name, msg: e.message)
+      @task_watch.put_back(finished.map(&:first) - written)
+      :failed
+    end
+
+    # Only the tasks the conversation still holds (a !rollback, a restored
+    # turn may have dropped the result that started one). A failure to
+    # read them is logged: they wait for the next look.
+    def take_finished_tasks
+      @task_watch.take_finished(keep: Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint))
+    rescue StandardError => e
+      Log.warn(:worker, "task_watch_failed", error: e.class.name, msg: e.message)
+      []
+    end
+
+    def task_wake_open?
+      TaskWatch.mode == "wake" && nothing_queued? && !@exit_requested &&
+        @wakes.task_open?(awaiting_continue: @turn_flow.awaiting_continue?)
+    end
+
+    def task_note(entry, record, wake:, turn_id: nil)
+      TaskFinishNote.note(record, limit_sec: entry.limit_sec, wake: wake, turn_id: turn_id,
+                                  cap: KernelLoop.resolve_output_char_cap(nil))
+    end
+
+    def add_task_note(entry, record)
+      @engine.add_context_note(@session, task_note(entry, record, wake: false))
+    end
+
+    # The wake note, in the conversation as the wake turn's first message
+    # (before TurnFlow#before_prompt_turn, so a restore keeps it).
+    # @return [WorkerInbound::TaskWake]
+    def add_task_wake_note(entry, record)
+      turn_id = SecureRandom.uuid
+      @engine.add_context_note(@session, task_note(entry, record, wake: true, turn_id: turn_id))
+      WorkerInbound::TaskWake.new(ids: [entry.id], turn_id: turn_id, plain_note: task_note(entry, record, wake: false))
+    end
+
+    # A turn nobody typed for a finished task: a continue turn from
+    # task:<id> whose first message is the wake note, on the delegate wake's
+    # rules (counted toward session.max_wakes). A failure that kept nothing,
+    # or a Stop that restored the conversation, leaves the note as a plain
+    # one (WorkerInbound#unmark_wake) and pauses wakes until a human's input (M4).
+    def run_task_wake_turn(task_wake)
+      Log.info(:worker, "task_wake_turn", task_id: task_wake.ids.first, in_a_row: @wakes.count!)
+      @turn_flow.before_prompt_turn
+      restores = @turn_flow.restores
+      run_engine_turn(nil, continue: true, origin: task_wake.origin, id: task_wake.turn_id,
+                           max_iterations: IterationLimit.for) do |result, error|
+        if error
+          kept = @turn_flow.prompt_turn_failed(
+            error: error, wake: "a finished background task (#{task_wake.name.delete_prefix("task ")})",
+            wake_kept: "Its note stays for the user's next message."
+          ) == :kept
+          @inbound.unmark_wake(task_wake) unless kept
+          @wakes.pause!
+        else
+          @continue_offer.after_turn(result)
+          if result.canceled? && @turn_flow.restores != restores
+            @inbound.unmark_wake(task_wake)
+            @wakes.pause!
+          end
+        end
+      end
+    end
+
+    # The wake budget is spent: the UIs hear once that finished tasks wait
+    # as notes (one notice per stretch, shared with the other kinds).
+    def task_budget_notice(count)
+      return unless count.positive? && @wakes.notice_budget!
+
+      @engine.announce(type: :hook_notice, hook: "task", level: :info, between_turns: true,
+                       text: "#{count} finished background task#{"s" if count != 1} noted; the model reads " \
+                             "#{count == 1 ? "it" : "them"} with your next message " \
+                             "(#{@wakes.max} wake turn#{"s" if @wakes.max != 1} in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     # The idle loop's sleep: the fallback tick, or less while reports wait

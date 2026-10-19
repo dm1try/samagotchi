@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "config"
 require_relative "log"
 require_relative "tools/task_runtime"
 
@@ -31,6 +32,17 @@ module Samagotchi
     TASK_LINE = /\A#{Tools::TaskRuntime::RAN_AS_LINE}(?:\[task_(?:wait|get|stop)\]\n)?task_id: (\S+)/
     LOOK_TOOLS = %w[task_wait task_get task_stop].freeze
     HANDED_OVER_LIMIT = /#{Regexp.escape(Tools::Execute::HANDED_OVER)} (\d+)s limit/
+
+    MODE_KEY = "session.task_wakes"
+    MODES = %w[wake queue off].freeze
+
+    # session.task_wakes: wake (default), queue or off; anything else is wake.
+    def self.mode
+      value = Config.get(MODE_KEY).to_s
+      MODES.include?(value) ? value : "wake"
+    rescue StandardError
+      "wake"
+    end
 
     def initialize
       @mutex = Mutex.new
@@ -113,6 +125,21 @@ module Samagotchi
         next nil if record.stopped_by_user?
 
         [entry, record]
+      end
+    end
+
+    # +entries+ taken by #take_finished whose note couldn't be written:
+    # watched again (an id watched meanwhile keeps its own entry).
+    def put_back(entries)
+      @mutex.synchronize { entries.each { |entry| @entries[entry.id] ||= entry } }
+    end
+
+    # Whether a watched task has finished (#take_finished would take it):
+    # Engine#next_turn_waiting asks at a turn's end. Takes nothing.
+    def finished?
+      ids.any? do |id|
+        record, = Tools::TaskRuntime.get_record(id)
+        record && !record.running?
       end
     end
 

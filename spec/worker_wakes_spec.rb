@@ -72,6 +72,21 @@ RSpec.describe Samagotchi::WorkerWakes do
     end
   end
 
+  describe "#task_open?" do
+    it "opens past the grace, with no offer, unpaused and under the budget" do
+      expect(wakes.task_open?(awaiting_continue: false)).to be(false)
+      pass(2.0)
+      expect(wakes.task_open?(awaiting_continue: false)).to be(true)
+      expect(wakes.task_open?(awaiting_continue: true)).to be(false)
+      3.times { wakes.count! }
+      expect(wakes.task_open?(awaiting_continue: false)).to be(false)
+      wakes.human_input!
+      wakes.pause!
+      expect(wakes.paused?).to be(true)
+      expect(wakes.task_open?(awaiting_continue: false)).to be(false)
+    end
+  end
+
   it "counts wake turns, and a human's input resets the count, the pause and the budget notice" do
     expect(wakes.count!).to eq(1)
     expect(wakes.count!).to eq(2)

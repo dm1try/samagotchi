@@ -11,6 +11,7 @@ require_relative "context_note"
 require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "tools/task_record"
 require_relative "worker_wakes"
 
 module Samagotchi
@@ -51,6 +52,19 @@ module Samagotchi
       # that agrees closes the round and counts toward session.max_wakes only.
       def peer_turn? = peer? && !delivery.agreed
       def origin = { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" }
+      # The plain note #unmark_wake puts back.
+      def note = delivery.note
+    end
+
+    # A task finish wake turn to run (TaskWatch, TaskFinishNote): its wake
+    # note is in the conversation as the start of the turn +turn_id+;
+    # +plain_note+ is the same note without the turn start or the ask, which
+    # #unmark_wake puts back after a failed or restored wake turn. +ids+: the
+    # finished tasks it runs for (the first one names it).
+    TaskWake = Data.define(:ids, :turn_id, :plain_note) do
+      def name = "task #{Tools::TaskRecord.short_id(ids.first)}"
+      def origin = { client_id: "#{ClientId::TASK_PREFIX}#{ids.first}" }
+      def note = plain_note
     end
 
     # A save between turns (the turn's own, a command's, the notes', the
@@ -144,13 +158,13 @@ module Samagotchi
 
     # A failed wake turn kept nothing but its note: the note goes back to
     # a plain note (no turn start, the background wording), so a reload
-    # draws no empty turn for it.
-    def unmark_wake(context_wake)
+    # draws no empty turn for it. +wake+: a ContextWake or a TaskWake.
+    def unmark_wake(wake)
       messages = @engine.messages_checkpoint
-      index = messages.index { |m| m[:turn_start] && m[:turn_id] == context_wake.turn_id }
+      index = messages.index { |m| m[:turn_start] && m[:turn_id] == wake.turn_id }
       return unless index
 
-      messages[index] = ContextNote.message(**context_wake.delivery.note)
+      messages[index] = ContextNote.message(**wake.note)
       @engine.rollback_to(messages)
     end
 

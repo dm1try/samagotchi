@@ -73,7 +73,8 @@ session:
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
   # delegate_reports: wake  # a child's reply reaches its parent by itself: wake (an idle parent runs a turn), queue, off
-  # max_wakes: 10           # wake turns in a row (delegate reports, context, peers) with no human input
+  # task_wakes: wake        # a background task finishing unseen: wake (an idle session runs a turn), queue, off
+  # max_wakes: 10           # wake turns in a row (delegate reports, finished tasks, context, peers) with no human input
 
 # Baseline memories preloaded into the system prompt (same shape as --memory);
 # name entries you have, or chi warns at each start.
@@ -160,7 +161,7 @@ or `chi web` restart.
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job once. |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
-| `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
+| `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `web.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
@@ -1622,7 +1623,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
 | `session.max_children` | `4` | | Running delegated sessions one session may have. |
 | `session.delegate_reports` | `wake` | | When a delegate child ends a turn, its reply reaches the parent: `wake` runs an idle parent's turn for it, `queue` waits for the parent's next turn, `off` leaves it to `delegate_result`. |
-| `session.max_wakes` | `10` | | Wake turns a session runs in a row with no human input: for delegate reports, attached context and peer answers; past it reports wait for the next turn and context updates arrive as notes. |
+| `session.task_wakes` | `wake` | | When a background task the session started (`task_create`, an `execute` handed over at its limit) finishes and the model hasn't seen it finish: `wake` runs an idle session's turn opened by a `TASK FINISHED` note, `queue` leaves the note for the next turn, `off` leaves it to `task_wait`. See [Finish wake](internals/background-tasks.md#finish-wake). |
+| `session.max_wakes` | `10` | | Wake turns a session runs in a row with no human input: for delegate reports, finished background tasks, attached context and peer answers; past it reports wait for the next turn and task finishes and context updates arrive as notes. |
 | `session.retention_days` | `14` | yes | Delete sessions not updated for N days; `0` = forever. See [Sessions](sessions.md). |
 | `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
 | `session.keep_status` | none | yes | Comma list of statuses never pruned (a session a worker or `chi` has open is never pruned anyway). |

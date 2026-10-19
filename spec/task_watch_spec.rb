@@ -161,6 +161,37 @@ RSpec.describe Samagotchi::TaskWatch do
     end
   end
 
+  it "puts back taken entries whose note couldn't be written, keeping an entry watched meanwhile" do
+    watch.observe(created("a"))
+    taken = watch.entry("a")
+    watch.remove("a")
+    watch.observe(handed_over("b", limit: 5))
+    watch.put_back([taken, Samagotchi::TaskWatch::Entry.new(id: "b")])
+
+    expect(watch.ids).to eq(%w[b a])
+    expect(watch.entry("b").limit_sec).to eq(5)
+  end
+
+  it "says whether a watched task finished, taking nothing" do
+    watch.observe(created("a"))
+    finished = [false]
+    allow(Samagotchi::Tools::TaskRuntime).to receive(:get_record) do
+      [instance_double(Samagotchi::Tools::TaskRecord, running?: !finished[0]), nil]
+    end
+
+    expect(watch.finished?).to be(false)
+    finished[0] = true
+    expect(watch.finished?).to be(true)
+    expect(watch.ids).to eq(%w[a])
+  end
+
+  describe ".mode" do
+    it "reads session.task_wakes, wake for anything it doesn't know" do
+      allow(Samagotchi::Config).to receive(:get).with("session.task_wakes").and_return("queue", "nope", nil)
+      expect([described_class.mode, described_class.mode, described_class.mode]).to eq(%w[queue wake wake])
+    end
+  end
+
   it "says which watched tasks still run, for the idle exit" do
     watch.observe(created("a"))
     watch.observe(created("b"))
