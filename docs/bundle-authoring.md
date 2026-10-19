@@ -9,23 +9,22 @@ files, what a hook sees, how to test, and what goes wrong. The full references a
 ```
 chi bundle new my-bundle     # ./my-bundle: manifest.yml, plugin.rb, test/my_bundle_test.rb, README.md
 cd my-bundle                 # edit plugin.rb and the test
-chi bundle test              # the tests, on chi's own Ruby and lib (exit status: the tests')
+chi bundle install --dev .   # once while iterating: link this folder; edits load in the next session
 chi bundle check --fix       # manifest, files, shas (--fix rewrites them), requires_chi, install + load in a sandbox
+chi bundle test              # tests on chi's own Ruby and lib (exit status: the tests')
 chi bundle try . -p "Say hello"  # one real model turn; trace the bundle in an isolated install sandbox
-chi bundle install .         # into the user's chi; a NEW session loads it (a running one doesn't)
-chi bundle install --dev .   # or as a link to this folder: edits apply at the next session, no re-install
+chi bundle uninstall my-bundle && chi bundle install .  # at the end: leave dev mode, copy it in
 ```
 
-While you write it, `install --dev .` (once; `uninstall NAME` leaves dev mode) then try it in chi: a new session
-loads the plugin and hooks from the folder as they are, with no sha check (that bundle only; memories are copied).
-Re-install with `--force` from the same PATH to pick up memory edits.
-Dev-linked scripts aren't chmodded, since that would change the source. Chi warns with a `chmod +x PATH/scripts/x`
-hint when a listed script isn't executable; set that bit on the source script.
+The loop is **edit → `check --fix` → `test` → `try`**. `install --dev .` links the folder once, so a new session
+loads your edits with no reinstall (a running one doesn't; `try` doesn't need the link: it installs into its own
+sandbox). Memories are copied: re-install with `--force` from the same PATH to pick up memory edits. At the end,
+`uninstall NAME` leaves dev mode and a plain `install .` copies the bundle in (chi refuses it over a dev link).
+Dev-linked scripts aren't chmodded: chi warns with a `chmod +x PATH/scripts/x` hint; set the bit on the source.
 
-`check` prints one finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, and exits 1 on any
-error. Run it after every edit: an install takes exactly what it checks. It installs into a temp sandbox, not
-the user's config or state, but `check` and `test` run the bundle's plugin and hooks in their own process, as
-written: run them on code you'd install.
+`check` prints one finding per line (`error|warn|info CODE file[:line]: message (fix: hint)`), exits 1 on any error
+and installs into a temp sandbox, not the user's config or state; run it after every edit. `check` and `test` run
+the bundle's plugin and hooks in their own process, as written: run them on code you'd install.
 
 ## Trying a bundle
 
@@ -87,29 +86,36 @@ that list is never fired (`check` warns). The two a bundle wants most, for an `e
 Match on `result:`, not `output:`. An execute's result is its `stdout:` and `stderr:` blocks (each left out when
 empty), then `exit: N` (`exit: 0 (no output)` when both were empty); a non-zero exit makes `status:` `"error"`.
 Act through `ctx`: `ctx.notify(text, level: :warn)`, `ctx.steer(text)` (a line the model reads before its next
-step), `ctx.card(…)`, `ctx.stop_turn(reason)`, `ctx.ask_user(…)`, `ctx.data_dir` (the bundle's own folder),
+step), `ctx.card(…)`, `ctx.stop_turn(reason)`, `ctx.ask_user(…)`, `ctx.data_dir` (the bundle's state folder),
 `ctx.cwd`, `ctx.log`. In a test, each recorded notice, steer or stop names its hook as `"plugin.rb (bundle
 my-bundle)"`, the plugin's label (a `hooks/x.rb` file's is `"x.rb (bundle my-bundle)"`).
 
 ## Testing it
 
-`chi bundle new` writes a Minitest test that passes as written: copy its shape. The kit (`samagotchi/testing`)
-loads the bundle's source through chi's own loaders, in a sandbox (temp HOME, config and state), and records what
-it did at chi's edges:
+`chi bundle new` writes a Minitest test that passes as written: copy its shape. The kit (`samagotchi/testing`) loads
+the bundle's source through chi's own loaders in a sandbox (temp HOME, config and state) and records what it did:
+`load_bundle`, then `bundle.command` / `bundle.fire`, and the effects in `bundle.notices`. `bundle.ctx.data_dir` and
+`sandbox.state_dir` are that test's temporary state, never the user's (the scaffold's plugin, tested):
 
 ```ruby
-bundle = load_bundle(BUNDLE, settings: { "greeting" => "hi" })   # in a Samagotchi::Testing::Case test
-bundle.command("/my-bundle chi")                     # → what the command returned
-bundle.fire(:after_tool_call, tool: "execute", status: "error", result: "exit: 1 (no output)", call: { … })
-bundle.tool_call({ name: "execute", content: "rm -rf /" }).deny?   # before_tool_call hooks, through the real gate
-bundle.tool("my_tool", path: "a.txt")                # a chi.tool, as the model calls it
-bundle.notices, bundle.steers, bundle.cards, bundle.stops, bundle.questions   # what it did
-bundle.answer({ selected: "yes" }); bundle.model_answers << "text"           # ask_user / ask_model answers
-bundle.http.stub(:get, "https://api.example/x", json: { ok: true })          # ctx.http, never the network
-bundle.set(cwd: dir, running: false); sandbox.config(hash); sandbox.fake_executable("gh", "echo '{}'")
-bundle.install                                        # installed as chi installs it: warnings, load failures
+require "minitest/autorun"
+require "samagotchi/testing/minitest"
+
+class MyBundleTest < Samagotchi::Testing::Case
+  def test_command_and_failed_execute_notice
+    bundle = load_bundle(File.expand_path("..", __dir__), settings: { "greeting" => "hi" })
+    assert_equal "hi, there", bundle.command("/my-bundle")
+    bundle.fire(:after_tool_call, tool: "execute", status: "error", call: { name: "execute", content: "false" },
+                                  result: "exit: 1 (no output)", output: "[execute]\nexit: 1 (no output)")
+    assert_equal "the command exited 1", bundle.notices.last.text
+    assert_equal File.join(sandbox.state_dir, "plugins", bundle.name), bundle.ctx.data_dir
+  end
+end
 ```
 
+`bundle.tool_call` runs guarded hooks; `bundle.tool` calls a registered tool. `bundle.steers`, `cards`, `stops` and
+`questions` record effects; `bundle.answer` / `model_answers` provide `ask_user` / `ask_model` answers.
+`bundle.http.stub` stubs `ctx.http`; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
 The full list is in [plugins.md, Testing a bundle](plugins.md#testing-a-bundle-experimental). The kit is
 experimental (it may change before chi 1.0). If a test needs a fake of chi's own (a stub of a `Samagotchi::`
 class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather than reaching into chi.
@@ -132,7 +138,7 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
 
 ## Verifying it live
 
-After `chi bundle install .`, one real session shows it works with the user's chi:
+`chi bundle try . -p "Say hello"` is the live check (trace, plugin, notices); after the final install, check the copy:
 
 ```
 chi send --new --wait --format json --dir /tmp/try -m "/my-bundle chi"   # the JSON names the session id
