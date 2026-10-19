@@ -10,6 +10,7 @@ require_relative "model_ref"
 require_relative "paths"
 require_relative "llm_context_strategy"
 require_relative "host_model"
+require_relative "config/restart_watch"
 
 module Samagotchi
   # Parses the thinking: levels of host and model entries (it needs Config).
@@ -746,7 +747,7 @@ module Samagotchi
       cache = @yaml_cache ||= {}
       unless File.file?(path)
         cache.delete(path)
-        notify_restart_settings(path, nil, nil)
+        Config::RestartWatch.notify(path, nil, nil)
         return nil
       end
       stat = File.stat(path)
@@ -754,75 +755,37 @@ module Samagotchi
       hit = cache[path]
       return hit[1] if hit && hit[0] == key
 
+      problem = nil
       data = begin
         YAML.safe_load_file(path, permitted_classes: [], aliases: false)
-      rescue StandardError
+      rescue StandardError => e
+        problem = "#{e.class}: #{e.message.lines.first.to_s.strip[0, 200]}"
         nil
       end
+      problem ||= "its top level isn't a mapping" unless data.nil? || data.is_a?(Hash)
       data = nil unless data.is_a?(Hash)
       cache[path] = [key, data]
-      notify_restart_settings(path, key, data)
+      if problem
+        Config::RestartWatch.unreadable(path, key, problem)
+      else
+        Config::RestartWatch.notify(path, key, data)
+      end
       data
     end
 
     # Calls +on_change+ with one line ("server.port changed — applies after a
     # worker restart") when config.yml changes a setting this process only
-    # reads at its start (Config::Entry#lifecycle: worker_start or web_start,
-    # and process_start). Checked when the file is read again (#read_yaml),
-    # once per key per new value: none at start, none for a value back at its
-    # start value.
+    # reads at its start (Config::RestartWatch). Checked when the file is
+    # read again (#read_yaml), once per key per new value: none at start,
+    # none for a value back at its start value, none while the file doesn't
+    # parse (that warns once).
     # @param process [Symbol] :worker or :web
     # @return [Proc] unsubscribes
-    def watch_restart_settings!(process:, env: ENV, &on_change)
-      lifecycles = case process
-                   when :worker then %i[worker_start process_start]
-                   when :web then %i[web_start process_start]
-                   else raise ArgumentError, "unknown config process #{process.inspect}"
-                   end
-      raise ArgumentError, "a config change callback is required" unless on_change
-
+    def watch_restart_settings!(process:, env: ENV, &)
       path = global_path(env: env)
       data = read_yaml(env: env, path: path)
-      entries = Config::ENTRIES.select { |entry| entry.config_exposed? && lifecycles.include?(entry.lifecycle) }
-      watcher = {
-        path: path, process: process, entries: entries,
-        values: entries.to_h { |entry| [entry.key, Config.resolve(entry.key, file_data: data, env: {})] },
-        noticed: {},
-        file_key: File.file?(path) ? [File.stat(path).mtime.to_r, File.size(path)] : nil,
-        on_change: on_change
-      }
-      restart_watchers_mutex.synchronize { (@restart_watchers ||= []) << watcher }
-      -> { restart_watchers_mutex.synchronize { @restart_watchers&.delete(watcher) } }
-    end
-
-    # Tells each watcher of +path+ which of its start-only settings the file
-    # read now (+data+, under +file_key+) changes.
-    def notify_restart_settings(path, file_key, data)
-      notices = restart_watchers_mutex.synchronize do
-        Array(@restart_watchers).flat_map do |watcher|
-          next [] unless watcher[:path] == path && watcher[:file_key] != file_key
-
-          watcher[:file_key] = file_key
-          watcher[:entries].filter_map do |entry|
-            value = Config.resolve(entry.key, file_data: data, env: {})
-            if watcher[:values][entry.key] == value
-              watcher[:noticed].delete(entry.key)
-              next
-            end
-            # Already told for this value: a later edit of another key.
-            next if watcher[:noticed].key?(entry.key) && watcher[:noticed][entry.key] == value
-
-            watcher[:noticed][entry.key] = value
-            restart = watcher[:process] == :worker ? "a worker restart" : "restarting chi web"
-            [watcher[:on_change], "#{entry.key} changed — applies after #{restart}"]
-          end
-        end
-      end
-      notices.each { |callback, message| callback.call(message) }
-    end
-
-    def restart_watchers_mutex
-      @restart_watchers_mutex ||= Mutex.new
+      file_key = File.file?(path) ? [File.stat(path).mtime.to_r, File.size(path)] : nil
+      Config::RestartWatch.watch(process: process, path: path, data: data, file_key: file_key, &)
     end
 
     # Print +message+ to stderr unless this process already did. The config

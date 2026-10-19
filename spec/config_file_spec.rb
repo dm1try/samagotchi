@@ -151,6 +151,54 @@ RSpec.describe Samagotchi::ConfigFile do
         described_class.clear_yaml_cache!(path)
       end
     end
+
+    it "tells nothing while config.yml doesn't parse, warns once, and compares again once it does" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        path = File.join(dir, "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(path))
+        env = { "XDG_CONFIG_HOME" => dir }
+        write = lambda do |text, at|
+          File.write(path, text)
+          File.utime(Time.now + at, Time.now + at, path)
+          described_class.read_yaml(env: env)
+        end
+        File.write(path, "server:\n  port: 8081\nworker:\n  idle_exit_minutes: 7\n")
+        notices = []
+        warnings = []
+        allow(Samagotchi::Log).to receive(:warn) { |_tag, _event, echo:| warnings << echo }
+        stop_watching = described_class.watch_restart_settings!(process: :worker, env: env) { |message| notices << message }
+
+        write.call("server:\n  port: 8081\n  host: [oops\n", 5)
+        write.call("server:\n  port: 8081\n  host: [oops\n\n", 10)
+        expect(notices).to eq([])
+        expect(warnings.size).to eq(1)
+        expect(warnings.first).to start_with("config: #{path} doesn't parse (Psych::SyntaxError")
+
+        write.call("- a list\n", 15)
+        expect(notices).to eq([])
+        expect(warnings.last).to include("its top level isn't a mapping")
+
+        write.call("server:\n  port: 8082\nworker:\n  idle_exit_minutes: 7\n", 20)
+        expect(notices).to eq(["server.port changed — applies after a worker restart"])
+      ensure
+        stop_watching&.call
+        described_class.clear_yaml_cache!(path)
+      end
+    end
+
+    it "warns about a config.yml that doesn't parse only to a process that watches it" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        path = File.join(dir, "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "server: [oops\n")
+        allow(described_class).to receive(:warn_once)
+
+        expect(described_class.read_yaml(env: { "XDG_CONFIG_HOME" => dir })).to be_nil
+        expect(described_class).not_to have_received(:warn_once)
+      ensure
+        described_class.clear_yaml_cache!(path)
+      end
+    end
   end
 
   describe ".load!" do

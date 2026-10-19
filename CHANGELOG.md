@@ -13,6 +13,9 @@ and commands may change between minor versions. How releases are made:
 - Guardrail rules' `command:` keeps a `cat`/`tee` heredoc body after an `exec` that sends the shell's output to a
   file (`exec >run.sh; cat <<EOF …`, `exec 3>run.sh; cat <<EOF >&3 …`): the body may be run later, as with
   `cat <<EOF >run.sh`; before, it was left out as data.
+- A config.yml that doesn't parse (saved mid-edit) no longer tells a worker or chi web that every start-only setting
+  changed and needs a restart: it warns once that the file doesn't parse, and the settings are compared again once
+  it does.
 
 ## [0.92.0] - 2026-10-19
 
