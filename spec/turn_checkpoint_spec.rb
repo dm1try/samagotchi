@@ -180,6 +180,17 @@ RSpec.describe Samagotchi::TurnCheckpoint do
         expect(described_class.settled_turn(dir, "../q1")).to be_nil
       end
 
+      it "records a file-delivered command's outcome by its status: completed, failed, or canceled for that reason" do
+        { "c-ok" => "ok", "c-error" => "error", "c-busy" => "busy", "c-dropped" => "dropped" }.each do |id, status|
+          described_class.record_command_outcome(dir, id, status: status)
+        end
+
+        expect(described_class.settled_turn(dir, "c-ok")).to have_attributes(outcome: "completed", cancel_reason: nil)
+        expect(described_class.settled_turn(dir, "c-error")).to have_attributes(outcome: "failed", cancel_reason: nil)
+        expect(described_class.settled_turn(dir, "c-busy")).to have_attributes(outcome: "canceled", cancel_reason: "busy")
+        expect(described_class.settled_turn(dir, "c-dropped")).to have_attributes(outcome: "canceled", cancel_reason: "dropped")
+      end
+
       it "logs a record it can't write and settles all the same" do
         session.interrupted_turn = mark.with(enqueued_id: "q1")
         allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::EACCES)

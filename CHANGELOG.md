@@ -45,6 +45,9 @@ and commands may change between minor versions. How releases are made:
 - A background task that finished just as the idle worker was about to exit still wakes the session (the worker
   stays up for its wake); one that finished before the worker left for another reason is a note for the next turn.
   A task whose turn you stopped no longer keeps the worker up or holds `/exit`.
+- `chi send --wait` on a session command delivered as a file reads the command's real outcome (failed, or canceled
+  when it was refused mid-turn or dropped), not always completed, and says so as the command's ("the command
+  failed"), not a turn's.
 
 ## [0.91.0] - 2026-10-19
 

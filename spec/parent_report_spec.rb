@@ -136,6 +136,20 @@ RSpec.describe Samagotchi::ParentReport do
     expect(json(by_user).keys).to eq(%w[status session_id cancel_reason detail])
   end
 
+  it "says a file-delivered command's outcome as the command's (no turn ran), its exit code as a turn's" do
+    command = ->(**fields) { Samagotchi::ReplyWait::Result.new(status: :no_reply, origin: "command", **fields) }
+    {
+      command.call(outcome: "completed") => ["no_answer", "the command ran (no turn)"],
+      command.call(outcome: "failed") => ["failed", "the command failed"],
+      command.call(outcome: "canceled", cancel_reason: "busy") => ["canceled", "the command was refused (busy)"],
+      command.call(outcome: "canceled", cancel_reason: "dropped") => ["canceled", "the command was refused (dropped)"]
+    }.each do |result, (status, line)|
+      turn = Samagotchi::ReplyWait::Result.new(**result.to_h, origin: nil)
+      expect(json(result)).to include("status" => status, "detail" => "#{line}; chi --attach #{id} shows it")
+      expect(described_class.exit_status(result)).to eq(described_class.exit_status(turn))
+    end
+  end
+
   it "says a failed turn's work stayed, with its steps (kept_steps), in the detail and the report" do
     kept = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "out of credits on host or: x",
                                              error_kind: "credits", retryable: false, kept_steps: 3)

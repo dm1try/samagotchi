@@ -91,16 +91,25 @@ module Samagotchi
     end
     private_class_method :settled_record
 
+    # A command's status (its command_ran's) as a settled outcome; any
+    # other status (busy, dropped) is a cancel for that reason.
+    COMMAND_OUTCOMES = { "ok" => "completed", "error" => "failed" }.freeze
+    # Its record's origin: no turn ran (ParentReport says "the command").
+    COMMAND_ORIGIN = "command"
+
     # A file-delivered command ends its sender's wait without running a
-    # turn. Keep a terminal outcome under the same per-input settled path.
-    def self.record_command_outcome(session_dir, enqueued_id)
+    # turn. Keep a terminal outcome under the same per-input settled path:
+    # +status+ is its command_ran's ("ok", "error", "busy", "dropped" at a
+    # teardown), so the wait reads completed, failed, or canceled with that
+    # reason.
+    def self.record_command_outcome(session_dir, enqueued_id, status:)
       id = enqueued_id.to_s
       return if id.empty? || !SessionInbox::ENQUEUED_ID_NAME.match?(id)
 
-      dir = File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR)
-      FileUtils.mkdir_p(dir)
-      record = LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id)
-      AtomicFile.write(File.join(dir, id), JSON.generate(record.to_file))
+      outcome = COMMAND_OUTCOMES.fetch(status.to_s, "canceled")
+      record = LastTurn.new(outcome: outcome, cancel_reason: (status.to_s if outcome == "canceled"),
+                            ended_at: Time.now.iso8601(3), origin: COMMAND_ORIGIN, enqueued_id: id)
+      write_settled(session_dir, id, record)
     rescue SystemCallError, IOError => e
       Log.warn(:worker, "command_outcome_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
     end
@@ -109,14 +118,18 @@ module Samagotchi
       id = mark.enqueued_id.to_s
       return unless SessionInbox::ENQUEUED_ID_NAME.match?(id)
 
-      dir = File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR)
-      FileUtils.mkdir_p(dir)
-      record = settled_record(id, ended_at: Time.now.iso8601(3), seconds: seconds)
-      AtomicFile.write(File.join(dir, id), JSON.generate(record.to_file))
+      write_settled(session_dir, id, settled_record(id, ended_at: Time.now.iso8601(3), seconds: seconds))
     rescue SystemCallError => e
       # The settle goes on; a wait for that turn runs to its timeout.
       Log.warn(:worker, "settled_turn_write_failed", error: e.class.name, msg: e.message)
     end
+
+    def self.write_settled(session_dir, id, record)
+      dir = File.join(session_dir, SessionInbox::INPUT_DIR, SETTLED_DIR)
+      FileUtils.mkdir_p(dir)
+      AtomicFile.write(File.join(dir, id), JSON.generate(record.to_file))
+    end
+    private_class_method :write_settled
     private_class_method :record_settled
 
     # @param session [Session] the worker's session (saved as a whole)

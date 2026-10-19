@@ -514,11 +514,28 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
       end
       later(0.05) do
-        Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id)
+        Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
+                                                          status: "ok")
       end
 
       expect(run("--wait", "--format", "json", "--timeout", "0.5", "-m", "/model x", a.id)).to eq(1)
       expect(JSON.parse(out.string)).to include("status" => "no_answer", "turn_id" => enqueued_id)
+    end
+
+    it "says a fallback-delivered command failed when it ended in an error" do
+      a = make(status: "idle")
+      enqueued_id = "input-command-error"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
+        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+      end
+      later(0.05) do
+        Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
+                                                          status: "error")
+      end
+
+      run("--wait", "--format", "json", "--timeout", "0.5", "-m", "/model x", a.id)
+      expect(JSON.parse(out.string)).to include("status" => "failed", "turn_id" => enqueued_id,
+                                                "detail" => a_string_starting_with("the command failed"))
     end
 
     it "waits for the fallback command outcome on a new session too" do
@@ -529,7 +546,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       end
       later(0.05) do
         Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(@started.id, state_dir: tmpdir),
-                                                          enqueued_id)
+                                                          enqueued_id, status: "ok")
       end
 
       expect(run("--new", "--wait", "--format", "json", "--timeout", "0.5", "-m", "/model x")).to eq(1)

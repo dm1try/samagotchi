@@ -6,6 +6,7 @@ require "json"
 require_relative "cli/exit"
 require_relative "pending_question"
 require_relative "session"
+require_relative "turn_checkpoint"
 require_relative "guardrails/parent_policy"
 
 module Samagotchi
@@ -339,6 +340,8 @@ module Samagotchi
     end
 
     def no_reply_line(result, session_id = nil, strategy: nil)
+      return command_line(result) if result.origin == TurnCheckpoint::COMMAND_ORIGIN
+
       case result.outcome
       when "failed" then failed_line(result)
       when "canceled"
@@ -357,6 +360,15 @@ module Samagotchi
           "#{ran_out}; continuing it is up to your user (#{strategy.label}), a message drops it"
         end
       else "the turn ended without a reply (canceled, failed or empty)"
+      end
+    end
+
+    # A file-delivered session command's outcome: no turn ran for it.
+    def command_line(result)
+      case result.outcome
+      when "completed" then "the command ran (no turn)"
+      when "failed" then "the command failed"
+      else "the command was refused (#{result.cancel_reason || "canceled"})"
       end
     end
 

@@ -950,7 +950,7 @@ module Samagotchi
     # @param confirm [CacheConfirm::Confirm, nil] the change asks first: the
     #   line that applies it (the TUI's prefill, the web's Apply button)
     def announce_command(command, status:, output:, changed:, anytime: false, confirm: nil)
-      TurnCheckpoint.record_command_outcome(@session_dir, command.enqueued_id)
+      TurnCheckpoint.record_command_outcome(@session_dir, command.enqueued_id, status: status)
       text = output.to_s
       event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
                 changed: changed.map(&:to_s), model_name: @engine.effective_model_name }

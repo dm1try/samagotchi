@@ -59,8 +59,11 @@ module Samagotchi
     #   :canceled and :timeout
     # @!attribute turn_id [String, nil] the id of the turn this result is
     #   about, when known
+    # @!attribute origin [String, nil] "command" for a :no_reply that a
+    #   file-delivered session command settled (no turn ran:
+    #   TurnCheckpoint.record_command_outcome); nil otherwise
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
-                        :stopped_by, :kept_steps, :session, :turn_id, keyword_init: true)
+                        :stopped_by, :kept_steps, :session, :turn_id, :origin, keyword_init: true)
 
     module_function
 
@@ -163,7 +166,8 @@ module Samagotchi
         # command finished without a turn. After the reply check: a worker
         # killed between writing the reply and its idle save left the reply.
         if turn && (settled = TurnCheckpoint.settled_turn(session_dir, turn))
-          return Result.new(status: :no_reply, outcome: settled.outcome, session: session, **settled.stop_facts)
+          return Result.new(status: :no_reply, outcome: settled.outcome, session: session, origin: settled.origin,
+                            **settled.stop_facts)
         end
 
         case session.status
