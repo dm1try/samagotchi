@@ -38,8 +38,7 @@ RSpec.describe "The bundle test kit on the shipped bundles" do
   shipped.each do |name|
     it "loads #{name} as chi does" do
       real = installed(name)
-      expect(real.values_at(:commands, :tools, :inits, :toolkits, :tool_sources, :peer_sources).flatten +
-             real[:hooks].values.flatten).not_to be_empty
+      expect(real.to_h.except(:hooks).values.flatten + real.hooks.values.flatten).not_to be_empty
       expect(kit(name)).to eq(real)
     end
   end

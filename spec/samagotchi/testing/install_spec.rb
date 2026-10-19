@@ -37,14 +37,17 @@ RSpec.describe Samagotchi::Testing::Install do
     File.write(File.join(dir, "manifest.yml"), manifest)
   end
 
+  def command(name) = described_class::Command.new(name: name, mid_turn: :refuse, labels: [])
+
   it "installs into the sandbox and returns what chi's loaders registered, with the bundle's settings" do
     bundle(plugin)
     Samagotchi::Testing::Sandbox.with do |_sandbox|
       result = described_class.run(dir, settings: { "word" => "yo" })
 
-      expect(result).to have_attributes(name: "greet", warnings: [], plugin_failures: [], hook_failures: [], ok?: true)
-      expect(result.registered).to include(commands: [["/yo", :refuse, []]], tools: [], inits: [])
-      expect(result.registered[:hooks][:after_tool_call]).to eq([["greet", "plugin.rb", 10]])
+      expect(result).to have_attributes(name: "greet", warnings: [], plugin_failures: [], hook_failures: [], failures: [])
+      expect(result.registered).to have_attributes(commands: [command("/yo")], tools: [], inits: [])
+      expect(result.registered.hooks[:after_tool_call]).to eq([described_class::Hook.new(bundle: "greet", hook: "plugin.rb",
+                                                                                         priority: 10)])
     end
   end
 
@@ -83,14 +86,14 @@ RSpec.describe Samagotchi::Testing::Install do
                "name: btw\nversion: 0.1.0\nplugin:\n  file: plugin.rb\n  sha256: sha256:#{Digest::SHA256.hexdigest(plugin)}\n")
 
     expect { described_class.run(dir) }.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, /btw/)
-    expect(described_class.run(dir, force: true).registered[:commands]).to eq([["/hi", :refuse, []]])
+    expect(described_class.run(dir, force: true).registered.commands).to eq([command("/hi")])
   end
 
   it "is reached from a loaded bundle as Bundle#install" do
     bundle(plugin)
     Samagotchi::Testing::Sandbox.with do |sandbox|
       loaded = Samagotchi::Testing::Bundle.load(dir, settings: { "word" => "hey" }, sandbox: sandbox)
-      expect(loaded.install.registered[:commands]).to eq([["/hey", :refuse, []]])
+      expect(loaded.install.registered.commands).to eq([command("/hey")])
       loaded.shutdown
     end
   end

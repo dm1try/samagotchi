@@ -19,7 +19,7 @@ module Samagotchi
     # failed names the bundle's source files, not the installed copies.
     #
     #   result = Samagotchi::Testing::Install.run("path/to/bundle", settings: { "every" => 3 })
-    #   result.warnings, result.plugin_failures, result.hook_failures, result.registered[:commands]
+    #   result.warnings, result.plugin_failures, result.hook_failures, result.registered.commands
     module Install
       # warnings: the Installer's; plugin_failures / hook_failures:
       # [Guardrails::LoadFailures::Failure] of this bundle, each location
@@ -28,6 +28,15 @@ module Samagotchi
         def failures = plugin_failures + hook_failures
         def ok? = failures.empty?
       end
+
+      # What a bundle registered (#registered): commands, tools (names),
+      # hooks per event, inits (labels), toolkits, tool sources and peer
+      # sources (names).
+      Registered = Data.define(:commands, :tools, :hooks, :inits, :toolkits, :tool_sources, :peer_sources)
+      # A command: its mid_turn policy and its selection-bar labels (chi.annotation).
+      Command = Data.define(:name, :mid_turn, :labels)
+      # A hook on an event: the bundle, the hook (its file, or the plugin's) and its priority.
+      Hook = Data.define(:bundle, :hook, :priority)
 
       module_function
 
@@ -79,26 +88,30 @@ module Samagotchi
       private_class_method :load_installed
 
       # What bundle +name+ registered, from the registries it loaded into:
-      # commands ([name, mid_turn, annotation labels]), tools, hooks per
-      # event ([bundle, hook, priority]; Hooks::EVENTS, then any other event
-      # the bundle registered for), inits, toolkits, tool sources and
-      # peer sources.
+      # hooks per event are Hooks::EVENTS, then any other event the bundle
+      # registered for.
       # @param inits [Array<Hash>] {label:} of each chi.init
-      # @return [Hash]
+      # @return [Registered]
       def registered(registries, name, inits)
-        {
-          commands: registries.commands.entries.select { |e| e.source == name }.map { |e| [e.name, e.mid_turn, e.annotations.map(&:label)] },
+        Registered.new(
+          commands: registries.commands.entries.select { |e| e.source == name }.map do |e|
+            Command.new(name: e.name, mid_turn: e.mid_turn, labels: e.annotations.map(&:label))
+          end,
           tools: registries.tools.by_source(name).map(&:name),
           hooks: hooks_of(registries.hooks, name),
           inits: inits.map { |init| init[:label] },
           toolkits: Array(registries.toolkits).map(&:name),
           tool_sources: registries.tool_index.sources.map(&:label),
           peer_sources: registries.peer_sources.names
-        }
+        )
       end
 
       def hooks_of(hooks, name)
-        own = ->(event) { hooks.bundle_hook_names(event).select { |bundle, _, _| bundle == name } }
+        own = lambda do |event|
+          hooks.bundle_hook_names(event).filter_map do |bundle, hook, priority|
+            Hook.new(bundle: bundle, hook: hook, priority: priority) if bundle == name
+          end
+        end
         others = (hooks.bundle_events - Hooks::EVENTS).to_h { |event| [event, own.call(event)] }.reject { |_, list| list.empty? }
         Hooks::EVENTS.to_h { |event| [event, own.call(event)] }.merge(others)
       end

@@ -320,19 +320,20 @@ module Samagotchi
 
       def report_registered(manifest, registered)
         plugin = manifest.plugin ? manifest.plugin[:file] : "manifest.yml"
-        registered[:commands].each { |name, _, _| add(:info, :registered, plugin, "command #{name}") }
-        registered[:tools].each { |name| add(:info, :registered, plugin, "tool #{name}") }
-        registered[:hooks].each do |event, hooks|
-          hooks.each do |_bundle, hook, priority|
-            file = manifest.hooks.key?(hook) ? "hooks/#{hook}" : plugin
-            next add(:info, :registered, file, "hook #{event} (priority #{priority})") if Hooks::EVENTS.include?(event)
+        registered.commands.each { |command| add(:info, :registered, plugin, "command #{command.name}") }
+        registered.tools.each { |name| add(:info, :registered, plugin, "tool #{name}") }
+        registered.hooks.each do |event, hooks|
+          hooks.each do |hook|
+            file = manifest.hooks.key?(hook.hook) ? "hooks/#{hook.hook}" : plugin
+            next add(:info, :registered, file, "hook #{event} (priority #{hook.priority})") if Hooks::EVENTS.include?(event)
 
             add(:warn, :"hook-event", file, "hook on #{event.inspect}, which chi never fires",
                 fix: "one of #{Hooks::EVENTS.join(", ")}")
           end
         end
-        { inits: "init", toolkits: "toolkit", tool_sources: "tool source", peer_sources: "peer source" }.each do |key, what|
-          registered[key].each { |name| add(:info, :registered, plugin, "#{what} #{name}") }
+        { "init" => registered.inits, "toolkit" => registered.toolkits, "tool source" => registered.tool_sources,
+          "peer source" => registered.peer_sources }.each do |what, names|
+          names.each { |name| add(:info, :registered, plugin, "#{what} #{name}") }
         end
       end
 

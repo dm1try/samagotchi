@@ -20,6 +20,10 @@ and commands may change between minor versions. How releases are made:
   for a bundle that lists its keys plainly (or types them `any`), `yes`/`on` are now `true`, `no` is now `false`
   (any case: `No`, `ON`), and `.5`, `5.`, `1e3` are now numbers; before they reached the plugin as text. A bundle
   that wants the text types the key `string`.
+- Test kit: `Samagotchi::Testing::Install.run(...).registered` is an `Install::Registered` value
+  (`registered.commands`, `.tools`, `.hooks`, `.inits`, `.toolkits`, `.tool_sources`, `.peer_sources`), its commands
+  and hooks `Install::Command` / `Install::Hook` values, not a Hash of arrays: a bundle spec reading
+  `registered[:commands]` needs `registered.commands`.
 
 ### Fixed
 

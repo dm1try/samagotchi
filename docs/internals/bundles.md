@@ -63,7 +63,7 @@ The checks live in `Hooks::BundleLoader.load` and `Plugin::Loader.load_bundle`; 
 plugin file: build, `register`, `commit!`), which raise instead of logging: the bundle test kit
 (`Samagotchi::Testing::Bundle`) loads a bundle's source through them, unchecked. `Samagotchi::Testing::Install` is the
 checked path in a sandbox: the Installer, then `ExtensionLoad` (bundle hooks, then `load_plugins`), returning the
-Installer's warnings, this bundle's load failures and what it registered (`Install.registered`, also the parity
+Installer's warnings, this bundle's load failures and what it registered (`Install.registered`, an `Install::Registered` value, also the parity
 spec's shape). A load failure carries `LoadFailures::Failure#location` (the first backtrace frame inside the
 bundle, or a SyntaxError's own line), which `Install` maps from the installed copy (`.bundles/<name>/plugin/`,
 `hooks/`) back to the source dir.
