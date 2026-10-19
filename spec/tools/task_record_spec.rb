@@ -4,6 +4,14 @@ require "json"
 require "spec_helper"
 require "samagotchi/tools/task_record"
 
+RSpec.describe Samagotchi::Tools::TaskRecord, ".short_id" do
+  it "is a task id's random part (task_create's ids start with the time), else its first 8 chars" do
+    expect(described_class.short_id("20261019164550-0e055c67")).to eq("0e055c67")
+    expect(described_class.short_id("3f9a2c1d-0000-4000-8000-000000000000")).to eq("3f9a2c1d")
+    expect(described_class.short_id("t1")).to eq("t1")
+  end
+end
+
 RSpec.describe Samagotchi::Tools::TaskRecord do
   let(:created) do
     described_class.running(id: "20261014120000-1a2b3c4d", command: "sleep 30", cwd: "/w", pid: 42,

@@ -16,6 +16,7 @@ RSpec.describe Samagotchi::ClientId do
       "delegate:1234abcd" => false,
       "child:1234abcd" => false,
       "context:pr-123" => false,
+      "task:3f9a2c1d" => false,
       "system:reminder" => false,
       "plugin" => false,
       "relay:1234abcd" => false
@@ -26,9 +27,9 @@ RSpec.describe Samagotchi::ClientId do
     expect([described_class::WEB_PREFIX, described_class::WEB_RESTART, described_class::TUI_PREFIX,
             described_class::CLI_SEND, described_class::CLI_ANSWER, described_class::CLI_RESTART,
             described_class::DELEGATE_PREFIX, described_class::CHILD_PREFIX, described_class::CONTEXT_PREFIX,
-            described_class::SYSTEM_PREFIX, described_class::REMINDER, described_class::PLUGIN,
+            described_class::TASK_PREFIX, described_class::SYSTEM_PREFIX, described_class::REMINDER, described_class::PLUGIN,
             described_class::RELAY_PREFIX])
-      .to eq(%w[web: web:restart tui: cli:send cli:answer cli:restart delegate: child: context: system:
+      .to eq(%w[web: web:restart tui: cli:send cli:answer cli:restart delegate: child: context: task: system:
                 system:reminder plugin relay:])
   end
 

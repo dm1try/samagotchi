@@ -44,6 +44,15 @@ module Samagotchi
         to_h.reject { |key, value| value.nil? && self.class::OPTIONAL.include?(key) }.transform_keys(&:to_s)
       end
 
+      # A task id as people read it: the random part a task_create id ends
+      # with (TaskRuntime.generate_task_id starts it with the time, the same
+      # for every task that second), else its first 8 chars. The web's
+      # turn_events.js has the JS twin (shortTaskId).
+      def self.short_id(id)
+        id = id.to_s
+        id[/-(\h{8})\z/, 1] || id[0, 8]
+      end
+
       def running? = status == "running"
 
       def stopped_by_user? = stop_reason == "stopped_by_user"

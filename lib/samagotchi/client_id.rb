@@ -24,6 +24,9 @@ module Samagotchi
     # A turn chi ran because an attached context source changed:
     # context:<name> (Worker's context wake).
     CONTEXT_PREFIX = "context:"
+    # A turn chi ran because a background task this session started
+    # finished unseen: task:<task id> (Worker's task finish wake).
+    TASK_PREFIX = "task:"
     # chi's own turns; system:reminder, the turn queued when reminders are due.
     SYSTEM_PREFIX = "system:"
     REMINDER = "system:reminder"
