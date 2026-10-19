@@ -138,13 +138,7 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
 
 ## Verifying it live
 
-`chi bundle try . -p "Say hello"` is the live check (trace, plugin, notices); after the final install, check the copy:
-
-```
-chi send --new --wait --format json --dir /tmp/try -m "/my-bundle chi"   # the JSON names the session id
-grep plugin_loaded ~/.local/state/samagotchi/samagotchi.log | tail -1    # bundle=my-bundle commands=1 hooks=1
-chi sessions delete --force SESSION_ID                                    # leave no test session behind
-```
-
-(`$XDG_STATE_HOME/samagotchi/samagotchi.log` when `XDG_STATE_HOME` is set.) Then tell the user what it adds,
-how to use it, and that a new session picks it up.
+`chi bundle try . -p "..."` **is** the live check: a real model turn on the installed bundle, with its trace
+(tools, plugin, notices, cards). Don't repeat it with `chi send` sessions on the user's own install. After the
+final `chi bundle install .`, `chi bundle list` showing the bundle and its version is enough. Then tell the user
+what it adds, how to use it, and that a new session picks it up.
