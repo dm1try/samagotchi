@@ -36,6 +36,14 @@ RSpec.describe Samagotchi::ToolDeclarations do
       .to include(:description)
   end
 
+  it "tells the model a task it leaves running is reported when it finishes, only for a worker's finish wake" do
+    schemas = Samagotchi::Tools::Builtins.registry(task_finish_notes: true).schemas
+    changed = schemas.reject { |s| described_class::TOOL_SCHEMAS.include?(s) }
+    expect(changed.map { |s| s[:name] }).to eq(%w[execute task_create])
+    expect(changed.map { |s| s[:description] }).to all(include("end your turn before it finishes, chi tells you when it does"))
+    expect(Samagotchi::Tools::Builtins.registry.schemas).to eq(described_class::TOOL_SCHEMAS)
+  end
+
   it "only overrides parameters that exist" do
     described_class::GEMMA_PARAM_OVERRIDES.each do |tool, params|
       schema = described_class::TOOL_SCHEMAS.find { |s| s[:name] == tool }

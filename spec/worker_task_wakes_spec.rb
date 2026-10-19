@@ -158,6 +158,11 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(turns.pop(timeout: 0.3)).to be_nil
   end
 
+  it "builds the Engine with the tool descriptions' finish line, but not with session.task_wakes: off" do
+    start_worker
+    expect(Samagotchi::Engine).to have_received(:new).with(hash_including(task_finish_notes: true))
+  end
+
   it "keeps the hand-over's limit for the note of an execute handed over as a task" do
     records["t2"] = record("t2")
     scripts["build"] = [tool("execute", "#{Samagotchi::Tools::Execute.handed_over_line(5)}\ntask_id: t2\nstdout_tail:\n")]
@@ -229,6 +234,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     config["session.task_wakes"] = "off"
     scripts["build"] = [task_create("t1")]
     start_worker
+    expect(Samagotchi::Engine).to have_received(:new).with(hash_including(task_finish_notes: false))
     run_prompt("build")
 
     finish("t1")

@@ -518,6 +518,22 @@ module Samagotchi
 
     GEMMA_QUOTE = '<|"|>'
 
+    # What a worker's finish wake (session.task_wakes not off) lets the
+    # model know: a task it leaves running is reported when it ends.
+    TASK_FINISH_LINE = "if you end your turn before it finishes, chi tells you when it does."
+
+    # +schema+ with TASK_FINISH_LINE in execute's hand-over sentence and at
+    # task_create's end; any other schema as given.
+    def with_task_finish_line(schema)
+      case schema[:name]
+      when "execute"
+        schema.merge(description: schema[:description].sub("and task_wait waits for it.",
+                                                           "and task_wait waits for it; #{TASK_FINISH_LINE}"))
+      when "task_create" then schema.merge(description: "#{schema[:description]} #{TASK_FINISH_LINE.sub(/\Ai/, "I")}")
+      else schema
+      end
+    end
+
     # +schema+ without execute's description property: what a session
     # with execute.description off declares (the parameter isn't offered
     # at all). Any other schema as given.

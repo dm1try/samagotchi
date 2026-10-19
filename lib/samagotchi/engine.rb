@@ -121,8 +121,10 @@ module Samagotchi
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
+    # @param task_finish_notes  [Boolean] a worker's Engine whose finish wake reports a task the model leaves
+    #   running (Worker, TaskWatch): execute's and task_create's descriptions say so
     def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
-                   plugins: true, scratch: false, model_typed: nil, appended_prompt_files: [])
+                   plugins: true, scratch: false, model_typed: nil, appended_prompt_files: [], task_finish_notes: false)
       # The turn as other threads see it (flag, cancel controller, sink,
       # steers) and the idle layer's activity clock. Built first: a plugin
       # may steer or ask whether a turn runs while it loads.
@@ -189,9 +191,12 @@ module Samagotchi
       @hooks = @extension_load.hooks
       # The tools this session offers (the prompts' declarations and the
       # kernel's dispatch): the built-ins, per Engine. execute.description
-      # off: execute offers no description parameter.
+      # off: execute offers no description parameter. +task_finish_notes+:
+      # a worker's, whose finish wake reports a task left running (the
+      # Worker's TaskWatch): execute and task_create say so.
       @tools = Tools::Builtins.registry(command_description: Config.get("execute.description") != false,
-                                        policy: Config.get(LLMContextStrategy::POLICY_SETTING))
+                                        policy: Config.get(LLMContextStrategy::POLICY_SETTING),
+                                        task_finish_notes: task_finish_notes)
       restrict_scratch_tools! if @scratch
       # Likewise the slash commands its SessionCommands run.
       @command_registry = SessionCommands.register_builtins(Commands::Registry.new)

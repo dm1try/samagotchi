@@ -185,13 +185,17 @@ module Samagotchi
       #   description parameter (execute.description off)
       # @param policy [String, nil] llm_context.policy, the sentence
       #   forget_outputs' description carries
+      # @param task_finish_notes [Boolean] a worker's session whose finish
+      #   wake reports a task left running (session.task_wakes not off):
+      #   execute and task_create say so (ToolDeclarations::TASK_FINISH_LINE)
       # @return [Registry] a new registry with the built-ins, in
       #   TOOL_SCHEMAS order (an Engine's own, which bundles add to), then
       #   forget_outputs, offered only under the forget layer
-      def registry(command_description: true, policy: ToolDeclarations::FORGET_OUTPUTS_POLICY)
+      def registry(command_description: true, policy: ToolDeclarations::FORGET_OUTPUTS_POLICY, task_finish_notes: false)
         by_name = CLASSES.to_h { |klass| [klass::NAME, klass] }
         registry = ToolDeclarations::TOOL_SCHEMAS.each_with_object(Registry.new) do |schema, built|
           schema = ToolDeclarations.without_command_description(schema) unless command_description
+          schema = ToolDeclarations.with_task_finish_line(schema) if task_finish_notes
           klass = by_name.fetch(schema[:name])
           handler = HANDLERS.fetch(klass::NAME) { ->(call, _kctx) { klass.call(call[:content]) } }
           built.register(klass::NAME, schema: schema, handler: handler)

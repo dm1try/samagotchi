@@ -455,6 +455,9 @@ module Samagotchi
         memories: @session.preloaded_memory_names,
         muted_memories: @session.muted_memory_names,
         appended_prompt_files: @session.appended_prompt_files,
+        # The finish wake reports a task the model leaves running: the tool
+        # descriptions say so, fixed for this worker (a stable prompt prefix).
+        task_finish_notes: TaskWatch.mode != "off",
         reminders: {
           callback: lambda { |due_names|
             # A reminder is due: the loop runs a reminder turn for it once
