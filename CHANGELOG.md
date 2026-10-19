@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi -p` followed by one of chi's own flags (`chi -p --non-interactive "text"`, `-p -v`) now exits 2 with a usage
+  error instead of taking the flag as the prompt.
+
 ### Changed
 
 - SSE `tool_call_started` carries no `call`, `turn_completed` no `result`; read `tool`/`params`/`view` and

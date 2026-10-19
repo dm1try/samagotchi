@@ -74,6 +74,7 @@ options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt")
 cli_overrides = {}
 
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
+known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
 ARGV.each do |arg|
   next unless arg.start_with?("--") && arg.include?("_")
 
@@ -82,7 +83,6 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -191,8 +191,33 @@ end
 # value (-p, --model …: the parser's own list) keeps its next word, so
 # `chi -p "--no-tool=x is broken"` is a prompt. A tool name never starts
 # with "-": `--no-tool --` or `--no-tool --model` is a missing argument.
-takes_value = parser.instance_variable_get(:@stack).flat_map do |list|
-  list.list.select { |switch| switch.is_a?(OptionParser::Switch::RequiredArgument) }.flat_map { |switch| switch.long + switch.short }
+switches = parser.instance_variable_get(:@stack).flat_map { |list| list.list }
+                                          .select { |switch| switch.is_a?(OptionParser::Switch) }
+switch_flags = switches.flat_map { |switch| switch.long + switch.short }
+known_flags = (known + switch_flags).uniq
+takes_value = switches.select { |switch| switch.is_a?(OptionParser::Switch::RequiredArgument) }
+                      .flat_map { |switch| switch.long + switch.short }
+reject_prompt_flag = lambda do |flag, value|
+  if known_flags.include?(value)
+    warn "Error: #{flag} needs the prompt text right after it (got the flag #{value}) (see chi --help)"
+    exit 2
+  end
+end
+index = 0
+while index < ARGV.size && ARGV[index] != "--"
+  arg = ARGV[index]
+  if %w[-p --prompt].include?(arg)
+    reject_prompt_flag.call(arg, ARGV[index + 1])
+    index += 2
+  elsif arg.start_with?("--prompt=")
+    reject_prompt_flag.call("--prompt", arg.delete_prefix("--prompt="))
+    index += 1
+  elsif arg.start_with?("-p") && arg != "-p"
+    reject_prompt_flag.call("-p", arg.delete_prefix("-p").delete_prefix("="))
+    index += 1
+  else
+    index += takes_value.include?(arg) ? 2 : 1
+  end
 end
 missing_no_tool = lambda do
   warn "Error: missing argument: --no-tool (see chi --help)"

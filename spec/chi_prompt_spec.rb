@@ -29,6 +29,36 @@ RSpec.describe "chi -p --non-interactive" do
     ["data: #{JSON.generate(content: text, stop: true)}\n\n"]
   end
 
+  it "refuses a known flag as the prompt value with a usage error" do
+    out, err, status, kept = run_chi("-p", "--non-interactive", "text")
+
+    expect(status.exitstatus).to eq(2)
+    expect(out).to eq("")
+    expect(err).to eq("Error: -p needs the prompt text right after it (got the flag --non-interactive) (see chi --help)\n")
+    expect(kept).to be_empty
+  end
+
+  it "refuses a short flag or an attached --prompt= value that is a known flag" do
+    [%w[-p -v], %w[--prompt=--verbose]].each do |args|
+      _out, err, status, = run_chi(*args)
+
+      expect(status.exitstatus).to eq(2), args.join(" ")
+      expect(err).to include("needs the prompt text right after it (got the flag")
+    end
+  end
+
+  it "allows a prompt beginning with an unrecognized flag-like string" do
+    server = FakeProviderServer.start
+    server.default("/completion", sse: answer("PONG"))
+
+    out, err, status, = run_chi("-p", "--not-a-chi-flag", "--non-interactive", server: server)
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to eq("PONG\n")
+  ensure
+    server&.stop
+  end
+
   it "prints the answer alone on stdout, and the session line on stderr first" do
     server = FakeProviderServer.start
     server.default("/completion", sse: answer("PONG"))
