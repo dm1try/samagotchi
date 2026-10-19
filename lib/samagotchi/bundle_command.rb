@@ -117,19 +117,6 @@ module Samagotchi
         --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
         Exit status: 0 no errors, 1 errors, 2 usage.
     TEXT
-    TRY_HELP = <<~TEXT
-      Usage: chi bundle try PATH -p TEXT [--model NAME] [--memory NAME] [--mute NAME] [--toolkit NAME]
-             [--thinking LEVEL] [--set KEY=VALUE] [--json] [--keep] [--timeout SECONDS]
-
-        Install PATH and run one non-interactive turn in an isolated temporary config, state and work directory.
-        The user's hosts, keys and ordinary runtime settings are retained; their bundles, hooks, guardrails,
-        memories, prompt additions, sessions and attached context sources are not. Shipped guardrails and a
-        $1 cost cap are installed for the run. --set KEY=VALUE sets the tried bundle's config.yml bundles entry;
-        --set cost-cap.cap=N overrides the cap (unlike chi --set BUNDLE.KEY=VALUE, these are config settings).
-        --memory and --mute accept comma-separated names and repeat. --keep retains the sandbox and debug log.
-        --json prints the experimental machine-readable trace.
-        Exit status: child turn's status; 1 on install failure or timeout; 2 for usage; 130 on Ctrl-C.
-    TEXT
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -160,19 +147,6 @@ module Samagotchi
     CHECK_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--fix"
       f.value "--set", key: :set, repeat: true
-    end
-    TRY_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A-/) do |f|
-      f.value "-p", "--prompt", key: :prompt
-      f.value "--model"
-      f.value "--memory", repeat: true
-      f.value "--mute", repeat: true
-      f.value "--toolkit"
-      f.value "--thinking"
-      f.value "--set", repeat: true
-      f.switch "--json"
-      f.switch "--keep"
-      f.value "--timeout"
-      f.refuse "--attach", "--shared", "chi bundle try can't use --attach or --shared"
     end
     TRASH_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
       f.switch "--empty"
@@ -916,157 +890,11 @@ module Samagotchi
     end
 
     def try_bundle(rest)
-      parsed = parse_flags(TRY_FLAGS, rest, "try", help: TRY_HELP)
+      require_relative "bundle_command/try/command"
+      parsed = parse_flags(Try::Command::FLAGS, rest, "try", help: Try::Command::HELP)
       return parsed if parsed.is_a?(Integer)
 
-      options = parsed.options
-      if options[:prompt].nil? || parsed.args.size != 1
-        @stderr.puts "Usage: chi bundle try PATH -p TEXT [options]"
-        return CLI::Exit::USAGE
-      end
-      path = parsed.args.first
-      unless File.directory?(path)
-        @stderr.puts "chi bundle try: #{path} isn't a folder"
-        return CLI::Exit::USAGE
-      end
-      if options.values_at(:model, :toolkit, :thinking, :memory, :mute).flatten.compact.any?(&:empty?)
-        @stderr.puts "chi bundle try: model, toolkit, thinking, memory and mute values cannot be empty"
-        return CLI::Exit::USAGE
-      end
-      require_relative "thinking"
-      if options[:thinking] && !Thinking::LEVELS.map(&:to_s).include?(options[:thinking])
-        @stderr.puts "chi bundle try: --thinking takes #{Thinking::LEVELS.join(", ")}, not #{options[:thinking]}"
-        return CLI::Exit::USAGE
-      end
-
-      timeout = parse_try_timeout(options[:timeout])
-      return CLI::Exit::USAGE unless timeout
-
-      set_pairs = []
-      cost_cap = 1
-      cost_cap_override = false
-      require_relative "bundle_session_settings"
-      Array(options[:set]).each do |pair|
-        key, sep, value = pair.partition("=")
-        if sep.empty?
-          @stderr.puts "chi bundle try: --set takes KEY=VALUE, not #{pair}"
-          return CLI::Exit::USAGE
-        end
-        if key == "cost-cap.cap"
-          cost_cap = BundleSessionSettings.typed(value)
-          cost_cap_override = true
-          unless (cost_cap.is_a?(Numeric) && cost_cap >= 0) || cost_cap == false
-            @stderr.puts "chi bundle try: --set cost-cap.cap takes a non-negative number or off"
-            return CLI::Exit::USAGE
-          end
-        else
-          set_pairs << pair
-        end
-      end
-      settings = check_settings(set_pairs, label: "try")
-      return CLI::Exit::USAGE unless settings
-
-      require_relative "bundle_command/try/sandbox"
-      require_relative "bundle_command/try/run"
-      require_relative "bundle_command/try/trace"
-      sandbox = nil
-      begin
-        sandbox = Try::Sandbox.new(path, bundle_settings: settings, cost_cap: cost_cap,
-                                   cost_cap_override: cost_cap_override)
-        sandbox.install
-        result = Try::Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
-        # Before the trace: a delegate's worker saves its session as it stops.
-        sandbox.stop_leftovers
-        trace = Try::TraceReader.new(state_home: sandbox.state_home, session_id: result.session_id)
-                              .read(exit_code: result.exit_status, answer: result.stdout, stderr: result.stderr,
-                                    sandbox: options[:keep] ? sandbox.root : nil, timed_out: result.timed_out)
-        render_try_trace(trace, json: options[:json], child_stderr: result.stderr)
-        @stderr.puts "chi bundle try: timed out after #{timeout} seconds" if result.timed_out
-        result.exit_status
-      rescue Try::Sandbox::Error => e
-        @stderr.puts e.message
-        e.status
-      ensure
-        if options[:keep] && sandbox
-          sandbox.stop_leftovers
-          report_try_sandbox(sandbox)
-        end
-        sandbox&.cleanup unless options[:keep]
-      end
-    end
-
-    def render_try_trace(trace, json:, child_stderr:)
-      error_lines = child_stderr.lines.reject { |line| line.start_with?("Session: ") }
-      @stderr.write(error_lines.join)
-      if json
-        render_trace_lines(trace, @stderr, include_answer: false)
-        @stdout.puts JSON.generate(trace.to_h.transform_keys(&:to_s))
-      else
-        render_trace_lines(trace, @stdout, include_answer: true)
-      end
-    end
-
-    def report_try_sandbox(sandbox)
-      @stderr.puts "sandbox: #{sandbox.root}"
-      @stderr.puts "debug log: #{File.join(sandbox.state_home, "samagotchi", "samagotchi.log")}"
-    end
-
-    def render_trace_lines(trace, output, include_answer:)
-      output.puts "tools:"
-      trace.tools.each do |tool|
-        output.puts format("  %d %-16s %-7s %dms  %s", tool[:index], tool[:name], tool[:status],
-                           tool[:duration_ms], JSON.generate(tool[:args].to_s[0, 60]))
-      end
-      trace.notices.each { |notice| output.puts "notices: [#{notice["hook"] || "hook"}] #{notice["text"]}" }
-      trace.cards.each do |card|
-        output.puts "card: #{[card["title"], card["body"]].compact.join(" — ")}"
-      end
-      trace.questions.each do |entry|
-        question = entry.dig("pending_question", "question").to_s
-        outcome = if entry["cancelled"] && entry["reason"] == "non_interactive"
-                    "unanswerable (non_interactive)"
-                  elsif entry["cancelled"]
-                    "cancelled (#{entry["reason"]})"
-                  elsif entry["answer"]
-                    "answered"
-                  else
-                    "unanswered"
-                  end
-        output.puts "questions: #{JSON.generate(question)} -> #{outcome}"
-      end
-      if trace.interactive_blocked
-        count = trace.denied.size + trace.questions.count { |question| question["cancelled"] && question["reason"] == "non_interactive" }
-        output.puts "warn: #{count} question(s)/call(s) couldn't be answered"
-      end
-      if include_answer
-        answer_lines = trace.answer.lines
-        output.puts "answer:"
-        answer_lines.first(10).each { |line| output.puts "  #{line.chomp}" }
-        output.puts "  … (truncated)" if answer_lines.size > 10
-      end
-      tokens = trace.tokens
-      prompt = tokens[:prompt] || "unknown"
-      completion = tokens[:completion] || "unknown"
-      cost = if trace.cost
-               "#{"~" if trace.cost_is_estimate}$#{format("%.4f", trace.cost)}"
-             else
-               "unknown"
-             end
-      output.puts "tokens: #{prompt} in / #{completion} out  cost #{cost}  exit #{trace.exit_code}" \
-                  "#{"  (#{trace.session_id})" if trace.session_id}"
-    end
-
-    def parse_try_timeout(value)
-      return 300 unless value
-
-      timeout = Float(value)
-      return timeout if timeout.positive? && timeout.finite?
-
-      @stderr.puts "chi bundle try: --timeout must be a positive number"
-      nil
-    rescue ArgumentError
-      @stderr.puts "chi bundle try: --timeout must be a positive number"
-      nil
+      Try::Command.new(stdout: @stdout, stderr: @stderr).run(parsed)
     end
 
     # --set KEY=VALUE values as typed (BundleSessionSettings.typed), or nil
