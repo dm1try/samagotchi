@@ -12,8 +12,10 @@ module Samagotchi
     class Http
       # Plugin::Http's wire: one LLM::HTTP request per call (chi's TLS,
       # proxies, User-Agent, cancel by closing the socket, and one log line
-      # without query, headers or body), with chi's retries off. Every error
-      # but a cancel becomes an HttpError, so a plugin rescues one type.
+      # without query, headers or body), with chi's retries off. Every
+      # network, TLS, protocol or provider error but a cancel becomes an
+      # HttpError, so a plugin rescues one type; anything else is a bug in
+      # chi, logged with its backtrace and raised as it is.
       #
       # Loaded with the first real request (it pulls in net/http and the
       # LLM layer). Stateless.
@@ -28,6 +30,12 @@ module Samagotchi
           Net::HTTPBadResponse => "malformed response", Net::HTTPHeaderSyntaxError => "malformed response",
           Net::ProtocolError => "protocol error", Zlib::Error => "bad compressed body"
         }.freeze
+
+        # The errors a request's wire may raise: each becomes an HttpError.
+        WIRE_ERRORS = [
+          *REASONS.keys, *LLM::HTTP::NETWORK_ERRORS, SystemCallError, IOError, OpenSSL::OpenSSLError,
+          LLM::ProviderError
+        ].uniq.freeze
 
         def initialize(bundle:)
           @bundle = bundle.to_s
@@ -47,8 +55,11 @@ module Samagotchi
           raise HttpCancelled, "#{method} #{where(uri)}: cancelled"
         rescue HttpError
           raise
-        rescue StandardError => e
+        rescue *WIRE_ERRORS => e
           raise HttpError, "#{method} #{where(uri)}: #{reason(e)}"
+        rescue StandardError => e
+          Log.exception(:plugins, "http_transport_failed", e, bundle: @bundle)
+          raise
         end
 
         private

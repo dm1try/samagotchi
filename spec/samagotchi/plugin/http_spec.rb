@@ -210,6 +210,24 @@ RSpec.describe Samagotchi::Plugin::Http do
 
       expect { http.get(url) }.to raise_error(Samagotchi::Plugin::HttpError, /bad compressed body/)
     end
+
+    it "raises chi's own bug as it is, logged with its backtrace, instead of a network HttpError" do
+      require "samagotchi/plugin/http_transport"
+      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch).and_raise(NoMethodError, "undefined method 'x'")
+      allow(Samagotchi::Log).to receive(:exception)
+
+      expect { http.get(url) }.to raise_error(NoMethodError, /undefined method/)
+      expect(Samagotchi::Log).to have_received(:exception)
+        .with(:plugins, "http_transport_failed", an_instance_of(NoMethodError), bundle: "echo")
+    end
+
+    it "maps a provider error from chi's HTTP layer to HttpError" do
+      require "samagotchi/plugin/http_transport"
+      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch)
+        .and_raise(Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: EOFError.new, label: "plugin:echo"))
+
+      expect { http.get(url) }.to raise_error(Samagotchi::Plugin::HttpError, /failed \(Samagotchi::LLM::RetryExhausted\)/)
+    end
   end
 
   describe "cancel" do
