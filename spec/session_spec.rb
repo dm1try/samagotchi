@@ -4,6 +4,7 @@ require "tmpdir"
 require "json"
 require "spec_helper"
 require "samagotchi/session"
+require "samagotchi/guardrails/parent_policy"
 require "samagotchi/turn_note"
 
 RSpec.describe Samagotchi::Session do
@@ -293,6 +294,11 @@ RSpec.describe Samagotchi::Session do
       loaded.thinking = :high
       loaded.save(state_dir: tmpdir)
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
+    end
+
+    it "keeps PARENT_ANSWERS_WORDS the policy's levels and unset word (session.rb doesn't require the guardrails)" do
+      policy = Samagotchi::Guardrails::ParentPolicy
+      expect(described_class::PARENT_ANSWERS_WORDS).to eq(policy::ORDER + [policy::UNSET])
     end
 
     it "round-trips its own parent_answers, normalised; none from a file without the field; an unreadable one as written" do
