@@ -320,6 +320,8 @@ test("a delegated child's approval is held; one already relayed to the parent ne
   assert.deepEqual(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "approval" } }),
     { reason: "approval", sessionId: "s1", key: "s1:q1", holdMs: RELAY_HOLD_MS });
   assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "approval", relayed_to: "p1aaaaaa" } }), null);
+  // P4: a hook's question may be relayed too: held the same way.
+  assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "hook" } }).holdMs, RELAY_HOLD_MS);
   // A question (the model's) isn't relayed: at once, as before.
   assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "question" } }).holdMs, undefined);
   // Nor is the parent's own approval, or a top-level session's: at once.

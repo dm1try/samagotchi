@@ -495,6 +495,22 @@ test("a relayed approval on the parent links its delegate's session", () => {
   assert.equal(row.children[2].textContent, " · push it");
 });
 
+// P4: a delegate's hook question relayed to the parent: the same delegate
+// line, and the child's own text under it.
+test("a relayed hook question on the parent links its delegate's session and shows what it asks", () => {
+  const { cards } = setup();
+  cards.renderQuestion({
+    id: "h1", kind: "hook", header: "delegate cccc2222 asks: Cost cap", options: ["Continue", "Stop"],
+    question: "delegate cccc2222 (\"push it\") asks:\n  Spent $5.",
+    relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], task: "push it", asked: "Spent $5." },
+  });
+  const card = cards.questionCard();
+  const row = card.querySelector(".approval-delegate");
+  assert.equal(row.querySelector("a").href, "#/s/cccc2222-0000");
+  assert.equal(row.children[2].textContent, " · push it");
+  assert.equal(card.querySelector(".question-text").textContent, "Spent $5.");
+});
+
 // A keydown on an element inside the card, bubbled to the card's listener.
 function press(card, target, key = "Enter", mods = {}) {
   const e = { key, target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...mods };

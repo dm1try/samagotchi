@@ -137,6 +137,19 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
         .to eq("(dismissed: no one to answer in a non-interactive run)")
     end
 
+    # P4: a delegate's hook question relayed here.
+    it "shows a relayed hook question the same way, and a dismissal as dismissed (the hook decides), not denied" do
+      hook = { "id" => "pq", "kind" => "hook", "header" => "delegate ab12cd34 asks: Cost cap",
+               "question" => "delegate ab12cd34 (\"push it\") asks:\n  Spent $5.", "options" => %w[Continue Stop],
+               "relay" => { "id" => "r1", "child_id" => "ab12cd34-0000", "chain" => ["ab12cd34"], "task" => "push it",
+                            "asked" => "Spent $5.", "header" => "Cost cap" } }
+      prompt = described_class.new(hook)
+      expect(prompt.slot.fit(width: 80, height: nil).first(2))
+        .to eq(["delegate ab12cd34 asks: Cost cap", "  delegate ab12cd34 · push it"])
+      expect(prompt.closed_text("dismissed")).to eq("(dismissed)")
+      expect(prompt.closed_text("answered_on_child")).to eq("(answered in ab12cd34)")
+    end
+
     it "on the delegate's own side says it waits in the parent too, until the mark clears" do
       prompt = described_class.new("id" => "q1", "question" => "Which one?", "options" => %w[A B],
                                    "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp" })

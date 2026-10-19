@@ -96,7 +96,8 @@ module Samagotchi
         case reason.to_s
         when "answered_on_child" then "(answered in #{@delegate})"
         when "child_gone" then "(#{@delegate}'s worker is gone)"
-        when "dismissed" then "(denied)"
+        # A relayed hook question's dismissal: the hook decides what it means.
+        when "dismissed" then approval? ? "(denied)" : "(dismissed)"
         else "(left open in #{@delegate})"
         end
       end

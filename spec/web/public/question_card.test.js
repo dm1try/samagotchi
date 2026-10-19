@@ -227,3 +227,9 @@ test("keepsAskingText: the model's question and an own approval keep the reply t
   assert.equal(keepsAskingText({ id: "h", kind: "hook" }), false);
   assert.equal(keepsAskingText(null), false);
 });
+
+// P4: a relayed hook question's dismissal is the hook's to read: "Dismissed".
+test("resultText for a dismissed relayed hook question says Dismissed, not Denied or Cancelled", () => {
+  const hook = { id: "h1", kind: "hook", options: ["Continue", "Stop"], relay: { id: "r1", child_id: "cccc2222-0000" } };
+  assert.equal(resultText(hook, { cancelled: true, reason: "dismissed" }), "Dismissed");
+});
