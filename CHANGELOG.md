@@ -24,6 +24,7 @@ and commands may change between minor versions. How releases are made:
   (`registered.commands`, `.tools`, `.hooks`, `.inits`, `.toolkits`, `.tool_sources`, `.peer_sources`), its commands
   and hooks `Install::Command` / `Install::Hook` values, not a Hash of arrays: a bundle spec reading
   `registered[:commands]` needs `registered.commands`.
+- Test kit: `Install::Result#ok?` is gone; `result.failures.empty?` says the same.
 
 ### Fixed
 

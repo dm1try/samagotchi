@@ -26,7 +26,6 @@ module Samagotchi
       # in the source dir; registered: what it registered (#registered).
       Result = Data.define(:name, :warnings, :plugin_failures, :hook_failures, :registered) do
         def failures = plugin_failures + hook_failures
-        def ok? = failures.empty?
       end
 
       # What a bundle registered (#registered): commands, tools (names),

@@ -26,9 +26,10 @@ module Samagotchi
         LIB_DIR = File.expand_path("../../..", __dir__)
         CHI = File.expand_path("../../../../bin/chi", __dir__)
         SHIPPED_DIR = MemoryBundle::SourceNormalizer::SHIPPED_DIR
+        # The config.yml sections the sandbox drops (and their SAMAGOTCHI_<SECTION>_* env forms); context:
+        # loses only its sources: (#write_config).
         CONFIG_DENYLIST = %w[
           bundles hooks guardrails memories append_system_prompt recap session log web update kitty tmux broadcast
-          context_sources
         ].freeze
         CONFIG_DENYLIST_ENV_PREFIXES = CONFIG_DENYLIST.map do |section|
           prefix = if section == "guardrails"
@@ -51,7 +52,7 @@ module Samagotchi
           end
         end
 
-        attr_reader :root, :config_home, :state_home, :work_dir, :manifest
+        attr_reader :root, :config_home, :state_home, :work_dir
 
         def initialize(path, bundle_settings: {}, cost_cap: 1, cost_cap_override: false)
           @path = File.realpath(path)
