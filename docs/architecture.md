@@ -191,6 +191,10 @@ higher-level events so UIs get clean turn boundaries without inferring them:
 - `:turn_canceled` — `{ cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that
   stopped it, for `cancellation_reason: :hook`; else nil)
 
+These are the Engine's raw events. The worker's SSE projection omits `call` from
+`:tool_call_started` and `result` from `:turn_completed`; the answer remains in
+`turn_summary.output`.
+
 A turn started with `origin:` carries it on each of these (and `:turn_failed`).
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
@@ -246,7 +250,8 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   `session_state_snapshot`. `?snapshot=1` joins with a snapshot frame instead of a replay;
   `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`).
   Each event goes out as clients get it (`Bridge::ClientEvent.project`, in `SSEWriter#write_event`, live
-  and replayed alike); only a `generation_chunk` changes, to chi's own format (the chunk contract below).
+  and replayed alike); `generation_chunk`, `tool_call_started` and `turn_completed` are projected to the
+  contracts below. The ring retains raw events for replay and `?raw=1`.
   `?raw=1` writes events as the engine emitted them, for debugging on the worker's port: `chi web`'s
   `/api/sessions/:id/stream` never passes it on (`Web::App#stream_query`).
   An attached terminal's stream (`EventStream` with `rediscover:`) looks for the session's live
@@ -263,6 +268,22 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
          "counts":{"prompt_tokens":489,"completion_tokens":12,
                    "total_tokens":501,"context_window_tokens":32768},  // only when the server reported counts
          "event_seq":812}
+  ```
+
+  A `tool_call_started` frame keeps its row fields but omits the model's `call`:
+
+  ```
+  event: tool_call_started
+  data: {"type":"tool_call_started","iteration":2,"call_index":1,"tool":"write",
+         "params":"path=notes.txt","event_seq":812}
+  ```
+
+  A `turn_completed` frame omits `result`; `turn_summary.output` carries the answer:
+
+  ```
+  event: turn_completed
+  data: {"type":"turn_completed","turn_summary":{"output":"Done."},
+         "display_pending":false,"event_seq":813}
   ```
 
   `counts` is `ContextUsage.normalize` of the provider's payload without `ctx_pct` (normalize computes it

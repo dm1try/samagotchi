@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- SSE `tool_call_started` carries no `call`, `turn_completed` no `result`; read `tool`/`params`/`view` and
+  `turn_summary.output`. `?raw=1` on the worker's stream shows them.
+
 ## [0.89.0] - 2026-10-19
 
 ### Added

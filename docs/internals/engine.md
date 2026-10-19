@@ -489,12 +489,12 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:thinking_refused` / `:reasoning_history_refused` | the chat loop asked a step again without the thinking fields / the reasoning sent back; the Engine logs it and makes a once-per-session-and-host `:hook_notice` of it, the event itself never reaches the sink | `{iteration, model, level, detail}` |
 | `:pending_input_merged` | queued input joined the conversation | `{iteration, count, content, steers?, answer}` |
 | `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |
-| `:tool_call_started` | before a call runs | see ToolRunner |
+| `:tool_call_started` | before a call runs | Engine event includes `call` (see ToolRunner); the Bridge's SSE frame omits it |
 | `:tool_call_completed` | after a call ran | see ToolRunner |
 | `:used_memories_updated` | a memory was read, and after the loop | `{used_memory_names, read_names?}` |
 | `:hook_notice` | a hook's or plugin's notify during a turn | `{hook, text, level}` (announced with `between_turns: true` outside a turn) |
 | `:guardrail_warning` | a guardrails line during a turn | `{message}` |
-| `:turn_completed` | normal end | `{result, turn_summary, display_pending}` |
+| `:turn_completed` | normal end | Engine event `{result, turn_summary, display_pending}`; the Bridge's SSE frame omits `result` (answer remains in `turn_summary.output`) |
 | `:turn_canceled` | Stop, hook stop, Ctrl-C | `{cancellation_reason, cancelled_by?, duration_ms}` |
 | `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
 | `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |

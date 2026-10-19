@@ -76,6 +76,7 @@ module Samagotchi
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       label = plugin_label(call[:name])
+      # Kept on the raw event for in-worker hooks and metrics, not sent to SSE clients.
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
