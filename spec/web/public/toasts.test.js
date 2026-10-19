@@ -103,3 +103,20 @@ test("a duplicate without an action keeps the earlier toast's action", (t) => {
   toasts.show("archived");
   assert.equal(el.querySelector(".toast-action")?.textContent, "Undo");
 });
+
+test("a repeated words toast is drawn once, into its item: no throw-away item for the key", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  t.after(() => el.remove());
+  let made = 0;
+  const doc = { createElement: (tag) => { made += 1; return document.createElement(tag); } };
+  const toasts = createToasts({ el, doc });
+  toasts.show("same");
+  toasts.show("same");
+  assert.equal(made, 1);
+  assert.equal(el.children.length, 1);
+  toasts.show(html`<a href="/s">link</a>`);
+  toasts.show(html`<a href="/s">link</a>`);
+  assert.equal(el.children.length, 2);
+});
