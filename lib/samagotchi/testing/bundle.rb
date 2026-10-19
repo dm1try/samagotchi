@@ -89,6 +89,20 @@ module Samagotchi
 
         # A bundle chi ships (lib/samagotchi/bundles/<name>), as #load.
         def shipped(name, **) = load(File.join(SHIPPED_DIR, name.to_s), **)
+
+        # Registries as an Engine's start: chi's built-in commands and
+        # tools, empty services, toolkits, tool index and peer sources;
+        # +fields+ set the rest (hooks:, context_for:, init: ...) or replace
+        # these. Bundle#build_registries and Install's load both start here.
+        # @api private
+        # @return [Plugin::Registries]
+        def registries(**fields)
+          Plugin::Registries.new(
+            commands: SessionCommands.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
+            services: Plugin::Services.new, stage_tools: ->(*) {}, toolkits: [], tool_index: Tools::ToolIndex.new,
+            peer_sources: PeerSources.new, **fields
+          )
+        end
       end
 
       # @return [String] the bundle's name (manifest.yml)
@@ -358,28 +372,22 @@ module Samagotchi
       private
 
       def build_registries
-        builtin_tools = Tools::Builtins.registry
         toolkits = []
         host = Host.build(@recorder, toolkits: -> { Toolkit::BUILTIN_KITS.keys + toolkits.map(&:name) },
                                      tool_names: -> { @registries.tools.names })
-        Plugin::Registries.new(
-          commands: SessionCommands.register_builtins(Commands::Registry.new),
-          tools: builtin_tools,
+        Bundle.registries(
           hooks: Hooks::Registry.new.tap { |registry| registry.runtime = Runtime.build(@recorder) },
           context_for: lambda { |bundle, settings, label|
             @contexts[label] = Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host,
                                                    env: ENV, sessions: @sessions, http_transport: @http)
           },
           tools_changed: -> { @tools_changes += 1 },
-          services: Plugin::Services.new,
           stage_tools: ->(_bundle, specs, context) { @staged_tools << StagedTools.new(specs: specs, context: context) },
           init: lambda { |_bundle, label, plugin_label, provides_tools:, quiet:, timeout:, failed: nil, &block|
             @inits << Init.new(label: label, plugin_label: plugin_label, provides_tools: provides_tools, quiet: quiet,
                                timeout: timeout, failed: failed, block: block)
           },
-          toolkits: toolkits,
-          tool_index: Tools::ToolIndex.new,
-          peer_sources: PeerSources.new
+          toolkits: toolkits
         )
       end
 

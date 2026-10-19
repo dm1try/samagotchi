@@ -65,15 +65,12 @@ module Samagotchi
         hook_failures = Guardrails::LoadFailures.new
         plugin_failures = Guardrails::LoadFailures.new
         extension = ExtensionLoad.new(hook_failures: hook_failures)
-        registries = Plugin::Registries.new(
-          commands: SessionCommands.register_builtins(Commands::Registry.new),
-          tools: Tools::Builtins.registry, hooks: extension.hooks,
+        registries = Bundle.registries(
+          hooks: extension.hooks,
           context_for: lambda { |bundle, bundle_settings, label|
             Plugin::Context.new(bundle: bundle, label: label, settings: bundle_settings, host: host)
           },
-          services: Plugin::Services.new, stage_tools: ->(*) {},
-          init: ->(_bundle, label, _plugin_label, **, &_block) { inits << { label: label } },
-          toolkits: [], tool_index: Tools::ToolIndex.new, peer_sources: PeerSources.new
+          init: ->(_bundle, label, _plugin_label, **, &_block) { inits << { label: label } }
         )
         extension.load_plugins(registries, failures: plugin_failures)
         installed = File.join(MemoryBundle::Provenance.bundles_dir, name)
