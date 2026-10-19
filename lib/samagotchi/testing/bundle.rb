@@ -133,6 +133,13 @@ module Samagotchi
         own = session_settings.nil? || session_settings.empty? ? {} : { setup: setup_with(session_settings, host[:setup]) }
         @own_sandbox = sandbox.nil? && Sandbox.current.nil?
         @sandbox = sandbox || Sandbox.current || Sandbox.enter
+        build(host, own)
+      rescue Exception # rubocop:disable Lint/RescueException -- leave the sandbox it entered, whatever failed
+        @sandbox.leave if @own_sandbox && @sandbox
+        raise
+      end
+
+      def build(host, own)
         @recorder = Recorder.new(cwd: @sandbox.work_dir, **host, **own)
         @sessions = Sessions.new
         @http = FakeHttp.new
@@ -144,6 +151,7 @@ module Samagotchi
         @contexts = {}
         @registries = build_registries
       end
+      private :build
 
       # @api private (Bundle.load)
       def load!

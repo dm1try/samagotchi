@@ -30,6 +30,22 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(described_class.current).to be_nil
   end
 
+  it "puts ENV back and removes its root when entering fails halfway" do
+    before = ENV.to_h
+    roots = []
+    allow(Dir).to(receive(:mktmpdir).and_wrap_original { |make, *args| make.call(*args).tap { |root| roots << root } })
+    allow(File).to receive(:write).and_call_original
+    allow(File).to receive(:write).with(end_with("gitconfig"), "").and_raise(Errno::ENOSPC)
+
+    expect { described_class.with { raise "not reached" } }.to raise_error(Errno::ENOSPC)
+
+    # The keys only: a failure must not print the environment's values.
+    expect(ENV.keys.select { |key| ENV[key] != before[key] } | (before.keys - ENV.keys)).to eq([])
+    expect(described_class.current).to be_nil
+    expect(roots.size).to eq(1)
+    expect(File).not_to exist(roots.first)
+  end
+
   it "points the data and cache homes at the temp root too, and puts them back" do
     with_env("XDG_DATA_HOME" => "/outside/data", "XDG_CACHE_HOME" => "/outside/cache") do
       described_class.with do |sandbox|

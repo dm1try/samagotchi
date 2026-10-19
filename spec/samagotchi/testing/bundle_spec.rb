@@ -162,6 +162,18 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect { load }.to raise_error(ArgumentError, "command /model is already registered (core)")
   end
 
+  it "leaves the sandbox it entered when building the registries fails" do
+    write_bundle
+    before = ENV.to_h
+    allow(Samagotchi::Plugin::Registries).to receive(:new).and_raise(RuntimeError, "no registries")
+
+    expect { load }.to raise_error(RuntimeError, "no registries")
+
+    expect(Samagotchi::Testing::Sandbox.current).to be_nil
+    # The keys only: a failure must not print the environment's values.
+    expect(ENV.keys.select { |key| ENV[key] != before[key] } | (before.keys - ENV.keys)).to eq([])
+  end
+
   it "runs a command with the text after its name, and records what the ctx helpers did" do
     write_bundle(plugin: plugin)
     bundle = load

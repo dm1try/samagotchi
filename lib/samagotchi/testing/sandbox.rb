@@ -66,27 +66,15 @@ module Samagotchi
         raise ArgumentError, "the sandbox was entered already" if @root
 
         layout = SandboxLayout.create("chi-bundle-test-", extra: %w[data cache home bin])
-        @root = layout.root
-        @saved = ENV.to_h
-        @outer = Sandbox.current
-        ENV.each_key.select { |key| key.start_with?("SAMAGOTCHI_") && !KEPT.include?(key) }.each { |key| ENV.delete(key) }
-        File.write(File.join(@root, "gitconfig"), "")
-        ENV.update(
-          **layout.env,
-          "HOME" => File.join(@root, "home"),
-          "XDG_DATA_HOME" => File.join(@root, "data"),
-          "XDG_CACHE_HOME" => File.join(@root, "cache"),
-          "CLAUDE_CONFIG_DIR" => File.join(@root, "home", ".claude"),
-          "CODEX_HOME" => File.join(@root, "home", ".codex"),
-          "GIT_CONFIG_GLOBAL" => File.join(@root, "gitconfig"),
-          "GIT_CONFIG_NOSYSTEM" => "1",
-          "SAMAGOTCHI_KEYCHAIN" => "off",
-          "SAMAGOTCHI_ENV" => "test",
-          "PATH" => [bin_dir, ENV.fetch("PATH", nil)].compact.join(File::PATH_SEPARATOR)
-        )
-        # The log resolves its file from the (now temp) state home.
-        Log.reset!
-        Sandbox.current = self
+        begin
+          @root = layout.root
+          @saved = ENV.to_h
+          @outer = Sandbox.current
+          point_env(layout)
+        rescue Exception # rubocop:disable Lint/RescueException -- put ENV back, whatever failed
+          leave
+          raise
+        end
         self
       end
 
@@ -94,7 +82,7 @@ module Samagotchi
       def leave
         return unless @root
 
-        ENV.replace(@saved)
+        ENV.replace(@saved) if @saved
         Log.reset!
         FileUtils.rm_rf(@root)
         Sandbox.current = @outer
@@ -148,6 +136,28 @@ module Samagotchi
       def fake_executable(name, body) = FakeExecutable.write(bin_dir, name, body)
 
       private
+
+      # ENV at +layout+'s folders, none of the SAMAGOTCHI_* settings but KEPT.
+      def point_env(layout)
+        ENV.each_key.select { |key| key.start_with?("SAMAGOTCHI_") && !KEPT.include?(key) }.each { |key| ENV.delete(key) }
+        File.write(File.join(@root, "gitconfig"), "")
+        ENV.update(
+          **layout.env,
+          "HOME" => File.join(@root, "home"),
+          "XDG_DATA_HOME" => File.join(@root, "data"),
+          "XDG_CACHE_HOME" => File.join(@root, "cache"),
+          "CLAUDE_CONFIG_DIR" => File.join(@root, "home", ".claude"),
+          "CODEX_HOME" => File.join(@root, "home", ".codex"),
+          "GIT_CONFIG_GLOBAL" => File.join(@root, "gitconfig"),
+          "GIT_CONFIG_NOSYSTEM" => "1",
+          "SAMAGOTCHI_KEYCHAIN" => "off",
+          "SAMAGOTCHI_ENV" => "test",
+          "PATH" => [bin_dir, ENV.fetch("PATH", nil)].compact.join(File::PATH_SEPARATOR)
+        )
+        # The log resolves its file from the (now temp) state home.
+        Log.reset!
+        Sandbox.current = self
+      end
 
       # Run the block with +dir+ as the process's cwd (the memory tools
       # read the project from it); nil: as it is.
