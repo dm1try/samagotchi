@@ -78,8 +78,8 @@ RSpec.describe "chi bundle (CLI)" do
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
-        their sha256 isn't checked, for this bundle only. Its memories are copied. Upgrade refuses it;
-        uninstall removes the link, never PATH's files.
+        their sha256 isn't checked, for this bundle only. Its memories are copied; re-install to pick up memory
+        edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
   TEXT
 
   BUILD_USAGE = <<~TEXT

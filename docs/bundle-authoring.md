@@ -17,6 +17,7 @@ chi bundle install --dev .   # or as a link to this folder: edits apply at the n
 
 While you write it, `install --dev .` (once; `uninstall NAME` leaves dev mode) then try it in chi: a new session
 loads the plugin and hooks from the folder as they are, with no sha check (that bundle only; memories are copied).
+Re-install from the same PATH to pick up memory edits.
 Dev-linked scripts aren't chmodded, since that would change the source. Chi warns with a `chmod +x PATH/scripts/x`
 hint when a listed script isn't executable; set that bit on the source script.
 
