@@ -123,8 +123,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(hash_including(setup: Samagotchi::SessionSetup.new(toolkit: toolkit))).once
-      expect(err.string).to eq("(--toolkit and --tool apply to a new session; #{session.id}'s prompt is already built)\n" \
-                               "(--no-tool applies to a new session; #{session.id}'s prompt is already built)\n")
+      expect(err.string).to eq("(--toolkit and --tool apply to a new session; #{session.id} keeps its own)\n" \
+                               "(--no-tool applies to a new session; #{session.id} keeps its own)\n")
     end
 
     it "starts a new session with its --parent-answers, and ignores it for an existing one with a line (never sent as a command)" do
@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(hash_including(setup: Samagotchi::SessionSetup.new(parent_answers: "standard"))).once
-      expect(err.string).to eq("(--parent-answers applies to a new session; #{session.id}'s prompt is already built)\n")
+      expect(err.string).to eq("(--parent-answers applies to a new session; #{session.id} keeps its own)\n")
     end
 
     it "starts a new session with its --set bundle settings, and ignores them for an existing one with a line" do
@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(hash_including(setup: Samagotchi::SessionSetup.new(bundle_settings: settings))).once
-      expect(err.string).to eq("(--set applies to a new session; #{session.id}'s prompt is already built)\n")
+      expect(err.string).to eq("(--set applies to a new session; #{session.id} keeps its own)\n")
     end
 
     it "ignores --append-system-prompt for an existing session, with --memory and --mute's line" do
@@ -166,8 +166,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       connect(attach: session.id, memories: ["a"], muted_memories: ["b"], appended_prompt_files: ["/r/a.md"], err: err)
 
       expect(err.string).to eq(
-        "(--append-system-prompt applies to a new session; #{session.id}'s prompt is already built)\n" \
-        "(--memory, --mute and --append-system-prompt apply to a new session; #{session.id}'s prompt is already built)\n"
+        "(--append-system-prompt applies to a new session; #{session.id} keeps its own)\n" \
+        "(--memory, --mute and --append-system-prompt apply to a new session; #{session.id} keeps its own)\n"
       )
     end
 
@@ -182,8 +182,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect(connect(attach: session.id, err: err)).to be(client)
 
       expect(err.string).to eq(
-        "(--mute applies to a new session; #{session.id}'s prompt is already built)\n" \
-        "(--memory and --mute apply to a new session; #{session.id}'s prompt is already built)\n"
+        "(--mute applies to a new session; #{session.id} keeps its own)\n" \
+        "(--memory and --mute apply to a new session; #{session.id} keeps its own)\n"
       )
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).muted_memory_names).to eq([])
@@ -399,7 +399,7 @@ RSpec.describe "bin/chi --attach / --shared flags" do
     _out, err, status = Open3.capture3(RbConfig.ruby, chi, "--attach", "s1", "--memory", "notes", "--mute", "identity", stdin_data: "")
 
     expect(err).to include("Warning: --memory 'notes' not found")
-    expect(err).to include("(--memory and --mute apply to a new session; s1's prompt is already built)")
+    expect(err).to include("(--memory and --mute apply to a new session; s1 keeps its own)")
     expect(err).not_to include("can't be combined")
     # The attach itself: s1 is no session here.
     expect(status.exitstatus).to eq(1)

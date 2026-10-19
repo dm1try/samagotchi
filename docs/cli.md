@@ -491,9 +491,9 @@ file and index line stay as they are; only this session doesn't see it.
 - Names are checked before the launch, warnings only: `Warning: --memory 'x'
   not found`, `Warning: --mute 'x' matches no memory`, `Warning: 'x' is both
   --memory and --mute; muted`.
-- `--attach ID` or `--resume ID` with either flag: the session's prompt is
-  already built, so the flags are ignored with one line,
-  `(--mute applies to a new session; <id>'s prompt is already built)`.
+- `--attach ID` or `--resume ID` with either flag: the session keeps its
+  own, so the flags are ignored with one line,
+  `(--mute applies to a new session; <id> keeps its own)`.
 - The status row shows `mem: <used and preloaded>` and `muted: <names>`; the
   Web UI's info-bar tooltip shows `memories: … · preloaded: … · muted: …`.
 - The `read` tool on `memories/<name>.md` is not refused (a guardrails rule

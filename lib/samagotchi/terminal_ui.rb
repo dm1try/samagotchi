@@ -737,7 +737,7 @@ module Samagotchi
       return if @toolkit_flags.empty?
 
       names = @toolkit_flags.size > 1 ? "#{@toolkit_flags[0..-2].join(", ")} and #{@toolkit_flags.last}" : @toolkit_flags.first
-      warn "(#{names} #{@toolkit_flags.size == 1 ? "applies" : "apply"} to a new session; #{session.id}'s prompt is already built)"
+      warn "(#{names} #{@toolkit_flags.size == 1 ? "applies" : "apply"} to a new session; #{session.id} keeps its own)"
     end
     private :warn_toolkit_flags_ignored
 

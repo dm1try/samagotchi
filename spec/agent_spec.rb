@@ -315,7 +315,7 @@ file2.rb")
       allow(client).to receive(:complete).and_return("ok")
       agent = described_class.new(prompt: "hi", client: client, session_id: stored.id, non_interactive: true,
                                   toolkit: Samagotchi::Toolkit.new(name: "full", remove: ["web_fetch"]), toolkit_flags: ["--no-tool"])
-      expect { agent.run }.to output(a_string_including("(--no-tool applies to a new session; #{stored.id}'s prompt is already built)\n")).to_stderr
+      expect { agent.run }.to output(a_string_including("(--no-tool applies to a new session; #{stored.id} keeps its own)\n")).to_stderr
       expect(Samagotchi::Session.load(stored.id).toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
     ensure
       agent&.instance_variable_get(:@owner_lock)&.release

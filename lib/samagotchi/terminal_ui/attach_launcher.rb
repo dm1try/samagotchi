@@ -195,7 +195,7 @@ module Samagotchi
 
         verb = flags.size == 1 ? "applies" : "apply"
         names = flags.size > 2 ? "#{flags[0..-2].join(", ")} and #{flags.last}" : flags.join(" and ")
-        err.puts "(#{names} #{verb} to a new session; #{session_id}'s prompt is already built)"
+        err.puts "(#{names} #{verb} to a new session; #{session_id} keeps its own)"
       end
 
       # @return [BridgeClient, nil] the running worker's, or nil when none runs
