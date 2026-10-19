@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "stringio"
 require "samagotchi/bundle_command"
 require "samagotchi/bundle_command/try/sandbox"
 require "support/chi_cli"
@@ -221,15 +222,32 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
   describe "chi bundle try" do
     include ChiCli
 
+    # Hang protection only: these turns end on their own, and the example's
+    # own limit (spec_helper) comes after it. A tight one is a flake on a
+    # loaded runner (the child boots chi and installs three bundles first).
+    def run_timeout = "100"
+
+    # `chi bundle try ARGS` in this process (as bin/chi runs it) with +env+:
+    # one chi boot fewer than run_chi; the sandbox's child is a real chi.
+    # @return [Array(String, String, Integer)] stdout, stderr, exit status
+    def try_here(*args, env:)
+      out = StringIO.new
+      err = StringIO.new
+      status = with_env(env) do
+        Samagotchi::BundleCommand.new(["try", *args], stdin: StringIO.new(""), stdout: out, stderr: err).run
+      end
+      [out.string, err.string, status]
+    end
+
     it "requires exactly one bundle path and a prompt" do
       Dir.mktmpdir do |dir|
+        # One spawn for bin/chi's dispatch and exit status.
         _out, err, status = run_chi("bundle", "try", env: isolated_chi_env(dir), chdir: dir)
         expect(status.exitstatus).to eq(2)
         expect(err).to include("Usage: chi bundle try PATH")
 
-        _out, err, status = run_chi("bundle", "try", File.join(dir, "missing"), "-p", "run",
-                                    env: isolated_chi_env(dir), chdir: dir)
-        expect(status.exitstatus).to eq(2)
+        _out, err, status = try_here(File.join(dir, "missing"), "-p", "run", env: isolated_chi_env(dir))
+        expect(status).to eq(2)
         expect(err).to include("isn't a folder")
       end
     end
@@ -244,10 +262,9 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           "SAMAGOTCHI_SERVER_PORT" => "9",
           "SAMAGOTCHI_RETRY_MAX" => "0"
         )
-        out, err, status = run_chi("bundle", "try", source, "-p", "test failure", "--timeout", "20",
-                                   env: env, chdir: dir)
+        out, err, status = try_here(source, "-p", "test failure", "--timeout", run_timeout, env: env)
 
-        expect(status.exitstatus).to eq(1)
+        expect(status).to eq(1)
         expect(out).to include("tools:\n", "answer:\n", "exit 1  (")
         expect(err).to include("can't reach host")
       end
@@ -275,7 +292,8 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         original_config = File.read(user_config)
         original_state = File.read(user_state)
 
-        out, err, status = run_chi("bundle", "try", source, "-p", "say PONG", "--timeout", "20",
+        # Through bin/chi once, end to end.
+        out, err, status = run_chi("bundle", "try", source, "-p", "say PONG", "--timeout", run_timeout,
                                    env: env, chdir: dir)
 
         expect(status.exitstatus).to eq(0), err
@@ -286,12 +304,12 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         expect(File.read(user_config)).to eq(original_config)
         expect(File.read(user_state)).to eq(original_state)
 
-        json_out, json_err, json_status = run_chi("bundle", "try", source, "-p", "say PONG", "--json",
-                                                  "--timeout", "20", "--memory", "foo", "--mute", "bar",
-                                                  "--set", "cost-cap.cap=2", "--keep", env: env, chdir: dir)
+        json_out, json_err, json_status = try_here(source, "-p", "say PONG", "--json", "--timeout", run_timeout,
+                                                   "--memory", "foo", "--mute", "bar", "--set", "cost-cap.cap=2",
+                                                   "--keep", env: env)
         report = JSON.parse(json_out)
         kept_root = json_err[/^sandbox: (.+)$/, 1]
-        expect(json_status.exitstatus).to eq(0), json_err
+        expect(json_status).to eq(0), json_err
         expect(json_out.lines.size).to eq(1)
         expect(report.keys).to include("session_id", "exit_code", "answer", "tools", "notices", "cards", "questions",
                                        "interactive_blocked", "used_memories", "tokens", "cost", "model", "sandbox",
@@ -326,8 +344,6 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       text_response = ["data: #{JSON.generate(text)}\n\n", "data: [DONE]\n\n"]
       server.enqueue("/v1/chat/completions", sse: response)
       server.enqueue("/v1/chat/completions", sse: text_response)
-      server.enqueue("/v1/chat/completions", sse: response)
-      server.enqueue("/v1/chat/completions", sse: text_response)
       Dir.mktmpdir do |dir|
         source = bundle_at(File.join(dir, "source"))
         env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "oai:spec-model")
@@ -335,15 +351,12 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         FileUtils.mkdir_p(File.dirname(config))
         File.write(config, "hosts:\n  oai:\n    host: 127.0.0.1\n    port: #{server.port}\n    api: openai\n")
 
-        out, err, status = run_chi("bundle", "try", source, "-p", "push it", "--timeout", "20",
-                                   env: env, chdir: dir)
-        expect(status.exitstatus).to eq(0), err
-        expect(out).to include("execute          denied", "git push origin main")
-
-        json_out, json_err, json_status = run_chi("bundle", "try", source, "-p", "push it", "--timeout", "20",
-                                                  "--json", env: env, chdir: dir)
+        # --json prints the text trace on stderr: one run checks both.
+        json_out, json_err, json_status = try_here(source, "-p", "push it", "--timeout", run_timeout, "--json",
+                                                   env: env)
+        expect(json_status).to eq(0), json_err
+        expect(json_err).to include("execute          denied", "git push origin main")
         report = JSON.parse(json_out)
-        expect(json_status.exitstatus).to eq(0), json_err
         expect(report.dig("tools", 0, "status")).to eq("denied")
         expect(report["denied"]).to eq([1])
         expect(report["timed_out"]).to be(false)
@@ -612,6 +625,8 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           RUBY
           stub_const("Samagotchi::BundleCommand::Try::Sandbox::CHI", script)
           stub_const("Samagotchi::BundleCommand::Try::Sandbox::LIB_DIR", dir)
+          # The descendant holds the pipes: the readers' grace runs out.
+          stub_const("#{described_class}::READER_GRACE", 0.3)
           sandbox = Struct.new(:child_env, :work_dir).new({}, dir)
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
