@@ -43,11 +43,18 @@ module Samagotchi
     MODE_KEY = "session.task_wakes"
     MODES = %w[wake queue off].freeze
 
-    # session.task_wakes: wake (default), queue or off; anything else is wake.
+    # session.task_wakes: wake (default), queue or off; anything else is
+    # wake, and so is a config that can't be read (logged once per error
+    # class: it is read at every idle pass).
     def self.mode
       value = Config.get(MODE_KEY).to_s
       MODES.include?(value) ? value : "wake"
-    rescue StandardError
+    rescue StandardError => e
+      @mode_errors ||= {}
+      unless @mode_errors[e.class]
+        @mode_errors[e.class] = true
+        Log.warn(:worker, "task_wakes_unreadable", error: e.class.name, msg: e.message)
+      end
       "wake"
     end
 
@@ -125,7 +132,10 @@ module Samagotchi
         next drop(entry, log: "not_in_conversation") if keep && !keep.include?(entry.id)
 
         record, error = Tools::TaskRuntime.get_record(entry.id)
-        next drop(entry) if error || record.nil?
+        if error || record.nil?
+          # Gone (its task dir deleted) or unreadable: no note can be written.
+          next drop(entry, log: "record_unreadable", level: :info, error: error.to_s.lines.first&.strip)
+        end
         next nil if record.running?
         # Removed by a look meanwhile (a task_wait on an anytime command's thread).
         next nil unless drop(entry, kept: true)
@@ -152,7 +162,9 @@ module Samagotchi
     end
 
     # Whether a watched task has finished (#take_finished would take it):
-    # Engine#next_turn_waiting asks at a turn's end. Takes nothing.
+    # Engine#next_turn_waiting asks at a turn's end. Takes nothing. A record
+    # that can't be read counts as not finished here (and not running in
+    # #running): #take_finished drops it at the next look, logged.
     def finished?
       ids.any? do |id|
         record, = Tools::TaskRuntime.get_record(id)
@@ -186,10 +198,13 @@ module Samagotchi
     private
 
     # Removes +entry+; nil (a filter_map's skip), or with +kept+ whether it
-    # was there. +log+: why a task leaves without a note (debug).
-    def drop(entry, kept: false, log: nil)
+    # was there. +log+: why a task leaves without a note, at +level+ (debug
+    # by default), with +error+ when there is one.
+    def drop(entry, kept: false, log: nil, level: :debug, error: nil)
       removed = !remove(entry.id).nil?
-      Log.debug(:worker, "task_watch_dropped", task_id: entry.id, reason: log) if log && removed
+      if log && removed
+        Log.public_send(level, :worker, "task_watch_dropped", **{ task_id: entry.id, reason: log, error: error }.compact)
+      end
       kept ? removed : nil
     end
 

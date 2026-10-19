@@ -151,6 +151,13 @@ RSpec.describe Samagotchi::TaskWatch do
         .with(:worker, "task_watch_dropped", task_id: "done", reason: "not_in_conversation")
     end
 
+    it "logs a task dropped for a record it can't read" do
+      allow(Samagotchi::Log).to receive(:info)
+      watch.take_finished
+      expect(Samagotchi::Log).to have_received(:info)
+        .with(:worker, "task_watch_dropped", task_id: "gone", reason: "record_unreadable", error: "Error: task not found: gone")
+    end
+
     it "doesn't return a task another look removed while it refreshed (a task_wait on another thread)" do
       allow(Samagotchi::Tools::TaskRuntime).to receive(:get_record) do |id|
         watch.remove("done") if id == "done"
@@ -231,6 +238,18 @@ RSpec.describe Samagotchi::TaskWatch do
     it "reads session.task_wakes, wake for anything it doesn't know" do
       allow(Samagotchi::Config).to receive(:get).with("session.task_wakes").and_return("queue", "nope", nil)
       expect([described_class.mode, described_class.mode, described_class.mode]).to eq(%w[queue wake wake])
+    end
+
+    it "reads a config it can't read as wake, logging it once" do
+      described_class.instance_variable_set(:@mode_errors, nil)
+      allow(Samagotchi::Config).to receive(:get).with("session.task_wakes").and_raise(Psych::SyntaxError.new("f", 1, 1, 0, "bad", "x"))
+      allow(Samagotchi::Log).to receive(:warn)
+
+      expect([described_class.mode, described_class.mode]).to eq(%w[wake wake])
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:worker, "task_wakes_unreadable", error: "Psych::SyntaxError", msg: a_kind_of(String)).once
+    ensure
+      described_class.instance_variable_set(:@mode_errors, nil)
     end
   end
 
