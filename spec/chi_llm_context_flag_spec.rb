@@ -1,26 +1,24 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "support/fake_provider_server"
 
 # --llm-context on the plain REPL path (--non-interactive): the session
 # starts with its own strategy (saved in its file), and the native prompt
-# declares forget_outputs under forget.
+# declares forget_outputs under forget. One run is a real bin/chi; the rest
+# fork it (ChiCli#fork_chi).
 RSpec.describe "chi --llm-context" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
-
-  def run_chi(*args)
+  # One --non-interactive turn against a fake llama.cpp, forked or with
+  # +spawn+ a real process: its status, stderr, prompt and saved session.
+  def chi_turn(*args, spawn: false)
     server = FakeProviderServer.start
     server.default("/completion", sse: ["data: #{JSON.generate(content: "ok", stop: true)}\n\n"])
     Dir.mktmpdir do |dir|
       env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
-      _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, "--non-interactive", "-p", "hi", stdin_data: "",
-                                         chdir: dir)
+      _out, err, status = run_or_fork_chi(*args, "--non-interactive", "-p", "hi", spawn: spawn, env: env, chdir: dir)
       request = server.requests.find { |r| r.path == "/completion" }
       files = Dir.glob(File.join(dir, "state", "**", "*.json")).select { |path| File.basename(path, ".json").match?(/\A\h{8}-/) }
       saved = files.map { |path| JSON.parse(File.read(path)) }.find { |data| data.key?("llm_context") }
@@ -31,11 +29,11 @@ RSpec.describe "chi --llm-context" do
   end
 
   it "starts the session with its own values: saved, and forget_outputs declared under forget" do
-    plain = run_chi
+    plain = chi_turn
     expect(plain[:prompt]).not_to include("forget_outputs")
     expect(plain[:saved]["llm_context"]).to be_nil
 
-    run = run_chi("--llm-context", "stale,forget", "--llm-context-apply", "turn_end", "--llm-context-budget", "64k")
+    run = chi_turn("--llm-context", "stale,forget", "--llm-context-apply", "turn_end", "--llm-context-budget", "64k", spawn: true)
 
     expect(run[:status]).to be_success
     expect(run[:prompt]).to include("forget_outputs")
@@ -49,7 +47,7 @@ RSpec.describe "chi --llm-context" do
       env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
-      chi_run = ->(*args) { Open3.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", chdir: dir) }
+      chi_run = ->(*args) { fork_chi(*args, env: env, chdir: dir) }
       chi_run.call("--no-shared", "--non-interactive", "-p", "hi")
       id = File.basename(Dir.glob(File.join(dir, "state", "**", "*.json")).find { |path| File.basename(path).match?(/\A\h{8}-/) }, ".json")
 
@@ -63,7 +61,7 @@ RSpec.describe "chi --llm-context" do
   end
 
   it "refuses a value that isn't one before anything starts" do
-    run = run_chi("--llm-context", "stale,summarize")
+    run = chi_turn("--llm-context", "stale,summarize")
 
     expect(run[:status].exitstatus).to eq(1)
     expect(run[:err]).to include("Error: unknown llm_context strategy summarize (none, or a list of stale, forget)")

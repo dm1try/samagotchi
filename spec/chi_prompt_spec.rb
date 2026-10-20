@@ -8,7 +8,9 @@ require "support/fake_provider_server"
 
 # `chi -p … --non-interactive` as a script or a parent agent runs it: stdout
 # holds the answer alone, everything else goes to stderr, and the exit
-# status says how the turn ended (a fake model server answers).
+# status says how the turn ended (a fake model server answers). The answer
+# on stdout alone and Ctrl-C (a signal to the process) run a real bin/chi;
+# the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi -p --non-interactive" do
   # No server: a dead port (9), so the turn fails at once.
   def chi_env(dir, server)
@@ -16,9 +18,11 @@ RSpec.describe "chi -p --non-interactive" do
                           "SAMAGOTCHI_SERVER_PORT" => (server&.port || 9).to_s, "SAMAGOTCHI_RETRY_MAX" => "0")
   end
 
-  def run_chi(*args, server: nil)
+  # chi *args in its own temp home, forked or with +spawn+ a real process:
+  # [stdout, stderr, status, the session ids kept].
+  def chi_p(*args, server: nil, spawn: false)
     Dir.mktmpdir do |dir|
-      out, err, status = super(*args, env: chi_env(dir, server), chdir: dir)
+      out, err, status = run_or_fork_chi(*args, spawn: spawn, env: chi_env(dir, server), chdir: dir)
       sessions = File.join(dir, "state", "samagotchi", "sessions")
       kept = Dir.glob(File.join(sessions, "*.json")).map { |path| File.basename(path, ".json") }
       [out, err, status, kept]
@@ -30,7 +34,7 @@ RSpec.describe "chi -p --non-interactive" do
   end
 
   it "refuses a known flag as the prompt value with a usage error" do
-    out, err, status, kept = run_chi("-p", "--non-interactive", "text")
+    out, err, status, kept = chi_p("-p", "--non-interactive", "text")
 
     expect(status.exitstatus).to eq(2)
     expect(out).to eq("")
@@ -40,7 +44,7 @@ RSpec.describe "chi -p --non-interactive" do
 
   it "refuses a short flag or an attached --prompt= value that is a known flag" do
     [%w[-p -v], %w[--prompt=--verbose]].each do |args|
-      _out, err, status, = run_chi(*args)
+      _out, err, status, = chi_p(*args)
 
       expect(status.exitstatus).to eq(2), args.join(" ")
       expect(err).to include("needs the prompt text right after it (got the flag")
@@ -51,7 +55,7 @@ RSpec.describe "chi -p --non-interactive" do
     server = FakeProviderServer.start
     server.default("/completion", sse: answer("PONG"))
 
-    out, err, status, = run_chi("-p", "--not-a-chi-flag", "--non-interactive", server: server)
+    out, err, status, = chi_p("-p", "--not-a-chi-flag", "--non-interactive", server: server)
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to eq("PONG\n")
@@ -63,7 +67,7 @@ RSpec.describe "chi -p --non-interactive" do
     server = FakeProviderServer.start
     server.default("/completion", sse: answer("PONG"))
 
-    out, err, status, kept = run_chi("-p", "hi", "--non-interactive", server: server)
+    out, err, status, kept = chi_p("-p", "hi", "--non-interactive", server: server, spawn: true)
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to eq("PONG\n")
@@ -76,7 +80,7 @@ RSpec.describe "chi -p --non-interactive" do
     server = FakeProviderServer.start
     server.default("/completion", sse: answer(""))
 
-    out, err, status, = run_chi("-p", "hi", "--non-interactive", server: server)
+    out, err, status, = chi_p("-p", "hi", "--non-interactive", server: server)
 
     expect(status.exitstatus).to eq(1), err
     expect(out).to eq("")
@@ -120,7 +124,7 @@ RSpec.describe "chi -p --non-interactive" do
   # A failed first turn: the session line comes first, then the error, then
   # how to go on; the session is kept with the prompt, so --resume retries.
   it "says before the error which session it is, and after it that the session is kept" do
-    out, err, status, kept = run_chi("-p", "hello there", "--non-interactive")
+    out, err, status, kept = chi_p("-p", "hello there", "--non-interactive")
 
     expect(status.exitstatus).to eq(1)
     expect(out).to eq("")
