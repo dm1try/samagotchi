@@ -17,7 +17,12 @@ and commands may change between minor versions. How releases are made:
   hosts.mac.api: omlx was removed; for mlx_lm.server or oMLX use url: http://HOST:PORT/v1, api: openai in a hosts:
   entry`. Name the model as the server's `/v1/models` lists it (oMLX's prefixed `mlx-community--…` id); the short
   selector oMLX's transport used to resolve now 404s. See
-  [docs/configuration.md](docs/configuration.md#model-server-transport).
+  [docs/configuration.md](docs/configuration.md#model-server-api).
+- The transport setting: `server.transport`, a host's `transport:`, `SAMAGOTCHI_SERVER_TRANSPORT` and
+  `--server-transport` (llama.cpp is the one raw-prompt server, and a host without `api:` talks it, as
+  `api: llama_cpp`). A config or environment still setting one to `llama_cpp` warns at start and runs on:
+  `Warning: config: 'server.transport' was removed: llama.cpp is chi's only raw-prompt transport (a hosts entry
+  without api: is api: llama_cpp); remove it`; `mlx` or `omlx` stops chi as above. The flag is an invalid option.
 - The Qwen turn preamble: a native `qwen36` prompt no longer asks the model to open its thinking with a `TURN:` line,
   and the `thinking.turn_preamble` setting goes with it (`--no-thinking-turn-preamble`,
   `SAMAGOTCHI_THINKING_TURN_PREAMBLE`). A config.yml that still sets it gets `Warning: config: unknown key

@@ -23,7 +23,7 @@ and [oMLX](https://github.com/jundot/omlx) over the OpenAI API, and
 [OpenRouter](https://openrouter.ai) (remote, OpenAI API with `api_key_env`).
 vLLM, LM Studio, Ollama, mlx-lm and other OpenAI-compatible servers should work
 over the OpenAI API but are not tested; see
-[Configuration](docs/configuration.md#model-server-transport).
+[Configuration](docs/configuration.md#model-server-api).
 
 ## Install
 
@@ -110,7 +110,7 @@ hosts:
     api: openai
 ```
 
-`chi self` shows the model and host chi will use. Other settings (multiple hosts, transports, timeouts, the idle recap) are in
+`chi self` shows the model and host chi will use. Other settings (multiple hosts, model server APIs, timeouts, the idle recap) are in
 [Configuration](docs/configuration.md).
 
 ## Use
@@ -207,7 +207,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Releasing](docs/releasing.md): versions, the changelog, how a release is published
 
 - [CLI and REPL](docs/cli.md): flags, sharing a session, web UI, `/model`, status line
-- [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
+- [Configuration](docs/configuration.md): `config.yml`, hosts, model server APIs, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes, model-specific overlays and model notes
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
 - [Attached context](docs/context.md): `chi context`, sources, scopes, recipes (a file, a note, a stream), waking, the github-pr bundle, safety

@@ -187,7 +187,7 @@ An environment name used as a top-level key (`SAMAGOTCHI_DEFAULT_MODEL: my-model
 the old flat form) is not read: it warns as an unknown key with the nested one
 to use (`did you mean 'default.model'?`).
 
-## Model Server Transport
+## Model Server API
 
 Chi talks to a model server over HTTP in one of two ways, set by the host's `api:`:
 
@@ -199,7 +199,7 @@ Chi talks to a model server over HTTP in one of two ways, set by the host's `api
 Without `api:` a host (and the `server.host`/`server.port` one when there is no `hosts:` map)
 uses the raw-prompt loop. There is no transport setting: `server.transport`, a host's
 `transport:` and `SAMAGOTCHI_SERVER_TRANSPORT` were removed with the `mlx` and `omlx`
-transports. Still set to `llama_cpp`, each warns at start and changes nothing (delete it);
+transports. Still set to `llama_cpp`, each warns at start and changes nothing (remove it);
 set to `mlx` or `omlx`, chi stops with the line below. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
 Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api:` included.

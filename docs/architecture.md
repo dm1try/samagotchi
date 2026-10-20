@@ -521,7 +521,7 @@ as an empty answer and asks again.
 Both loops keep one `EmptyAnswerRetry` per turn (the `retry.empty_answer`
 budget, the hidden nudge, the retry's sampling), and both end each
 generation's `:generation_completed` with a `finish_reason`: the chat host's
-own, or for the raw-prompt loop what `Client::Transport#finish_reason_from`
+own, or for the raw-prompt loop what `Client.finish_reason_from`
 reads from the stream's last payload (llama.cpp `/completion`'s `stop_type`:
 `limit` is `length`, `eos` and a stop word are `stop`). An empty answer with a `length` stop and the context 90 % full or
 more is not asked again (a full window, not a thinking loop); with no finish
