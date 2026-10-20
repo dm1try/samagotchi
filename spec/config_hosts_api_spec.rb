@@ -5,9 +5,9 @@ require "tmpdir"
 require "samagotchi/config"
 require "samagotchi/host_registry"
 
-# hosts.<name>.api picks how chi talks to a host: a raw-prompt api
-# (llama_cpp, which is also the Client transport) or a chat api: openai or
-# anthropic (the chat loop). Absent, the entry stays as before: no api, transport as configured.
+# hosts.<name>.api picks how chi talks to a host: llama_cpp (the raw-prompt
+# loop) or a chat api: openai or anthropic (the chat loop). Absent, the entry
+# talks llama.cpp's own API, as api: llama_cpp.
 RSpec.describe "hosts: api" do
   def hosts(yaml_hosts)
     Dir.mktmpdir do |dir|
@@ -17,31 +17,27 @@ RSpec.describe "hosts: api" do
     end
   end
 
-  it "reads api: openai and keeps the transport as given" do
-    result = hosts("oai" => { "host" => "h", "port" => 8000, "api" => "openai" })
-    expect(result["oai"]).to have_attributes(api: :openai, transport: nil)
+  it "reads api: openai and api: llama_cpp" do
+    result = hosts("oai" => { "host" => "h", "port" => 8000, "api" => "openai" }, "m" => { "host" => "h", "api" => "llama_cpp" })
+    expect(result["oai"].api).to eq(:openai)
+    expect(result["m"].api).to eq(:llama_cpp)
   end
 
-  it "uses an explicit raw api as the transport when none is set" do
-    expect(hosts("m" => { "host" => "h", "api" => "llama_cpp" })["m"]).to have_attributes(api: :llama_cpp, transport: :llama_cpp)
+  it "leaves api nil when it is not set" do
+    expect(hosts("box" => { "host" => "h" })["box"].api).to be_nil
   end
 
-  it "leaves api and transport nil when neither is set (the global transport still applies)" do
-    expect(hosts("box" => { "host" => "h" })["box"]).to have_attributes(api: nil, transport: nil)
+  it "keeps an entry with the removed transport: key (warned at start), reading only its api" do
+    result = hosts("oai" => { "host" => "h", "api" => "openai", "transport" => "llama_cpp" }, "box" => { "host" => "h", "transport" => "vllm" })
+    expect(result["oai"].api).to eq(:openai)
+    expect(result["box"].api).to be_nil
   end
 
-  it "allows api: openai with a transport (the transport only affects listing/probing)" do
-    expect(hosts("oai" => { "host" => "h", "api" => "openai", "transport" => "llama_cpp" })["oai"])
-      .to have_attributes(api: :openai, transport: :llama_cpp)
-  end
-
-  it "ignores an entry whose raw api and transport disagree, and an unknown api" do
+  it "ignores an entry with an unknown api" do
     result = nil
     expect do
-      result = hosts("a" => { "host" => "h", "api" => "llama_cpp", "transport" => "vllm" },
-                     "b" => { "host" => "h", "api" => "grpc" },
-                     "c" => { "host" => "h" })
-    end.to output(/ignoring hosts entry 'a'.*\n.*ignoring hosts entry 'b'/).to_stderr
+      result = hosts("b" => { "host" => "h", "api" => "grpc" }, "c" => { "host" => "h" })
+    end.to output(/ignoring hosts entry 'b': unknown api 'grpc'/).to_stderr
     expect(result.keys).to eq(["c"])
   end
 
@@ -81,9 +77,21 @@ RSpec.describe "hosts: api" do
       end
 
       it "loads a config with llama_cpp and openai hosts" do
-        data = { "server" => { "transport" => "llama_cpp" },
-                 "hosts" => { "a" => { "host" => "h", "transport" => "llama_cpp" }, "b" => { "url" => "http://h:8000/v1", "api" => "openai" } } }
-        expect(load_config(data)).to be(true)
+        data = { "hosts" => { "a" => { "host" => "h", "api" => "llama_cpp" }, "b" => { "url" => "http://h:8000/v1", "api" => "openai" } } }
+        expect { expect(load_config(data)).to be(true) }.not_to output.to_stderr
+      end
+
+      # server.transport, hosts transport: and SAMAGOTCHI_SERVER_TRANSPORT
+      # went with the mlx and omlx transports: any other value changes
+      # nothing, so it warns and the config loads.
+      it "warns once per removed transport key with any other value, and loads" do
+        reason = "was removed: llama.cpp is chi's only raw-prompt transport " \
+                 "(a hosts entry without api: is api: llama_cpp); remove it"
+        data = { "server" => { "transport" => "llama_cpp" }, "hosts" => { "a" => { "host" => "h", "transport" => "llama_cpp" } } }
+        expect { expect(load_config(data, env: { "SAMAGOTCHI_SERVER_TRANSPORT" => "llama_cpp" })).to be(true) }
+          .to output("Warning: SAMAGOTCHI_SERVER_TRANSPORT #{reason}\n" \
+                     "Warning: config: 'server.transport' #{reason}\n" \
+                     "Warning: config: 'hosts.a.transport' #{reason}\n").to_stderr
       end
     end
   end

@@ -13,13 +13,13 @@ module Samagotchi
   # one).
   #
   # name: the lowercased entry name; host, port, scheme: where it is (from
-  # url: when given); url: the configured url, nil when host/port; transport,
-  # api: symbols, nil when unset; auth: the header the API key goes in
+  # url: when given); url: the configured url, nil when host/port; api: a
+  # symbol, nil when unset (llama_cpp's raw-prompt loop); auth: the header the API key goes in
   # (LLM::ApiKey::SCHEMES), nil when unset; dialect: an api: anthropic
   # host's LLM::Dialect name, nil when unset; the rest as
   # HostRegistry::HostEntry describes them, nil when unset; models:
   # {downcased id => HostModel}.
-  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :auth, :dialect, :profile,
+  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :api, :api_key_env, :auth, :dialect, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
@@ -79,10 +79,10 @@ module Samagotchi
         ConfigFile.warn_once "Warning: #{where}: auth has no effect without api_key_env (no key is sent)"
       end
 
-      kinds = parse_kinds(name, value.call(:transport), value.call(:api)) or return nil
-      location = parse_location(name, value, api: kinds[:api]) or return nil
-      fields[:dialect] = LLM::Dialect.parse(value.call(:dialect), where, api: kinds[:api])
-      new(name: name.downcase, **location, **kinds, **fields)
+      kind = parse_api(name, value.call(:api), value.call(:transport)) or return nil
+      location = parse_location(name, value, api: kind[:api]) or return nil
+      fields[:dialect] = LLM::Dialect.parse(value.call(:dialect), where, api: kind[:api])
+      new(name: name.downcase, **location, **kind, **fields)
     rescue StandardError => e
       # One entry that trips a reader is dropped on its own, and said so;
       # the other hosts stay (the worker's copy too).
@@ -143,32 +143,22 @@ module Samagotchi
     end
     private_class_method :parse_location
 
-    # transport: and api: as symbols; a raw-prompt api is also the
-    # transport. nil (warned) when unknown or contradicting each other.
-    def self.parse_kinds(name, transport, api)
+    # { api: } (a symbol, nil when not given), or nil (warned) when the api
+    # is unknown. A removed api (RemovedApi) in api: or in the old
+    # transport: key leaves the entry out with its line; any other
+    # transport: is only warned about at start
+    # (ConfigFile.removed_transport_problem).
+    def self.parse_api(name, api, transport)
       %w[api transport].zip([api, transport]).each do |key, written|
         return invalid(name, ConfigFile::RemovedApi.new("hosts.#{name}.#{key}", written.to_s.strip).message) if ConfigFile.removed_api?(written)
       end
-      transport = transport.to_s.strip.downcase
-      if transport.empty?
-        transport = nil
-      elsif !ConfigFile::VALID_TRANSPORTS_FOR_CONFIG.include?(transport)
-        return invalid(name, "unknown transport '#{transport}'")
-      end
       api = api.to_s.strip.downcase
-      if api.empty?
-        api = nil
-      elsif !ConfigFile::VALID_APIS_FOR_CONFIG.include?(api)
-        return invalid(name, "unknown api '#{api}'")
-      elsif ConfigFile::VALID_TRANSPORTS_FOR_CONFIG.include?(api)
-        # A raw-prompt api is the transport; a different transport contradicts it.
-        return invalid(name, "api '#{api}' conflicts with transport '#{transport}'") if transport && transport != api
+      return { api: nil } if api.empty?
+      return invalid(name, "unknown api '#{api}'") unless ConfigFile::VALID_APIS_FOR_CONFIG.include?(api)
 
-        transport = api
-      end
-      { transport: transport&.to_sym, api: api&.to_sym }
+      { api: api.to_sym }
     end
-    private_class_method :parse_kinds
+    private_class_method :parse_api
 
     def self.invalid(name, reason)
       ConfigFile.warn_once "Warning: ignoring hosts entry '#{name}': #{reason}"

@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::HostConfig do
     it "reads string or symbol keys, lowercases the name and leaves unset fields nil (models {})" do
       host = described_class.parse("Box", { host: "box.lan", "port" => "8081", "api" => "OpenAI" })
       expect(host).to have_attributes(name: "box", host: "box.lan", port: 8081, scheme: "http", url: nil,
-                                      api: :openai, transport: nil, api_key_env: nil, profile: nil,
+                                      api: :openai, api_key_env: nil, profile: nil,
                                       thinking: nil, models: {})
     end
 

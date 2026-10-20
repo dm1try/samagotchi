@@ -178,7 +178,6 @@ parser = OptionParser.new do |opts|
       desc += " (#{entry.enum_values.join("|")})" if entry.type == :enum
       desc += " (#{value_hints[entry.key]})" if value_hints.key?(entry.key)
       desc += "; only without a hosts: config" if %w[server.host server.port].include?(entry.key)
-      desc += "; hosts: entries without a transport use it" if entry.key == "server.transport"
       if entry.type == :enum
         opts.on("#{entry.cli_flag} VALUE", entry.enum_values, desc) { |v| cli_overrides[entry.key] = v }
       else

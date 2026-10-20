@@ -84,7 +84,6 @@ module Samagotchi
       # The prompt profile for every model in this process (ModelProfile::NAMES).
       # No config key: per-model and per-host profiles live in models: and hosts:.
       Entry.new(key: "model.profile",            yaml_path: %w[model profile],            type: :enum,   default: nil,              expose: %i[env cli], enum_values: %w[qwen36 gemma4]),
-      Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp], lifecycle: :worker_start),
       Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli], lifecycle: :worker_start),
@@ -311,7 +310,7 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env auth dialect profile first_token_timeout vision sampling thinking
+      "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze
@@ -643,6 +642,7 @@ module Samagotchi
       # nil when +dotted+ is a key the file may hold.
       def key_problem(dotted)
         return nil if known_config_keys.include?(dotted)
+        return "config: #{ConfigFile.removed_transport_problem("'#{dotted}'")}" if dotted == "server.transport"
         if (replaced = REPLACED_KEYS[dotted])
           return "config: unknown key '#{dotted}': replaced by '#{replaced}' (hard, standard or soft; see docs/guardrails.md)"
         end
@@ -668,6 +668,8 @@ module Samagotchi
           next [] unless entry.is_a?(Hash)
 
           (entry.keys.map(&:to_s) - allowed).map do |k|
+            next "config: #{ConfigFile.removed_transport_problem("'hosts.#{name}.transport'")}" if map == "hosts" && k == "transport"
+
             unknown_key_message("#{map}.#{name}.#{k}", k, allowed, prefix: "#{map}.#{name}.")
           end + (map == "hosts" ? host_model_problems(name, entry["models"]) : [])
         end
@@ -886,7 +888,7 @@ module Samagotchi
     end
 
     # Check config.yml once at start (warnings for keys the code doesn't
-    # read) and clear the CLI settings. Nothing is copied into ENV: every
+    # read, and for SAMAGOTCHI_SERVER_TRANSPORT) and clear the CLI settings. Nothing is copied into ENV: every
     # Config.get reads the file again when it changed, so a long-lived
     # process (chi web) and the workers it spawns see edits, and a file
     # value reports origin :file. Returns true if the file existed.
@@ -894,6 +896,9 @@ module Samagotchi
       existed = File.file?(path)
       raw = read_yaml(env: env, path: path) || {}
       check_removed_apis!(raw, env: env)
+      unless env[REMOVED_TRANSPORT_ENV].to_s.strip.empty?
+        Log.warn(:config, "config_key", echo: "Warning: #{removed_transport_problem(REMOVED_TRANSPORT_ENV)}")
+      end
       if existed
         Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "config_key", echo: "Warning: #{w}") }
       end
@@ -903,12 +908,14 @@ module Samagotchi
 
     # Raises RemovedApi for the first api/transport in +data+ (config.yml)
     # or the environment that names a removed one: config.yml's
-    # server.transport and hosts.<name>.api/transport, and
-    # SAMAGOTCHI_SERVER_TRANSPORT. Run once at start (#load!); a hosts entry
-    # read later says the same through HostConfig.parse and is left out.
+    # hosts.<name>.api, and the removed transport keys (server.transport,
+    # hosts.<name>.transport, SAMAGOTCHI_SERVER_TRANSPORT), which with
+    # another value only warn (#removed_transport_problem). Run once at
+    # start (#load!); a hosts entry read later says the same through
+    # HostConfig.parse and is left out.
     def check_removed_apis!(data, env: ENV)
-      env_key = Samagotchi::Config.find_by_key("server.transport").env_key
-      raise RemovedApi.new(env_key, env[env_key].to_s.strip) if removed_api?(env[env_key])
+      env_value = env[REMOVED_TRANSPORT_ENV]
+      raise RemovedApi.new(REMOVED_TRANSPORT_ENV, env_value.to_s.strip) if removed_api?(env_value)
 
       server = data["server"] if data.is_a?(Hash)
       value = server["transport"] if server.is_a?(Hash)
@@ -940,8 +947,18 @@ module Samagotchi
       File.join(config_dir(env: env), CONFIG_FILE)
     end
 
+    # A key chi no longer reads, set to anything but a removed api (that is
+    # a RemovedApi): config.yml server.transport, a hosts entry's
+    # transport: or the environment variable. llama.cpp is the one
+    # raw-prompt transport, so the key changes nothing: a warning, the
+    # config still loads. +where+ names it as the reader shows it.
+    def removed_transport_problem(where)
+      "#{where} was removed: llama.cpp is chi's only raw-prompt transport " \
+        "(a hosts entry without api: is api: llama_cpp); remove it"
+    end
+
+    REMOVED_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
     HOSTS_KEY = "hosts"
-    VALID_TRANSPORTS_FOR_CONFIG = %w[llama_cpp].freeze
     # api/transport values chi no longer has: its own mlx_lm.server and
     # oMLX transports, gone for their OpenAI chat endpoint (api: openai).
     REMOVED_APIS = %w[mlx omlx].freeze
@@ -955,16 +972,17 @@ module Samagotchi
         super("#{where}: #{value} was removed; for mlx_lm.server or oMLX use url: http://HOST:PORT/v1, api: openai in a hosts: entry")
       end
     end
-    # How chi talks to a host: a raw-prompt api (also the Client transport),
-    # or a chat api the chat loop talks (LLM::Adapters): openai (Chat
-    # Completions against <host>/v1) or anthropic (Messages).
-    VALID_APIS_FOR_CONFIG = (VALID_TRANSPORTS_FOR_CONFIG + %w[openai anthropic]).freeze
+    # How chi talks to a host: llama_cpp (the raw-prompt loop over
+    # llama.cpp's own API, also what a hosts entry without api: talks), or a
+    # chat api the chat loop talks (LLM::Adapters): openai (Chat Completions
+    # against <host>/v1) or anthropic (Messages).
+    VALID_APIS_FOR_CONFIG = %w[llama_cpp openai anthropic].freeze
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
     # config.yml's hosts: by lowercased name; an entry that is disabled or
     # invalid (warned) is left out. No entry left: "default", from
-    # server.host/port/transport.
+    # server.host/port.
     # @return [Hash{String => HostConfig}]
     def hosts_config(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
@@ -985,17 +1003,14 @@ module Samagotchi
       {}
     end
 
-    # The host chi uses when hosts: names none: server.host/port/transport.
+    # The host chi uses when hosts: names none: server.host/port.
     def default_host_config(data, env)
       opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
       host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
       host = "localhost" if host.empty?
       port = Samagotchi::Config.resolve("server.port", **opts).to_i
       port = 8080 if port <= 0 || port > 65_535
-      transport = Samagotchi::Config.resolve_with_origin("server.transport", **opts).then do |value, origin|
-        origin == :default ? nil : value.to_sym
-      end
-      HostConfig.new(name: "default", host: host, port: port, transport: transport)
+      HostConfig.new(name: "default", host: host, port: port)
     end
     private_class_method :default_host_config
 

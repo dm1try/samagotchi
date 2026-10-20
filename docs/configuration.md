@@ -32,13 +32,12 @@ thinking:
 
 # Multi-host (optional): aggregated /models and per-model routing.
 # A bare default.model uses the default host; host:model pins to a host.
-# transport: on a host overrides server.transport; api: openai makes a
-# host use the OpenAI chat API instead of chi's raw prompt.
+# A host talks llama.cpp's own API (api: llama_cpp, the default); api: openai
+# makes it use the OpenAI chat API instead of chi's raw prompt.
 hosts:
   main:
     host: localhost
     port: 8080
-    transport: llama_cpp
   small-box:
     host: 192.0.2.20
     port: 8080
@@ -142,7 +141,7 @@ or `chi web` restart.
 | `default.model` | New session | Existing sessions keep their saved model; change one with `/model`. |
 | `default.input`, `no_default_input`, `no_interrupt` | Next CLI run | These set up that run's first prompt or turn limit. |
 | `default.max_tokens`, `max_tool_output_chars`, `read.*`, `execute.*` except `execute.description`, `image.*` | Next matching request or tool use | An operation already in progress keeps its resolved limits. |
-| `server.host`, `server.port`, `server.transport`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. The web model picker refreshes `hosts:` on file change; a running worker does not. |
+| `server.host`, `server.port`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. The web model picker refreshes `hosts:` on file change; a running worker does not. |
 | `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
 | `model_aliases` | Next model lookup | A session keeps its resolved model unless it is explicitly switched. |
 | `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
@@ -192,18 +191,16 @@ to use (`did you mean 'default.model'?`).
 
 Chi talks to a model server over HTTP in one of two ways, set by the host's `api:`:
 
-- chi's own raw-prompt loop on llama.cpp's native `/completion` and `/models` endpoints
-  (`server.transport` / a host's `transport:` `llama_cpp`, the default and only value;
-  env `SAMAGOTCHI_SERVER_TRANSPORT`);
-- a chat API: `openai` (Chat Completions) or `anthropic` (Messages), see below.
-
-Each host may set `api:`:
-
-- `llama_cpp`: chi's own raw-prompt loop (the value is also the host's transport);
+- `llama_cpp` (the default): chi's own raw-prompt loop on llama.cpp's native `/completion`,
+  `/models` and `/props` endpoints;
 - `openai`: the OpenAI chat API at `http://HOST:PORT/v1`, or at `url:` (see below);
 - `anthropic`: the Messages API, see [Anthropic Messages hosts](#anthropic-messages-hosts).
 
-Without `api:` a host uses the raw-prompt loop. The loop follows the
+Without `api:` a host (and the `server.host`/`server.port` one when there is no `hosts:` map)
+uses the raw-prompt loop. There is no transport setting: `server.transport`, a host's
+`transport:` and `SAMAGOTCHI_SERVER_TRANSPORT` were removed with the `mlx` and `omlx`
+transports. Still set to `llama_cpp`, each warns at start and changes nothing (delete it);
+set to `mlx` or `omlx`, chi stops with the line below. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
 Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api:` included.
 
@@ -1566,7 +1563,6 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `default.input` | none | | Text pre-filled at the first prompt (a trailing space is kept); `--no-default-input` skips it. See [CLI](cli.md). |
 | `default.max_tokens` | server's | yes | Most tokens one generation may produce (`n_predict` on a native llama.cpp host; OpenRouter: 32768 when unset). |
 | `model.profile` | none | `--profile` | Prompt profile for every model (`qwen36`, `gemma4`); env and CLI only. See "Prompt profile". |
-| `server.transport` | `llama_cpp` | yes | `llama_cpp` (the only value; `mlx`/`omlx` were removed: use `api: openai`); see "Model Server Transport". |
 | `server.host` | `localhost` | yes | The model server when there is no `hosts:` map. |
 | `server.port` | `8080` | yes | Its port. |
 | `server.open_timeout` | `10` | yes | Connection timeout, seconds. |

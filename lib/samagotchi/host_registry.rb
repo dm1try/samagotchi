@@ -46,7 +46,7 @@ module Samagotchi
     # llm_context_apply: the configured apply rule (LLMContextStrategy), nil when unset;
     # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
     # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :auth, :dialect,
+    HostEntry = Struct.new(:name, :host, :port, :client, :api, :scheme, :url, :api_key_env, :auth, :dialect,
                            :profile, :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
@@ -137,7 +137,7 @@ module Samagotchi
         host = "localhost" if host.empty?
         port = Config.get("server.port").to_i
         port = 8080 if port <= 0
-        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, models: {},
+        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, models: {},
                                             client: Client.new(host: host, port: port, name: "default"))
       end
       @mutex = Mutex.new
@@ -341,7 +341,7 @@ module Samagotchi
     end
 
     # List models on all hosts in parallel. On error per-host, skip with error entry (no failover).
-    # Returns { host_name => { host:, port:, transport:, models: [LLM::ModelInfo], error: nil|String } }
+    # Returns { host_name => { host:, port:, models: [LLM::ModelInfo], error: nil|String } }
     # Also populates the model index. Unless forced, a host's list is reused
     # for its TTL (60s; 10 minutes for a remote host).
     #
@@ -361,12 +361,12 @@ module Samagotchi
         Thread.new do
           begin
             models = list_models_for(entry)
-            data = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil }
+            data = { host: entry.host, port: entry.port, models: models, error: nil }
             @mutex.synchronize { @host_lists[name] = { data: data, at: @clock.call } }
             save_model_list(name, models)
           rescue StandardError => e
             Log.warn(:model, "list_failed", host: name, error: e.class.name, msg: e.message.to_s[0, 500])
-            data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: list_error(e) }
+            data = { host: entry.host, port: entry.port, models: [], error: list_error(e) }
           end
           results_mutex.synchronize { results[name] = data }
         end
@@ -380,7 +380,7 @@ module Samagotchi
           @entries.each_with_object({}) do |(name, entry), acc|
             acc[name] = results.fetch(name) do
               partial = true
-              { host: entry.host, port: entry.port, transport: entry.transport, models: [],
+              { host: entry.host, port: entry.port, models: [],
                 error: "no answer in #{wait == wait.to_i ? wait.to_i : wait} s" }
             end
           end
