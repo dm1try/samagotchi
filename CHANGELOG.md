@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-10-21
+
 ### Removed
 
 - chi's own `mlx` and `omlx` transports (`api:` / `transport:` on a host, `server.transport`,
@@ -35,8 +37,12 @@ and commands may change between minor versions. How releases are made:
   `<think>` and a newline as the template's does, at every level but `off`; before, the model wrote an empty thought
   and answered at once. Its reasoning streams as thinking and stays out of the answer. Turns take longer; `thinking:
   off` answers at once as before. An older Qwen3 or other template, or no template in `/props`, keeps the old prompt.
-  `low`, `medium` and `high` think the same there, which the notice now says. See
-  [docs/configuration.md](docs/configuration.md#thinking).
+  `low`, `medium` and `high` think the same there, which the notice now says. A tool call the model writes inside a
+  closed thought no longer runs. See [docs/configuration.md](docs/configuration.md#thinking).
+- `chi bundle try` with a config chi stops at (e.g. a removed `api: omlx`) fails the install with that one line, not a
+  backtrace.
+
+Update with `chi update` (the system bundle 0.95.0), then restart `chi web`.
 
 ## [0.94.0] - 2026-10-20
 
@@ -3685,7 +3691,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.94.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.95.0...HEAD
+[0.95.0]: https://github.com/dm1try/samagotchi/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/dm1try/samagotchi/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/dm1try/samagotchi/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/dm1try/samagotchi/compare/v0.91.0...v0.92.0
