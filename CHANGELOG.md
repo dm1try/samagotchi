@@ -8,17 +8,23 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-10-20
+
 ### Changed
 
 - A session open in a chi REPL is refused with one message everywhere: `session ID is open in a chi REPL; close it
   there first` (chi web's stop, restart, turn and command, `chi sessions stop|restart`, chi send). Before, some
   places said `owned by an interactive TUI`.
+- Plugins: `ctx.http` turns only network, TLS and provider errors into `HttpError`; any other error (a bug in chi)
+  is logged with its backtrace and raised as it is, instead of looking like a failed request. In the bundle test
+  kit, `bundle.questions` entries are `Samagotchi::HookQuestion` values (same fields as before).
 
 ### Fixed
 
 - Guardrail rules' `command:` keeps a `cat`/`tee` heredoc body after an `exec` that sends the shell's output to a
-  file (`exec >run.sh; cat <<EOF …`, `exec 3>run.sh; cat <<EOF >&3 …`): the body may be run later, as with
-  `cat <<EOF >run.sh`; before, it was left out as data.
+  file (`exec >run.sh; cat <<EOF …`, `exec 3>run.sh; cat <<EOF >&3 …`, also inside `{ }`, `if`, a function, or
+  with `exec {fd}>file` / `3<>file`): the body may be run later, as with `cat <<EOF >run.sh`; before, it was left
+  out as data.
 - A config.yml that doesn't parse (saved mid-edit) no longer tells a worker or chi web that every start-only setting
   changed and needs a restart: it warns once that the file doesn't parse, and the settings are compared again once
   it does.
@@ -28,6 +34,8 @@ and commands may change between minor versions. How releases are made:
   outer card's `delegate ab12 asks: Cost cap`.
 - `chi send --wait` on a queued image message that is removed (unqueued) as the wait looks no longer returns the
   running turn's reply: the removal writes its tombstone before it takes the file, so the wait reads it as removed.
+
+Update with `chi update` (the system bundle 0.93.0), then restart `chi web`.
 
 ## [0.92.0] - 2026-10-19
 
@@ -3626,7 +3634,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.92.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.93.0...HEAD
+[0.93.0]: https://github.com/dm1try/samagotchi/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/dm1try/samagotchi/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/dm1try/samagotchi/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/dm1try/samagotchi/compare/v0.89.0...v0.90.0
