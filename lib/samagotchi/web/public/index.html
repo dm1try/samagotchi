@@ -547,7 +547,7 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 @media (hover:none){.copy-btn{opacity:.55}}
 /* The dock is the composer card: the text field, a toolbar row, the info bar as its footer. */
 #dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
-/* In a session the card floats over the history, so the glass blurs it; the history's bottom padding follows the card (--dock-h, set from app.js). */
+/* In a session the card floats over the history, so the glass blurs it; the history's bottom padding follows the card (--dock-h, set from dock_reserve.js). */
 /* The session panel lets the page's glow through (the history's own layers go clear), so the card and its footer read as glass over it, not as a flat box on black. */
 body.has-session #center{background:color-mix(in srgb,var(--bg) 35%,transparent);border-color:var(--glass-border);position:relative}
 body.has-session #stage,body.has-session #history{background:transparent}
@@ -719,7 +719,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .turn-stage{display:flex;flex-direction:column;min-height:0;max-height:var(--stage-max,60vh);border-left:3px solid var(--accent);border-radius:14px;overflow:hidden}
 /* Out of the dock's flow: it floats 10 px above the composer card, so its rise, growth and leaving never move #dock (a
    bottom-pinned box changing height is a layout shift, animated or not). Painted before .dock-card (no z-index): the command
-   list (z-index 20 inside .dock-card) opens over its lower edge. The history's bottom reserve counts it (app.js, --dock-h). */
+   list (z-index 20 inside .dock-card) opens over its lower edge. The history's bottom reserve counts it (dock_reserve.js, --dock-h). */
 body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px}
 .turn-stage[hidden]{display:none}
 .turn-stage.ended{border-left-color:var(--border-strong)}
@@ -1183,7 +1183,7 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
 .card .archived-badge,.family-row .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
-/* bottom: above the session's composer card when one shows (--toast-bottom, app.js placeToast). */
+/* bottom: above the session's composer card when one shows (--toast-bottom, dock_reserve.js placeToast). */
 #toast{position:fixed;left:50%;bottom:var(--toast-bottom,24px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px}
 #toast[hidden]{display:none}
 #toast .toast-item{display:flex;gap:12px;align-items:center;width:max-content;max-width:100%;box-sizing:border-box;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px}
