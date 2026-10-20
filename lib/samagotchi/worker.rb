@@ -933,8 +933,11 @@ module Samagotchi
     # finishes) comes after its command_queued. The cards it shows go out at
     # once (btw's "thinking…" card), after its command_queued, which the
     # UIs draw its line at (Engine#running_anytime). Its handler reads
-    # copies (ctx.messages) and shows things through ctx only; nothing is
-    # saved.
+    # copies (ctx.messages) and shows things through ctx only. One saves:
+    # /title, a field no turn writes, through Session#save, which takes the
+    # session's lock and writes a running turn's checkpoint (as
+    # WorkerSignals' save off the turn thread does), so the turn's own saves
+    # keep it.
     def start_anytime_command(command)
       @engine.spawn_anytime do
         result = command_result(command) { @engine.running_anytime { @commands.run(command.line, confirm: confirm?(command)) } }

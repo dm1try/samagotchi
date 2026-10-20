@@ -306,6 +306,21 @@ RSpec.describe Samagotchi::Session do
       expect(out).to eq("soft nil")
     end
 
+    it "round-trips its own title; none from a file without the field; display_title falls back to the preview" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.first_preview = "hey chi"
+      expect(session.display_title).to eq("hey chi")
+      session.title = "Coordinator"
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      expect(JSON.parse(File.read(path)).keys.each_cons(2)).to include(%w[first_preview title])
+      expect(described_class.load(session.id, state_dir: tmpdir)).to have_attributes(title: "Coordinator",
+                                                                                     display_title: "Coordinator")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("title")))
+      expect(described_class.load(session.id, state_dir: tmpdir)).to have_attributes(title: nil, display_title: "hey chi")
+    end
+
     it "round-trips its own parent_answers, normalised; none from a file without the field; an unreadable one as written" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
                                             setup: Samagotchi::SessionSetup.new(parent_answers: "standard"))

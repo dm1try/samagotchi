@@ -14,6 +14,7 @@ require_relative "llm_context_command"
 require_relative "thinking_command"
 require_relative "toolkit_command"
 require_relative "parent_answers_command"
+require_relative "title_command"
 require_relative "reasoning_history_command"
 require_relative "guardrails/parent_policy"
 
@@ -37,6 +38,7 @@ module Samagotchi
     THINKING_COMMAND = ThinkingCommand::NAME
     TOOLKIT_COMMAND = ToolkitCommand::NAME
     PARENT_ANSWERS_COMMAND = ParentAnswersCommand::NAME
+    TITLE_COMMAND = TitleCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
@@ -112,6 +114,9 @@ module Samagotchi
                                                 "never looser than config.yml's)",
                         id: :parent_answers, mid_turn: show_mid_turn(PARENT_ANSWERS_COMMAND),
                         match: ->(text) { text.match?(%r{\A/parent-answers(?:\s+.*)?\z}) }) { |text| parent_answers(text) }
+      # Only a name: renaming a running session doesn't wait for its turn.
+      registry.register(TITLE_COMMAND, "show or set this session's title (--clear: back to its first message)",
+                        id: :title, anytime: true, match: ->(text) { text.match?(%r{\A/title(?:\s+.*)?\z}) }) { |text| title(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -520,6 +525,14 @@ module Samagotchi
       output, changed, status = ParentAnswersCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
                                                     .run(text.delete_prefix(PARENT_ANSWERS_COMMAND), user_ui: user_ui)
       reply(output, status: status, changed: changed ? [:parent_answers] : [])
+    end
+
+    # /title (TitleCommand); :title in changed when it named the session or
+    # cleared its name. A plain save: no setting moved, and it may run on
+    # an anytime thread beside a turn.
+    def title(text)
+      output, changed, status = TitleCommand.new(engine: @engine, save: @save).run(text.delete_prefix(TITLE_COMMAND))
+      reply(output, status: status, changed: changed ? [:title] : [])
     end
 
     # A session setting changed (/llm-context, /thinking, /reasoning-history):

@@ -108,6 +108,19 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(load(third.id).opener).to be_nil
   end
 
+  it "keeps the chain's title on the new link, with or without a first message" do
+    previous = make
+    previous.title = "Coordinator"
+    previous.save(state_dir: tmpdir)
+
+    idle = continue(previous.id)
+    prompted = continue(idle.id, prompt: "start the day")
+
+    expect(load(idle.id)).to have_attributes(title: "Coordinator", first_preview: "you are coordinator again")
+    expect(load(prompted.id)).to have_attributes(title: "Coordinator", first_preview: "start the day")
+    expect(load(continue(make.id).id).title).to be_nil
+  end
+
   it "carries only the link when the previous one has no recap, and runs a first message it was given" do
     previous = make
 

@@ -56,6 +56,10 @@ module Samagotchi
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
     attr_accessor :preloaded_memory_names, :muted_memory_names
+    # The name the user gave the session (/title, TitleCommand), else nil:
+    # every list, card and tab shows it in place of #first_preview (see
+    # #display_title). A continue's new link inherits it.
+    attr_accessor :title
     # The files chi --append-system-prompt put into the session's system
     # prompt (absolute paths; config.yml's append_system_prompt: entries
     # aren't stored): kept on respawns, copied by a fork and a continue
@@ -276,7 +280,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil, parent_answers: nil)
+                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil, parent_answers: nil, title: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -289,6 +293,7 @@ module Samagotchi
       @status = status
       @last_prompt = last_prompt
       @first_preview = first_preview
+      @title = title
       @test_run = !!test_run
       self.pending_question = pending_question
       @used_memory_names = self.class.name_list(used_memory_names)
@@ -455,6 +460,7 @@ module Samagotchi
       "status" => STATUS_IDLE,
       "last_prompt" => "",
       "first_preview" => "",
+      "title" => nil,
       "test_run" => false,
       "pending_question" => nil,
       "used_memory_names" => [],
@@ -717,6 +723,12 @@ module Samagotchi
     # XDG-aware sessions directory.
     def self.default_state_dir(env: ENV)
       File.join(Paths.state_home(env: env), STATE_SUBDIR)
+    end
+
+    # What names the session: its #title when it has one, else its
+    # #first_preview.
+    def display_title
+      title.to_s.strip.empty? ? first_preview.to_s : title
     end
 
     # Derive and cache the first user-message preview in the session record.

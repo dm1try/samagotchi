@@ -203,7 +203,7 @@ module Samagotchi
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
       end
       link = SessionManager.spawn_session(
-        prompt: start, preview: preview, working_directory: previous.working_directory,
+        prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
         model_name: choice.model, setup: SessionSetup.of(previous),
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn

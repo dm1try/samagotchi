@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /thinking /toolkit /hello /side
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /thinking /title /toolkit /hello /side
                   /archive /cut /detach /exit /queue /quit /recap /stats /unqueue])
       expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
                                start_with("  /model              show or switch the model  (show: mid-turn too)"),
@@ -93,6 +93,9 @@ RSpec.describe Samagotchi::SessionCommands do
                                "  /stats              show the session's stats  (terminal only)")
       expect(result.status).to eq(:ok)
       expect(engine.command_registry.lookup("/help").anytime).to be(true)
+      expect(lines).to include("  /title              show or set this session's title (--clear: back to its first message)  (mid-turn too)")
+      expect(engine.command_registry.lookup("/title Coordinator")).to have_attributes(id: :title, anytime: true)
+      expect(engine.command_registry.lookup("/titles")).to be_nil
     end
   end
 

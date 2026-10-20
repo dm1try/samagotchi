@@ -2100,6 +2100,25 @@ RSpec.describe Samagotchi::Worker do
           expect(ran(command_id)).to include(status: "ok", output: "slow side done", anytime: true)
         end
 
+        # D3 of the session title plan: /title saves beside the turn, and the
+        # turn's own saves keep it.
+        it "names the session at once while a turn runs, and the turn's end save keeps the title" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          done = ran(JSON.parse(post_command("/title Coordinator").body)["command_id"])
+          during = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          still_running = engine.turn_running?
+          release << true
+
+          expect(still_running).to be(true)
+          expect(done).to include(status: "ok", output: "title: Coordinator", anytime: true, changed: ["title"])
+          expect(during).to have_attributes(title: "Coordinator", status: Samagotchi::Session::STATUS_RUNNING)
+          expect(wait_until { saved_messages.include?("OK") }).to be(true)
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).title).to eq("Coordinator")
+        end
+
         it "runs between turns too, and a normal command still waits its turn" do
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")

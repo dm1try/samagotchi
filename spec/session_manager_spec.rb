@@ -685,6 +685,20 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.binread(File.join(child_dir, "images", "0123456789abcdef.png"))).to eq("PNG")
     end
 
+    it "saves the session's own title before its worker starts, beside the preview" do
+      seen = []
+      allow(Process).to receive(:spawn) do
+        seen << Dir.glob(File.join(tmpdir, "*.json")).map { |path| JSON.parse(File.read(path)).values_at("title", "first_preview") }
+        12_345
+      end
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, title: "Coordinator",
+                                              preview: "hey chi")
+
+      expect(seen).to eq([[["Coordinator", "hey chi"]]])
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).display_title).to eq("Coordinator")
+    end
+
     it "previews a seeded session without a title by its first user message" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
