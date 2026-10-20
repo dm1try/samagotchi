@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "fileutils"
@@ -28,8 +26,9 @@ RSpec.describe "chi --set" do
   end
 
   # chi with *args (and one --non-interactive turn against a fake llama.cpp
-  # when +turn+): [stderr, exit status, the saved session file or nil].
-  def run_chi(*args, turn: true)
+  # when +turn+), forked or with +spawn+ a real process: [stderr, exit
+  # status, the saved session file or nil].
+  def chi_set(*args, turn: true, spawn: false)
     server = FakeProviderServer.start
     server.default("/completion", sse: ["data: #{JSON.generate(content: "ok", stop: true)}\n\n"])
     Dir.mktmpdir do |dir|
@@ -40,7 +39,7 @@ RSpec.describe "chi --set" do
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
       extra = turn ? ["--non-interactive", "-p", "hi"] : []
-      _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, *extra, stdin_data: "", chdir: dir)
+      _out, err, status = run_or_fork_chi(*args, *extra, spawn: spawn, env: env, chdir: dir)
       file = Dir.glob(File.join(dir, "state", "**", "*.json")).find { |path| File.basename(path, ".json").match?(/\A\h{8}-/) }
       [err, status.exitstatus, file && JSON.parse(File.read(file))]
     end
@@ -49,22 +48,22 @@ RSpec.describe "chi --set" do
   end
 
   it "saves the bundle settings in the new session, a later --set of a key winning" do
-    err, status, saved = run_chi("--set", "cost-cap.cap=3", "--set=cost-cap.cap=0.25")
+    err, status, saved = chi_set("--set", "cost-cap.cap=3", "--set=cost-cap.cap=0.25", spawn: true)
     expect(status).to eq(0), err
     expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 0.25 })
   end
 
   it "reads .5 and 1e1 as numbers" do
-    err, status, saved = run_chi("--set", "cost-cap.cap=.5")
+    err, status, saved = chi_set("--set", "cost-cap.cap=.5")
     expect(status).to eq(0), err
     expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 0.5 })
-    err, status, saved = run_chi("--set", "cost-cap.cap=1e1")
+    err, status, saved = chi_set("--set", "cost-cap.cap=1e1")
     expect(status).to eq(0), err
     expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 10.0 })
   end
 
   it "saves none without the flag" do
-    err, status, saved = run_chi
+    err, status, saved = chi_set
     expect(status).to eq(0), err
     expect(saved["bundle_settings"]).to eq({})
   end
@@ -78,7 +77,7 @@ RSpec.describe "chi --set" do
       "plain.x=1" => "--set plain.x: plain takes no session settings",
       "cost-cap.cap=five" => "--set cost-cap.cap: cost-cap takes a number (or off) for cap, not \"five\""
     }.each do |arg, message|
-      err, status, saved = run_chi("--set", arg)
+      err, status, saved = chi_set("--set", arg)
       expect(status).to eq(2), "#{arg}: #{err}"
       expect(err).to include(message), arg
       expect(saved).to be_nil, arg
@@ -86,7 +85,7 @@ RSpec.describe "chi --set" do
   end
 
   it "refuses it with chi web" do
-    err, status, = run_chi("web", "--set", "cost-cap.cap=1", turn: false)
+    err, status, = chi_set("web", "--set", "cost-cap.cap=1", turn: false)
     expect(status).to eq(2)
     expect(err).to include("--set is a new session's")
   end

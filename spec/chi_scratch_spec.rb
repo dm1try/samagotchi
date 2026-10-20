@@ -1,22 +1,21 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "samagotchi/session"
 require "support/fake_provider_server"
 
 # `chi scratch`: the run options, for a plain REPL session that leaves
-# nothing behind (a fake model server answers the one turn).
+# nothing behind (a fake model server answers the one turn). One example
+# runs a real bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi scratch" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
-
-  def run_chi(*args, server: nil)
+  # chi *args in its own temp home, forked or with +spawn+ a real process:
+  # [stdout, stderr, status, the session files left].
+  def chi_scratch(*args, server: nil, spawn: false)
     Dir.mktmpdir do |dir|
       env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1",
                                   "SAMAGOTCHI_SERVER_PORT" => (server&.port || 9).to_s)
-      out, err, status = super(*args, env: env, chdir: dir)
+      out, err, status = run_or_fork_chi(*args, spawn: spawn, env: env, chdir: dir)
       sessions = File.join(dir, "state", "samagotchi", "sessions")
       left = Dir.exist?(sessions) ? Dir.children(sessions).reject { |name| name.start_with?(".") } : []
       [out, err, status, left]
@@ -27,8 +26,8 @@ RSpec.describe "chi scratch" do
     server = FakeProviderServer.start
     server.default("/completion", sse: ["data: #{JSON.generate(content: "PONG", stop: true)}\n\n"])
 
-    out, err, status, left = run_chi("scratch", "-p", "Reply with exactly: PONG", "--non-interactive",
-                                     "--memory", "identity", server: server)
+    out, err, status, left = chi_scratch("scratch", "-p", "Reply with exactly: PONG", "--non-interactive",
+                                         "--memory", "identity", server: server, spawn: true)
 
     expect(status.exitstatus).to eq(0), err
     expect(err).to start_with("Scratch session: nothing is kept, it is deleted when you leave.\n")
@@ -48,7 +47,7 @@ RSpec.describe "chi scratch" do
     "--shared" => %w[--shared]
   }.each do |flag, args|
     it "refuses #{flag}" do
-      _out, err, status, left = run_chi("scratch", *args)
+      _out, err, status, left = chi_scratch("scratch", *args)
 
       expect(status.exitstatus).to eq(1)
       expect(err).to eq("Error: chi scratch starts a new session in this terminal and keeps nothing; it can't take #{flag}\n")
@@ -65,7 +64,7 @@ RSpec.describe "chi scratch" do
         leftover = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir, scratch: true)
         leftover.save(state_dir: state_dir)
 
-        _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, flag, leftover.id[0, 8], stdin_data: "", chdir: dir)
+        _out, err, status = fork_chi(flag, leftover.id[0, 8], env: env, chdir: dir)
 
         expect(status.exitstatus).to eq(1)
         expect(err).to eq("Error: that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)\n")
@@ -75,14 +74,14 @@ RSpec.describe "chi scratch" do
   end
 
   it "takes no other command: chi scratch web is an error" do
-    _out, err, status, = run_chi("scratch", "web")
+    _out, err, status, = chi_scratch("scratch", "web")
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unexpected argument web (see chi --help)\n")
   end
 
   it "has one line in chi --help" do
-    out, = run_chi("--help")
+    out, = chi_scratch("--help")
 
     expect(out.lines.grep(/chi scratch/)).to eq(["       chi scratch [options]            a one-time session in this terminal: nothing is kept\n"])
   end

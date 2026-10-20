@@ -1,17 +1,12 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "samagotchi/version"
-require_relative "support/bounded_capture"
 
+# `chi --help` runs a real bin/chi once, for the examples that read it, and
+# `chi broadcast --help` another (a subcommand's file loads in a fresh ruby);
+# the other commands fork it (ChiCli#fork_chi).
 RSpec.describe "chi --help" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
-
-  # `chi --help` once for the examples that read it (a chi boot each).
-  before(:context) do
-    @help = Open3.capture3(RbConfig.ruby, File.expand_path("../bin/chi", __dir__), "--help", stdin_data: "")
-  end
+  before(:context) { @help = run_chi("--help") }
 
   it "says -p runs the prompt and stays in the REPL, and --non-interactive exits" do
     out, _err, status = @help
@@ -48,43 +43,41 @@ RSpec.describe "chi --help" do
   end
 
   it "dispatches chi context with its own help" do
-    out, _err, status = Open3.capture3(RbConfig.ruby, chi, "context", "--help", stdin_data: "")
+    out, _err, status = fork_chi("context", "--help")
 
     expect(status.exitstatus).to eq(0)
     expect(out).to start_with("Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute>")
   end
 
   it "dispatches chi broadcast with its own help" do
-    out, _err, status = Open3.capture3(RbConfig.ruby, chi, "broadcast", "--help", stdin_data: "")
+    out, _err, status = run_chi("broadcast", "--help")
 
     expect(status.exitstatus).to eq(0)
     expect(out).to start_with("Usage: chi broadcast [-m TEXT] [--all] [--dry-run]")
   end
 
   it "prints its version with --version" do
-    out, err, status = Open3.capture3(RbConfig.ruby, chi, "--version", stdin_data: "")
+    out, err, status = fork_chi("--version")
 
     expect([out, err, status.exitstatus]).to eq(["chi #{Samagotchi::VERSION}\n", "", 0])
   end
 
   it "refuses an unknown flag with one line, not a backtrace" do
-    _out, err, status = Open3.capture3(RbConfig.ruby, chi, "--bogus", stdin_data: "")
+    _out, err, status = fork_chi("--bogus")
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: invalid option: --bogus (see chi --help)\n")
   end
 
   it "refuses an unknown command instead of starting a session" do
-    _out, err, status = BoundedCapture.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "0" }, RbConfig.ruby, chi,
-                                                "bogus", "--non-interactive", stdin_data: "", timeout: 10)
+    _out, err, status = fork_chi("bogus", "--non-interactive", env: { "SAMAGOTCHI_SESSION_SHARED" => "0" }, timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unknown command bogus (see chi --help)\n")
   end
 
   it "refuses a stray argument after web" do
-    _out, err, status = BoundedCapture.capture3(RbConfig.ruby, chi, "web", "extra", "--port", "45898",
-                                                stdin_data: "", timeout: 10)
+    _out, err, status = fork_chi("web", "extra", "--port", "45898", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unexpected argument extra (see chi --help)\n")
