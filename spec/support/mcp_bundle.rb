@@ -38,6 +38,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   let(:settings) { { "servers" => servers, "startup_timeout" => 2, "timeout" => 5 } }
   let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:tiny_png) { File.expand_path("../fixtures/images/tiny.png", __dir__) }
+  # A "slow" fake server's FAKE_MCP_GATE: it answers initialize once the
+  # file exists (#start_gated_server_during).
+  let(:gate) { File.join(tmpdir, "start-gate") }
 
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
@@ -83,6 +86,15 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   # An MCP tool through call_tool (<server>/<tool>).
   def mcp(tool, args = {}, server: "fake")
     handle("call_tool", { "tool" => "#{server}/#{tool}", "args" => args })
+  end
+
+  # The block's value, run in a thread while a gated server is starting:
+  # the gate opens once that thread waits, so the block waited for the start.
+  def start_gated_server_during(&)
+    thread = Thread.new(&)
+    wait_until!("the call to wait for the server") { thread.status == "sleep" || !thread.alive? }
+    FileUtils.touch(gate)
+    join!(thread, "the call", timeout: 15).value
   end
 
   def find(query, group = nil)

@@ -3,7 +3,10 @@
 # A tiny MCP server over stdio (newline-delimited JSON-RPC) for the mcp
 # bundle's specs. FAKE_MCP_MODE: "hang" never answers initialize, "exit"
 # leaves at once, "error" answers initialize with an error, "slow" waits
-# FAKE_MCP_DELAY seconds (default 3) before answering it. FAKE_MCP_LOG,
+# before answering it: until the file FAKE_MCP_GATE exists when that is
+# set (the spec says when it has started), else FAKE_MCP_DELAY seconds
+# (default 3), on a thread: it still reads its stdin meanwhile, so it
+# leaves at the EOF and stopping it takes no grace. FAKE_MCP_LOG,
 # when set, gets each message it received, one JSON per line.
 # FAKE_MCP_MODE_FILE, when set and present, holds the mode instead (the
 # mcp bundle's cache is keyed by the env, a file changes without it).
@@ -68,6 +71,26 @@ def reply(id, result = nil, error: nil)
   $stdout.puts(JSON.generate(message))
 end
 
+def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+# "slow"'s wait before initialize's answer: until FAKE_MCP_GATE exists, or
+# FAKE_MCP_DELAY seconds without one.
+def wait_to_start
+  gate = ENV["FAKE_MCP_GATE"]
+  deadline = now + Float(ENV.fetch("FAKE_MCP_DELAY", "3"))
+  sleep(0.01) until gate ? File.exist?(gate) : now >= deadline
+end
+
+def initialized(id, mode)
+  return reply(id, error: { code: -32_000, message: "not today" }) if mode == "error"
+
+  # A request of its own first: the client must answer it and go on.
+  $stdout.puts(JSON.generate(jsonrpc: "2.0", id: "srv-1", method: "ping"))
+  instructions = ENV.fetch("FAKE_MCP_INSTRUCTIONS", INSTRUCTIONS)
+  reply(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" },
+              instructions: instructions.empty? ? nil : instructions }.compact)
+end
+
 def text(value) = { content: [{ type: "text", text: value }] }
 
 $stdin.each_line do |line|
@@ -78,14 +101,9 @@ $stdin.each_line do |line|
   when "initialize"
     next if mode == "hang"
 
-    sleep(Float(ENV.fetch("FAKE_MCP_DELAY", "3"))) if mode == "slow"
-    next reply(id, error: { code: -32_000, message: "not today" }) if mode == "error"
+    next Thread.new { wait_to_start; initialized(id, mode) } if mode == "slow"
 
-    # A request of its own first: the client must answer it and go on.
-    $stdout.puts(JSON.generate(jsonrpc: "2.0", id: "srv-1", method: "ping"))
-    instructions = ENV.fetch("FAKE_MCP_INSTRUCTIONS", INSTRUCTIONS)
-    reply(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" },
-                instructions: instructions.empty? ? nil : instructions }.compact)
+    initialized(id, mode)
   when "tools/list"
     tools = TOOLS
     if (file = ENV["FAKE_MCP_TOOLS"])

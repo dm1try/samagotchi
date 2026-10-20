@@ -13,7 +13,7 @@ RSpec.describe "The mcp bundle's texts" do
 
   let(:tools_file) { File.join(tmpdir, "tools").tap { |f| File.write(f, %w[echo navigate_page take_screenshot bad].join("\n")) } }
   let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
-  let(:slow) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_DELAY" => "3" } } }
+  let(:slow) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_GATE" => gate } } }
 
   def golden_dir = File.expand_path("../../fixtures/mcp/goldens", __dir__)
 
@@ -71,7 +71,7 @@ RSpec.describe "The mcp bundle's texts" do
 
   it "answers a call's errors" do
     expect_golden("call_errors", [
-      mcp("echo_text"), handle(call_entry.name, { "tool" => "zebra" }), mcp("bad"),
+      mcp("echo_text"), start_gated_server_during { handle(call_entry.name, { "tool" => "zebra" }) }, mcp("bad"),
       handle(call_entry.name, { "tool" => "fake/echo", "args" => "hello" })
     ].join("\n---\n"))
   end
@@ -90,7 +90,7 @@ RSpec.describe "The mcp bundle's texts" do
   end
 
   it "waits for the starting server on a call of its tool, then searches it" do
-    expect(mcp("echo", { "text" => "waited" }, server: "slow")).to eq("echo: waited")
+    expect(start_gated_server_during { mcp("echo", { "text" => "waited" }, server: "slow") }).to eq("echo: waited")
     expect_golden("find_started", find("echo"))
   end
 end

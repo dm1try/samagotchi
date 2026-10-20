@@ -180,7 +180,7 @@ RSpec.describe "The mcp bundle" do
     end
 
     context "while a first-run server is starting" do
-      let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_DELAY" => "1" } } }
+      let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_GATE" => gate } } }
 
       it "searches say to try again, and a call waits for it" do
         settings["startup_timeout"] = 10
@@ -188,7 +188,7 @@ RSpec.describe "The mcp bundle" do
         @engine.start_init_tasks!
         expect(find("echo")).to eq("No tool matches \"echo\".\n\nTools by group (call one as <group>/<tool>; " \
                                    "search for its inputSchema):\nfake (starting, try again)")
-        expect(mcp("echo", { "text" => "waited" })).to eq("echo: waited")
+        expect(start_gated_server_during { mcp("echo", { "text" => "waited" }) }).to eq("echo: waited")
         expect(names = find("echo")).to include("fake/echo: Echo the text back.")
         expect(names).not_to include("starting")
       end
@@ -198,7 +198,6 @@ RSpec.describe "The mcp bundle" do
 
         it "a miss named <server>/ waits only for that server, a miss of a starting one's tool for it" do
           settings["startup_timeout"] = 10
-          fake["env"]["FAKE_MCP_DELAY"] = "3"
           @engine = Samagotchi::Engine.new(client: client)
           @engine.start_init_tasks!
           expect(wait_until(timeout: 5) { find("", "quick").include?("quick: echo") }).to be(true)
@@ -207,7 +206,7 @@ RSpec.describe "The mcp bundle" do
           expect(mcp("nope", server: "quick")).to start_with("Error: no tool quick/nope.")
           expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
           expect(find("", "fake")).to include("fake (starting, try again)")
-          expect(mcp("echo", { "text" => "waited" })).to eq("echo: waited")
+          expect(start_gated_server_during { mcp("echo", { "text" => "waited" }) }).to eq("echo: waited")
         end
       end
 
