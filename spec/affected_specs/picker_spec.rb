@@ -143,12 +143,17 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.hints).to eq(["hub: AttachedLoop (lib/samagotchi/terminal_ui/attached_loop.rb) is named in 43 spec files; the full run covers it"])
   end
 
-  it "maps a web file to its node test and the tests importing it, with the e2e hint" do
+  it "maps a web file to its node test and the tests importing it, with the lint and e2e hint" do
     result = pick("lib/samagotchi/web/public/activity.js")
 
     expect(result.ruby).to eq([])
     expect(paths(result.node)).to eq(%w[spec/web/public/activity.test.js spec/web/public/tally.test.js])
-    expect(result.hints).to eq([AffectedSpecs::WEB_HINT])
+    expect(result.hints).to eq([AffectedSpecs::WEB_JS_HINT])
+  end
+
+  it "gives the e2e hint alone for a web change with no frontend module in it" do
+    expect(pick("lib/samagotchi/web/app.rb").hints).to eq([AffectedSpecs::WEB_HINT])
+    expect(pick("lib/samagotchi/web/public/vendor/lit-html.js").hints).to eq([AffectedSpecs::WEB_HINT])
   end
 
   it "picks the specs using a changed support file, and a bundle's specs by its name" do

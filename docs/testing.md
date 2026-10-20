@@ -5,6 +5,7 @@ bundle exec parallel_rspec -n 8 spec lib/samagotchi/bundles/*/spec   # Ruby spec
 bundle exec rspec spec lib/samagotchi/bundles/*/spec                 # the same, plain
 bundle exec rake bundles:specs    # the shipped bundles' own specs, on the bundle test kit alone
 npm test                          # web frontend specs
+npm run lint                      # web frontend: undefined names and unused imports (ESLint; CI runs it)
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 npx playwright test spec/e2e/stage.spec.js   # one e2e file (the root playwright.config.js is the suite's)
 bundle exec rake lint             # RuboCop: no offenses (CI runs it)
@@ -14,6 +15,13 @@ Run `bundle exec rubocop -a` on the files you changed before committing: every e
 code's own style and has a safe autocorrect, so `-a` fixes them. What it leaves is a Lint finding (a possible
 bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:disable Cop -- why`).
 `.rubocop.yml` says why each cop that is off is off.
+
+`npm run lint` is the web frontend's twin, for the modules in `lib/samagotchi/web/public/` (not `vendor/`): ESLint
+with two rules only, `no-undef` (a name used but never imported or declared: a dropped import) and `no-unused-vars`
+(an import or variable left over), over the browser's globals (`eslint.config.js`). It is a missing-name guard, not a
+style pass: add a rule only for a bug class it would have caught. It runs in about 2 s, in CI's `npm test` job and in
+`rake release:check`; `rake lint` stays RuboCop alone (CI's rubocop job has no node). A name that is also a browser
+global (`name`, `status`, `open`…) passes even when its import is gone: give an export such a name only with care.
 
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
@@ -124,7 +132,7 @@ file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `tur
 words the REPL prints, pick it by a rule), then the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
 `spec/guardrails/context_spec.rb`), then the specs that name a changed file's class. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
-The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" and a
+The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" (with `npm run lint` too when a frontend module changed) and a
 hint for a hub class (named in too many specs to list) go to stderr. Nothing printed means nothing matched.
 
 It finds a change's own specs, not the regressions it causes elsewhere. So before committing, run the full suite

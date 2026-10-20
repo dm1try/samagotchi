@@ -3,10 +3,13 @@
   "private": true,
   "scripts": {
     "test": "node --test --test-isolation=none spec/web/public/*.test.js",
-    "e2e": "playwright test -c spec/e2e"
+    "e2e": "playwright test -c spec/e2e",
+    "lint": "eslint lib/samagotchi/web/public"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
     "happy-dom": "^20.14.6"
   }
 }

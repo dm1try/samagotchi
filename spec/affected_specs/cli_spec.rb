@@ -77,7 +77,7 @@ RSpec.describe AffectedSpecs::CLI do
     expect(stdout).to eq("spec/gadget_spec.rb  # named after lib/samagotchi/gadget.rb\n")
     expect(stderr).to eq(<<~TEXT)
       npm: spec/web/public/panel.test.js  # named after lib/samagotchi/web/public/panel.js
-      affected-specs: web changed: also run npm run e2e before handing over
+      affected-specs: web frontend changed: also run npm run lint and npm run e2e before handing over
     TEXT
   end
 

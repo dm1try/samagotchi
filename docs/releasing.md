@@ -66,7 +66,7 @@ as the GitHub release body.
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
 | `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped). No commit. |
-| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
+| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
 ## Runbook

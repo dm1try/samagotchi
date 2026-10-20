@@ -122,6 +122,10 @@ jobs:
       - run: npm ci
       - name: Web frontend specs
         run: npm test
+      # ESLint for missing names only (eslint.config.js): a dropped import
+      # fails here, not first in the e2e run.
+      - name: Web frontend lint (npm run lint)
+        run: npm run lint
 
   e2e:
     name: web e2e (Playwright)

@@ -136,6 +136,7 @@ namespace :release do
 
     step.call("lint")
     Rake::Task["lint"].invoke
+    sh "npm run lint"
 
     step.call("specs")
     # Both roots: plain rspec runs spec/ only (docs/testing.md).

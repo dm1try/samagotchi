@@ -52,6 +52,8 @@ module AffectedSpecs
   HUB_SPECS = 40
 
   WEB_HINT = "web changed: also run npm run e2e before handing over"
+  # A frontend module changed: the lint catches a dropped import before e2e does.
+  WEB_JS_HINT = "web frontend changed: also run npm run lint and npm run e2e before handing over"
 
   # Maps changed paths to the spec files a builder should run, in rank
   # order: (1) changed specs, (2) specs named after a changed file,
@@ -84,7 +86,7 @@ module AffectedSpecs
       add_name_matches
       code_files.each { |path| add_mentions(path) }
       @unmatched = code_files.reject { |path| matched?(path) }
-      @hints << WEB_HINT if @changed.any? { |path| web?(path) }
+      @hints << web_hint if @changed.any? { |path| web?(path) }
       Result.new(ruby: @ruby.values, node: @node.values, hints: @hints.uniq, unmatched: @unmatched)
     end
 
@@ -112,6 +114,7 @@ module AffectedSpecs
 
     def web_js?(path) = path.start_with?("lib/samagotchi/web/public/") && path.end_with?(".js") && !path.include?("/vendor/")
     def web?(path) = path.start_with?("lib/samagotchi/web/", "lib/samagotchi/web.rb", "spec/web/public/", "spec/e2e/")
+    def web_hint = @changed.any? { |path| web_js?(path) } ? WEB_JS_HINT : WEB_HINT
 
     def add(path, reason, from)
       return unless path
