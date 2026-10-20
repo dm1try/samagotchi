@@ -174,4 +174,14 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     status, _headers, body = call("/api/info")
     expect([status, JSON.parse(body)]).to eq([500, { "error" => "internal_error", "detail" => "boom" }])
   end
+
+  it "answers an ArgumentError with a 404 on a :session route only, a 500 elsewhere" do
+    allow(app).to receive(:handle_stop).and_raise(ArgumentError, "Session not found: x")
+    status, _headers, body = call("/api/sessions/#{"a" * 8}-1234/stop", method: "POST")
+    expect([status, JSON.parse(body)]).to eq([404, { "error" => "not_found", "detail" => "Session not found: x" }])
+
+    allow(app).to receive(:handle_question_answer).and_raise(ArgumentError, "a bug")
+    status, _headers, body = call("/api/sessions/#{"a" * 8}-1234/answer", method: "POST")
+    expect([status, JSON.parse(body)]).to eq([500, { "error" => "internal_error", "detail" => "a bug" }])
+  end
 end

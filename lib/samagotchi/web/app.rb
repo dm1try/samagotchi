@@ -152,7 +152,8 @@ module Samagotchi
       private
 
       # The routes, first match wins: a handler takes the request and the
-      # path's captures (the session id, an image's name).
+      # path's captures (the session id, an image's name). A :session route
+      # runs in #session_route: an ArgumentError is its unknown session.
       ROUTES = [
         ["GET", %r{\A/(?:index\.html)?\z}, :serve_index],
         ["GET", %r{\A/api/sessions\z}, :handle_list],
@@ -163,26 +164,26 @@ module Samagotchi
         ["GET", %r{\A/api/events\z}, :handle_events],
         ["POST", %r{\A/api/render\z}, :handle_render],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
-        ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
-        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
-        ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn],
-        ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop],
-        ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart],
-        ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive],
-        ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn],
+        ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer],
         ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss],
-        ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command],
+        ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload],
         ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image],
-        ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list],
-        ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show],
-        ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add],
-        ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete],
-        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show],
-        ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete]
+        ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :session],
+        ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :session],
+        ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :session]
       ].freeze
 
       def route(env)
@@ -195,13 +196,15 @@ module Samagotchi
           return denied if denied
         end
 
-        ROUTES.each do |verb, pattern, handler|
+        ROUTES.each do |verb, pattern, handler, kind|
           next unless req.request_method == verb && (m = pattern.match(req.path_info))
           # Every /api/sessions/:id route: an id that isn't one (Session.valid_id?,
           # "..", a %2F) is an unknown session before any handler makes a path.
           if req.path_info.start_with?("/api/sessions/") && !Session.valid_id?(m.captures.first)
             return error_response(404, "not_found", "Session not found: #{m.captures.first.to_s[0, 80]}")
           end
+
+          return session_route { send(handler, req, *m.captures) } if kind == :session
 
           return send(handler, req, *m.captures)
         end
@@ -211,6 +214,16 @@ module Samagotchi
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         error_response(500, "internal_error", e.message)
+      end
+
+      # A :session route's handler: the ArgumentError its session lookup
+      # raises (Session.load, the manager's find) is a 404 not_found with
+      # its message. Only these routes: elsewhere an ArgumentError is a bug,
+      # #route's 500. A handler's own rescues run first.
+      def session_route
+        yield
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
       end
 
       # API requests at debug level (not the page and its assets): method,
@@ -839,8 +852,6 @@ module Samagotchi
           last_event_id: turn_snapshot && turn_snapshot["event_id"],
           timing: timing
         })
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # A list in the worker's turn +snapshot+ (queued prompts, commands,
@@ -948,8 +959,6 @@ module Samagotchi
           **viewer_capabilities(req),
           timing: timing
         })
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # The folder the live tail's answer's file refs must stay under: the
@@ -1132,8 +1141,6 @@ module Samagotchi
         end
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # Hand a request to the session's live Bridge (+client+, nil without
@@ -1204,8 +1211,6 @@ module Samagotchi
         # Strip wire tokens server-side so the client never sees <|tool_call> etc.
         rendered = raw.map { |chunk| OutputFormatter.strip(chunk) }.reject(&:empty?)
         json_response(200, { session_id: session.id, output: rendered })
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       def handle_turn(req, id)
@@ -1241,8 +1246,6 @@ module Samagotchi
         end
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # A turn's images as [{file:, name:}] (refs to uploads already in the
@@ -1337,8 +1340,6 @@ module Samagotchi
           when 409 then json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
           end
         end
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # A task id as TaskRuntime.generate_task_id makes it.
@@ -1361,8 +1362,6 @@ module Samagotchi
           when 409 then json_response(409, { error: "not_running", status: body["status"], task_id: task_id, session_id: id })
           end
         end
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # POST /api/sessions/:id/turn/:enqueued_id/dequeue {client_id?}: the ×
@@ -1388,8 +1387,6 @@ module Samagotchi
             json_response(404, { error: "unknown_enqueued_id", enqueued_id: enqueued_id, session_id: id }) if body["error"] == "unknown_enqueued_id"
           end
         end
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       def handle_stop(_req, id)
@@ -1400,8 +1397,6 @@ module Samagotchi
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # POST /api/sessions/:id/restart: hand the session to a new worker on
@@ -1420,8 +1415,6 @@ module Samagotchi
         json_response(409, { error: error, reason: e.reason.to_s, detail: e.message, session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # POST /api/sessions/:id/archive: hide it (and its delegates) from the
@@ -1437,8 +1430,6 @@ module Samagotchi
         error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
       rescue SessionManager::ArchiveRefused => e
         error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # POST /api/sessions/:id/unarchive: back to the lists, delegates too.
@@ -1446,8 +1437,6 @@ module Samagotchi
         result = @manager.unarchive_session(id, state_dir: @state_dir)
         result[:unarchived].each { |sid| @hub&.touch(sid) }
         json_response(200, { status: "unarchived", session_id: result[:id], unarchived: result[:unarchived] })
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # DELETE /api/sessions/:id: the session for good. A live worker is
@@ -1461,8 +1450,6 @@ module Samagotchi
         error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
       rescue SessionManager::DeleteRefused => e
         error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # ── Attached context (ContextSources): the session bar's chips ───────
@@ -1478,8 +1465,6 @@ module Samagotchi
         subs = own.subscriptions
         rows = attached_context(session).map { |attached| context_row(attached, own, subs) }
         json_response(200, { session_id: id, sources: rows, can_add_url: ContextProviders.any? })
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # GET /api/sessions/:id/context/:name: one source with its text.
@@ -1488,8 +1473,6 @@ module Samagotchi
         attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         json_response(200, context_row(attached, own, own.subscriptions).merge(text: attached.snapshot.text))
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # POST /api/sessions/:id/context {url, why}: the source an installed
@@ -1512,8 +1495,6 @@ module Samagotchi
         error_response(422, "no_provider", e.message)
       rescue ContextSources::Invalid => e
         error_response(409, "exists", e.message)
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       def web_source(resolved, why, scope)
@@ -1535,8 +1516,6 @@ module Samagotchi
           ContextSources.session_location(id, state_dir: default_state_dir).mute(attached.name)
           json_response(200, { status: "muted", name: attached.name })
         end
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       def attached_context(session)

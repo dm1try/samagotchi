@@ -3032,6 +3032,30 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  # Every :session route (App#session_route): a well-formed id with no
+  # session behind it is the handler's lookup's ArgumentError, a 404.
+  describe "an unknown session on every :session route" do
+    let(:state_dir) { Dir.mktmpdir("web-unknown-spec") }
+    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session) }
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    it "answers 404 not_found" do
+      id = "#{"a" * 8}-0000-4000-8000-#{"0" * 12}"
+      routes = [["GET", "output"], ["POST", "cancel"], ["POST", "tasks/20261020120000-abcdef12/stop"],
+                ["POST", "turn/q1/dequeue"], ["POST", "stop"], ["POST", "restart"], ["POST", "archive"],
+                ["POST", "unarchive"], ["POST", "turn", '{"prompt":"hi"}'], ["POST", "command", '{"line":"/model"}'],
+                ["GET", "context"], ["GET", "context/pr-1"], ["POST", "context", '{"url":"https://example.com/x"}'],
+                ["DELETE", "context/pr-1"], ["GET", nil], ["DELETE", nil]]
+      routes.each do |method, tail, body|
+        path = ["/api/sessions/#{id}", tail].compact.join("/")
+        status, _headers, response = app.call(env_for(path, method: method, body: body))
+        expect(status).to eq(404), "#{method} #{path}: #{status} #{response.first}"
+        expect(JSON.parse(response.first)["error"]).to eq("not_found"), "#{method} #{path}"
+      end
+    end
+  end
+
   describe "POST /api/sessions/:id/cancel" do
     it "hands the client's reason to the Bridge (user without one) and echoes the one the Bridge took" do
       app = build_app(state_dir: Dir.mktmpdir)
