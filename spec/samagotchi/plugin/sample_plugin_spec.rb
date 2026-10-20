@@ -541,7 +541,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       Samagotchi::Plugin::Host.new(
         session_id: -> { "sid-1" }, cwd: -> { tmpdir }, messages: -> { [{ role: "user", content: "hi" }] },
         notify: ->(text, level, label, fallback_for:) { notices << [text, level, label, fallback_for] },
-        ask_user: ->(**kw) { { selected: [kw[:options].first], hook: kw[:hook] } },
+        ask_user: ->(question) { { selected: [question.options.first], hook: question.hook } },
         cancelled: -> {}
       )
     end

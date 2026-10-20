@@ -20,9 +20,9 @@ RSpec.describe "a plugin's ctx helpers and the current event" do
     Samagotchi::Hooks::Registry.new.tap do |reg|
       reg.runtime = Samagotchi::Hooks::Runtime.new(
         notify: ->(text:, level:, hook:, fallback_for: nil) { calls << [:event_notify, text, level, hook, fallback_for].compact },
-        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
-          calls << [:event_ask_user, question, hook]
-          { selected: [options.first], freeform: nil }
+        ask_user: lambda { |asked|
+          calls << [:event_ask_user, asked.question, asked.hook]
+          { selected: [asked.options.first], freeform: nil }
         },
         stop_turn: ->(reason:, hook:) { calls << [:event_stop_turn, reason, hook] },
         steer: ->(text:, hook:) { calls << [:event_steer, text, hook] },
@@ -33,9 +33,9 @@ RSpec.describe "a plugin's ctx helpers and the current event" do
   let(:host) do
     Samagotchi::Plugin::Host.new(
       notify: ->(text, level, label, fallback_for:) { calls << [:host_notify, text, level, label, fallback_for].compact },
-      ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
-        calls << [:host_ask_user, question, hook]
-        { selected: [options.last], freeform: nil }
+      ask_user: lambda { |asked|
+        calls << [:host_ask_user, asked.question, asked.hook]
+        { selected: [asked.options.last], freeform: nil }
       },
       steer: ->(text, label) { calls << [:host_steer, text, label] },
       stop_turn: ->(reason, label) { calls << [:host_stop_turn, reason, label] },

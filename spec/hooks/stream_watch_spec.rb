@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::Hooks::StreamWatch do
   it "gives the hook stop_generation, and an ask_user that asks no one" do
     asked = []
     registry.runtime = Samagotchi::Hooks::Runtime.new(
-      ask_user: ->(**question) { asked << question },
+      ask_user: ->(question) { asked << question },
       stop_generation: lambda { |reason:, hook:|
         asked << [reason, hook]
         true

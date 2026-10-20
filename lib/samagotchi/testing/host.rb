@@ -27,10 +27,7 @@ module Samagotchi
           messages: -> { recorder[:messages] },
           messages_partial: -> { recorder[:messages_partial] },
           notify: ->(text, level, label, fallback_for: nil) { recorder.notify(text, level, label, fallback_for) },
-          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
-            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook,
-                              effects: effects)
-          },
+          ask_user: ->(question) { recorder.ask_user(question) },
           cancelled: -> { recorder[:cancelled] },
           card: ->(**card) { recorder.card(**card) },
           ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil|
@@ -89,10 +86,7 @@ module Samagotchi
       def build(recorder)
         Hooks::Runtime.new(
           notify: ->(text:, level:, hook:, fallback_for: nil) { recorder.notify(text, level, hook, fallback_for) },
-          ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
-            recorder.ask_user(question: question, options: options, header: header, allow_freeform: allow_freeform, hook: hook,
-                              effects: effects)
-          },
+          ask_user: ->(question) { recorder.ask_user(question) },
           stop_turn: ->(reason:, hook:) { recorder.stop(:turn, reason, hook) },
           steer: ->(text:, hook:) { recorder.steer(text, hook) },
           stop_generation: ->(reason:, hook:) { recorder.stop(:generation, reason, hook) }

@@ -3,6 +3,7 @@
 require_relative "../plugin/card"
 require_relative "../plugin/context"
 require_relative "../guardrails/parent_policy"
+require_relative "../hook_question"
 
 module Samagotchi
   module Testing
@@ -13,11 +14,6 @@ module Samagotchi
     Steer = Data.define(:text, :hook)
     # A stop_turn or stop_generation (+kind+ :turn or :generation).
     Stop = Data.define(:kind, :reason, :hook)
-    # An ask_user question; effects: its options' tags as the bundle gave
-    # them (label => effect), nil for none.
-    Question = Data.define(:question, :options, :header, :allow_freeform, :hook, :effects) do
-      def initialize(effects: nil, **) = super
-    end
     # An ask_model request: the request Context built (SideQuestion), its
     # limits, cancel controller and the model: it named (nil: the session's;
     # the kit doesn't check it against any hosts), and +source+, the asking
@@ -107,11 +103,12 @@ module Samagotchi
       # Effects chi would refuse (a label the options don't have, an
       # unknown effect: Guardrails::ParentPolicy.option_tags) ask no one, as
       # in chi: nil, nothing recorded, no answer taken.
-      def ask_user(question:, options:, header:, allow_freeform:, hook:, effects: nil)
-        return nil if Guardrails::ParentPolicy.option_tags(options, effects) == false
+      # @param question [HookQuestion] recorded as asked (#questions; its
+      #   effects as the bundle gave them: label => effect, nil for none)
+      def ask_user(question)
+        return nil if Guardrails::ParentPolicy.option_tags(question.options, question.effects) == false
 
-        record(@questions, Question.new(question: question, options: options, header: header,
-                                        allow_freeform: allow_freeform, hook: hook, effects: effects))
+        record(@questions, question)
         answer = @mutex.synchronize { @answers.shift }
         answer.respond_to?(:call) ? answer.call(@questions.last) : answer
       end

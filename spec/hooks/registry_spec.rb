@@ -169,7 +169,7 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
     let(:runtime) do
       Samagotchi::Hooks::Runtime.new(
         notify: ->(**kw) { calls << [:notify, kw] },
-        ask_user: ->(**kw) { calls << [:ask, kw]; { selected: ["a"], freeform: nil } },
+        ask_user: ->(question) { calls << [:ask, question]; { selected: ["a"], freeform: nil } },
         stop_turn: ->(**kw) { calls << [:stop, kw]; true }
       )
     end
@@ -188,7 +188,8 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
       answer = nil
       subject.register(:before_turn) { |e| answer = e[:ask_user].call(question: "which?", options: %w[a b]) }
       subject.fire(:before_turn, { type: :before_turn })
-      expect(calls).to eq([[:ask, { question: "which?", options: %w[a b], header: nil, allow_freeform: false, hook: "turn hook" }]])
+      expect(calls).to eq([[:ask, Samagotchi::HookQuestion.new(question: "which?", options: %w[a b], header: nil,
+                                                               allow_freeform: false, hook: "turn hook")]])
       expect(answer).to eq(selected: ["a"], freeform: nil)
     end
 

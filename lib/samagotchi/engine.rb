@@ -1523,10 +1523,9 @@ module Samagotchi
     def guardrail_notify(message) = @hook_routes.guardrail_notify(message)
     private :guardrail_notify
 
+    # @param question [HookQuestion]
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
-    def hook_ask_user(question, options, header, allow_freeform, hook, effects: nil)
-      @hook_routes.ask_user(question, options, header, allow_freeform, hook, effects: effects)
-    end
+    def hook_ask_user(question) = @hook_routes.ask_user(question)
     private :hook_ask_user
 
     # @return [Boolean] true when a running turn was cancelled now
@@ -2569,9 +2568,7 @@ module Samagotchi
         messages: -> { plugin_messages },
         messages_partial: -> { turn_running? && @running_turn_messages.nil? },
         notify: ->(text, level, label, fallback_for: nil) { hook_notify(text, level, label, fallback_for: fallback_for) },
-        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
-          hook_ask_user(question, options, header, allow_freeform, hook, effects: effects)
-        },
+        ask_user: ->(question) { hook_ask_user(question) },
         # An init task's is its own (a Ctrl-C ends a turn, not the task).
         cancelled: lambda {
           (task = current_init_task) ? task.cancelled? : active_cancel_controller&.cancelled?

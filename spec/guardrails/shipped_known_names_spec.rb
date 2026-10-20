@@ -29,7 +29,7 @@ RSpec.describe "The known-names bundle" do
 
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
-      ask_user: ->(**kw) { asked << kw; answer },
+      ask_user: ->(question) { asked << question; answer },
       stop_turn: ->(**) { false }
     )
     registry
@@ -196,9 +196,11 @@ RSpec.describe "The known-names bundle" do
 
     it "asks with the call and the three options" do
       shell("ls /home/johndeo")
-      expect(asked).to eq([{ question: "execute: execute ls /home/johndeo\n\"johndeo\" looks like a misspelling of \"johndoe\".",
-                             options: ["Correct it and run", "Run as is", "Deny"], header: "known-names", allow_freeform: false,
-                             hook: "known_names.rb (bundle known-names)" }])
+      expect(asked).to eq([Samagotchi::HookQuestion.new(
+        question: "execute: execute ls /home/johndeo\n\"johndeo\" looks like a misspelling of \"johndoe\".",
+        options: ["Correct it and run", "Run as is", "Deny"], header: "known-names", allow_freeform: false,
+        hook: "known_names.rb (bundle known-names)"
+      )])
     end
 
     context "when the user picks Correct it and run" do

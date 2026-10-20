@@ -569,6 +569,11 @@ Model probes (per turn):
 Plugins and hook files register hooks on hook points (see "Hook points" above, and docs/hooks.md). Every fire
 puts the hook runtime on the event: `event[:hook]` (the hook's label) and five helpers, which call the Engine's
 `Hooks::Runtime` (built by `HookRoutes`, `hook_routes.rb`, which routes each to the UIs). A plugin's `ctx` has the same ones (`ctx.notify`, `ctx.steer`, ...).
+A question takes keywords only at that plugin-facing edge (`event[:ask_user]`, `ctx.ask_user`); from there it is one
+`HookQuestion` (`hook_question.rb`: the question, its options, header, freeform flag, the hook's label and its
+label => effect map) through `Hooks::Runtime#ask_user` / `Plugin::Host#ask_user`, `Engine#hook_ask_user` and
+`HookRoutes#ask_user` to `QuestionDesk#ask_for_hook`, which turns the effects into the pending question's per-option
+tags. The bundle test kit records the same value (`Testing::Recorder#questions`).
 
 | Helper | What it does | Used by |
 |---|---|---|
@@ -747,6 +752,7 @@ Paths are under `lib/samagotchi/`.
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
 | `question_desk.rb`, `pending_question.rb`, `question_answer.rb` | `QuestionDesk`: the one open question (ask, post, answer, cancel, relay mark); `PendingQuestion` and `QuestionAnswer`, its values (Hashes only in events, Bridge JSON, the session file and the hook/plugin `ask_user` result) |
+| `hook_question.rb` | `HookQuestion`: a hook's or plugin's `ask_user` question as one value, from the runtime/host edge to `QuestionDesk#ask_for_hook` |
 | `event_routes.rb` | `EventRoutes`: where a card (`Engine#show_card`), a notice (`HookRoutes#notify`) and a guardrails line (`#guardrail_notify`, turn or between turns only) go: held while the plugins load, an anytime command's, an init task's, a running turn's event, else announced or held for `holding_announcements` |
 | `engine_peers.rb`, `peer_sources.rb` | `Engine::PeerView` (what the kernel's peer tools see of the Engine) and `Engine::RelayPeer` (a delegate's approval relay); `PeerSources`: the attached context sources a peer bundle declares as its peer's answers (`chi.peer_source`) |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |

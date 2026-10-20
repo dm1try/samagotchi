@@ -31,14 +31,13 @@ module Samagotchi
     end
 
     # The things a hook can do beyond reading its event. Each gets the
-    # hook's label (event[:hook]) from the registry.
+    # hook's label (event[:hook]) from the registry; ask_user gets it inside
+    # the HookQuestion.
     # @return [Hooks::Runtime]
     def runtime
       Hooks::Runtime.new(
         notify: ->(text:, level:, hook:, fallback_for: nil) { notify(text, level, hook, fallback_for: fallback_for) },
-        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:, effects: nil|
-          ask_user(question, options, header, allow_freeform, hook, effects: effects)
-        },
+        ask_user: ->(question) { ask_user(question) },
         stop_turn: ->(reason:, hook:) { stop_turn(reason, hook) },
         steer: ->(text:, hook:) { @steer.call(text, source(hook)) },
         stop_generation: ->(reason:, hook:) { stop_generation(reason, hook) }
@@ -87,9 +86,10 @@ module Samagotchi
     # web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
+    # @param question [HookQuestion]
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
-    def ask_user(question, options, header, allow_freeform, hook, effects: nil)
-      @question_desk.call.ask_for_hook(question, options, header, allow_freeform, hook, effects: effects)
+    def ask_user(question)
+      @question_desk.call.ask_for_hook(question)
     end
 
     # Cancel the running turn (reason :hook), after a notice that says why.

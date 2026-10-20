@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 
 require_relative "client_id"
+require_relative "hook_question"
 require_relative "log"
 require_relative "pending_question"
 require_relative "question_answer"
@@ -404,30 +405,32 @@ module Samagotchi
     # web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
-    # @param effects [Hash, nil] label => effect for a parent agent's answer
-    #   (Guardrails::ParentPolicy); a label left out is "answer". A label
+    # @param asked [HookQuestion] its effects (label => effect for a parent
+    #   agent's answer, Guardrails::ParentPolicy; a label left out is
+    #   "answer") become the pending question's per-option tags. A label
     #   the options don't have, or an effect it doesn't know, makes the ask
     #   invalid (nil, warned), like bad options.
     # @return [Hash, nil] {selected:, freeform:, selected_indices:} (a plain
     #   Hash: the bundle boundary)
-    def ask_for_hook(question, options, header, allow_freeform, hook, effects: nil)
+    def ask_for_hook(asked)
       return nil if @interface_lookup.call == :non_interactive
 
-      opts = Tools::AskUserQuestion.normalize_options(options)
+      hook = asked.hook.to_s
+      opts = Tools::AskUserQuestion.normalize_options(asked.options)
       unless opts
-        Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook.to_s)
+        Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook)
         return nil
       end
-      tags = Guardrails::ParentPolicy.option_tags(opts, effects)
+      tags = Guardrails::ParentPolicy.option_tags(opts, asked.effects)
       if tags == false
         Log.warn(:hooks, "ask_user_invalid",
                  echo: "[samagotchi:hooks] #{hook} asked with invalid effects (option label => " \
-                       "#{Guardrails::ParentPolicy::EFFECTS.join("|")})", hook: hook.to_s)
+                       "#{Guardrails::ParentPolicy::EFFECTS.join("|")})", hook: hook)
         return nil
       end
 
-      fields = { question: question.to_s, options: opts, header: header, multi_select: false,
-                 allow_freeform: !!allow_freeform, effects: tags, kind: "hook", hook: hook.to_s }.compact
+      fields = { question: asked.question.to_s, options: opts, header: asked.header, multi_select: false,
+                 allow_freeform: !!asked.allow_freeform, effects: tags, kind: "hook", hook: hook }.compact
       answer = open_question(fields)
       return nil unless answer.is_a?(QuestionAnswer)
 

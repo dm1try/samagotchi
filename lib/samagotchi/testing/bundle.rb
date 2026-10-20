@@ -339,7 +339,7 @@ module Samagotchi
       def model_answers = @recorder.model_answers
 
       # Queue ask_user answers ({selected:, freeform:, selected_indices:},
-      # or a callable given the Question).
+      # or a callable given the HookQuestion).
       def answer(*answers)
         @recorder.answers.concat(answers)
         self

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../hook_question"
 require_relative "../log"
 
 module Samagotchi
@@ -113,8 +114,8 @@ module Samagotchi
     # callables, each given the hook's label. +notify+ takes
     # (text:, level:, hook:, and fallback_for: when the hook gave one: what
     # the line stands in for, HookRoutes#notify) and shows one line to the
-    # user; +ask_user+ takes (question:, options:, header:, allow_freeform:, hook:, and
-    # effects: when the hook gave them) and returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
+    # user; +ask_user+ takes a HookQuestion (the hook's label in it) and
+    # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
     # cancels the running turn (true when it did); +steer+ takes (text:,
     # hook:) and puts the text into the running turn (Engine#steer, true
     # when queued); +stop_generation+ takes (reason:, hook:) and cuts the
@@ -392,9 +393,8 @@ module Samagotchi
           nil
         }
         event[:ask_user] ||= lambda { |question:, options:, header: nil, allow_freeform: false, effects: nil|
-          @runtime&.ask_user&.call(question: question, options: options, header: header,
-                                   allow_freeform: allow_freeform, hook: event[:hook],
-                                   **(effects.nil? ? {} : { effects: effects }))
+          @runtime&.ask_user&.call(HookQuestion.new(question: question, options: options, header: header,
+                                                    allow_freeform: allow_freeform, hook: event[:hook], effects: effects))
         }
         event[:stop_turn] ||= lambda { |reason|
           next false if TURN_OVER_EVENTS.include?(event[:type])

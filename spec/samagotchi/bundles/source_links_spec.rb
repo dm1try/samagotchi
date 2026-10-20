@@ -32,7 +32,7 @@ RSpec.describe "The source-links bundle" do
 
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
-      ask_user: ->(**) {},
+      ask_user: ->(_question) {},
       stop_turn: ->(**) { false }
     )
     registry
