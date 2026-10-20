@@ -76,6 +76,22 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(prov.new(name: "a").read[:source]).to eq(File.join(shipped, "a"))
     end
 
+    it "names a member's memory file the user already had, left as theirs, and not one that matches or is new" do
+      %w[a b c].each { |n| ship(n) }
+      FileUtils.mkdir_p(system_dir)
+      File.write(File.join(system_dir, "a.md"), "mine\n")
+      FileUtils.cp(File.join(shipped, "b", "b.md"), File.join(system_dir, "b.md"))
+
+      result = install(ship_meta("core", %w[a b c]))
+
+      expect(result.installed).to eq(%w[a b c])
+      expect(result.kept_own).to eq("a" => %w[a.md])
+      expect(result.kept_own_lines).to eq(["a: kept your own a.md (not the bundle's; to take the bundle's, remove yours " \
+                                           "with memory_write remove: true, then chi bundle install a)"])
+      expect(File.read(File.join(system_dir, "a.md"))).to eq("mine\n")
+      expect(prov.new(name: "a").read[:files]).not_to have_key("a.md")
+    end
+
     it "installs nothing the second time (bootstrap re-runs are idempotent)" do
       %w[a b].each { |n| ship(n) }
       core = ship_meta("core", %w[a b])

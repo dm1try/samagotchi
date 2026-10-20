@@ -112,9 +112,14 @@ Working habits for this model:
   and evidence is in the bundle's `notes/README.md`, and its spec pins which
   model ids load which note ([Plugins](plugins.md#the-model-notes-bundle)).
   - **Your own note of the same name wins.** The install skips a
-    `model_notes_<name>.md` you already have (`Skipped … use --force`) and
-    never owns it, so your note is what loads, the two never stack, and
-    upgrades leave it alone.
+    `model_notes_<name>.md` you already have and never owns it, so your note
+    is what loads, the two never stack, and upgrades leave it alone.
+    `chi bundle install model-notes` says `Skipped model_notes_deepseek.md
+    (already exists; use --force to overwrite)`; through the `dev` profile
+    (`chi bundle install dev`, `chi bundle upgrade dev`, `chi update`) it is
+    `model-notes: kept your own model_notes_deepseek.md (not the bundle's; to
+    take the bundle's, remove yours with memory_write remove: true, then chi
+    bundle install model-notes)`.
   - **To take the bundle's version instead,** remove your note
     (`memory_write` with `remove: true` moves it to the trash) and run
     `chi bundle install model-notes` again: the install writes the missing

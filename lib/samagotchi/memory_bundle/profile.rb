@@ -25,9 +25,14 @@ module Samagotchi
     # shipped meta expands: includes: in any other bundle is ignored.
     module Profile
       # installed: members installed now; already: members found installed
-      # (recorded, not reinstalled); skipped and failed: name => why.
-      InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, keyword_init: true) do
+      # (recorded, not reinstalled); skipped and failed: name => why;
+      # kept_own: member installed now => its memory files the user already
+      # had, left as they are and not owned (Installer#skip_existing).
+      InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, :kept_own, keyword_init: true) do
         def failed? = !failed.empty?
+
+        # One line per kept file (Profile.kept_own_line).
+        def kept_own_lines = (kept_own || {}).flat_map { |member, files| files.map { |file| Profile.kept_own_line(member, file) } }
       end
       # removed: members uninstalled; blocked: name => why; gone: the meta
       # itself was removed (only once every member is); trash: member =>
@@ -69,6 +74,15 @@ module Samagotchi
 
       def installed_names = Provenance.each_installed.map { |name, _| name }
 
+      # What a profile's install says of a member's memory file the user
+      # already had: chi bundle install says "Skipped … (already exists)",
+      # which a profile's member install would leave unsaid (docs/memory.md,
+      # "Shipped notes").
+      def kept_own_line(member, file)
+        "#{member}: kept your own #{file} (not the bundle's; to take the bundle's, remove yours with " \
+          "memory_write remove: true, then chi bundle install #{member})"
+      end
+
       # The one rule.
       def to_install(manifest, bundle = Provenance.new(name: manifest.name).record, installed: installed_names)
         manifest.includes - recorded(bundle, manifest) - installed
@@ -84,7 +98,7 @@ module Samagotchi
         was = recorded(bundle, manifest)
         installed = installed_names
         result = InstallResult.new(name: manifest.name, version: manifest.version, installed: [],
-                                   already: (manifest.includes - was) & installed, skipped: {}, failed: {})
+                                   already: (manifest.includes - was) & installed, skipped: {}, failed: {}, kept_own: {})
 
         to_install(manifest, bundle, installed: installed).each do |member|
           install_member(member, shipped_dir, chi_version, dry_run, force, result)
@@ -109,8 +123,12 @@ module Samagotchi
         return result.skipped[member] = failure if failure
         return result.installed << member if dry_run
 
-        Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true, shipped_dir: shipped_dir).run
+        installer = Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true,
+                                  shipped_dir: shipped_dir)
+        installer.run
         result.installed << member
+        kept = installer.results.select { |_, entry| entry[:status] == "skipped" && entry[:reason] == "already exists" }.keys
+        result.kept_own[member] = kept.sort unless kept.empty?
       rescue StandardError => e
         result.failed[member] = e.message.lines.first.to_s.strip
       end

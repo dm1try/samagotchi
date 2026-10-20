@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   it "installs a bundle new to an installed profile and says so on its row" do
     root = File.join(tmp, "new", "lib", "samagotchi", "bundles")
     FileUtils.mkdir_p(root)
-    %w[loop-guard btw].each { |m| FileUtils.cp_r(File.join(shipped, m), root) }
+    %w[loop-guard btw guardrails].each { |m| FileUtils.cp_r(File.join(shipped, m), root) }
     core = File.join(root, "core")
     FileUtils.mkdir_p(core)
     write_core = lambda do |version, includes|
@@ -106,7 +106,10 @@ RSpec.describe Samagotchi::UpdateCommand do
     end
     write_core.call("0.1.0", %w[loop-guard])
     Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
-    write_core.call("0.2.0", %w[loop-guard btw])
+    write_core.call("0.2.0", %w[loop-guard btw guardrails])
+    # A memory file of a new member the user already has: kept, and said so.
+    FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
+    File.write(File.join(Samagotchi::MemoryPaths.system_dir, "guardrails.md"), "mine\n")
 
     command = lambda do |*argv|
       out.truncate(0)
@@ -116,9 +119,10 @@ RSpec.describe Samagotchi::UpdateCommand do
                                 exec: ->(a) { execs << a }, bundler: bundler, shipped_dir: root).run
     end
     expect(command.call("--dry-run", "--no-gem")).to eq(0)
-    expect(line("core")).to match(/\Acore\s+0\.1\.0\s+0\.2\.0\s+would update \(\+ btw\)\z/)
+    expect(line("core")).to match(/\Acore\s+0\.1\.0\s+0\.2\.0\s+would update \(\+ btw, guardrails\)\z/)
     expect(command.call("--no-gem")).to eq(0)
-    expect(line("core")).to match(/\s+updated \(\+ btw\)\z/)
+    kept = Samagotchi::MemoryBundle::Profile.kept_own_line("guardrails", "guardrails.md")
+    expect(line("core")).to match(/\s+updated \(\+ btw, guardrails; #{Regexp.escape(kept)}\)\z/)
     expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read[:source]).to eq(File.join(root, "btw"))
   end
 

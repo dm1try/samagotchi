@@ -406,6 +406,7 @@ module Samagotchi
       result.failed.each { |member, why| parts << "#{member} failed (#{why})" }
       parts << "nothing new to install" if parts.empty?
       @stdout.puts("#{result.name} bundles: #{parts.join("; ")}")
+      result.kept_own_lines.each { |line| @stdout.puts("  #{line}") }
       !result.failed?
     end
 

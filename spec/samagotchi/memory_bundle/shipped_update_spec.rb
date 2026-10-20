@@ -227,6 +227,19 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       expect(core_row.status).to eq(:up_to_date)
     end
 
+    # chi update's path (UpdateCommand#bundle_row adds the lines to the row's note).
+    it "names a new member's memory file the user already had, left as theirs" do
+      core = ship_core("0.1.0", %w[loop-guard], members: %w[loop-guard guardrails])
+      Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
+      File.write(File.join(system_dir, "guardrails.md"), "mine\n")
+      ship_core("0.2.0", %w[loop-guard guardrails], members: %w[loop-guard guardrails])
+
+      row = described_class.apply([core_row]).first
+      expect(row).to have_attributes(status: :updated, adds: %w[guardrails],
+                                     kept_own: [Samagotchi::MemoryBundle::Profile.kept_own_line("guardrails", "guardrails.md")])
+      expect(File.read(File.join(system_dir, "guardrails.md"))).to eq("mine\n")
+    end
+
     it "retries a member that isn't recorded at the same version" do
       core = ship_core("0.1.0", %w[loop-guard guardrails])
       Samagotchi::MemoryBundle::Provenance.new(name: "core")

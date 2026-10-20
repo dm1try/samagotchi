@@ -39,7 +39,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `Provenance` | the `.bundles/<name>/` dir: `#write` the record + bases, `#record` → `InstalledBundle`, `.each_installed`, `.claimants` (which bundles own a file) |
 | `InstalledBundle`, `BundleHook`, `PluginRef` | value objects for the record; tolerant of older records (missing keys read as empty) |
 | `Builder` | `chi bundle build`: memories (+ the installed bundle's hooks, rules, plugin, scripts) → zip/tar/dir |
-| `Profile` | meta bundles (`includes:`): install the members, record which |
+| `Profile` | meta bundles (`includes:`): install the members, record which; `InstallResult#kept_own` names a new member's memory files the user already had (`kept_own_line`, printed by `chi bundle`, `chi update` and `chi bootstrap`) |
 | `SystemBundle`, `ShippedUpdate` | the built-in system bundle (`ensure!` at Engine start, `sync` in `chi update`) and `chi update`'s upgrade of shipped bundles; both drive the Installer with `upgrade: true` |
 | `Uninstaller`, `Trash`, `Status`, `Listing` | remove, keep removed files, `chi bundle status`, `chi bundle list` |
 | `IndexUpdater`, `IndexSync` | the managed `index.md` lines (Installer; and the write/edit tools for memories) |

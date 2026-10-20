@@ -18,6 +18,13 @@ and commands may change between minor versions. How releases are made:
   skipped and keeps loading; to take the bundle's, remove yours and install again. See
   [docs/plugins.md](docs/plugins.md#the-model-notes-bundle).
 
+### Changed
+
+- A profile's install (`chi bundle install|upgrade core|dev`, `chi update`, `chi bootstrap`) names each memory file
+  of a member it installs that you already had, which it leaves as yours: `model-notes: kept your own
+  model_notes_deepseek.md (not the bundle's; to take the bundle's, remove yours with memory_write remove: true, then
+  chi bundle install model-notes)`. Before, only `chi bundle install <member>` said so.
+
 ## [0.93.0] - 2026-10-20
 
 ### Changed

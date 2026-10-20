@@ -421,6 +421,15 @@ Hooks removed: 1\n\z})
       expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.4 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md,cost-cap issues=0\n"])
     end
 
+    it "says which memory files of a member the profile left as the user's own" do
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "guardrails.md"), "mine\n")
+      out, err, code = chi("install", "core")
+      expect([err, code]).to eq(["", 0])
+      expect(out.lines).to include("  #{Samagotchi::MemoryBundle::Profile.kept_own_line("guardrails", "guardrails.md")}\n")
+      expect(File.read(File.join(memories, "guardrails.md"))).to eq("mine\n")
+    end
+
     it "status goes on past a bundle whose manifest.json doesn't parse" do
       chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
       FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))

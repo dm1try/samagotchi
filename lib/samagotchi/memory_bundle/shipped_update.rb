@@ -37,7 +37,10 @@ module Samagotchi
       # :failed. note says why for skipped/failed. kept and replaced are
       # file names; under plan they are what apply would keep or replace.
       # adds is nil but for a profile: the members it installs.
-      Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, :adds, keyword_init: true)
+      # kept_own is nil but for a profile that installed a member: its
+      # Profile.kept_own_line lines.
+      Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, :adds, :kept_own,
+                       keyword_init: true)
 
       module_function
 
@@ -84,6 +87,7 @@ module Samagotchi
         result = Profile.install(row.source_dir, shipped_dir: File.dirname(row.source_dir))
         row.dup.tap do |r|
           r.adds = result.installed
+          r.kept_own = result.kept_own_lines
           r.status = result.failed? ? :failed : :updated
           r.note = result.failed.map { |member, why| "#{member}: #{why}" }.join("; ") if result.failed?
         end

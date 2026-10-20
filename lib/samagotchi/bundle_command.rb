@@ -401,6 +401,7 @@ module Samagotchi
       lines << "already installed: #{result.already.join(", ")}" unless result.already.empty?
       result.skipped.each { |member, why| lines << "skipped #{member}: #{why}" }
       result.failed.each { |member, why| lines << "failed #{member}: #{why}" }
+      lines.concat(result.kept_own_lines)
       lines << "nothing new to install" if lines.empty?
       lines.each { |line| @stdout.puts "  #{line}" }
       @stdout.puts "(dry-run: no changes written)" if dry_run

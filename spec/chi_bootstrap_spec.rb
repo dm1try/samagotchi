@@ -508,14 +508,16 @@ RSpec.describe "chi bootstrap" do
         def install(name, dry_run: false)
           Samagotchi::MemoryBundle::Profile::InstallResult.new(name: name, version: "0.1.0", installed: %w[loop-guard], already: [],
                                                                skipped: { "guardrails" => "it requires chi >= 9" },
-                                                               failed: { "check-in" => "boom" })
+                                                               failed: { "check-in" => "boom" },
+                                                               kept_own: { "loop-guard" => %w[loop_guard.md] })
         end
       end
 
       code, out, = run_command("", target, "--no-test", bundles: failing.new)
 
       expect(code).to eq(1)
-      expect(out).to include("core bundles: installed loop-guard; skipped guardrails (it requires chi >= 9); check-in failed (boom)\n")
+      expect(out).to include("core bundles: installed loop-guard; skipped guardrails (it requires chi >= 9); check-in failed (boom)\n  " \
+                             "#{Samagotchi::MemoryBundle::Profile.kept_own_line("loop-guard", "loop_guard.md")}\n")
       expect(written.dig("default", "model")).to eq("local:m")
     end
 
