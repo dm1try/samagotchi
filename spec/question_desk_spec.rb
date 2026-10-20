@@ -68,7 +68,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       box = {}
       gate = Queue.new
       watch = lambda do
-        gate.pop
+        SpecWaiting.pop!(gate, "the answer before the watch closes", timeout: 30)
         "child_gone"
       end
       thread = Thread.new { box[:answer] = desk.open_question(fields, watch: watch) }
@@ -234,7 +234,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     it "carries a parent agent's :by last, on a blocking question too" do
       thread, box, id = open_in_background
       desk.answer(id: id, selected: ["Yes"], client_id: "cli:answer")
-      thread.join
+      join!(thread, "the blocking question")
 
       expect(answered_event[:answer])
         .to eq(id: id, selected: ["Yes"], freeform: nil, selected_indices: [0], by: "parent_agent")

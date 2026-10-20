@@ -35,6 +35,26 @@ module SpecWaiting
       raise("timed out after #{timeout} s waiting for #{what}")
   end
 
+  # Thread#join with a deadline: a thread that never ends fails the example
+  # with +what+ named, not after the suite's 120 s guard. Raises what the
+  # thread raised, as #join does.
+  # @return [Thread]
+  def join!(thread, what, timeout: 5)
+    thread.join(timeout) || raise("timed out after #{timeout} s waiting for #{what} to finish")
+  end
+
+  # Queue#pop with a deadline, for a queue that never carries nil: nothing
+  # pushed in time fails with +what+ named. A gate a stubbed lib thread
+  # waits on while the example works takes a longer +timeout+ (30): it only
+  # has to end a hang, never cut a slow example short.
+  # @return the value popped.
+  def pop!(queue, what, timeout: 5)
+    value = queue.pop(timeout: timeout)
+    raise("timed out after #{timeout} s waiting for #{what}") if value.nil?
+
+    value
+  end
+
   # Whether no process +pid+ is left. A killed grandchild is reparented and
   # reaped by init a moment later (a zombie answers signal 0 until then):
   # wait_until { process_gone?(pid) }, not an immediate check.

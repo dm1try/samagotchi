@@ -1088,18 +1088,18 @@ RSpec.describe Samagotchi::SessionMetrics do
       if first
         first = false
         entered << true
-        gate.pop
+        SpecWaiting.pop!(gate, "the example to open the gate", timeout: 30)
       end
       original.call(*args)
     end
 
     older = Thread.new { metrics.persist }
-    entered.pop
+    pop!(entered, "the first persist to start writing")
     metrics.memory_index = { system: { tokens: 2, lines: 2 } }
     newer = Thread.new { metrics.persist }
     blocked = wait_until(timeout: 1, interval: 0.005) { newer.status == "sleep" }
     gate << true
-    [older, newer].each(&:join)
+    [older, newer].each { |thread| join!(thread, "both persists") }
 
     expect(blocked).to be(true)
     saved = JSON.parse(File.read(File.join(state_dir, "order-sess", "analytics.json")))

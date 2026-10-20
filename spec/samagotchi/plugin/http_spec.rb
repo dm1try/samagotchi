@@ -250,7 +250,8 @@ RSpec.describe Samagotchi::Plugin::Http do
       expect { http.get(url, timeout: 30, cancel: cancel) }.to raise_error(Samagotchi::Plugin::HttpCancelled, /cancelled/)
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     ensure
-      canceller&.join
+      # Bounded, but no raise here: it would hide the example's own failure.
+      canceller&.join(5)
     end
 
     it "uses the default lookup's controller when no cancel: is given, and cancel: wins over it" do

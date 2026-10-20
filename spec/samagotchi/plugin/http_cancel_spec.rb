@@ -58,7 +58,7 @@ RSpec.describe "ctx.http's default cancel controller" do
           at_start = service.value
           after = lookup
         end
-      end.join
+      end.then { |thread| join!(thread, "the handler thread") }
     end
 
     expect(at_start).to be_nil
@@ -88,7 +88,7 @@ RSpec.describe "ctx.http's default cancel controller" do
           expect { service.value }.to raise_error("boom")
           seen = lookup
         end
-      end.join
+      end.then { |thread| join!(thread, "the handler thread") }
     end
 
     expect(seen).to be(turn_controller)
@@ -99,7 +99,7 @@ RSpec.describe "ctx.http's default cancel controller" do
 
     run_turn do
       event = { type: :before_tool_call }
-      Thread.new { ctx.with_event(event) { seen = lookup } }.join
+      join!(Thread.new { ctx.with_event(event) { seen = lookup } }, "the handler thread")
     end
 
     expect(seen).to be(turn_controller)
@@ -108,7 +108,7 @@ RSpec.describe "ctx.http's default cancel controller" do
   it "is nil on a thread the plugin started, an anytime command's among them" do
     seen = :unset
 
-    run_turn { Thread.new { seen = lookup }.join }
+    run_turn { join!(Thread.new { seen = lookup }, "the plugin's thread") }
 
     expect(seen).to be_nil
   end
@@ -160,7 +160,7 @@ RSpec.describe "ctx.http's default cancel controller" do
     engine.add_init_task(bundle: "demo", label: "warm", plugin_label: "plugin.rb (bundle demo)", provides_tools: false,
                          quiet: true, timeout: 5) do
       inside = lookup
-      release.pop
+      SpecWaiting.pop!(release, "the example to release the init task", timeout: 30)
       "ok"
     end
     engine.start_init_tasks!

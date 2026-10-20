@@ -640,7 +640,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
       it "closes the socket of a request waiting for its answer" do
         Thread.new do
-          accepted.pop.tap { |socket| accepted << socket }
+          SpecWaiting.pop!(accepted, "the request's connection").tap { |socket| accepted << socket }
           sleep 0.05
           controller.cancel!(:user)
         end

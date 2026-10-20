@@ -360,7 +360,7 @@ RSpec.describe "task tools" do
 
       described_class.stop_task(record.id, by: "user")
       done = true
-      reader.join
+      join!(reader, "the status reader")
 
       expect(seen).not_to include("failed")
       expect(described_class.get_record(record.id).first).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
@@ -619,7 +619,7 @@ RSpec.describe "task tools" do
       end
 
       result = described_class.call(task_id, tail_lines: 2)
-      stopper.join
+      join!(stopper, "the stopper")
 
       expect(result).to include("status: stopped").and include("stop_reason: stopped_by_user")
       expect(result).to include("note: the user stopped this task; don't restart it unless they ask.")
@@ -915,7 +915,7 @@ RSpec.describe "task tools" do
         gate = @gate
         allow(runtime).to receive(:record_exit_status).and_wrap_original do |original, waiter, path, **args|
           gated = Struct.new(:value).new(nil)
-          gated.define_singleton_method(:value) { gate.pop && waiter.value }
+          gated.define_singleton_method(:value) { SpecWaiting.pop!(gate, "the example to open the gate", timeout: 30) && waiter.value }
           original.call(gated, path, **args)
         end
       end
@@ -967,7 +967,7 @@ RSpec.describe "task tools" do
         gate = Queue.new
         allow(Thread).to receive(:new).and_wrap_original do |original, *args, &body|
           original.call(*args) do
-            gate.pop
+            SpecWaiting.pop!(gate, "the example to open the gate", timeout: 30)
             body.call
           end
         end
@@ -984,7 +984,7 @@ RSpec.describe "task tools" do
       it "corrects a handed-over record from the status (as execute's hand-over calls it)" do
         record = finished_without_code(handed_over_by: "execute")
 
-        runtime.record_exit_status(waiter_for(status(exitstatus: 4)), record.exit_code_path, task_id: record.id).join
+        join!(runtime.record_exit_status(waiter_for(status(exitstatus: 4)), record.exit_code_path, task_id: record.id), "the exit status recorder")
 
         expect(File.read(record.exit_code_path)).to eq("4")
         expect(runtime.load_record(record.id)).to have_attributes(status: "failed", exit_code: 4, stop_reason: nil,
@@ -994,7 +994,7 @@ RSpec.describe "task tools" do
       it "corrects a record a refresh found isn't chi's process any more" do
         record = finished_without_code(stop_reason: Samagotchi::Tools::TaskRuntime::NOT_CHIS_PROCESS)
 
-        runtime.record_exit_status(waiter_for(status(exitstatus: 0)), record.exit_code_path, task_id: record.id).join
+        join!(runtime.record_exit_status(waiter_for(status(exitstatus: 0)), record.exit_code_path, task_id: record.id), "the exit status recorder")
 
         expect(runtime.load_record(record.id)).to have_attributes(status: "completed", exit_code: 0, stop_reason: nil)
       end
@@ -1003,7 +1003,7 @@ RSpec.describe "task tools" do
         record = finished_without_code
         File.write(record.exit_code_path, "2")
 
-        runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id).join
+        join!(runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id), "the exit status recorder")
 
         expect(File.read(record.exit_code_path)).to eq("2")
         expect(runtime.load_record(record.id)).to have_attributes(status: "failed", exit_code: 2)
@@ -1012,7 +1012,7 @@ RSpec.describe "task tools" do
       it "never touches a stopped task's record or exit code" do
         record = finished_without_code(status: "stopped", stop_requested_by: "model", stop_reason: "stopped_by_model")
 
-        runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id).join
+        join!(runtime.record_exit_status(waiter_for(status(termsig: 15)), record.exit_code_path, task_id: record.id), "the exit status recorder")
 
         expect(File.exist?(record.exit_code_path)).to be(false)
         expect(runtime.load_record(record.id)).to eq(record)
@@ -1023,7 +1023,7 @@ RSpec.describe "task tools" do
         running = finished_without_code(status: "running", stop_reason: nil, finished_at: nil)
 
         [other, running].each do |record|
-          runtime.record_exit_status(waiter_for(status(termsig: 9)), record.exit_code_path, task_id: record.id).join
+          join!(runtime.record_exit_status(waiter_for(status(termsig: 9)), record.exit_code_path, task_id: record.id), "the exit status recorder")
 
           expect(File.read(record.exit_code_path)).to eq("137")
           expect(runtime.load_record(record.id)).to eq(record)
@@ -1034,13 +1034,15 @@ RSpec.describe "task tools" do
         record = finished_without_code
         gate = Queue.new
         waiter = Struct.new(:value).new(nil)
-        waiter.define_singleton_method(:value) { gate.pop && Struct.new(:exitstatus, :termsig).new(nil, 2) }
+        waiter.define_singleton_method(:value) do
+          SpecWaiting.pop!(gate, "the example to open the gate", timeout: 30) && Struct.new(:exitstatus, :termsig).new(nil, 2)
+        end
         thread = runtime.record_exit_status(waiter, record.exit_code_path, task_id: record.id)
 
         Dir.mktmpdir do |elsewhere|
           Dir.chdir(elsewhere) do
             gate << true
-            thread.join
+            join!(thread, "the exit status recorder")
           end
         end
 
