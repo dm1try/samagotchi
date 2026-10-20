@@ -112,6 +112,13 @@ test("archive flips to unarchive; continue says continuing while one runs; a ter
   assert.equal(tui.stop.shown, false);
 });
 
+test("rename (✎) for an open session but a plain terminal's", () => {
+  assert.equal(sessionBar(args()).buttons.rename.shown, true);
+  assert.equal(sessionBar(args({ state: { ...emptySessionState(), owner: "tui" } })).buttons.rename.shown, false);
+  assert.equal(infoButtons({ id: null, state: emptySessionState(), chain: { next: null }, archived: false, continuing: false, streaming: false })
+    .rename.shown, false);
+});
+
 test("stop while a worker runs it, or the page streams from one", () => {
   assert.equal(sessionBar(args({ state: { ...emptySessionState(), owner: "worker" } })).buttons.stop.shown, true);
   assert.equal(sessionBar(args({ streaming: true })).buttons.stop.shown, true);

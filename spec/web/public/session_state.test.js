@@ -68,6 +68,13 @@ test("sessionStateFrom reads the session's fields, with the empty defaults for m
   assert.deepEqual(st.timing, normalizeTiming(undefined));
 });
 
+test("sessionStateFrom: a titled session's info-bar title is its title, not its first message", () => {
+  const data = payload({ session: { title: "Coordinator", first_preview: "hey chi" }, messages: [{ role: "user", content: "hey chi" }] });
+  assert.equal(sessionStateFrom(data).firstPreview, "Coordinator");
+  assert.equal(sessionStateFrom(payload({ session: { first_preview: "x" }, messages: [{ role: "user", content: "hey chi" }] })).firstPreview,
+    "hey chi");
+});
+
 test("sessionStateFrom copies the lists, owner, links and served model", () => {
   const notes = [{ name: "model_notes_x" }];
   const st = sessionStateFrom(payload({

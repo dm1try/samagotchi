@@ -770,7 +770,14 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripGrip").click();
   await expect(stripCard).toBeVisible();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["✎", "continue →", "archive", "stop session", "delete"]);
+  // ✎ renames it (/title through the worker): the card follows the saved file.
+  await page.locator("#infoRenameBtn").click();
+  await expect(page.locator("#infoBar .rename-input")).toBeFocused();
+  await page.keyboard.type("Pong check");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#infoBar .rename-input")).toHaveCount(0);
+  await expect(stripCard).toContainText("Pong check");
   // Dragging the composer's grip down folds the composer away (the info bar
   // stays, the grip stays as its handle): the history's reserve shrinks, and
   // the choice survives a reload.

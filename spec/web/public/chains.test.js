@@ -332,6 +332,40 @@ test("chainTitle: a link titled with the opener reads its chain's first link's t
   assert.equal(chainTitle(x, new Map([[x.id, x], [y.id, y]])), "Continue where we left off.");
 });
 
+test("chainTitle and openTitle: a link's own title (/title) first, and a titled first link names its opener links", () => {
+  const first = link("t1", 5, { first_preview: "hey chi", title: "Coordinator" });
+  const next = link("t2", 6, { continues: "t1", first_preview: "Continue where we left off." });
+  const renamed = link("t3", 7, { continues: "t2", first_preview: "Continue where we left off.", title: "Release day" });
+  const byId = new Map([first, next, renamed].map((s) => [s.id, s]));
+  assert.equal(chainTitle(first, byId), "Coordinator");
+  assert.equal(chainTitle(next, byId), "Coordinator");
+  assert.equal(chainTitle(renamed, byId), "Release day");
+  // An opener-titled first link with a title of its own names its chain too.
+  const openerFirst = link("u1", 5, { first_preview: "Continue where we left off.", title: "Named" });
+  const openerNext = link("u2", 6, { continues: "u1", first_preview: "Continue where we left off." });
+  assert.equal(chainTitle(openerNext, new Map([[openerFirst.id, openerFirst], [openerNext.id, openerNext]])), "Named");
+  // The top bar of a titled session that is no link follows its card.
+  const cardTitle = (s) => `card of ${s.id}`;
+  assert.equal(openTitle({ shown: { id: "s", title: "Named" }, first: "hey chi", cardTitle }), "card of s");
+});
+
+test("chainRowsTemplate: a chain sharing one title shows each link's recap; a link renamed apart shows its own name", () => {
+  const shared = { title: "Coordinator" };
+  const r1 = link("r1", 5, { ...shared, recap: "Day one planned.", archived: true });
+  const r2 = link("r2", 6, { ...shared, continues: "r1", recap: "Day two merged.", archived: true });
+  const r3 = link("r3", 7, { ...shared, continues: "r2" });
+  const [f] = foldChains(families([r3]), [r3, r2, r1]);
+  const html = chainRowsHtml(f);
+  assert.match(html, /data-id="r2"[^]*?<span class="fr-preview">Day two merged\.<\/span>/);
+  assert.match(html, /data-id="r1"[^]*?<span class="fr-preview">Day one planned\.<\/span>/);
+  assert.doesNotMatch(html, /fr-preview">Coordinator</);
+  // A renamed middle link: its own name over its recap; no recap, no title: its preview.
+  const [g] = foldChains(families([r3]), [r3, { ...r2, title: "Release day" }, { ...r1, title: null, recap: null, first_preview: "plan it" }]);
+  const renamed = chainRowsHtml(g);
+  assert.match(renamed, /data-id="r2"[^]*?<span class="fr-preview">Release day<\/span>/);
+  assert.match(renamed, /data-id="r1"[^]*?<span class="fr-preview">plan it<\/span>/);
+});
+
 test("the chain popover's rows without a recap read the chain's title, not the opener", () => {
   const first = link("c1", 5, { first_preview: "/coordinate the daily review", archived: true });
   const mid = link("c2", 6, { continues: "c1", first_preview: "Continue where we left off.", archived: true });

@@ -887,6 +887,10 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 #infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
 #infoBar #infoArchiveBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
+#infoBar #infoRenameBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
+#infoBar #infoRenameBtn:hover{color:var(--text);background:var(--bg-hover)}
+/* ✎'s input (session_rename.js), in the button's place. */
+#infoBar .rename-input{flex:0 1 18em;min-width:6em;font:inherit;font-size:12px;padding:3px 8px;border-radius:8px;border:1px solid var(--accent-border);background:var(--bg-raised);color:var(--text);outline:none}
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
@@ -976,6 +980,8 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar>button{font-size:0;line-height:0;padding:5px 7px}
   #infoBar>button::before{content:"";display:block;width:14px;height:14px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
   #infoBar #infoArchiveBtn{--icon:var(--icon-archive)}
+  #infoBar #infoRenameBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.5 2.5l3 3L5.5 13.5H2.5v-3z'/%3E%3C/svg%3E")}
+  #infoBar .rename-input{flex:1 1 8em;font-size:16px}
   #infoBar #infoArchiveBtn.archived{--icon:var(--icon-unarchive)}
   #infoBar #infoContinueBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8h9M8.5 4.5 12 8l-3.5 3.5'/%3E%3C/svg%3E")}
   #infoBar #infoCancelBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='8' height='8' rx='1.5'/%3E%3C/svg%3E")}
@@ -1300,6 +1306,7 @@ a{color:var(--accent)}
         <div class="info" id="infoText"></div>
         <div id="contextChips" aria-label="Attached context" hidden></div>
         <button class="ghost" id="infoCancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
+        <button class="ghost" id="infoRenameBtn" title="Rename this session" aria-label="Rename this session" style="display:none">✎</button>
         <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
         <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>

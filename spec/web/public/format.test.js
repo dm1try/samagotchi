@@ -96,7 +96,15 @@ test("modelLabel keeps the model asked for, no marker, when the served one is ex
   assert.deepEqual(modelLabel("work:rr/x", "rr/x", "rr/x", "work"), { text: "work:rr/x", title: "work:rr/x", mismatch: false });
 });
 
-import { deleteConfirmText } from "../../../lib/samagotchi/web/public/format.js";
+import { deleteConfirmText, previewForCard } from "../../../lib/samagotchi/web/public/format.js";
+
+test("previewForCard and deleteConfirmText name a titled session by its title (/title), else as before", () => {
+  const titled = { id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", title: "Coordinator", first_preview: "hey chi", last_prompt: "go" };
+  assert.equal(previewForCard(titled), "Coordinator");
+  assert.match(deleteConfirmText(titled), /^Delete session 3fa2b1c4 \u2014 "Coordinator"\?/);
+  assert.equal(previewForCard({ ...titled, title: null }), "hey chi");
+  assert.equal(previewForCard({ title: null, first_preview: "", last_prompt: "" }), "\u2014");
+});
 
 test("deleteConfirmText names the session and says it can't be undone", () => {
   assert.equal(

@@ -5,6 +5,7 @@ import {
   CARD_FADE_MS, DOT_PULSE_MS, allCountText, allViewFamilies, cardAnimStyle, cardTemplate, enteringCards, matchesFilter, stripCountText, stripOrder, stripPillTemplate, stripTileTemplate,
 } from "../../../lib/samagotchi/web/public/lists_view.js";
 import { families } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { previewForCard } from "../../../lib/samagotchi/web/public/format.js";
 import { stripStatusParts } from "../../../lib/samagotchi/web/public/strip.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
@@ -61,6 +62,11 @@ test("allViewFamilies: no search shows every family, waiting first; a search unf
   const searched = allViewFamilies(list, list, { query: q, matches: (s) => matchesFilter(s, q, s.first_preview) });
   assert.deepEqual(ids(searched.all).sort(), ["d1", "d2", "w"]);
   assert.deepEqual(ids(searched.shown), ["d1"]);
+});
+
+test("matchesFilter: a session's own title (/title) matches through its card's title", () => {
+  const s = sess("abcdef0123", { first_preview: "hey chi", title: "Coordinator" });
+  assert.ok(matchesFilter(s, "coord", previewForCard(s)));
 });
 
 test("matchesFilter: title, first preview, ids, status and the waiting words", () => {
