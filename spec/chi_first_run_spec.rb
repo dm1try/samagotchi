@@ -7,6 +7,8 @@ require_relative "support/bounded_capture"
 
 # A first run with no config at all: one line naming config.yml's
 # default.model, not a backtrace, whichever way the session would start.
+# The default (attached) start runs a real bin/chi; the others fork it
+# (ChiCli#fork_chi).
 RSpec.describe "chi without a configured model" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:home) { Dir.mktmpdir("chi-first-run") }
@@ -19,7 +21,12 @@ RSpec.describe "chi without a configured model" do
 
   [[], ["--no-shared"], ["-p", "hi", "--non-interactive"]].each do |args|
     it "says where to set the model (chi #{args.join(" ")})".rstrip do
-      _out, err, status = BoundedCapture.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", timeout: 20)
+      _out, err, status =
+        if args.empty?
+          BoundedCapture.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", timeout: 20)
+        else
+          fork_chi(*args, env: env, timeout: 20)
+        end
 
       expect(status.exitstatus).to eq(1)
       expect(err).to eq("Error: no model configured: set default.model in #{home}/config/samagotchi/config.yml " \
