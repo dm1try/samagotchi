@@ -50,4 +50,13 @@ RSpec.describe Samagotchi::ClientId do
       expect(%w[other other:1 cli:other webby tui plugin:x].map { |id| described_class.human?(id) }).to all(be(false))
     end
   end
+
+  describe ".origin" do
+    it "names the turns chi runs on its own by their sender, and every other sender client" do
+      origins = { "delegate:ab12cd34" => "delegate", "child:ab12cd34" => "delegate_report", "context:gh" => "context",
+                  "task:t1" => "task", "system:reminder" => "reminder", "system:other" => "client", "web:x" => "client",
+                  "cli:send" => "client", "plugin" => "client", nil => "client" }
+      expect(origins.keys.to_h { |id| [id, described_class.origin(id)] }).to eq(origins)
+    end
+  end
 end

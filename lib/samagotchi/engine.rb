@@ -1402,14 +1402,7 @@ module Samagotchi
     #   answer the continue offer says so (ReplyWait, ParentReport "limit")
     # @param event [Hash] the turn's end event (#stop_facts)
     def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
-      client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
-      source = if client_id.start_with?(ClientId::DELEGATE_PREFIX) then "delegate"
-               elsif client_id.start_with?(ClientId::CHILD_PREFIX) then "delegate_report"
-               elsif client_id.start_with?(ClientId::CONTEXT_PREFIX) then "context"
-               elsif client_id.start_with?(ClientId::TASK_PREFIX) then "task"
-               elsif client_id == ClientId::REMINDER then "reminder"
-               else "client"
-               end
+      source = ClientId.origin(origin.is_a?(Hash) ? origin[:client_id] : nil)
       enqueued_id = origin.is_a?(Hash) ? origin[:enqueued_id] : nil
       session.last_turn = LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), seconds: seconds.round(1),
                                        origin: source, exhausted: limit ? true : nil, limit: limit,

@@ -1639,9 +1639,9 @@ module Samagotchi
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::SYSTEM_PREFIX)
-      def report_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::CHILD_PREFIX)
-      def context_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::CONTEXT_PREFIX)
-      def task_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::TASK_PREFIX)
+      def report_origin?(origin) = ClientId.origin(origin[:client_id]) == "delegate_report"
+      def context_origin?(origin) = ClientId.origin(origin[:client_id]) == "context"
+      def task_origin?(origin) = ClientId.origin(origin[:client_id]) == "task"
       # A turn with no prompt: "(continuing)"; a context wake's or a task
       # finish wake's label alone.
       def continuing_text(origin) = context_origin?(origin) || task_origin?(origin) ? nil : "(continuing)"

@@ -46,7 +46,25 @@ module Samagotchi
     # (#interactive?): a web tab, an attached chi TUI.
     INTERACTIVE_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
 
+    # A turn's origin by its sender (#origin, LastTurn#origin): the ids chi
+    # runs turns for on its own, by prefix; system:reminder is "reminder",
+    # anything else "client".
+    ORIGIN_PREFIXES = { DELEGATE_PREFIX => "delegate", CHILD_PREFIX => "delegate_report",
+                        CONTEXT_PREFIX => "context", TASK_PREFIX => "task" }.freeze
+
     module_function
+
+    # What sent a turn: "delegate" (a delegating parent), "delegate_report"
+    # (a child's report), "context" (a context wake), "task" (a task finish
+    # wake), "reminder", else "client" (a person, chi send, a plugin, nil).
+    # @return [String]
+    def origin(client_id)
+      id = client_id.to_s
+      return "reminder" if id == REMINDER
+
+      ORIGIN_PREFIXES.each { |prefix, origin| return origin if id.start_with?(prefix) }
+      "client"
+    end
 
     # Whether +client_id+ is a web tab or a chi TUI, which see a command's
     # reply and can send the line it asks for (CacheConfirm); chi send, a

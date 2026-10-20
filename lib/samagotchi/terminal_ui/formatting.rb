@@ -215,11 +215,14 @@ module Samagotchi
         return fallback unless client_id
 
         id = client_id.to_s
-        name = id.delete_prefix(ClientId::CONTEXT_PREFIX)
-        return "context #{name} changed" if id.start_with?(ClientId::CONTEXT_PREFIX) && !name.empty?
-
-        task = id.delete_prefix(ClientId::TASK_PREFIX)
-        return "task #{Tools::TaskRecord.short_id(task)} finished" if id.start_with?(ClientId::TASK_PREFIX) && !task.empty?
+        case ClientId.origin(id)
+        when "context"
+          name = id.delete_prefix(ClientId::CONTEXT_PREFIX)
+          return "context #{name} changed" unless name.empty?
+        when "task"
+          task = id.delete_prefix(ClientId::TASK_PREFIX)
+          return "task #{Tools::TaskRecord.short_id(task)} finished" unless task.empty?
+        end
 
         prefix = id[/\A[^:]*:/]
         CLIENT_LABELS[id] || (prefix && CLIENT_LABELS[prefix]) || AUTOMATIC_LABEL
