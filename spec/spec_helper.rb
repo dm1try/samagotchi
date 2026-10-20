@@ -124,6 +124,12 @@ RSpec.configure do |config|
   end
   config.shared_context_metadata_behavior = :apply_to_host_groups
   config.filter_run_when_matching :focus
+  # The opt-in live examples are filtered out, not skipped: a skip from an
+  # around hook prints a "SkipDeclaredInExample" backtrace in the Pending
+  # list, one per example, burying the real ones. Their around hooks below
+  # still skip them when selected without the switch.
+  config.filter_run_excluding integration: true unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
+  config.filter_run_excluding macos_build: true unless ENV["SAMAGOTCHI_MACOS_BUILD"] == "1"
   config.disable_monkey_patching!
   config.include SpecWaiting
   config.include SpecEnv

@@ -155,14 +155,16 @@ to install). It refuses when the folder or the branch already exists.
 
 `SAMAGOTCHI_MACOS_BUILD=1 bundle exec rspec spec/desktop` also compiles the macOS helper (`:macos_build`, needs the
 Command Line Tools) and runs `ChiHelper` against a fake kitty and, when a `tmux` is on PATH, a real one (private
-`-L` servers under a temp `TMUX_TMPDIR`, killed after). CI skips them, and `script/affected-specs` doesn't pick them
-for a Swift change: run them by hand after editing `lib/samagotchi/desktop/macos/`.
+`-L` servers under a temp `TMUX_TMPDIR`, killed after). Without the variable they are filtered out (CI's runs), and
+`script/affected-specs` doesn't pick them for a Swift change: run them by hand after editing
+`lib/samagotchi/desktop/macos/`.
 
 ## Integration specs
 
 Examples tagged `:integration` (`spec/integration/`, the "with LLM access" part of `spec/hooks/integration_spec.rb`)
-run turns against a live model server. They are skipped unless `SAMAGOTCHI_INTEGRATION=1` is set, and they need the
-server and the model it serves:
+run turns against a live model server. They are filtered out unless `SAMAGOTCHI_INTEGRATION=1` is set (a file of
+them run alone prints "All examples were filtered out"; `--tag integration` without the variable selects them, and
+they skip), and they need the server and the model it serves:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
