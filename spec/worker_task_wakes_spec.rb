@@ -102,15 +102,17 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   end
 
   # Runs +prompt+'s turn on a worker with a long poll interval and returns
-  # once its loop sleeps after it.
+  # once its loop sleeps after it. The waits only end a hang (each returns
+  # as soon as its step is there): a loaded CI runner took over 3 s from the
+  # turn's end to the park.
   def run_prompt_to_sleep(worker, prompt)
     parked = parks(worker)
     send_turn(prompt)
     worker.instance_variable_get(:@waker).wake
-    expect(turns.pop(timeout: 3)&.first).to eq(prompt)
+    expect(pop!(turns, "#{prompt}'s turn to start", timeout: 15).first).to eq(prompt)
     parked.clear
-    expect(turns_done.pop(timeout: 3)).to eq(prompt)
-    expect(parked.pop(timeout: 3)).to be(true)
+    expect(pop!(turns_done, "#{prompt}'s turn to finish", timeout: 15)).to eq(prompt)
+    pop!(parked, "the worker's loop to sleep after #{prompt}'s turn", timeout: 15)
   end
 
   def record(id, status: "running", exit_code: nil)
