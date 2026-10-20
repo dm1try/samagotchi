@@ -1061,11 +1061,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
 
   def push(event) = @push.call(event)
 
-  def wait_for(timeout: 2)
-    deadline = Time.now + timeout
-    sleep 0.01 until yield || Time.now > deadline
-    expect(yield).to be_truthy
-  end
+  def wait_for(timeout: 2, &) = expect(wait_until(timeout: timeout, &)).to(be_truthy)
 
   def finish
     typed << nil
@@ -1729,11 +1725,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
   let(:typed) { Queue.new }
   let(:prompts) { [] }
 
-  def wait_for(timeout: 2)
-    deadline = Time.now + timeout
-    sleep 0.01 until yield || Time.now > deadline
-    expect(yield).to be_truthy
-  end
+  def wait_for(timeout: 2, &) = expect(wait_until(timeout: timeout, &)).to(be_truthy)
 
   it "sends a bare answer as /continue <answer>, an empty one as /continue, and commands as they are" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
@@ -2510,8 +2502,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
 
     attached.run(input: lambda do |_prompt, _prefill|
       # The read starts on its own thread as the loop takes the snapshot in.
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
-      sleep 0.01 until attached.running? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      wait_until(timeout: 2) { attached.running? }
       allow(Reline).to receive(:line_buffer).and_return("half typed")
       handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
       nil # then Ctrl-D, in the same read

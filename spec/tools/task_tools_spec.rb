@@ -316,13 +316,7 @@ RSpec.describe "task tools" do
       expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_model")
     end
 
-    def running?(pattern)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 1
-      while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
-        sleep 0.05
-      end
-      alive
-    end
+    def running?(pattern) = !wait_until(timeout: 1, interval: 0.05) { !system("pgrep", "-f", pattern, out: File::NULL) }
 
     it "stops the task's whole group, a grandchild the shell waits on too" do
       record, = described_class.create_task("sleep 31.75 & wait")
@@ -553,8 +547,7 @@ RSpec.describe "task tools" do
       task_id = extract_field(create_result, "task_id")
       # Both lines out first: under load the child may take over the 1 s wait to print.
       output_path = extract_field(create_result, "output_path")
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-      sleep 0.05 until File.read(output_path).include?("second") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      wait_until(timeout: 10, interval: 0.05) { File.read(output_path).include?("second") }
       result = described_class.call(task_id, timeout: 1, tail_lines: 1)
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: running")
@@ -611,8 +604,7 @@ RSpec.describe "task tools" do
       create_result = Samagotchi::Tools::TaskCreate.call("echo one; echo two; echo three; sleep 30")
       task_id = extract_field(create_result, "task_id")
       output_path = extract_field(create_result, "output_path")
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-      sleep 0.05 until File.read(output_path).include?("three") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      wait_until(timeout: 10, interval: 0.05) { File.read(output_path).include?("three") }
       stopper = Thread.new do
         sleep 0.3
         Samagotchi::Tools::TaskRuntime.stop_task(task_id, by: "user")
@@ -888,15 +880,10 @@ RSpec.describe "task tools" do
   describe "the exit code from chi's waiter (a shell that wrote none)" do
     let(:runtime) { Samagotchi::Tools::TaskRuntime }
 
-    def wait_for_file(path, timeout: 10.0)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-      sleep(0.05) until File.exist?(path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-    end
+    def wait_for_file(path, timeout: 10.0) = wait_until(timeout: timeout) { File.exist?(path) }
 
-    def wait_until(timeout: 10.0)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-      sleep(0.05) until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-    end
+    # SpecWaiting's, with this group's longer default (a real shell's exit).
+    def wait_until(timeout: 10.0, interval: 0.05, &) = super
 
     it "records 128 + the signal for a shell killed by one, with no stop_reason" do
       record, = runtime.create_task("kill -TERM $$; sleep 5")
@@ -1056,20 +1043,17 @@ RSpec.describe "task tools" do
   # that before mktmpdir removes the dir.
   def kill_awaiting_waiter(record, timeout: 5.0)
     Process.kill("KILL", -record.pid)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    runtime = Samagotchi::Tools::TaskRuntime
-    sleep(0.02) until runtime.load_record(record.id)&.exit_code || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    wait_until(timeout: timeout, interval: 0.02) { Samagotchi::Tools::TaskRuntime.load_record(record.id)&.exit_code }
   end
 
   # The record once it no longer runs (each poll is a refresh).
   def finished_record(task_id, timeout: 10.0)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    loop do
+    record = nil
+    wait_until(timeout: timeout, interval: 0.05) do
       record, = Samagotchi::Tools::TaskRuntime.get_record(task_id)
-      return record unless record.running? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
-
-      sleep(0.05)
+      !record.running?
     end
+    record
   end
 
   it "writes command output that can be read from output_path" do
@@ -1084,18 +1068,9 @@ RSpec.describe "task tools" do
   end
 
   def wait_for_task(task_id, timeout: 10.0)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-
-    loop do
-      result = Samagotchi::Tools::TaskGet.call(task_id)
-      return result unless result.include?("status: running")
-
-      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-
-      sleep(0.05)
-    end
-
-    Samagotchi::Tools::TaskGet.call(task_id)
+    result = nil
+    wait_until(timeout: timeout, interval: 0.05) { !(result = Samagotchi::Tools::TaskGet.call(task_id)).include?("status: running") }
+    result
   end
 
   def extract_field(text, key)

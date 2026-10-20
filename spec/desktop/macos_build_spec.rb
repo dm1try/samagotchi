@@ -240,15 +240,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
     def key(name, pane_id) = "tmux:#{socket_dir}/#{name}##{tmux(name, "display-message", "-p", "\#{pid}")}##{pane_id}"
     def buffers(name) = tmux(name, "list-buffers")
 
-    def wait_for(what, seconds: 5)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
-      until (value = yield)
-        raise "timed out waiting for #{what}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-        sleep 0.05
-      end
-      value
-    end
+    def wait_for(what, seconds: 5, &) = wait_until!(what, timeout: seconds, interval: 0.05, &)
 
     def running(name, pane_id, command)
       wait_for("#{command} in #{pane_id}") do
