@@ -16,6 +16,10 @@ and commands may change between minor versions. How releases are made:
 - A config.yml that doesn't parse (saved mid-edit) no longer tells a worker or chi web that every start-only setting
   changed and needs a restart: it warns once that the file doesn't parse, and the settings are compared again once
   it does.
+- A background delegate's relayed approval is reported to the parent's model as `approval relayed to your user:
+  execute: git push → …`, as a waiting parent already got it; before, it read `hook question relayed…` with an
+  empty label. A relayed question from a delegate's own delegate is named by its header (`Cost cap`), not the
+  outer card's `delegate ab12 asks: Cost cap`.
 
 ## [0.92.0] - 2026-10-19
 
