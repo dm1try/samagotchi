@@ -141,7 +141,15 @@ module Samagotchi
         end
         session = Session.load(id, state_dir: state_dir)
         # Taken back before it ran (POST turn/dequeue): no turn will come.
-        if turn && claimed && !seen_own && SessionInbox.removed?(session_dir, turn)
+        # A tombstone with the claimed file still there is a removal not
+        # done yet (or one a turn's claim beat): looked at again next poll.
+        # One whose turn ran anyway (its reply, or last_turn its own) is a
+        # stray: a worker killed between the tombstone and the claim left
+        # it, or a short turn won the claim and ended before the removal
+        # took it back.
+        if turn && claimed && !seen_own && SessionInbox.removed?(session_dir, turn) &&
+           !SessionInbox.claimed_input?(session_dir, turn) &&
+           session.last_turn&.enqueued_id != turn && !SessionInbox.reply_for(session_dir, turn)
           return Result.new(status: :no_reply, outcome: "removed", session: session)
         end
 
@@ -365,9 +373,11 @@ module Samagotchi
     # A turn: wait's taken input ran in another turn (a steer its drain
     # merged): that turn runs (its mark has another id, or none from a
     # worker that writes ids), or, idle, a turn not its ended since the
-    # baseline. last_turn or a reply file being its own is never that.
+    # baseline. last_turn or a reply file being its own is never that, nor
+    # an input with a tombstone (a removal's, written before its claim).
     def merged_elsewhere?(session, turn, baseline, session_dir)
       return false if session.last_turn&.enqueued_id == turn || SessionInbox.reply_for(session_dir, turn)
+      return false if SessionInbox.removed?(session_dir, turn)
 
       if session.status == Session::STATUS_RUNNING
         running_id = session.interrupted_turn&.enqueued_id

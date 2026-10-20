@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
   execute: git push → …`, as a waiting parent already got it; before, it read `hook question relayed…` with an
   empty label. A relayed question from a delegate's own delegate is named by its header (`Cost cap`), not the
   outer card's `delegate ab12 asks: Cost cap`.
+- `chi send --wait` on a queued image message that is removed (unqueued) as the wait looks no longer returns the
+  running turn's reply: the removal writes its tombstone before it takes the file, so the wait reads it as removed.
 
 ## [0.92.0] - 2026-10-19
 

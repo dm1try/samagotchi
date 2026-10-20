@@ -500,6 +500,61 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(Samagotchi::ParentReport.detail(result, session_id: session.id)).to include("the queued message was removed")
     end
 
+    describe "a removal half done (tombstone first, then the claim)" do
+      def tombstone(id)
+        FileUtils.mkdir_p(File.join(dir, "input", "removed"))
+        File.write(File.join(dir, "input", "removed", id), "")
+      end
+
+      def run_other(id)
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.interrupted_turn = { "iteration" => 1, "enqueued_id" => id }
+        s.save(state_dir: tmpdir)
+      end
+
+      it "never reads the claimed, tombstoned input as merged into the running turn" do
+        queue_input("q1")
+        run_other("a1")
+        tombstone("q1")
+        processing = claim("q1") # the removal's claim, before its delete
+        write_turn_reply("a1 answer", "a1")
+        later do
+          looked(2)
+          FileUtils.rm_f(processing)
+        end
+
+        # queued: false: an image message, or a first look after the claim.
+        expect(wait(baseline: baseline, turn: "q1").to_h).to include(status: :no_reply, outcome: "removed")
+      end
+
+      it "is not removed by a stray tombstone once its turn ran (a worker killed between tombstone and claim)" do
+        queue_input("q1")
+        tombstone("q1")
+        FileUtils.rm_f(claim("q1")) # the next worker ran it as a turn
+        write_turn_reply("q1 answer", "q1")
+        end_turn("q1")
+
+        expect(wait(baseline: baseline, turn: "q1", queued: true, timeout: 2).to_h)
+          .to include(status: :done, text: "q1 answer")
+      end
+
+      it "is not removed while a turn's claim holds the file (the removal lost and takes its tombstone back)" do
+        queue_input("q1")
+        set(status: "running")
+        tombstone("q1")
+        claim("q1") # the turn's claim won
+        later do
+          looked(2)
+          FileUtils.rm_f(File.join(dir, "input", "removed", "q1"))
+          write_turn_reply("q1 answer", "q1")
+          end_turn("q1")
+        end
+
+        expect(wait(baseline: baseline, turn: "q1", queued: true).text).to eq("q1 answer")
+      end
+    end
+
     it "ends on its own end seen while a next queued turn already runs" do
       queue_input("q1")
       queue_input("q2")

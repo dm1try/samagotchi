@@ -152,6 +152,28 @@ RSpec.describe Samagotchi::SessionInbox do
         allow(described_class).to receive(:claim_input_file).with(path).and_return(nil)
 
         expect(described_class.take_queued_input(session_dir, "id-1")).to eq([:claimed, nil])
+        expect(described_class.removed?(session_dir, "id-1")).to be(false)
+      end
+
+      it "deletes the claimed file even when it can't be read, and still answers removed" do
+        write("later", "id-1", delivery: "queue")
+        allow(described_class).to receive(:read_input).and_raise(Errno::EIO)
+
+        expect(described_class.take_queued_input(session_dir, "id-1")).to eq([:removed, described_class::UNREADABLE_INPUT])
+        expect(Dir.glob(File.join(input_dir, "*.processing"))).to eq([])
+        expect(described_class.removed?(session_dir, "id-1")).to be(true)
+      end
+
+      it "writes the tombstone before it claims the file, so no look sees it claimed and not removed" do
+        path = write("later", "id-1", delivery: "queue")
+        tombstoned_at_claim = nil
+        allow(described_class).to receive(:claim_input_file).with(path).and_wrap_original do |original, file|
+          tombstoned_at_claim = described_class.removed?(session_dir, "id-1")
+          original.call(file)
+        end
+
+        expect(described_class.take_queued_input(session_dir, "id-1").first).to eq(:removed)
+        expect(tombstoned_at_claim).to be(true)
       end
 
       it "writes no tombstone for an id unsafe in a file name" do

@@ -289,8 +289,11 @@ module Samagotchi
     # turn takes it (the Bridge's POST turn/dequeue, under the event log):
     # only one that waits for the turn's end (a queue or an image message,
     # #waits_for_turn_end?); a next-step file may be merged at any boundary.
-    # The file is claimed first, as the drain does (the rename is the race's
-    # one winner), then deleted, and its tombstone written.
+    # Its tombstone is written first, then the file claimed as the drain
+    # does (the rename is the race's one winner) and deleted; a claim a
+    # turn won takes the tombstone back. Tombstone first: a ReplyWait look
+    # that finds the file claimed and no tombstone knows a turn took it
+    # (never a removal half done, which it would read as a merge).
     # @return [Array(Symbol, Input)] [:removed, the input it held],
     #   [:not_queued, nil] for a next-step file, [:claimed, nil] when a
     #   turn took it (its *.json.processing is there), [:none, nil] for
@@ -304,10 +307,24 @@ module Samagotchi
         next unless data.is_a?(Hash) && data["enqueued_id"] == id
         return [:not_queued, nil] unless Array(data["images"]).any? || Delivery.queue?(data["delivery"])
 
-        claimed = claim_input_file(file) or return [:claimed, nil]
-        input = read_input(claimed)
         mark_removed(session_dir, id)
-        FileUtils.rm_f(claimed)
+        unless (claimed = claim_input_file(file))
+          unmark_removed(session_dir, id)
+          return [:claimed, nil]
+        end
+        # The claimed file goes whatever the read does: a claimed file left
+        # with the tombstone would read as a removal still under way
+        # (ReplyWait) until the wait's timeout. One that can't be read was
+        # still taken back (no prompt to give). A process killed between
+        # the claim and this delete leaves both: that wait then times out,
+        # never a wrong answer (a stale *.json.processing is never run).
+        input = begin
+          read_input(claimed)
+        rescue SystemCallError
+          UNREADABLE_INPUT
+        ensure
+          FileUtils.rm_f(claimed)
+        end
         return [:removed, input]
       rescue JSON::ParserError, SystemCallError
         next
@@ -316,7 +333,7 @@ module Samagotchi
     end
 
     # Whether a claimed input file (*.json.processing: a turn's, now or
-    # left by a crash) carries +id+.
+    # left by a crash, or a removal's before it deletes it) carries +id+.
     def self.claimed_input?(session_dir, id)
       Dir.glob(File.join(session_dir, INPUT_DIR, "*.json.processing")).any? do |file|
         data = JSON.parse(File.read(file))
@@ -325,7 +342,6 @@ module Samagotchi
         false
       end
     end
-    private_class_method :claimed_input?
 
     def self.mark_removed(session_dir, id)
       return unless ENQUEUED_ID_NAME.match?(id)
@@ -338,8 +354,15 @@ module Samagotchi
     end
     private_class_method :mark_removed
 
+    def self.unmark_removed(session_dir, id)
+      FileUtils.rm_f(File.join(session_dir, INPUT_DIR, REMOVED_DIR, id)) if ENQUEUED_ID_NAME.match?(id)
+    end
+    private_class_method :unmark_removed
+
     # @return [Boolean] whether the queued input +enqueued_id+ was removed
-    #   before it ran (#take_queued_input's tombstone)
+    #   before it ran (#take_queued_input's tombstone), or is being removed:
+    #   the tombstone goes first, so while its claimed file is still there
+    #   (#claimed_input?) the removal may yet lose to a turn's claim
     def self.removed?(session_dir, enqueued_id)
       id = enqueued_id.to_s
       ENQUEUED_ID_NAME.match?(id) && File.exist?(File.join(session_dir, INPUT_DIR, REMOVED_DIR, id))

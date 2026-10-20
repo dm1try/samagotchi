@@ -334,9 +334,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (one that waits for the running turn's end: `--queue`, Alt+Enter, `/queue TEXT`, or a message
   with images) before a turn takes it (web route `POST /api/sessions/:id/turn/:enqueued_id/dequeue`,
   the × on a queued bubble; `/unqueue` in the attached TUI). Under the event log, like its enqueue:
-  `SessionInbox.take_queued_input` claims the file as the drain does (one rename wins), deletes it,
-  leaves a tombstone (`input/removed/<enqueued_id>`, for `ReplyWait`'s `turn:`), and the Bridge
-  announces `:turn_dequeued`. `200 {status: "removed", enqueued_id, prompt}`, `409 already_started`
+  `SessionInbox.take_queued_input` writes a tombstone (`input/removed/<enqueued_id>`, for `ReplyWait`'s
+  `turn:`), claims the file as the drain does (one rename wins; a lost claim takes the tombstone back),
+  deletes it, and the Bridge announces `:turn_dequeued`. `200 {status: "removed", enqueued_id, prompt}`, `409 already_started`
   (a turn took it), `409 not_queued` (a next-step message: a drain may merge it any moment), `404
   unknown_enqueued_id`. It never wakes the worker. The worker names it in its sidecar features (`unqueue`).
 - `POST /session/:id/relay` — the approval relay, on a delegated child's worker
