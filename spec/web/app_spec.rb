@@ -2102,7 +2102,7 @@ RSpec.describe Samagotchi::Web::App do
       app.call(env_for("/api/sessions", method: "POST", body: '{"idle":true,"preview":"  "}'))
       app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","preview":"other"}'))
 
-      expect(manager.spawn_calls.map { |c| [c[:prompt], c[:extra]] }).to eq([[nil, { title: "Say pong" }], [nil, {}], ["hi", {}]])
+      expect(manager.spawn_calls.map { |c| [c[:prompt], c[:extra]] }).to eq([[nil, { preview: "Say pong" }], [nil, {}], ["hi", {}]])
     end
   end
 

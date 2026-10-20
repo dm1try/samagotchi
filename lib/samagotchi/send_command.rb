@@ -416,7 +416,7 @@ module Samagotchi
       # says whether it ran as one.
       through_worker = images || command_like?(prompt)
       begin
-        start = through_worker ? { prompt: nil, title: prompt } : { prompt: prompt }
+        start = through_worker ? { prompt: nil, preview: prompt } : { prompt: prompt }
         session = if options[:continues]
                     SessionManager.continue_session(options[:continues], **start, model: options[:model],
                                                                              state_dir: @state_dir)

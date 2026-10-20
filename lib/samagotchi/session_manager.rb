@@ -138,7 +138,7 @@ module Samagotchi
     # @param messages [Array<Hash>] a conversation to start from (a plugin's
     #   ctx.sessions.fork); its image refs are copied from +images_from+
     # @param images_from [String, nil] the session dir the seed's images are in
-    # @param title [String, nil] what the lists show before the first turn
+    # @param preview [String, nil] what the lists show before the first turn
     #   (the prompt's preview by default, else the seed's first user message)
     # @param setup [SessionSetup] the session's own settings (chi
     #   --llm-context; a fork and a continue copy their session's; a delegate
@@ -156,7 +156,7 @@ module Samagotchi
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
+                           preview: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
                            note_source: "chi", before_spawn: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
@@ -189,7 +189,7 @@ module Samagotchi
       session.last_prompt = prompt
       # The worker takes last_prompt and clears it, and messages are saved at
       # the turn's end: until then this is the only preview a list has.
-      session.first_preview = Session.preview_of(title.to_s.strip.empty? ? prompt : title)
+      session.first_preview = Session.preview_of(preview.to_s.strip.empty? ? prompt : preview)
       session_dir = Session.session_dir(session.id, state_dir: sd)
       unless session.messages.empty?
         session.messages, dropped = ImageStore.copy_refs(session.messages, from: images_from, to: session_dir)

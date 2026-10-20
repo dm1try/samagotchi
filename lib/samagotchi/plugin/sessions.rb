@@ -53,7 +53,7 @@ module Samagotchi
 
         child = SessionManager.spawn_session(
           prompt: prompt, working_directory: @host.cwd.call || Dir.pwd, model_name: @host.model_name&.call,
-          parent_id: parent_id, messages: Array(messages).map { |message| unfrozen(message) }, title: title,
+          parent_id: parent_id, messages: Array(messages).map { |message| unfrozen(message) }, preview: title,
           images_from: Session.session_dir(parent_id, state_dir: state_dir), state_dir: state_dir,
           setup: @host.setup&.call || SessionSetup.new
         )

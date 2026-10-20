@@ -681,7 +681,7 @@ module Samagotchi
         # next; the list and the notifications name the session by it
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
-        folder[:title] = preview unless preview.empty?
+        folder[:preview] = preview unless preview.empty?
         setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, bundle_settings: bundle_settings)
         folder[:setup] = setup unless setup.empty?
         begin
@@ -725,7 +725,7 @@ module Samagotchi
 
         preview = idle ? body["preview"].to_s.strip : ""
         model = (body["model"] || body["model_name"]).to_s.strip
-        session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview,
+        session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, preview: preview.empty? ? nil : preview,
                                               model: model.empty? ? nil : model)
         return error if error
 
@@ -742,8 +742,8 @@ module Samagotchi
       # SessionManager.continue_session, its refusals as responses: [session,
       # nil] or [nil, the response]. Only its own errors: what fails after
       # the new link started is not a refusal of it.
-      def continue_from(given, prompt:, title:, model:)
-        [@manager.continue_session(given, prompt: prompt, title: title, model: model, state_dir: @state_dir), nil]
+      def continue_from(given, prompt:, preview:, model:)
+        [@manager.continue_session(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir), nil]
       rescue SessionContinue::Refused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
         [nil, json_response(409, { error: e.reason.to_s, detail: e.message, **extra })]

@@ -670,7 +670,7 @@ RSpec.describe Samagotchi::SessionManager do
       ]
 
       session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, parent_id: "p1",
-                                              messages: seed, images_from: parent_dir, title: "btw: what is it?")
+                                              messages: seed, images_from: parent_dir, preview: "btw: what is it?")
 
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)

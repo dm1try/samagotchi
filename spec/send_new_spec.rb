@@ -437,7 +437,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
     expect(run("--new", "--wait", "--image", png, "-m", "what is it?")).to eq(0), err.string
     expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-      .with(prompt: nil, title: "what is it?", working_directory: nil, model_name: nil, setup: Samagotchi::SessionSetup.new,
+      .with(prompt: nil, preview: "what is it?", working_directory: nil, model_name: nil, setup: Samagotchi::SessionSetup.new,
             state_dir: tmpdir)
     expect(delivered).to eq([[@started.id, "what is it?", ["tiny.png"]]])
     expect(out.string).to eq("a red square\n")

@@ -83,7 +83,7 @@ module Samagotchi
     # follows the chain to its new end instead.
     # @param id_or_ref [String] an id, a prefix, or last:<id> (SessionChain.resolve)
     # @param prompt [String, nil] its first message (nil: it starts idle)
-    # @param title [String, nil] what the lists show before the first turn;
+    # @param preview [String, nil] what the lists show before the first turn;
     #   by default the prompt, else the previous link's preview
     # @return [Session] the new link (#model_warning as spawn_session's,
     #   #moved_children: the delegates it took over, #opener:
@@ -92,7 +92,7 @@ module Samagotchi
     # @raise [Refused] continued already, delegates open that can't
     #   move, or its folder is gone
     # @raise [ArchiveRefused, OwnedByTUI] as archive_session
-    def self.run(id_or_ref, prompt: nil, title: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5)
+    def self.run(id_or_ref, prompt: nil, preview: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5)
       sd = state_dir || Session.default_state_dir
       TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
@@ -100,7 +100,7 @@ module Samagotchi
           follow = id_or_ref.to_s.strip.start_with?(SessionChain::LAST_PREFIX) && try < TRIES - 1
           next :moved if follow && SessionChain.next_of(id, state_dir: sd)
 
-          run_locked(id, prompt: prompt, title: title, model: model, state_dir: sd, recap_wait: recap_wait,
+          run_locked(id, prompt: prompt, preview: preview, model: model, state_dir: sd, recap_wait: recap_wait,
                          archive_wait: archive_wait)
         end
         return result unless result == :moved
@@ -116,7 +116,7 @@ module Samagotchi
       end
     end
 
-    private_class_method def self.run_locked(id, prompt:, title:, model:, state_dir:, recap_wait:, archive_wait:)
+    private_class_method def self.run_locked(id, prompt:, preview:, model:, state_dir:, recap_wait:, archive_wait:)
       previous = Session.load(id, state_dir: state_dir)
       checked = check!(previous, state_dir, model: model)
       plan = checked.plan
@@ -132,7 +132,7 @@ module Samagotchi
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive[:archived] - already
       begin
-        spawn_continuation(previous, prompt: prompt, title: title, choice: checked.choice, state_dir: state_dir,
+        spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
                                      move: plan.move)
       rescue StandardError
         # Nothing started: the delegates go back, what this archived goes
@@ -194,16 +194,16 @@ module Samagotchi
 
     # The new link, holding off any worker but its own (ChildMove.starting?)
     # while +move+ goes to it.
-    private_class_method def self.spawn_continuation(previous, prompt:, title:, choice:, state_dir:, move:)
+    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
-      title = previous.first_preview if title.to_s.strip.empty? && start.nil?
+      preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
       before_spawn = lambda do |link|
         ChildMove.mark_starting(link.id, state_dir: state_dir)
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
       end
       link = SessionManager.spawn_session(
-        prompt: start, title: title, working_directory: previous.working_directory,
+        prompt: start, preview: preview, working_directory: previous.working_directory,
         model_name: choice.model, setup: SessionSetup.of(previous),
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
