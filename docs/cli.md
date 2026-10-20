@@ -653,6 +653,14 @@ attach and `chi -p --non-interactive` are refused. `/parent-answers` alone answe
 mid-turn too; a change waits for the turn's end. No chip: its reply is where the
 web shows it. See [Guardrails](guardrails.md#answers-from-a-parent-agent).
 
+`/title` shows the session's title (`title: Coordinator`, or `title: none (shows
+the first message: …)`); `/title TEXT` names the session (whitespace collapsed,
+cut at 80 characters), `/title --clear` drops the name (anything after `--clear`
+is refused with the usage line). It is saved at once,
+mid-turn too, and the lists, cards, top bar and tab show it in place of the first
+message; a continue's next link keeps it. The web's info bar has `✎` for it. See
+[Session titles](sessions.md#session-titles).
+
 A `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`). `--yes` (or `-y`) applies it at once.

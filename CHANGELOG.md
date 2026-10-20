@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Session titles: `/title Coordinator` names a session (`/title` shows it, `/title --clear` drops it), from any UI or
+  `chi send`, mid-turn too. Every list, card, chain row, top bar, tab and notification shows it in place of the first
+  message, `chi sessions list` too (json has `title`), and a continue's next link keeps it. The web's info bar has `✎`
+  to rename the open session. See [docs/sessions.md](docs/sessions.md#session-titles).
+
 ## [0.95.0] - 2026-10-21
 
 ### Removed

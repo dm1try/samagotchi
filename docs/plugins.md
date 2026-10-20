@@ -966,7 +966,7 @@ id = ctx.sessions.fork(messages: ctx.messages + [{ role: "user", content: q }, {
                        title: "btw: #{q}")
 ctx.sessions.send(id, "go on from here")
 ctx.sessions.send(id, "then the docs", delivery: :queue)  # after its running turn
-ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}
+ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}  (title: its /title, else its preview)
 ctx.sessions.children      # => [{id:, short_id:, state:, branch:, last_reply:, reported:, ...}]
 ctx.sessions.stop(id)      # one of this session's own children
 ```
@@ -977,8 +977,9 @@ ctx.sessions.stop(id)      # one of this session's own children
   attach to it. It returns the child's id.
   - Without `prompt:` the child waits idle. With one, it runs it as its first
     turn, and counts against `session.max_children` (like `delegate`).
-  - `title:` is what the lists show until its first turn (else the prompt, or
-    the first user message).
+  - `title:` is its preview: what the lists show for it (else the prompt, or
+    the first user message). It stays after the first turn; it is not a
+    `/title` of its own (see [Session titles](sessions.md#session-titles)).
   - An image a message names is copied into the child. One whose file is
     gone is dropped, with `[image x.png was not copied]` in its message.
 - `send(id, text)` sends a user message to a session (an id or a unique
