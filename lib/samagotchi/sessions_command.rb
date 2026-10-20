@@ -365,9 +365,9 @@ module Samagotchi
         begin
           id = Samagotchi::Session.resolve_id(given)
           released = Samagotchi::SessionManager.stop_session(id, wait: 10)
-        rescue Samagotchi::SessionManager::OwnedByTUI
+        rescue Samagotchi::SessionManager::OwnedByTUI => e
           @stdout.flush
-          @stderr.puts "session #{id} is open in a chi REPL; close it there first"
+          @stderr.puts e.message
           next false
         rescue ArgumentError => e
           @stdout.flush
@@ -394,9 +394,9 @@ module Samagotchi
         begin
           id = Samagotchi::Session.resolve_id(given)
           result = Samagotchi::SessionManager.restart_session(id)
-        rescue Samagotchi::SessionManager::OwnedByTUI
+        rescue Samagotchi::SessionManager::OwnedByTUI => e
           @stdout.flush
-          @stderr.puts "session #{id} is open in a chi REPL; close it there first"
+          @stderr.puts e.message
           next false
         rescue Samagotchi::SessionManager::RestartRefused => e
           @stdout.flush

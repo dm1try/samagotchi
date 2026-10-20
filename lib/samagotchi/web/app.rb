@@ -1179,7 +1179,7 @@ module Samagotchi
       # 409 owned_by_tui in the words a refused archive, delete or continue
       # shows (stop, restart, a turn and a command show OwnedByTUI's own).
       def owned_by_repl(id)
-        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+        error_response(409, "owned_by_tui", SessionManager::OwnedByTUI.new(id).message)
       end
 
       def not_live(id)

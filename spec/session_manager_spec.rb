@@ -1048,7 +1048,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:kill)
 
       expect { described_class.resume_session(session.id, state_dir: tmpdir) }
-        .to raise_error(described_class::OwnedByTUI)
+        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is open in a chi REPL; close it there first")
       expect { described_class.stop_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::OwnedByTUI)
       expect(Process).not_to have_received(:spawn)

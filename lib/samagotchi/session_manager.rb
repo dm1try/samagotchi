@@ -80,7 +80,7 @@ module Samagotchi
 
       def initialize(session_id)
         @session_id = session_id
-        super("session #{session_id} is owned by an interactive TUI")
+        super("session #{session_id} is open in a chi REPL; close it there first")
       end
     end
 

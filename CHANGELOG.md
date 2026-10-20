@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A session open in a chi REPL is refused with one message everywhere: `session ID is open in a chi REPL; close it
+  there first` (chi web's stop, restart, turn and command, `chi sessions stop|restart`, chi send). Before, some
+  places said `owned by an interactive TUI`.
+
 ### Fixed
 
 - Guardrail rules' `command:` keeps a `cat`/`tee` heredoc body after an `exec` that sends the shell's output to a
