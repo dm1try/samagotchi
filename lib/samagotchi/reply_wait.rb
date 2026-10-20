@@ -65,6 +65,31 @@ module Samagotchi
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
                         :stopped_by, :kept_steps, :session, :turn_id, :origin, keyword_init: true)
 
+    # The session as it was before a message went in (call's baseline:,
+    # #baseline_of): its message count, the question pending then, and when
+    # its last turn ended (+last_turn+, last_turn.ended_at, maybe nil).
+    # Every turn's end records last_turn as it goes idle (Engine#end_turn),
+    # so +last_turn+ alone says whether a turn ended since: messages also
+    # grow between turns (a new worker's context note, a chi note) with no
+    # turn run. +messages+ is kept for a delegate's cursor (DelegateCursor:
+    # nil there means no baseline taken).
+    Baseline = Data.define(:messages, :question_id, :last_turn) do
+      def initialize(messages: nil, question_id: nil, last_turn: nil) = super
+
+      # Whether +session+'s last turn ended since: its last_turn moved on.
+      def turn_ended_since?(session)
+        ended = session.last_turn&.ended_at
+        !ended.nil? && ended != last_turn
+      end
+
+      # Whether +ended_at+ is the end of the turn that was last at the
+      # baseline (a turn that ended before it).
+      def ended_at?(ended_at) = ended_at == last_turn
+
+      # Whether +question_id+ was pending at the baseline (not the answer's).
+      def question?(question_id) = question_id == self.question_id
+    end
+
     module_function
 
     # @param id [String] the session's full id
@@ -73,16 +98,11 @@ module Samagotchi
     # @param timeout [Numeric, nil] seconds; nil waits with no limit
     # @param poll_interval [Float]
     # @param cancelled [#call] true stops the wait (:canceled)
-    # @param baseline [Hash, nil] {messages:, question_id:} as the session
-    #   was before the message went in. With it, a turn that grew the
-    #   messages (a failed, canceled or empty one leaves its note) and went
-    #   idle again ends the wait even if it was never seen running, and a
-    #   question already pending then is not the answer's. A nil
-    #   messages: skips the count. last_turn: (the session's
-    #   last_turn.ended_at then, maybe nil) ends the wait on any turn
-    #   that ended since, idle again, however fast it ran (a failure after
-    #   a failure replaces the note and leaves the count as it was), and
-    #   with it the count isn't used: a note between turns grows it too.
+    # @param baseline [Baseline, nil] the session as it was before the
+    #   message went in (#baseline_of). With it, any turn that ended since
+    #   (its last_turn moved on) and went idle again ends the wait, even if
+    #   it was never seen running, however fast it ran, and a question
+    #   already pending then is not the answer's.
     # @param owner_grace [Numeric, nil] seconds with no live worker before
     #   :worker_gone (one that died before its rescue leaves it running)
     # @param interject [#call, nil] called once a poll, before the sleep
@@ -189,7 +209,7 @@ module Samagotchi
         # lists' rule): one a dead worker left waits for no one, and a chi
         # REPL's is answered there.
         pending = session.pending_question
-        if pending && !(baseline && pending.id == baseline[:question_id]) &&
+        if pending && !baseline&.question?(pending.id) &&
            (turn.nil? || own_question?(session, turn, claimed)) &&
            session.waiting_question(live: SessionManager.worker_live?(id, state_dir: state_dir))
           return Result.new(status: :waiting_for_answer, question: pending, session: session)
@@ -206,8 +226,7 @@ module Samagotchi
         # end (the worker writes it after recording the ended_at), else the
         # turn left no reply and an earlier turn's file is not its.
         if ended_before && turn.nil? && session.status == Session::STATUS_IDLE &&
-           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
-           baseline && ended == baseline[:last_turn]
+           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? && baseline&.ended_at?(ended)
           file = newest_reply(id, state_dir: state_dir)
           path = File.join(reply_dir(id, state_dir: state_dir), file) if file
           if file && reply_is_turns?(path, ended)
@@ -221,8 +240,7 @@ module Samagotchi
 
         if ended_before && turn && session.last_turn&.enqueued_id == turn &&
            !(session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == turn) &&
-           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? &&
-           baseline && ended == baseline[:last_turn]
+           (ended = session.last_turn&.ended_at) && !ended.to_s.empty? && baseline&.ended_at?(ended)
           # The turn-specific reply lookup above already found its file, if
           # one exists. Without it, don't use the newest file as a fallback:
           # it could belong to another turn.
@@ -248,11 +266,11 @@ module Samagotchi
           return Result.new(status: :no_reply, session: session) if seen_own && past_own?(session, turn, own_base)
         elsif session.status == Session::STATUS_RUNNING
           seen_running = true
-        elsif (seen_running && !baseline&.key?(:last_turn)) || turn_ended_since?(session, baseline)
+        elsif (seen_running && baseline.nil?) || turn_ended_since?(session, baseline)
           # It ran and is idle again with no new reply: canceled, failed or
           # empty. Before it was ever seen running, idle means a
           # file-delivered message its worker has not picked up yet. With
-          # the baseline's last_turn only a turn that ended since counts:
+          # a baseline only a turn that ended since counts:
           # a session left running by a worker that died goes idle when the
           # next worker settles that turn (TurnCheckpoint.settle), before
           # the sent message's turn runs.
@@ -285,26 +303,14 @@ module Samagotchi
     # The session as it was before a message went in (call's baseline:):
     # its messages, the question pending then, and when its last turn
     # ended, so a turn that ends before the first look still ends the wait.
-    # @return [Hash]
+    # @return [Baseline]
     def baseline_of(session, question_id: session.pending_question&.id)
-      { messages: session.messages.size, question_id: question_id, last_turn: session.last_turn&.ended_at }
+      Baseline.new(messages: session.messages.size, question_id: question_id, last_turn: session.last_turn&.ended_at)
     end
 
-    # An idle session whose turn ended after the baseline was taken: its
-    # last_turn moved on. Every turn's end records last_turn as it goes
-    # idle (Engine#end_turn), so with one in the baseline that alone
-    # decides: messages also grow between turns (a new worker's context
-    # note, a chi note) with no turn run. A baseline without it falls back
-    # to the count (a turn's note).
-    def turn_ended_since?(session, baseline)
-      return false unless baseline
-
-      if baseline.key?(:last_turn)
-        ended = session.last_turn&.ended_at
-        return !ended.nil? && ended != baseline[:last_turn]
-      end
-      !!(baseline[:messages] && session.messages.size > baseline[:messages])
-    end
+    # A session whose turn ended after the baseline was taken (Baseline#
+    # turn_ended_since?); false with no baseline.
+    def turn_ended_since?(session, baseline) = baseline ? baseline.turn_ended_since?(session) : false
 
     # The turn a caller that sent nothing means (chi answer, chi send --wait
     # with no message): the one running now (its checkpoint mark's
@@ -362,12 +368,11 @@ module Samagotchi
       !ended && claimed
     end
 
-    # The turn's end, after the baseline was taken (with no baseline, or
-    # one without last_turn, any).
+    # The turn's end, after the baseline was taken (with no baseline, any).
     def ended_since_baseline?(session, baseline)
-      return true unless baseline&.key?(:last_turn)
+      return true unless baseline
 
-      session.last_turn&.ended_at != baseline[:last_turn]
+      !baseline.ended_at?(session.last_turn&.ended_at)
     end
 
     # A turn: wait's taken input ran in another turn (a steer its drain
@@ -385,7 +390,7 @@ module Samagotchi
 
         return turn_ids?(session_dir)
       end
-      baseline&.key?(:last_turn) ? turn_ended_since?(session, baseline) : false
+      turn_ended_since?(session, baseline)
     end
 
     # A turn seen running (+own_base+: last_turn's ended_at then) is past:
@@ -416,7 +421,7 @@ module Samagotchi
     #   records, when it is the turn waited for
     def no_reply(session, baseline, fresh: nil)
       last = session.last_turn || LastTurn.new
-      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last.ended_at && last.ended_at != baseline[:last_turn]) if fresh.nil?
+      fresh = baseline.nil? || (last.ended_at && !baseline.ended_at?(last.ended_at)) if fresh.nil?
       outcome = fresh ? last.outcome : nil
       return Result.new(status: :no_reply, outcome: "exhausted", limit: last.limit, session: session) if fresh && last.exhausted
 

@@ -196,12 +196,14 @@ RSpec.describe Samagotchi::ReplyWait do
   describe "with a baseline" do
     let(:session) { make(status: "idle") }
 
-    it "ends when the messages grew and it is idle, though never seen running (a turn that failed within one poll)" do
+    it "ends when a turn ended since and it is idle, though never seen running (a turn that failed within one poll)" do
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       s.messages << { role: "user", content: "[turn failed]" }
+      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00" }
       s.save(state_dir: tmpdir)
 
-      expect(wait(baseline: { messages: 0, question_id: nil }).status).to eq(:no_reply)
+      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: "failed")
     end
 
     it "waits on past a note that joined between turns (a new worker's context note before the message's turn)" do
@@ -280,7 +282,7 @@ RSpec.describe Samagotchi::ReplyWait do
       set(pending_question: { id: "old", question: "Old?" })
       later { set(pending_question: { id: "new", question: "New?" }) }
 
-      expect(wait(baseline: { messages: 0, question_id: "old" }).question).to have_attributes(id: "new")
+      expect(wait(baseline: described_class::Baseline.new(messages: 0, question_id: "old")).question).to have_attributes(id: "new")
     end
   end
 

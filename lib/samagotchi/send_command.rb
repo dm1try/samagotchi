@@ -548,8 +548,7 @@ module Samagotchi
     # --wait with no message: the session's next reply, sending nothing,
     # so an agent can go back to waiting after exit 3 or 130. A running
     # turn is fine here (nothing joins its queue); a question pending now
-    # was already reported. No message count: a note landing between turns
-    # grows the messages without a turn. An idle session with no worker
+    # was already reported. An idle session with no worker
     # waits for whatever wakes one (the web, chi send) rather than calling
     # it gone. The turn running now, or the one whose continue offer
     # stands, is the one waited for (ReplyWait.own_turn): its reply, not a
@@ -577,7 +576,7 @@ module Samagotchi
       report_turn_id = turn
       report_turn_id ||= session.last_turn&.enqueued_id if settled
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
-                         baseline: baseline_of(session).merge(messages: nil),
+                         baseline: baseline_of(session),
                          timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil,
                          turn: turn, ended_before: ended_before, report_turn_id: report_turn_id)
     end

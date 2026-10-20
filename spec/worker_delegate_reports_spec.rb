@@ -804,7 +804,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(turns).to be_empty
         expect(rings.size).to eq(1)
         expect(cursor.report_claim).to be_nil
-        expect(cursor.baseline&.dig(:question_id) || cursor.baseline&.dig("question_id")).not_to eq("h1")
+        expect(cursor.baseline&.question_id).not_to eq("h1")
 
         relay_outcome
         send_turn(parent, "again", "web:tab1")

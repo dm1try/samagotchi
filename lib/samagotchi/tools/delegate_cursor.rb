@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require_relative "../atomic_file"
 require_relative "../session"
+require_relative "../reply_wait"
 
 module Samagotchi
   module Tools
@@ -25,17 +26,17 @@ module Samagotchi
       # turn is settled, and how two cursors compare apart from a claim.
       def without_claim = with(report_claim: nil)
 
-      # @param baseline [Hash, nil] ReplyWait.baseline_of's
+      # @param baseline [ReplyWait::Baseline, nil] ReplyWait.baseline_of's
       def with_baseline(baseline)
-        b = baseline || {}
-        with(messages: b[:messages], question_id: b[:question_id], last_turn: b[:last_turn])
+        with(messages: baseline&.messages, question_id: baseline&.question_id, last_turn: baseline&.last_turn)
       end
 
-      # @return [Hash, nil] ReplyWait's baseline:, nil when none was taken
+      # @return [ReplyWait::Baseline, nil] ReplyWait's baseline:, nil when
+      #   none was taken
       def baseline
         return nil if messages.nil?
 
-        { messages: messages, question_id: question_id, last_turn: last_turn }
+        ReplyWait::Baseline.new(messages: messages, question_id: question_id, last_turn: last_turn)
       end
 
       def to_json_hash = to_h.merge(report_claim: report_claim&.to_json_hash).transform_keys(&:to_s).compact
