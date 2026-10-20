@@ -850,6 +850,17 @@ RSpec.describe "delegate tools" do
         expect(Samagotchi::Tools::DelegateCursor.empty.to_json_hash).not_to have_key("turn")
       end
 
+      it "reads a reserved report (report_claim) as a ReportClaim and writes it back byte for byte" do
+        stored = { "reply_file" => "a.txt", "messages" => 1,
+                   "report_claim" => { "id" => "c1", "file" => nil,
+                                       "cursor" => { "reply_file" => "b.txt", "last_turn" => "t2", "messages" => 3 } } }
+        cursor = Samagotchi::Tools::DelegateCursor.from_json_hash(JSON.parse(JSON.generate(stored)))
+        expect(cursor.report_claim).to have_attributes(id: "c1", file: nil)
+        expect(cursor.report_claim.cursor).to have_attributes(reply_file: "b.txt", last_turn: "t2", messages: 3)
+        expect(cursor.without_claim).to eq(Samagotchi::Tools::DelegateCursor.new(reply_file: "a.txt", messages: 1))
+        expect(JSON.generate(cursor.to_json_hash)).to eq(JSON.generate(stored))
+      end
+
       it "moves nothing on a timeout" do
         idle
         expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("no reply yet")

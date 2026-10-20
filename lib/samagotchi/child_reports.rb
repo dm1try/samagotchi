@@ -194,12 +194,10 @@ module Samagotchi
     def commit
       @taken.each_value do |report|
         Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
-          next cursor unless cursor.report_claim&.fetch("id", nil) == report.claim_id
+          next cursor unless cursor.report_claim&.id == report.claim_id
 
-          before = report.before.with(report_claim: nil)
-          after = report.after.with(report_claim: nil)
-          current = cursor.with(report_claim: nil)
-          current == before ? after : current
+          current = cursor.without_claim
+          current == report.before.without_claim ? report.after.without_claim : current
         end
         delete_rings(report.rings)
       rescue StandardError => e
@@ -212,7 +210,7 @@ module Samagotchi
     def release
       @taken.each_value do |report|
         Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
-          cursor.report_claim&.fetch("id", nil) == report.claim_id ? cursor.with(report_claim: nil) : cursor
+          cursor.report_claim&.id == report.claim_id ? cursor.without_claim : cursor
         end
       end
       @taken = {}
@@ -286,7 +284,7 @@ module Samagotchi
     def release_report(report)
       @taken.delete(report.child_id)
       Tools::DelegateCursors.update(@session_id, report.child_id, state_dir: @state_dir) do |cursor|
-        cursor.report_claim&.fetch("id", nil) == report.claim_id ? cursor.with(report_claim: nil) : cursor
+        cursor.report_claim&.id == report.claim_id ? cursor.without_claim : cursor
       end
       nil
     end
@@ -330,11 +328,11 @@ module Samagotchi
                                       timeout: 0, turn: before.turn)
       return nil unless reportable?(wait)
 
-      claim_id = before.report_claim&.fetch("id", nil) || SecureRandom.hex(16)
-      after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
-                          turn: wait.status == :waiting_for_answer ? before.turn : nil, report_claim: nil)
+      claim_id = before.report_claim&.id || SecureRandom.hex(16)
+      after = before.without_claim.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
+                                        turn: wait.status == :waiting_for_answer ? before.turn : nil)
                     .with_baseline(ReplyWait.baseline_of(wait.session))
-      claim = { "id" => claim_id, "file" => wait.file, "cursor" => after.to_json_hash }
+      claim = Tools::ReportClaim.new(id: claim_id, file: wait.file, cursor: after)
       return nil unless Tools::DelegateCursors.claim_report(@session_id, child_id, expected: before, claim: claim,
                                                             state_dir: @state_dir)
 

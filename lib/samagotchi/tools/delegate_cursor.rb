@@ -14,11 +14,16 @@ module Samagotchi
     # of the child's turn the last follow-up went to (Delegate.follow_up),
     # whose own reply a wait takes (ReplyWait's turn:); nil once that turn
     # was reported, or when unknown (a new child, an older worker).
-    #   +report_claim+: a report reserved until the parent's turn is settled.
+    #   +report_claim+: a report reserved until the parent's turn is settled
+    # (ReportClaim).
     DelegateCursor = Data.define(:reply_file, :last_turn, :question_id, :messages, :turn, :report_claim) do
       def initialize(reply_file: nil, last_turn: nil, question_id: nil, messages: nil, turn: nil, report_claim: nil) = super
 
       def self.empty = new
+
+      # The cursor with no report reserved: what it is once the reserving
+      # turn is settled, and how two cursors compare apart from a claim.
+      def without_claim = with(report_claim: nil)
 
       # @param baseline [Hash, nil] ReplyWait.baseline_of's
       def with_baseline(baseline)
@@ -33,13 +38,30 @@ module Samagotchi
         { messages: messages, question_id: question_id, last_turn: last_turn }
       end
 
-      def to_json_hash = to_h.transform_keys(&:to_s).compact
+      def to_json_hash = to_h.merge(report_claim: report_claim&.to_json_hash).transform_keys(&:to_s).compact
 
       def self.from_json_hash(data)
         return empty unless data.is_a?(Hash)
 
         new(reply_file: data["reply_file"], last_turn: data["last_turn"], question_id: data["question_id"],
-            messages: data["messages"], turn: data["turn"], report_claim: data["report_claim"])
+            messages: data["messages"], turn: data["turn"], report_claim: ReportClaim.from_json_hash(data["report_claim"]))
+      end
+    end
+
+    # A delegate report reserved in the parent's cursor (ChildReports) until
+    # the parent's turn that took it is kept or rolled back: +id+ the
+    # claim's id (the taking turn's Report#claim_id), +file+ the reply file
+    # reported (nil for a question), +cursor+ the DelegateCursor the report
+    # moves the parent to once kept (its own claim empty). In delegates.json
+    # it is {"id", "file", "cursor"}, the file's key kept even when nil.
+    ReportClaim = Data.define(:id, :file, :cursor) do
+      def to_json_hash = { "id" => id, "file" => file, "cursor" => cursor.to_json_hash }
+
+      # @return [ReportClaim, nil] nil for no claim (or not a Hash)
+      def self.from_json_hash(data)
+        return nil unless data.is_a?(Hash)
+
+        new(id: data["id"], file: data["file"], cursor: DelegateCursor.from_json_hash(data["cursor"]))
       end
     end
 
@@ -77,6 +99,7 @@ module Samagotchi
       end
 
       # Reserve a report only if the cursor read to build it is still current.
+      # @param claim [ReportClaim]
       # @return [DelegateCursor, nil] the reserved cursor, or nil if another path moved it
       def claim_report(parent_id, child_id, expected:, claim:, state_dir:)
         locked(parent_id, state_dir: state_dir) do

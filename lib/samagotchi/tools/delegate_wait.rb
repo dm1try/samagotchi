@@ -69,7 +69,7 @@ module Samagotchi
         cursor = DelegateCursors.get(peers.session_id, child_id, state_dir: sd)
         report_claim = cursor.report_claim
         if report_claim
-          cursor = DelegateCursor.from_json_hash(report_claim["cursor"]).with(report_claim: report_claim)
+          cursor = report_claim.cursor.with(report_claim: report_claim)
         end
 
         baseline = cursor.baseline
@@ -88,10 +88,10 @@ module Samagotchi
             outcomes.concat(relayed_outcomes.delete(key) || [])
             movement = advance(peers.session_id, child_id, wait, state_dir: sd)
             if movement&.already_reported
-              file = movement.cursor.report_claim&.fetch("file", nil) || wait.file
+              file = movement.cursor.report_claim&.file || wait.file
               return already_reported_result(child_id, file, state_dir: sd)
             end
-            return already_reported_result(child_id, report_claim["file"], state_dir: sd) if report_claim && wait.status == :timeout
+            return already_reported_result(child_id, report_claim.file, state_dir: sd) if report_claim && wait.status == :timeout
 
             text = with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
             return RefText.wrap(text, reply_path(child_id, wait, state_dir: sd))
@@ -179,7 +179,7 @@ module Samagotchi
 
         already_reported = false
         cursor = DelegateCursors.update(parent_id, child_id, state_dir: state_dir) do |current|
-          if (current.report_claim && current.report_claim["file"] == wait.file) ||
+          if (current.report_claim && current.report_claim.file == wait.file) ||
              (wait.status == :done && current.reply_file == wait.file)
             already_reported = true
             next current

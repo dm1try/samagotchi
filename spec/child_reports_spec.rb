@@ -314,7 +314,7 @@ RSpec.describe "delegate reports" do
       end_turn(child)
       ring
       reports.take
-      expect(cursor.report_claim).to include("file" => end_with(".txt"))
+      expect(cursor.report_claim.file).to end_with(".txt")
 
       restarted = reports
       expect(restarted.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
@@ -440,7 +440,7 @@ RSpec.describe "delegate reports" do
       expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to end_with("second")
       moved = cursor
       box.commit
-      expect(cursor.with(report_claim: nil)).to eq(moved.with(report_claim: nil))
+      expect(cursor.without_claim).to eq(moved.without_claim)
     end
 
     describe "a ring left in the predecessor (a continue moved the child as it rang)" do
