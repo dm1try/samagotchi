@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-10-20
+
 ### Added
 
 - Bundle test kit: `sandbox.model_notes_for(model_id, small:)` lists the model notes chi would load for a model id
@@ -24,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   of a member it installs that you already had, which it leaves as yours: `model-notes: kept your own
   model_notes_deepseek.md (not the bundle's; to take the bundle's, remove yours with memory_write remove: true, then
   chi bundle install model-notes)`. Before, only `chi bundle install <member>` said so.
+
+Update with `chi update` (the system bundle 0.94.0, dev 0.7.0 with the new model-notes 0.1.0), then restart `chi web`.
 
 ## [0.93.0] - 2026-10-20
 
@@ -3651,7 +3655,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.93.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.94.0...HEAD
+[0.94.0]: https://github.com/dm1try/samagotchi/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/dm1try/samagotchi/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/dm1try/samagotchi/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/dm1try/samagotchi/compare/v0.90.0...v0.91.0
