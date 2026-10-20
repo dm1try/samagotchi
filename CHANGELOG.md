@@ -23,6 +23,16 @@ and commands may change between minor versions. How releases are made:
   `SAMAGOTCHI_THINKING_TURN_PREAMBLE`). A config.yml that still sets it gets `Warning: config: unknown key
   'thinking.turn_preamble'` at start and runs on; the flag is an invalid option.
 
+### Fixed
+
+- Native Qwen3.6 on llama.cpp (`api: llama_cpp`, profile `qwen36`) thinks again: where the server's chat template
+  opens a thought after the assistant cue (Qwen3.5 and later, read from the model's `/props`), chi's prompt ends with
+  `<think>` and a newline as the template's does, at every level but `off`; before, the model wrote an empty thought
+  and answered at once. Its reasoning streams as thinking and stays out of the answer. Turns take longer; `thinking:
+  off` answers at once as before. An older Qwen3 or other template, or no template in `/props`, keeps the old prompt.
+  `low`, `medium` and `high` think the same there, which the notice now says. See
+  [docs/configuration.md](docs/configuration.md#thinking).
+
 ## [0.94.0] - 2026-10-20
 
 ### Added

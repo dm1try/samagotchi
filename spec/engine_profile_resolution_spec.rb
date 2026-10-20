@@ -14,6 +14,9 @@ RSpec.describe "Engine prompt profile resolution" do
   let(:ornith_props) { JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/props_ornith.json", __dir__))) }
 
   # A llama.cpp client whose /props answers are queued (the last one repeats).
+  # An answer is kept per model, as Client#server_props keeps it (the
+  # kernel reads it again each turn: Thinking.opens_thought?); a failed
+  # probe is asked again.
   class FakeResolvingClient
     attr_reader :asked, :transport, :prompts
 
@@ -25,8 +28,12 @@ RSpec.describe "Engine prompt profile resolution" do
     end
 
     def server_props(model: nil)
+      return @kept[model] if (@kept ||= {}).key?(model)
+
       @asked << model
-      @answers.size > 1 ? @answers.shift : @answers.first
+      answer = @answers.size > 1 ? @answers.shift : @answers.first
+      @kept[model] = answer if answer&.answered?
+      answer
     end
 
     def invalidate_context_window! = nil

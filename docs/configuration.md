@@ -626,7 +626,7 @@ models:
 
   | Backend | A level change | Asks |
   |---|---|---|
-  | native Qwen (`qwen36`) | only the prompt's tail (the empty thought after the cue) | no |
+  | native Qwen (`qwen36`) | only the prompt's tail (the thought after the cue) | no |
   | native Gemma 4 (`gemma4`) | the whole prompt is read again: `<\|think\|>` starts the system prompt | yes |
   | chat host, local (llama.cpp, Splash), a model name with `gemma` | the whole prompt: the template writes the same token | yes |
   | chat host, local, any other model | other request fields; the server keeps its cache, only the tail changes | no |
@@ -649,11 +649,23 @@ What each backend gets:
 
 | Backend | `off` | `low` / `medium` / `high` |
 |---|---|---|
-| native (`/completion`), `qwen36` | an empty thought after the assistant cue | no knob: thinking stays as the model has it, one notice |
+| native (`/completion`), `qwen36` | an empty thought after the assistant cue | no knob: an open thought after the cue where the template has one (below), the same at each effort, one notice |
 | native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
 | chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
 | Messages host (`api: anthropic`) | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive", display: "summarized"}` and `output_config: {effort: <level>}` |
 | Messages host, `dialect: fireworks` | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive"}` and `output_config: {effort: <level>}` (no `display`) |
+
+Native `qwen36` at `default`, `low`, `medium` or `high` gets an open thought, `<think>` and a newline, after the
+assistant cue when the llama.cpp server's chat template writes one there (Qwen3.5 and later: its generation prompt
+ends `'<think>\n'` unless `enable_thinking` is false), read from the model's `/props` (`?model=`, which a llama.cpp
+router answers from the model's own server): the model thinks, as the template would have it, and its reasoning shows
+as thinking, not in the answer. Without it Qwen3.6 writes an empty thought at once and never thinks. A template whose
+own default is no thinking (Qwen3.5's small models think only with `enable_thinking` true) gets the open thought
+too: set `thinking: off` for such a model (`models:` or `hosts:`) to keep its answers immediate. A tool call written
+inside a closed thought is not run. With no template
+in `/props` (an older Qwen3 or other ChatML template, a router that can't load the model, a failed probe) the prompt
+ends at the cue as before. `low`, `medium` and `high` think the same: native Qwen has no effort knob, and chi says
+so once (`low isn't supported by native qwen36 on HOST; it thinks, with no effort control`).
 
 On a Messages host `default` sends nothing: the provider's own default, which differs by model (some Claude models
 think adaptively but show no thinking text, their blocks still going back; others, and Splash, don't think at all). A model that refuses `disabled` and names `between_tools` in the 400 (Claude 5.x) gets `thinking: {type:

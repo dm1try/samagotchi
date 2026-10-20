@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
 require "tmpdir"
+require "samagotchi/client"
 require "samagotchi/config"
 require "samagotchi/host_registry"
 require "samagotchi/model_profile"
@@ -224,12 +226,49 @@ RSpec.describe Samagotchi::Thinking do
       expect(described_class.native(:off, qwen).system_token).to eq("")
     end
 
+    it "opens a thought after the Qwen cue at every level but off when the template does" do
+      expect(%i[default low medium high].map { |l| described_class.native(l, qwen, opens_thought: true).prefill }).to all(eq("<think>\n"))
+      expect(described_class.native(:off, qwen, opens_thought: true).prefill).to eq("<think>\n\n</think>\n\n")
+      expect(described_class.native(:default, gemma, opens_thought: true).prefill).to eq("")
+      expect(described_class.native(:low, qwen, opens_thought: true).honoured).to be(false)
+    end
+
     it "honours off and default, not an effort" do
       expect(described_class.native(:off, qwen).honoured).to be(true)
       expect(described_class.native(:default, gemma).honoured).to be(true)
       expect(described_class.native(:low, qwen).honoured).to be(false)
       expect(described_class.native(:high, gemma).honoured).to be(false)
       expect(described_class.native(:high, gemma).system_token).to eq("<|think|>\n")
+    end
+  end
+
+  describe ".opens_thought?" do
+    def props(body, status: :ok) = Samagotchi::Client::ServerProps.new(body: body, status: status)
+    def fixture(name) = JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/#{name}", __dir__)))
+
+    # Qwen3's: the empty thought with thinking off only; the message loop
+    # before it writes a kept thought ('\n<think>\n').
+    let(:qwen3_template) do
+      "{%- for message in messages %}{{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content }}{%- endfor %}\n" \
+        "{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n    " \
+        "{%- if enable_thinking is defined and enable_thinking is false %}\n        {{- '<think>\\n\\n</think>\\n\\n' }}\n    " \
+        "{%- endif %}\n{%- endif %}"
+    end
+
+    it "is true for a Qwen3.5+ template (Unsloth's Qwen3.6, as llama.cpp's /props has it)" do
+      expect(described_class.opens_thought?(props(fixture("props_qwen36_unsloth.json")))).to be(true)
+      expect(described_class.opens_thought?(props(fixture("props_ornith.json")))).to be(true)
+    end
+
+    it "is false for Qwen3's template, which opens no thought after the cue" do
+      expect(described_class.opens_thought?(props({ "chat_template" => qwen3_template }))).to be(false)
+    end
+
+    it "is false with no template: a router's own /props, a failed or missing probe" do
+      expect(described_class.opens_thought?(props({ "role" => "router", "max_instances" => 4 }))).to be(false)
+      expect(described_class.opens_thought?(props(nil, status: :http_error))).to be(false)
+      expect(described_class.opens_thought?(nil)).to be(false)
+      expect(described_class.opens_thought?(props(fixture("props.json")))).to be(false)
     end
   end
 end

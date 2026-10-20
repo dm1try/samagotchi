@@ -503,7 +503,7 @@ hooks and tools whichever model made it. Both loops' `generation_chunk` carries
 clients: `text`, `thinking`, `tool_call` and chi's `counts`, no `payload` or `content`; see the
 Bridge's stream above): the chat loop's thinking is the
 server's `reasoning_content`; the raw-prompt loop splits each generation's
-stream with a fresh `ThoughtStreamSplitter` (Qwen's `<think>` and Gemma's
+stream with a fresh `ThoughtStreamSplitter`, seeded with the prompt's prefill (Qwen's `<think>` and Gemma's
 `<|channel>thought … <channel|>` are thinking, tool-call bodies are dropped
 from `text:`). The chat loop's model turns keep their `tool_calls` and tool results their `tool_call_id`,
 so later requests and resumed sessions pair them, and their reasoning (`thinking:`), which goes back as

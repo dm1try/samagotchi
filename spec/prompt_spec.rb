@@ -190,6 +190,12 @@ RSpec.describe Samagotchi::Prompt do
       expect(text).to end_with("<|im_start|>assistant\n<think>\n\n</think>\n\n")
     end
 
+    it "opens a thought after the Qwen cue, as a Qwen3.5+ template's generation prompt does" do
+      text, = described_class.format_with_images(messages, profile: Samagotchi::ModelProfile.qwen36, prefill: "<think>\n")
+
+      expect(text).to end_with("<|im_end|>\n<|im_start|>assistant\n<think>\n")
+    end
+
     it "leaves the prompt as it was without one" do
       text, = described_class.format_with_images(messages, profile: Samagotchi::ModelProfile.qwen36)
 

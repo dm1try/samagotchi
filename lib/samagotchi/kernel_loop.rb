@@ -312,13 +312,30 @@ module Samagotchi
         empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", streamed_thinking: +"",
         qwen_attempts: 0, qwen_partial: nil,
         # Qwen with thinking off: an empty thought after the cue, so the model
-        # answers at once. Kept in the turn's model messages, so each tool-loop
-        # prompt starts with what the server already has cached.
-        prefill: Thinking.native(@turn_settings.thinking || Thinking::DEFAULT, @profile).prefill,
+        # answers at once; on, an open one where the server's template has
+        # it. Kept in the turn's model messages, so each tool-loop prompt
+        # starts with what the server already has cached.
+        prefill: native_prefill(@turn_settings.thinking || Thinking::DEFAULT),
         pending_tool_calls: false, model_name: @turn_settings.model_name, pending_input: pending_input,
         on_stream_event: on_stream_event, cancel_controller: cancel_controller, cap: cap,
         emit: emit
       )
+    end
+
+    # The text after the cue for +level+ (Thinking.native), set once per
+    # turn. Only qwen36 with thinking on asks the server's template whether
+    # it opens a thought: the /props answer the profile and the window
+    # probes cached (no template, as a router's own /props or a failed
+    # probe: no open thought, the prompt as before).
+    def native_prefill(level)
+      opens = @profile&.name == "qwen36" && level != :off && Thinking.opens_thought?(model_props)
+      Thinking.native(level, @profile, opens_thought: opens).prefill
+    end
+
+    def model_props
+      @client.respond_to?(:server_props) ? @client.server_props(model: @turn_settings.model_name) : nil
+    rescue StandardError
+      nil
     end
 
     # One iteration. Returns :next, :answer (the turn ends), or the turn's
@@ -336,11 +353,26 @@ module Samagotchi
       # Profile-specific parse (incl. Qwen unterminated-block recovery); the
       # returned fragment (non-nil only for Qwen) is fed back on the next
       # iteration if the model opened a tool-call block it did not close.
-      calls, turn.qwen_partial = parser.parse_with_recovery(generation.response, turn.qwen_partial)
+      calls, turn.qwen_partial = parser.parse_with_recovery(callable_text(request, generation), turn.qwen_partial)
       calls = calls.map { |call| PromptLiteralGuard.restore_call(call, profile: @profile) }
       return after_text(turn, request, generation) if calls.empty?
 
       dispatch_calls(turn, calls)
+    end
+
+    # The reply's text the tool-call parse reads: with a closed thought
+    # (Qwen's </think>, the prefill's open thought included), what is left
+    # without its thought blocks, so a call the model only thought about
+    # neither runs nor asks for a recovery (the UIs show it as thinking).
+    # A thought never closed stays: a model that writes its call there
+    # still has it run. The model message keeps the whole reply.
+    def callable_text(request, generation)
+      response = generation.response.to_s
+      close = @profile.thought_close
+      full = request.prefill + response
+      return response unless close && full.include?(close)
+
+      strip_thought_blocks(full)
     end
 
     # The prompt for this iteration, after the context check: a rise into a
@@ -427,6 +459,10 @@ module Samagotchi
         # thinking) leaves the splitter inside that block, so rebuilding it
         # keeps the restarted stream's prose in the right lane.
         stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+        # The prompt's prefill is the reply's start: an open thought there
+        # streams as thinking. What the seed itself splits into is the
+        # prompt's, not shown.
+        stream_splitter.feed(request.prefill) unless request.prefill.empty?
         # Each ask starts with streamed_any = false, but once any chunk of
         # this ask is shown it stays shown: a held-back partial marker after
         # real text must not clear it, or the drop below won't ask again.
@@ -635,7 +671,9 @@ module Samagotchi
         return :next
       end
 
-      response = generation.response
+      # The prefill is the reply's start: an open thought it began closes in
+      # the response, and the whole block goes from the answer.
+      response = request.prefill + generation.response.to_s
       answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
       empty = strip_thought_blocks(response.to_s).strip.empty?
       retry_empty = empty && turn.empty_retry.retry_empty?(iteration: turn.iteration,

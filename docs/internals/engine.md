@@ -683,8 +683,12 @@ Both loops:
 
 Native loop only: the Qwen open-block recovery, and the thinking prefill (`Thinking.native`: with thinking off, Qwen
 gets an empty thought after the cue, `QWEN_EMPTY_THOUGHT`, and Gemma 4 its empty thought channel,
-`GEMMA_EMPTY_THOUGHT`, with no `<|think|>` token before the system prompt; kept in the model message so the next
-prompt starts with what the server has cached).
+`GEMMA_EMPTY_THOUGHT`, with no `<|think|>` token before the system prompt; at any other level Qwen gets an open
+thought, `QWEN_OPEN_THOUGHT` (`<think>\n`), when the server's chat template writes one after its cue
+(`Thinking.opens_thought?` on the model's `/props`, a Qwen3.5+ template; `KernelLoop#native_prefill`, once per turn).
+The prefill is kept in the model message so the next prompt starts with what the server has cached; each
+generation's `ThoughtStreamSplitter` is seeded with it (an open thought's reasoning streams as `thinking:`), and the
+answer is stripped from prefill + response, so the reasoning never lands in it).
 
 ## Key design principles
 

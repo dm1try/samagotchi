@@ -102,16 +102,23 @@ module Samagotchi
     private
 
     # An effort on a native host, which has no knob for it: said once per
-    # session and host.
+    # session and host. A qwen36 whose server template opens a thought
+    # (Thinking.opens_thought?, from the /props answer the profile probe
+    # cached) thinks at every effort, the same.
     def announce_level(level, target)
       return if target.entry.chat?
 
       profile = @profile.call
       return if Thinking.native(level, profile).honoured
 
-      notice_once(:unsupported, target, :info,
-                  "#{level} isn't supported by native #{profile.name} on #{target.entry.name}; " \
-                  "thinking stays as the model has it")
+      text = if profile&.name == "qwen36" && Thinking.opens_thought?(target.client&.cached_server_props(model: target.bare_model))
+               "#{level} isn't supported by native #{profile.name} on #{target.entry.name}; " \
+                 "it thinks, with no effort control (low, medium and high think the same)"
+             else
+               "#{level} isn't supported by native #{profile.name} on #{target.entry.name}; " \
+                 "thinking stays as the model has it"
+             end
+      notice_once(:unsupported, target, :info, text)
     rescue StandardError => e
       failed(:announce_level, e)
     end

@@ -212,4 +212,27 @@ RSpec.describe Samagotchi::ThoughtStreamSplitter do
       expect(splitter.feed(TC_OPEN[half..])[:tool]).to be(true)
     end
   end
+
+  # The kernel seeds each generation's splitter with the prompt's prefill:
+  # an open thought there (Thinking::QWEN_OPEN_THOUGHT) is the reply's start,
+  # so the reply's reasoning is thinking until its orphan close.
+  describe "seeded with a prefill that opens a thought" do
+    it "routes the reply's reasoning to thinking and what follows the close to text" do
+      splitter = described_class.for_profile(QWEN)
+      splitter.feed("<think>\n")
+
+      parts = ["the sum is an Integer", " so divide as floats\n</thi", "nk>\n\nFixed."].map { |c| splitter.feed(c) }
+      rest = splitter.finalize
+
+      expect(parts.sum("") { |p| p[:thinking] } + rest[:thinking]).to eq("the sum is an Integer so divide as floats\n")
+      expect(parts.sum("") { |p| p[:text] } + rest[:text]).to eq("\n\nFixed.")
+    end
+
+    it "leaves a seed of a closed thought (off's empty one) in normal state" do
+      splitter = described_class.for_profile(QWEN)
+      splitter.feed("<think>\n\n</think>\n\n")
+
+      expect(splitter.feed("Hello")).to include(text: "Hello", thinking: "")
+    end
+  end
 end

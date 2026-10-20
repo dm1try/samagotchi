@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/thinking_notices"
 require "samagotchi/host_registry"
 
@@ -30,6 +31,16 @@ RSpec.describe Samagotchi::ThinkingNotices do
 
     expect(subject.turn).to eq([:low, target])
     expect(said).to eq([["low isn't supported by native qwen36 on box; thinking stays as the model has it", :info, "thinking"]])
+  end
+
+  it "says a Qwen whose template opens a thought thinks, with no effort control" do
+    template = File.read(File.expand_path("fixtures/llama_cpp/props_qwen36_unsloth.json", __dir__))
+    allow(target.client).to receive(:cached_server_props).with(model: "qwen-small")
+                                                         .and_return(Samagotchi::Client::ServerProps.new(body: JSON.parse(template), status: :ok))
+    notices(->(text, level, source) { said << [text, level, source] }).turn_started(:medium, target)
+
+    expect(said).to eq([["medium isn't supported by native qwen36 on box; it thinks, with no effort control " \
+                         "(low, medium and high think the same)", :info, "thinking"]])
   end
 
   it "logs a notice that fails, warning once, and raises nothing" do

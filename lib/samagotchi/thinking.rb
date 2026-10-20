@@ -27,6 +27,14 @@ module Samagotchi
     # An empty thought after the Qwen assistant cue: the model answers at once
     # (what the server's own template does with enable_thinking false).
     QWEN_EMPTY_THOUGHT = "<think>\n\n</think>\n\n"
+    # An open thought after the Qwen assistant cue, as a Qwen3.5+ template
+    # writes it with thinking on: without it Qwen3.6 writes an empty thought
+    # at once and never thinks (#opens_thought?).
+    QWEN_OPEN_THOUGHT = "<think>\n"
+    # A Jinja string literal that ends with the open thought: '<think>\n'
+    # (a Qwen3.5+ generation prompt). Qwen3's writes only the empty one,
+    # '<think>\n\n</think>\n\n', with thinking off.
+    OPEN_THOUGHT_LITERAL = /<think>(?:\\n|\n)['"]/
     # Gemma 4's empty thought channel after the model cue, as its chat
     # template writes it with enable_thinking false (only where a model turn
     # starts: Prompt.prefill_for).
@@ -168,15 +176,40 @@ module Samagotchi
       caps.is_a?(Hash) && caps["supports_reasoning_effort"] == false
     end
 
+    # Whether a llama.cpp /props answer (+props+, Client::ServerProps)
+    # carries a chat template whose generation prompt opens a thought
+    # (Qwen3.5 and later: `assistant\n` then '<think>\n' unless
+    # enable_thinking is false). Read from the template's last
+    # add_generation_prompt branch on: the message loop before it writes
+    # earlier turns' thoughts. false when there is no template (a router's
+    # own /props, an unloaded model, a failed probe).
+    def opens_thought?(props)
+      return false unless props.respond_to?(:answered?) && props.answered? && props.body.is_a?(Hash)
+
+      template = props.body["chat_template"]
+      return false unless template.is_a?(String)
+
+      cue = template.rindex("add_generation_prompt")
+      !cue.nil? && OPEN_THOUGHT_LITERAL.match?(template[cue..])
+    end
+
     # The native prompt's switch for +level+ under +profile+.
     # @param profile [ModelProfile]
+    # @param opens_thought [Boolean] the server's template opens a thought
+    #   after the cue (#opens_thought?): qwen36 then gets the open thought
+    #   at every level but off, as the template has it
     # @return [Native]
-    def native(level, profile)
+    def native(level, profile, opens_thought: false)
       off = level == :off
       honoured = !EFFORTS.include?(level)
       case profile&.name
       when "gemma4" then Native.new(system_token: off ? "" : GEMMA_THINK_TOKEN, prefill: off ? GEMMA_EMPTY_THOUGHT : "", honoured: honoured)
-      when "qwen36" then Native.new(system_token: "", prefill: off ? QWEN_EMPTY_THOUGHT : "", honoured: honoured)
+      when "qwen36"
+        prefill = if off then QWEN_EMPTY_THOUGHT
+                  elsif opens_thought then QWEN_OPEN_THOUGHT
+                  else ""
+                  end
+        Native.new(system_token: "", prefill: prefill, honoured: honoured)
       else Native.new(system_token: "", prefill: "", honoured: level == DEFAULT)
       end
     end
