@@ -23,6 +23,8 @@ require_relative "vision_support"
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
+require_relative "send_command/parent_gate"
+require_relative "send_command/wait_target"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -252,19 +254,14 @@ module Samagotchi
         return refuse_local_command(local, options)
       end
 
-      # A parent agent's /continue yes is chi answer --option Continue by
-      # another route: held to guardrails.parent_answers (tightened by each
-      # target's own) here, and marked as chi answer's (#client_id_for) so
-      # the worker checks it again.
-      if prompt && parent_continue?(prompt) && (refusal = continue_refusal_for(options))
+      # A parent agent's /continue yes held to guardrails.parent_answers,
+      # and a /parent-answers that loosens: refused before anything is sent.
+      gate = ParentGate.new(options, state_dir: @state_dir)
+      if prompt && (refusal = gate.continue_refusal(prompt))
         @stderr.puts("chi send: #{refusal}")
         return CLI::Exit::FAILED
       end
-      # chi send never loosens a session's own parent_answers (only a user
-      # at a UI does: the worker refuses it too); refused before anything
-      # is sent. Tightening goes.
-      if prompt && SessionCommands.builtin_registry.lookup(prompt)&.id == :parent_answers &&
-         target_parent_answers(options).any? { |value| ParentAnswersCommand.loosens?(prompt, value) }
+      if prompt && gate.loosens?(prompt)
         error_line("chi send: refused: #{ParentAnswersCommand::REFUSED}")
         return CLI::Exit::FAILED
       end
@@ -454,8 +451,7 @@ module Samagotchi
       return report_command(session.id) if @sent_command
 
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
-                                 timeout: options[:timeout], turn: @sent_input_file ? @sent_enqueued_id : nil,
-                                 report_turn_id: @sent_enqueued_id)
+                                 timeout: options[:timeout], **WaitTarget.first_message(@delivered).to_h)
     end
 
     # The model the new session will run, for the images check: --model
@@ -527,22 +523,9 @@ module Samagotchi
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
-      # The ack's id names the queued message's turn, also when the turn
-      # running at the check ended before it went in (an idle worker's ack
-      # says next_step, and the file still runs as that turn).
-      # A file fallback's id names its turn too: a wait sees the terminal
-      # outcome of a command that finishes without starting a turn.
-      turn = @sent_enqueued_id if @queue || @sent_input_file
-      report_turn_id = if @queue
-                         turn
-                       elsif session.status == Session::STATUS_RUNNING
-                         running_turn
-                       else
-                         @sent_enqueued_id
-                       end
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn,
-                          queued: @queue && !turn.nil?,
-                          report_turn_id: report_turn_id)
+      target = WaitTarget.message(@delivered, queue: @queue, running: session.status == Session::STATUS_RUNNING,
+                                              running_turn: running_turn)
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], **target.to_h)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -568,17 +551,10 @@ module Samagotchi
         return 1
       end
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
-      turn = requested_turn || ReplyWait.own_turn(session, session_dir: session_dir)
-      # The gate for the settled case: idle, a turn ended (last_turn), no
-      # question standing (a continue offer waits for its answer).
-      settled = session.status == Session::STATUS_IDLE && session.last_turn && session.pending_question.nil?
-      ended_before = requested_turn ? session.last_turn&.enqueued_id == requested_turn : settled
-      report_turn_id = turn
-      report_turn_id ||= session.last_turn&.enqueued_id if settled
+      target = WaitTarget.wait_only(session, session_dir: session_dir, requested: requested_turn)
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
                          baseline: baseline_of(session),
-                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil,
-                         turn: turn, ended_before: ended_before, report_turn_id: report_turn_id)
+                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil, **target.to_h)
     end
 
     # The session as it was before the message went in (ReplyWait's
@@ -615,8 +591,7 @@ module Samagotchi
         return false
       end
 
-      @sent_input_file = result.file?
-      @sent_enqueued_id = result.enqueued_id
+      @delivered = result
       @sent_command = result.command?
       @info.puts("#{session.id}  started#{continued_words(session)}#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
       true
@@ -626,45 +601,7 @@ module Samagotchi
 
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
-    def client_id_for(prompt) = parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
-
-    # The first refusal of a parent's /continue yes among the targets, each
-    # by config.yml tightened by its own parent_answers; nil when none
-    # refuses.
-    def continue_refusal_for(options)
-      target_parent_answers(options).each do |value|
-        strategy = Guardrails::ParentPolicy.effective(value)
-        refusal = Guardrails::ParentPolicy.continue_refusal(strategy: strategy)
-        return refusal if refusal
-      end
-      nil
-    end
-
-    # The targets' own parent_answers values: a --new session's
-    # --parent-answers, a --continues link's previous session's (the link
-    # keeps it), each id's. An id that doesn't resolve is skipped (#resolve
-    # reports it later); none left is config.yml's alone ([nil]).
-    def target_parent_answers(options)
-      return [options[:parent_answers]] if options[:new] && !options[:continues]
-
-      sessions = if options[:new]
-                   [target_session { SessionChain.resolve(options[:continues], state_dir: @state_dir) }]
-                 else
-                   options[:ids].map { |given| target_session { Session.resolve_id(given, state_dir: @state_dir) } }
-                 end
-      values = sessions.compact.map(&:parent_answers)
-      values.empty? ? [nil] : values
-    end
-
-    # The session the block's id names, or nil when there is none.
-    def target_session
-      Session.load(yield, state_dir: @state_dir)
-    rescue ArgumentError
-      nil
-    end
-
-    # A /continue yes (or bare /continue) from a parent agent's process.
-    def parent_continue?(prompt) = TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?
+    def client_id_for(prompt) = ParentGate.parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
 
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).
@@ -749,12 +686,11 @@ module Samagotchi
       end
 
       ack = result.ack
-      @sent_input_file = result.file?
+      @delivered = result
       # What the worker applied, for --format json: its ack's delivery
       # (next_step for an idle session) and a cut's outcome.
       @sent_delivery = ack["delivery"] || delivery
       @sent_cut = ack["cut"]
-      @sent_enqueued_id = result.enqueued_id
       @info.puts("#{short}  sent#{with_images}#{delivery_note(ack, delivery: delivery, running: running, owner: owner)}")
       true
     rescue SessionManager::OwnedByTUI
