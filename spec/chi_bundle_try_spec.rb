@@ -595,14 +595,14 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       it "forwards an interrupt received while the child is starting" do
         previous = Signal.trap("INT") {}
         Dir.mktmpdir do |dir|
-          script = File.join(dir, "chi_stub.rb")
-          File.write(script, "sleep 30\n")
-          stub_const("Samagotchi::BundleCommand::Try::Sandbox::CHI", script)
-          stub_const("Samagotchi::BundleCommand::Try::Sandbox::LIB_DIR", dir)
           sandbox = Struct.new(:child_env, :work_dir).new({}, dir)
-          allow(Open3).to receive(:popen3).and_wrap_original do |original, *args, **kwargs, &block|
+          # The child is a bare sleep, not a Ruby: an INT that reaches a
+          # Ruby still loading its prelude (rubygems, RUBYOPT's
+          # bundler/setup) ends it with status 1, not by the signal, and
+          # the forwarded INT lands there whenever the boot is slow.
+          allow(Open3).to receive(:popen3).and_wrap_original do |original, env, *_command, **kwargs, &block|
             Process.kill("INT", Process.pid)
-            original.call(*args, **kwargs, &block)
+            original.call(env, "sleep", "30", **kwargs, &block)
           end
 
           result = described_class.new(sandbox).run(prompt: "test", options: {}, timeout: 0.5)
