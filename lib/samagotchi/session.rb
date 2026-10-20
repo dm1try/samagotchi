@@ -15,6 +15,7 @@ require_relative "prompt_note"
 
 require_relative "paths"
 require_relative "project_scope"
+require_relative "guardrails/parent_levels"
 
 module Samagotchi
   # archive_store requires this file.
@@ -228,18 +229,18 @@ module Samagotchi
     # it (SessionSetup.of), a delegate child takes its parent's.
     attr_reader :parent_answers
 
-    # @param value [String, Symbol, nil] stripped and downcased; "" and
-    #   "default" are none; a value that isn't a level is kept as written
+    # @param value [String, Symbol, nil] read as
+    #   Guardrails::ParentPolicy.parse_level: a level, or nil for none ("",
+    #   "default"); a value that isn't a level is kept as written, stripped
     #   (read as hard: ParentPolicy.session_level)
     def parent_answers=(value)
-      word = value.to_s.strip
-      word = word.downcase if PARENT_ANSWERS_WORDS.include?(word.downcase)
-      @parent_answers = word.empty? || word == "default" ? nil : word
+      level = Guardrails::ParentPolicy.parse_level(value)
+      @parent_answers = case level
+                        when :unset then nil
+                        when :invalid then value.to_s.strip
+                        else level
+                        end
     end
-
-    # The levels and "default" (Guardrails::ParentPolicy::ORDER and UNSET;
-    # not required here: that file loads the guardrails).
-    PARENT_ANSWERS_WORDS = %w[hard standard soft default].freeze
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.

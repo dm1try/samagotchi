@@ -25,10 +25,11 @@ module Samagotchi
       return [:show] if words.empty?
       return [:usage] if words.size > 1
 
-      word = words.first.downcase
-      return [:set, nil] if word == Guardrails::ParentPolicy::UNSET
-
-      Guardrails::ParentPolicy::ORDER.include?(word) ? [:set, word] : [:usage]
+      case (level = Guardrails::ParentPolicy.parse_level(words.first))
+      when :unset then [:set, nil]
+      when :invalid then [:usage]
+      else [:set, level]
+      end
     end
 
     # Whether the command line +line+ loosens a session whose own value is
@@ -72,8 +73,7 @@ module Samagotchi
       effective = Guardrails::ParentPolicy.for_session(session)
       own = session.parent_answers || "none"
       # A hand-edited value that isn't a level: fail-closed, said here.
-      own = "#{own} (unreadable value, read as hard)" if session.parent_answers &&
-                                                         !Guardrails::ParentPolicy::ORDER.include?(session.parent_answers)
+      own = "#{own} (unreadable value, read as hard)" if Guardrails::ParentPolicy.unknown_level?(session.parent_answers)
       "parent answers: #{effective.name} (this session: #{own}; config.yml #{config.label})"
     end
   end

@@ -296,9 +296,14 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
     end
 
-    it "keeps PARENT_ANSWERS_WORDS the policy's levels and unset word (session.rb doesn't require the guardrails)" do
-      policy = Samagotchi::Guardrails::ParentPolicy
-      expect(described_class::PARENT_ANSWERS_WORDS).to eq(policy::ORDER + [policy::UNSET])
+    it "reads parent_answers with the policy's parse_level, without loading the guardrails" do
+      out = IO.popen([RbConfig.ruby, "-Ilib", "-e", <<~RUBY], chdir: File.expand_path("..", __dir__), &:read)
+        require "samagotchi/session"
+        s = Samagotchi::Session.allocate
+        s.parent_answers = " SOFT "
+        print [s.parent_answers, defined?(Samagotchi::Guardrails::ParentPolicy.current).inspect].join(" ")
+      RUBY
+      expect(out).to eq("soft nil")
     end
 
     it "round-trips its own parent_answers, normalised; none from a file without the field; an unreadable one as written" do

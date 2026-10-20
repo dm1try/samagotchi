@@ -267,14 +267,14 @@ end
 # --parent-answers: a level in any case (no abbreviations), else a usage
 # error, as chi send's.
 if options[:parent_answers]
-  require "samagotchi/guardrails/parent_policy"
+  require "samagotchi/guardrails/parent_levels"
   levels = Samagotchi::Guardrails::ParentPolicy::ORDER
-  word = options[:parent_answers].strip.downcase
-  unless levels.include?(word)
+  level = Samagotchi::Guardrails::ParentPolicy.parse_level(options[:parent_answers])
+  unless levels.include?(level)
     warn "Error: --parent-answers takes #{levels.join(", ")}, not #{options[:parent_answers]}"
     exit 2
   end
-  options[:parent_answers] = word
+  options[:parent_answers] = level
 end
 if options[:parent_answers] && web
   warn "Error: --parent-answers is a new session's (chi --parent-answers, chi send --new --parent-answers), not chi web's"

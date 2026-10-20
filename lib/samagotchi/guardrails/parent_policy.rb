@@ -3,6 +3,7 @@
 require_relative "../config"
 require_relative "../pending_question"
 require_relative "approval"
+require_relative "parent_levels"
 require_relative "parent_approvals"
 
 module Samagotchi
@@ -49,9 +50,8 @@ module Samagotchi
       KEY = "guardrails.parent_answers"
       # A session's own value (Session#parent_answers): it may only tighten KEY.
       SESSION_KEY = "parent_answers"
-      HARD = "hard"
-      STANDARD = "standard"
-      SOFT = "soft"
+      # The level words (HARD, STANDARD, SOFT, ORDER, UNSET) and
+      # #parse_level: parent_levels.rb.
 
       # A strategy: its name, the effects a parent may pick under it, and
       # where it comes from: :config (config.yml's) or :session (a
@@ -83,12 +83,6 @@ module Samagotchi
       # @return [Strategy]
       def strategy(name) = STRATEGIES.fetch(name.to_s, STRATEGIES[HARD])
 
-      # Strictest first: a session's own level may only move left of
-      # config.yml's.
-      ORDER = [HARD, STANDARD, SOFT].freeze
-      # A session value that means "none of its own" (config's).
-      UNSET = "default"
-
       # The stricter of two strategies, by name; a tie keeps +a+.
       # @return [Strategy]
       def stricter(a, b) = ORDER.index(b.name) < ORDER.index(a.name) ? b : a
@@ -99,18 +93,16 @@ module Samagotchi
       # is read on every parent answer).
       # @return [String, nil]
       def session_level(value)
-        word = value.to_s.strip.downcase
-        return nil if word.empty? || word == UNSET
-
-        STRATEGIES.key?(word) ? word : HARD
+        case (level = parse_level(value))
+        when :unset then nil
+        when :invalid then HARD
+        else level
+        end
       end
 
       # Whether a session's own value is set but not a level (a hand-edited
       # file: read as hard); the worker says so once when it loads.
-      def unknown_level?(value)
-        word = value.to_s.strip.downcase
-        !word.empty? && word != UNSET && !STRATEGIES.key?(word)
-      end
+      def unknown_level?(value) = parse_level(value) == :invalid
 
       # What a parent may answer on a session whose own value is
       # +session_value+: config.yml's (+config+) unless the session's is

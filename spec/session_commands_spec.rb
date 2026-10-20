@@ -853,6 +853,14 @@ RSpec.describe Samagotchi::SessionCommands do
                "config.yml guardrails.parent_answers: soft)")
     end
 
+    it "lists a hand-edited level in another case as that level, and parses the argument case-blind" do
+      session.instance_variable_set(:@parent_answers, " SOFT ")
+      expect(commands.run("/parent-answers").output).not_to include("unreadable")
+      expect(Samagotchi::ParentAnswersCommand.parse("Standard")).to eq([:set, "standard"])
+      expect(Samagotchi::ParentAnswersCommand.parse("DEFAULT")).to eq([:set, nil])
+      expect(Samagotchi::ParentAnswersCommand.parse("loose")).to eq([:usage])
+    end
+
     it "tightens from anyone, saved; the same level again changes nothing" do
       result = commands.run("/parent-answers standard")
       expect(result).to have_attributes(status: :ok, changed: [:parent_answers])

@@ -365,11 +365,12 @@ module Samagotchi
         options[:thinking] = Thinking.session_level(word)
       end
       if options[:parent_answers]
-        word = options[:parent_answers].strip.downcase
-        levels = Guardrails::ParentPolicy::ORDER
-        return usage_error("--parent-answers takes #{levels.join(", ")}, not #{options[:parent_answers]}") unless levels.include?(word)
+        level = Guardrails::ParentPolicy.parse_level(options[:parent_answers])
+        unless Guardrails::ParentPolicy::ORDER.include?(level)
+          return usage_error("--parent-answers takes #{Guardrails::ParentPolicy::ORDER.join(", ")}, not #{options[:parent_answers]}")
+        end
 
-        options[:parent_answers] = word
+        options[:parent_answers] = level
       end
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit

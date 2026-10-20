@@ -254,6 +254,12 @@ RSpec.describe Samagotchi::Guardrails::ParentPolicy do
       expect(described_class.stricter(strategy("hard"), session_hard)).to equal(strategy("hard"))
     end
 
+    it "parses a level word one way: the level, :unset or :invalid" do
+      expect([nil, "", "  ", "default", "Default"].map { |v| described_class.parse_level(v) }).to all(eq(:unset))
+      expect([" Soft ", "HARD", :standard].map { |v| described_class.parse_level(v) }).to eq(%w[soft hard standard])
+      expect(%w[sofft loose].map { |v| described_class.parse_level(v) }).to all(eq(:invalid))
+    end
+
     it "tells a set value that isn't a level from none and the levels" do
       expect([nil, "", "default", " Soft ", "hard"].map { |v| described_class.unknown_level?(v) }).to all(be(false))
       expect(%w[sofft loose].map { |v| described_class.unknown_level?(v) }).to all(be(true))
