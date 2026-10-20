@@ -750,7 +750,7 @@ module Samagotchi
       rescue SessionManager::ArchiveRefused => e
         [nil, error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)]
       rescue SessionManager::OwnedByTUI
-        [nil, error_response(409, "owned_by_tui", "session #{given} is open in a chi REPL; close it there first")]
+        [nil, owned_by_repl(given)]
       rescue ModelProfile::MissingModel => e
         [nil, error_response(400, "invalid_model", e.message)]
       rescue Session::AmbiguousId => e
@@ -1176,6 +1176,12 @@ module Samagotchi
         not_live(id)
       end
 
+      # 409 owned_by_tui in the words a refused archive, delete or continue
+      # shows (stop, restart, a turn and a command show OwnedByTUI's own).
+      def owned_by_repl(id)
+        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+      end
+
       def not_live(id)
         error_response(503, "not_live", "no live bridge for session #{id}")
       end
@@ -1425,7 +1431,7 @@ module Samagotchi
         json_response(200, { status: "archived", session_id: result[:id], archived: result[:archived],
                              stopped: result[:stopped], discarded: result[:discarded] })
       rescue SessionManager::OwnedByTUI
-        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+        owned_by_repl(id)
       rescue SessionManager::ArchiveRefused => e
         error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
       end
@@ -1445,7 +1451,7 @@ module Samagotchi
         @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
       rescue SessionManager::OwnedByTUI
-        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+        owned_by_repl(id)
       rescue SessionManager::DeleteRefused => e
         error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
       end

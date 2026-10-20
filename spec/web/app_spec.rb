@@ -2948,7 +2948,8 @@ RSpec.describe Samagotchi::Web::App do
         @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
         status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
         expect(status).to eq(409)
-        expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
+        expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
+                                                  "detail" => "session #{session.id} is open in a chi REPL; close it there first")
         expect(archived?).to be(false)
       end
 
