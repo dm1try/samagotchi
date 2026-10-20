@@ -4,12 +4,14 @@ require "json"
 require "tmpdir"
 require "fileutils"
 require "securerandom"
+require "socket"
 require "samagotchi/session"
 
 # `chi --resume ID` when config.yml's default.model names a host that isn't
 # configured: the resumed session's own model is what runs, so the bad
 # default must not stop it. (--no-shared forces the in-process REPL, where
-# the default is checked.)
+# the default is checked.) The first example runs a real bin/chi; the other
+# forks it (ChiCli#fork_chi).
 RSpec.describe "chi --resume with a bad default.model" do
   def write_config(dir, yaml)
     FileUtils.mkdir_p(File.join(dir, "config", "samagotchi"))
@@ -30,9 +32,17 @@ RSpec.describe "chi --resume with a bad default.model" do
     id
   end
 
+  # The bad default and a hosts entry on a closed loopback port: the REPL's
+  # start-up probe of the host is refused at once, never a connect timeout
+  # against a LAN address (a real child is outside WebMock).
+  def config_yaml
+    port = TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }
+    "default:\n  model: nosuch:org/model\nhosts:\n  main:\n    host: 127.0.0.1\n    port: #{port}\n"
+  end
+
   it "runs the resumed session's own model, not the bad default" do
     Dir.mktmpdir do |dir|
-      write_config(dir, "default:\n  model: nosuch:org/model\nhosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      write_config(dir, config_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
       out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
@@ -46,10 +56,10 @@ RSpec.describe "chi --resume with a bad default.model" do
 
   it "refuses with one line when the resumed session has no model and the default is bad" do
     Dir.mktmpdir do |dir|
-      write_config(dir, "default:\n  model: nosuch:org/model\nhosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      write_config(dir, config_yaml)
       id = save_session(dir, model_name: "")
 
-      out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = fork_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(1)
       expect(out).to eq("")
