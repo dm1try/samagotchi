@@ -4,10 +4,12 @@ require "json"
 require "tmpdir"
 require "fileutils"
 require "securerandom"
+require "socket"
 require "samagotchi/session"
 
 # `chi --resume ID` when config.yml names no default.model: the resumed
-# session's own model runs, because the session names its model.
+# session's own model runs, because the session names its model. The first
+# example runs a real bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi --resume with no default.model" do
   def write_config(dir, yaml)
     FileUtils.mkdir_p(File.join(dir, "config", "samagotchi"))
@@ -28,12 +30,17 @@ RSpec.describe "chi --resume with no default.model" do
     id
   end
 
+  # A hosts entry on a closed loopback port: the REPL's start-up probe of
+  # the host is refused at once, never a connect timeout against a LAN
+  # address (a real child is outside WebMock).
+  def hosts_yaml = "hosts:\n  main:\n    host: 127.0.0.1\n    port: #{TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }}\n"
+
   # A config with hosts but no default.model: the resumed session's model
   # runs in the REPL (no shared worker).  This is part B: part A made the
   # worker path work; the REPL still needed fixes.
   it "runs the resumed session's own model (no config default)" do
     Dir.mktmpdir do |dir|
-      write_config(dir, "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
       out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
@@ -51,11 +58,11 @@ RSpec.describe "chi --resume with no default.model" do
   # still run on the session's model.
   it "runs -p --non-interactive on a session model (no config default)" do
     Dir.mktmpdir do |dir|
-      write_config(dir, "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
-      _out, err, status = run_chi("--no-shared", "--resume", id, "--non-interactive", "-p", "/help",
-                                  env: isolated_chi_env(dir), chdir: dir)
+      _out, err, status = fork_chi("--no-shared", "--resume", id, "--non-interactive", "-p", "/help",
+                                   env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(0), err
       expect(err).not_to include("no model configured")
@@ -66,10 +73,10 @@ RSpec.describe "chi --resume with no default.model" do
   # a model, so it must fail with the standard error.
   it "fails when the session has no model and there's no default" do
     Dir.mktmpdir do |dir|
-      write_config(dir, "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "")
 
-      out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = fork_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(1)
       expect(out).to eq("")
