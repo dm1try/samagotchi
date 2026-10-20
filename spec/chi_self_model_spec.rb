@@ -4,7 +4,8 @@ require "tmpdir"
 require "fileutils"
 
 # The desktop helper asks `chi self --model` for the model a new session
-# starts on (its "New session" row's hint).
+# starts on (its "New session" row's hint). The first example runs a real
+# bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi self --model" do
   let(:tmp) { Dir.mktmpdir("chi-self-model") }
   let(:env) { isolated_chi_env(tmp) }
@@ -12,6 +13,10 @@ RSpec.describe "chi self --model" do
   after { FileUtils.remove_entry(tmp) }
 
   def run_chi(*args)
+    super(*args, env: env)
+  end
+
+  def fork_chi(*args)
     super(*args, env: env)
   end
 
@@ -31,14 +36,14 @@ RSpec.describe "chi self --model" do
                "default:\n  model: small\nhosts:\n  default:\n    host: 127.0.0.1\n    port: 1\n  box:\n    host: 127.0.0.1\n    port: 2\n" \
                "model_aliases:\n  small: BOX:gemma-small\n")
 
-    out, _err, status = run_chi("self", "--model")
+    out, _err, status = fork_chi("self", "--model")
 
     expect(status.exitstatus).to eq(0)
     expect(out).to eq("box:gemma-small\n")
   end
 
   it "prints nothing and exits 1 when no model is configured" do
-    out, _err, status = run_chi("self", "--model")
+    out, _err, status = fork_chi("self", "--model")
 
     expect(status.exitstatus).to eq(1)
     expect(out).to eq("")
