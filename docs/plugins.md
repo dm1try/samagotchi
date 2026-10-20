@@ -1189,8 +1189,9 @@ bundle.shutdown
 - **Model notes:** `sandbox.model_notes_for(model_id, small: nil, cwd: nil)` lists the model notes chi would load
   into the prompt for a bare model id (`deepseek/deepseek-v4.1-flash`, no host prefix), from the sandbox's
   memories (an installed bundle's included), matched as chi matches them: each `models:` glob against the id and
-  its model key; `small:` says whether the model counts as small for a `small` entry (nil: chi's own rule). Each
-  note has `name`, `scope`, `chars` and `body`, in prompt order. `sandbox.model_note_limits` gives the sizes chi
+  its model key; `small:` says whether the model counts as small for a `small` entry (nil: chi's own rule). The
+  notes come in prompt order, and each answers four methods, its whole contract: `name`, `scope` (`"system"` or
+  `"project"`), `chars` (the body's length) and `body` (what the prompt carries, the `models:` line left out). `sandbox.model_note_limits` gives the sizes chi
   warns over (`note:`, `total:`).
 - **`ctx.http` is faked.** `bundle.http.stub(method, url_or_regexp, status: 200, headers: {}, body: nil, json: nil,
   error: nil) { |request| … }` answers it: a String URL matches exactly (query included), a Regexp the full URL, later
