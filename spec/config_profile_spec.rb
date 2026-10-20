@@ -43,11 +43,11 @@ RSpec.describe "prompt profile config" do
 
   describe "hosts.<name>.profile" do
     it "is kept on the host (as written; ModelProfile.resolve validates it)" do
-      with_config("hosts" => { "mlx" => { "host" => "box", "transport" => "mlx", "profile" => " Qwen36 " },
+      with_config("hosts" => { "box" => { "host" => "box", "profile" => " Qwen36 " },
                                "plain" => { "host" => "h" } }) do |path|
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(hosts["mlx"].profile).to eq("qwen36")
+        expect(hosts["box"].profile).to eq("qwen36")
         expect(hosts["plain"].profile).to be_nil
       end
     end

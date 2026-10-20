@@ -564,10 +564,7 @@ RSpec.describe Samagotchi::SelfReport do
       ENV["XDG_CONFIG_HOME"] = saved
     end
 
-    it "names mlx's profile directly (no template to read) and a chat host's as name-based" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    transport: mlx\n")
-      expect(field("profile")).to eq("#{Samagotchi::ModelProfile::DEFAULT_NAME} (default)")
-
+    it "names a chat host's profile as name-based" do
       write_config("hosts:\n  main:\n    host: 10.0.0.5\n    api: openai\n")
       expect(field("profile")).to eq("name-based (chat API: only strips thoughts)")
     end

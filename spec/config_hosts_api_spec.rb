@@ -6,8 +6,8 @@ require "samagotchi/config"
 require "samagotchi/host_registry"
 
 # hosts.<name>.api picks how chi talks to a host: a raw-prompt api
-# (llama_cpp/mlx/omlx, which is also the Client transport) or openai (the chat
-# loop). Absent, the entry stays as before: no api, transport as configured.
+# (llama_cpp, which is also the Client transport) or a chat api: openai or
+# anthropic (the chat loop). Absent, the entry stays as before: no api, transport as configured.
 RSpec.describe "hosts: api" do
   def hosts(yaml_hosts)
     Dir.mktmpdir do |dir|
@@ -23,7 +23,7 @@ RSpec.describe "hosts: api" do
   end
 
   it "uses an explicit raw api as the transport when none is set" do
-    expect(hosts("m" => { "host" => "h", "api" => "mlx" })["m"]).to have_attributes(api: :mlx, transport: :mlx)
+    expect(hosts("m" => { "host" => "h", "api" => "llama_cpp" })["m"]).to have_attributes(api: :llama_cpp, transport: :llama_cpp)
   end
 
   it "leaves api and transport nil when neither is set (the global transport still applies)" do
@@ -31,18 +31,61 @@ RSpec.describe "hosts: api" do
   end
 
   it "allows api: openai with a transport (the transport only affects listing/probing)" do
-    expect(hosts("oai" => { "host" => "h", "api" => "openai", "transport" => "omlx" })["oai"])
-      .to have_attributes(api: :openai, transport: :omlx)
+    expect(hosts("oai" => { "host" => "h", "api" => "openai", "transport" => "llama_cpp" })["oai"])
+      .to have_attributes(api: :openai, transport: :llama_cpp)
   end
 
   it "ignores an entry whose raw api and transport disagree, and an unknown api" do
     result = nil
     expect do
-      result = hosts("a" => { "host" => "h", "api" => "mlx", "transport" => "omlx" },
+      result = hosts("a" => { "host" => "h", "api" => "llama_cpp", "transport" => "vllm" },
                      "b" => { "host" => "h", "api" => "grpc" },
                      "c" => { "host" => "h" })
     end.to output(/ignoring hosts entry 'a'.*\n.*ignoring hosts entry 'b'/).to_stderr
     expect(result.keys).to eq(["c"])
+  end
+
+  # chi's own mlx_lm.server and oMLX transports are gone: their OpenAI
+  # chat endpoint is the way (api: openai).
+  describe "a removed api or transport (mlx, omlx)" do
+    let(:line) { "for mlx_lm.server or oMLX use url: http://HOST:PORT/v1, api: openai in a hosts: entry" }
+
+    it "leaves the entry out, saying what to write instead" do
+      result = nil
+      expect do
+        result = hosts("mac" => { "host" => "h", "api" => "omlx" }, "box" => { "host" => "h", "transport" => "MLX" },
+                       "c" => { "host" => "h" })
+      end.to output(
+        "Warning: ignoring hosts entry 'mac': hosts.mac.api: omlx was removed; #{line}\n" \
+        "Warning: ignoring hosts entry 'box': hosts.box.transport: MLX was removed; #{line}\n"
+      ).to_stderr
+      expect(result.keys).to eq(["c"])
+    end
+
+    describe "at start (ConfigFile.load!)" do
+      def load_config(data, env: {})
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "config.yml")
+          File.write(path, data.to_yaml)
+          Samagotchi::ConfigFile.load!(env: env, path: path)
+        end
+      end
+
+      it "raises RemovedApi with the one line for a hosts entry, server.transport and the env" do
+        expect { load_config({ "hosts" => { "mac" => { "url" => "http://m:8000", "api" => "omlx" } } }) }
+          .to raise_error(Samagotchi::ConfigFile::RemovedApi, "config.yml hosts.mac.api: omlx was removed; #{line}")
+        expect { load_config({ "server" => { "transport" => "mlx" } }) }
+          .to raise_error(Samagotchi::ConfigFile::RemovedApi, "config.yml server.transport: mlx was removed; #{line}")
+        expect { load_config({}, env: { "SAMAGOTCHI_SERVER_TRANSPORT" => "omlx" }) }
+          .to raise_error(Samagotchi::ConfigFile::RemovedApi, "SAMAGOTCHI_SERVER_TRANSPORT: omlx was removed; #{line}")
+      end
+
+      it "loads a config with llama_cpp and openai hosts" do
+        data = { "server" => { "transport" => "llama_cpp" },
+                 "hosts" => { "a" => { "host" => "h", "transport" => "llama_cpp" }, "b" => { "url" => "http://h:8000/v1", "api" => "openai" } } }
+        expect(load_config(data)).to be(true)
+      end
+    end
   end
 
   it "prints each warning once per process, however often the hosts are read" do

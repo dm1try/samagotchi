@@ -11,7 +11,12 @@ Samagotchi::Utf8Default.apply!
 require "optparse"
 require "samagotchi/config"
 
-Samagotchi::ConfigFile.load!
+begin
+  Samagotchi::ConfigFile.load!
+rescue Samagotchi::ConfigFile::RemovedApi => e
+  warn "Error: #{e.message}"
+  exit 1
+end
 require "samagotchi"
 
 # `chi self`: print version, source dir, config/memory/session paths, model and

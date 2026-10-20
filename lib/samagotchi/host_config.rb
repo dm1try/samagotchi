@@ -146,6 +146,9 @@ module Samagotchi
     # transport: and api: as symbols; a raw-prompt api is also the
     # transport. nil (warned) when unknown or contradicting each other.
     def self.parse_kinds(name, transport, api)
+      %w[api transport].zip([api, transport]).each do |key, written|
+        return invalid(name, ConfigFile::RemovedApi.new("hosts.#{name}.#{key}", written.to_s.strip).message) if ConfigFile.removed_api?(written)
+      end
       transport = transport.to_s.strip.downcase
       if transport.empty?
         transport = nil

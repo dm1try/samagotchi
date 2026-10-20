@@ -677,28 +677,6 @@ RSpec.describe Samagotchi::Client do
         expect(chunks).to eq(["Hi"])
       end
 
-      it "reads the transport from SAMAGOTCHI_SERVER_TRANSPORT when not passed explicitly" do
-        ENV["SAMAGOTCHI_SERVER_TRANSPORT"] = "mlx"
-        client = described_class.new(host: "localhost", port: 8080)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-
-        expect(client.complete("prompt")).to eq("ok")
-        expect(request.path).to eq("/v1/completions")
-      ensure
-        ENV.delete("SAMAGOTCHI_SERVER_TRANSPORT")
-      end
-
       it "labels errors with mlx instead of llama.cpp" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         allow(Net::HTTP).to receive(:start)
@@ -860,29 +838,6 @@ RSpec.describe Samagotchi::Client do
 
         expect(result).to include("<tool_call>")
         expect(result).to include("<|tool_call>")
-      end
-
-      it "reads the transport from SAMAGOTCHI_SERVER_TRANSPORT when not passed explicitly" do
-        ENV["SAMAGOTCHI_SERVER_TRANSPORT"] = "omlx"
-        client = described_class.new(host: "localhost", port: 8000)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-
-        expect(client.complete("prompt")).to eq("ok")
-        expect(request.path).to eq("/v1/completions")
-        expect(client.transport.name).to eq(:omlx)
-      ensure
-        ENV.delete("SAMAGOTCHI_SERVER_TRANSPORT")
       end
 
       it "resolves uppercase and whitespace-padded values to :omlx" do

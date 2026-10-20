@@ -84,7 +84,7 @@ module Samagotchi
       # The prompt profile for every model in this process (ModelProfile::NAMES).
       # No config key: per-model and per-host profiles live in models: and hosts:.
       Entry.new(key: "model.profile",            yaml_path: %w[model profile],            type: :enum,   default: nil,              expose: %i[env cli], enum_values: %w[qwen36 gemma4]),
-      Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx], lifecycle: :worker_start),
+      Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp], lifecycle: :worker_start),
       Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli], lifecycle: :worker_start),
@@ -894,11 +894,43 @@ module Samagotchi
     def load!(env: ENV, path: global_path(env: env))
       existed = File.file?(path)
       raw = read_yaml(env: env, path: path) || {}
+      check_removed_apis!(raw, env: env)
       if existed
         Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "config_key", echo: "Warning: #{w}") }
       end
       Samagotchi::Config.reload!(cli_overrides: {})
       existed
+    end
+
+    # Raises RemovedApi for the first api/transport in +data+ (config.yml)
+    # or the environment that names a removed one: config.yml's
+    # server.transport and hosts.<name>.api/transport, and
+    # SAMAGOTCHI_SERVER_TRANSPORT. Run once at start (#load!); a hosts entry
+    # read later says the same through HostConfig.parse and is left out.
+    def check_removed_apis!(data, env: ENV)
+      env_key = Samagotchi::Config.find_by_key("server.transport").env_key
+      raise RemovedApi.new(env_key, env[env_key].to_s.strip) if removed_api?(env[env_key])
+
+      server = data["server"] if data.is_a?(Hash)
+      value = server["transport"] if server.is_a?(Hash)
+      raise RemovedApi.new("config.yml server.transport", value) if removed_api?(value)
+
+      hosts = data[HOSTS_KEY] if data.is_a?(Hash)
+      return unless hosts.is_a?(Hash)
+
+      hosts.each do |name, cfg|
+        next unless cfg.is_a?(Hash)
+
+        %w[api transport].each do |key|
+          value = cfg[key]
+          raise RemovedApi.new("config.yml hosts.#{name}.#{key}", value) if removed_api?(value)
+        end
+      end
+    end
+
+    # Whether +value+ (as written) names a removed api/transport.
+    def removed_api?(value)
+      REMOVED_APIS.include?(value.to_s.strip.downcase)
     end
 
     def config_dir(env: ENV)
@@ -910,7 +942,20 @@ module Samagotchi
     end
 
     HOSTS_KEY = "hosts"
-    VALID_TRANSPORTS_FOR_CONFIG = %w[llama_cpp mlx omlx].freeze
+    VALID_TRANSPORTS_FOR_CONFIG = %w[llama_cpp].freeze
+    # api/transport values chi no longer has: its own mlx_lm.server and
+    # oMLX transports, gone for their OpenAI chat endpoint (api: openai).
+    REMOVED_APIS = %w[mlx omlx].freeze
+
+    # A config naming a removed api/transport (REMOVED_APIS). The message
+    # is the one line the user sees: where, the value, what to write.
+    class RemovedApi < StandardError
+      # @param where [String] e.g. "config.yml hosts.mac.api"
+      # @param value [String] the removed value as written
+      def initialize(where, value)
+        super("#{where}: #{value} was removed; for mlx_lm.server or oMLX use url: http://HOST:PORT/v1, api: openai in a hosts: entry")
+      end
+    end
     # How chi talks to a host: a raw-prompt api (also the Client transport),
     # or a chat api the chat loop talks (LLM::Adapters): openai (Chat
     # Completions against <host>/v1) or anthropic (Messages).
