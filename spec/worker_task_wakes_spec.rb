@@ -48,6 +48,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   let(:scripts) { {} }
 
   before do
+    @finished_turns = 0
     stub_const("Samagotchi::Worker::WAKE_START_GRACE", 0)
     FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -64,6 +65,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
       scripts.fetch(prompt, []).each { |step| step.call(turn_session) }
       failing = @fail_next
       @fail_next = false
+      @finished_turns += 1
       turns_done << prompt
       raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) if failing
 
@@ -90,29 +92,32 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   end
 
   # A queue that gets an entry each time +worker+'s loop goes to sleep
-  # (Waker#wait): with a long poll interval, nothing runs after that until
-  # it is woken, so a spec can change a task's record with no pass racing it.
+  # (Waker#wait), the number of turns finished by then: with a long poll
+  # interval, nothing runs after that until it is woken, so a spec can
+  # change a task's record with no pass racing it.
   def parks(worker)
     Queue.new.tap do |parked|
       allow(worker.instance_variable_get(:@waker)).to receive(:wait).and_wrap_original do |original, *args|
-        parked << true
+        parked << @finished_turns
         original.call(*args)
       end
     end
   end
 
   # Runs +prompt+'s turn on a worker with a long poll interval and returns
-  # once its loop sleeps after it. The waits only end a hang (each returns
-  # as soon as its step is there): a loaded CI runner took over 3 s from the
-  # turn's end to the park.
+  # once its loop sleeps after it. A park from before the turn (counted
+  # with fewer turns finished) is skipped: clearing the queue instead raced
+  # the park after a fast turn away (CI run 39501273953). The waits only end
+  # a hang (each returns as soon as its step is there).
   def run_prompt_to_sleep(worker, prompt)
     parked = parks(worker)
+    after = @finished_turns + 1
     send_turn(prompt)
     worker.instance_variable_get(:@waker).wake
     expect(pop!(turns, "#{prompt}'s turn to start", timeout: 15).first).to eq(prompt)
-    parked.clear
     expect(pop!(turns_done, "#{prompt}'s turn to finish", timeout: 15)).to eq(prompt)
-    pop!(parked, "the worker's loop to sleep after #{prompt}'s turn", timeout: 15)
+    what = "the worker's loop to sleep after #{prompt}'s turn"
+    nil until pop!(parked, what, timeout: 15) >= after
   end
 
   def record(id, status: "running", exit_code: nil)
