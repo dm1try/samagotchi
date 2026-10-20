@@ -1326,8 +1326,7 @@ module Samagotchi
       def handle_cancel(req, id)
         @session_class.load(id, state_dir: default_state_dir)
 
-        body = request_body(req)
-        parsed = body.nil? || body.strip.empty? ? nil : parse_json(body)
+        parsed = parse_json(request_body(req))
         reason = (parsed["reason"] if parsed.is_a?(Hash)).to_s.strip
         reason = "user" if reason.empty?
 
@@ -1373,8 +1372,7 @@ module Samagotchi
       # 404 unknown_enqueued_id pass through; the rest as every relay.
       def handle_dequeue_turn(req, id, enqueued_id)
         @session_class.load(id, state_dir: default_state_dir)
-        body = request_body(req)
-        parsed = body.nil? || body.strip.empty? ? nil : parse_json(body)
+        parsed = parse_json(request_body(req))
         client_id = (parsed["client_id"] if parsed.is_a?(Hash))
 
         request = ->(client) { client.dequeue(enqueued_id: enqueued_id, client_id: client_id) }
