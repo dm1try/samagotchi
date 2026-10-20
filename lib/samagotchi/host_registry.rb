@@ -10,7 +10,7 @@ require_relative "llm/adapters"
 require_relative "llm/dialect"
 
 module Samagotchi
-  # HostRegistry manages multiple model hosts (llama.cpp / mlx / oMLX) and
+  # HostRegistry manages multiple model hosts (llama.cpp, OpenAI-compatible, Anthropic) and
   # provides lazy model discovery aggregation.
   #
   # - Hosts are defined in config.yml `hosts:` section or synthesized from

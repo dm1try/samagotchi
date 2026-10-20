@@ -17,17 +17,6 @@ RSpec.describe Samagotchi::Client do
       expect(t.content_from_payload({ "content" => "hi" })).to eq("hi")
     end
 
-    it "uses OpenAI-compatible paths and payload keys for mlx and omlx" do
-      %i[mlx omlx].each do |name|
-        t = described_class.new(name)
-        expect(t.label).to eq(name.to_s)
-        expect(t.completion_path).to eq("/v1/completions")
-        expect(t.models_path).to eq("/v1/models")
-        expect(t.token_limit_key).to eq(:max_tokens)
-        expect(t.content_from_payload({ "choices" => [{ "text" => "hi" }] })).to eq("hi")
-      end
-    end
-
     # The last stream payloads as llama.cpp (b10819) sent them.
     def final_chunk(name)
       JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/final_chunks/#{name}.json", __dir__)))
@@ -42,29 +31,12 @@ RSpec.describe Samagotchi::Client do
       expect(t.finish_reason_from(nil)).to be_nil
     end
 
-    it "reads an OpenAI-compatible completion's own finish_reason for mlx and omlx" do
-      %i[mlx omlx].each do |name|
-        t = described_class.new(name)
-        expect(t.finish_reason_from(final_chunk("v1_completions_limit"))).to eq("length")
-        expect(t.finish_reason_from(final_chunk("v1_completions_stop"))).to eq("stop")
-        expect(t.finish_reason_from({ "choices" => [{ "text" => "hi", "finish_reason" => nil }] })).to be_nil
-      end
-    end
-
     it "forwards the model selector verbatim by default (omitting empty/blank)" do
       t = described_class.new(:llama_cpp)
       expect(t.model_for_payload("gemma-4-26b-a4b-it-4bit")).to eq("gemma-4-26b-a4b-it-4bit")
       expect(t.model_for_payload("  spaced  ")).to eq("spaced")
       expect(t.model_for_payload("")).to be_nil
       expect(t.model_for_payload(nil)).to be_nil
-    end
-
-    it "defers to an installed model resolver (mlx omits, omlx resolves)" do
-      omitting = described_class.new(:mlx, model_resolver: ->(_m) {})
-      expect(omitting.model_for_payload("anything")).to be_nil
-
-      resolving = described_class.new(:omlx, model_resolver: ->(m) { "mlx-community--#{m}" })
-      expect(resolving.model_for_payload("gemma-4-e4b")).to eq("mlx-community--gemma-4-e4b")
     end
   end
 
@@ -102,11 +74,10 @@ RSpec.describe Samagotchi::Client do
       expect(client.slot_status(0)).to be_nil
     end
 
-    it "asks nothing without a slot or on an OpenAI-compatible transport" do
+    it "asks nothing without a slot" do
       expect(Net::HTTP).not_to receive(:start)
 
       expect(client.slot_status(nil)).to be_nil
-      expect(described_class.new(host: "localhost", port: 8080, transport: :mlx).slot_status(1)).to be_nil
     end
   end
 
@@ -141,12 +112,6 @@ RSpec.describe Samagotchi::Client do
 
       expect(client.warm_up("head", slot: nil).slot).to eq(3)
       expect(JSON.parse(request.call.body)).not_to have_key("id_slot")
-    end
-
-    it "does nothing on an OpenAI-compatible transport" do
-      expect(Net::HTTP).not_to receive(:start)
-
-      expect(described_class.new(host: "localhost", port: 8080, transport: :mlx).warm_up("head", slot: 1)).to be_nil
     end
 
     it "is one attempt: a network error is raised, not retried" do
@@ -291,7 +256,7 @@ RSpec.describe Samagotchi::Client do
       expect(JSON.parse(request.body)).to include("cache_prompt" => false)
     end
 
-    it "pins the request to a slot only when asked, and only on llama.cpp" do
+    it "pins the request to a slot only when asked" do
       bodies = []
       allow(Net::HTTP).to receive(:start) do |*_args, **_opts, &block|
         http = instance_double(Net::HTTP)
@@ -306,9 +271,8 @@ RSpec.describe Samagotchi::Client do
 
       described_class.new(host: "localhost", port: 8080).complete("prompt", slot: 2)
       described_class.new(host: "localhost", port: 8080).complete("prompt")
-      described_class.new(host: "localhost", port: 8080, transport: :mlx).complete("prompt", slot: 2)
 
-      expect(bodies.map { |body| body["id_slot"] }).to eq([2, nil, nil])
+      expect(bodies.map { |body| body["id_slot"] }).to eq([2, nil])
     end
 
     it "includes model when provided" do
@@ -562,298 +526,6 @@ RSpec.describe Samagotchi::Client do
                                       "does this host speak the OpenAI API? set `api: openai` on it")
         }
       end
-
-      it "has no such hint on an OpenAI-compatible transport (/v1/completions)" do
-        client = stub_404(described_class.new(host: "localhost", port: 8080, name: "main", transport: :mlx))
-
-        expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
-          expect(error.summary).not_to include("api: openai")
-        }
-      end
-    end
-
-    context "with the mlx transport" do
-      it "posts a raw prompt to /v1/completions and joins streamed text" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"text\":\"Hel\"}]}\n")
-          .and_yield("data: {\"choices\":[{\"text\":\"lo\"}]}\n")
-          .and_yield("data: [DONE]\n")
-
-        result = client.complete("prompt", stop: ["done"], n_predict: 128, model: "Qwen3-14B-Instruct")
-
-        expect(result).to eq("Hello")
-        expect(request.path).to eq("/v1/completions")
-        expect(request.body).to include('"prompt":"prompt"')
-        expect(request.body).to include('"stop":["done"]')
-        expect(request.body).to include('"max_tokens":128')
-        expect(request.body).not_to include('"n_predict"')
-      end
-
-      it "sends no llama.cpp-only fields (cache_prompt)" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start).and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: [DONE]\n")
-
-        client.complete("prompt", stop: ["done"])
-
-        expect(JSON.parse(request.body)).not_to have_key("cache_prompt")
-      end
-
-      it "omits max_tokens when n_predict is not provided" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-
-        expect(client.complete("prompt")).to eq("ok")
-        expect(request.body).not_to include('"max_tokens"')
-      end
-
-      it "never forwards model, since mlx-lm treats it as a path/repo to (re)load" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-
-        expect(client.complete("prompt", model: "mlx-community/Qwen3-14B-Instruct")).to eq("ok")
-        expect(request.body).not_to include('"model"')
-      end
-
-      it "emits chunk callbacks and ignores the [DONE] sentinel" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        chunks = []
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) { |_request, &block| block.call(response) }
-        allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"text\":\"Hi\"}]}\n")
-          .and_yield("data: [DONE]\n")
-
-        result = client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] })
-
-        expect(result).to eq("Hi")
-        expect(chunks).to eq(["Hi"])
-      end
-
-      it "labels errors with mlx instead of llama.cpp" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_raise(JSON::ParserError.new("bad json"))
-
-        expect { client.complete("prompt") }
-          .to raise_error(RuntimeError, /mlx request failed \(localhost:8080\): .*bad json/)
-      end
-    end
-
-    context "with the omlx transport" do
-      it "posts a raw prompt to /v1/completions and joins streamed text (AC #8)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        # /v1/models is loaded once per completion; stub it so we don't hit a
-        # second Net::HTTP.start.
-        allow(client).to receive(:list_models).and_return(["mlx-community--gemma-4-e4b-it-4bit"])
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"text\":\"Hel\"}]}\n")
-          .and_yield("data: {\"choices\":[{\"text\":\"lo\"}]}\n")
-          .and_yield("data: [DONE]\n")
-
-        result = client.complete("prompt", stop: ["done"], n_predict: 128, model: "gemma-4-e4b-it-4bit")
-
-        expect(result).to eq("Hello")
-        expect(request.path).to eq("/v1/completions")
-        expect(request.body).to include('"prompt":"prompt"')
-        expect(request.body).to include('"stop":["done"]')
-        expect(request.body).to include('"max_tokens":128')
-        expect(request.body).not_to include('"n_predict"')
-        # resolved full id forwarded (substring match against /v1/models)
-        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
-      end
-
-      it "omits max_tokens when n_predict is not provided" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        request = nil
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request, &block|
-          request = built_request
-          block.call(response)
-        end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-
-        expect(client.complete("prompt")).to eq("ok")
-        expect(request.body).not_to include('"max_tokens"')
-      end
-
-      # Drive one oMLX `complete` against a stubbed /v1/models (an array of model
-      # entries, or a raised error), returning the built request so callers can
-      # assert on the forwarded `model` field.
-      def run_omlx(client, model:, models_or_error:)
-        if models_or_error.is_a?(StandardError)
-          allow(client).to receive(:list_models).and_raise(models_or_error)
-        else
-          allow(client).to receive(:list_models).and_return(models_or_error)
-        end
-
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        built = nil
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) { |req, &block| built = req; block.call(response) }
-        allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
-        client.complete("prompt", model: model)
-        built
-      end
-
-      it "resolves a selector that exactly equals a bare id in /v1/models (AC #1)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "gemma-4-26b-a4b-it-4bit", models_or_error: ["gemma-4-26b-a4b-it-4bit"])
-        expect(request.body).to include('"model":"gemma-4-26b-a4b-it-4bit"')
-      end
-
-      it "resolves a short selector to a prefixed id via substring (AC #2)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "gemma-4-e4b-it-4bit", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
-        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
-      end
-
-      it "passes a full registered id through unchanged (AC #3)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "mlx-community--gemma-4-e4b-it-4bit", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
-        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
-      end
-
-      it "passes an unknown selector through raw so oMLX 404s with its available list (AC #4)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "nope-xyz", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
-        expect(request.body).to include('"model":"nope-xyz"')
-      end
-
-      it "forwards no model field for an empty selector" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "", models_or_error: ["x"])
-        expect(request.body).not_to include('"model"')
-      end
-
-      it "falls back to the raw selector when /v1/models is unreachable (AC #9)" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "gemma-4-e4b-it-4bit", models_or_error: RuntimeError.new("server down"))
-        expect(request.body).to include('"model":"gemma-4-e4b-it-4bit"')
-      end
-
-      it "ignores a leading keepalive chunk and still joins text correctly" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-        chunks = []
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) { |_request, &block| block.call(response) }
-        allow(response).to receive(:read_body)
-          .and_yield("data: {\"model\":\"keepalive\",\"choices\":[{\"text\":\"\"}]}\n")
-          .and_yield("data: {\"choices\":[{\"text\":\"Hi\"}]}\n")
-          .and_yield("data: [DONE]\n")
-
-        result = client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] })
-
-        expect(result).to eq("Hi")
-        expect(chunks.join).to eq("Hi")
-      end
-
-      it "preserves raw tool-call markers verbatim for KernelLoop parsing" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        http = instance_double(Net::HTTP)
-        response = double("response", code: "200")
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) { |_request, &block| block.call(response) }
-        allow(response).to receive(:read_body).and_yield(
-          "data: {\"choices\":[{\"text\":\"Hi <tool_call><|tool_call>\\n\"}]}\n"
-        )
-
-        result = client.complete("prompt")
-
-        expect(result).to include("<tool_call>")
-        expect(result).to include("<|tool_call>")
-      end
-
-      it "resolves uppercase and whitespace-padded values to :omlx" do
-        expect(described_class.new(transport: "OMLX").transport.name).to eq(:omlx)
-        expect(described_class.new(transport: " omlx ").transport.name).to eq(:omlx)
-      end
-
-      it "labels errors with omlx instead of llama.cpp" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_raise(JSON::ParserError.new("bad json"))
-
-        expect { client.complete("prompt") }
-          .to raise_error(RuntimeError, /omlx request failed \(localhost:8000\): .*bad json/)
-      end
     end
   end
 
@@ -886,54 +558,6 @@ RSpec.describe Samagotchi::Client do
           expect(error.attempts).to eq(6)
           expect(error.last_error).to be_a(Net::OpenTimeout)
         end
-    end
-
-    context "with the mlx transport" do
-      it "returns the discovered models from /v1/models" do
-        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
-        http = instance_double(Net::HTTP)
-        request = nil
-        response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"mlx-community/Qwen3-14B-Instruct","object":"model","created":1}]}')
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request|
-          request = built_request
-          response
-        end
-
-        result = client.list_models
-
-        expect(request.path).to eq("/v1/models")
-        expect(result).to eq([
-          { "id" => "mlx-community/Qwen3-14B-Instruct", "object" => "model", "created" => 1 }
-        ])
-      end
-    end
-
-    context "with the omlx transport" do
-      it "returns the discovered models from /v1/models" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        http = instance_double(Net::HTTP)
-        request = nil
-        response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"omlx-community/Qwen3.6","object":"model","created":1}]}')
-
-        allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
-          .and_yield(http)
-        allow(http).to receive(:request) do |built_request|
-          request = built_request
-          response
-        end
-
-        result = client.list_models
-
-        expect(request.path).to eq("/v1/models")
-        expect(result).to eq([
-          { "id" => "omlx-community/Qwen3.6", "object" => "model", "created" => 1 }
-        ])
-      end
     end
   end
 
@@ -1276,24 +900,6 @@ RSpec.describe Samagotchi::Client do
       props = client.server_props(model: "m")
       expect(props).to be_answered
       expect(props.body).to be_nil
-    end
-
-    it "has no /props on mlx or omlx" do
-      allow(Net::HTTP).to receive(:start)
-
-      %i[mlx omlx].each do |transport|
-        expect(described_class.new(host: "localhost", port: 8000, transport: transport).server_props(model: "m")).to be_nil
-      end
-      expect(Net::HTTP).not_to have_received(:start)
-    end
-
-    it "does not probe mlx or omlx, which report no window" do
-      allow(Net::HTTP).to receive(:start)
-
-      %i[mlx omlx].each do |transport|
-        expect(described_class.new(host: "localhost", port: 8000, transport: transport).context_window(model: "m")).to be_nil
-      end
-      expect(Net::HTTP).not_to have_received(:start)
     end
   end
 

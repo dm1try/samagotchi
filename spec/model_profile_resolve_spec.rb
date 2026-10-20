@@ -16,11 +16,10 @@ RSpec.describe "ModelProfile.resolve" do
 
   # A client whose /props answer is given; records the models it was asked about.
   class FakePropsClient
-    attr_reader :asked, :transport
+    attr_reader :asked
 
-    def initialize(props, transport: :llama_cpp)
+    def initialize(props)
       @props = props
-      @transport = Samagotchi::Client::Transport.new(transport)
       @asked = []
     end
 
@@ -135,16 +134,10 @@ RSpec.describe "ModelProfile.resolve" do
     expect(result.source).to eq(:server)
   end
 
-  it "does not probe a chat host, mlx or omlx" do
+  it "does not probe a chat host" do
     chat = FakePropsClient.new(answered(ornith_props))
     expect(resolve(names: ["mystery"], entry: entry(api: :openai), client: chat).source).to eq(:default)
     expect(chat.asked).to be_empty
-
-    %i[mlx omlx].each do |transport|
-      client = FakePropsClient.new(answered(ornith_props), transport: transport)
-      expect(resolve(names: ["mystery"], entry: entry(transport: transport), client: client).source).to eq(:default)
-      expect(client.asked).to be_empty
-    end
   end
 
   it "marks the result retry when the probe failed (network error or non-200), falling back to the name" do

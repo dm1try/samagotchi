@@ -12,14 +12,14 @@ require_relative "vision_support"
 require_relative "sampling_settings"
 
 module Samagotchi
-  # Thin HTTP client for llama.cpp's native /completion endpoint, or an
-  # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server or oMLX).
+  # Thin HTTP client for llama.cpp's native /completion endpoint (chi's
+  # raw-prompt loop; any other server is a chat host, api: openai).
   # Configured by the server.* settings (Samagotchi::Config):
   #   server.host  (default: localhost)
-  #   server.port  (default: 8080; oMLX's default is 8000, set it to match)
+  #   server.port  (default: 8080)
   #   server.open_timeout (default: 10 seconds)
   #   server.read_timeout (default: 600 seconds)
-  #   server.transport (llama_cpp|mlx|omlx, default: llama_cpp)
+  #   server.transport (llama_cpp, the default and only value)
   class Client
     # The shared HTTP layer's errors, under their old names.
     RequestCancelled = LLM::RequestCancelled
@@ -37,7 +37,7 @@ module Samagotchi
     PROPS_FAILURE_TTL = 30
 
     DEFAULT_TRANSPORT = :llama_cpp
-    VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
+    VALID_TRANSPORTS = %i[llama_cpp].freeze
 
     # One /props cache per host per process. A host has more than one Client
     # in a run (the registry's, a rebuilt HostRegistry's, the Engines of a
@@ -64,48 +64,29 @@ module Samagotchi
       end
     end
 
-    # Wire-format strategy for one server transport. `Client` keeps the
-    # transport-agnostic request/retry/stream loop; everything that differs
-    # between llama.cpp's native API and the OpenAI-compatible servers
-    # (mlx_lm.server, oMLX) lives here: endpoint paths, payload keys, streamed
-    # content parsing, and the request's `model` field semantics.
+    # The wire format of llama.cpp's native API: endpoint paths, payload
+    # keys, streamed content and the request's `model` field. The one
+    # transport (an OpenAI-compatible server is a chat host, api: openai).
     class Transport
       attr_reader :name
 
       # @param name [Symbol] one of Client::VALID_TRANSPORTS
-      # @param model_resolver [Proc, nil] client-installed resolver for the
-      #   request's `model` field (oMLX resolves against its /v1/models list;
-      #   mlx installs one that always returns nil to omit the field); nil
-      #   means forward the selector verbatim (llama.cpp default)
-      def initialize(name, model_resolver: nil)
+      def initialize(name = DEFAULT_TRANSPORT)
         @name = name
-        @model_resolver = model_resolver
       end
 
-      def label
-        # oMLX gets its own label so its error paths read "omlx ...", not "mlx ...".
-        @name == :llama_cpp ? "llama.cpp" : @name.to_s
-      end
+      def label = "llama.cpp"
 
-      def completion_path
-        openai_compatible? ? "/v1/completions" : "/completion"
-      end
+      def completion_path = "/completion"
 
-      def models_path
-        openai_compatible? ? "/v1/models" : "/models"
-      end
+      def models_path = "/models"
 
-      def token_limit_key
-        openai_compatible? ? :max_tokens : :n_predict
-      end
+      def token_limit_key = :n_predict
 
-      # Where the server describes itself (context window, chat template), or
-      # nil when it has no such route. llama.cpp's /props carries the per-slot
-      # n_ctx (-c split across --parallel slots) and the chat template.
-      # mlx_lm.server and oMLX expose neither.
-      def props_path
-        openai_compatible? ? nil : "/props"
-      end
+      # Where the server describes itself (context window, chat template):
+      # llama.cpp's /props carries the per-slot n_ctx (-c split across
+      # --parallel slots) and the chat template.
+      def props_path = "/props"
 
       def context_window_from(body)
         n_ctx = body.is_a?(Hash) ? body.dig("default_generation_settings", "n_ctx") : nil
@@ -114,17 +95,15 @@ module Samagotchi
 
       # Text content carried by one streamed `data:` payload.
       def content_from_payload(payload)
-        openai_compatible? ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
+        payload.fetch("content", "")
       end
 
       # Why the stream stopped, from its last payload, as an OpenAI finish
       # reason ("length" for the token cap or a full context, "stop"
       # otherwise); nil for a payload that doesn't say. llama.cpp's
-      # /completion names it stop_type ("limit", "eos", "word"); the
-      # OpenAI-compatible servers send their own finish_reason.
+      # /completion names it stop_type ("limit", "eos", "word").
       def finish_reason_from(payload)
         return nil unless payload.is_a?(Hash)
-        return payload.dig("choices", 0, "finish_reason") if openai_compatible?
 
         case payload["stop_type"]
         when "limit" then "length"
@@ -132,30 +111,15 @@ module Samagotchi
         end
       end
 
-      # The request's `model` field for this transport (nil = omit the field):
-      #   - llama.cpp: forward the selector (SAMAGOTCHI_DEFAULT_MODEL) verbatim.
-      #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
-      #     server's own `--model` CLI flag).
-      #   - oMLX: MUST send a model id that exists in the server's `/v1/models`
-      #     list, or oMLX 400s with "model: Field required". The client-installed
-      #     resolver maps the short selector (e.g. `gemma-4-26b-a4b-it-4bit`) to
-      #     the exact registered id (which may be prefixed, e.g.
-      #     `mlx-community--...`) by matching against the loaded /v1/models list.
+      # The request's `model` field: the selector verbatim, nil (omit the
+      # field) when blank.
       def model_for_payload(model)
-        return @model_resolver.call(model) if @model_resolver
-
         value = model.to_s.strip
         value.empty? ? nil : value
       end
 
       # llama.cpp's own API: slots (`id_slot`), `cache_prompt`, /props.
-      def native? = @name == :llama_cpp
-
-      private
-
-      def openai_compatible?
-        @name == :mlx || @name == :omlx
-      end
+      def native? = true
     end
 
     # One /props probe's outcome. `answered?` is false when the probe failed:
@@ -206,7 +170,7 @@ module Samagotchi
       @scheme        = scheme || "http"
       @open_timeout  = Samagotchi::Config.positive_seconds("server.open_timeout", open_timeout)
       @read_timeout  = Samagotchi::Config.positive_seconds("server.read_timeout", read_timeout)
-      @transport = build_transport(resolve_transport(transport))
+      @transport = Transport.new(resolve_transport(transport))
       # This host's process-wide /props entry (see self.props_entry): its
       # answers and failures are shared with every other Client of the same
       # server.
@@ -286,17 +250,14 @@ module Samagotchi
 
     # Prefill +prompt+ and keep it in the server's cache, so the next
     # request that starts with it only prefills what follows (PromptWarmup:
-    # the turn-end warm-up). llama.cpp's native /completion only; nil on
-    # any other transport. One non-streamed request generating one token
+    # the turn-end warm-up). One non-streamed request generating one token
     # (n_predict 0 does the same on current builds, 1 on every one): no
     # retries, no first-token limit, no stream events. Errors are raised.
     # @param slot [Integer, nil] the slot to run on (`id_slot`): the one the
     #   last request used, which still holds its state
     # @param images [Array<String>] as #complete's
-    # @return [Warmup, nil]
+    # @return [Warmup]
     def warm_up(prompt, model: nil, slot: nil, images: [])
-      return nil unless @transport.native?
-
       images = Array(images)
       text = LLM::Utf8Scrub.call(images.empty? ? prompt : prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model)))
       payload = { prompt: images.empty? ? text : { prompt_string: text, multimodal_data: images },
@@ -317,13 +278,13 @@ module Samagotchi
 
     # Whether llama.cpp's slot +slot+ is processing a request now (GET
     # /slots, its is_processing): :busy or :idle. nil when unknown: no slot,
-    # another transport, the endpoint off (--no-slots), a slot it doesn't
+    # the endpoint off (--no-slots), a slot it doesn't
     # list, a bad body or a network error. One quick attempt (PromptWarmup:
     # a warm-up pinned to a busy slot waits behind that request, and the
     # next turn behind the warm-up).
     # @return [Symbol, nil]
     def slot_status(slot, model: nil)
-      return nil unless @transport.native? && slot.is_a?(Integer)
+      return nil unless slot.is_a?(Integer)
 
       model = model.to_s.strip
       query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"
@@ -378,7 +339,7 @@ module Samagotchi
       clear_props_failures!
       result
     rescue LLM::BadRequest => e
-      raise unless e.status == 404 && @transport.name == :llama_cpp
+      raise unless e.status == 404
 
       # No native /completion here: likely an OpenAI-compatible server.
       raise LLM::BadRequest.new(e.message, host: e.host, status: e.status, attempts: e.attempts, hint: OPENAI_API_HINT)
@@ -390,7 +351,7 @@ module Samagotchi
 
     # The running llama.cpp's media marker (/props), or a VisionUnsupported.
     def media_marker!(model)
-      marker = @transport.props_path && VisionSupport.media_marker(server_props(model: model))
+      marker = VisionSupport.media_marker(server_props(model: model))
       return marker if marker
 
       raise LLM::VisionUnsupported.new("#{@label}: can't reach /props for the media marker", host: @label)
@@ -408,8 +369,8 @@ module Samagotchi
       raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
     end
 
-    # What the running server says about itself (/props), as a ServerProps,
-    # or nil when the transport has no such route. One GET with short
+    # What the running server says about itself (/props), as a ServerProps.
+    # One GET with short
     # timeouts and no retry: it runs before generation and must never hold up
     # a turn. The probe names the model (`?model=`): a llama.cpp router
     # answers a stub without it, and a single-model server ignores it.
@@ -420,9 +381,6 @@ module Samagotchi
     # or model list this client gets through clears the failures: a server
     # that just answered is not the down or hung one the window remembered.
     def server_props(model: nil)
-      path = @transport.props_path
-      return nil unless path
-
       key = model.to_s
       @props_mutex.synchronize do
         return @props_cache[key] if @props_cache.key?(key)
@@ -431,7 +389,7 @@ module Samagotchi
         return failed if failed && monotonic_now - failed_at < PROPS_FAILURE_TTL
       end
 
-      props = probe_props(path, key)
+      props = probe_props(@transport.props_path, key)
       @props_mutex.synchronize do
         case props.status
         when :cancelled then nil
@@ -451,7 +409,7 @@ module Samagotchi
     end
 
     # The context window (tokens) the running server was started with, or nil
-    # when the transport reports none or the probe fails (see #server_props).
+    # when the server reports none or the probe fails (see #server_props).
     def context_window(model: nil)
       props = server_props(model: model)
       props&.answered? ? @transport.context_window_from(props.body) : nil
@@ -510,21 +468,6 @@ module Samagotchi
       VALID_TRANSPORTS.include?(value) ? value : DEFAULT_TRANSPORT
     end
 
-    # Build the wire-format strategy for a resolved transport name. oMLX gets
-    # a resolver that maps the short selector to the exact /v1/models id (see
-    # #resolve_omlx_model); mlx gets a resolver that always returns nil so the
-    # `model` field is omitted; llama.cpp uses the strategy's default (forward
-    # the selector verbatim).
-    def build_transport(name)
-      resolver = case name
-                 when :omlx
-                   ->(model) { resolve_omlx_model(model) }
-                 when :mlx
-                   ->(_model) {}
-                 end
-      Transport.new(name, model_resolver: resolver)
-    end
-
     def completion_uri
       URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
     end
@@ -537,13 +480,11 @@ module Samagotchi
       payload[@transport.token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
       model_name = @transport.model_for_payload(model)
       payload[:model] = model_name if model_name
-      if @transport.native?
-        # llama.cpp's default today, sent anyway: chi's next turn relies on it.
-        # false only for the retry of a malformed generation (KernelLoop),
-        # which a poisoned cache must not produce again.
-        payload[:cache_prompt] = cache_prompt != false
-        payload[:id_slot] = slot if slot.is_a?(Integer)
-      end
+      # llama.cpp's default today, sent anyway: chi's next turn relies on it.
+      # false only for the retry of a malformed generation (KernelLoop),
+      # which a poisoned cache must not produce again.
+      payload[:cache_prompt] = cache_prompt != false
+      payload[:id_slot] = slot if slot.is_a?(Integer)
       sendable_sampling(sampling).merge(payload)
     end
 
@@ -553,48 +494,8 @@ module Samagotchi
       (sampling || {}).reject { |key, value| value.nil? || ConfigFile::SAMPLING_RESERVED_KEYS.include?(key.to_s) }
     end
 
-    # Resolve a user-facing SAMAGOTCHI_DEFAULT_MODEL selector to the exact id oMLX
-    # expects in the request body (an id from its `/v1/models` list).
-    #
-    # Resolution order: exact (case-insensitive) match first, then the first
-    # substring match, else the selector passes through unchanged so oMLX returns
-    # its own 404 listing the available models. An empty selector yields nil (no
-    # model field). The id list is loaded once per client and memoized, but
-    # resolution runs on every completion so a runtime model switch re-resolves.
-    def resolve_omlx_model(raw)
-      value = raw.to_s.strip
-      return nil if value.empty?
-
-      ids = fetch_omlx_model_ids
-      return value if ids.empty?
-
-      ids.find { |id| id.casecmp?(value) } ||
-        ids.select { |id| id.downcase.include?(value.downcase) }.first ||
-        value
-    end
-
-    # Load and memoize the list of model ids from oMLX's `/v1/models`.
-    #
-    # Only memoize on success: a failed `list_models` must leave the cache unset
-    # so the next completion retries (a transient blip shouldn't disable
-    # resolution for the whole session). On failure we return [] so an unknown
-    # selector still passes through raw, letting oMLX return its own 400/404
-    # (server decides), as documented in docs/configuration.md.
-    def fetch_omlx_model_ids
-      return @omlx_model_ids if defined?(@omlx_model_ids)
-
-      begin
-        ids = list_models.map { |m| m.is_a?(Hash) ? m["id"] : m }
-      rescue StandardError
-        return []
-      end
-
-      @omlx_model_ids = ids
-      ids
-    end
-
     # Returns [content, payload] for a streamed SSE line, or nil to skip
-    # (blank lines, non-data lines, and the mlx/oMLX `[DONE]` sentinel).
+    # (blank lines, non-data lines, and a `[DONE]` sentinel).
     # Raises the ProviderError of a server's error event.
     def parse_stream_line(line)
       error = LLM::HTTP.sse_error(line, host: @label)

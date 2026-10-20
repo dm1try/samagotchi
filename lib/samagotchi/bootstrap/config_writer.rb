@@ -39,7 +39,6 @@ module Samagotchi
       end
 
       HOSTS_LINE_RE = /\Ahosts:[ \t]*(#.*)?\z/
-      SERVER_TRANSPORTS = ConfigFile::VALID_TRANSPORTS_FOR_CONFIG
 
       # The host part of a name: localhost/127.x → local, another IP → lan,
       # a domain → its second-level label (api.openai.com → openai).
@@ -261,10 +260,7 @@ module Samagotchi
         file = data.is_a?(Hash) ? data : {}
         host = Config.resolve("server.host", file_data: file, env: {}, cli_overrides: {}).to_s.strip
         port = Config.resolve("server.port", file_data: file, env: {}, cli_overrides: {}).to_i
-        transport = Config.resolve("server.transport", file_data: file, env: {}, cli_overrides: {}).to_s.strip.downcase
-        entry = { "host" => host.empty? ? "localhost" : host, "port" => port.positive? ? port : 8080 }
-        entry["transport"] = transport if SERVER_TRANSPORTS.include?(transport) && transport != "llama_cpp"
-        entry
+        { "host" => host.empty? ? "localhost" : host, "port" => port.positive? ? port : 8080 }
       end
 
       def same_server?(existing, fields)

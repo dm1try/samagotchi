@@ -13,8 +13,6 @@ require "yaml"
 #   SAMAGOTCHI_INTEGRATION_MODEL  served model id       (required)
 #   SAMAGOTCHI_INTEGRATION_API    "openai" for the chat loop (default: none,
 #                                 the native completion loop)
-#   SAMAGOTCHI_INTEGRATION_TRANSPORT  llama_cpp, mlx or omlx (default: none,
-#                                 chi's default, llama_cpp)
 #
 # :integration examples run under a fixture config built from these alone
 # (IntegrationServer.write_config_home), never the developer's ~/.config/samagotchi:
@@ -27,7 +25,7 @@ module IntegrationServer
   # The hosts: entry the fixture config defines.
   HOST_NAME = "integration"
 
-  Settings = Data.define(:host, :port, :model, :api, :transport) do
+  Settings = Data.define(:host, :port, :model, :api) do
     def root_url = "http://#{host}:#{port}"
     def openai_base_url = "#{root_url}/v1"
     def model? = !model.empty?
@@ -37,9 +35,7 @@ module IntegrationServer
     def config_yaml
       entry = { "host" => host, "port" => port }
       server = { "host" => host, "port" => port }
-      server["transport"] = transport unless transport.empty?
       entry["api"] = api unless api.empty?
-      entry["transport"] = transport unless transport.empty?
       YAML.dump(
         "default" => { "model" => model },
         "server" => server,
@@ -54,8 +50,7 @@ module IntegrationServer
     Settings.new(host: env["#{ENV_PREFIX}HOST"].to_s.strip.then { |h| h.empty? ? DEFAULT_HOST : h },
                  port: port.empty? ? DEFAULT_PORT : Integer(port, 10),
                  model: env["#{ENV_PREFIX}MODEL"].to_s.strip,
-                 api: env["#{ENV_PREFIX}API"].to_s.strip,
-                 transport: env["#{ENV_PREFIX}TRANSPORT"].to_s.strip)
+                 api: env["#{ENV_PREFIX}API"].to_s.strip)
   end
 
   # Writes the fixture config under a fresh temp dir and returns that dir,

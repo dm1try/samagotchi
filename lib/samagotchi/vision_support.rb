@@ -61,9 +61,6 @@ module Samagotchi
 
     def self.native(target, _entry, profile, trust_config:)
       client = target.client
-      transport = client.transport.name
-      return no("#{transport} hosts take no images (only llama.cpp does)") unless transport == :llama_cpp
-
       props = client.server_props(model: target.bare_model)
       return no("can't reach /props for the media marker") unless props&.answered?
 

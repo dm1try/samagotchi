@@ -12,8 +12,8 @@ RSpec.describe Samagotchi::VisionSupport do
 
   def props(body, status: :ok) = Samagotchi::Client::ServerProps.new(body: body, status: status)
 
-  def native_target(props_answer, transport: :llama_cpp, vision: nil, model: "Ornith")
-    client = instance_double(Samagotchi::Client, transport: Samagotchi::Client::Transport.new(transport))
+  def native_target(props_answer, vision: nil, model: "Ornith")
+    client = instance_double(Samagotchi::Client)
     allow(client).to receive(:server_props).and_return(props_answer)
     entry = Samagotchi::HostRegistry::HostEntry.new(name: "main", host: "h", port: 1, client: client, vision: vision)
     Samagotchi::HostRegistry::ModelTarget.new(model: model, entry: entry, bare_model: model, client: client)
@@ -70,11 +70,6 @@ RSpec.describe Samagotchi::VisionSupport do
     it "says no for a profile with no image template" do
       allow(gemma).to receive(:image_template).and_return(nil)
       expect(answer(native_target(props(ornith)), profile: gemma).reason).to eq("profile gemma4 has no image template yet")
-    end
-
-    it "says no for mlx and omlx hosts" do
-      expect(answer(native_target(props(ornith), transport: :mlx)).reason).to include("mlx hosts take no images")
-      expect(answer(native_target(nil, transport: :omlx)).value).to be(false)
     end
 
     it "lets config say no, and yes skips only the modalities check" do

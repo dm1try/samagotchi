@@ -345,8 +345,6 @@ module Samagotchi
       when :config then "#{name} (config #{result.detail})"
       when :cli, :env then "#{name} (#{result.source})"
       else
-        return "#{name} (#{result.source})" unless entry.nil? || entry.transport.nil? || entry.transport == :llama_cpp
-
         given = result.source == :name ? "name says #{name}" : "default #{name}"
         "from the server at runtime (#{given})"
       end

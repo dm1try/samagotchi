@@ -18,7 +18,6 @@ RSpec.describe IntegrationServer do
       expect(settings.host).to eq("localhost")
       expect(settings.port).to eq(8080)
       expect(settings.api).to eq("")
-      expect(settings.transport).to eq("")
       expect(settings).not_to be_model
     end
 
@@ -77,14 +76,6 @@ RSpec.describe IntegrationServer do
       data = YAML.safe_load(openai.config_yaml)
 
       expect(data.dig("hosts", "integration", "api")).to eq("openai")
-    end
-
-    it "sets the transport on the server and the host when asked" do
-      omlx = described_class.settings_from("SAMAGOTCHI_INTEGRATION_MODEL" => "m", "SAMAGOTCHI_INTEGRATION_TRANSPORT" => "omlx")
-      data = YAML.safe_load(omlx.config_yaml)
-
-      expect(data.dig("server", "transport")).to eq("omlx")
-      expect(data.dig("hosts", "integration", "transport")).to eq("omlx")
     end
   end
 
