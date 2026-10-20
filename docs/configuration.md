@@ -190,62 +190,40 @@ to use (`did you mean 'default.model'?`).
 
 ## Model Server Transport
 
-Chi talks to a model server over HTTP and supports three transports:
+Chi talks to a model server over HTTP in one of two ways, set by the host's `api:`:
 
-- `llama_cpp` (default): llama.cpp's native `/completion` and `/models` endpoints.
-- `mlx`: [mlx-lm](https://github.com/ml-explore/mlx-lm)'s OpenAI-compatible
-  `/v1/completions` and `/v1/models` endpoints (Apple Silicon-native models).
-- `omlx`: [oMLX](https://github.com/jundot/omlx) (the mlx-lm successor —
-  continuous batching + tiered SSD KV cache) using the same `/v1/completions`
-  and `/v1/models` endpoints as `mlx`.
+- chi's own raw-prompt loop on llama.cpp's native `/completion` and `/models` endpoints
+  (`server.transport` / a host's `transport:` `llama_cpp`, the default and only value;
+  env `SAMAGOTCHI_SERVER_TRANSPORT`);
+- a chat API: `openai` (Chat Completions) or `anthropic` (Messages), see below.
 
-> **mlx and oMLX** are not verified with recent chi versions; llama.cpp and
-> OpenAI-compatible hosts (`api: openai`) are the tested paths.
+Each host may set `api:`:
 
-Select the transport with `server.transport` (`llama_cpp`, `mlx`, or `omlx`;
-env `SAMAGOTCHI_SERVER_TRANSPORT`). `server.host`/`server.port` are reused for all three —
-only the request/response shape differs. oMLX's default server port is `8000` (not
-`8080`), so point `server.port` at it. With `hosts:` each entry may set `transport: llama_cpp|mlx|omlx` to override the
-global transport per host (`lib/samagotchi/host_registry.rb`).
+- `llama_cpp`: chi's own raw-prompt loop (the value is also the host's transport);
+- `openai`: the OpenAI chat API at `http://HOST:PORT/v1`, or at `url:` (see below);
+- `anthropic`: the Messages API, see [Anthropic Messages hosts](#anthropic-messages-hosts).
 
-Each host may also set `api:`, which says how chi talks to it:
-
-- `llama_cpp`, `mlx` or `omlx`: chi's own raw-prompt loop (the value is also the
-  host's transport, so don't set a different `transport:` next to it);
-- `openai`: the OpenAI chat API at `http://HOST:PORT/v1`, or at `url:` (see below).
-
-Without `api:` a host uses the raw-prompt loop, as before. The loop follows the
+Without `api:` a host uses the raw-prompt loop. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
 Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api:` included.
 
-Example for mlx-lm (not verified with recent chi versions, like oMLX below):
+**mlx-lm and oMLX** ([mlx-lm](https://github.com/ml-explore/mlx-lm)'s `mlx_lm.server`,
+[oMLX](https://github.com/jundot/omlx)) are chat hosts: give them `api: openai` with their `/v1` url.
+chi's own `mlx` and `omlx` transports were removed (their chat endpoint matched or beat them); a config
+still naming `api:`/`transport:` `mlx` or `omlx` stops chi at start with one line saying what to write.
+oMLX's default port is `8000`; an oMLX started with an API key needs `api_key_env:`:
 
 ```yaml
-server:
-  transport: mlx
-  host: 127.0.0.1
-  port: 8080
+hosts:
+  omlx:
+    url: http://192.0.2.10:8000/v1
+    api: openai
+    api_key_env: OMLX_API_KEY
 ```
 
-```shell
-mlx_lm.server --model mlx-community/Qwen3-14B-Instruct-4bit
-```
-
-Example for oMLX:
-
-```yaml
-server:
-  transport: omlx
-  host: 192.0.2.10
-  port: 8000
-```
-
-Both the `mlx` and `omlx` transports still send chi's own raw formatted prompt
-(via `/v1/completions`) rather than a `messages` array, so the existing
-per-model prompt/tool-call formatting is unaffected — neither server reapplies its
-own chat template on this endpoint. Only the Gemma4 (`<|tool_call>…`) and Qwen3.6
-(`[[…]]`/`<|tool_call>`) tool-call formats are in scope; GLM/Mistral/Kimi/MiniMax
-formats are not parsed.
+Name the model exactly as the server's `/v1/models` lists it (oMLX: e.g. `mlx-community--Qwen3.6-35B-A3B-4bit`;
+a short name 404s): `chi models` and the `/model` picker show them. Tool calls come back as the chat API's own
+`tool_calls`, and the model's reasoning as thinking.
 
 For an OpenAI Chat Completions server such as [Splash](https://github.com/incoai/splash)
 (a fast inference engine for Macs that works well for a local setup alongside
@@ -339,8 +317,7 @@ expose the OpenAI-compatible chat endpoint. In verbose mode (`-v`), chi prints t
 starting model uses (`[verbose] backend=chat` or `backend=native`); request
 bodies are not logged. The interactive REPL, `--prompt`,
 workers, and resumed sessions all use the loop of the model's host. Hosts without
-`api: openai` keep using the native `/completion`, `/v1/completions`, or oMLX
-transport path.
+a chat `api:` keep using llama.cpp's native `/completion`.
 
 ### API keys from the Keychain
 
@@ -470,32 +447,14 @@ The same test works against a llama.cpp OpenAI-compatible server by changing
 the host, port, and model values. The test is skipped unless
 `SAMAGOTCHI_INTEGRATION=1` is set; see [Testing](testing.md).
 
-oMLX's known tool-call limitation (a stream filter that strips markup) only
-affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
-chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
-
 `default.model` (config default) and `/model` (runtime effective) pick the model; the status line and `/model`
 output always render the runtime effective model (showing default when diverged). Which prompt format it gets is the
-prompt profile (see "Prompt profile" below). How the selector reaches the request differs by transport (mlx and oMLX: not verified with recent chi versions):
-
-- **mlx** (`mlx_lm.server`): the `model` field is omitted entirely — the server
-  uses whatever was loaded via its own `--model` CLI flag.
-- **omlx**: the server *requires* a `model` field and returns `HTTP 400`
-  (`model: Field required`) without it, so samagotchi forwards the selector
-  resolved to the exact id listed in the server's `/v1/models` — matched by exact
-  (case-insensitive) first, then substring, then passed through unchanged. That
-  resolved id is usually prefixed (e.g. `mlx-community--gemma-4-e4b-it-4bit`), so a
-  short selector such as `gemma-4-e4b-it-4bit` is what you set in
-  `default.model`. An unknown selector passes through raw and oMLX 404s,
-  listing its available models; if `/v1/models` is unreachable, samagotchi falls
-  back to the raw selector and lets the server decide (its own 400/404). Either
-  error fails the turn with the server's message (see "Server errors" below). Runtime
-  model switch re-resolves each completion (the `/v1/models` id list is cached per
-  client; the selector itself is re-resolved every time).
+prompt profile (see "Prompt profile" below). The request's `model` field is the selector as written (host prefix
+dropped).
 
 ## Prompt profile
 
-A native host (`llama_cpp`, `mlx`, `omlx`) gets a raw prompt in one model family's format: its turn markers, tool-call
+A native host (`llama_cpp`) gets a raw prompt in one model family's format: its turn markers, tool-call
 syntax, thought tags and stop sequences. That is the prompt profile, `qwen36` or `gemma4`. A wrong one is not just
 worse output: a ChatML model under `gemma4` never hits a stop sequence, generates until its limit and then runs the
 tool calls it made up on the way. The first of these that says something wins:
@@ -517,16 +476,14 @@ tool calls it made up on the way. The first of these that says something wins:
 
    ```yaml
    hosts:
-     mlx:
+     box:
        host: 192.0.2.10
        port: 8081
-       transport: mlx
        profile: qwen36
    ```
 
 4. The server's chat template, on `llama_cpp` hosts: `/props` (asked with `?model=`, which a router needs) with
    `<|im_start|>` and `<function=` is `qwen36`, any other ChatML template too; `<|turn>` and `<|tool_call>` is `gemma4`.
-   mlx_lm.server and oMLX publish no template, so config or the name decides there.
 5. The name: `qwen` → `qwen36`, `gemma` → `gemma4`.
 6. `qwen36`.
 
@@ -1286,7 +1243,6 @@ Whether a model can see images is found out before a turn with images is sent:
 - a native llama.cpp host: `/props` must report `modalities.vision` (the server
   runs with `--mmproj`) and a media marker, and the prompt profile must know the
   chat template's image wrapping (qwen36 and gemma4 do);
-- mlx and oMLX hosts: no (not verified with recent chi versions);
 - an OpenAI-API host: a local llama.cpp's `/props`, else the host's model list
   (OpenRouter's `architecture.input_modalities`); when it doesn't say, the image
   is sent and a refusal is reported.
@@ -1598,7 +1554,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `default.input` | none | | Text pre-filled at the first prompt (a trailing space is kept); `--no-default-input` skips it. See [CLI](cli.md). |
 | `default.max_tokens` | server's | yes | Most tokens one generation may produce (`n_predict` on a native llama.cpp host; OpenRouter: 32768 when unset). |
 | `model.profile` | none | `--profile` | Prompt profile for every model (`qwen36`, `gemma4`); env and CLI only. See "Prompt profile". |
-| `server.transport` | `llama_cpp` | yes | `llama_cpp`, `mlx` or `omlx`; see "Model Server Transport". |
+| `server.transport` | `llama_cpp` | yes | `llama_cpp` (the only value; `mlx`/`omlx` were removed: use `api: openai`); see "Model Server Transport". |
 | `server.host` | `localhost` | yes | The model server when there is no `hosts:` map. |
 | `server.port` | `8080` | yes | Its port. |
 | `server.open_timeout` | `10` | yes | Connection timeout, seconds. |

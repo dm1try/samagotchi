@@ -115,6 +115,6 @@ Context window lookup (`ContextWindow.resolve`, the first that answers wins; the
 4. `context.window_tokens`: CLI, `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` or the config file (`:config` or `:env`).
 5. `ContextWindow::DEFAULT_TOKENS`, 256000 (`:default`).
 
-Settings (3 and 4) only fill in when the server and its list report nothing (mlx, oMLX, a server that is down). A
+Settings (3 and 4) only fill in when the server and its list report nothing (a server that is down, a chat host whose list has no window). A
 window the stream's `usage` reports itself (`n_ctx` / `context_window`) wins over all of these for that request
 (`window_src=server`). `chi self` shows the offline answer (steps 3 to 5) and which setting gave it.

@@ -173,7 +173,6 @@ they skip), and they need the server and the model it serves:
 | `SAMAGOTCHI_INTEGRATION_PORT` | model server port | `8080` |
 | `SAMAGOTCHI_INTEGRATION_MODEL` | the served model id | none: the examples skip |
 | `SAMAGOTCHI_INTEGRATION_API` | `openai` for the chat loop (`hosts.<name>.api`) | none: the native loop |
-| `SAMAGOTCHI_INTEGRATION_TRANSPORT` | `llama_cpp`, `mlx` or `omlx` (`server.transport`) | none: `llama_cpp` |
 
 They run under a config built from these variables alone (`default.model`, `server.host`/`port`, and one
 `hosts.integration` entry; `spec/support/integration_server.rb`), never your `~/.config/samagotchi/config.yml`: no
@@ -192,10 +191,6 @@ bundle exec rspec --tag integration spec/integration spec/hooks/integration_spec
 A run takes one to four minutes against a 35B MoE model on llama.cpp (25 examples). `ECONNREFUSED` means the server is down. The
 examples assert what the model did (the tool it called, the file it edited), not its wording, but they still depend on
 a model that follows tool instructions: a small model may fail some of them.
-
-`spec/integration/omlx_spec.rb` tests oMLX's model-id resolution and runs only with
-`SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx`, against an oMLX server (a short model selector in
-`SAMAGOTCHI_INTEGRATION_MODEL`).
 
 ## The llm_context replay benchmark
 

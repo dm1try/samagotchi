@@ -22,6 +22,11 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
   problems_in = lambda do |data|
     next ["top level is not a mapping"] unless data.is_a?(Hash)
 
+    begin
+      Samagotchi::ConfigFile.check_removed_apis!(data, env: {})
+    rescue Samagotchi::ConfigFile::RemovedApi => e
+      next [e.message]
+    end
     Samagotchi::Config.validate_yaml_sections(data)
   end
 

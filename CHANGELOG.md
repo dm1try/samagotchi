@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Removed
+
+- chi's own `mlx` and `omlx` transports (`api:` / `transport:` on a host, `server.transport`,
+  `SAMAGOTCHI_SERVER_TRANSPORT`): mlx_lm.server and oMLX are chat hosts now, `url: http://HOST:PORT/v1, api: openai`
+  (on oMLX the chat endpoint matched or beat the native one, tool calls intact). llama.cpp is the only raw-prompt
+  server. A config that still names `mlx` or `omlx` stops chi at start with one line: `Error: config.yml
+  hosts.mac.api: omlx was removed; for mlx_lm.server or oMLX use url: http://HOST:PORT/v1, api: openai in a hosts:
+  entry`. Name the model as the server's `/v1/models` lists it (oMLX's prefixed `mlx-community--…` id); the short
+  selector oMLX's transport used to resolve now 404s. See
+  [docs/configuration.md](docs/configuration.md#model-server-transport).
+
 ## [0.94.0] - 2026-10-20
 
 ### Added

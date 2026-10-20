@@ -19,10 +19,10 @@ command.
   its own API (the native path, and the default)
 
 Tested: llama.cpp native (Qwen, Gemma 4), [Splash](https://github.com/incoai/splash)
-over the OpenAI API, and [OpenRouter](https://openrouter.ai) (remote, OpenAI API
-with `api_key_env`). vLLM, LM Studio, Ollama, mlx-lm, oMLX and other
-OpenAI-compatible servers should work over the OpenAI API but are not tested;
-mlx-lm and oMLX also have native transports, see
+and [oMLX](https://github.com/jundot/omlx) over the OpenAI API, and
+[OpenRouter](https://openrouter.ai) (remote, OpenAI API with `api_key_env`).
+vLLM, LM Studio, Ollama, mlx-lm and other OpenAI-compatible servers should work
+over the OpenAI API but are not tested; see
 [Configuration](docs/configuration.md#model-server-transport).
 
 ## Install

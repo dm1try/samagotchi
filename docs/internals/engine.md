@@ -165,8 +165,7 @@ whose tools, hooks, gate and dispatch it uses.
 
 ### KernelLoop (the native, raw-prompt loop)
 
-Runs models whose server takes a raw prompt (llama.cpp `/completion`, or `/v1/completions` on an
-OpenAI-compatible completions server). chi formats the prompt itself, per model profile (Gemma 4, Qwen 3.6), and
+Runs models whose server takes a raw prompt (llama.cpp `/completion`). chi formats the prompt itself, per model profile (Gemma 4, Qwen 3.6), and
 parses tool calls out of the generated text.
 
 ```

@@ -812,7 +812,7 @@ like `[image shot.png 1280×800 not sent: an older image (chi sends up to the
 newest 20)]`.
 
 A model that can't see images (a text-only model, llama.cpp without
-`--mmproj`, an mlx host) refuses a turn with images before sending it:
+`--mmproj`) refuses a turn with images before sending it:
 `host main can't take images: …; send text only, or pick a model that can see
 images (/model)`, and the typed text (and the web's chips) come back. When chi
 can't tell beforehand, the provider's refusal gives the same line. Images already

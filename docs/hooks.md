@@ -178,7 +178,7 @@ are also logged (`turn` tag, `hook_notice`).
 
 `:generation_progress` sees a model response **while it streams**: the
 thinking and the visible text, on both the raw-prompt path (llama.cpp
-`/completion`, `/v1/completions`) and the chat path (`api: openai`). It fires
+`/completion`) and the chat path (`api: openai`). It fires
 for the turn's own generations only (not a plugin's `ctx.ask_model`, not a
 recap).
 

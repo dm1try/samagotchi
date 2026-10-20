@@ -489,7 +489,7 @@ on every read, never kept, since config.yml and a model listing can move it with
 
 | Loop | Class | Host | Talks through |
 |---|---|---|---|
-| Raw prompt | `KernelLoop`, wrapped by `LLM::NativeBackend` | no `api:`, or `llama_cpp`/`mlx`/`omlx` | `Client` (`/completion` or `/v1/completions`), chi's own Gemma/Qwen prompt and tool-call parsing |
+| Raw prompt | `KernelLoop`, wrapped by `LLM::NativeBackend` | no `api:`, or `llama_cpp` | `Client` (llama.cpp `/completion`), chi's own Gemma/Qwen prompt and tool-call parsing |
 | Chat | `LLM::ChatLoop` | `api: openai` | `LLM::OpenAIChat` (`/v1/chat/completions`, streamed, native tool calls) |
 | Chat | `LLM::ChatLoop` | `api: anthropic` | `LLM::AnthropicMessages` (`/v1/messages`, streamed SSE, native `tool_use`) |
 
@@ -523,8 +523,7 @@ budget, the hidden nudge, the retry's sampling), and both end each
 generation's `:generation_completed` with a `finish_reason`: the chat host's
 own, or for the raw-prompt loop what `Client::Transport#finish_reason_from`
 reads from the stream's last payload (llama.cpp `/completion`'s `stop_type`:
-`limit` is `length`, `eos` and a stop word are `stop`; `/v1/completions` sends
-its own). An empty answer with a `length` stop and the context 90 % full or
+`limit` is `length`, `eos` and a stop word are `stop`). An empty answer with a `length` stop and the context 90 % full or
 more is not asked again (a full window, not a thinking loop); with no finish
 reason it is. Both also keep one `ContextStatus` per turn: before each request
 it estimates how full the window is (the server's last count plus what the turn
