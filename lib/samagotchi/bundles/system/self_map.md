@@ -68,7 +68,7 @@
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
-  hosts, transports), `hooks.md` (hook events table), `plugins.md` (plugin API, btw/mcp bundles),
+  hosts, the server api), `hooks.md` (hook events table), `plugins.md` (plugin API, btw/mcp bundles),
   `guardrails.md`, `memory.md`, `sessions.md`. `README.md` is only the quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
   `output_guardrails.rb`). Tool descriptions are summaries, not the spec.
