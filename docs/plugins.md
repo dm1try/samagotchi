@@ -1186,6 +1186,12 @@ bundle.shutdown
   `chi.*` calls `register` made, in order, as made), `bundle.namespace`, `bundle.hook_names(event)`,
   `bundle.run_inits`, `sandbox.write_memory(name, text, scope:)` / `memory_dir`, `sandbox.fake_executable(name,
   body)` (first on `PATH`), `wait_until { }`.
+- **Model notes:** `sandbox.model_notes_for(model_id, small: nil, cwd: nil)` lists the model notes chi would load
+  into the prompt for a bare model id (`deepseek/deepseek-v4.1-flash`, no host prefix), from the sandbox's
+  memories (an installed bundle's included), matched as chi matches them: each `models:` glob against the id and
+  its model key; `small:` says whether the model counts as small for a `small` entry (nil: chi's own rule). Each
+  note has `name`, `scope`, `chars` and `body`, in prompt order. `sandbox.model_note_limits` gives the sizes chi
+  warns over (`note:`, `total:`).
 - **`ctx.http` is faked.** `bundle.http.stub(method, url_or_regexp, status: 200, headers: {}, body: nil, json: nil,
   error: nil) { |request| … }` answers it: a String URL matches exactly (query included), a Regexp the full URL, later
   stubs win, and a stub answers every matching call (a block that counts makes a sequence). `error: :refused` or

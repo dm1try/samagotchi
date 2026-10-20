@@ -124,6 +124,32 @@ module Samagotchi
         File.join(memory_dir(scope, cwd: cwd || Dir.pwd), "#{name}.md")
       end
 
+      # The model notes chi loads into the prompt for +model_id+ (the bare
+      # id, no host prefix: `deepseek/deepseek-v4.1-flash`), from this
+      # sandbox's memories (the system scope's, then the project scope's for
+      # the checkout at +cwd+), matched as chi matches them: each `models:`
+      # glob against the id and its model key.
+      # @param small [Boolean, nil] whether the model counts as a small one
+      #   for a `small` entry; nil: chi's own rule (guardrails.small_models)
+      # @return [Array<#name, #scope, #chars, #body>] the notes in prompt
+      #   order (`.map(&:name)` for the names); none: []
+      def model_notes_for(model_id, small: nil, cwd: nil)
+        require_relative "../model_notes"
+        require_relative "../model_overlay"
+        small_check = small.nil? ? nil : -> { small }
+        in_dir(cwd) do
+          ModelNotes.for(name: model_id, key: ModelOverlay.key_for(model_id), small: small_check, warn: false)
+        end
+      end
+
+      # The sizes chi warns over (it still loads the notes): one note's
+      # body (+:note+) and all of a model's notes (+:total+), in chars.
+      # @return [Hash{Symbol => Integer}]
+      def model_note_limits
+        require_relative "../model_notes"
+        { note: ModelNotes::NOTE_LIMIT, total: ModelNotes::TOTAL_LIMIT }
+      end
+
       # @return [String] a temp folder for the session's cwd
       def work_dir = File.join(@root, "work")
 

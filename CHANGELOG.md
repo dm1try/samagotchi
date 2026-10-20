@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Bundle test kit: `sandbox.model_notes_for(model_id, small:)` lists the model notes chi would load for a model id
+  (from the sandbox's memories, matched as chi matches them), and `sandbox.model_note_limits` the sizes chi warns
+  over, so a bundle that ships model notes can test which models its `models:` globs catch.
+
 ## [0.93.0] - 2026-10-20
 
 ### Changed

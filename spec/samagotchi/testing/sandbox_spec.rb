@@ -74,6 +74,33 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     end
   end
 
+  it "lists the model notes chi loads for a model id, matched on the id or its key, system scope first" do
+    described_class.with do |sandbox|
+      dir = sandbox.memory_dir
+      File.write(File.join(dir, "model_notes_v4.md"), "models: *deepseek-v4*\nAct early.\n")
+      File.write(File.join(dir, "model_notes_keyed.md"), "models: deepseek-deepseek-v4-1-flash\nKeyed.\n")
+      File.write(File.join(dir, "model_notes_tiny.md"), "models: small\nBe brief.\n")
+      project = sandbox.memory_dir("project", cwd: sandbox.work_dir)
+      File.write(File.join(project, "model_notes_v4.md"), "models: *DeepSeek-V4*\nProject habit.\n")
+
+      notes = sandbox.model_notes_for("deepseek/deepseek-v4.1-flash", small: false)
+      expect(notes.map(&:name)).to eq(%w[model_notes_keyed model_notes_v4])
+      expect(notes.map(&:scope)).to eq(%w[system system])
+      expect(notes.last).to have_attributes(body: "Act early.", chars: 10)
+
+      in_project = sandbox.model_notes_for("deepseek/deepseek-v4.1-flash", small: false, cwd: sandbox.work_dir)
+      expect(in_project.map { |note| [note.name, note.scope] })
+        .to eq([%w[model_notes_keyed system], %w[model_notes_v4 system], %w[model_notes_v4 project]])
+      expect(sandbox.model_notes_for("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", small: true).map(&:name))
+        .to eq(%w[model_notes_tiny])
+      # nil: chi's own rule (auto: 35B-A3B is small by its active size).
+      expect(sandbox.model_notes_for("qwen/qwen3.6-35b-a3b").map(&:name)).to eq(%w[model_notes_tiny])
+      expect(sandbox.model_notes_for("claude-opus-5-5")).to eq([])
+      expect(sandbox.model_note_limits).to eq(note: Samagotchi::ModelNotes::NOTE_LIMIT,
+                                              total: Samagotchi::ModelNotes::TOTAL_LIMIT)
+    end
+  end
+
   it "puts fake commands first on PATH, a body replaced in place" do
     described_class.with do |sandbox|
       path = sandbox.fake_executable("gh", "echo one \"$@\"")
