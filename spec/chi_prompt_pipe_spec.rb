@@ -21,6 +21,9 @@ RSpec.describe "chi --no-shared -p with no terminal" do
     FileUtils.rm_rf(dir)
   end
 
+  # A real bin/chi each: the bug was Reline's, which a fork (the suite's
+  # stubbed Reline) can't show. The retries' backoff is short: their count
+  # is what is checked, not their delay.
   def run_chi(retries:)
     FileUtils.mkdir_p(File.join(dir, "config", "samagotchi"))
     File.write(File.join(dir, "config", "samagotchi", "config.yml"), <<~YAML)
@@ -32,6 +35,7 @@ RSpec.describe "chi --no-shared -p with no terminal" do
           api: openai
       retry:
         max: #{retries}
+        base_delay: 0.01
       recap: false
     YAML
     out, _err, status = super("--no-shared", "-p", "hello", env: isolated_chi_env(dir), timeout: 30)
