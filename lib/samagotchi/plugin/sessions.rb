@@ -80,11 +80,10 @@ module Samagotchi
         sid = resolve(id, state_dir)
         delivered = SessionManager.deliver_turn(sid, prompt: text.to_s, client_id: ClientId::PLUGIN, state_dir: state_dir,
                                                      delivery: wire)
-        case delivered[:status]
+        case delivered.status
         when :accepted then sid
         when :refused
-          ack = delivered[:ack] || {}
-          raise Error, "session #{sid[0, 8]} refused the message (#{ack["error"]}#{": #{ack["detail"]}" if ack["detail"]})"
+          raise Error, "session #{sid[0, 8]} refused the message (#{delivered.error}#{": #{delivered.detail}" if delivered.detail})"
         when :timeout then raise Error, "session #{sid[0, 8]}'s worker did not answer in time; the message was not sent"
         else raise Error, "the message to session #{sid[0, 8]} could not be written"
         end

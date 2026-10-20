@@ -234,11 +234,11 @@ module Samagotchi
         DelegateWait.mark_seen(parent.id, child, state_dir: state_dir)
         delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{ClientId::DELEGATE_PREFIX}#{parent.id[0, 8]}",
                                                     state_dir: state_dir)
-        case delivered[:status]
+        case delivered.status
         when :accepted
-          DelegateWait.mark_turn(parent.id, id, follow_up_turn(id, delivered[:ack], state_dir: state_dir), state_dir: state_dir)
+          DelegateWait.mark_turn(parent.id, id, follow_up_turn(id, delivered.enqueued_id, state_dir: state_dir), state_dir: state_dir)
           id
-        when :refused then "Error: session #{id[0, 8]} refused the message (#{delivered.dig(:ack, "error")})"
+        when :refused then "Error: session #{id[0, 8]} refused the message (#{delivered.error})"
         when :timeout then "Error: the worker of session #{id[0, 8]} did not answer in time, so the message was not sent"
         else "Error: the message to session #{id[0, 8]} could not be written"
         end
@@ -251,24 +251,24 @@ module Samagotchi
 
       # The child's turn a delivered follow-up joins, for the wait
       # (DelegateCursor#turn): the running turn's (its checkpoint mark), the
-      # follow-up merging into it; else the ack's enqueued_id, the follow-up
-      # running as a turn of its own. Only from a worker that names
-      # turn_ids; nil otherwise, or when the running turn has no id (a
-      # delegate's first turn): the wait takes the next reply.
+      # follow-up merging into it; else the delivery's +enqueued_id+, the
+      # follow-up running as a turn of its own. Only
+      # from a worker that names turn_ids; nil otherwise, or when the
+      # running turn has no id (a delegate's first turn): the wait takes the
+      # next reply.
       # A follow-up steered into a turn that ended before it merged runs as
       # its own turn, yet the wait is on the ended one (LOW, as before).
       # One the child's idle look missed being merged into a turn starting
       # then never runs as its own: ReplyWait falls back to that turn's
       # reply (merged_elsewhere?).
       # @return [String, nil]
-      def self.follow_up_turn(id, ack, state_dir:)
+      def self.follow_up_turn(id, enqueued_id, state_dir:)
         return nil unless ReplyWait.turn_ids?(Session.session_dir(id, state_dir: state_dir))
 
         child = Session.load(id, state_dir: state_dir)
         return child.interrupted_turn&.enqueued_id if child.status == Session::STATUS_RUNNING
 
-        enqueued_id = ack.is_a?(Hash) ? (ack["enqueued_id"] || ack[:enqueued_id]) : nil
-        enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
+        enqueued_id
       rescue ArgumentError
         nil
       end

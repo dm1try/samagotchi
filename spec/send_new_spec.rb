@@ -371,7 +371,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|
       delivered << [id, prompt]
       @on_deliver&.call
-      { status: :accepted, ack: {} }
+      Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge)
     end
   end
 
@@ -431,7 +431,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, images:, **|
       delivered << [id, prompt, images.map { |ref| ref[:name] }]
       later { write_reply(@started, "a red square") }
-      { status: :accepted, ack: {} }
+      Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge)
     end
     png = File.expand_path("fixtures/images/tiny.png", __dir__)
 
@@ -487,7 +487,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     before do
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|
         delivered << [id, prompt]
-        { status: :accepted, ack: { "status" => "accepted", "command_id" => "c1", "session_id" => id } }
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge,
+                                                      ack: { "status" => "accepted", "command_id" => "c1", "session_id" => id })
       end
     end
 
@@ -511,7 +512,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       a = make(status: "idle")
       enqueued_id = "input-command"
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
-        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
       end
       later(0.05) do
         Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
@@ -526,7 +528,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       a = make(status: "idle")
       enqueued_id = "input-command-error"
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
-        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
       end
       later(0.05) do
         Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
@@ -542,7 +545,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       enqueued_id = "new-input-command"
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
-        { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id } }
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
       end
       later(0.05) do
         Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(@started.id, state_dir: tmpdir),
@@ -575,8 +579,9 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
   describe "--queue (the message's own turn, after the running one)" do
     def queue_ack(id, enqueued_id, delivery: "queue")
-      { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id,
-                                  "delivery" => delivery } }
+      Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge,
+                                                    ack: { "status" => "accepted", "enqueued_id" => enqueued_id,
+                                                           "session_id" => id, "delivery" => delivery })
     end
 
     def end_turn(session, enqueued_id, outcome: "completed")

@@ -154,17 +154,17 @@ RSpec.describe "steering a running turn (chi send)" do
 
     queued = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "later please", client_id: "web:x",
                                                                  delivery: "queue", state_dir: tmpdir)
-    expect(queued).to include(status: :accepted)
-    expect(queued[:ack]).to include("delivery" => "queue")
+    expect(queued).to have_attributes(status: :accepted)
+    expect(queued.ack).to include("delivery" => "queue")
     sleep(0.01)
     plain = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "mind the typos", client_id: "web:x", state_dir: tmpdir)
     @sent = true
-    expect(plain[:ack]).to include("delivery" => "next_step")
+    expect(plain.ack).to include("delivery" => "next_step")
 
     expect(merged("mind the typos")).to be_truthy, "events: #{types.tally}"
     started = wait_until(timeout: 15) { events.find { |e| e[:type] == :turn_started && e[:prompt] == "later please" } }
     expect(started).to be_truthy, "events: #{types.tally}"
-    expect(started.dig(:origin, :enqueued_id)).to eq(queued[:ack]["enqueued_id"])
+    expect(started.dig(:origin, :enqueued_id)).to eq(queued.ack["enqueued_id"])
     first_end = events.index { |e| e[:type] == :turn_completed }
     expect(first_end).to be < events.index(started)
     expect(events.select { |e| e[:type] == :pending_input_merged }.map { |e| e[:content].to_s }.join).not_to include("later please")

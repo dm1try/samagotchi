@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
       allow(app).to receive(:live_bridge_client).and_return(bridge)
     end
   end
-  let(:accepted) { { status: :accepted, ack: { "status" => "accepted" } } }
+  let(:accepted) { Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "status" => "accepted" }) }
 
   around do |example|
     Dir.mktmpdir("web-history") do |dir|
@@ -84,9 +84,9 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
     end
 
     it "records nothing when the turn wasn't taken" do
-      expect(turn({ prompt: "a" }, { status: :refused, code: 409, ack: { "error" => "busy" } })).to eq(409)
-      expect(turn({ prompt: "b" }, { status: :timeout, ack: { "detail" => "late" } })).to eq(504)
-      expect(turn({ prompt: "c" }, { status: :failed })).to eq(500)
+      expect(turn({ prompt: "a" }, Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, code: 409, ack: { "error" => "busy" }))).to eq(409)
+      expect(turn({ prompt: "b" }, Samagotchi::SessionManager::DeliverResult.new(status: :timeout, via: :bridge, ack: { "detail" => "late" }))).to eq(504)
+      expect(turn({ prompt: "c" }, Samagotchi::SessionManager::DeliverResult.new(status: :failed))).to eq(500)
 
       allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::SessionManager::OwnedByTUI, "s1")
       expect(call("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"d"}').first).to eq(409)

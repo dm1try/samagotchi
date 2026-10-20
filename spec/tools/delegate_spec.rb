@@ -469,7 +469,7 @@ RSpec.describe "delegate tools" do
             write_reply(child, "the second answer")
             set_status(child, "idle")
           end
-          { status: :accepted, ack: {} }
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge)
         end
 
         out = described_class.call("and the second?", session: child.id[0, 8], peers: peers)
@@ -507,7 +507,7 @@ RSpec.describe "delegate tools" do
         def cursor = Samagotchi::Tools::DelegateCursors.get(parent.id, child.id, state_dir: tmpdir)
 
         def deliver_acking(id)
-          allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: { "enqueued_id" => id } })
+          allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "enqueued_id" => id }))
         end
 
         it "is the running turn's (the follow-up merges into it), whose reply the wait takes over a queued turn's newer one" do
@@ -573,7 +573,7 @@ RSpec.describe "delegate tools" do
         fail_turn(child, at: "2026-09-30T10:00:01.000+02:00")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do
           fail_turn(child, at: "2026-09-30T10:00:05.000+02:00")
-          { status: :accepted, ack: {} }
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge)
         end
 
         out = described_class.call("try again", session: child.id, timeout: 2, peers: peers)
@@ -584,12 +584,12 @@ RSpec.describe "delegate tools" do
       end
 
       it "names a delivery that did not go through" do
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :refused, ack: { "error" => "bad_images" } })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, ack: { "error" => "bad_images" }))
         expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: session #{child.id[0, 8]} refused the message (bad_images)")
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :timeout, ack: {} })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, via: :bridge))
         expect(described_class.call("x", session: child.id, peers: peers))
           .to eq("Error: the worker of session #{child.id[0, 8]} did not answer in time, so the message was not sent")
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :failed })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :failed))
         expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: the message to session #{child.id[0, 8]} could not be written")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::SessionManager::OwnedByTUI.new(child.id))
         expect(described_class.call("x", session: child.id, peers: peers))
@@ -597,28 +597,28 @@ RSpec.describe "delegate tools" do
       end
 
       it "returns at once without waiting" do
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
         out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
         expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; chi brings its reply")
       end
 
       it "says delegate_result waits for the reply when delegate reports are off" do
         allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("off")
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
         out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
         expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
       end
 
       it "says the reply joins the next turn, not a wake, when delegate reports queue" do
         allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("queue")
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
         out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
         expect(out).to include("; chi adds its reply to your next turn by itself (a delegate report; you aren't woken while idle); " \
                                "don't poll with delegate_result.")
       end
 
       it "promises no report to a parent that can't get one (a REPL, -p: no relay)" do
-        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
         out = described_class.call("more", session: child.id, wait: false, peers: peers)
         expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
         expect(out).not_to include("delegate report")

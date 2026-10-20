@@ -1776,7 +1776,8 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
 
-      expect(result).to eq(status: :accepted, ack: { "status" => "accepted", "enqueued_id" => "e1", "session_id" => "s" })
+      expect(result).to have_attributes(status: :accepted, via: :bridge,
+                                        ack: { "status" => "accepted", "enqueued_id" => "e1", "session_id" => "s" })
       expect(input_files).to be_empty
     end
 
@@ -1791,10 +1792,10 @@ RSpec.describe Samagotchi::SessionManager do
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
 
       expect(described_class.deliver_turn(session.id, prompt: "later", client_id: "cli:send", delivery: "queue",
-                                                      state_dir: tmpdir, bridge: -> { bridge })[:status])
+                                                      state_dir: tmpdir, bridge: -> { bridge }).status)
         .to eq(:accepted)
       expect(described_class.deliver_turn(session.id, prompt: "now", client_id: "cli:send", state_dir: tmpdir,
-                                                      bridge: -> { bridge })[:status])
+                                                      bridge: -> { bridge }).status)
         .to eq(:accepted)
     end
 
@@ -1818,9 +1819,10 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
 
-      expect(result).to match(status: :accepted, ack: { status: "accepted", enqueued_id: kind_of(String), session_id: session.id })
+      expect(result).to have_attributes(status: :accepted, via: :file,
+                                        ack: { "status" => "accepted", "enqueued_id" => kind_of(String), "session_id" => session.id })
       expect(input_files.map { |path| JSON.parse(File.read(path)) })
-        .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result[:ack][:enqueued_id] }])
+        .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result.enqueued_id }])
     end
 
     it "queues the input file when nothing listens on the Bridge's port" do
@@ -1832,7 +1834,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
 
-      expect(result[:status]).to eq(:accepted)
+      expect(result.status).to eq(:accepted)
       expect(input_files.size).to eq(1)
     end
 
@@ -1847,7 +1849,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { bridge })
 
-      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
+      expect(result).to have_attributes(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
       expect(input_files).to be_empty
     end
 
@@ -1863,7 +1865,7 @@ RSpec.describe Samagotchi::SessionManager do
       result = described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
                                                         bridge: -> { bridge })
 
-      expect(result).to eq(status: :refused, code: 400, ack: { "error" => "delivery_unavailable", "detail" => "old" })
+      expect(result).to have_attributes(status: :refused, via: :bridge, code: 400, ack: { "error" => "delivery_unavailable", "detail" => "old" })
       expect(input_files).to be_empty
     end
 
@@ -1876,7 +1878,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { bridge })
 
-      expect(result[:status]).to eq(:accepted)
+      expect(result.status).to eq(:accepted)
       expect(input_files.size).to eq(1)
     end
 
@@ -1893,7 +1895,7 @@ RSpec.describe Samagotchi::SessionManager do
       queued = described_class.deliver_turn(session.id, prompt: "big later", delivery: "queue", state_dir: tmpdir,
                                                         bridge: -> { bridge })
 
-      expect([plain[:status], queued[:status]]).to eq(%i[accepted accepted])
+      expect([plain.status, queued.status]).to eq(%i[accepted accepted])
       expect(input_files.sort.map { |path| JSON.parse(File.read(path)).values_at("prompt", "delivery") })
         .to eq([["big", nil], ["big later", "queue"]])
     end
@@ -1912,8 +1914,8 @@ RSpec.describe Samagotchi::SessionManager do
         result = described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
                                                           bridge: -> { bridge })
 
-        expect(result).to match(status: :refused, code: 409,
-                                ack: { "error" => "delivery_unavailable", "detail" => a_string_including("restart it") })
+        expect(result).to have_attributes(status: :refused, code: 409,
+                                          ack: { "error" => "delivery_unavailable", "detail" => a_string_including("restart it") })
         expect(input_files).to be_empty
       end
 
@@ -1925,11 +1927,11 @@ RSpec.describe Samagotchi::SessionManager do
           Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
         )
         expect(described_class.deliver_turn(session.id, prompt: "now", delivery: "cut", state_dir: tmpdir,
-                                                        bridge: -> { bridge })[:status]).to eq(:accepted)
+                                                        bridge: -> { bridge }).status).to eq(:accepted)
 
         write_sidecar(%w[restart delivery])
         expect(described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
-                                                        bridge: -> { bridge })[:status]).to eq(:accepted)
+                                                        bridge: -> { bridge }).status).to eq(:accepted)
         expect(bridge).to have_received(:post_turn).twice
       end
     end
@@ -1943,7 +1945,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
 
-      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
+      expect(result).to have_attributes(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
       expect(input_files).to be_empty
     ensure
       acceptor&.kill
@@ -1973,7 +1975,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
 
-      expect(result[:status]).to eq(:accepted)
+      expect(result.status).to eq(:accepted)
       # Once by the resume, once more since still nobody owns it after the write.
       expect(Process).to have_received(:spawn).twice
       expect(input_files.size).to eq(1)

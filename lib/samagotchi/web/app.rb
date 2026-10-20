@@ -1231,12 +1231,12 @@ module Samagotchi
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
-        case result[:status]
+        case result.status
         when :accepted
           record_history(body, prompt)
-          json_response(202, result[:ack])
-        when :refused then json_response(result[:code], result[:ack])
-        when :timeout then error_response(504, "worker_timeout", result[:ack]["detail"])
+          json_response(202, result.ack)
+        when :refused then json_response(result.code, result.ack)
+        when :timeout then error_response(504, "worker_timeout", result.detail)
         else error_response(500, "enqueue_failed", "could not write turn input")
         end
       rescue SessionManager::OwnedByTUI => e

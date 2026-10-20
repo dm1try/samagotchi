@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
   describe "#send" do
     it "delivers a turn to the session, by id or prefix" do
-      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
 
       expect(sessions.send(parent.id[0, 8], "do this")).to eq(parent.id)
       expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
     end
 
     it "queues it for after the running turn with delivery: :queue; :next_step is the default" do
-      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
 
       sessions.send(parent.id, "later", delivery: :queue)
       expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
@@ -135,14 +135,14 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
     it "raises with the worker's reason when it refuses a queue (older than queueing)" do
       allow(Samagotchi::SessionManager).to receive(:deliver_turn)
-        .and_return({ status: :refused, code: 409, ack: Samagotchi::Delivery::QUEUE_UNAVAILABLE })
+        .and_return(Samagotchi::SessionManager::DeliverResult.new(status: :refused, code: 409, ack: Samagotchi::Delivery::QUEUE_UNAVAILABLE))
 
       expect { sessions.send(parent.id, "x", delivery: :queue) }
         .to raise_error(described_class::Error, /refused the message \(delivery_unavailable: this session's worker predates/)
     end
 
     it "raises when the session didn't take it, or there is none" do
-      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :timeout, ack: nil })
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, ack: nil))
 
       expect { sessions.send(parent.id, "x") }.to raise_error(described_class::Error, /did not answer in time/)
       expect { sessions.send("nope", "x") }.to raise_error(described_class::Error, /no session nope/)

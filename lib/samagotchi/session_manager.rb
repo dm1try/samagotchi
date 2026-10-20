@@ -1140,6 +1140,39 @@ module Samagotchi
     # How long a turn waits for the Bridge of a worker a resume just spawned.
     TURN_BRIDGE_WAIT = 5.0
 
+    # What #deliver_turn did with a message.
+    # +status+ :accepted; :refused (the Bridge refused it, or a queue would
+    # reach a worker that doesn't queue); :timeout (the Bridge took it and
+    # never answered); :failed (the input file couldn't be written).
+    # +via+ :bridge (the worker's Bridge answered) or :file (the input-file
+    # fallback); nil when nothing went in.
+    # +ack+ the Bridge's reply body, or the file's {"status", "enqueued_id",
+    # "session_id"}: string keys either way, {} for none.
+    # +code+ a refusal's HTTP status.
+    DeliverResult = Data.define(:status, :via, :ack, :code) do
+      def initialize(status:, via: nil, ack: {}, code: nil) = super(status:, via:, ack: ack || {}, code:)
+
+      def accepted? = status == :accepted
+
+      # Sent as an input file (no Bridge): its turn and outcome carry the
+      # file's enqueued_id, which a wait follows (chi send --wait).
+      def file? = via == :file
+
+      # @return [String, nil] the id the message's turn will carry
+      def enqueued_id
+        id = ack["enqueued_id"].to_s
+        id.empty? ? nil : id
+      end
+
+      # Whether the worker took the line as a session command (a POST /turn
+      # answered with its command_id).
+      def command? = !ack["command_id"].to_s.empty?
+
+      def error = ack["error"]
+
+      def detail = ack["detail"]
+    end
+
     # Hand a user message to the session the way a UI does, for the web
     # composer and `chi send` alike: wakes the worker when none runs, posts
     # through its Bridge so every live UI sees :turn_enqueued, and falls back
@@ -1153,14 +1186,12 @@ module Samagotchi
     #   stand-in (the web's specs); #session_owner is optional
     # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
     #   the session's sidecar, waiting TURN_BRIDGE_WAIT for a new worker's
-    # @return [Hash] {status: :accepted, ack: Hash} (the Bridge's reply, or
-    #   {status:, enqueued_id:, session_id:} for a file), {status: :refused,
-    #   code:, ack:} when the Bridge refused the request (any 4xx with an
+    # @return [DeliverResult] :accepted (via the Bridge or a file),
+    #   :refused when the Bridge refused the request (any 4xx with an
     #   error: bad images, a delivery it doesn't run) or a queue would reach
-    #   a worker that doesn't queue (no file then: it would steer),
-    #   {status: :timeout, ack:} when it took the request but never answered
-    #   (no file then), or {status: :failed} when the input file couldn't be
-    #   written
+    #   a worker that doesn't queue (no file then: it would steer), :timeout
+    #   when it took the request but never answered (no file then), or
+    #   :failed when the input file couldn't be written
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, state_dir: nil, manager: self,
@@ -1180,7 +1211,7 @@ module Samagotchi
           options[:delivery] = delivery unless Delivery.next_step?(delivery)
           reply = client.post_turn(**options)
           ack = reply.json
-          return { status: :accepted, ack: ack } if reply.status == 202 && ack.is_a?(Hash)
+          return DeliverResult.new(status: :accepted, via: :bridge, ack: ack) if reply.status == 202 && ack.is_a?(Hash)
           # Read after its deadline and dropped: a file would run it after all.
           return turn_timeout if ack.is_a?(Hash) && ack["error"] == "deadline_passed"
           # Any other 4xx with an error is a refusal (bad images, a delivery
@@ -1189,7 +1220,7 @@ module Samagotchi
           # limit, a big piped chi send) and a 5xx keep the file fallback
           # below, which carries the delivery (a queue too).
           if (400..499).cover?(reply.status) && reply.status != 413 && ack.is_a?(Hash) && ack["error"]
-            return { status: :refused, code: reply.status, ack: ack }
+            return DeliverResult.new(status: :refused, via: :bridge, code: reply.status, ack: ack)
           end
         rescue Errno::ETIMEDOUT
           # The Bridge drops a turn it reads after the request's deadline
@@ -1205,7 +1236,7 @@ module Samagotchi
       input[:images] = images unless images.empty?
       input[:delivery] = delivery unless Delivery.next_step?(delivery)
       path = manager.write_turn_input(session_id, **input)
-      return { status: :failed } unless path
+      return DeliverResult.new(status: :failed) unless path
 
       owner = delivery_owner(manager, session_id, state_dir)
       # A TUI that took the session between the resume and the write never
@@ -1218,7 +1249,8 @@ module Samagotchi
       # wake a new one. (The exiting worker also looks for input it left;
       # one the first resume spawned that is still starting is left be.)
       manager.resume_session(session_id, state_dir: state_dir) if owner.nil?
-      { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
+      DeliverResult.new(status: :accepted, via: :file,
+                        ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
     end
 
     # Whether the session's live worker runs delivery: queue (its sidecar
@@ -1230,12 +1262,13 @@ module Samagotchi
     end
 
     private_class_method def self.queue_unavailable
-      { status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE }
+      DeliverResult.new(status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE)
     end
 
     private_class_method def self.turn_timeout
-      { status: :timeout, ack: { "error" => "worker_timeout",
-                                 "detail" => "the session's worker did not answer, so the message was not sent" } }
+      DeliverResult.new(status: :timeout, via: :bridge,
+                        ack: { "error" => "worker_timeout",
+                               "detail" => "the session's worker did not answer, so the message was not sent" })
     end
 
     private_class_method def self.delivery_owner(manager, session_id, state_dir)

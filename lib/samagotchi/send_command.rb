@@ -530,8 +530,8 @@ module Samagotchi
       # The ack's id names the queued message's turn, also when the turn
       # running at the check ended before it went in (an idle worker's ack
       # says next_step, and the file still runs as that turn).
-      # A file fallback has no delivery field; use its id to see terminal
-      # outcomes for commands that finish without starting a turn.
+      # A file fallback's id names its turn too: a wait sees the terminal
+      # outcome of a command that finishes without starting a turn.
       turn = @sent_enqueued_id if @queue || @sent_input_file
       report_turn_id = if @queue
                          turn
@@ -611,24 +611,19 @@ module Samagotchi
         @info.puts("#{session.id}  failed: its worker did not start; the session is kept (chi --attach #{session.id})")
         return false
       end
-      unless result[:status] == :accepted
-        @info.puts("#{session.id}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
+      unless result.accepted?
+        @info.puts("#{session.id}  failed: #{result.detail || "could not queue it"}")
         return false
       end
 
-      ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
-      @sent_input_file = !ack.key?("delivery")
-      @sent_enqueued_id = (ack["enqueued_id"] || ack[:enqueued_id])&.to_s
-      @sent_command = command_ack?(result[:ack])
+      @sent_input_file = result.file?
+      @sent_enqueued_id = result.enqueued_id
+      @sent_command = result.command?
       @info.puts("#{session.id}  started#{continued_words(session)}#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
       true
     end
 
     SENT_COMMAND = "sent as a session command"
-
-    # Whether the worker took the message as a session command (a POST
-    # /turn whose line is one answers with its command_id).
-    def command_ack?(ack) = ack.is_a?(Hash) && !ack["command_id"].to_s.empty?
 
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
@@ -741,26 +736,26 @@ module Samagotchi
                  end
       result = SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, state_dir: @state_dir,
                                                delivery: delivery)
-      unless result[:status] == :accepted
+      unless result.accepted?
         # A worker older than queueing would steer it: refused, not sent.
-        word = result.dig(:ack, "error") == Delivery::QUEUE_UNAVAILABLE["error"] ? "refused" : "failed"
-        @info.puts("#{short}  #{word}: #{result.dig(:ack, "detail") || "could not queue it"}")
+        word = result.error == Delivery::QUEUE_UNAVAILABLE["error"] ? "refused" : "failed"
+        @info.puts("#{short}  #{word}: #{result.detail || "could not queue it"}")
         return false
       end
 
-      @sent_command = command_ack?(result[:ack])
+      @sent_command = result.command?
       if @sent_command
         @info.puts("#{short}  #{SENT_COMMAND}")
         return true
       end
 
-      ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
-      @sent_input_file = !ack.key?("delivery")
+      ack = result.ack
+      @sent_input_file = result.file?
       # What the worker applied, for --format json: its ack's delivery
       # (next_step for an idle session) and a cut's outcome.
       @sent_delivery = ack["delivery"] || delivery
       @sent_cut = ack["cut"]
-      @sent_enqueued_id = (ack["enqueued_id"] || ack[:enqueued_id])&.to_s
+      @sent_enqueued_id = result.enqueued_id
       @info.puts("#{short}  sent#{with_images}#{delivery_note(ack, delivery: delivery, running: running, owner: owner)}")
       true
     rescue SessionManager::OwnedByTUI
