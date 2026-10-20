@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::Engine, "native stream lanes" do
   end
 
   let(:server) { FakeProviderServer.start }
-  let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, transport: :llama_cpp, sleeper: ->(_s) {}) }
+  let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, sleeper: ->(_s) {}) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: Dir.pwd) }
   let(:kernel) { Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.normalize(profile)) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: profile) }

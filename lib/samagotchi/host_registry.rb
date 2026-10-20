@@ -126,7 +126,7 @@ module Samagotchi
         # Every HostConfig field is a HostEntry member (a new one must be added there too).
         fields = cfg.to_h.merge(name: key.to_s.downcase, port: cfg.port.to_i, api: cfg.api&.to_sym, models: cfg.models || {})
         entry = HostEntry.new(**fields)
-        entry.client = Client.new(host: cfg.host, port: cfg.port, transport: cfg.transport, scheme: cfg.scheme,
+        entry.client = Client.new(host: cfg.host, port: cfg.port, scheme: cfg.scheme,
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, auth: entry.auth_scheme, env: env)
         @entries[entry.name] = entry

@@ -241,7 +241,7 @@ RSpec.describe "A cut generation" do
   end
 
   describe "on the native path (/completion)" do
-    let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, transport: :llama_cpp, sleeper: ->(_s) {}) }
+    let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, sleeper: ->(_s) {}) }
     let(:kernel) { Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
 
     def event(content) = "data: #{JSON.generate(content: content)}\n\n"

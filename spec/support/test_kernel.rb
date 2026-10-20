@@ -7,7 +7,7 @@ require "samagotchi/reminder_store"
 # The kernel and client an Engine spec hands in: a real KernelLoop (the
 # contract the Engine talks to; stub #run on it as a partial double) and a
 # Client double that answers the Engine's per-turn calls (the window probe,
-# /props) with nothing, on a llama.cpp transport (as Client's default).
+# /props) with nothing.
 #
 #   let(:client) { test_client }
 #   let(:kernel) { test_kernel(client: client) }
@@ -20,8 +20,7 @@ module TestKernel
 
   # @param stubs [Hash] more Client methods and their answers
   def test_client(**stubs)
-    instance_double(Samagotchi::Client, invalidate_context_window!: nil, server_props: nil, cached_server_props: nil, slot_status: nil,
-                                        transport: Samagotchi::Client::Transport.new(:llama_cpp), **stubs)
+    instance_double(Samagotchi::Client, invalidate_context_window!: nil, server_props: nil, cached_server_props: nil, slot_status: nil, **stubs)
   end
 end
 

@@ -80,7 +80,6 @@ RSpec.describe "read on images" do
     let(:marker) { Samagotchi::ImagePlan::NATIVE_PLACEHOLDER }
 
     before do
-      allow(client).to receive(:transport).and_return(Samagotchi::Client::Transport.new(:llama_cpp))
       allow(client).to receive(:context_window).and_return(nil)
       allow(client).to receive(:server_props).and_return(nil)
     end

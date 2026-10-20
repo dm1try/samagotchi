@@ -90,7 +90,7 @@ RSpec.describe "Turn policy characterization" do
         final.merge!("tokens_evaluated" => usage[0], "tokens_predicted" => usage[1])
       end
       on_chunk&.call(content: "", payload: final,
-                     finish_reason: Samagotchi::Client::Transport.new(:llama_cpp).finish_reason_from(final))
+                     finish_reason: Samagotchi::Client.finish_reason_from(final))
       text
     end
   end

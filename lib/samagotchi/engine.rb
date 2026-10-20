@@ -2048,10 +2048,10 @@ module Samagotchi
 
     # Never a paid or remote host (cache.warmup auto means local only), nor
     # the chat loop (Splash keeps its own cache; llama.cpp's chat path is
-    # not measured), nor a non-llama.cpp transport.
+    # not measured), nor a client that can't warm up (a spec's stub).
     def warmup_target?(model, client)
       return false if model.chat? || model.entry.remote?
-      return false unless client.respond_to?(:warm_up) && client.respond_to?(:transport) && client.transport.native?
+      return false unless client.respond_to?(:warm_up)
 
       PromptWarmup.enabled?
     end

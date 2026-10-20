@@ -31,7 +31,7 @@ RSpec.describe "steering a running turn (chi send)" do
     Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: tmpdir).tap { |s| s.save(state_dir: tmpdir) }
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-  let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, transport: :llama_cpp, sleeper: ->(_s) {}) }
+  let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, sleeper: ->(_s) {}) }
   let(:kernel) { Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
   let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel, profile: "qwen36") }
   let(:events) { [] }

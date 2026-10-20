@@ -18,13 +18,12 @@ RSpec.describe "Engine prompt profile resolution" do
   # kernel reads it again each turn: Thinking.opens_thought?); a failed
   # probe is asked again.
   class FakeResolvingClient
-    attr_reader :asked, :transport, :prompts
+    attr_reader :asked, :prompts
 
     def initialize(*answers)
       @answers = answers
       @asked = []
       @prompts = []
-      @transport = Samagotchi::Client::Transport.new(:llama_cpp)
     end
 
     def server_props(model: nil)

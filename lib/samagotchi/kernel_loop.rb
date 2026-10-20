@@ -295,7 +295,7 @@ module Samagotchi
     # One generation: the response (nil when cut), the cut's detail, this
     # generation's own server counts, the model the server named, the
     # thinking it streamed, and why it stopped (the transport's finish
-    # reason, Client::Transport#finish_reason_from; nil when not named),
+    # reason, Client.finish_reason_from; nil when not named),
     # and its prompt-cache counts (the largest seen: they come cumulative),
     # and where its visible text starts in the turn's buffer.
     Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, :finish_reason, :cache,

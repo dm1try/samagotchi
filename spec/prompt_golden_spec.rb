@@ -48,7 +48,7 @@ RSpec.describe "Native prompt goldens" do
       server = FakeProviderServer.start
       begin
         server.enqueue("/completion", sse: "data: {\"content\":\"ok\"}\n\n")
-        client = Samagotchi::Client.new(host: "127.0.0.1", port: server.port, transport: :llama_cpp)
+        client = Samagotchi::Client.new(host: "127.0.0.1", port: server.port)
         prompt = Samagotchi::Prompt.format(conversation, profile: Samagotchi::ModelProfile.named("qwen36"))
         client.complete(prompt, stop: ["<|im_end|>"], n_predict: 512, model: "Ornith")
         body = server.requests.last.body

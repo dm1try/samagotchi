@@ -7,14 +7,12 @@ require "samagotchi/llm/openai_chat"
 require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::Client do
-  describe Samagotchi::Client::Transport do
-    it "uses llama.cpp native paths and payload keys" do
-      t = described_class.new(:llama_cpp)
-      expect(t.label).to eq("llama.cpp")
-      expect(t.completion_path).to eq("/completion")
-      expect(t.models_path).to eq("/models")
-      expect(t.token_limit_key).to eq(:n_predict)
-      expect(t.content_from_payload({ "content" => "hi" })).to eq("hi")
+  describe "llama.cpp's wire format" do
+    it "names llama.cpp and its native paths" do
+      expect(described_class::LABEL).to eq("llama.cpp")
+      expect(described_class::COMPLETION_PATH).to eq("/completion")
+      expect(described_class::MODELS_PATH).to eq("/models")
+      expect(described_class::PROPS_PATH).to eq("/props")
     end
 
     # The last stream payloads as llama.cpp (b10819) sent them.
@@ -23,20 +21,24 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "reads a finish reason from llama.cpp's stop_type: limit is length, eos and a stop word are stop" do
-      t = described_class.new(:llama_cpp)
-      expect(t.finish_reason_from(final_chunk("completion_limit"))).to eq("length")
-      expect(t.finish_reason_from(final_chunk("completion_eos"))).to eq("stop")
-      expect(t.finish_reason_from(final_chunk("completion_word"))).to eq("stop")
-      expect(t.finish_reason_from({ "content" => "hi", "stop" => false })).to be_nil
-      expect(t.finish_reason_from(nil)).to be_nil
+      expect(described_class.finish_reason_from(final_chunk("completion_limit"))).to eq("length")
+      expect(described_class.finish_reason_from(final_chunk("completion_eos"))).to eq("stop")
+      expect(described_class.finish_reason_from(final_chunk("completion_word"))).to eq("stop")
+      expect(described_class.finish_reason_from({ "content" => "hi", "stop" => false })).to be_nil
+      expect(described_class.finish_reason_from(nil)).to be_nil
     end
 
     it "forwards the model selector verbatim by default (omitting empty/blank)" do
-      t = described_class.new(:llama_cpp)
-      expect(t.model_for_payload("gemma-4-26b-a4b-it-4bit")).to eq("gemma-4-26b-a4b-it-4bit")
-      expect(t.model_for_payload("  spaced  ")).to eq("spaced")
-      expect(t.model_for_payload("")).to be_nil
-      expect(t.model_for_payload(nil)).to be_nil
+      expect(described_class.model_for_payload("gemma-4-26b-a4b-it-4bit")).to eq("gemma-4-26b-a4b-it-4bit")
+      expect(described_class.model_for_payload("  spaced  ")).to eq("spaced")
+      expect(described_class.model_for_payload("")).to be_nil
+      expect(described_class.model_for_payload(nil)).to be_nil
+    end
+
+    it "reads the per-slot n_ctx from a /props body" do
+      expect(described_class.context_window_from({ "default_generation_settings" => { "n_ctx" => 4096 } })).to eq(4096)
+      expect(described_class.context_window_from({ "default_generation_settings" => { "n_ctx" => 0 } })).to be_nil
+      expect(described_class.context_window_from(nil)).to be_nil
     end
   end
 
@@ -478,7 +480,7 @@ RSpec.describe Samagotchi::Client do
         end
     end
 
-    it "names the configured host, not the transport, when retries run out" do
+    it "names the configured host, not llama.cpp, when retries run out" do
       client = described_class.new(host: "localhost", port: 8080, name: "main", sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
 
@@ -489,7 +491,7 @@ RSpec.describe Samagotchi::Client do
         end
     end
 
-    it "falls back to the transport's label when it has no host name" do
+    it "falls back to llama.cpp (LABEL) when it has no host name" do
       client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
 

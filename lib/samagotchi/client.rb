@@ -19,7 +19,6 @@ module Samagotchi
   #   server.port  (default: 8080)
   #   server.open_timeout (default: 10 seconds)
   #   server.read_timeout (default: 600 seconds)
-  #   server.transport (llama_cpp, the default and only value)
   class Client
     # The shared HTTP layer's errors, under their old names.
     RequestCancelled = LLM::RequestCancelled
@@ -36,8 +35,13 @@ module Samagotchi
     # #clear_props_failures!).
     PROPS_FAILURE_TTL = 30
 
-    DEFAULT_TRANSPORT = :llama_cpp
-    VALID_TRANSPORTS = %i[llama_cpp].freeze
+    # llama.cpp's native API: the name in error lines (when the host has
+    # none) and its endpoints. llama.cpp's /props carries the per-slot
+    # n_ctx (-c split across --parallel slots) and the chat template.
+    LABEL = "llama.cpp"
+    COMPLETION_PATH = "/completion"
+    MODELS_PATH = "/models"
+    PROPS_PATH = "/props"
 
     # One /props cache per host per process. A host has more than one Client
     # in a run (the registry's, a rebuilt HostRegistry's, the Engines of a
@@ -64,62 +68,30 @@ module Samagotchi
       end
     end
 
-    # The wire format of llama.cpp's native API: endpoint paths, payload
-    # keys, streamed content and the request's `model` field. The one
-    # transport (an OpenAI-compatible server is a chat host, api: openai).
-    class Transport
-      attr_reader :name
+    # The context window (n_ctx) in a /props body, or nil.
+    def self.context_window_from(body)
+      n_ctx = body.is_a?(Hash) ? body.dig("default_generation_settings", "n_ctx") : nil
+      n_ctx.is_a?(Integer) && n_ctx.positive? ? n_ctx : nil
+    end
 
-      # @param name [Symbol] one of Client::VALID_TRANSPORTS
-      def initialize(name = DEFAULT_TRANSPORT)
-        @name = name
+    # Why the stream stopped, from its last payload, as an OpenAI finish
+    # reason ("length" for the token cap or a full context, "stop"
+    # otherwise); nil for a payload that doesn't say. llama.cpp's
+    # /completion names it stop_type ("limit", "eos", "word").
+    def self.finish_reason_from(payload)
+      return nil unless payload.is_a?(Hash)
+
+      case payload["stop_type"]
+      when "limit" then "length"
+      when "eos", "word" then "stop"
       end
+    end
 
-      def label = "llama.cpp"
-
-      def completion_path = "/completion"
-
-      def models_path = "/models"
-
-      def token_limit_key = :n_predict
-
-      # Where the server describes itself (context window, chat template):
-      # llama.cpp's /props carries the per-slot n_ctx (-c split across
-      # --parallel slots) and the chat template.
-      def props_path = "/props"
-
-      def context_window_from(body)
-        n_ctx = body.is_a?(Hash) ? body.dig("default_generation_settings", "n_ctx") : nil
-        n_ctx.is_a?(Integer) && n_ctx.positive? ? n_ctx : nil
-      end
-
-      # Text content carried by one streamed `data:` payload.
-      def content_from_payload(payload)
-        payload.fetch("content", "")
-      end
-
-      # Why the stream stopped, from its last payload, as an OpenAI finish
-      # reason ("length" for the token cap or a full context, "stop"
-      # otherwise); nil for a payload that doesn't say. llama.cpp's
-      # /completion names it stop_type ("limit", "eos", "word").
-      def finish_reason_from(payload)
-        return nil unless payload.is_a?(Hash)
-
-        case payload["stop_type"]
-        when "limit" then "length"
-        when "eos", "word" then "stop"
-        end
-      end
-
-      # The request's `model` field: the selector verbatim, nil (omit the
-      # field) when blank.
-      def model_for_payload(model)
-        value = model.to_s.strip
-        value.empty? ? nil : value
-      end
-
-      # llama.cpp's own API: slots (`id_slot`), `cache_prompt`, /props.
-      def native? = true
+    # The request's `model` field: the selector verbatim, nil (omit the
+    # field) when blank.
+    def self.model_for_payload(model)
+      value = model.to_s.strip
+      value.empty? ? nil : value
     end
 
     # One /props probe's outcome. `answered?` is false when the probe failed:
@@ -155,14 +127,14 @@ module Samagotchi
     # @param first_token_timeout [Numeric, nil] seconds a completion may take
     #   to stream its first text (LLM::HTTP); nil: no limit
     # @param name [String, nil] the host's config name, for error lines
-    #   (default: the transport's label)
+    #   (default: LABEL)
     # @param api_key_env [String, nil] the variable holding the host's API
     #   key (llama.cpp's --api-key), sent as a bearer token on every request;
     #   nil sends no Authorization header
     # @param auth [Symbol, nil] the header the key goes in (LLM::ApiKey::SCHEMES;
     #   HostEntry#auth_scheme), nil: Bearer
     # @param env [Hash] where the key variable is read
-    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil,
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, sleeper: nil, scheme: nil,
                    first_token_timeout: nil, name: nil, api_key_env: nil, auth: nil, env: ENV)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       @host          = host || Samagotchi::Config.get("server.host")
@@ -170,7 +142,6 @@ module Samagotchi
       @scheme        = scheme || "http"
       @open_timeout  = Samagotchi::Config.positive_seconds("server.open_timeout", open_timeout)
       @read_timeout  = Samagotchi::Config.positive_seconds("server.read_timeout", read_timeout)
-      @transport = Transport.new(resolve_transport(transport))
       # This host's process-wide /props entry (see self.props_entry): its
       # answers and failures are shared with every other Client of the same
       # server.
@@ -180,7 +151,7 @@ module Samagotchi
       @props_mutex = @props_entry[:mutex]
       @first_token_timeout = first_token_timeout
       @host_name = name
-      @label = name.to_s.empty? ? @transport.label : name.to_s
+      @label = name.to_s.empty? ? LABEL : name.to_s
       @http = LLM::HTTP.new(label: @label, open_timeout: @open_timeout, read_timeout: @read_timeout,
                             sleeper: sleeper, first_token_timeout: first_token_timeout,
                             api_key: LLM::ApiKey.for(api_key_env, host: @label, env: env, scheme: auth))
@@ -191,9 +162,6 @@ module Samagotchi
 
     # The host's config name, or nil when built without one.
     attr_reader :host_name
-
-    # The wire-format strategy for this client's transport.
-    attr_reader :transport
 
     # Send a raw prompt and return the model's completion text.
     #
@@ -263,7 +231,7 @@ module Samagotchi
       payload = { prompt: images.empty? ? text : { prompt_string: text, multimodal_data: images },
                   n_predict: 1, cache_prompt: true, stream: false }
       payload[:id_slot] = slot if slot.is_a?(Integer)
-      model_name = @transport.model_for_payload(model)
+      model_name = Client.model_for_payload(model)
       payload[:model] = model_name if model_name
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)
@@ -329,7 +297,7 @@ module Samagotchi
         next unless on_chunk
 
         chunk = { content: content, payload: payload }
-        finish_reason = @transport.finish_reason_from(payload)
+        finish_reason = Client.finish_reason_from(payload)
         chunk[:finish_reason] = finish_reason if finish_reason
         on_chunk.call(**chunk)
       end
@@ -346,7 +314,7 @@ module Samagotchi
     rescue RequestCancelled, LLM::ProviderError
       raise
     rescue StandardError => e
-      raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
+      raise "#{LABEL} request failed (#{@host}:#{@port}): #{e.message}"
     end
 
     # The running llama.cpp's media marker (/props), or a VisionUnsupported.
@@ -358,7 +326,7 @@ module Samagotchi
     end
 
     def list_models
-      uri = URI("#{@scheme}://#{@host}:#{@port}#{@transport.models_path}")
+      uri = URI("#{@scheme}://#{@host}:#{@port}#{MODELS_PATH}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" })
       clear_props_failures!
       parsed = JSON.parse(response.body.to_s)
@@ -366,7 +334,7 @@ module Samagotchi
     rescue LLM::ProviderError
       raise
     rescue StandardError => e
-      raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
+      raise "#{LABEL} model listing failed (#{@host}:#{@port}): #{e.message}"
     end
 
     # What the running server says about itself (/props), as a ServerProps.
@@ -389,7 +357,7 @@ module Samagotchi
         return failed if failed && monotonic_now - failed_at < PROPS_FAILURE_TTL
       end
 
-      props = probe_props(@transport.props_path, key)
+      props = probe_props(PROPS_PATH, key)
       @props_mutex.synchronize do
         case props.status
         when :cancelled then nil
@@ -412,7 +380,7 @@ module Samagotchi
     # when the server reports none or the probe fails (see #server_props).
     def context_window(model: nil)
       props = server_props(model: model)
-      props&.answered? ? @transport.context_window_from(props.body) : nil
+      props&.answered? ? Client.context_window_from(props.body) : nil
     rescue StandardError
       nil
     end
@@ -463,13 +431,8 @@ module Samagotchi
       nil
     end
 
-    def resolve_transport(transport)
-      value = (transport || Samagotchi::Config.get("server.transport")).to_s.strip.downcase.to_sym
-      VALID_TRANSPORTS.include?(value) ? value : DEFAULT_TRANSPORT
-    end
-
     def completion_uri
-      URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
+      URI("#{@scheme}://#{@host}:#{@port}#{COMPLETION_PATH}")
     end
 
     def completion_payload(prompt, stop:, n_predict:, model:, sampling: {}, slot: nil, cache_prompt: true)
@@ -477,8 +440,8 @@ module Samagotchi
       # A non-positive cap is dropped, which leaves the length to the server
       # (unbounded): 0 here never means "only process the prompt". The
       # turn-end warm-up (#warm_up) sends its own payload for that reason.
-      payload[@transport.token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
-      model_name = @transport.model_for_payload(model)
+      payload[:n_predict] = n_predict if n_predict && n_predict.to_i.positive?
+      model_name = Client.model_for_payload(model)
       payload[:model] = model_name if model_name
       # llama.cpp's default today, sent anyway: chi's next turn relies on it.
       # false only for the retry of a malformed generation (KernelLoop),
@@ -510,8 +473,7 @@ module Samagotchi
       rescue JSON::ParserError => e
         raise LLM::ProtocolError.new("#{@label}: malformed stream chunk: #{e.message[0, 200]}", host: @label)
       end
-      content = @transport.content_from_payload(payload)
-      [content, payload]
+      [payload.fetch("content", ""), payload]
     end
   end
 end

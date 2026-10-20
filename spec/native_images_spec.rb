@@ -113,7 +113,7 @@ RSpec.describe "Native images" do
     around { |example| FakeProviderServer.without_webmock { example.run } }
 
     let(:server) { FakeProviderServer.start }
-    let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port, transport: :llama_cpp) }
+    let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: server.port) }
     let(:prompt) { "<|im_start|>user\nlook\n<|vision_start|>#{marker}<|vision_end|><|im_end|>\n" }
 
     after { server.stop }
@@ -160,7 +160,6 @@ RSpec.describe "Native images" do
     let(:kernel) { Samagotchi::KernelLoop.new(client: client, profile: qwen) }
 
     before do
-      allow(client).to receive(:transport).and_return(Samagotchi::Client::Transport.new(:llama_cpp))
       allow(client).to receive(:context_window).and_return(nil)
       allow(client).to receive(:server_props).and_return(nil)
     end
