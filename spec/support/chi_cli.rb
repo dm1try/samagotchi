@@ -35,14 +35,18 @@ module ChiCli
   # Run chi with empty stdin. With +timeout+ the whole process group is
   # killed past it (BoundedCapture), for a run that could hang.
   # @return [Array(String, String, Process::Status)]
-  def run_chi(*, env: {}, chdir: nil, timeout: nil)
+  def run_chi(*, **) = ChiCli.capture(*, **)
+
+  # run_chi with +spawn+, else fork_chi: a file's one real run among forks
+  # (ChiCli's own run_chi, whatever run_chi the example group defines).
+  def run_or_fork_chi(*, spawn:, **) = spawn ? ChiCli.capture(*, **) : fork_chi(*, **)
+
+  # run_chi's body.
+  def self.capture(*, env: {}, chdir: nil, timeout: nil)
     return BoundedCapture.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", timeout: timeout, chdir: chdir) if timeout
 
     Open3.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", **(chdir ? { chdir: chdir } : {}))
   end
-
-  # run_chi with +spawn+, else fork_chi: a file's one real run among forks.
-  def run_or_fork_chi(*, spawn:, **) = spawn ? run_chi(*, **) : fork_chi(*, **)
 
   # bin/chi with +args+ in a fork: ARGV, +env+ (nil unsets) and +chdir+ set
   # there, stdin empty, stdout and stderr captured (the process's own fds,

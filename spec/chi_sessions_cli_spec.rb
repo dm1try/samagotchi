@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "stringio"
@@ -12,8 +10,9 @@ require "samagotchi/sessions_command"
 # `chi sessions`: help, each subcommand's flags and usage errors, list's
 # plain path, stop's usage and prune/clean, pinned before the command moved
 # out of bin/chi. The examples call SessionsCommand in this process with the
-# env and cwd below (what bin/chi hands it); "through bin/chi" runs the real
-# executable for the wiring. The other paths have their own specs
+# env and cwd below (what bin/chi hands it); "through bin/chi" runs the
+# executable for the wiring, once for real and else forked (ChiCli#fork_chi).
+# The other paths have their own specs
 # (chi_sessions_list/stop/clean/archive_spec, session_delete_command_spec).
 RSpec.describe "chi sessions (CLI)" do
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-cli") }
@@ -59,9 +58,9 @@ RSpec.describe "chi sessions (CLI)" do
     [out.string, err.string, code]
   end
 
-  # The same through bin/chi in a child process.
-  def spawn_chi(*args)
-    out, err, status = Open3.capture3(env, RbConfig.ruby, ChiCli::CHI, "sessions", *args, stdin_data: "", chdir: outside)
+  # The same through bin/chi, forked or with +spawn+ a real process.
+  def bin_chi(*args, spawn: false)
+    out, err, status = run_or_fork_chi("sessions", *args, spawn: spawn, env: env, chdir: outside)
     [out, err, status.exitstatus]
   end
 
@@ -233,15 +232,15 @@ RSpec.describe "chi sessions (CLI)" do
   # the command's status and finds the sessions from XDG_STATE_HOME.
   context "through bin/chi" do
     it "prints the usage (exit 0) and refuses an unknown subcommand (exit 2)" do
-      expect(spawn_chi("--help")).to eq([usage, "", 0])
-      expect(spawn_chi("nope")).to eq(["", "chi sessions: unknown subcommand nope\n#{usage}", 2])
+      expect(bin_chi("--help", spawn: true)).to eq([usage, "", 0])
+      expect(bin_chi("nope")).to eq(["", "chi sessions: unknown subcommand nope\n#{usage}", 2])
     end
 
     it "prune --days N deletes the older sessions in XDG_STATE_HOME" do
       old = make("old", days_old: 30)
       fresh = make("fresh")
 
-      expect(spawn_chi("prune", "--days", "1")).to eq(["Deleted 1 sessions (kept 1, skipped 0)\n  #{old.id}\n", "", 0])
+      expect(bin_chi("prune", "--days", "1")).to eq(["Deleted 1 sessions (kept 1, skipped 0)\n  #{old.id}\n", "", 0])
       expect([exists?(old), exists?(fresh)]).to eq([false, true])
     end
   end

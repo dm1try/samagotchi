@@ -5,14 +5,16 @@ require "json"
 require "spec_helper"
 require "samagotchi/session"
 
+# One run is a real bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi sessions clean" do
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-clean") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
 
   after { FileUtils.rm_rf(xdg_state) }
 
-  def run_chi(*args)
-    super("sessions", *args, env: { "XDG_STATE_HOME" => xdg_state })
+  # chi sessions *args, forked or with +spawn+ a real process.
+  def chi_sessions(*args, spawn: false)
+    run_or_fork_chi("sessions", *args, spawn: spawn, env: { "XDG_STATE_HOME" => xdg_state })
   end
 
   def make(test_run:, days_old: 0, scratch: false)
@@ -36,7 +38,7 @@ RSpec.describe "chi sessions clean" do
     old_test = make(test_run: true, days_old: 30)
     fresh_real = make(test_run: false)
 
-    out, err, status = run_chi("clean")
+    out, err, status = chi_sessions("clean", spawn: true)
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to start_with("Deleted 2 sessions")
@@ -47,7 +49,7 @@ RSpec.describe "chi sessions clean" do
     fresh_test = make(test_run: true)
     old_test = make(test_run: true, days_old: 30)
 
-    out, err, status = run_chi("clean", "--days", "7")
+    out, err, status = chi_sessions("clean", "--days", "7")
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to start_with("Deleted 1 sessions")
@@ -58,7 +60,7 @@ RSpec.describe "chi sessions clean" do
     leftover = make(test_run: false, scratch: true)
     real = make(test_run: false)
 
-    out, err, status = run_chi("clean")
+    out, err, status = chi_sessions("clean")
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to start_with("Deleted 1 sessions")

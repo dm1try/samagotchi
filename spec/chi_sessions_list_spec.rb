@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "stringio"
@@ -17,9 +16,9 @@ require "samagotchi/sessions_command"
 # unless a spec says otherwise: /work/app (the fixtures' folder) is in none.
 # The examples call SessionsCommand in this process with that cwd and the
 # env below (what bin/chi hands it); the ones marked "through bin/chi" run
-# the real executable for the wiring.
+# the real executable for the wiring: forked (ChiCli#fork_chi), chi note's
+# a real one (its own command file).
 RSpec.describe "chi sessions list" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-list") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
   # Not a test run itself (a CI runner sets CI): test sessions are hidden
@@ -44,9 +43,9 @@ RSpec.describe "chi sessions list" do
     [out.string, err.string, code]
   end
 
-  # The same through bin/chi in a child process.
-  def spawn_chi(*args, dir: outside)
-    out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", chdir: dir)
+  # The same through bin/chi, forked or with +spawn+ a real process.
+  def bin_chi(*args, dir: outside, spawn: false)
+    out, err, status = run_or_fork_chi(*args, spawn: spawn, env: env, chdir: dir)
     [out, err, status.exitstatus]
   end
 
@@ -399,7 +398,7 @@ RSpec.describe "chi sessions list" do
   end
 
   it "lists the flags in the help, through bin/chi" do
-    out, err, status = spawn_chi("sessions", "--help")
+    out, err, status = bin_chi("sessions", "--help")
     expect(status).to eq(0), err
     expect(out).to include("--live", "--cwd PATH", "--format text|json|tsv", "--scope=all")
   end
@@ -407,10 +406,10 @@ RSpec.describe "chi sessions list" do
   it "lists the sessions in the state dir and refuses an unknown format (exit 2), through bin/chi" do
     session = make("hello there")
 
-    out, err, status = spawn_chi("sessions", "list")
+    out, err, status = bin_chi("sessions", "list")
     expect(status).to eq(0), err
     expect(out).to start_with("#{session.id}  idle  ").and end_with("  hello there\n\n1 session(s) (sort=updated_at order=desc)\n")
-    _out, err, status = spawn_chi("sessions", "list", "--format", "yaml")
+    _out, err, status = bin_chi("sessions", "list", "--format", "yaml")
     expect([status, err]).to match([2, a_string_including("--format text|json|tsv")])
   end
 
@@ -485,7 +484,7 @@ RSpec.describe "chi sessions list" do
     end
 
     it "leaves chi note --all global: every live session, whichever project chi runs in" do
-      _out, err, status = spawn_chi("note", "--all", "-m", "heads up", dir: alpha)
+      _out, err, status = bin_chi("note", "--all", "-m", "heads up", dir: alpha, spawn: true)
 
       expect(status).to eq(0), err
       notes = %i[a b].map do |key|

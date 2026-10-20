@@ -6,6 +6,8 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/session"
 
+# The run that reads stdout and stderr interleaved (2>&1) is a real bin/chi;
+# the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi sessions stop" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-stop") }
@@ -14,15 +16,16 @@ RSpec.describe "chi sessions stop" do
 
   after { FileUtils.rm_rf(xdg_state) }
 
-  def run_chi(*args)
-    super("sessions", *args, env: env)
+  # chi sessions *args, forked.
+  def chi_sessions(*args)
+    fork_chi("sessions", *args, env: env)
   end
 
   it "stops the session and says a resume starts a fresh worker" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
     session.save(state_dir: state_dir)
 
-    out, err, status = run_chi("stop", session.id)
+    out, err, status = chi_sessions("stop", session.id)
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to include("Stopped session #{session.id}")
@@ -50,21 +53,21 @@ RSpec.describe "chi sessions stop" do
   end
 
   it "fails on an unknown session" do
-    _out, err, status = run_chi("stop", "nope")
+    _out, err, status = chi_sessions("stop", "nope")
 
     expect(status.exitstatus).to eq(1)
     expect(err).to include("nope")
   end
 
   it "asks for an id" do
-    _out, err, status = run_chi("stop")
+    _out, err, status = chi_sessions("stop")
 
     expect(status.exitstatus).to eq(2)
     expect(err).to include("Usage: chi sessions stop ID...")
   end
 
   it "lists stop in the help" do
-    out, _err, _status = run_chi("--help")
+    out, _err, _status = chi_sessions("--help")
 
     expect(out).to include("stop ID")
   end

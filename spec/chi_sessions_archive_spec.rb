@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "stringio"
 require "tmpdir"
 require "json"
@@ -94,32 +92,34 @@ RSpec.describe "chi sessions archive" do
     expect(err.string).to include("Usage: chi sessions archive (ID|PREFIX)...")
   end
 
+  # One run is a real bin/chi; the rest fork it (ChiCli#fork_chi).
   describe "bin/chi" do
     let(:outside) { Dir.mktmpdir("chi-sessions-archive-cwd") }
 
     after { FileUtils.rm_rf(outside) }
 
-    def run_chi(*args)
-      super("sessions", *args, env: { "XDG_STATE_HOME" => xdg_state }, chdir: outside)
+    # chi sessions *args, forked or with +spawn+ a real process.
+    def chi_sessions(*args, spawn: false)
+      run_or_fork_chi("sessions", *args, spawn: spawn, env: { "XDG_STATE_HOME" => xdg_state }, chdir: outside)
     end
 
     it "archives, hides from list, and list --archived shows it marked (text and json)" do
       kept = make("kept")
       hidden = make("hidden one")
 
-      out, err, status = run_chi("archive", hidden.id)
+      out, err, status = chi_sessions("archive", hidden.id, spawn: true)
       expect(status.exitstatus).to eq(0), err
       expect(out).to eq("#{hidden.id[0, 8]}  archived\n")
 
-      listed, = run_chi("list")
+      listed, = chi_sessions("list")
       expect(listed).to include(kept.id)
       expect(listed).not_to include(hidden.id)
 
-      all, = run_chi("list", "--archived")
+      all, = chi_sessions("list", "--archived")
       expect(all).to include(kept.id)
       expect(all).to match(/#{hidden.id} .*hidden one \[archived\]$/)
 
-      json, = run_chi("list", "--archived", "--format", "json")
+      json, = chi_sessions("list", "--archived", "--format", "json")
       rows = JSON.parse(json).to_h { |row| [row["id"], row["archived"]] }
       expect(rows).to eq(kept.id => false, hidden.id => true)
     end
@@ -130,7 +130,7 @@ RSpec.describe "chi sessions archive" do
       Samagotchi::ArchiveStore.archive(hidden.id, state_dir: state_dir)
       newest = make("newest")
 
-      out, err, status = run_chi("prune", "--dry-run", "--days", "0", "--keep", "1")
+      out, err, status = chi_sessions("prune", "--dry-run", "--days", "0", "--keep", "1")
       expect(status.exitstatus).to eq(0), err
       expect(out).to start_with("Would delete 1 sessions (kept 1, skipped 0)\n  #{gone.id}\n")
       expect(out).not_to include(hidden.id)
@@ -138,9 +138,9 @@ RSpec.describe "chi sessions archive" do
     end
 
     it "names archive and unarchive in its usage and for an unknown subcommand" do
-      help, = run_chi("--help")
+      help, = chi_sessions("--help")
       expect(help).to include("<list|stop|restart|archive|unarchive|delete|prune|clean|stats>")
-      _, err, status = run_chi("nope")
+      _, err, status = chi_sessions("nope")
       expect(err).to start_with("chi sessions: unknown subcommand nope\nUsage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean|stats>")
       expect(status.exitstatus).to eq(2)
     end
