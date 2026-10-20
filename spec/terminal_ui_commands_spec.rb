@@ -363,7 +363,9 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows the files whose text is in the session's prompt in /stats, relative to the checkout" do
-      top = Samagotchi::MemoryPaths.work_tree_root(Dir.pwd)
+      # The checkout this process runs in, stubbed: the suite may run outside a git work tree.
+      top = "/work/checkout"
+      allow(Samagotchi::MemoryPaths).to receive(:work_tree_root).with(Dir.pwd).and_return(top)
       files = [File.join(top, "AGENTS.md"), File.join(top, "lib", "AGENTS.md"), File.join(Dir.home, "notes", "x.md")]
 
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ prompt_files: files }))
