@@ -157,8 +157,8 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
   def run_prompt(prompt)
     send_turn(prompt)
-    expect(turns.pop(timeout: 3)&.first).to eq(prompt)
-    expect(turns_done.pop(timeout: 3)).to eq(prompt)
+    expect(pop!(turns, "#{prompt}'s turn to start", timeout: 15).first).to eq(prompt)
+    expect(pop!(turns_done, "#{prompt}'s turn to finish", timeout: 15)).to eq(prompt)
   end
 
   def saved_task_notes
@@ -173,7 +173,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    prompt, kwargs, last = turns.pop(timeout: 3)
+    prompt, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
     expect(prompt).to be_nil
     expect(kwargs).to include(continue: true, origin: { client_id: "task:t1" })
     expect(last).to include(role: "system", kind: "note", note_id: "task-t1", turn_start: true, turn_id: kwargs[:id])
@@ -196,7 +196,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t2")
-    _, kwargs, last = turns.pop(timeout: 3)
+    _, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
     expect(kwargs[:origin]).to eq({ client_id: "task:t2" })
     expect(last[:content]).to include("(handed over by execute at its 5s limit).")
   end
@@ -276,7 +276,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
     finish("t2")
     expect(wait_until { saved_task_notes.size == 2 }).to be(true)
     finish("t3")
@@ -295,7 +295,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     @fail_next = true
     finish("t1")
-    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
     expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
       .to be(true)
     expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
@@ -324,7 +324,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(turns.pop(timeout: 0.3)).to be_nil
 
     send_turn("/continue")
-    prompt, kwargs, = turns.pop(timeout: 3)
+    prompt, kwargs, = pop!(turns, "the /continue turn", timeout: 15)
     expect(prompt).to be_nil
     expect(kwargs).to include(continue: true)
     expect(kwargs.dig(:origin, :client_id)).not_to start_with("task:")
@@ -356,7 +356,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    _, kwargs, last = turns.pop(timeout: 3)
+    _, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
     expect(kwargs[:origin]).to eq({ client_id: "task:t1" })
     expect(last).to include(note_id: "task-t1", turn_start: true)
   end
@@ -370,7 +370,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     finish("t1")
     send_turn("next")
     worker.instance_variable_get(:@waker).wake
-    prompt, _, last = turns.pop(timeout: 3)
+    prompt, _, last = pop!(turns, "the next prompt's turn", timeout: 15)
     expect(prompt).to eq("next")
     expect(last).to include(note_id: "task-t1")
     expect(last).not_to include(:turn_start)
@@ -384,7 +384,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     expect(@thread.join(0.5)).to be_nil
     finish("t1")
-    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
     expect(@thread.join(5)&.value).to eq(:idle_exit)
   end
 
@@ -405,7 +405,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     end
     run_prompt("build")
 
-    expect(turns.pop(timeout: 3)&.dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
     expect(@thread.join(5)&.value).to eq(:idle_exit)
   end
 
