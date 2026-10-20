@@ -879,7 +879,7 @@ const TWO_MODELS = {
 
 test("continue → starts the next link with the opener in the composer, unsent, and the model picker until its first turn; the previous link is archived and reached from the chain's chip and the ← → links; its open delegate moves to the new link", async ({ page, script, chi }) => {
   script("plain");
-  // loadModels() runs at page load (and on + new session): route, then reload.
+  // start_page.js loadModels() runs at page load (and on + new session): route, then reload.
   await page.route("**/api/models", (route) => route.fulfill({ json: TWO_MODELS }));
   await page.reload();
   await expect(page.locator("#modelPick")).toHaveText("fake-script");
