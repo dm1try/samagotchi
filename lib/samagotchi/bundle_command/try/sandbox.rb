@@ -42,13 +42,19 @@ module Samagotchi
         # `chi bundle install PATH --force` for each PATH in ARGV, in one
         # process (bin/chi's start, once): an install that fails prints
         # what it printed and exits with its status; the ones before it
-        # print nothing.
+        # print nothing. A config chi stops at (RemovedApi, as bin/chi
+        # does) prints its one line.
         INSTALL_SCRIPT = <<~RUBY
           require "stringio"
           require "samagotchi/utf8_default"
           Samagotchi::Utf8Default.apply!
           require "samagotchi/config"
-          Samagotchi::ConfigFile.load!
+          begin
+            Samagotchi::ConfigFile.load!
+          rescue Samagotchi::ConfigFile::RemovedApi => e
+            warn e.message
+            exit 1
+          end
           require "samagotchi"
           require "samagotchi/bundle_command"
           ARGV.each do |path|

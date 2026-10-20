@@ -145,6 +145,27 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     end
   end
 
+  it "fails the install with RemovedApi's one line, not a backtrace, for a config naming a removed api" do
+    Dir.mktmpdir do |dir|
+      source = bundle_at(File.join(dir, "source"))
+      user_config = File.join(dir, "user-config")
+      FileUtils.mkdir_p(File.join(user_config, "samagotchi"))
+      File.write(File.join(user_config, "samagotchi", "config.yml"),
+                 "default:\n  model: mac:m\nhosts:\n  mac:\n    url: http://127.0.0.1:1\n    api: omlx\n")
+
+      with_env("XDG_CONFIG_HOME" => user_config) do
+        sandbox = described_class.new(source)
+        expect { sandbox.install }.to raise_error(
+          described_class::Error,
+          "chi bundle try: config.yml hosts.mac.api: omlx was removed; for mlx_lm.server or oMLX use " \
+          "url: http://HOST:PORT/v1, api: openai in a hosts: entry"
+        )
+      ensure
+        sandbox&.cleanup
+      end
+    end
+  end
+
   it "stops the delegate workers and tasks a run left in the sandbox, and nothing that isn't running" do
     pids = []
     Dir.mktmpdir do |dir|
