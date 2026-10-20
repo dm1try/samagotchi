@@ -134,7 +134,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   it "shows the spinner row above the status rows while a turn runs, and drops it after" do
     ui = build_ui(spinner_clock: stepping_clock)
     regions = []
-    run_repl(ui, prompts: ["hi"], events: generation("<think>TURN: Checking\n", "a", "</think>PONG"),
+    run_repl(ui, prompts: ["hi"], events: generation("<think>Checking\n", "a", "</think>PONG"),
                  on_event: ->(event) { regions << term.lines.last(2) if event[:type] == :generation_chunk })
 
     expect(regions.last).to match([a_string_matching(/\A. thinking · Checking/), a_string_starting_with("status> model=Qwen3-14B")])
@@ -147,7 +147,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   # lower and left a copy behind.
   it "keeps one spinner row and one status row when they are wider than the terminal" do
     ui = build_ui(spinner_clock: stepping_clock)
-    phrase = "TURN: Comparing the two decimal numbers carefully before answering\n"
+    phrase = "Comparing the two decimal numbers carefully before answering\n"
     counts = []
     run_repl(ui, prompts: ["hi"], events: generation("<think>#{phrase}", *(["more "] * 8), "</think>PONG"),
                  on_event: ->(_event) { counts << [shown.grep(/\A. thinking · Comparing/).size, shown.grep(/^status> /).size] })

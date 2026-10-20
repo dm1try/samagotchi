@@ -96,7 +96,7 @@ module Samagotchi
         @section_notes = nil
         @section_files = []
         @built[key] = system_prompt_with_index(
-          assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
+          assist_system_prompt(chat: chat, layers: layers), chat: chat, thinking: thinking, layers: layers
         )
         @index_sizes[key] = @measured_index
         @notes_loaded[key] = @section_notes || []
@@ -151,9 +151,8 @@ module Samagotchi
 
     # The base prompt (specs, plugins' declarations), with Gemma's tool
     # declarations at its end as #build has them.
-    def base(chat: false, thinking: nil, layers: [])
-      with_tail_declarations(assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat,
-                                                                                                  layers: layers)
+    def base(chat: false, layers: [])
+      with_tail_declarations(assist_system_prompt(chat: chat, layers: layers), chat: chat, layers: layers)
     end
 
     # Names activated via preloaded --memory entries during prompt
@@ -195,27 +194,14 @@ module Samagotchi
       end
     end
 
-    # Only Qwen has an explicit thinking-close marker, so only Qwen can
-    # reliably have this preamble parsed back out of its thinking block.
-    # With thinking off there is no thinking to begin with it.
-    def turn_preamble_instruction(thinking = nil)
-      return "" unless profile.name == "qwen36"
-      return "" if Samagotchi::Config.get("thinking.turn_preamble") == false
-      return "" if (thinking || turn_thinking) == :off
-
-      "\nTurn preamble: as the very first line of your thinking, write \"TURN: \" followed by a short present-tense action phrase (max 8 words) describing what you are about to do, e.g. \"TURN: reading project config\". Then continue reasoning normally.\n"
-    end
-
     # ── System prompts ─────────────────────────────────────────────────────────
 
-    # @param chat [Boolean] for the chat loop: no tool declarations, call
-    #   syntax or turn preamble (its tools go as schemas with each request)
-    # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
-    def assist_system_prompt(chat: false, thinking: nil, layers: [])
+    # @param chat [Boolean] for the chat loop: no tool declarations or call
+    #   syntax (its tools go as schemas with each request)
+    def assist_system_prompt(chat: false, layers: [])
       return chat_system_prompt if chat
 
       hint = tool_call_hint
-      turn_preamble = turn_preamble_instruction(thinking)
       # Gemma 4's template declares the tools at the end of the system turn
       # (#system_prompt_with_index puts them there).
       tools = if gemma_tail_declarations?
@@ -228,7 +214,7 @@ module Samagotchi
         You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. #{tools}
         #{hint}
         You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
-        #{turn_preamble}
+
         #{ToolDeclarations::SMALL_CONTEXT_PROTOCOL}
 
         #{assist_guidance}

@@ -74,7 +74,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     end
 
     it "is the newest complete one, changing at most once per dwell" do
-      chunk(thinking: "TURN: reading the config\nFirst I read it", text: "")
+      chunk(thinking: "reading the config\nFirst I read it", text: "")
       expect(row).to eq("thinking · reading the config")
       chunk(thinking: ". Then 1. ", text: "")
       chunk(thinking: "Then **the** `log`. And", text: "")

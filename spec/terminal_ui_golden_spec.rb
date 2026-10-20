@@ -156,11 +156,11 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     ]
   end
 
-  it "renders a Qwen answer with the turn preamble and the kernel's context estimate" do
+  it "renders a Qwen answer with its thinking sentence and the kernel's context estimate" do
     payload = { "content" => "x", "timings" => { "prompt_n" => 1200, "predicted_n" => 40 }, "n_ctx" => 32_000 }
     context = { type: :context_status, iteration: 1, usage: { estimated_pct: 3.9, source: "server" }, bucket: "under20" }
     events = [context] +
-             generation("qwen36", "<think>TURN: checking the greeting\n", "some reasoning</think>", "Hello there", payload: payload)
+             generation("qwen36", "<think>checking the greeting\n", "some reasoning</think>", "Hello there", payload: payload)
 
     output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "Hello there") }
 

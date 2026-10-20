@@ -1627,8 +1627,8 @@ module Samagotchi
     # prompt prefix, and the server's KV cache for it, stay stable.
     # @param model [EffectiveModel, nil]
     # @return [String]
-    # The native prompt depends on the thinking level too (Gemma's token,
-    # Qwen's turn preamble): a level change builds it again. A build that
+    # The native prompt depends on the thinking level too (Gemma's token):
+    # a level change builds it again. A build that
     # misses the cache names the model and the level through its own
     # lambdas (#model_identity, #turn_thinking), which resolve again.
     def system_prompt(model = nil)
@@ -1644,8 +1644,8 @@ module Samagotchi
     end
 
     # The base prompt (specs, plugins' declarations).
-    def assist_system_prompt(chat: false, thinking: nil)
-      @prompt_builder.base(chat: chat, thinking: thinking)
+    def assist_system_prompt(chat: false)
+      @prompt_builder.base(chat: chat)
     end
 
     # The --memory names activated while building the prompt; the TerminalUI

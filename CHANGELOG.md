@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
   entry`. Name the model as the server's `/v1/models` lists it (oMLX's prefixed `mlx-community--…` id); the short
   selector oMLX's transport used to resolve now 404s. See
   [docs/configuration.md](docs/configuration.md#model-server-transport).
+- The Qwen turn preamble: a native `qwen36` prompt no longer asks the model to open its thinking with a `TURN:` line,
+  and the `thinking.turn_preamble` setting goes with it (`--no-thinking-turn-preamble`,
+  `SAMAGOTCHI_THINKING_TURN_PREAMBLE`). A config.yml that still sets it gets `Warning: config: unknown key
+  'thinking.turn_preamble'` at start and runs on; the flag is an invalid option.
 
 ## [0.94.0] - 2026-10-20
 

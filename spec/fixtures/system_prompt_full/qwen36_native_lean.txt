@@ -382,8 +382,6 @@ For write and memory_write, preserve content bytes exactly as provided by the us
 
 You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
 
-Turn preamble: as the very first line of your thinking, write "TURN: " followed by a short present-tense action phrase (max 8 words) describing what you are about to do, e.g. "TURN: reading project config". Then continue reasoning normally.
-
 Small-context retrieval protocol:
   Default to targeted context before full-file reads.
   Retrieval order:

@@ -156,7 +156,7 @@ or `chi web` restart.
 | `append_system_prompt` | Worker start for the file list | The config list is not saved in the session file. File text is read when the prompt is built; `/model` rebuilds it, while an already-built prompt is cached. CLI `--append-system-prompt` files are saved in the session. |
 | `toolkit.default`, `toolkit.child` | Session creation | The chosen toolkit is saved; changing the defaults does not move existing sessions. |
 | `toolkit.kits`, `execute.description`, `llm_context.policy` | Worker start | These are held by the engine's toolkit or tool registry. |
-| `thinking.turn_preamble`, `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
+| `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
 | `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
 | `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `guardrails.parent_answers` is checked when a parent answers a question. |
@@ -649,7 +649,7 @@ What each backend gets:
 
 | Backend | `off` | `low` / `medium` / `high` |
 |---|---|---|
-| native (`/completion`), `qwen36` | an empty thought after the assistant cue, and no turn preamble | no knob: thinking stays as the model has it, one notice |
+| native (`/completion`), `qwen36` | an empty thought after the assistant cue | no knob: thinking stays as the model has it, one notice |
 | native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
 | chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
 | Messages host (`api: anthropic`) | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive", display: "summarized"}` and `output_config: {effort: <level>}` |
@@ -694,8 +694,8 @@ hosts:
     sampling: { reasoning_effort: null }   # sends only enable_thinking: false
 ```
 
-A different level changes a native model's system prompt (Gemma's token, Qwen's turn preamble), so the next turn
-reads the whole context again once; on a chat host only the end of the prompt changes.
+A different level changes a native Gemma's system prompt (its token), so the next turn reads the whole context again
+once; on native Qwen and a chat host only the end of the prompt changes.
 
 ## Reasoning history
 
@@ -1618,7 +1618,6 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's outbox source, such as `codex-outbox`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` wakes once to close the round, counted toward `session.max_wakes` only. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
-| `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), below a session's own level (`/reasoning-history`), above the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |

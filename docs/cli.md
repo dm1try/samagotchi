@@ -1175,8 +1175,8 @@ While a turn runs, one row above the prompt says what it is doing, the spinner f
 - `| thinking…` while the model starts, then `| thinking · <sentence>`: the newest complete
   sentence of its thinking, or of its answer (`writing ·`), like the web's thinking ticker: the
   same sentence rules (a list number such as `118.` is no sentence end; a newline is one), and the
-  row changes at most once every 1.5 s so it doesn't flicker. A long sentence is cut with `…`; a
-  Qwen `TURN:` prefix and inline markdown are left out.
+  row changes at most once every 1.5 s so it doesn't flicker. A long sentence is cut with `…`, and
+  inline markdown is left out.
 - `| waiting for the first token… 5s` after 2 s with nothing streamed.
 - `| running execute…` while a tool runs (its `tool>` line prints when it ends).
 - `| ↻ retrying (ECONNREFUSED) in 0.5s, 1/3` while a failed request is asked again: why (the HTTP status such as

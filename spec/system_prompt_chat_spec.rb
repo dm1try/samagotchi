@@ -3,8 +3,8 @@
 require "samagotchi/engine"
 
 # The chat loop sends the tools as schemas, so its system prompt leaves out
-# the raw-prompt tool declarations, the call syntax, the Qwen turn preamble
-# and Gemma's thinking token (F1). The native prompt is unchanged (the
+# the raw-prompt tool declarations, the call syntax and Gemma's thinking
+# token (F1). The native prompt is unchanged (the
 # prompt snapshots pin it).
 RSpec.describe "Engine#system_prompt per loop" do
   let(:registry) do
@@ -24,7 +24,7 @@ RSpec.describe "Engine#system_prompt per loop" do
     it "gives a #{profile} model on a chat host no raw tool-call text" do
       prompt = engine("oai:m", profile).system_prompt
 
-      expect(prompt).not_to include("<tools>", "<tool_call>", "<|tool_call>", "<|think|>", "Turn preamble", "call:execute")
+      expect(prompt).not_to include("<tools>", "<tool_call>", "<|tool_call>", "<|think|>", "call:execute")
       expect(prompt).not_to include(Samagotchi::ToolDeclarations::TOOL_CALL_HINT.strip.lines.first.strip)
       expect(prompt).to start_with("You are Chi")
       expect(prompt).to include("Editing workflow:", "Memory convention:", "Small-context retrieval protocol:", "Project memories:\n(index)")
@@ -74,17 +74,19 @@ RSpec.describe "Engine#system_prompt per loop" do
         expect(e.system_prompt).not_to include("<|think|>")
       end
 
-      it "leaves out the Qwen turn preamble (there is no thinking to start with TURN:)" do
-        expect(engine("box:qwen-small", "qwen36").system_prompt).not_to include("Turn preamble")
+      it "leaves a Qwen prompt as it is at default (the level goes after the cue)" do
+        off = engine("box:qwen-small", "qwen36").system_prompt
+        ENV.delete("SAMAGOTCHI_THINKING_LEVEL")
+
+        expect(engine("box:qwen-small", "qwen36").system_prompt.sub(/^Current session id: .*$/, "")).to eq(off.sub(/^Current session id: .*$/, ""))
       end
     end
 
     context "low (no native knob)" do
       let(:level) { "low" }
 
-      it "keeps the thinking token and the preamble" do
+      it "keeps the thinking token" do
         expect(engine("box:gemma-small", "gemma4").system_prompt).to start_with("<|think|>\n")
-        expect(engine("box:qwen-small", "qwen36").system_prompt).to include("Turn preamble")
       end
     end
   end

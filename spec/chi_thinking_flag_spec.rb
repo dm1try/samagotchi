@@ -44,14 +44,12 @@ RSpec.describe "chi --thinking" do
     server&.stop
   end
 
-  it "turns thinking off for the run: Qwen's empty thought after the cue, no turn preamble" do
+  it "turns thinking off for the run: Qwen's empty thought after the cue" do
     off = sent_prompt("--thinking", "off", spawn: true)
     expect(off).to end_with("<|im_start|>assistant\n<think>\n\n</think>\n\n")
-    expect(off).not_to include("Turn preamble")
 
     plain = sent_prompt
     expect(plain).to end_with("<|im_start|>assistant\n")
-    expect(plain).to include("Turn preamble")
   end
 
   it "is the session's own level: saved in its file, and above the env" do

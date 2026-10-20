@@ -205,7 +205,6 @@ module Samagotchi
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
       Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config], lifecycle: :worker_start),
 
-      Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli], lifecycle: :prompt_rebuild),
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag
       # is bin/chi's own --thinking; models: and hosts: entries rank below

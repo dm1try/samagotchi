@@ -20,8 +20,6 @@ module Samagotchi
 
       # Enough text to find the newest sentence in; scanning grows with it.
       BUFFER_LIMIT = 2000
-      # The Qwen turn preamble's first line ("TURN: reading the config").
-      TURN_PREFIX = /\ATURN:\s*/i
       # Where a raw stream's thinking ends: a boundary, so its last words
       # don't run into the answer's first.
       THOUGHT_CLOSE = %r{<channel\|>|</think>}
@@ -65,8 +63,8 @@ module Samagotchi
       # @return [Symbol, nil] :thinking or :writing
       attr_reader :label
 
-      # The sentence as a row shows it: no TURN: prefix, markdown plain.
-      def sentence = strip_markdown(@ticker.line.sub(TURN_PREFIX, ""))
+      # The sentence as a row shows it: markdown plain.
+      def sentence = strip_markdown(@ticker.line)
 
       # #sentence cut to +room+ columns, with an ellipsis when cut.
       def fit(room)
