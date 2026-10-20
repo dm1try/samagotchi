@@ -193,7 +193,7 @@ module Samagotchi
     attr_accessor :llm_context_turn
     # @return [Integer, nil] the llama.cpp slot (`id_slot`) the last
     #   request of the last run streamed from; nil when the server named
-    #   none (other transports) or no request was made
+    #   none or no request was made
     attr_reader :last_slot
 
     # Run the conversation loop and return the final model response plus
@@ -294,7 +294,7 @@ module Samagotchi
     Request = Struct.new(:prompt, :images, :image_tokens, :window, :prefill, keyword_init: true)
     # One generation: the response (nil when cut), the cut's detail, this
     # generation's own server counts, the model the server named, the
-    # thinking it streamed, and why it stopped (the transport's finish
+    # thinking it streamed, and why it stopped (llama.cpp's finish
     # reason, Client.finish_reason_from; nil when not named),
     # and its prompt-cache counts (the largest seen: they come cumulative),
     # and where its visible text starts in the turn's buffer.

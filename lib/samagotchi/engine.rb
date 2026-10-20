@@ -2095,7 +2095,7 @@ module Samagotchi
       # could change what a resolve gives (the hooks ran before).
       model = effective_model
       sync_kernel_client!(model)
-      # Route model name as bare (without host prefix) to the transport;
+      # Route model name as bare (without host prefix) to the server;
       # host selection already done via active client.
       bare_for_backend = bare_model_name(model.name)
       # The turn's settings, set once here. The chat loop dispatches tools
