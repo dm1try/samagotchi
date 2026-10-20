@@ -10,7 +10,8 @@ require_relative "support/fake_provider_server"
 # `chi bootstrap` end to end against a fake model server, with a temp
 # XDG_CONFIG_HOME. The examples call BootstrapCommand in this process with
 # that env in ENV and as its +env+ (what bin/chi hands it); the ones marked
-# "through bin/chi" run the real executable for the wiring.
+# "through bin/chi" run the executable for the wiring: the first a real
+# process, the rest a fork (ChiCli#fork_chi).
 RSpec.describe "chi bootstrap" do
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
@@ -45,6 +46,13 @@ RSpec.describe "chi bootstrap" do
   # The same through bin/chi in a child process.
   def spawn_bootstrap(*args)
     out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "bootstrap", *args, stdin_data: "")
+    [out, err, status.exitstatus]
+  end
+
+  # bin/chi bootstrap in a fork: its dispatch, exit status and error
+  # printing, without a Ruby boot.
+  def fork_bootstrap(*args)
+    out, err, status = fork_chi("bootstrap", *args, env: env)
     [out, err, status.exitstatus]
   end
 
@@ -162,7 +170,7 @@ RSpec.describe "chi bootstrap" do
   end
 
   it "refuses --key-env naming an unset variable through bin/chi without a backtrace" do
-    _out, err, status = spawn_bootstrap(target, "--key-env", "FAKE_KEY")
+    _out, err, status = fork_bootstrap(target, "--key-env", "FAKE_KEY")
 
     expect(status).to eq(1)
     expect(err).to eq("chi bootstrap: FAKE_KEY is not set; export it first (the API key; chi only writes its name)\n")
@@ -250,7 +258,7 @@ RSpec.describe "chi bootstrap" do
   it "reports a closed port in one line, through bin/chi" do
     port = TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }
 
-    _out, err, status = spawn_bootstrap("127.0.0.1:#{port}")
+    _out, err, status = fork_bootstrap("127.0.0.1:#{port}")
 
     expect([err, status]).to eq(["chi bootstrap: can't reach 127.0.0.1:#{port} (connection refused)\n", 1])
   end
@@ -263,7 +271,7 @@ RSpec.describe "chi bootstrap" do
   end
 
   it "is in chi --help, through bin/chi" do
-    out, = Open3.capture3(env, RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, = fork_chi("--help", env: env)
 
     expect(out).to include("chi bootstrap [HOST[:PORT]|URL]")
   end
