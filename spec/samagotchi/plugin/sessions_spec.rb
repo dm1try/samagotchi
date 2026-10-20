@@ -157,6 +157,13 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       )
     end
 
+    it "titles it by its own title when it has one" do
+      parent.title = "Coordinator"
+      parent.save(state_dir: tmpdir)
+
+      expect(sessions.read(parent.id)).to include(title: "Coordinator")
+    end
+
     it "reads a live worker's snapshot, with its running turn so far" do
       client = instance_double(Samagotchi::BridgeClient)
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)

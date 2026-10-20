@@ -80,7 +80,7 @@ module Samagotchi
     end
 
     def preview_of(id)
-      text = Session.load(id, state_dir: @state_dir).first_preview.to_s.gsub(/\s+/, " ").strip
+      text = Session.load(id, state_dir: @state_dir).display_title.gsub(/\s+/, " ").strip
       return nil if text.empty?
 
       text.length > PREVIEW_LIMIT ? "#{text[0, PREVIEW_LIMIT - 1]}…" : text

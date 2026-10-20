@@ -105,7 +105,8 @@ module Samagotchi
       # Session +id+ now: from its worker when one runs (with a running turn
       # so far), else as saved.
       # @return [Hash] {id:, title:, status:, parent_id:, running:, messages:}
-      #   (messages without the system prompt, symbol keys)
+      #   (title: its own name, /title, else its first message's preview;
+      #   messages without the system prompt, symbol keys)
       # @raise [Error] no such session
       def read(id)
         state_dir = self.state_dir
@@ -120,7 +121,7 @@ module Samagotchi
             messages += Bridge::TurnAccumulator.messages_of(deep_symbolize(turn))
           end
         end
-        { id: sid, title: session.first_preview.to_s, status: session.status.to_s, parent_id: session.parent_id,
+        { id: sid, title: session.display_title, status: session.status.to_s, parent_id: session.parent_id,
           running: running, messages: without_system_head(messages) }
       end
 

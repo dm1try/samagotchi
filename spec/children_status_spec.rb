@@ -121,6 +121,15 @@ RSpec.describe Samagotchi::ChildrenStatus do
       expect(branches.values_at(on_main.id, in_worktree.id, detached.id, plain.id)).to eq(["main", "fix/flaky", "01234567", nil])
     end
 
+    it "titles a child by its own title when it has one, else by its last prompt" do
+      titled = delegate_child(prompt: "build the parser")
+      titled.title = "Parser"
+      titled.save(state_dir: tmpdir)
+      plain = delegate_child(prompt: "write the docs")
+
+      expect(of.to_h { |c| [c.id, c.title] }).to eq(titled.id => "Parser", plain.id => "write the docs")
+    end
+
     it "lists forks marked as not delegates, and archived children only when asked" do
       child = delegate_child(prompt: "count the specs")
       fork = make(parent_id: parent.id, prompt: "a fork")

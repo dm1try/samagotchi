@@ -47,6 +47,14 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
     expect(gone?(first) && gone?(second)).to be true
   end
 
+  it "names a titled session by its title" do
+    titled = make(id: "aaaa1111-0000").tap { |s| s.title = "Parser fix" }
+    titled.save(state_dir: tmpdir)
+
+    expect(run("aaaa")).to eq(0)
+    expect(out.string).to eq("aaaa1111  deleted  Parser fix\n")
+  end
+
   it "refuses a live worker without --force, deletes the others, and exits 1" do
     live = make(owner: "worker", id: "aaaa1111-0000")
     idle = make(id: "bbbb2222-0000")

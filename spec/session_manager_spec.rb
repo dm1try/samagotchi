@@ -2137,6 +2137,21 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".summary_text" do
+    let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w") }
+
+    it "is the title when set, else the last prompt, else the first message" do
+      session.first_preview = "hey chi"
+      expect(described_class.summary_text(session)).to eq("hey chi")
+      session.last_prompt = "> quoted\n\nfix   it"
+      expect(described_class.summary_text(session)).to eq("quoted fix it")
+      session.title = "  Coordinator \n of the day "
+      expect(described_class.summary_text(session)).to eq("Coordinator of the day")
+      session.title = " "
+      expect(described_class.summary_text(session)).to eq("quoted fix it")
+    end
+  end
+
   describe ".session_summaries" do
     let(:locks) { [] }
 

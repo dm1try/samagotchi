@@ -325,7 +325,7 @@ module Samagotchi
         owned = !!owner&.worker?
         next if live && !owned
 
-        { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
+        { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), title: s.title, cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
           owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd),
@@ -468,10 +468,12 @@ module Samagotchi
       cut(summary_text(session), SUMMARY_PREVIEW_LIMIT)
     end
 
-    # A session as one line of text for the lists: its last prompt, else the
-    # first message it was started with (a session command like `/model x`,
-    # or a first turn not saved yet).
+    # A session as one line of text for the lists: its title (/title), else
+    # its last prompt, else the first message it was started with (a session
+    # command like `/model x`, or a first turn not saved yet).
     def self.summary_text(session)
+      return one_line(session.title) unless session.title.to_s.strip.empty?
+
       one_line(session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s)
     end
 

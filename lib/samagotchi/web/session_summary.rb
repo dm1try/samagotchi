@@ -67,6 +67,9 @@ module Samagotchi
           # chain), else nil: the lists draw chains from it.
           continues: session.continues,
           first_preview: first_preview_for(session),
+          # The session's own name (/title), else nil: the pages show it in
+          # place of the first message.
+          title: session.title,
           owner: owner&.kind,
           # The saved recap's first sentence, for the session card.
           recap: RecapStore.preview(session_dir),

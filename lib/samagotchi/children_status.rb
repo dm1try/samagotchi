@@ -81,7 +81,7 @@ module Samagotchi
     def child(session, row, cursors, state_dir:)
       reply = ReplyWait.newest_reply(session.id, state_dir: state_dir)
       cursor = Tools::DelegateCursors.get_from(cursors, session.id)
-      Child.new(id: session.id, short_id: session.id[0, 8], title: row[:preview].to_s,
+      Child.new(id: session.id, short_id: session.id[0, 8], title: (session.title || row[:preview]).to_s,
                 state: state_of(session, row, reply), waiting: row[:waiting], live: !!row[:live],
                 delegate: session.delegate?, cwd: session.working_directory, branch: GitHead.branch(session.working_directory),
                 last_reply: reply && first_line(session.id, reply, state_dir: state_dir),

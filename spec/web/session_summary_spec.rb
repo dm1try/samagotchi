@@ -187,8 +187,11 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(json).to include(id: s.id, status: "idle", mode: "assist", model_name: "TestModel",
                               working_directory: "/tmp/proj", short_id: s.id[0, 8], test_run: s.test_run,
                               first_preview: "cached preview", last_prompt: "original prompt", owner: nil,
-                              recap: nil, project_root: "/tmp/proj", bridge_up: false)
+                              recap: nil, project_root: "/tmp/proj", bridge_up: false, title: nil)
       expect(json.keys).to include(:created_at, :updated_at, :used_memory_names)
+      s.title = "Coordinator"
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(title: "Coordinator",
+                                                                                           first_preview: "cached preview")
     end
 
     it "carries the session's --memory and --mute lists" do

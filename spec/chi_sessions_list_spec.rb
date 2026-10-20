@@ -305,6 +305,20 @@ RSpec.describe "chi sessions list" do
       .to include("desc" => "app · fix it")
   end
 
+  it "shows a session's title over its recap and its last prompt, plain, live, tsv and json" do
+    titled = make("fix it", live: true)
+    write_recap(titled, "The user was fixing the login page. It works now.")
+    s = Samagotchi::Session.load(titled.id, state_dir: state_dir)
+    s.title = "Login fix"
+    s.save(state_dir: state_dir)
+
+    expect(run_chi.first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  Login fix\n")
+    expect(run_chi("--live").first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  app · Login fix\n")
+    expect(run_chi("--live", "--format", "tsv").first).to include("#{titled.id}\tapp · Login fix\n")
+    expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == titled.id })
+      .to include("desc" => "app · Login fix", "title" => "Login fix")
+  end
+
   it "cuts a long recap to 60 characters, as it does a prompt" do
     session = make("x")
     write_recap(session, "Checking #{"word " * 30}.")
@@ -345,7 +359,7 @@ RSpec.describe "chi sessions list" do
     out, err, status = run_chi("--live", "--format=json", "--cwd", "/work")
 
     expect(status).to eq(0), err
-    expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
+    expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it", "title" => nil,
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
                                      "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
