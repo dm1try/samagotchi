@@ -7,12 +7,11 @@ require "support/fake_provider_server"
 
 # --set BUNDLE.KEY=VALUE on a session-starting run: checked against the
 # installed bundles' records (session_settings:) and saved in the new
-# session's file.
+# session's file. One example runs a real bin/chi; the rest fork it
+# (ChiCli#fork_chi).
 RSpec.describe "chi --set" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
-
   it "is listed in --help" do
-    out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, = fork_chi("--help")
     expect(out).to include("--set BUNDLE.KEY=VALUE")
   end
 
