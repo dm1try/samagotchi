@@ -1,0 +1,44 @@
+# Which shipped notes load for which model ids (model_notes_spec.rb).
+#
+# id: the bare id chi sends to the server, no host prefix (an alias resolved
+# to its target): the forms seen in real sessions, plus an MLX / GGUF / Splash
+# form per family. notes: the exact names expected, in prompt order. small:
+# whether the model counts as small for a `small` entry (chi's auto rule:
+# <= 32B, an MoE's active size).
+#
+# Add a row for every new id form a note should (or must not) catch. A
+# negative row ([]) is how a glob that grew too wide shows up.
+rows:
+  # DeepSeek V4 / V4.1: one id per model, whichever provider is pinned.
+  - { id: deepseek/deepseek-v4.1-flash, small: false, notes: [model_notes_deepseek] }
+  - { id: deepseek/deepseek-v4-flash, small: false, notes: [model_notes_deepseek] }
+  - { id: deepseek/deepseek-v4.1-flash-1017, small: false, notes: [model_notes_deepseek] }
+  - { id: unsloth/DeepSeek-V4-Flash-GGUF:Q4_K_M, small: false, notes: [model_notes_deepseek] }
+  - { id: mlx-community/DeepSeek-V4-Flash-4bit, small: false, notes: [model_notes_deepseek] }
+  # Other DeepSeek models: the note was measured on V4 only.
+  - { id: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B, small: true, notes: [] }
+  - { id: deepseek/deepseek-chat, small: false, notes: [] }
+  - { id: deepseek/deepseek-r1, small: false, notes: [] }
+  # Mistral: no note shipped (its local one predates the bash -> execute alias).
+  - { id: mistralai/mistral-large-4-0, small: false, notes: [] }
+  - { id: mistralai/ministral-8b, small: true, notes: [] }
+  # Qwen 3.6 35B-A3B (OpenRouter, MLX, Splash, llama.cpp).
+  - { id: qwen/qwen3.6-35b-a3b, small: true, notes: [] }
+  - { id: mlx-community/Qwen3.6-35B-A3B-4bit, small: true, notes: [] }
+  - { id: incoai/Qwen3.6-35B-A3B-Splash, small: true, notes: [] }
+  - { id: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M, small: true, notes: [] }
+  # Qwen 3.8 27B.
+  - { id: mlx-community/Qwen3.8-27B-4bit, small: true, notes: [] }
+  - { id: incoai/Qwen3.8-27B-Splash, small: true, notes: [] }
+  - { id: ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:MTP, small: true, notes: [] }
+  # Ornith, Gemma.
+  - { id: ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M, small: true, notes: [] }
+  - { id: gemma-4-26b-a4b-it-4bit, small: true, notes: [] }
+  # Claude (the claude host's ids, and OpenRouter's).
+  - { id: claude-opus-5-5, small: false, notes: [] }
+  - { id: claude-sonnet-5-5, small: false, notes: [] }
+  - { id: anthropic/claude-sonnet-5.5, small: false, notes: [] }
+
+# Ids that load more than one note, each with the names: by design only (a
+# `small` note on top of a family's, say). None while one note ships.
+expected_overlaps: {}

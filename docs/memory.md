@@ -106,6 +106,26 @@ Working habits for this model:
   longest run without an edit and the Continues and steers each needed; run a
   note on and muted for the same kind of task. See
   [testing.md](testing.md) ("The model notes report").
+- **Shipped notes: the model-notes bundle.** `chi bundle install model-notes`
+  (or the `dev` profile) installs reviewed notes into the system scope; for
+  now `model_notes_deepseek` (`models: *deepseek-v4*`). Each note's provenance
+  and evidence is in the bundle's `notes/README.md`, and its spec pins which
+  model ids load which note ([Plugins](plugins.md#the-model-notes-bundle)).
+  - **Your own note of the same name wins.** The install skips a
+    `model_notes_<name>.md` you already have (`Skipped … use --force`) and
+    never owns it, so your note is what loads, the two never stack, and
+    upgrades leave it alone.
+  - **To take the bundle's version instead,** remove your note
+    (`memory_write` with `remove: true` moves it to the trash) and run
+    `chi bundle install model-notes` again: the install writes the missing
+    file and owns it from then on. Don't use `--force`: it overwrites every
+    file of the bundle with no trash copy.
+  - **Other notes stack.** A note of another name for the same models
+    (`model_notes_my_deepseek`), or a project-scope `model_notes_deepseek`,
+    loads beside the bundle's (notes are told apart by their file, not their
+    name), and the total may pass the 3,000-character warning.
+  - **Your edits to an installed note** are kept by an upgrade (a 3-way
+    merge), or come back as a conflict.
 - Without a model note the system prompt is what it was.
 
 
@@ -323,7 +343,7 @@ profiles, meta bundles that install a set of them:
 | profile | bundles |
 |---|---|
 | `core` | loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap: the recommended safety set |
-| `dev` | known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby |
+| `dev` | known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes |
 
 `chi bootstrap` installs `core` and, on a terminal, offers `dev`. An existing
 install gets neither by itself: `chi bundle install core` (or `dev`).

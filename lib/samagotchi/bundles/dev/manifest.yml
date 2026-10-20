@@ -1,6 +1,6 @@
 ---
 name: dev
-version: 0.6.0
+version: 0.7.0
 scope: system
 description: "Developer tools"
 trust_level: reviewed
@@ -16,3 +16,4 @@ includes:
 - claude-peer
 - codex-peer
 - ruby
+- model-notes

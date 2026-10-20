@@ -1,0 +1,11 @@
+---
+name: model-notes
+version: 0.1.0
+scope: system
+description: "Reviewed model notes: working habits a model family needs, loaded into the prompt only for the models each note's models: line names"
+trust_level: reviewed
+requires_chi: ">= 0.41.0"
+files:
+  model_notes_deepseek.md:
+    sha256: sha256:0b07e40edc1a3d4a3ad6bea08d9b338913f78cab19a5809bcf4593f459f9bc5e
+    description: "DeepSeek V4 working habits: explore briefly then act, commit per item, stop digging, memory_read for memories, file tools over heredocs"

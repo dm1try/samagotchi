@@ -85,7 +85,7 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
 - **The bundles.** Unless writing the config failed, it installs the system
   bundle and the `core` profile (loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap), one line
   each; on a terminal it then asks `Also install dev (known-names, mcp, btw,
-  skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby)? [y/N]`. Run again, it installs nothing new: a bundle
+  skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes)? [y/N]`. Run again, it installs nothing new: a bundle
   you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).
   A bundle that fails to install makes the exit 1. `--dry-run` says what it
   would install.

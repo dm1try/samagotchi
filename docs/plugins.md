@@ -2303,6 +2303,36 @@ gem.
 - Guardrail rules keyed by a tool's name apply to plugin tools, as they do to
   chi's own tools; path and command rules see what `targets:` says.
 
+## The model-notes bundle
+
+`chi bundle install model-notes` (or the `dev` profile) installs reviewed
+[model notes](memory.md#model-notes) into the system scope: working habits
+for one model family, loaded into the prompt only for the models a note's
+`models:` line names. It has no plugin or hook. It ships one note:
+
+| note | models | for |
+|---|---|---|
+| `model_notes_deepseek` | `*deepseek-v4*` | DeepSeek V4 / V4.1: explore briefly then act, commit one item at a time, stop digging, `memory_read` for memories, file tools rather than heredocs that guardrail rules ask about |
+
+- **Reviewed before it ships.** A note is generic (no repo or machine facts),
+  says nothing the harness already does (a tool's description, an alias),
+  talks to the model as "you", stays under 1,500 characters, and the user
+  approves its text. A model may propose one; it never edits the bundle.
+  `notes/README.md` in the bundle records each note's sources, the
+  `script/model_notes_report.rb` numbers and the approval.
+- **Globs per measured version.** A glob is tried against the id with no host
+  prefix and against its model key, case-insensitively, and `*` also matches
+  `/`: `*deepseek-v4*` covers `deepseek/deepseek-v4.1-flash` on any provider,
+  MLX and GGUF names, but not `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B`.
+- **Tested.** `spec/model_ids.yml` lists real id forms and the exact notes
+  each loads (negative rows included); the spec installs the bundle and
+  resolves each through `sandbox.model_notes_for`
+  ([Testing a bundle](#testing-a-bundle-experimental)). It also checks each
+  note's shape, size and that the tools it names are ones chi declares.
+- **Your own notes:** a same-name note you have wins and keeps its place
+  through upgrades; other notes stack with the bundle's
+  ([Model notes](memory.md#model-notes)).
+
 ## The bundle commands
 
 - `chi bundle install <dir>`: copies the plugin to
