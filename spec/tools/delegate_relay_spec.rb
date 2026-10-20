@@ -474,3 +474,26 @@ RSpec.describe Samagotchi::Tools::DelegateRelay, ".relayable?" do
     expect(described_class.relayable?(nil, cost_cap, strategy: hard)).to be(false)
   end
 end
+
+RSpec.describe Samagotchi::Tools::DelegateRelay, ".label" do
+  def question(**fields) = Samagotchi::PendingQuestion.new(id: "q1", **fields)
+
+  it "names a hook question by the asking hook's header, else its hook" do
+    expect(described_class.label(question(kind: "hook", header: "Cost cap", hook: "plugin.rb (bundle cost-cap)")))
+      .to eq("hook question relayed to your user: Cost cap")
+    expect(described_class.label(question(kind: "hook", hook: "plugin.rb (bundle cost-cap)")))
+      .to eq("hook question relayed to your user: plugin.rb (bundle cost-cap)")
+  end
+
+  it "keeps the asking hook's header down a chain (a relayed card's own header is the relay's)" do
+    relayed = question(kind: "hook", header: "delegate ab12 asks: Cost cap", hook: "h.rb",
+                       relay: { "header" => "Cost cap", "chain" => ["ab12"] })
+    expect(described_class.label(relayed)).to eq("hook question relayed to your user: Cost cap")
+    expect(described_class.line(described_class.label(relayed), "Stop")).to eq("hook question relayed to your user: Cost cap → Stop")
+  end
+
+  it "names an approval by its call, from a saved session's string keys too" do
+    approval = question(kind: "approval", approval: { "tool" => "execute", "command" => "git push" })
+    expect(described_class.label(approval)).to eq("approval relayed to your user: execute: git push")
+  end
+end

@@ -232,11 +232,11 @@ module Samagotchi
       return report.with(relay: nil) unless relay
 
       question = report.relay
-      what = question.header.to_s.empty? ? question.hook.to_s : question.header.to_s
+      label = Tools::DelegateRelay.label(question)
       line = if Session.load(report.child_id, state_dir: @state_dir).pending_question&.id.to_s != question.id.to_s
-               Tools::DelegateRelay.line(what, "answered on the child", hook: true)
+               Tools::DelegateRelay.line(label, "answered on the child")
              elsif relay.relay_desk.settled?(report.child_id, question.id)
-               Tools::DelegateRelay.line(what, "answered on a relay already; it waits for the user on the child", hook: true)
+               Tools::DelegateRelay.line(label, "answered on a relay already; it waits for the user on the child")
              else
                outcome = Tools::DelegateRelay.call(report.child_id, question, relay: relay, state_dir: @state_dir)
                return hold_back(report) if outcome.stopped

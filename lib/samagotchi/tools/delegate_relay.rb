@@ -85,7 +85,7 @@ module Samagotchi
 
         fields = Relay.card(child, question, relay_id: relay_id, more: more)
         answer = relay.open_question(fields, watch: watch(child_id, qid, state_dir))
-        settle(answer, fields, client: client, desk: desk, relay_id: relay_id, qid: qid)
+        settle(answer, fields, label: label(question), client: client, desk: desk, relay_id: relay_id, qid: qid)
       ensure
         # A relay that failed before it settled closes, so the desk (which
         # prunes only settled ones) keeps none open; a settled one stays.
@@ -108,12 +108,11 @@ module Samagotchi
       end
 
       # Record the parent's answer, tell the child, and say what came of it.
-      def settle(answer, fields, client:, desk:, relay_id:, qid:)
-        what = fields[:kind] == HOOK_KIND ? hook_what(fields) : what_text(fields[:approval])
-        hook = fields[:kind] == HOOK_KIND
+      # @param label [String] the outcome line's start (#label)
+      def settle(answer, fields, label:, client:, desk:, relay_id:, qid:)
         if answer.is_a?(Hash) && answer[:error] == "cancelled"
           desk.close(relay_id)
-          return closed(answer[:reason].to_s, what, client: client, relay_id: relay_id, qid: qid, hook: hook)
+          return closed(answer[:reason].to_s, label, client: client, relay_id: relay_id, qid: qid)
         end
 
         dismissed = !answer.is_a?(QuestionAnswer)
@@ -121,18 +120,18 @@ module Samagotchi
         desk.record(relay_id, selected_indices: dismissed ? [] : answer.selected_indices,
                               freeform: dismissed ? nil : answer.freeform, dismissed: dismissed, by: by)
         response = post(client, "answered", relay_id, qid)
-        Outcome.new(line: line(what, delivered(response, answer, fields, dismissed), hook: hook), stopped: false)
+        Outcome.new(line: line(label, delivered(response, answer, fields, dismissed)), stopped: false)
       end
 
-      def closed(reason, what, client:, relay_id:, qid:, hook: false)
+      def closed(reason, label, client:, relay_id:, qid:)
         case reason
-        when "answered_on_child" then Outcome.new(line: line(what, "answered on the child", hook: hook), stopped: false)
+        when "answered_on_child" then Outcome.new(line: line(label, "answered on the child"), stopped: false)
         when "child_gone"
-          Outcome.new(line: line(what, "not delivered (the child's worker is gone)", hook: hook), stopped: false)
+          Outcome.new(line: line(label, "not delivered (the child's worker is gone)"), stopped: false)
         else
           # A Stop: the child's question stays open there.
           post(client, "closed", relay_id, qid, reason: "stopped")
-          Outcome.new(line: line(what, "still open (your turn was stopped)", hook: hook), stopped: true)
+          Outcome.new(line: line(label, "still open (your turn was stopped)"), stopped: true)
         end
       end
 
@@ -172,14 +171,30 @@ module Samagotchi
         why.empty? ? "denied" : "denied (#{why.inspect})"
       end
 
-      def line(what, outcome, hook: false)
-        "#{hook ? "hook question" : "approval"} relayed to your user: #{what} → #{outcome}"
+      # One relayed question's outcome line: #label → +outcome+.
+      def line(label, outcome) = "#{label} → #{outcome}"
+
+      # What an outcome line starts with: "hook question relayed to your
+      # user: Cost cap", "approval relayed to your user: execute: git push".
+      # @param question [PendingQuestion] the child's
+      def label(question)
+        "#{question.kind.to_s == HOOK_KIND ? "hook question" : "approval"} relayed to your user: #{what(question)}"
       end
 
-      # A hook card's header as the child asked it (Cost cap), or its hook.
-      def hook_what(fields)
-        header = fields.dig(:relay, :header).to_s
-        header.empty? ? fields[:hook].to_s : header
+      # What a relayed question is about, as its card has it (Relay.card): a
+      # hook's header as the asking hook gave it (kept down a chain: a relay
+      # of a relay), else its hook; an approval's call (#what_text).
+      # @param question [PendingQuestion] the child's
+      def what(question)
+        return what_text(symbolized(question.approval)) unless question.kind.to_s == HOOK_KIND
+
+        inner = symbolized(question.relay, nil)
+        header = (inner ? inner[:header] : question.header).to_s
+        header.empty? ? question.hook.to_s : header
+      end
+
+      def symbolized(value, none = {})
+        value.is_a?(Hash) ? Relay.deep_symbolize(value) : none
       end
 
       # execute: git push origin main
