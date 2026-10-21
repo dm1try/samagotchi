@@ -94,15 +94,23 @@ module Samagotchi
     #   still be open, untagged)
     # @return [Symbol, nil] :turn_running, :input_queued, :continue_offered,
     #   :client_connected, :reminders or :background_tasks
-    def hold_for_request(requester:, streams: true)
-      return :turn_running if @engine.turn_running?
-      return :input_queued if @input_pending.call
-      return :continue_offered if @awaiting_continue.call
-      return :client_connected if streams && @bridge && @bridge.open_streams_except(requester).positive?
-      return :reminders if @engine.reminder_store&.any?
-      return :background_tasks if @watched_running.call.any?
+    def hold_for_request(requester:, streams: true) = request_hold(requester: requester, streams: streams)&.reason
 
-      nil
+    # #hold_for_request as a Hold: for :background_tasks, the watched tasks
+    # still running, read once (TaskWatch#running looks at each task's
+    # process), with +hint+.
+    # @return [Hold, nil]
+    def request_hold(requester:, streams: true, hint: nil)
+      reason = if @engine.turn_running? then :turn_running
+               elsif @input_pending.call then :input_queued
+               elsif @awaiting_continue.call then :continue_offered
+               elsif streams && @bridge && @bridge.open_streams_except(requester).positive? then :client_connected
+               elsif @engine.reminder_store&.any? then :reminders
+               end
+      return Hold.new(reason: reason) if reason
+
+      running = @watched_running.call
+      running.any? ? Hold.new(reason: :background_tasks, tasks: running, hint: hint) : nil
     end
 
     # What keeps the worker from restarting now (a client asked: POST /exit

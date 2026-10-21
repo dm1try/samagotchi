@@ -1261,12 +1261,14 @@ module Samagotchi
       # The Bridge serves before the idle-exit policy exists.
       return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
 
-      hold = restart ? @idle_exit.hold_for_restart : @idle_exit.hold_for_request(requester: client_id)
-      if hold == :background_tasks && !restart
-        # /exit names the tasks it waits for (D3).
-        return WorkerIdleExit::Hold.new(reason: hold, tasks: @task_wakes.watch.running, hint: TASK_STOP_HINT)
+      if restart
+        hold = @idle_exit.hold_for_restart
+        return WorkerIdleExit::Hold.new(reason: hold) if hold
+      else
+        # /exit names the tasks it waits for (D3), from the one look that found them.
+        hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
+        return hold if hold
       end
-      return WorkerIdleExit::Hold.new(reason: hold) if hold
 
       @exit_requested = true
       @exit_requested_by = client_id

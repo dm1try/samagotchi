@@ -157,6 +157,21 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       watched_running[0] = [{ id: "t1", command: "rails s" }]
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:background_tasks)
     end
+
+    it "as a Hold, names the running tasks from one look (TaskWatch#running runs ps per task)" do
+      looks = 0
+      running = [{ id: "t1", command: "rails s" }]
+      p = described_class.new(engine: engine, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
+                              watched_running: lambda {
+                                looks += 1
+                                running
+                              }, clock: clock)
+      expect(p.request_hold(requester: "tui:1", hint: "stop it"))
+        .to eq(described_class::Hold.new(reason: :background_tasks, tasks: running, hint: "stop it"))
+      expect(looks).to eq(1)
+      queued[0] = true
+      expect(policy.request_hold(requester: "tui:1")).to eq(described_class::Hold.new(reason: :input_queued))
+    end
   end
 
   it "reports the idle seconds" do
