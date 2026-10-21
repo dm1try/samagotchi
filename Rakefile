@@ -3,6 +3,7 @@
 require "fileutils"
 require "tmpdir"
 require_relative "script/release/release_tools"
+require_relative "script/deps/deps_check"
 
 # bundler/gem_tasks provides build/install/install:local (into pkg/). Its
 # `rake release` tags, pushes and publishes from this machine: removed below.
@@ -89,6 +90,28 @@ namespace :bundles do
     abort "No bundle has a spec/ folder." if dirs.empty?
 
     sh "bundle", "exec", "rspec", "--options", File::NULL, "-r", "samagotchi/testing/rspec", *dirs
+  end
+end
+
+namespace :deps do
+  desc "What our dependencies did since the last check: Splash/llama.cpp hosts in config.yml vs upstream, outdated " \
+       "gems, outdated npm packages and npm audit; NEW marks changes (state: $XDG_STATE_HOME/samagotchi/deps-check.json, " \
+       "DEPS_CHECK_STATE overrides). Informational, always exits 0. deps:check[json]: the same as JSON"
+  task :check, [:format] do |_t, args|
+    abort "usage: rake deps:check or rake 'deps:check[json]'" unless [nil, "json"].include?(args[:format])
+
+    puts DepsCheck.check(ROOT, format: args[:format])
+  end
+
+  desc "Record the Splash version you read with `splash --version` (Splash's /status has none): " \
+       "deps:splash_version[1.3.2] for every Splash host, deps:splash_version[host:port,1.3.2] for one"
+  task :splash_version, [:first, :second] do |_t, args|
+    address, version = args[:second] ? [args[:first], args[:second]] : [nil, args[:first]]
+    abort "usage: rake 'deps:splash_version[1.3.2]' or rake 'deps:splash_version[host:port,1.3.2]'" unless version
+
+    puts DepsCheck.record_splash_version(version, address: address)
+  rescue DepsCheck::Error => e
+    abort "deps:splash_version: #{e.message}"
   end
 end
 
