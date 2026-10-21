@@ -3,6 +3,7 @@
 require_relative "../plugin/loader"
 require_relative "../plugin/tool_spec"
 require_relative "../hooks"
+require_relative "../question_asked"
 require_relative "../commands/registry"
 require_relative "../session_commands"
 require_relative "../tools/builtins"
@@ -201,6 +202,22 @@ module Samagotchi
         payload = { type: event.to_sym, **fields }
         failing { hooks.fire(event.to_sym, payload) }
         payload
+      end
+
+      # Fire :question_asked as chi's two seams do (QuestionAsked.fire): a
+      # question (+kind+ "question") or an approval ("approval") asked by a
+      # step whose text is +text+, with the question's +question+ fields.
+      # The hooks' refs are checked as chi checks them (the question caps,
+      # file refs under +cwd+, default the session's folder).
+      # @return [Array<Hash>] the refs the step and its pending question
+      #   get, as stored; [] for none
+      def question_asked(text, kind: "question", question: {}, cwd: nil)
+        step = { role: "model", content: text.to_s }
+        fields = failing do
+          QuestionAsked.fire(hooks: hooks, conversation: [step], kind: kind.to_s, fields: question.to_h,
+                             cwd: cwd || @recorder[:cwd])
+        end
+        Array(fields[:refs])
       end
 
       # Build the before_tool_call payload from the real Gate, without firing

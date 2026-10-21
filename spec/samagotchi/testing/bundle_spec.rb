@@ -152,6 +152,35 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect([bundle.fire(:before_turn)[:seen], bundle.fire(:after_turn)[:seen]]).to eq([1, 2])
   end
 
+  it "fires :question_asked as chi's seams do: the step's text and fields in, the checked refs out" do
+    source = <<~RUBY
+      class Asked
+        def call(event)
+          q = event[:question]
+          event[:notify].call([event[:kind], event[:text], q[:question], q.frozen?, event[:ask_user].call(question: "no").inspect].join("|"))
+          event[:refs].call(match: "T-1", kind: "issue", target: { id: "T-1" },
+                            actions: [{ id: "open", label: "Open", url: "https://example.test/T-1" }])
+        end
+      end
+    RUBY
+    write_bundle(hooks: { "asked.rb" => ["question_asked", source] })
+    bundle = load
+
+    refs = bundle.question_asked("Proceed with T-1?", kind: "approval", question: { question: "Go?" })
+    expect(refs).to eq([{ match: "T-1", kind: "issue", target: { id: "T-1" },
+                          actions: [{ id: "open", label: "Open", url: "https://example.test/T-1" }] }])
+    expect(bundle.notices.map(&:text)).to eq(["approval|Proceed with T-1?|Go?|true|nil"])
+    expect(bundle.questions).to be_empty
+  end
+
+  it "question_asked: no refs from the hooks is an empty list; a raising hook fails the call" do
+    write_bundle(hooks: { "boom.rb" => ["question_asked", "class Boom; def call(e) = raise('boom'); end"] })
+    bundle = load
+
+    expect { bundle.question_asked("x") }.to raise_error(Samagotchi::Testing::HookFailed, /boom/)
+    expect(bundle.lenient { bundle.question_asked("x") }).to eq([])
+  end
+
   it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
     write_bundle(hooks: { "guard.rb" => ["after_turn", "class Guard; def call(e) = e[:first] = true; end"] })
     shared_namespace = Samagotchi::Hooks::BundleLoader.namespace_for("kit-test")

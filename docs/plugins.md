@@ -1161,6 +1161,7 @@ require "samagotchi/testing"
 bundle = Samagotchi::Testing::Bundle.load("path/to/my-bundle", settings: { "every" => 3 },
                                           host: { session_id: "s1", cwd: Dir.pwd })
 bundle.fire(:after_turn, status: "completed")            # → the event, after the hooks
+bundle.question_asked("Fix JIRA-1?", question: { question: "Go?" })   # → the refs, as chi's seams fire it
 event = bundle.before_tool_call_event({ name: "read", path: "a.txt" }, params: "read a.txt")
 bundle.command("/mine stop")                             # → what the command returned
 bundle.tool("my_tool", path: "a.txt")                    # → the text the model reads
@@ -1214,6 +1215,10 @@ bundle.shutdown
   lays them over `settings:` through chi's own `Context#settings`; the plugin's `initialize(settings)` gets
   `settings:` only. `bundle.set(session_settings:)` moves the session to a new id (`test-session-2`, or the
   `session_id:` given beside it): chi never changes them within a session, and builds `ctx.settings` once per id.
+- **`question_asked(text, kind: "question", question: {}, cwd: nil)`** fires `:question_asked` through
+  `QuestionAsked.fire`, as chi's two seams do: a step whose text is `text` asks a question (or `kind: "approval"`)
+  with the `question` fields, and the refs the hooks attach come back checked (the question caps, a file ref under
+  `cwd:`, default the session's folder), as the step and its pending question keep them; `[]` for none.
 - **A hook that raises fails the call** (`Testing::HookFailed`, with the hook's error) where chi would log it and
   go on; `bundle.lenient { … }` collects them in `bundle.errors` instead.
 - **Sandbox.** A test runs with temp config, state, data and cache homes (config.yml, memories, `ctx.data_dir`, the

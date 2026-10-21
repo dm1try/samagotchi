@@ -607,7 +607,9 @@ step's text (`Engine#question_step_text`: the parser's thought and tool-call str
 the step **in place** under the event lock (the loops and the forget layer hold entries by identity) and returns the
 fields with `refs:`. `QuestionDesk#request` forwards `refs` past its slice; `PendingQuestion#refs` carries them to
 `:question_requested`, the session file and the cards. `Web::App#with_question_refs` re-validates them (the pending
-question, `cards_for_display`) with the same caps.
+question, `cards_for_display`) with the same caps; the page pairs them in the asking slot, on the card and on the
+step's text ([architecture.md](../architecture.md), the `display_refs` paragraph). The kit's
+`Testing::Bundle#question_asked` calls `QuestionAsked.fire` with a one-step conversation.
 
 ### Hook lifecycle
 
