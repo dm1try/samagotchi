@@ -15,14 +15,22 @@ module Samagotchi
     # window (ContextWindow.setting, nil for none) and LLM context strategy
     # (LLMContextStrategy.resolve, nil for none), and its price on its host
     # (hosts.<name>.models.<id>.price, a ModelPrice; nil for none), what
-    # SessionMetrics estimates an unreported cost from. The Engine sets them once
-    # per turn, in Engine#generate, after the model's host is synced.
+    # SessionMetrics estimates an unreported cost from, and whether the turn's
+    # host takes tools it doesn't declare up front (+loads_tools+:
+    # AnthropicMessages#loads_tools?; a direct call of a reachable tool then
+    # runs). The Engine sets them once per turn, in Engine#generate, after
+    # the model's host is synced.
     TurnSettings = Data.define(:vision, :sampling, :thinking, :reasoning_history, :model_name, :window_setting,
-                               :llm_context, :price) do
+                               :llm_context, :price, :loads_tools) do
+      def initialize(vision:, sampling:, thinking:, reasoning_history:, model_name:, window_setting:, llm_context:,
+                     price:, loads_tools: false)
+        super
+      end
+
       # No vision, no sampling, the default thinking, no reasoning sent
-      # back, no model name.
+      # back, no model name, no tools loaded.
       def self.none = new(vision: nil, sampling: {}.freeze, thinking: Thinking::DEFAULT, reasoning_history: :drop,
-                          model_name: nil, window_setting: nil, llm_context: nil, price: nil)
+                          model_name: nil, window_setting: nil, llm_context: nil, price: nil, loads_tools: false)
     end
   end
 end

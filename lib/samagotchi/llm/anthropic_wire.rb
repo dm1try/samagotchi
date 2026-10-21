@@ -47,8 +47,10 @@ module Samagotchi
       #   (PromptCache.control): on the head system's first block and on the
       #   last block that didn't come from a later system message (a tail
       #   note moves each request, as PromptCache's rule says); nil sets none
+      # @param deferred [Array<String>] the tools this request declares
+      #   deferred (defer_loading)
       # @return [Translated]
-      def translate(wire, cache: nil)
+      def translate(wire, cache: nil, deferred: [])
         system = []
         messages = []
         notes = {}.compare_by_identity
@@ -75,13 +77,16 @@ module Samagotchi
         Translated.new(system: system, messages: messages)
       end
 
-      # ChatLoop's function definitions as Messages tools.
+      # ChatLoop's function definitions as Messages tools; a deferred one
+      # (defer_loading: true beside its function) keeps the flag.
       # @param tools [Array<Hash>] {type: "function", function: {name:, description:, parameters:}}
       def tools(tools)
         Array(tools).map do |tool|
           function = (tool[:function] || tool["function"] || tool).to_h.transform_keys(&:to_sym)
+          deferred = tool[:defer_loading] || tool["defer_loading"]
           { name: function[:name].to_s, description: function[:description],
-            input_schema: function[:parameters] || { type: "object", properties: {} } }.compact
+            input_schema: function[:parameters] || { type: "object", properties: {} },
+            defer_loading: (true if deferred == true) }.compact
         end
       end
 

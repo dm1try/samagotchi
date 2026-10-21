@@ -1859,6 +1859,14 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  it "keeps a find_tools result's loaded names and a tool change in the conversation it hands back" do
+    found = { role: "tool_response", content: "[find_tools]\nx", tool_call_id: "c1", loaded: %w[list_sessions] }
+    change = { role: "system", kind: "tool_change", content: "[tools loaded: delegate (b)]",
+               tool_change: { add: %w[delegate], by: "b" } }
+
+    expect(backend.plain([found, change])).to eq([found, change])
+  end
+
   describe "an empty-answer turn note" do
     let(:note) { Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "", thinking: "secret plan" }]) }
 

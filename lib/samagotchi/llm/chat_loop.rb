@@ -100,8 +100,8 @@ module Samagotchi
       # Tool definitions for the request: the schemas the native prompts are
       # rendered from (the kernel's registry, the tools the turn's LLM
       # context layers offer), with the chat-only enums and closed
-      # parameters.
-      def tool_definitions
+      # parameters. +conversation+: the request's (engine format).
+      def tool_definitions(_conversation = nil)
         ToolDeclarations.chat_schemas(tools.schemas(layers: llm_context_layers)).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
@@ -368,6 +368,10 @@ module Samagotchi
         removed
       end
 
+      # A system entry's tools a plugin loaded ({add:, by:}; kind
+      # "tool_change").
+      TOOL_CHANGE = :tool_change
+
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
       # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
@@ -376,7 +380,9 @@ module Samagotchi
       # (the live row's params line and label, never sent back), an
       # edit/write result's tool_diffs (never sent), an empty-answer
       # note's marker (TurnNote.empty, never sent), and an answer's display
-      # and display_refs (AnswerDisplay, AnswerRefs; never sent).
+      # and display_refs (AnswerDisplay, AnswerRefs; never sent), a
+      # find_tools result's loaded names and a tool change's TOOL_CHANGE
+      # (sent only to a wire that loads tools).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -395,6 +401,8 @@ module Samagotchi
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           message[AnswerRefs::KEY] = entry[AnswerRefs::KEY] if entry[AnswerRefs::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
+          message[ToolResponse::LOADED] = entry[ToolResponse::LOADED] if entry[ToolResponse::LOADED].is_a?(Array)
+          message[TOOL_CHANGE] = entry[TOOL_CHANGE] if entry[TOOL_CHANGE].is_a?(Hash)
           message
         end
       end

@@ -17,11 +17,13 @@ require_relative "memory_bundle/index_size"
 module Samagotchi
   # One call's result from ToolRunner#run, read by ToolResponse (the loops'
   # tool_response entries) and the loops' activity list. Fields a call didn't
-  # produce (images, shown_params, shown_label, refs, diff, output_file) are nil.
+  # produce (images, shown_params, shown_label, refs, diff, output_file,
+  # loaded) are nil. +loaded+: the tools a find_tools hit loads
+  # (Tools::ToolIndex::FoundText#loaded), by their wire names.
   ToolRun = Data.define(:output, :capped_output, :truncated, :activity, :images, :shown_params, :shown_label, :refs, :diff,
-                        :output_file) do
+                        :output_file, :loaded) do
     def initialize(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil, shown_params: nil,
-                   shown_label: nil, refs: nil, diff: nil, output_file: nil)
+                   shown_label: nil, refs: nil, diff: nil, output_file: nil, loaded: nil)
       super
     end
   end

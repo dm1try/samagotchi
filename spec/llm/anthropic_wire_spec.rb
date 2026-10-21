@@ -21,6 +21,19 @@ RSpec.describe Samagotchi::LLM::AnthropicWire do
     end
   end
 
+  describe ".tools" do
+    let(:function) { { name: "read", description: "Read.", parameters: { type: "object", properties: {} } } }
+
+    it "keeps a deferred definition's defer_loading, and adds none to the others" do
+      tools = described_class.tools([{ type: "function", function: function },
+                                     { type: "function", function: function.merge(name: "web_fetch"), defer_loading: true }])
+
+      expect(tools).to eq([{ name: "read", description: "Read.", input_schema: { type: "object", properties: {} } },
+                           { name: "web_fetch", description: "Read.", input_schema: { type: "object", properties: {} },
+                             defer_loading: true }])
+    end
+  end
+
   describe ".block_identity" do
     it "is a thinking block's signature, string or symbol keys" do
       expect(described_class.block_identity({ "type" => "thinking", "thinking" => "t", "signature" => "sig1" })).to eq("sig1")

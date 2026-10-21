@@ -14,6 +14,8 @@ module Samagotchi
     # run's chi-owned id, ToolIds, and a strategy's edits by id,
     # LLMContextEdit); the prompt never renders them.
     SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_refs tool_ids edits].freeze
+    # The tools a chat result loaded (#single), saved with it.
+    LOADED = :loaded
     # A run's "[name]" lead: the name, then a newline, a space or the end.
     LEAD = /\A\[([^\]\s]+)\](?:\n| |\z)/
 
@@ -90,7 +92,8 @@ module Samagotchi
 
     # The chat loop's entry for one call: its capped output, paired with the
     # call by +tool_call_id+, and its chi-owned id (a one-id +ids+, as
-    # #joined's tool_ids).
+    # #joined's tool_ids); a find_tools hit's +loaded+ names (saved on every
+    # chat backend: a wire that loads tools renders them, LLM::AnthropicWire).
     def single(run, tool_call_id:, ids:)
       entry = { role: "tool_response", content: run.capped_output, tool_call_id: tool_call_id }
       entry[:images] = run.images if run.images&.any?
@@ -99,6 +102,7 @@ module Samagotchi
       entry[:tool_diffs] = run.diff if run.diff
       entry[:tool_refs] = run.refs if run.refs
       entry[:tool_ids] = ids
+      entry[LOADED] = run.loaded if run.loaded&.any?
       entry
     end
 

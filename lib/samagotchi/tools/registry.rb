@@ -41,8 +41,13 @@ module Samagotchi
       # What Tools::ToolIndex#declare registered: the entries of +source+
       # are the index's search and call tools, +call_name+ the call tool's
       # name, and +sourced+ whether a source (an MCP server's bundle)
-      # registered when the plugins loaded.
-      Index = Data.define(:source, :call_name, :sourced)
+      # registered when the plugins loaded. +deferrable+ (→ the sources'
+      # tools a host that loads tools may declare deferred) and +wrap+
+      # (call → the call_tool call a direct call of one of them runs as, or
+      # nil) are nil when nothing reaches them.
+      Index = Data.define(:source, :call_name, :sourced, :deferrable, :wrap) do
+        def initialize(source:, call_name:, sourced:, deferrable: nil, wrap: nil) = super
+      end
 
       def initialize
         @entries = {}

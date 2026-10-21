@@ -113,6 +113,14 @@ RSpec.describe Samagotchi::ToolResponse do
         role: "tool_response", content: "[write]\nwrote", tool_call_id: "c2", tool_diffs: { path: "x" }, tool_ids: %w[t2]
       )
     end
+
+    it "saves a find_tools hit's loaded names, and none when it loaded nothing" do
+      found = Samagotchi::ToolRun.new(output: "x", capped_output: "x", loaded: %w[list_sessions])
+      empty = Samagotchi::ToolRun.new(output: "x", capped_output: "x", loaded: [])
+
+      expect(described_class.single(found, tool_call_id: "c1", ids: %w[t1])).to include(loaded: %w[list_sessions])
+      expect(described_class.single(empty, tool_call_id: "c1", ids: %w[t1])).not_to have_key(:loaded)
+    end
   end
 
   it "names the saved-only keys (never sent to the model)" do
