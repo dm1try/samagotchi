@@ -18,7 +18,45 @@ Tool behavior:
 - `memory_write`'s `description` is the managed `index.md` line's text: one line (whitespace and newlines collapse to single spaces), at most 200 characters (longer is refused, since every session's prompt for the repo carries it). A missing or blank one keeps the line's description.
 - `memory_write` with `name`, `scope` and `description` but no `content` changes only that entry's index line (its size and date are refreshed; the date becomes today) and leaves the file as it is: a skill that keeps its status in a memory's description changes it without resending the body. The memory must exist in that scope; the form is refused for `index` and with `current_model_only`.
 - `memory_write` with `name`, `scope` and `remove: true` (no content, description or `current_model_only`) removes a memory: its file and its model overlays (`<name>.<key>.md`, not a dotted memory with an index line of its own) move into one dir of the bundle trash, `memory-<name>-<time>` under `memories/.bundles/.trash/`, which `chi bundle trash` lists and empties, and its index line is dropped. When the file is already gone (deleted by hand), the dangling line is dropped alone. A memory a bundle owns (an installed bundle's record lists it, or its line says `· from <bundle>`) is refused: `chi bundle uninstall` removes it. `index` can't be removed. The guardrails bundle's `memory-remove` rule asks before every removal, once at a time (see [Guardrails](guardrails.md#the-guardrails-bundle)).
+- `chi memory ls` and `chi memory rm NAME` are the user's side of the same (see [Listing and removing from the shell](#listing-and-removing-from-the-shell)).
 - `write`/`edit` that change a `*.md` right in a scope dir refresh its managed `index.md` line (date, bytes; the description is kept), as `memory_write` does. A memory created with `write` gets a line with no description; any other `.md` written there gets a line too. Model overlays (`<name>.<key>.md` next to `<name>.md`), files in another project's folder and files changed by `execute` are left out.
+
+## Listing and removing from the shell
+
+`chi memory ls [--scope project|system] [--format text|json]` lists the
+memories of both scopes (this folder's project first, then system; `--scope`
+one), by name: scope, name, size in bytes (right-aligned), date, `from <bundle>` for a
+bundle's memory, and the index description (cut at 60 characters; `--format
+json` has it all, with `path`, `source`, `overlays`, `indexed` and `file`).
+It reads what `memory_read` does: each scope's `index.md` lines and its
+`*.md` files. A model overlay isn't a row of its own: its memory's row ends
+in `[overlays: <key>, …]`. A file with no index line says `[no index line]`
+(its date is the file's), a line whose file was deleted by hand `[no file]`.
+
+```
+project  handoff    812  2026-10-21                          Coordinator hand-off: where the work stands [overlays: qwen3-6-35b-a3b]
+system   identity  5120  2026-10-03  from samagotchi-system  Who chi is and how it works with you
+```
+
+`chi memory rm NAME [--scope project|system]` removes a memory exactly as
+`memory_write` with `remove: true` does, and prints that line (the trash dir
+it went to):
+
+- the file and its model overlays (`NAME.<key>.md`) move into one dir of the
+  bundle trash, `memory-NAME-<time>`, which `chi bundle trash` lists and
+  empties; its index line is dropped (a dangling line alone, when the file is
+  already gone);
+- without `--scope`, NAME must be in one scope: in both it exits 2 with
+  `chi memory rm: NAME is in both scopes: chi memory rm NAME --scope project, or --scope system`;
+  in neither, 1;
+- a bundle's memory is refused (exit 1, `memory 'NAME' came from bundle B;
+  chi bundle uninstall B removes it`), as for `memory_write`: the bundle
+  owns it, and an upgrade would bring it back or merge into nothing;
+- `NAME.<key>` removes that one model overlay and leaves its memory (a
+  bundle's overlay is refused like its memory);
+- `index` can't be removed.
+
+It isn't asked first: it is the user's command.
 
 ## Model-Specific Memory Overlays
 
@@ -118,10 +156,12 @@ Working habits for this model:
     (already exists; use --force to overwrite)`; through the `dev` profile
     (`chi bundle install dev`, `chi bundle upgrade dev`, `chi update`) it is
     `model-notes: kept your own model_notes_deepseek.md (not the bundle's; to
-    take the bundle's, remove yours with memory_write remove: true, then chi
-    bundle install model-notes)`.
+    take the bundle's, remove yours with chi memory rm model_notes_deepseek
+    --scope system, then chi bundle install model-notes)` (a dry run,
+    `chi bundle upgrade dev --dry-run`, names it too).
   - **To take the bundle's version instead,** remove your note
-    (`memory_write` with `remove: true` moves it to the trash) and run
+    (`chi memory rm model_notes_deepseek --scope system`, or `memory_write`
+    with `remove: true`, moves it to the trash) and run
     `chi bundle install model-notes` again: the install writes the missing
     file and owns it from then on. Don't use `--force`: it overwrites every
     file of the bundle with no trash copy.

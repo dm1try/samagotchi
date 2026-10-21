@@ -61,6 +61,8 @@ SUBCOMMANDS = {
   "models" => ["samagotchi/models_command", "ModelsCommand"],
   # the native "Send to chi" helper
   "desktop" => ["samagotchi/desktop_command", "DesktopCommand"],
+  # list and remove memories (ls, rm; --scope, --format)
+  "memory" => ["samagotchi/memory_command", "MemoryCommand"],
   # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
   "bundle" => ["samagotchi/bundle_command", "BundleCommand"]
 }.freeze
@@ -106,6 +108,7 @@ parser = OptionParser.new do |opts|
            chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
            chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
            chi answer ID --question QID --option N   answer a question a session waits on
+           chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
            chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
            chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            chi models [--format json] [TEXT]   the models --model takes, from every host

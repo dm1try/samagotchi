@@ -15,14 +15,16 @@ and commands may change between minor versions. How releases are made:
 - A model server's 404 that lists the models it serves (oMLX's "Model 'X' not found. Available models: …") ends with
   `did you mean '<id>'?` when one listed id is close to the one asked for: the same name under a prefix
   (`mlx-community--…`, `vendor/…`), another case, or a typo. The listed ids are read past the message's cut.
+- `chi memory ls` lists the memories of both scopes (or `--scope project|system`; `--format json`) with their size,
+  date, bundle, description and model overlays, and `chi memory rm NAME [--scope …]` removes one as `memory_write`
+  `remove: true` does: the file and its overlays go to the bundle trash, the index line is dropped, a bundle's memory
+  is refused. A profile's "kept your own" line now points at `chi memory rm`. See
+  [docs/memory.md](docs/memory.md#listing-and-removing-from-the-shell).
 
 ### Fixed
 
 - `chi bundle try` exits 130 for a Ctrl-C in the child chi's first moments too (while its Ruby was still booting it
   exited 1).
-
-### Fixed
-
 - `chi bundle upgrade core --dry-run` (or `dev`) names the memory files of a member it would install that you already
   have, which the install keeps as yours (`model-notes: kept your own …`), as the real run does; it named none.
 

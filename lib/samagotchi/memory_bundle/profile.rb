@@ -80,7 +80,7 @@ module Samagotchi
       # "Shipped notes").
       def kept_own_line(member, file)
         "#{member}: kept your own #{file} (not the bundle's; to take the bundle's, remove yours with " \
-          "memory_write remove: true, then chi bundle install #{member})"
+          "chi memory rm #{file.delete_suffix(".md")} --scope system, then chi bundle install #{member})"
       end
 
       # The one rule.

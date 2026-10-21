@@ -356,7 +356,7 @@ module Samagotchi
         ([file] + overlay_files(dir, entry_name, index_text)).each { |path| trash.move(path) }
         Samagotchi::MemoryBundle::IndexUpdater.remove_index(resolved_scope, entry_name)
         "Memory '#{entry_name}' removed from #{resolved_scope} scope: moved to #{trash.dir} " \
-          "(`chi bundle trash` lists and empties it); index line dropped."
+          "(`chi bundle trash` lists and empties it)#{"; index line dropped" if line}."
       end
 
       # The entry's model overlays: <name>.<key>.md with a key ModelOverlay

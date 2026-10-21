@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(result.installed).to eq(%w[a b c])
       expect(result.kept_own).to eq("a" => %w[a.md])
       expect(result.kept_own_lines).to eq(["a: kept your own a.md (not the bundle's; to take the bundle's, remove yours " \
-                                           "with memory_write remove: true, then chi bundle install a)"])
+                                           "with chi memory rm a --scope system, then chi bundle install a)"])
       expect(File.read(File.join(system_dir, "a.md"))).to eq("mine\n")
       expect(prov.new(name: "a").read[:files]).not_to have_key("a.md")
     end
