@@ -626,12 +626,20 @@ RSpec.describe Samagotchi::Tools::Execute do
         end
       end
 
+      # task_wait looks more often: how often it looks, never what it decides.
+      before { stub_const("Samagotchi::Tools::TaskWait::POLL_INTERVAL", 0.05) }
+
       def task_id(result) = result[/^task_id: (\S+)$/, 1]
+
+      # A command that runs until the example touches +path+: still running
+      # at any limit however slow the runner, and done as soon as told.
+      def until_touched(path) = "until [ -e #{path} ]; do sleep 0.02; done"
 
       it "is the default: the command runs on as a task with its logs in the state dir, and finishes there" do
         ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        command = "echo before; echo oops >&2; #{until_touched("go")}; echo done"
 
-        result = described_class.call("echo before; echo oops >&2; sleep 2.5; echo done")
+        result = described_class.call(command)
         id = task_id(result)
 
         expect(result).to eq("#{described_class.handed_over_line(1)}\ntask_id: #{id}\n" \
@@ -640,11 +648,12 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
         record, = Samagotchi::Tools::TaskRuntime.get_record(id)
         dir = File.join(described_class.logs_root, id)
-        expect(record).to have_attributes(status: "running", command: "echo before; echo oops >&2; sleep 2.5; echo done",
+        expect(record).to have_attributes(status: "running", command: command,
                                           output_path: File.join(dir, "stdout.log"), stderr_path: File.join(dir, "stderr.log"),
                                           exit_code_path: File.join(dir, "exit_code"), handed_over_by: "execute")
         expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::Tools::TaskRuntime.metadata_path(id)))
 
+        FileUtils.touch("go")
         waited = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
         expect(waited).to include("status: completed", "exit_code: 0")
         expect(File.read(record.output_path)).to eq("before\ndone\n")
@@ -669,11 +678,13 @@ RSpec.describe Samagotchi::Tools::Execute do
         short_limit
         FileUtils.mkdir_p("sub")
 
-        result = with_env("XDG_STATE_HOME" => "rel-state") { described_class.call("echo before; sleep 1", cwd: "sub") }
+        go = File.join(Dir.pwd, "go")
+        result = with_env("XDG_STATE_HOME" => "rel-state") { described_class.call("echo before; #{until_touched(go)}", cwd: "sub") }
 
         expect(result).to start_with("#{described_class.handed_over_line(0.5)}\ntask_id: ")
         record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
         expect(record.exit_code_path).to eq(File.join(Dir.pwd, "rel-state", "samagotchi", "execute", record.id, "exit_code"))
+        FileUtils.touch(go)
         expect(Samagotchi::Tools::TaskWait.call(record.id, timeout: 10)).to include("status: completed", "exit_code: 0")
       end
 
@@ -693,19 +704,21 @@ RSpec.describe Samagotchi::Tools::Execute do
       it "reads a command that ended between the deadline and the hand-over as finished, not timed out" do
         short_limit
         allow(described_class).to receive(:hand_over).and_wrap_original do |original, task, **args|
+          FileUtils.touch("go")
           args[:waiter].join(5)
           original.call(task, **args)
         end
 
-        expect(described_class.call("echo hi; sleep 0.8")).to eq("stdout:\nhi\n\nexit: 0")
+        expect(described_class.call("echo hi; #{until_touched("go")}")).to eq("stdout:\nhi\n\nexit: 0")
         expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
       end
 
       it "ends a handed-over command that replaced the EXIT trap with its own code, from the waiter" do
         short_limit
 
-        result = described_class.call("trap 'echo mine' EXIT; sleep 1; exit 4")
+        result = described_class.call("trap 'echo mine' EXIT; #{until_touched("go")}; exit 4")
         record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
+        FileUtils.touch("go")
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
         sleep 0.05 until File.exist?(record.exit_code_path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
