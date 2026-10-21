@@ -542,9 +542,15 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "says a holder that left the process group (setsid) was left running" do
-        # perl, not ruby: it has left the group within milliseconds, well
-        # before the (short) grace is over.
-        result = described_class.call("perl -MPOSIX -e 'POSIX::setsid(); sleep 30.85' & echo pid=$!; echo hi")
+        # The shell exits once perl has left the group (touched "ready"), so
+        # the grace starts after it: a short one does. The stop's grace and
+        # KILL wait run out in full on a holder out of its reach: short too.
+        stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 0.05)
+        stub_const("#{described_class}::STOP_GRACE_SEC", 0.05)
+        stub_const("Samagotchi::ProcessGroup::KILL_WAIT_SEC", 0.05)
+        ready = File.join(Dir.mktmpdir, "ready")
+        result = described_class.call("perl -MPOSIX -e 'POSIX::setsid(); open(F, q(>#{ready})); sleep 30.85' & echo pid=$!; " \
+                                      "until [ -e #{ready} ]; do sleep 0.02; done; echo hi")
         pid = pid_from(result)
         begin
           expect(result).to include("hi")
@@ -554,6 +560,7 @@ RSpec.describe Samagotchi::Tools::Execute do
           held = Dir.glob(File.join(described_class.logs_root, "*")).select { |dir| described_class.held?(Dir.glob(File.join(dir, "*.log"))) }
           expect(held.size).to eq(1)
         ensure
+          FileUtils.rm_rf(File.dirname(ready))
           begin
             Process.kill("KILL", pid)
           rescue Errno::ESRCH
