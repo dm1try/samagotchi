@@ -8,12 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-21
+
 ### Added
 
 - Session titles: `/title Coordinator` names a session (`/title` shows it, `/title --clear` drops it), from any UI or
   `chi send`, mid-turn too. Every list, card, chain row, top bar, tab and notification shows it in place of the first
   message, `chi sessions list` too (json has `title`), and a continue's next link keeps it. The web's info bar has `✎`
   to rename the open session. See [docs/sessions.md](docs/sessions.md#session-titles).
+
+Update with `chi update` (the system bundle 0.96.0), then restart `chi web`: a `chi web` or session worker from
+before the update drops a session's title when it saves the session.
 
 ## [0.95.0] - 2026-10-21
 
@@ -3698,7 +3703,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.95.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.96.0...HEAD
+[0.96.0]: https://github.com/dm1try/samagotchi/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/dm1try/samagotchi/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/dm1try/samagotchi/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/dm1try/samagotchi/compare/v0.92.0...v0.93.0
