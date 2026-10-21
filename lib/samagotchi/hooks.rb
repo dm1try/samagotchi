@@ -24,12 +24,15 @@ module Samagotchi
   #   :before_tool_call   — before a tool is dispatched: vote with event[:guardrail].deny!/ask!
   #                         (or the older event[:blocked]=true + event[:block_reason]); the
   #                         event also has context: and targets: (docs/guardrails.md)
+  #   :question_asked     — a question of the model's (ask_user_question) or an approval of its
+  #                         call is about to open: event[:refs] attaches refs to the asking
+  #                         reply (QuestionAsked)
   #   :after_tool_call    — after tool execution, before result injection
   module Hooks
     # Every event a hook can be registered for, in a turn's order
     # (docs/hooks.md). Plugin::Api#on takes any symbol: `chi bundle check`
     # warns on one not here.
     EVENTS = %i[session_start before_turn before_generation generation_progress after_generation before_tool_call
-                after_tool_call after_turn session_end].freeze
+                question_asked after_tool_call after_turn session_end].freeze
   end
 end

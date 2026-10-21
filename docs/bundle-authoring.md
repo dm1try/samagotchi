@@ -64,7 +64,7 @@ time. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
 ## What a hook sees
 
 `chi.on(event) { |event, ctx| … }` gets a Hash. The events, in a turn's order: `session_start`, `before_turn`,
-`before_generation`, `generation_progress`, `after_generation`, `before_tool_call`, `after_tool_call`,
+`before_generation`, `generation_progress`, `after_generation`, `before_tool_call`, `question_asked`, `after_tool_call`,
 `after_turn`, `session_end` (the fields of each: [hooks.md, Hook Events](hooks.md#hook-events)). A symbol not in
 that list is never fired (`check` warns). The two a bundle wants most, for an `execute`:
 

@@ -848,6 +848,52 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["pending_question"]).to eq(question)
     end
 
+    describe "a pending question's refs (the asking reply's, QuestionAsked)" do
+      let(:good) do
+        { "match" => "DEMO-1", "kind" => "issue", "target" => { "id" => "DEMO-1" }, "label" => "DEMO DEMO-1",
+          "actions" => [{ "id" => "open", "label" => "Open in DEMO", "url" => "https://example.test/DEMO-1" }] }
+      end
+      let(:bad) { good.merge("match" => "DEMO-2", "actions" => [{ "id" => "open", "label" => "x", "url" => "javascript:alert(1)" }]) }
+
+      def shown_question(question)
+        app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+        stub_worker(app, { "snapshot" => { "messages" => [], "current_turn" => nil, "pending_question" => question,
+                                           "event_seq" => 3, "event_id" => "3-e1" },
+                           "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } })
+        JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["pending_question"]
+      end
+
+      it "are checked again: a bad one is dropped, none left drops the key" do
+        expect(shown_question("id" => "q1", "status" => "pending", "refs" => [good, bad])).to eq(
+          "id" => "q1", "status" => "pending", "refs" => [good]
+        )
+        expect(shown_question("id" => "q1", "status" => "pending", "refs" => [bad])).to eq("id" => "q1", "status" => "pending")
+        expect(shown_question("id" => "q1", "status" => "pending", "refs" => "junk")).to eq("id" => "q1", "status" => "pending")
+      end
+
+      it "are held to a question's caps" do
+        many = (1..60).map { |n| good.merge("match" => "DEMO-#{n}", "target" => { "id" => "DEMO-#{n}" }) }
+        expect(shown_question("id" => "q1", "refs" => many)["refs"].length).to eq(Samagotchi::QuestionAsked::MAX_REFS)
+      end
+
+      it "on a saved question card (cards.json) are checked again too" do
+        state_dir = Dir.mktmpdir
+        store = Samagotchi::Bridge::CardStore.new(path: File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE))
+        store.call({ type: :turn_started })
+        store.call({ type: :question_requested, pending_question: { id: "q1", question: "Proceed?", refs: [good, bad] } })
+        store.call({ type: :question_answered, id: "q1", answer: { id: "q1", selected: ["Yes"] } })
+        store.call({ type: :turn_completed })
+        app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
+
+        cards = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]
+
+        question = cards.find { |c| c["type"] == "question" }
+        expect(question["pending_question"]["refs"]).to eq([good])
+      ensure
+        FileUtils.rm_rf(state_dir) if state_dir
+      end
+    end
+
     it "renders a live session from the worker's snapshot: its messages, the turn in progress and its seq" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       live = {

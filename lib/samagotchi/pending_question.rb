@@ -17,15 +17,19 @@ module Samagotchi
   # relayed approval's facts (Relay.card); limit, context: the step-limit
   # question's turn limit and offer context (ContinueOffer); status:
   # "pending" or "cancelled"; created_at: iso8601; relayed_to: the relay
-  # mark ({parent_id:, parent_short:, relay_id:}, QuestionDesk#annotate).
-  # approval, relay, context and relayed_to stay Hashes as given (string
+  # mark ({parent_id:, parent_short:, relay_id:}, QuestionDesk#annotate);
+  # refs: the refs on the reply that asks ({match:, kind:, target:, …},
+  # the :question_asked hooks', QuestionAsked; display only, checked again
+  # where a saved one reaches a UI).
+  # approval, relay, context, relayed_to and refs stay as given (string
   # keys inside after a load). A field may be nil (unset).
   #
   # Crosses the process as a Hash: #to_h for an event, a Bridge snapshot or
   # a UI (symbol keys), #to_file for session.json (string keys); both in
   # member order with unset fields left out. .from_file reads either back.
   PendingQuestion = Data.define(:id, :question, :options, :header, :multi_select, :allow_freeform, :effects, :user_only,
-                                :kind, :hook, :approval, :relay, :limit, :context, :status, :created_at, :relayed_to) do
+                                :kind, :hook, :approval, :relay, :limit, :context, :status, :created_at, :relayed_to,
+                                :refs) do
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, **fields)
     end

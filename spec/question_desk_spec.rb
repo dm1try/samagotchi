@@ -191,6 +191,20 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
   end
 
+  describe "#request" do
+    it "opens the model's question with the asking step's refs (QuestionAsked), its other keys left out" do
+      seen = nil
+      desk.sync_handler = ->(pending) { seen = pending; { selected: ["Yes"] } }
+      refs = [{ match: "DEMO-1", kind: "issue", target: { id: "DEMO-1" }, actions: [] }]
+
+      desk.request(question: "Run it?", options: %w[Yes No], refs: refs, stray: 1)
+
+      expect(seen).to include(question: "Run it?", refs: refs)
+      expect(seen).not_to have_key(:stray)
+      expect(events.first[:pending_question][:refs]).to eq(refs)
+    end
+  end
+
   describe "a sync handler that returns a Hash with :selected" do
     it "settles it as a QuestionAnswer for the question, and announces its Hash" do
       desk.sync_handler = ->(_pending) { { selected: ["Yes"] } }

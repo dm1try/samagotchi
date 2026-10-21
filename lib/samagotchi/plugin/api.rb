@@ -27,6 +27,11 @@ module Samagotchi
       # one (ctx.sessions.children) is listed when it came later. Keys have
       # no "?" (API_CALL drops it). A keyword added later (ctx.ask_model's
       # model: in 0.80.0, ctx.sessions.send's delivery: in 0.64.0) has none.
+      # Events aren't listed: chi.on takes any symbol and an older chi never
+      # fires one it doesn't know (harmless; chi bundle check warns on it),
+      # and a manifest hook's events: list (BundleHook) needs the bundle's
+      # requires_chi set by hand (docs/hooks.md, Bundle Hooks): no source
+      # scan covers manifest.yml.
       SINCE = {
         "ctx.steer" => "0.3.0", "ctx.stop_turn" => "0.3.0", "ctx.stop_generation" => "0.6.0",
         "Samagotchi::AtomicFile" => "0.8.0", "ctx.model" => "0.17.0", "ctx.model_key" => "0.17.0",

@@ -56,6 +56,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N, restarted: true (only on the first fire after a dropped stream was asked again) }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
+| `:question_asked` | A question of the model's own (`ask_user_question`) or an approval of its tool call is about to open, on the turn's thread (not a hook's or plugin's `ask_user`, a relayed delegate approval, the step-limit question, a `--non-interactive` run or a stored approval: none of those fire it) | `{ type: :question_asked, kind: "question" \| "approval", text: "..." (the reply that asks, as the asking slot shows it: no thoughts, no tool-call markup), question: {...} (the question's fields, frozen: question/options/header…, an approval's approval: facts too; no id yet), refs: (see [Refs on a question](#refs-on-a-question-display-only)) }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." (the text the model gets: capped at max_tool_output_chars; a cut one has a [cut: …] line, at its end, or for an execute result between its head and its tail, the whole output saved in the session's tool_output/ folder), status: "ok" \| "error" \| "blocked" \| "stopped", call: {...} (the call that ran, as the gate left it), elapsed_ms: N (the tool's own run, without an approval wait; nil for a denied call), result: "..." (the tool's own text: no "[read]" lead, no "ran as:" line, never cut) }`; `stopped` is a `task_wait` the turn's Stop ended (the task runs on) or whose task was stopped. Match on `result:`, not `output:`: it is what the tool said (`Error: command timed out after 120s` for an execute killed at its limit in kill mode, `Samagotchi::Tools::Execute::TIMEOUT_PREFIX`; `Still running at the 120s limit: …` for one handed over as a task, `Samagotchi::Tools::Execute::HANDED_OVER`) |
 | `:session_end` | After each turn `:after_turn` fires for, after it (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
 
@@ -365,6 +366,48 @@ end
   **Terminals** ignore them.
 
 A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:refs].call(…) }`.
+
+## Refs on a question (display only)
+
+`:question_asked` carries `refs:` too, for the reply that asks the question: a
+ticket the model names while it asks is a ref while the question waits, when
+the user needs it.
+
+```ruby
+class JiraQuestionRefs
+  def call(event)
+    return unless event[:type] == :question_asked
+
+    event[:text].scan(/\b[A-Z][A-Z0-9]+-\d+\b/).uniq.each do |key|
+      event[:refs].call(match: key, kind: "issue", target: { id: key }, label: key,
+                        actions: [{ id: "open", label: "Open in Jira", url: "https://jira.example.com/browse/#{key}" }])
+    end
+  end
+end
+```
+
+- The call, its return values, the checks and the `refs_rejected` log are
+  [Refs on the answer](#refs-on-the-answer-display-only)'s, with lower caps:
+  50 refs and 32 KiB per step. `nil`: the turn has no model step to attach to,
+  or the call came after the hooks ran.
+- They are kept as `display_refs` on the step's model message (the one that
+  asks; in the session file after the turn, a cancelled one too) and go on the
+  pending question as its `refs` (the `question_requested` event, the session
+  file while it waits, the saved question card). A second question in the same
+  step adds to the step's list, and its pending question has the whole list.
+  The model never sees them.
+- The web checks them again wherever a saved one reaches it (the pending
+  question, a saved card, the history), as an answer's.
+- **Its time is the question's wait**: the hooks run before the question
+  opens, so a slow one delays it (and counts in `ask_user_question`'s
+  `elapsed_ms` and an approval's `waited_ms`). A hook that raises is logged and
+  the question opens with the other hooks' refs. With no hook on the event
+  nothing is built.
+- Don't ask from it: `event[:ask_user]` (and `ctx.ask_user` in a `chi.on`
+  block) returns nil at once here.
+- Needs chi newer than 0.97.0: set `requires_chi`.
+
+A plugin gets the same from `chi.on(:question_asked) { |event, ctx| event[:refs].call(…) }`.
 
 ## Settings
 

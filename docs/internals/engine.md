@@ -594,6 +594,21 @@ logged). Both are display only: `AnswerDisplay::DISPLAY_ONLY` lists `display`, `
 after_generation), while `KernelLoop#sanitize_history` and `ChatLoop#plain` copy them so the stored conversation keeps
 them across turns. `Web::App#messages_for_display` sends `display_refs` re-validated (`AnswerRefs.for_display`).
 
+`:question_asked` (`QuestionAsked`, `question_asked.rb`) fires from the two Engine seams where a question of the
+model's opens, never from `QuestionDesk`: `Engine#request_question` (the kernel's `question_handler`, after
+`AskUserQuestion.validate`; not with `interface == :non_interactive`) and the guardrail wiring's `ask:` lambda
+(`GuardrailWiring#request_approval`, after a stored approval and the non-interactive deny). So `ask_for_hook`, a
+relayed approval (`EnginePeers#open_question` → `Engine#open_question`) and `post` (the step-limit question) never
+fire it. `QuestionAsked.fire` is a no-op without a subscriber (`Registry#any?`); else it finds the live
+conversation's last `role: "model"` entry (`Engine#live_conversation`, one lookup for both loops: a ChatLoop batch may
+end in a tool result), builds an `AnswerRefs` on that step alone with the question caps (50 / 32 KiB), fires with the
+step's text (`Engine#question_step_text`: the parser's thought and tool-call strip, then
+`OutputFormatter.strip_markup`), a frozen copy of the fields and a no-op `ask_user`, then sets `display_refs` on
+the step **in place** under the event lock (the loops and the forget layer hold entries by identity) and returns the
+fields with `refs:`. `QuestionDesk#request` forwards `refs` past its slice; `PendingQuestion#refs` carries them to
+`:question_requested`, the session file and the cards. `Web::App#with_question_refs` re-validates them (the pending
+question, `cards_for_display`) with the same caps.
+
 ### Hook lifecycle
 
 - **Bundle hooks** (`Registry#register_bundle`) and **config hooks** (`register_persistent`, from config.yml)
@@ -756,6 +771,7 @@ Paths are under `lib/samagotchi/`.
 | `toolkit_binding.rb` | `ToolkitBinding`: the Engine's toolkit seam (the kits, `#explained`, `ctx.use_toolkit`, the turn-start `#apply!` behind `Engine#apply_toolkit!`) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `hook_routes.rb` | `HookRoutes`: the Engine's routes for a hook's or plugin's notice (`:hook_notice`, `fallback_for:`), question, stop and steer, and the guardrails' after-load line |
+| `question_asked.rb` | `QuestionAsked`: the `:question_asked` fire, the asking step's refs (`display_refs` in place, the pending question's `refs`) |
 | `question_desk.rb`, `pending_question.rb`, `question_answer.rb` | `QuestionDesk`: the one open question (ask, post, answer, cancel, relay mark); `PendingQuestion` and `QuestionAnswer`, its values (Hashes only in events, Bridge JSON, the session file and the hook/plugin `ask_user` result) |
 | `hook_question.rb` | `HookQuestion`: a hook's or plugin's `ask_user` question as one value, from the runtime/host edge to `QuestionDesk#ask_for_hook` |
 | `event_routes.rb` | `EventRoutes`: where a card (`Engine#show_card`), a notice (`HookRoutes#notify`) and a guardrails line (`#guardrail_notify`, turn or between turns only) go: held while the plugins load, an anytime command's, an init task's, a running turn's event, else announced or held for `holding_announcements` |

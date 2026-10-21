@@ -120,10 +120,11 @@ module Samagotchi
     # question_handler, called on the turn thread with the payload
     # Tools::AskUserQuestion.validate made. Opens it (#open_question) and
     # returns the answer as JSON for the tool result.
-    # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
+    # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:},
+    #   and refs: (the asking step's, QuestionAsked) when it has any
     # @return [String] normalized answer JSON
     def request(payload)
-      result = open_question(payload.slice(:question, :options, :header)
+      result = open_question(payload.slice(:question, :options, :header, :refs)
                                     .merge(multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform]))
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.

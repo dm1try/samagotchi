@@ -52,7 +52,9 @@ module Samagotchi
   #
   # The target is AnswerDisplay's: the stored conversation's last message
   # when it is the model's. The list starts from the refs it already has
-  # (re-validated), so a later hook run never loses them.
+  # (re-validated), so a later hook run never loses them. QuestionAsked
+  # uses it too, on the step that asks a question (+messages+ that one
+  # step, lower caps).
   class AnswerRefs
     KEY = :display_refs
     MAX_REFS = 200
@@ -63,12 +65,13 @@ module Samagotchi
     # rebuilt and checked again, the caps applied; what isn't valid any
     # more is dropped. Never raises: a reload must show the conversation.
     # A relative file path is dropped (it was stored absolute), and with
-    # +cwd+ (the session's folder) a file outside it.
+    # +cwd+ (the session's folder) a file outside it. +max_refs+ and
+    # +max_bytes+: the caps (a question's are lower, QuestionAsked).
     # @return [Array<Hash>] the refs to send ({match:, kind:, target:, …})
-    def self.for_display(raw, cwd: nil)
+    def self.for_display(raw, cwd: nil, max_refs: MAX_REFS, max_bytes: MAX_BYTES)
       return [] if raw.nil?
 
-      kept = new([{ role: "model", KEY => raw }], cwd: cwd).to_a
+      kept = new([{ role: "model", KEY => raw }], cwd: cwd, max_refs: max_refs, max_bytes: max_bytes).to_a
       dropped = raw.is_a?(Array) ? raw.length - kept.length : 1
       Log.debug(:web, "display_refs_dropped", count: dropped) if dropped.positive?
       kept
@@ -81,10 +84,14 @@ module Samagotchi
 
     # @param messages [Array<Hash>] the conversation the turn stored
     # @param cwd [String, nil] the session's folder, for relative file paths
-    def initialize(messages, cwd:)
+    # @param max_refs [Integer] the list's cap in refs
+    # @param max_bytes [Integer] the list's cap in JSON bytes
+    def initialize(messages, cwd:, max_refs: MAX_REFS, max_bytes: MAX_BYTES)
       last = Array(messages).last
       @target = last if last.is_a?(Hash) && (last[:role] || last["role"]).to_s == "model"
       @roots = RowRefs.roots(cwd)
+      @max_refs = max_refs
+      @max_bytes = max_bytes
       @refs = []
       @seen = {}
       @bytes = 2 # the list's []
@@ -143,10 +150,10 @@ module Samagotchi
 
       entry = AnswerRef.from(value, roots: @roots).to_h
       return true if @seen.key?(entry)
-      return over_cap(hook, "#{MAX_REFS} refs") if @refs.length >= MAX_REFS
+      return over_cap(hook, "#{@max_refs} refs") if @refs.length >= @max_refs
 
       size = JSON.generate(entry).bytesize + (@refs.empty? ? 0 : 1)
-      return over_cap(hook, "#{MAX_BYTES / 1024} KiB") if @bytes + size > MAX_BYTES
+      return over_cap(hook, "#{@max_bytes / 1024} KiB") if @bytes + size > @max_bytes
 
       push(entry, size)
       @added = true
@@ -160,10 +167,10 @@ module Samagotchi
     # @return [Boolean] kept
     def keep(raw)
       entry = AnswerRef.from(raw, roots: @roots, relative: false).to_h
-      return false if @seen.key?(entry) || @refs.length >= MAX_REFS
+      return false if @seen.key?(entry) || @refs.length >= @max_refs
 
       size = JSON.generate(entry).bytesize + (@refs.empty? ? 0 : 1)
-      return false if @bytes + size > MAX_BYTES
+      return false if @bytes + size > @max_bytes
 
       push(entry, size)
       true

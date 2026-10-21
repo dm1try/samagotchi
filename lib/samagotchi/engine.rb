@@ -77,6 +77,7 @@ require_relative "answer_display"
 require_relative "answer_refs"
 require_relative "edit_preview"
 require_relative "question_desk"
+require_relative "question_asked"
 require_relative "child_reports"
 require_relative "relay_desk"
 require_relative "guardrail_wiring"
@@ -364,7 +365,8 @@ module Samagotchi
         model_key: -> { @model_key },
         model_name: -> { guardrail_model_name },
         cancelled: -> { !!active_cancel_controller&.cancelled? },
-        ask: ->(fields) { open_question(fields) },
+        # An approval of the model's call: :question_asked first (QuestionAsked).
+        ask: ->(fields) { open_question(question_asked(QuestionAsked::KIND_APPROVAL, fields)) },
         notify: ->(message) { guardrail_notify(message) }
       )
     end
@@ -1576,12 +1578,34 @@ module Samagotchi
 
     # Ask the model's question (ask_user_question): the kernel's
     # question_handler, called on the turn thread with the payload
-    # Tools::AskUserQuestion.validate made (QuestionDesk#request).
+    # Tools::AskUserQuestion.validate made (QuestionDesk#request), after
+    # the :question_asked hooks (QuestionAsked) gave the step its refs; a
+    # --non-interactive run has no one to ask, so they don't fire there.
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request_question(payload)
+      payload = question_asked(QuestionAsked::KIND_QUESTION, payload) unless interface == :non_interactive
       @question_desk.request(payload)
     end
+
+    # The :question_asked hooks for a question of the model's about to
+    # open: the fields with the asking step's refs (QuestionAsked.fire).
+    # @return [Hash]
+    def question_asked(kind, fields)
+      QuestionAsked.fire(hooks: @hooks, conversation: live_conversation, kind: kind, fields: fields,
+                         cwd: @session&.working_directory, synchronize: ->(&block) { synchronize_events(&block) },
+                         visible: ->(content) { question_step_text(content) })
+    end
+    private :question_asked
+
+    # A step's text as the asking slot shows it: the native loop's raw
+    # response without its thoughts and tool-call bodies (a chat step has
+    # neither), then the markup's tokens (OutputFormatter.strip_markup).
+    def question_step_text(content)
+      parser = @kernel.parser
+      OutputFormatter.strip_markup(parser.strip_tool_calls(parser.strip_thought(content)))
+    end
+    private :question_step_text
 
     # Open a question for the UIs and wait for its answer
     # (QuestionDesk#open_question: BLOCKS until answered or cancelled).

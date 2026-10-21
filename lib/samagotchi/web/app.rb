@@ -14,6 +14,7 @@ require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../answer_tail"
 require_relative "../answer_refs"
+require_relative "../question_asked"
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
 require_relative "../bridge/card_store"
@@ -839,7 +840,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: snapshot_list(turn_snapshot, "init_tasks"),
-          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id) }),
+          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id) }, cwd: session.working_directory),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
@@ -871,13 +872,28 @@ module Samagotchi
       # dead worker saved can't be answered (its turn is gone), nor a chi
       # REPL's (it shares nothing with the web).
       # A question between turns (the step-limit one) is the snapshot's own.
+      # Its refs (the asking reply's, QuestionAsked) are checked again.
       def shown_pending_question(session, turn_snapshot, owner)
-        if turn_snapshot
-          current_turn = turn_snapshot["current_turn"]
-          current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
-        elsif owner&.worker?
-          session.pending_question&.to_h
-        end
+        pending = if turn_snapshot
+                    current_turn = turn_snapshot["current_turn"]
+                    current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
+                  elsif owner&.worker?
+                    session.pending_question&.to_h
+                  end
+        with_question_refs(pending, cwd: session.working_directory)
+      end
+
+      # A pending question (a snapshot's, the session file's or a saved
+      # card's) with its refs checked again, under a question's caps
+      # (QuestionAsked): a stored file is never trusted, and what isn't
+      # valid any more is dropped. The question as it was without refs.
+      def with_question_refs(pending, cwd:)
+        return pending unless pending.is_a?(Hash)
+
+        key = [:refs, "refs"].find { |name| pending.key?(name) } or return pending
+        refs = Samagotchi::AnswerRefs.for_display(pending[key], cwd: cwd, max_refs: Samagotchi::QuestionAsked::MAX_REFS,
+                                                                max_bytes: Samagotchi::QuestionAsked::MAX_BYTES)
+        refs.empty? ? pending.except(key) : pending.merge(key => refs)
       end
 
       # The full show's session part: the file's, with what a live worker's
@@ -1031,11 +1047,16 @@ module Samagotchi
       # cards: CardStore#list), else (no live worker) the ones the last
       # worker saved in the session's folder (#saved_cards), a card's body as
       # body_html: rendered markdown when the renderer is on, else the
-      # escaped text in a <pre>.
+      # escaped text in a <pre>, and a question card's refs checked again
+      # (#with_question_refs; +cwd+ the session's folder, nil where the
+      # session file isn't read: a file ref then stays only absolute).
       # @return [Array<Hash>]
-      def cards_for_display(cards)
+      def cards_for_display(cards, cwd: nil)
         Array(cards).filter_map do |card|
           next unless card.is_a?(Hash)
+          if card["type"].to_s == "question" && card["pending_question"].is_a?(Hash)
+            next card.merge("pending_question" => with_question_refs(card["pending_question"], cwd: cwd))
+          end
           next card unless card["type"].to_s == "card"
 
           card.merge("body_html" => card_body_html(card["body"].to_s))
