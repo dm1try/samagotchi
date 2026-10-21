@@ -307,6 +307,9 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(stageEl(page)).not.toHaveClass(/question-room/);
   await expect(pill).toBeHidden();
+  // The answer's text streams before the turn ends, and the frames are
+  // sampled at the next frame after it: wait for the answered one.
+  await expect.poll(async () => (await frames(page)).some((f) => f.phase === "answered")).toBe(true);
   const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
   expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
   expect(await snaps(page, { from: submitAt, to: answeredAt, keys: ["card"] })).toEqual([]);
