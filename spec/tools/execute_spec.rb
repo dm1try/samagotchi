@@ -36,10 +36,12 @@ RSpec.describe Samagotchi::Tools::Execute do
 
   describe ".call" do
     # A limit under a second, for an example about what happens at the limit.
-    # Two examples keep a real whole-second execute.timeout_sec end to end:
-    # the kill (its error's text, the output before it) and the default
-    # hand-over.
-    def short_limit(seconds = 0.5) = allow(described_class).to receive(:timeout_seconds).and_return(seconds)
+    # 0.5 s where the command must get somewhere first (print, fork, set its
+    # trap, leave its group); else the example passes without reaching what
+    # it is about. Two examples keep a real whole-second execute.timeout_sec
+    # end to end: the kill (its error's text, the output before it) and the
+    # default hand-over.
+    def short_limit(seconds = 0.2) = allow(described_class).to receive(:timeout_seconds).and_return(seconds)
 
     # A chi run by the command answers as a parent agent (ParentApprovals).
     it "exports SAMAGOTCHI_PARENT_SESSION, the session's id, from the builtin handler" do
@@ -248,7 +250,7 @@ RSpec.describe Samagotchi::Tools::Execute do
           # on_timeout: kill from the file too: killed, not handed over (at
           # a short limit: the limit's value is the line above's).
           short_limit
-          expect(described_class.call("sleep 31.65").lines.first).to eq("Error: command timed out after 0.5s\n")
+          expect(described_class.call("sleep 31.65").lines.first).to eq("Error: command timed out after 0.2s\n")
         end
       end
     end
@@ -302,7 +304,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         described_class.call("echo s3cr3t; sleep 5", on_timeout: :kill)
 
         expect(lines.last.first(3)).to eq([:info, :turn, "execute_timed_out"])
-        expect(lines.last.last).to include(after_sec: 0.5)
+        expect(lines.last.last).to include(after_sec: 0.2)
         expect(secret_free?(lines)).to be(true)
       end
     end
@@ -390,7 +392,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "kills the whole group at the timeout, a grandchild the shell waits on too" do
-        short_limit
+        short_limit(0.5)
 
         result = described_class.call("sleep 31.73 & wait", on_timeout: :kill)
 
@@ -414,7 +416,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
         stopped = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); open(F, q(>#{@ready})); sleep 31.57'; echo after",
                                        cancelled: once_ready)
-        short_limit
+        short_limit(0.5)
         killed = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.58'; echo after", on_timeout: :kill)
 
         expect(stopped).to start_with(described_class::STOPPED_BY_USER)
@@ -491,7 +493,7 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       it "stops at execute.timeout_sec during the grace period" do
         stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 30)
-        short_limit
+        short_limit(0.5)
         started = now
         result = described_class.call("sleep 30.83 & echo pid=$!")
 
@@ -672,7 +674,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       # needed), and starts in milliseconds: it has left the group well
       # before the limit or the Stop.
       it "is fully stopped by task_stop, a descendant that left the group (a `timeout N cmd`) too" do
-        short_limit
+        short_limit(0.5)
 
         result = described_class.call("cd . && perl -e 'setpgrp(0, 0); sleep 31.61'; echo after")
         stopped = Samagotchi::Tools::TaskStop.call(task_id(result))
@@ -690,7 +692,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         go = File.join(Dir.pwd, "go")
         result = with_env("XDG_STATE_HOME" => "rel-state") { described_class.call("echo before; #{until_touched(go)}", cwd: "sub") }
 
-        expect(result).to start_with("#{described_class.handed_over_line(0.5)}\ntask_id: ")
+        expect(result).to start_with("#{described_class.handed_over_line(0.2)}\ntask_id: ")
         record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
         expect(record.exit_code_path).to eq(File.join(Dir.pwd, "rel-state", "samagotchi", "execute", record.id, "exit_code"))
         FileUtils.touch(go)
@@ -707,7 +709,7 @@ RSpec.describe Samagotchi::Tools::Execute do
 
         id = task_id(described_class.call("echo s3cr3t; sleep 3"))
 
-        expect(lines).to eq([[:turn, "execute_handed_over", { id: id, after_sec: 0.5 }]])
+        expect(lines).to eq([[:turn, "execute_handed_over", { id: id, after_sec: 0.2 }]])
       end
 
       it "reads a command that ended between the deadline and the hand-over as finished, not timed out" do
@@ -735,7 +737,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "kills a command it can't hand over, as on_timeout: kill does" do
-        short_limit
+        short_limit(0.5)
         allow(Samagotchi::Tools::TaskRuntime).to receive(:adopt).and_return([nil, "Error: disk full"])
 
         result = described_class.call("echo before; sleep 31.62")
@@ -750,7 +752,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         short_limit
         ENV["SAMAGOTCHI_EXECUTE_ON_TIMEOUT"] = "task"
 
-        expect(described_class.call("sleep 31.63", on_timeout: :kill)).to start_with("Error: command timed out after 0.5s")
+        expect(described_class.call("sleep 31.63", on_timeout: :kill)).to start_with("Error: command timed out after 0.2s")
         expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
       ensure
         ENV.delete("SAMAGOTCHI_EXECUTE_ON_TIMEOUT")
