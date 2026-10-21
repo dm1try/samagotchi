@@ -627,3 +627,61 @@ test("question room: measured at the asking text's draws only: a short question 
     view.reset();
   }
 });
+
+// After the answer the live slots keep the waiting height (held-wait) until
+// the next step; with the room that height is the whole reply's. At the
+// next step it goes as far as the stage's scroll can absorb it (the scroll
+// moves up by as much): the card in view doesn't move.
+function heldLive(view, { waiting, running }) {
+  const live = $(view, ".ts-live");
+  Object.defineProperty(live, "offsetHeight", { configurable: true, get: () => {
+    if (live.style.minHeight) return Math.max(running, parseFloat(live.style.minHeight));
+    return view.root.classList.contains("held-wait") ? waiting : running;
+  } });
+  return live;
+}
+
+test("question room: the next step lets the held height go under the scroll's cover (the card stays put)", async (t) => {
+  const { view, card } = askPage(t);
+  try {
+    const live = heldLive(view, { waiting: 700, running: 100 });
+    await answer(card);
+    view.scrollEl.scrollTop = 450;
+    view.generationStarted({ iteration: 2 });
+    // 600 px to let go, 450 absorbed by the scroll: 150 kept.
+    assert.equal(view.scrollEl.scrollTop, 0);
+    assert.equal(live.style.minHeight, "250px");
+    assert.equal(view.root.classList.contains("held-wait"), false);
+    // All of it when the scroll covers it.
+    view.chunk({ iteration: 2, text: "Reading. " });
+    view.turnStarted({});
+    assert.equal(live.style.minHeight, "");
+  } finally {
+    view.reset();
+  }
+  const again = askPage(t);
+  try {
+    heldLive(again.view, { waiting: 700, running: 100 });
+    await answer(again.card);
+    again.view.scrollEl.scrollTop = 800;
+    again.view.generationStarted({ iteration: 2 });
+    assert.equal(again.view.scrollEl.scrollTop, 200);
+    assert.equal($(again.view, ".ts-live").style.minHeight, "");
+  } finally {
+    again.view.reset();
+  }
+});
+
+test("without the room the next step lets the held height go as before (the scroll left alone)", async (t) => {
+  const { view, card } = askPage(t, { overflow: false });
+  try {
+    const live = heldLive(view, { waiting: 300, running: 100 });
+    await answer(card);
+    view.scrollEl.scrollTop = 150;
+    view.generationStarted({ iteration: 2 });
+    assert.equal(view.scrollEl.scrollTop, 150);
+    assert.equal(live.style.minHeight, "");
+  } finally {
+    view.reset();
+  }
+});
