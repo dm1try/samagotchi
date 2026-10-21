@@ -96,7 +96,11 @@ RSpec.describe "The mcp bundle's client" do
     expect(exits.size).to eq(0)
   end
 
+  # A short grace: the outcome matters here, not its length. The watchdog
+  # example below keeps the real one (its sleeps, then TERM and KILL).
   it "kills a server that ignores stdin EOF" do
+    client_class.send(:remove_const, :STOP_GRACE_SECONDS)
+    client_class.const_set(:STOP_GRACE_SECONDS, 0.1)
     client = client_class.new([RbConfig.ruby, "-e", "trap('TERM') {}; $stdin.read; sleep 30"])
     pid = client.pid
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
