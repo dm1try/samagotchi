@@ -315,7 +315,19 @@ RSpec.describe Samagotchi::Tools::Execute do
     end
 
     describe "on Stop" do
+      around do |example|
+        Dir.mktmpdir do |dir|
+          @ready = File.join(dir, "ready")
+          example.run
+        end
+      end
+
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # The Stop comes once the command touched @ready (it printed, it set
+      # its trap): never before it got there, however slow the runner, and
+      # no margin waited out on a fast one.
+      def once_ready = -> { File.exist?(@ready) }
 
       # A grandchild killed with the group may take a moment to be reaped.
       def running?(pattern)
@@ -326,7 +338,7 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       it "kills the command, keeping its output so far" do
         started = now
-        result = described_class.call("echo before; sleep 31.71", cancelled: -> { now - started > 0.3 })
+        result = described_class.call("echo before; touch #{@ready}; sleep 31.71", cancelled: once_ready)
 
         expect(now - started).to be < 5
         # The seconds are wall-clock (0 locally, 1 on a slow runner): the shape only.
@@ -337,8 +349,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "says a signal stopped it when the stop's reason is :signal (the worker got TERM/HUP/INT)" do
-        started = now
-        result = described_class.call("echo before; sleep 31.75", cancelled: -> { now - started > 0.3 }, stop_reason: -> { :signal })
+        result = described_class.call("echo before; touch #{@ready}; sleep 31.75", cancelled: once_ready, stop_reason: -> { :signal })
 
         expect(result).to match(/\A#{Regexp.escape(described_class::STOPPED_BY_SIGNAL)} after \d+s \(killed; rerun it if still needed\)\n/)
         expect(result).to include("stdout:\nbefore")
@@ -348,9 +359,8 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "says the session was stopped when the stop's reason is :session_stopped (chi sessions stop)" do
-        started = now
-        result = described_class.call("echo before; sleep 31.77", cancelled: -> { now - started > 0.3 },
-                                                                  stop_reason: -> { :session_stopped })
+        result = described_class.call("echo before; touch #{@ready}; sleep 31.77", cancelled: once_ready,
+                                                                                    stop_reason: -> { :session_stopped })
 
         expect(result).to match(/\A#{Regexp.escape(described_class::STOPPED_BY_SESSION_STOP)} after \d+s \(killed; rerun it if still needed\)\n/)
         expect(described_class.call("true", cancelled: -> { true }, stop_reason: -> { :session_stopped }))
@@ -379,9 +389,9 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       it "kills the command on an Interrupt mid-wait instead of hanging on its output" do
         started = now
-        interrupt = -> { now - started > 0.3 ? raise(Interrupt) : false }
+        interrupt = -> { File.exist?(@ready) ? raise(Interrupt) : false }
 
-        expect { described_class.call("sleep 31.72", cancelled: interrupt) }.to raise_error(Interrupt)
+        expect { described_class.call("touch #{@ready}; sleep 31.72", cancelled: interrupt) }.to raise_error(Interrupt)
         expect(now - started).to be < 5
         expect(running?("sleep 31.72")).to be(false)
       end
@@ -398,7 +408,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       it "KILLs a group that ignores TERM once the grace is over" do
         stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
         started = now
-        result = described_class.call("trap '' TERM; sleep 31.74; echo never", cancelled: -> { now - started > 0.3 })
+        result = described_class.call("trap '' TERM; touch #{@ready}; sleep 31.74; echo never", cancelled: once_ready)
 
         expect(now - started).to be < 3
         expect(result).to start_with("Error: command stopped by the user")
@@ -409,9 +419,8 @@ RSpec.describe Samagotchi::Tools::Execute do
       # so the stop goes on to KILL it.
       it "KILLs a child that ignores TERM once its shell died on TERM, under Stop and at the limit (kill mode)" do
         stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
-        started = now
-        stopped = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.57'; echo after",
-                                       cancelled: -> { now - started > 0.5 })
+        stopped = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); open(F, q(>#{@ready})); sleep 31.57'; echo after",
+                                       cancelled: once_ready)
         short_limit
         killed = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.58'; echo after", on_timeout: :kill)
 
@@ -753,9 +762,9 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "kills a command whose user Stop came first, a descendant that left the group too" do
-        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        result = described_class.call("cd . && perl -e 'setpgrp(0, 0); sleep 31.64'; echo after",
-                                      cancelled: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - started > 0.5 })
+        # The Stop once perl has left the group (touched "ready").
+        result = described_class.call("cd . && perl -e 'setpgrp(0, 0); open(F, q(>ready)); sleep 31.64'; echo after",
+                                      cancelled: -> { File.exist?("ready") })
 
         expect(result).to start_with(described_class::STOPPED_BY_USER)
         expect(running?("sleep 31.64")).to be(false)
