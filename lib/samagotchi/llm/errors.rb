@@ -384,6 +384,24 @@ module Samagotchi
       # Seconds to wait before retrying a CreditsHeld without a Retry-After.
       CREDITS_SETTLE_DELAY = 20.0
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
+      # How much of a server's error message the summary keeps.
+      MESSAGE_LIMIT = 500
+      # The 404 model hint's bounds (the message is the server's): how much
+      # of the message it reads, the longest model id, how many listed ids.
+      HINT_SCAN_CHARS = 64 * 1024
+      HINT_ID_MAX = 200
+      HINT_IDS_MAX = 2000
+      # A typo the hint forgives: at most this many edits, fewer than a
+      # third of the name, in a name at least HINT_FUZZY_MIN long.
+      HINT_MAX_EDITS = 2
+      HINT_FUZZY_MIN = 6
+      # A 404's model it couldn't find: "Model 'X' not found", "model `X`
+      # does not exist", "model X-1 not found" (unquoted, an id-like word,
+      # checked after the match). Bounded quantifiers: a server's long token
+      # can't make the match quadratic (Ruby 3.3 has no regex memoization).
+      MODEL_NOT_FOUND_RE = /model\s+(?:["'`]([^"'`\s]{1,#{HINT_ID_MAX}})["'`]|([^"'`\s]{1,#{HINT_ID_MAX}}))\s+(?:was\s+)?(?:not found|does not exist)/i
+      # The ids a 404 lists after "Available models:".
+      AVAILABLE_MODELS_RE = /available models?:\s*(.+)\z/im
       # The HTTP status an Anthropic error.type stands for, for an error
       # object that carries no numeric code (a Messages stream's error event,
       # an OpenAI error whose code is null or a name).
@@ -426,6 +444,7 @@ module Samagotchi
           else
             OutOfCredits.new(text, **options)
           end
+        when 404 then bad_request(text, status, message, options.merge(hint: model_hint(error_message(body, limit: nil))))
         when 400..499 then bad_request(text, status, message, options)
         when 500..599
           ServerError.new(text, retryable: RETRYABLE_SERVER_STATUSES.include?(status),
@@ -492,7 +511,7 @@ module Samagotchi
       # upstream failure (OpenRouter) often says only "Provider returned
       # error" and puts the upstream's words in error.metadata.raw and its
       # name in metadata.provider_name; both are added when present.
-      def error_message(body)
+      def error_message(body, limit: MESSAGE_LIMIT)
         parsed = parse_json(body.to_s)
         message =
           if parsed.is_a?(Hash)
@@ -502,8 +521,87 @@ module Samagotchi
         message = body.to_s if message.nil? || message.to_s.strip.empty?
         message = message.to_s.strip
         message = with_upstream(message, parsed["error"]["metadata"]) if parsed.is_a?(Hash) && parsed["error"].is_a?(Hash)
-        message.empty? ? "(empty body)" : message[0, 500]
+        return "(empty body)" if message.empty?
+
+        limit ? message[0, limit] : message
       end
+
+      # "did you mean 'ID'?" for a 404 that names the model it couldn't find
+      # and lists the ones it has (oMLX: "Model 'X' not found. Available
+      # models: a, b, …"): the listed id that is X but for case, the one
+      # whose last segment (after "/" or "--") is X, else the one id a
+      # typo away (#typo_distance, whole or its last segment). Read from
+      # the message past the summary's cut (MESSAGE_LIMIT), within the
+      # HINT_* bounds; nil when there is no list, nothing close or a tie.
+      def model_hint(message)
+        message = message[0, HINT_SCAN_CHARS]
+        match = MODEL_NOT_FOUND_RE.match(message)
+        requested = match && (match[1] || match[2])
+        return nil unless requested && (match[1] || requested.match?(%r{[-/.:_\d]}))
+
+        list = message[AVAILABLE_MODELS_RE, 1]
+        return nil unless list
+
+        ids = list.split(/,\s*|\s+/, HINT_IDS_MAX + 1).first(HINT_IDS_MAX)
+                  .map { |id| id.delete("[]\"'`").sub(/[.;]+\z/, "") }
+                  .reject { |id| id.empty? || id.length > HINT_ID_MAX }.uniq
+        return nil if ids.empty? || ids.include?(requested)
+
+        close = closest_model_id(requested, ids)
+        close && "did you mean '#{close}'?"
+      end
+
+      # The id that is +requested+ but for case, or whose last segment is,
+      # else the one id a typo away (#typo_distance); nil on a tie.
+      def closest_model_id(requested, ids)
+        probe = requested.downcase
+        exact = ids.find { |id| id.downcase == probe } || ids.find { |id| last_segment(id) == probe }
+        return exact if exact
+
+        scored = ids.filter_map do |id|
+          distance = [id.downcase, last_segment(id)].uniq.filter_map { |name| typo_distance(probe, name) }.min
+          [distance, id] if distance
+        end
+        return nil if scored.empty?
+
+        best = scored.map(&:first).min
+        closest = scored.select { |distance, _| distance == best }
+        closest.size == 1 ? closest.first.last : nil
+      end
+
+      # The edit distance of +a+ and +b+ when it is a typo's: at most
+      # HINT_MAX_EDITS and under a third of the shorter one, which has
+      # HINT_FUZZY_MIN characters or more; else nil. A banded Levenshtein:
+      # linear in the length.
+      def typo_distance(a, b)
+        shorter = [a.length, b.length].min
+        return nil if shorter < HINT_FUZZY_MIN || (a.length - b.length).abs > HINT_MAX_EDITS
+
+        distance = banded_distance(a, b, HINT_MAX_EDITS)
+        distance if distance && distance * 3 < shorter
+      end
+
+      # Levenshtein distance of +a+ and +b+ if at most +limit+, else nil;
+      # only cells within +limit+ of the diagonal are computed.
+      def banded_distance(a, b, limit)
+        far = limit + 1
+        prev = Hash.new(far)
+        (0..[limit, b.length].min).each { |j| prev[j] = j }
+        a.each_char.with_index(1) do |ca, i|
+          cur = Hash.new(far)
+          cur[0] = i if i <= limit
+          ([i - limit, 1].max..[i + limit, b.length].min).each do |j|
+            cost = ca == b[j - 1] ? 0 : 1
+            cur[j] = [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost, far].min
+          end
+          return nil if cur.empty? || cur.values.min > limit
+
+          prev = cur
+        end
+        prev[b.length] <= limit ? prev[b.length] : nil
+      end
+
+      def last_segment(id) = id.downcase.split(%r{/|--}).last
 
       # error.metadata.reason of a JSON error body (OpenRouter), or nil.
       def error_reason(body)

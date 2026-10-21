@@ -178,6 +178,80 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(from(404, "model not found").summary).to eq("host fw rejected the request: HTTP 404: model not found")
     end
 
+    describe "a 404 that lists the models it has" do
+      # oMLX's 404 for a model it doesn't serve, with a realistic list: far
+      # longer than the summary keeps.
+      def omlx_404(requested)
+        ids = %w[mlx-community--Qwen3.6-35B-A3B-4bit mlx-community--Qwen3.6-35B-A3B-8bit mlx-community--Qwen3.6-27B-4bit
+                 mlx-community--gemma-4-31b-it-4bit mlx-community--gemma-4-12b-it-8bit mlx-community--Llama-4-Scout-17B-16E-4bit
+                 mlx-community--Mistral-Small-3.2-24B-Instruct-2506-4bit mlx-community--DeepSeek-V4-Lite-4bit
+                 mlx-community--gpt-oss-20b-MXFP4-Q8 mlx-community--GLM-4.6-Air-4bit mlx-community--Kimi-Dev-72B-4bit
+                 mlx-community--Devstral-Small-2-24B-4bit]
+        from(404, "Model '#{requested}' not found. Available models: #{ids.join(", ")}")
+      end
+
+      it "keeps the cut message and adds the listed id the short name stands for" do
+        error = omlx_404("Qwen3.6-35B-A3B-4bit")
+
+        expect(error).to be_a(Samagotchi::LLM::BadRequest)
+        expect(error.message.length).to eq("fw: HTTP 404: ".length + 500)
+        expect(error.summary).to start_with("host fw rejected the request: HTTP 404: Model 'Qwen3.6-35B-A3B-4bit' not found. " \
+                                            "Available models: mlx-community--Qwen3.6-35B-A3B-4bit, ")
+        expect(error.summary).to end_with("; did you mean 'mlx-community--Qwen3.6-35B-A3B-4bit'?")
+      end
+
+      it "suggests the id a typo is close to, even one past the cut" do
+        error = omlx_404("mlx-community--Devstral-Smal-2-24B-4bit")
+
+        expect(error.message).not_to include("Devstral-Small-2")
+        expect(error.summary).to end_with("; did you mean 'mlx-community--Devstral-Small-2-24B-4bit'?")
+      end
+
+      it "suggests an OpenRouter-style id by its last segment, its case, or a typo in its last segment" do
+        list = "Available models: deepseek/deepseek-v4-flash, anthropic/claude-sonnet-5, qwen/qwen3.6-35b-a3b, " \
+               "z-ai/glm-4.6"
+
+        expect(from(404, "The model `claude-sonnet-5` does not exist. #{list}").summary)
+          .to end_with("; did you mean 'anthropic/claude-sonnet-5'?")
+        expect(from(404, "model \"Qwen/Qwen3.6-35B-A3B\" not found. #{list}").summary)
+          .to end_with("; did you mean 'qwen/qwen3.6-35b-a3b'?")
+        expect(from(404, "model glm-4.5 not found. #{list}").summary).to end_with("; did you mean 'z-ai/glm-4.6'?")
+      end
+
+      it "adds nothing when no listed id is close, there is no list, or the id is listed" do
+        unchanged = "host fw rejected the request: HTTP 404: "
+
+        expect(omlx_404("nope").summary).not_to include("did you mean")
+        expect(from(404, "The model was not found. Available models: wax, was2").summary).not_to include("did you mean")
+        expect(from(404, "model no-such-model-p2b not found").summary)
+          .to eq("#{unchanged}model no-such-model-p2b not found")
+        expect(from(404, "Model 'a/b' not found. Available models: a/b, c/d").summary).not_to include("did you mean")
+        expect(from(400, "Model 'qwen' not found. Available models: x/qwen").summary).not_to include("did you mean")
+      end
+
+      it "suggests no other model for a short id, and none on a tie" do
+        expect(from(404, "Model 'gpt-4' not found. Available models: gpt-4o-mini, gpt-5").summary).not_to include("did you mean")
+        expect(from(404, "Model 'q1' not found. Available models: a, b, c").summary).not_to include("did you mean")
+        expect(from(404, "Model 'ab' not found. Available models: ac, ad").summary).not_to include("did you mean")
+        expect(from(404, "Model 'qwen3-8b' not found. Available models: qwen3-4b, qwen3-9b").summary)
+          .not_to include("did you mean")
+        expect(from(404, "Model 'GPT-4' not found. Available models: gpt-4, gpt-5").summary).to end_with("; did you mean 'gpt-4'?")
+      end
+
+      it "gives up quickly on a huge id or list, with no hint" do
+        long_id = "x" * 50_000
+        ids = Array.new(5000) { |i| "vendor/model-#{"y" * 150}-#{i}" }
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        quoted = from(404, "Model '#{long_id}' not found. Available models: #{ids.join(", ")}")
+        bare = from(404, "model #{"1" * 50_000} not found. Available models: #{ids.join(", ")}")
+        listed = from(404, "Model 'vendor/model-#{"y" * 150}-x' not found. Available models: #{ids.join(", ")}")
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+        [quoted, bare, listed].each { |error| expect(error.summary).not_to include("did you mean") }
+      end
+    end
+
     it "covers server and protocol errors" do
       expect(from(503, "busy").summary).to eq("server error from host fw: HTTP 503: busy")
       expect(Samagotchi::LLM::ProtocolError.new("fw: malformed stream chunk: x", host: "fw").summary)
