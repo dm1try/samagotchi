@@ -723,8 +723,24 @@ test("question room: decided on the asking text's final form: a raw text that ov
   }
 });
 
+// The frames by hand (happy-dom's requestAnimationFrame is a setImmediate:
+// any number of them run while a test awaits a timer): +run()+ runs the
+// callbacks queued so far, one frame; those they queue wait for the next.
+function handFrames(t) {
+  let queue = [];
+  t.mock.method(globalThis, "requestAnimationFrame", (fn) => { queue.push(fn); return queue.length; });
+  return {
+    run() {
+      const now = queue;
+      queue = [];
+      for (const fn of now) fn(performance.now());
+    },
+  };
+}
+
 test("question room: a room decided after the arrival reveal reads from the reply's start then; the pill only after it", async (t) => {
   let settle;
+  const frames = handFrames(t);
   const { view } = page({ taskStop: fakeTaskStop, renderMarkdown: () => new Promise((resolve) => { settle = resolve; }) });
   sizePage(t);
   try {
@@ -743,19 +759,22 @@ test("question room: a room decided after the arrival reveal reads from the repl
     laidOut(t, view);
     card.remove();
     view.place(card);
-    await frame();
-    await frame();
-    await tick();
+    // The arrival reveal: two frames on (afterGrowth), no growth running.
+    frames.run();
+    frames.run();
+    assert.equal(room(view), false);
     assert.equal(view.scrollEl.scrollTop, 400, "no room yet: the card-end rule");
+    // The markdown comes back: its redraw (the next frame) decides the room.
     settle("<p>Here is the plan.</p>");
     await tick();
-    await frame();
+    frames.run();
     assert.equal(room(view), true);
     seeCard(card, false);
     assert.equal($(view, ".ts-room-pill").hidden, true, "not before its reveal");
-    await frame();
-    await frame();
-    await tick();
+    assert.equal(view.scrollEl.scrollTop, 400);
+    frames.run();
+    assert.equal($(view, ".ts-room-pill").hidden, true, "one frame on: still growing");
+    frames.run();
     assert.equal(view.scrollEl.scrollTop, 100);
     assert.equal($(view, ".ts-room-pill").hidden, false);
   } finally {
