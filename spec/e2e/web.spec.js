@@ -786,14 +786,30 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripGrip").click();
   await expect(stripCard).toBeVisible();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["✎", "continue →", "archive", "stop session", "delete"]);
-  // ✎ renames it (/title through the worker): the card follows the saved file.
-  await page.locator("#infoRenameBtn").click();
-  await expect(page.locator("#infoBar .rename-input")).toBeFocused();
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
+  // The active card's ✎ renames it (/title through the worker): the input
+  // over the card's title, the card following the saved file.
+  await page.locator("#topStrip .card.active .card-rename").click();
+  const renameInput = page.locator(".rename-input");
+  await expect(renameInput).toBeFocused();
+  const [inputBox, rowBox] = [await renameInput.boundingBox(), await page.locator("#topStrip .card.active .preview-row").boundingBox()];
+  expect(Math.abs(inputBox.x - rowBox.x)).toBeLessThan(2);
+  expect(Math.abs(inputBox.y + inputBox.height / 2 - (rowBox.y + rowBox.height / 2))).toBeLessThan(2);
   await page.keyboard.type("Pong check");
   await page.keyboard.press("Enter");
-  await expect(page.locator("#infoBar .rename-input")).toHaveCount(0);
+  await expect(renameInput).toHaveCount(0);
   await expect(stripCard).toContainText("Pong check");
+  // Hidden, the strip leaves the title to the top bar, its ✎ right after it.
+  await page.locator("#stripGrip").click();
+  await expect(page.locator("#sessionTitle")).toHaveText("Pong check");
+  await page.locator("#titleRenameBtn").click();
+  await expect(renameInput).toBeFocused();
+  await expect(renameInput).toHaveValue("Pong check");
+  await page.keyboard.press("Escape");
+  await expect(renameInput).toHaveCount(0);
+  await expect(page.locator("#titleRenameBtn")).toBeFocused();
+  await page.locator("#stripGrip").click();
+  await expect(stripCard).toBeVisible();
   // Dragging the composer's grip down folds the composer away (the info bar
   // stays, the grip stays as its handle): the history's reserve shrinks, and
   // the choice survives a reload.

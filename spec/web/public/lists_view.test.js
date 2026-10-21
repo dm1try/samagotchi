@@ -160,6 +160,16 @@ test("cardTemplate: a bare strip card", () => {
   ));
 });
 
+test("cardTemplate: renamable puts a ✎ at the end of the title line; without it (the All list) none", () => {
+  const s = sess("0123456789");
+  assert.equal(markupOf(cardTemplate(s, { renamable: true }, { title: "T" })), canon(
+    `<div class="card" data-id="0123456789" title="0123456789 · updated  · idle"><div class="preview-row"><div class="preview">T</div>` +
+    `<button type="button" class="card-rename" title="Rename this session" aria-label="Rename this session" data-rename="0123456789">\u270e</button></div>` +
+    `<div class="meta"><span class="status dot idle" title="idle" aria-label="idle"></span><span class="ctx" title="No request in this session yet">ctx ?</span></div></div>`,
+  ));
+  assert.doesNotMatch(markupOf(cardTemplate(s, {}, { title: "T" })), /card-rename|preview-row/);
+});
+
 // The card's ctx tooltip has the session's side requests' line (the list
 // row's saved side block).
 test("cardTemplate: the ctx tooltip carries the side requests line", () => {

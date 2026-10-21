@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tabTitle, topBarTitle } from "../../../lib/samagotchi/web/public/session_title.js";
+import { renameShown, tabTitle, topBarTitle } from "../../../lib/samagotchi/web/public/session_title.js";
 
 test("topBarTitle: shown only when no visible strip card shows the title", () => {
   const title = "fix the strip";
@@ -37,4 +37,10 @@ test("tabTitle: cut at 40 chars with an ellipsis, newlines and double spaces col
   assert.equal(tabTitle({ title: `${forty}b`, base: "Chi" }), `${forty}b · Chi`);
   assert.equal(tabTitle({ title: `${forty}bc`, base: "Chi" }), `${forty}… · Chi`);
   assert.equal(tabTitle({ title: "line one\n\nline  two", base: "Chi" }), "line one line two · Chi");
+});
+
+test("renameShown: any session's title has a ✎ but a plain terminal's", () => {
+  assert.equal(renameShown("tui"), false);
+  assert.equal(renameShown("worker"), true);
+  assert.equal(renameShown(null), true);
 });
