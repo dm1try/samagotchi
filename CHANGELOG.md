@@ -8,8 +8,23 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-10-21
+
+### Added
+
+- A long question from the model gets room in the web stage: when its reply doesn't fit, the stage grows (up to 85%
+  of the panel) for the turn, the reply reads from its start in one scroll, and an "Answer ↓" pill leads to the card
+  while it is out of view. Approvals, the step limit and hooks' questions keep their layout.
+- A new hook event, `:question_asked`, lets a plugin attach refs to the reply that asks a question or an approval
+  (display only, never in the prompt); the web pairs them in the asking text, on the card and in the history step.
+  A bundle manifest's hook can list `events: [...]` to run one hook for several events. See
+  [docs/hooks.md](docs/hooks.md).
+- source-links 0.6.0 links the issue keys and paths in a waiting question's reply too, not only in answers.
+
 ### Changed
 
+- The web's rename ✎ moved from the info bar to the session's title: on the active card and next to the title in
+  the top bar, with the input over the title.
 - A model server's 404 that lists its models puts `did you mean …?` ahead of the (cut) list, and names up to three
   ids: every nearest typo on a tie, or the listed ids that contain the name asked for (`Qwen3.6-35B` →
   `mlx-community--Qwen3.6-35B-A3B-4bit` or `…-8bit`).
@@ -18,6 +33,8 @@ and commands may change between minor versions. How releases are made:
 
 - A Gemma 4 step on the native loop no longer shows its tool call's body (`call:ask_user_question{…}`) as text in
   the web history after a reload.
+
+Update with `chi update` (the system bundle 0.98.0, source-links 0.6.0, the dev profile 0.7.1), then restart `chi web`.
 
 ## [0.97.0] - 2026-10-21
 
@@ -3738,7 +3755,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.97.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.98.0...HEAD
+[0.98.0]: https://github.com/dm1try/samagotchi/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/dm1try/samagotchi/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/dm1try/samagotchi/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/dm1try/samagotchi/compare/v0.94.0...v0.95.0
