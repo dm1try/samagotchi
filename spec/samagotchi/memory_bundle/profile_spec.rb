@@ -175,6 +175,22 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(result).to have_attributes(installed: %w[a], already: %w[b])
       expect(installed).to eq(%w[b])
     end
+
+    it "names on a dry run the memory files the install would keep as the user's own, writing nothing" do
+      %w[a b c].each { |n| ship(n) }
+      FileUtils.mkdir_p(system_dir)
+      File.write(File.join(system_dir, "a.md"), "mine\n")
+      FileUtils.cp(File.join(shipped, "b", "b.md"), File.join(system_dir, "b.md"))
+      core = ship_meta("core", %w[a b c])
+
+      result = install(core, dry_run: true)
+
+      expect(result.kept_own).to eq("a" => %w[a.md])
+      expect(result.kept_own_lines).to eq([described_class.kept_own_line("a", "a.md")])
+      expect(installed).to eq([])
+      expect(Dir.children(system_dir).sort).to eq(%w[a.md b.md])
+      expect(install(core).kept_own).to eq(result.kept_own)
+    end
   end
 
   describe ".uninstall" do

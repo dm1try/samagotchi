@@ -430,6 +430,16 @@ Hooks removed: 1\n\z})
       expect(File.read(File.join(memories, "guardrails.md"))).to eq("mine\n")
     end
 
+    it "a profile's dry run names the memory files it would keep as the user's own" do
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "guardrails.md"), "mine\n")
+      out, err, code = chi("upgrade", "core", "--dry-run")
+      expect([err, code]).to eq(["", 0])
+      expect(out.lines).to include("  #{Samagotchi::MemoryBundle::Profile.kept_own_line("guardrails", "guardrails.md")}\n")
+      expect(out.lines.last).to eq("(dry-run: no changes written)\n")
+      expect(Dir.exist?(File.join(memories, ".bundles"))).to be(false)
+    end
+
     it "status goes on past a bundle whose manifest.json doesn't parse" do
       chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
       FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))

@@ -121,18 +121,28 @@ module Samagotchi
         member_dir = File.join(shipped_dir, member)
         failure = Manifest.requires_chi_failure(Manifest.read(dir: member_dir).requires_chi, chi_version)
         return result.skipped[member] = failure if failure
-        return result.installed << member if dry_run
 
+        # A dry run runs the Installer's too, which writes nothing, so it
+        # names the files the real run would keep as the user's own.
         installer = Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true,
-                                  shipped_dir: shipped_dir)
+                                  shipped_dir: shipped_dir, dry_run: dry_run)
         installer.run
         result.installed << member
-        kept = installer.results.select { |_, entry| entry[:status] == "skipped" && entry[:reason] == "already exists" }.keys
+        kept = installer.results.select { |_, entry| kept_own?(entry) }.keys
         result.kept_own[member] = kept.sort unless kept.empty?
       rescue StandardError => e
         result.failed[member] = e.message.lines.first.to_s.strip
       end
       private_class_method :install_member
+
+      # An Installer result for a file the user already had, with other
+      # bytes: skipped ("already exists"), or a dry run's would_skip. One
+      # with the bundle's bytes ("already up to date") isn't named: nothing
+      # of the bundle's is missing (it stays the user's all the same).
+      def kept_own?(entry)
+        entry[:status] == "would_skip" || (entry[:status] == "skipped" && entry[:reason] == "already exists")
+      end
+      private_class_method :kept_own?
 
       # Uninstalls each recorded member still installed, then the meta. A
       # member that won't go (an edited .md file, without +force+) is

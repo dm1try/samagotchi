@@ -21,6 +21,11 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle try` exits 130 for a Ctrl-C in the child chi's first moments too (while its Ruby was still booting it
   exited 1).
 
+### Fixed
+
+- `chi bundle upgrade core --dry-run` (or `dev`) names the memory files of a member it would install that you already
+  have, which the install keeps as yours (`model-notes: kept your own …`), as the real run does; it named none.
+
 ## [0.96.0] - 2026-10-21
 
 ### Added
