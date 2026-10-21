@@ -236,7 +236,8 @@ module Samagotchi
           registry.register(spec.name, source: SOURCE, unwrap: unwrap, **spec.entry_fields(nil))
           spec
         end
-        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?)
+        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?,
+                                             deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) })
         declared!(declared)
         declared.map(&:name)
       end
@@ -346,6 +347,39 @@ module Samagotchi
 
         inner = inner_args(args["args"], tool)
         inner && BuiltinCalls.build(entry.name, inner).merge(via: CALL_NAME)
+      end
+
+      # The sources' tools a host that loads tools may declare deferred
+      # (Tools::DeferredTools), by their acts_as: callable (no refusal),
+      # the only tool with that acts_as, a name Messages takes, and no
+      # registered tool's. Sorted by acts_as, so the same index gives the
+      # same list in any session and after a respawn.
+      # @return [Array<Tool>]
+      def deferrable
+        tools = groups.reject { |group| own?(group) }.flat_map(&:tools)
+        counts = tools.map(&:acts_as).tally
+        tools.select do |tool|
+          tool.refusal.nil? && counts[tool.acts_as] == 1 && tool.acts_as.match?(DEFERRABLE_NAME) &&
+            !@registry&.key?(tool.acts_as)
+        end.sort_by(&:acts_as)
+      end
+
+      # What a deferred source tool's wire name may be (Messages' tool
+      # name rule).
+      DEFERRABLE_NAME = /\A[a-zA-Z0-9_-]{1,128}\z/
+
+      # A direct call of a deferrable tool (#deferrable) by its acts_as, as
+      # the call_tool call it runs as (ToolRunner#run, under a host that
+      # loads tools): the call tool's row, rules and approvals. Nil for any
+      # other call.
+      # @return [Hash, nil]
+      def wrap(call)
+        name = call[:name].to_s
+        return nil if name.empty? || @registry&.key?(name)
+
+        tool = deferrable.find { |t| t.acts_as == name } or return nil
+        args = call[:args].is_a?(Hash) ? call[:args] : {}
+        BuiltinCalls.build(CALL_NAME, { "tool" => tool.full_name, "args" => args })
       end
 
       # The call tool's activity row: <group>/<tool> and its arguments.

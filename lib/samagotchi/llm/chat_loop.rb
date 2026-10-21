@@ -22,6 +22,7 @@ require_relative "../tool_runner"
 require_relative "../tool_response"
 require_relative "../tool_ids"
 require_relative "../tool_declarations"
+require_relative "../tools/deferred_tools"
 require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
@@ -100,11 +101,32 @@ module Samagotchi
       # Tool definitions for the request: the schemas the native prompts are
       # rendered from (the kernel's registry, the tools the turn's LLM
       # context layers offer), with the chat-only enums and closed
-      # parameters. +conversation+: the request's (engine format).
-      def tool_definitions(_conversation = nil)
-        ToolDeclarations.chat_schemas(tools.schemas(layers: llm_context_layers)).map do |schema|
+      # parameters. On an adapter that loads tools for +model+
+      # (#loads_tools?), every tool the session reaches but doesn't declare
+      # follows, deferred (Tools::DeferredTools: +conversation+, the
+      # request's, names the ones it loaded); never without a declared one.
+      def tool_definitions(conversation = nil, model: nil)
+        declared = ToolDeclarations.chat_schemas(tools.schemas(layers: llm_context_layers)).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
+        return declared if declared.empty? || !loads_tools?(model)
+
+        declared + deferred_tools(conversation).map do |tool|
+          { type: "function", function: { name: tool.name, description: tool.description, parameters: tool.schema },
+            defer_loading: true }
+        end
+      end
+
+      # The tools a request on a host that loads tools declares deferred
+      # (Tools::DeferredTools).
+      def deferred_tools(conversation)
+        Tools::DeferredTools.list(tools, conversation, layers: llm_context_layers)
+      end
+
+      # Whether the adapter takes tools it doesn't declare up front for
+      # +model+ (AnthropicMessages#loads_tools?); OpenAIChat doesn't.
+      def loads_tools?(model)
+        @adapter.respond_to?(:loads_tools?) && @adapter.loads_tools?(model.to_s)
       end
 
       # The kernel's tools.
@@ -538,6 +560,8 @@ module Samagotchi
           @request_image_tokens = nil
           @without_reasoning = false
           @recovery_repeated = false
+          # The names the last request declared deferred.
+          @deferred = []
           @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context)
           loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context,
                                                              emit: method(:emit))
@@ -761,8 +785,10 @@ module Samagotchi
         end
 
         def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
+          definitions = @loop.tool_definitions(@conversation, model: @model_name)
+          @deferred = definitions.filter_map { |tool| tool.dig(:function, :name) if tool[:defer_loading] }
           @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation, since: @reasoning_start, reasoning: reasoning_level), tools: @loop.tool_definitions, model: @model_name,
+            messages: @loop.wire_messages(@conversation, since: @reasoning_start, reasoning: reasoning_level), tools: definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|
@@ -946,6 +972,7 @@ module Samagotchi
         # with its call (ToolResponse.single: the capped output), with the
         # next id (ToolIds).
         def dispatch(tool_calls, iteration, cap)
+          log_direct_deferred(tool_calls)
           calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
           runs = ToolResponse.run_batch(@loop.tool_runner, calls, iteration: iteration, emit: method(:emit),
                                                                   on_stream_event: @on_stream_event, cap: cap) do |run, index|
@@ -953,6 +980,17 @@ module Samagotchi
                                                       ids: ToolIds.next_ids(@conversation, 1))
           end
           @tool_activity.concat(ToolResponse.activities(runs))
+        end
+
+        # A call of a tool the last request declared deferred: whether the
+        # conversation had loaded it (how well a load leads to a direct
+        # call, and how often the model calls one it only read about).
+        def log_direct_deferred(tool_calls)
+          direct = tool_calls.map { |call| call.name.to_s } & @deferred
+          return if direct.empty?
+
+          loaded = Tools::DeferredTools.loaded_names(@conversation)
+          direct.each { |name| Log.info(:turn, "tool_direct_deferred", tool: name, loaded: loaded.include?(name)) }
         end
 
         # Queued input at an iteration boundary (Steer.inject!). Returns true

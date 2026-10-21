@@ -1408,6 +1408,12 @@ toolkit:
   starts no children). To keep a built-in away from the model, name it under `remove:`. `find_tools` and `call_tool`
   are declared when a toolkit has a reachable built-in (or an MCP server is configured); `full` with no MCP server
   declares neither, and removing them there (`--no-tool call_tool`) leaves nothing out: no prompt line, no chip.
+- **On `api: anthropic`, reachable tools are callable by name.** Every tool `call_tool` reaches (the reachable
+  built-ins, the MCP servers' tools as `mcp_<server>_<tool>`) also goes in the request's tools deferred
+  (`defer_loading`: Messages keeps them out of the model's view until something loads them, at a flat ~100 tokens).
+  A direct call of one (`list_sessions`, `mcp_fs_read`) runs, under the same guardrails, approvals and rows as
+  through `call_tool` (an MCP tool's call is `call_tool`'s). Not on Fireworks' dialect, nor on `api: openai` or a
+  native host, where such a call gets the `call_tool` route.
 - **The prompt line.** One line after the base prompt names them: `Not declared in this session (toolkit lean): ….
   Search them with find_tools; call one with call_tool.`, then `Removed (toolkit child): memory_write, …. Only the
   user can load one (/toolkit add <name>).` With `find_tools` removed, the first sentence ends `Call one with

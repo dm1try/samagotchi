@@ -1139,6 +1139,14 @@ module Samagotchi
     # through call_tool (+via+) of a tool the toolkit declares is told to
     # call it directly: the model's call_tool(tool: "chi/read") with read
     # declared, or a hook's rewrite (a direct call can't carry via:).
+    # The built-in +name+ names when the turn's host loads tools and the
+    # toolkit reaches it (Registry#indexed): a direct call runs it.
+    def loaded_entry(name)
+      return nil unless @turn_settings&.loads_tools && @tools.respond_to?(:indexed)
+
+      @tools.indexed(name, layers: llm_context_layers)
+    end
+
     def unknown_tool_error(name, layers, via: nil)
       names = @tools.names(layers: layers)
       toolkit = @tools.toolkit&.name
@@ -1160,11 +1168,13 @@ module Samagotchi
 
     def dispatch(call)
       # A built-in reached through call_tool runs only while the toolkit
-      # reaches it that way (Registry#indexed); any other call by its name.
+      # reaches it that way (Registry#indexed); any other call by its name,
+      # on a host that loads tools (TurnSettings#loads_tools) a reachable
+      # one too.
       entry = if call[:via]
                 @tools.respond_to?(:indexed) ? @tools.indexed(call[:name], layers: llm_context_layers) : nil
               else
-                @tools.offered(call[:name], layers: llm_context_layers)
+                @tools.offered(call[:name], layers: llm_context_layers) || loaded_entry(call[:name])
               end
       unless entry
         result = unknown_tool_error(call[:name], llm_context_layers, via: call[:via])

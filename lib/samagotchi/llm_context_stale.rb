@@ -192,7 +192,7 @@ module Samagotchi
         id = entry[:tool_call_id].to_s
         matches = id.empty? ? [] : batch.select { |call_id, _| call_id.to_s == id }
         call = matches.one? ? matches.first.last : nil
-        call &&= Tools::BuiltinCalls.unwrap_saved(call, entry[:content])
+        call &&= Tools::BuiltinCalls.unwrap_saved(Tools::BuiltinCalls.wrap_saved(call, entry[:content]), entry[:content])
         texts = call && refs.size == 1 ? ToolResponse.runs_named(entry[:content], [call[:name]]) : nil
         return texts ? [[refs.first, call, texts.first.text]] : []
       end
@@ -201,7 +201,7 @@ module Samagotchi
       # built-in (BuiltinCalls.unwrap_saved).
       calls = batch.map(&:last)
       calls = calls.zip(ToolResponse.runs(entry[:content], calls.size)).map do |call, run|
-        Tools::BuiltinCalls.unwrap_saved(call, run&.text)
+        Tools::BuiltinCalls.unwrap_saved(Tools::BuiltinCalls.wrap_saved(call, run&.text), run&.text)
       end
       texts = ToolResponse.runs_named(entry[:content], calls.map { |call| call[:name] })
       return [] unless texts && texts.size == refs.size

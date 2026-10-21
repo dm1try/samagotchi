@@ -18,9 +18,10 @@ RSpec.describe Samagotchi::LLM::Dialect do
 
     it "keeps the standard wire as Anthropic's, and Fireworks' overrides" do
       expect(described_class::STANDARD).to have_attributes(auth: :x_api_key, thinking_display: "summarized",
-                                                           cache_breakpoints: true, session_header: nil)
+                                                           cache_breakpoints: true, session_header: nil, tool_loading: true)
       expect(described_class::FIREWORKS).to have_attributes(auth: :bearer, thinking_display: nil,
-                                                            cache_breakpoints: false, session_header: "x-session-affinity")
+                                                            cache_breakpoints: false, session_header: "x-session-affinity",
+                                                            tool_loading: false)
     end
   end
 

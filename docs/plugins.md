@@ -631,6 +631,17 @@ and after a reload. `tool: call_tool` rules see MCP calls and misses only. A
 `call_tool` itself is removed, is refused by its name before the guardrails
 (no hook, no card).
 
+**On a Messages host the model calls them by name too.** With `api:
+anthropic` (not Fireworks' dialect), every tool `call_tool` reaches goes in
+the request's tools deferred (`defer_loading`: its name only, until
+something loads it): a built-in by its name, a source's tool by its
+`acts_as` (`mcp_fs_read`; one with a refusal, an acts_as two tools share, or
+a name another tool has stays out). A direct call of one runs whether
+anything loaded it or not: a built-in as itself (as if declared), a
+source's tool as the `call_tool` call it stands for, so its rules,
+approvals, hooks and row are `call_tool`'s. Elsewhere such a call is
+refused with the `call_tool` route, as before.
+
 ```ruby
 @source = chi.tool_source(label: "mcp", prefix: "mcp_",
                           call: ->(tool, args, ctx) { run(tool, args, ctx) },  # the result, as a tool block's

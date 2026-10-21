@@ -138,6 +138,20 @@ RSpec.describe Samagotchi::MessageParts do
       expect(tools[1]).not_to have_key(:via)
     end
 
+    it "reloads a direct call of an MCP tool (a host that loads tools) as the call_tool row it ran as" do
+      message = { role: "model", content: "",
+                  tool_calls: [{ id: "c1", name: "mcp_fs_read_file", arguments: { "path" => "a.txt" } },
+                               { id: "c2", name: "mcp_fs_gone", arguments: { "path" => "b.txt" } }] }
+      responses = [{ role: "tool_response", content: "[call_tool]\nhello", tool_call_id: "c1",
+                     tool_params: "fs/read_file path=a.txt", tool_labels: "mcp" },
+                   { role: "tool_response", content: "Error: no such tool. Available: read", tool_call_id: "c2" }]
+
+      tools = described_class.for_message(message, responses)[:tools]
+      expect(tools[0]).to include(tool: "call_tool", params: "fs/read_file path=a.txt", label: "mcp",
+                                  output: "[call_tool]\nhello")
+      expect(tools[1]).to include(tool: "mcp_fs_gone")
+    end
+
     it "reloads a built-in call_tool refused by its name before the gate as that built-in's row, as live" do
       message = { role: "model", content: "",
                   tool_calls: [{ id: "c1", name: "call_tool",

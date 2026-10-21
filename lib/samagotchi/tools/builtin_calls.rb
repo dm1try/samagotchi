@@ -166,6 +166,22 @@ module Samagotchi
         build(name, saved_args(call[:args]["args"])).merge(via: VIA)
       end
 
+      # A saved direct call of a deferred source tool (an MCP tool by its
+      # acts_as, on a host that loads tools) as the call_tool call it ran as
+      # (ToolIndex#wrap): a name that is no built-in, object args, and a
+      # result that leads with "[call_tool]". Any other call as it is. The
+      # tool is named by its acts_as (the call tool takes it as well).
+      # @param call [Hash] as #build gives it
+      # @param output [String, nil]
+      # @return [Hash]
+      def wrap_saved(call, output)
+        name = call[:name].to_s
+        return call if name.empty? || name == VIA || row(name) || !call[:args].is_a?(Hash)
+        return call unless output.to_s[SAVED_LEAD, 1] == VIA
+
+        build(VIA, { "tool" => name, "args" => call[:args] })
+      end
+
       def ran_as?(output, name)
         lead = output[SAVED_LEAD, 1]
         lead ? lead == name : output.start_with?("Error: #{name} ")

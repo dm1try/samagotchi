@@ -610,6 +610,11 @@ A built-in reached through `call_tool` (`chi/delegate`, a tool the session's too
 declare) fires as that built-in, its call built as a direct call's, with `call[:via] == "call_tool"`.
 A hook that drops `via:` or rewrites the call to a tool the toolkit removes gets the call refused
 by its name.
+On a Messages host (`api: anthropic`), the model may call those tools by their own names (they
+go out deferred, [configuration.md](configuration.md#toolkits)): a direct `delegate` fires as a
+declared tool's call, with no `via:`; a direct `mcp_fs_read` fires as the `call_tool` call it
+stands for (`tool: "call_tool"`, `args: {"tool" => "fs/read", "args" => {…}}`), as if the model
+had called `call_tool`.
 
 ## Bundle Hooks (unified workflow bundle)
 

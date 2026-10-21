@@ -5,6 +5,7 @@ require "samagotchi/session"
 require "support/thinking_off"
 require "support/test_kernel"
 require "samagotchi/llm/chat_loop"
+require "support/fake_provider_server"
 
 # A session's toolkit reaches the Registry at a turn's start only, beside
 # the plugins' staged tool sets: a change made while a turn runs (or
@@ -187,5 +188,47 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     turn(session(Samagotchi::Toolkit.new(name: "lean")))
     expect(kernel.tools.names).to include("find_tools", "call_tool")
     expect(kernel.tools["find_tools"].schema[:description]).to include("- chi: chi's own tools not declared")
+  end
+
+  # The host that loads tools is the one the turn runs on after its
+  # before_turn hooks (lean tools P2c): TurnSettings#loads_tools is set in
+  # #generate, from the final model's adapter.
+  describe "loads_tools" do
+    around { |example| FakeProviderServer.without_webmock { example.run } }
+
+    let(:server) { FakeProviderServer.start.tap { |s| s.default("/v1/models", json: { data: [] }) } }
+    let(:registry) do
+      Samagotchi::HostRegistry.new(hosts_config: {
+        "box" => { host: "box.test", port: 8080 },
+        "ant" => { url: server.root_url, api: :anthropic, remote: true },
+        "oai" => { url: server.base_url, api: :openai, remote: true }
+      })
+    end
+
+    after { server.stop }
+
+    def loads_after_switch(from, to)
+      engine = described_class.new(host_registry: registry, model_name: from)
+      sess = Samagotchi::Session.new_session(mode: "assist", model_name: from, working_directory: Dir.pwd)
+      engine.store_model!(sess)
+      engine.session = sess
+      kernel = engine.instance_variable_get(:@kernel)
+      seen = []
+      allow(kernel).to receive(:turn_settings=).and_wrap_original do |original, value|
+        seen << value.loads_tools
+        original.call(value)
+      end
+      engine.register_hook(:before_turn) { |_event| engine.switch_model!(to) }
+      server.enqueue("/v1/messages", sse: FakeProviderServer.fixture("text_stream.hand-written.sse", api: "anthropic"))
+      server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
+      allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
+      engine.run_turn(sess, "hi")
+      seen.last
+    end
+
+    it "is true when a hook switched the turn to a Messages host, false when it switched away" do
+      expect(loads_after_switch("oai:gpt-x", "ant:claude-x")).to be(true)
+      expect(loads_after_switch("ant:claude-x", "oai:gpt-x")).to be(false)
+    end
   end
 end

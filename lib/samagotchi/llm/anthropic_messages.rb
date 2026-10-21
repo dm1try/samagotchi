@@ -196,6 +196,12 @@ module Samagotchi
       # @return [Hash] frozen
       def thinking_off_refused_fields = thinking_fields(:low)
 
+      # Whether requests for +model+ declare the tools a session reaches but
+      # doesn't declare deferred (defer_loading), loaded by reference from
+      # a find_tools result (ChatLoop#tool_definitions, AnthropicWire): the
+      # dialect's tool_loading, unless the host refused it for +model+.
+      def loads_tools?(model) = @dialect.tool_loading && !@refusals.refused?(:tool_loading, model.to_s)
+
       # Whether +model+ gets the budget form (it refused adaptive thinking).
       def budget_form?(model) = @refusals.refused?(:thinking_form, model.to_s)
 
@@ -229,7 +235,8 @@ module Samagotchi
         options = thinking_between_tools(options) if @refusals.refused?(:thinking_off_form, model.to_s)
         options = without_display(options) if @refusals.refused?(:thinking_display)
         cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@refusals.refused?(:cache_control)
-        translated = AnthropicWire.translate(messages, cache: cache)
+        deferred = Array(tools).filter_map { |tool| tool.dig(:function, :name).to_s if tool[:defer_loading] }
+        translated = AnthropicWire.translate(messages, cache: cache, deferred: deferred)
         max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
         output_cap = @refusals[:output_cap, model.to_s]
         max_tokens = [max_tokens, output_cap].min if output_cap

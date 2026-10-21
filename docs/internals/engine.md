@@ -34,7 +34,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
-  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate),
+  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools … are set in
+  │     #   generate, after the hooks, from the final model),
   │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
@@ -218,7 +219,10 @@ ChatLoop#complete(messages:, max_iterations:, on_stream_event:, cancel_controlle
 
 The differences from the native loop:
 
-- The tools go in each request's `tools` field (`tool_definitions`), not in the system prompt.
+- The tools go in each request's `tools` field (`tool_definitions(conversation, model:)`), not in the system prompt.
+  On an adapter that loads tools (`#loads_tools?`: `AnthropicMessages`), the tools the session reaches but doesn't
+  declare follow, `defer_loading: true` (`Tools::DeferredTools`; anthropic.md, "Deferred tools"); the Run keeps the
+  last request's deferred names and logs a call of one (`tool_direct_deferred`).
 - The conversation is converted to the OpenAI wire format (`wire_messages`), for every chat host;
   `AnthropicMessages` translates that again into Messages' `system` and content blocks (`LLM::AnthropicWire`).
 - The first system message carries `cache_split:` (from `SystemPrompt#stable_length`, which the Engine passes in
@@ -266,11 +270,15 @@ One iteration with tool calls:
       → :tool_dispatch_started {iteration, call_count}
       → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
                                       on_stream_event:, max_tool_output_chars:)
+          → under TurnSettings#loads_tools, a direct call of a source tool's acts_as (mcp_fs_read) is wrapped
+            into the call_tool call it stands for (Registry::Index#wrap, ToolIndex#wrap)
           → first, the call's entry unwraps it (Registry::Entry#unwrap: a call_tool of chi/<built-in> becomes
             that built-in's call with via: "call_tool", ToolIndex#unwrap); the rest sees the real call
           → a tool the session's toolkit leaves out (Registry#left_out; with via:, one Registry#indexed doesn't
             reach) skips the gate: no hooks, no card; KernelLoop#dispatch answers it (the call_tool route for a
-            reachable tool, the not-loaded error for a removed one)
+            reachable tool, the not-loaded error for a removed one). Under TurnSettings#loads_tools a reachable
+            built-in called by its own name is no such call: it runs through the gate, and KernelLoop#dispatch
+            takes it (#loaded_entry)
           → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
           → :tool_call_started
           → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)

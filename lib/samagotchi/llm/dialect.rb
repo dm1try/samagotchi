@@ -15,8 +15,10 @@ module Samagotchi
     #   nil for none;
     # cache_breakpoints: whether chat requests carry cache_control;
     # session_header: a header that carries the session id (beside
-    #   Session-Id), nil for none.
-    Dialect = Data.define(:name, :auth, :thinking_display, :cache_breakpoints, :session_header) do
+    #   Session-Id), nil for none;
+    # tool_loading: whether requests declare tools deferred
+    #   (defer_loading) and load them by reference (tool_reference).
+    Dialect = Data.define(:name, :auth, :thinking_display, :cache_breakpoints, :session_header, :tool_loading) do
       # The dialect for a `dialect:` name (HostConfig#dialect); STANDARD for
       # nil or an unknown one.
       def self.for(name) = self::BY_NAME.fetch(name.to_s, self::STANDARD)
@@ -44,14 +46,15 @@ module Samagotchi
     end
 
     Dialect::STANDARD = Dialect.new(name: "standard", auth: :x_api_key, thinking_display: "summarized",
-                                    cache_breakpoints: true, session_header: nil)
+                                    cache_breakpoints: true, session_header: nil, tool_loading: true)
     # Fireworks' /v1/messages (docs.fireworks.ai, anthropic-compatibility):
     # Bearer auth, no `display` in its thinking schema (every object refuses
     # extra fields; thinking comes back by default), an automatic prefix
     # cache (no breakpoints), and x-session-affinity to keep a session on
-    # one replica, where its cache is.
+    # one replica, where its cache is. Its compatibility list has no
+    # deferred tools.
     Dialect::FIREWORKS = Dialect.new(name: "fireworks", auth: :bearer, thinking_display: nil,
-                                     cache_breakpoints: false, session_header: "x-session-affinity")
+                                     cache_breakpoints: false, session_header: "x-session-affinity", tool_loading: false)
     Dialect::BY_NAME = { "standard" => Dialect::STANDARD, "fireworks" => Dialect::FIREWORKS }.freeze
   end
 end

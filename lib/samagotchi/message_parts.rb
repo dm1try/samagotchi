@@ -237,7 +237,8 @@ module Samagotchi
                   tool_id: nil, marks: {})
       # A built-in reached through call_tool reloads as that built-in's
       # row, with via (its saved params and label are the built-in's).
-      call = Tools::BuiltinCalls.unwrap_saved(call, output)
+      # A direct call of an MCP tool reloads as the call_tool row it ran as.
+      call = Tools::BuiltinCalls.unwrap_saved(Tools::BuiltinCalls.wrap_saved(call, output), output)
       name = call[:name].to_s
       params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
       part = { tool: name, params: params.to_s }

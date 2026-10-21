@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Sessions on Anthropic's Messages API (`api: anthropic`) can call a tool their toolkit leaves out by its own name:
+  the reachable built-ins (`list_sessions` on `lean`) and the MCP servers' tools (`mcp_fs_read`) go in each request
+  deferred (`defer_loading`), and a direct call runs under the same guardrails, approvals and rows as through
+  `call_tool`. Other hosts are unchanged. See [docs/configuration.md](docs/configuration.md#toolkits).
+
 ## [0.98.0] - 2026-10-21
 
 ### Added

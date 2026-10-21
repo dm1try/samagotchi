@@ -13,7 +13,8 @@ ChatLoop::Run#generate
   → AnthropicMessages#chat
       → #request_body                       # options as Messages takes them, breakpoints on or off
           → AnthropicWire.translate         # system blocks + messages, cache_control placed
-          → AnthropicWire.tools             # function schemas → {name, description, input_schema}
+          → AnthropicWire.tools             # function schemas → {name, description, input_schema},
+                                            #   a deferred one with defer_loading: true
       → POST {base}/v1/messages             # LLM::HTTP: retries, cancel, first-token limit
       → AnthropicAssembly#add per SSE event # → ChatResponse (text, reasoning, tool_calls, usage,
                                             #   finish_reason, provider_content)
@@ -35,6 +36,7 @@ Paths are under `lib/samagotchi/llm/`.
 | `anthropic_wire.rb` | `AnthropicWire`: ChatLoop's wire messages as Messages' `system` and `messages`, the two breakpoints, tool ids and names |
 | `anthropic_assembly.rb` | `AnthropicAssembly`: a response from a whole body (`.from_message`) or stream events (`#add`), its usage in the OpenAI shape |
 | `dialect.rb` | `Dialect` (`STANDARD`, `FIREWORKS`): what a provider's `/v1/messages` does differently |
+| `../tools/deferred_tools.rb` | `Tools::DeferredTools.list`: the tools a request declares deferred (Deferred tools) |
 | `prompt_cache.rb` | `PromptCache.control`: the `cache_control` a breakpoint carries (`cache.ttl`) |
 | `chat_loop.rb` | `ChatLoop#replay_blocks`, `#reasoning_history`'s floor, `Run#with_thinking` (saves `anthropic_content`), `#settle_dropped_thinking!` |
 
@@ -202,12 +204,44 @@ The log line's `cache=` says `on`, `1h` or nothing (`#cache_summary`). prompt-ca
 
 `LLM::Dialect` is a host's `dialect:` (`Dialect.parse` warns once on an unknown name or on a host whose api isn't
 `anthropic`): `auth` (the default key header), `thinking_display` (the `display` sent with adaptive or budget
-thinking, nil for none), `cache_breakpoints` and `session_header`.
+thinking, nil for none), `cache_breakpoints`, `session_header` and `tool_loading` (deferred tools, below).
 
-| Dialect | auth | thinking display | breakpoints | session header |
-|---|---|---|---|---|
-| `STANDARD` (no `dialect:`) | `x-api-key` | `summarized` | yes | none |
-| `FIREWORKS` | Bearer | none | no (an automatic prefix cache) | `x-session-affinity` |
+| Dialect | auth | thinking display | breakpoints | session header | tool loading |
+|---|---|---|---|---|---|
+| `STANDARD` (no `dialect:`) | `x-api-key` | `summarized` | yes | none | yes |
+| `FIREWORKS` | Bearer | none | no (an automatic prefix cache) | `x-session-affinity` | no |
+
+## Deferred tools
+
+A session declares its toolkit's tools; the ones it reaches but doesn't declare (the built-ins its toolkit leaves out
+without removing them, an MCP server's tools in the tool index) are found with `find_tools` and called with
+`call_tool` on every host. On a Messages host they also go in `tools` with `defer_loading: true`, after the declared
+ones: the model sees their names only when something loads them, and the API accepts a call of one by its own name.
+`AnthropicMessages#loads_tools?(model)` says whether a request does this: the dialect's `tool_loading`, unless the
+host refused it for that model.
+
+`ChatLoop#tool_definitions(conversation, model:)` appends them (`Tools::DeferredTools.list`) only on such an
+adapter, and only with at least one tool declared (Messages wants one). The list, per request:
+
+1. the built-ins the toolkit reaches (`Registry#reachable_names`), in registry order;
+2. the tool index's source tools while `call_tool` is declared (`ToolIndex#deferrable`, via
+   `Registry::Index#deferrable`): callable, the only tool with its acts_as, a name Messages takes, no registered
+   tool's name; by acts_as (`mcp_<server>_<tool>`), sorted by name;
+3. every other name the conversation loaded (a find result's `loaded:`, a tool change's `add:`) that isn't declared,
+   as a stub ("Not available right now; find_tools finds it when it is.", an empty object schema): its server is
+   gone or still starting, and the reference in the history must name a tool in `tools`.
+
+A deferred tool never carries `cache_control`, and the list sits after the declared tools, so the cached prefix holds
+(prompt-caching.md). A session with nothing to defer (full, no MCP server) sends the bytes it always did.
+
+A direct call of a deferred tool runs whether something loaded it or not (the API doesn't check): the Engine sets
+`TurnSettings#loads_tools` from the turn's final model (after the before_turn hooks), and then `ToolRunner#run` and
+`KernelLoop#dispatch` take a reachable built-in by its own name (`Registry#indexed`) through the normal gate, and wrap
+an MCP tool's acts_as into the `call_tool` call it stands for (`ToolIndex#wrap`): `call_tool`'s row, rules and
+approvals. A reload rebuilds that wrapped call from the saved one (`BuiltinCalls.wrap_saved`). Each such call is
+logged (`tool_direct_deferred`, with `loaded:` whether the conversation had loaded it). On `api: openai` and the
+native loop nothing is deferred, and a direct call of a reachable built-in is refused with the `call_tool` route as
+before.
 
 ## 400 fallbacks
 

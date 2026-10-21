@@ -2137,8 +2137,13 @@ module Samagotchi
       # through the kernel without its #run: tag those dumps with this
       # turn's model, not the last native one.
       explained = model.llm_context_explained(@model_settings.llm_context_session_args)
+      model_backend = backend(model)
+      # A host that loads tools runs a direct call of one the session
+      # reaches but doesn't declare (ToolRunner, KernelLoop#dispatch).
+      loads_tools = model_backend.respond_to?(:loads_tools?) && model_backend.loads_tools?(bare_for_backend)
       @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
-                                                 llm_context: explained&.resolved, price: model.price)
+                                                 llm_context: explained&.resolved, price: model.price,
+                                                 loads_tools: loads_tools)
       log_llm_context(explained)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
@@ -2146,7 +2151,7 @@ module Samagotchi
       # end keeps it, so a Continue resumes this run.
       run_start = turn.messages.length
       reasoning_since = resumed_run_start(turn, run_start)
-      result = backend(model).complete(
+      result = model_backend.complete(
         messages: turn.messages,
         max_iterations: turn.limit,
         on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller,

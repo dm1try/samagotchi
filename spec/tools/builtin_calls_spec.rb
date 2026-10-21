@@ -100,4 +100,21 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
       expect { described_class.row_for(schema.call(prop)) }.to raise_error(ArgumentError, /replace the call's #{prop}/)
     end
   end
+
+  describe ".wrap_saved" do
+    let(:direct) { described_class.build("mcp_fs_read", { "path" => "a" }) }
+
+    it "is the call_tool call a direct MCP call ran as, when its result leads with [call_tool]" do
+      expect(described_class.wrap_saved(direct, "[call_tool]\nok"))
+        .to include(name: "call_tool", args: { "tool" => "mcp_fs_read", "args" => { "path" => "a" } })
+    end
+
+    it "leaves any other call as it is: another lead, a built-in, call_tool itself" do
+      expect(described_class.wrap_saved(direct, "Error: no such tool.")).to eq(direct)
+      read = described_class.build("read", { "path" => "a" })
+      expect(described_class.wrap_saved(read, "[call_tool]\nx")).to eq(read)
+      routed = described_class.build("call_tool", { "tool" => "fs/read", "args" => {} })
+      expect(described_class.wrap_saved(routed, "[call_tool]\nx")).to eq(routed)
+    end
+  end
 end

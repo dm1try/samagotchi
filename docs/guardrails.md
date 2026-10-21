@@ -429,6 +429,14 @@ direct call, and an approval is keyed `delegate:…` either way. `tool:
 call_tool` rules no longer see such calls, only MCP calls and misses. A
 `chi/` name the toolkit removes is refused before the gate, with no card.
 
+On a Messages host (`api: anthropic`) those tools are also callable by their
+own names (they go out deferred): a direct `delegate` call is gated as any
+declared tool's, keyed `delegate:…` (the same approval as through
+`call_tool`); a direct call of an MCP tool's `mcp_<server>_<tool>` name is
+gated as the `call_tool` call it stands for: `mcp_*` rules match it, and its
+approval is `call_tool>mcp_x:…`, the same as the `call_tool` route's. A tool
+the toolkit removes stays refused before the gate.
+
 ```yaml
     - id: mcp-ask
       # every MCP call (call_tool, acting as mcp_<server>_<tool>); not a find_tools search.

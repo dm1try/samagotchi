@@ -319,28 +319,47 @@ module Samagotchi
     def layers = @kernel.respond_to?(:llm_context_layers) ? @kernel.llm_context_layers : []
 
     # The call its tool's entry unwraps it to (call_tool on a built-in),
-    # else the call as it is. One that fails runs as it is: call_tool then
-    # refuses a built-in (fail closed).
+    # else the call as it is. On a host that loads tools, a direct call of
+    # a source's tool by its acts_as runs as the call_tool call first
+    # (Registry::Index#wrap): call_tool's row, rules and approvals. One
+    # that fails runs as it is: call_tool then refuses a built-in (fail
+    # closed).
     def unwrapped(call)
       registry = tools
       return call unless registry.respond_to?(:offered) && !call[:name].nil?
 
+      call = wrapped(registry, call)
       registry.offered(call[:name], layers: layers)&.unwrap&.call(call, layers) || call
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
       call
     end
 
+    # +call+ as the call_tool call it runs as when it names a deferred
+    # source tool, on a host that loads tools; else as it is.
+    def wrapped(registry, call)
+      wrap = registry.respond_to?(:index) ? registry.index&.wrap : nil
+      return call unless wrap && loads_tools? && !registry.key?(call[:name])
+
+      wrap.call(call) || call
+    end
+
     # A call that can't run in this turn as it is, by its name: a real tool
     # the session's toolkit leaves out, or one reached through call_tool
-    # (via:) that the toolkit doesn't reach that way (a hook's rewrite).
+    # (via:) that the toolkit doesn't reach that way (a hook's rewrite). On
+    # a host that loads tools, a built-in the toolkit reaches runs by its
+    # own name (KernelLoop#dispatch takes it too).
     def left_out?(call)
       registry = tools
       return false unless registry.respond_to?(:left_out) && !call[:name].nil?
       return registry.indexed(call[:name], layers: layers).nil? if call[:via]
+      return false if loads_tools? && registry.indexed(call[:name], layers: layers)
 
       !registry.left_out(call[:name], layers: layers).nil?
     end
+
+    # Whether the turn's host loads tools (TurnSettings#loads_tools).
+    def loads_tools? = @kernel.respond_to?(:turn_settings) && @kernel.turn_settings&.loads_tools == true
 
     # A tool the registry has from a plugin (not core, not unknown).
     def plugin_tool?(name)

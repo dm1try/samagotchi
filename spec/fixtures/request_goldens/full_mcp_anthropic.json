@@ -605,6 +605,32 @@
           ],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "mcp_fs_list_sessions_log",
+        "description": "List the sessions log.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "defer_loading": true
+      },
+      {
+        "name": "mcp_fs_read_file",
+        "description": "Read a file's text.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "defer_loading": true
       }
     ],
     "tool_choice": {
