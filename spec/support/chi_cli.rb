@@ -19,9 +19,10 @@ require_relative "waiting"
 # mechanism and forks the rest. It inherits this process's state too: the
 # example's rspec stubs and the suite's global ones (BundleNeeds' rg, Reline,
 # the NullKeychain, the cleared Samagotchi::Bundles constants, the warning
-# categories) and the flags of what warns once per process (PromptCache,
-# ModelNotes, Approvals). Anything that asserts on those takes a real
-# run_chi.
+# categories). Anything that asserts on those takes a real run_chi. The fork
+# starts as a new chi would on two counts (ChiCli.reset_inherited_state):
+# the what-warns-once-per-process flags are cleared, and it closes its copy
+# of the session owner locks this process holds.
 module ChiCli
   CHI = File.expand_path("../../bin/chi", __dir__)
 
@@ -80,6 +81,7 @@ module ChiCli
     status = 1
     begin
       Process.setpgrp
+      reset_inherited_state
       STDIN.reopen(File::NULL)
       STDOUT.reopen(out_path, "w")
       STDERR.reopen(err_path, "w")
@@ -102,6 +104,24 @@ module ChiCli
       $stderr.flush
       exit!(status)
     end
+  end
+
+  # In the fork, before chi runs: what a new chi process wouldn't have.
+  # The session owner locks this process holds: the fork's fd of each is
+  # closed (never unlocked: the lock is the parent's too, one open file
+  # description), so neither it nor a worker it forks keeps a session locked
+  # past the example's release. And the flags of what warns once per process,
+  # so the fork warns as a new chi would.
+  def self.reset_inherited_state
+    ObjectSpace.each_object(Samagotchi::OwnerLock) do |lock|
+      file = lock.instance_variable_get(:@file)
+      file.close unless file.closed?
+    end
+    Samagotchi::ConfigFile.reset_warnings!
+    Samagotchi::EffectiveModel::Unresolved.reset!
+    Samagotchi::ModelNotes.reset_warnings!
+    Samagotchi::PromptWarmup.instance_variable_set(:@warned, nil)
+    Samagotchi::LLM::PromptCache.instance_variable_set(:@warned_ttl, nil)
   end
 
   # Wait for the fork; kill its group past +timeout+, or when the wait
