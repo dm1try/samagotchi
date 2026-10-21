@@ -1132,10 +1132,13 @@ The REPL and attached mode show one status row under the prompt, drawn when what
 changes:
 
 ```
-status> model=Qwen3.6-35B | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli_usage | muted: gh-helper
+status> Coordinator | model=Qwen3.6-35B | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli_usage | muted: gh-helper
 status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | mem: skill_coordinator
 ```
 
+- The session's title first, when it has one (`/title`; not the first message a session without one is named by),
+  cut to 32 characters and to a third of a narrow row. It follows `/title` from any client (this terminal, another
+  one, the web's `✎`, `chi send`) without a restart: the worker's `command_ran` for it carries the new title.
 - `model=`: the model in use, `(default: …)` beside it when it isn't the config's default, and
   `model=<served> (served; asked <name>)` when the server said it served another model (not for one its host's
   `hosts.<name>.models.<id>.served` names; see [configuration](configuration.md#models-a-host-serves-but-doesnt-list)).
