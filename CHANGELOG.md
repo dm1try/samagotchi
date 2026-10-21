@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-10-21
+
 ### Added
 
 - The terminal's status row (the REPL's and an attached one's) shows the session's title first when it has one, and
@@ -27,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   exited 1).
 - `chi bundle upgrade core --dry-run` (or `dev`) names the memory files of a member it would install that you already
   have, which the install keeps as yours (`model-notes: kept your own …`), as the real run does; it named none.
+
+Update with `chi update` (the system bundle 0.97.0), then restart `chi web`.
 
 ## [0.96.0] - 2026-10-21
 
@@ -3723,7 +3727,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.96.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.97.0...HEAD
+[0.97.0]: https://github.com/dm1try/samagotchi/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/dm1try/samagotchi/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/dm1try/samagotchi/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/dm1try/samagotchi/compare/v0.93.0...v0.94.0
