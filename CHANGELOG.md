@@ -13,6 +13,11 @@ and commands may change between minor versions. How releases are made:
 - The terminal's status row (the REPL's and an attached one's) shows the session's title first when it has one, and
   follows `/title` from any client without a restart. See [docs/cli.md](docs/cli.md#status-line).
 
+### Fixed
+
+- `chi bundle try` exits 130 for a Ctrl-C in the child chi's first moments too (while its Ruby was still booting it
+  exited 1).
+
 ## [0.96.0] - 2026-10-21
 
 ### Added

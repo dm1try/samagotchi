@@ -2,6 +2,7 @@
 
 require "open3"
 require "rbconfig"
+require_relative "../../cli/exit"
 require_relative "../../process_group"
 
 module Samagotchi
@@ -54,7 +55,7 @@ module Samagotchi
               end
               trap_state[:pid] = nil
               out, err = finish_readers(readers, streams)
-              code = timed_out ? CLI::Exit::FAILED : process_exit_status(status)
+              code = timed_out ? CLI::Exit::FAILED : exit_code(status, trap_state)
               Result.new(exit_status: code, stdout: out, stderr: err, session_id: err[/^Session: (\S+)/, 1],
                          timed_out: timed_out)
             end
@@ -91,13 +92,16 @@ module Samagotchi
         end
 
         def trap_forwarding
-          state = { pid: nil, wait: nil, pending: nil }
+          state = { pid: nil, wait: nil, pending: nil, interrupted: false }
           old = {}
           %w[INT TERM].each do |signal|
             old[signal] = Signal.trap(signal) do
               if state[:pid]
                 # Not once its waiter reaped it: that group may be gone.
-                ProcessGroup.signal(state[:pid], signal) if state[:wait]&.alive?
+                if state[:wait]&.alive?
+                  state[:interrupted] ||= signal == "INT"
+                  ProcessGroup.signal(state[:pid], signal)
+                end
               else
                 state[:pending] ||= signal
               end
@@ -111,7 +115,10 @@ module Samagotchi
           state[:pid] = pid
           pending = state[:pending]
           state[:pending] = nil
-          ProcessGroup.signal(pid, pending) if pending
+          return unless pending
+
+          state[:interrupted] ||= pending == "INT"
+          ProcessGroup.signal(pid, pending)
         end
 
         def restore_traps(old)
@@ -169,6 +176,14 @@ module Samagotchi
             reader.kill if reader.alive?
           end
           readers.each(&:join)
+        end
+
+        # A Ctrl-C forwarded to the child is an interrupted run, however it
+        # ended: a Ruby still booting (before chi's INT handler) exits 1.
+        def exit_code(status, trap_state)
+          return CLI::Exit::INTERRUPTED if trap_state[:interrupted] && !status.success?
+
+          process_exit_status(status)
         end
 
         def process_exit_status(status)

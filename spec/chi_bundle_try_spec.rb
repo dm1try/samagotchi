@@ -635,6 +635,63 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         Signal.trap("INT", previous)
       end
 
+      it "exits 130 when a forwarded Ctrl-C ends a child still booting with status 1" do
+        previous = Signal.trap("INT") {}
+        Dir.mktmpdir do |dir|
+          ready = File.join(dir, "ready")
+          # A Ruby interrupted while loading its prelude exits 1, not by
+          # the signal: this child does the same.
+          sandbox = stub_child(dir, <<~RUBY)
+            trap("INT") { exit 1 }
+            File.write(#{ready.inspect}, "")
+            sleep 30
+          RUBY
+          interrupter = Thread.new do
+            wait_until!("the child", timeout: 10) { File.exist?(ready) }
+            Process.kill("INT", Process.pid)
+          end
+
+          result = described_class.new(sandbox).run(prompt: "test", options: {}, timeout: 30)
+
+          interrupter.join
+          expect(result.exit_status).to eq(130)
+          expect(result.timed_out).to be(false)
+        end
+      ensure
+        Signal.trap("INT", previous)
+      end
+
+      it "exits 130 when a Ctrl-C held while starting ends the child with status 1" do
+        previous = Signal.trap("INT") {}
+        Dir.mktmpdir do |dir|
+          sandbox = Struct.new(:child_env, :work_dir).new({}, dir)
+          # The child exits 1 as a booting Ruby would; the INT itself is
+          # held back so no shell race decides the status.
+          allow(Samagotchi::ProcessGroup).to receive(:signal)
+          allow(Open3).to receive(:popen3).and_wrap_original do |original, env, *_command, **kwargs, &block|
+            Process.kill("INT", Process.pid)
+            original.call(env, "sh", "-c", "sleep 0.2; exit 1", **kwargs, &block)
+          end
+
+          result = described_class.new(sandbox).run(prompt: "test", options: {}, timeout: 5)
+
+          expect(result.exit_status).to eq(130)
+          expect(Samagotchi::ProcessGroup).to have_received(:signal).with(anything, "INT")
+        end
+      ensure
+        Signal.trap("INT", previous)
+      end
+
+      it "keeps the child's own failure when no Ctrl-C reached it" do
+        Dir.mktmpdir do |dir|
+          sandbox = stub_child(dir, "exit 1\n")
+
+          result = described_class.new(sandbox).run(prompt: "test", options: {}, timeout: 5)
+
+          expect(result.exit_status).to eq(1)
+        end
+      end
+
       it "returns promptly and kills a descendant that keeps stdout open" do
         Dir.mktmpdir do |dir|
           script = File.join(dir, "chi_stub.rb")
