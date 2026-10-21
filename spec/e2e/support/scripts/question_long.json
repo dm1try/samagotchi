@@ -1,0 +1,37 @@
+{
+ "delay": 0.005,
+ "iterations": [
+  {
+   "thinking": "I should lay out the plan, then ask which file to read.",
+   "text": "## A plan before I start\n\nI read the repository's layout first: the web frontend lives in lib/samagotchi/web/public, its specs in spec/web/public, and the end-to-end checks in spec/e2e. The stage view is the part that pins the running turn above the composer, and it is where this change lands.\n\n### Step one: the measurements\n\nBefore touching anything I would measure how tall the stage gets on a desktop window and on a phone, with the cloud open and closed, so the new cap has numbers to stand on rather than a guess about what the page can spare.\n\n### Step two: the reading room\n\nThen the asking text loses its own scroll while a long question waits. The stage keeps one scroll for the whole reply, so a plan like this one reads from its first line to its last without a second scrollbar inside the first.\n\n### Step three: the way back to the card\n\nA small pill at the stage's bottom edge leads back to the card whenever it is out of sight. It hides again as soon as the card shows, and it never shows for approvals, the step limit or a hook's question, which keep today's layout.\n\n### Step four: the checks\n\nLast, the specs: unit tests for the class, the cap and the pill, and one end-to-end run that sends a long reply like this one, follows the pill to the card, answers it and makes sure nothing on the page moves at the answer.\n\nBoth files are worth a look before I start ([why](https://example.com/files)), so tell me which one to read first.",
+   "tools": [
+    {
+     "name": "ask_user_question",
+     "arguments": {
+      "question": "Which file should I read?",
+      "options": [
+       "README.md",
+       "Gemfile"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "thinking": "They answered; one read.",
+   "tools": [
+    {
+     "name": "read",
+     "arguments": {
+      "path": "README.md",
+      "start_line": 1,
+      "end_line": 2
+     }
+    }
+   ]
+  },
+  {
+   "text": "Read the file you picked. **Done**."
+  }
+ ]
+}

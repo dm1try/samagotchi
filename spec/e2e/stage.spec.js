@@ -249,6 +249,68 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
 });
 
+// A long "plan, then ask" reply: the question room. The stage's cap rises
+// (0.85 of the page, never above the session panel), the reply reads from
+// its start in the stage's one scroll, and a pill leads to the card.
+test("a long reply that asks gets the question room: read from its start, a pill to the card, the answer moves nothing", async ({ page, script }) => {
+  script("question_long");
+  await watchShifts(page);
+  await watchStage(page);
+  await send(page, "Plan it, then ask me");
+  const card = stageEl(page).locator(".ts-extras .bubble.question");
+  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+  await expect(stageEl(page)).toHaveClass(/question-room/);
+  const asking = stageEl(page).locator(".ts-asking");
+  await expect(asking.locator("h2")).toHaveText("A plan before I start");
+  // The raised cap, read as fitCap reads the room; the stage grows to it.
+  const want = await page.evaluate(() => {
+    const room = document.querySelector("#center").clientHeight - (document.querySelector("#dock").offsetHeight + 10) - 32;
+    return Math.min(0.85 * window.innerHeight, room) - 2;
+  });
+  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBeGreaterThanOrEqual(want);
+  // The asking slot has no scroll of its own.
+  expect(await asking.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  const scroller = stageEl(page).locator(".ts-scroll");
+  const inSight = async () => {
+    const [c, v] = [await card.boundingBox(), await scroller.boundingBox()];
+    return c.y + Math.min(c.height, 40) <= v.y + v.height && c.y + c.height > v.y;
+  };
+  // Read from the reply's start: its top in the stage's view, the card below it.
+  await expect.poll(async () => {
+    const [a, v] = [await asking.boundingBox(), await scroller.boundingBox()];
+    return a.y >= v.y - 1 && a.y < v.y + v.height;
+  }).toBe(true);
+  expect(await inSight()).toBe(false);
+  const pill = stageEl(page).locator(".ts-room-pill");
+  await expect(pill).toBeVisible();
+  await expect(pill).toHaveAccessibleName("Go to the question");
+  await expectNoHorizontalOverflow(page);
+  await pill.click();
+  await expect.poll(inSight).toBe(true);
+  await expect(pill).toBeHidden();
+  // From the answer until the turn is answered nothing moves on its own.
+  await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
+  await page.waitForFunction(() => !document.querySelector("#turnStage [data-following]")); // the pill's ease is over
+  await watchFrames(page);
+  await startSnaps(page);
+  const submitAt = await pageNow(page);
+  const cardTop = (await card.boundingBox()).y;
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
+  await expect(stageEl(page)).not.toHaveClass(/question-room/);
+  await expect(pill).toBeHidden();
+  const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
+  expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: submitAt, to: answeredAt, keys: ["card"] })).toEqual([]);
+  expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
+  await page.mouse.move(0, 0);
+  await handedOff(page, 1);
+  const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
+    [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
+  expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
+});
+
 test("the stage folds to its status row, and stays folded across a reload", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
