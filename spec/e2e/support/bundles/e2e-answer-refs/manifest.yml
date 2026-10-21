@@ -5,4 +5,4 @@ scope: system
 description: "The e2e suite's refs on an answer: a linked JIRA-7 and a plain ABC-3; a tool row with two refs"
 plugin:
   file: plugin.rb
-  sha256: sha256:511bfd885faf2831d6c62cbc1c1fd26b3622d8da2c802e9d57c1b1880a979ae7
+  sha256: sha256:fd9419763d27772c02780a5c64773d4584e29a24109172aa2e81d0629f01d697

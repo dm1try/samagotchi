@@ -84,7 +84,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, staged = false } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -105,6 +105,7 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
     askingText: () => asking,
     renderMarkdown,
     linkRefs,
+    pairRefs,
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
     doc: {
       createElement: (tag) => new FakeEl(tag),
@@ -786,4 +787,45 @@ test("an open while a render is in flight asks no second time", async () => {
   toggle(card, true);
   await flush();
   assert.equal(asked.length, 1);
+});
+
+// A plugin's refs on the reply that asks (the pending question's refs).
+const REFS = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" },
+  actions: [{ id: "open", label: "Open in DEMO", url: "https://example.com/browse/DEMO-123" }] }];
+
+test("a question's refs pair with its text and the kept reply (raw, then after the markdown swap), never the summary's line", async () => {
+  const paired = [];
+  const linked = [];
+  const answers = ["<p>See <strong>DEMO-123</strong>.</p>"];
+  const t = setup({
+    asking: "See DEMO-123.",
+    renderMarkdown: () => Promise.resolve(answers.shift() ?? null),
+    linkRefs: (el, refs) => linked.push([el, refs]),
+    pairRefs: (el, refs) => paired.push([el, refs]),
+  });
+  t.cards.renderQuestion({ ...PQ, question: "Proceed with DEMO-123?", refs: REFS });
+  const card = t.cards.questionCard();
+  const text = card.querySelector(".question-text");
+  assert.deepEqual(paired, [[text, REFS]]);
+  t.cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  const full = card.children.find((el) => el.classes.has("question-said-full"));
+  assert.deepEqual(paired, [[text, REFS], [full, REFS]]);
+  assert.ok(!paired.some(([el]) => el.classes.has("question-said")));
+  card.open = true;
+  (card.listeners.toggle || []).forEach((fn) => fn({}));
+  await flush();
+  assert.ok(full.classes.has("markdown"));
+  assert.deepEqual(linked, [[full, REFS]]);
+});
+
+test("a question without refs (or a relayed hook question's text) pairs none", async () => {
+  const paired = [];
+  const t = setup({ asking: "x", pairRefs: (el, refs) => paired.push(refs) });
+  t.cards.renderQuestion(PQ);
+  t.cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.deepEqual(paired, [null, null]);
+  const relayed = [];
+  const r = setup({ pairRefs: (el, refs) => relayed.push(refs) });
+  r.cards.renderQuestion({ ...PQ, kind: "hook", refs: REFS, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], asked: "Go?" } });
+  assert.deepEqual(relayed, []);
 });

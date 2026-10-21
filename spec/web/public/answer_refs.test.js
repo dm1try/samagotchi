@@ -247,3 +247,17 @@ test("without html (web.markdown off), a path:line the scan wrapped before the r
   assert.equal(span.dataset.refLine, "3");
   live.remove();
 });
+
+test("a closed step's text (.gen-text, plain text) pairs as an answer does: a question's refs on the reply that asked", () => {
+  const step = document.createElement("div");
+  step.className = "gen-text";
+  step.textContent = "Proceed with JIRA-1 (not JIRA-12)?";
+  document.body.append(step);
+  const els = paired(step, [issue("JIRA-1")]);
+  assert.deepEqual(texts(els), ["JIRA-1"]);
+  assert.equal(idOf(els[0]), "JIRA-1");
+  const target = refTarget(els[0]);
+  assert.deepEqual(refActions(target, { editor: false }).map((a) => a.label(target)), ["Open in Jira"]);
+  assert.equal(step.textContent, "Proceed with JIRA-1 (not JIRA-12)?");
+  step.remove();
+});

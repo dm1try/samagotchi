@@ -4,6 +4,7 @@ import {
   chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
 
 function turnOf(...events) {
@@ -309,6 +310,22 @@ test("liveSlots: no asking text for an action card (pending, not blocked), unblo
   const ended = askingTurn();
   applyEvent(ended, { type: "turn_completed" });
   assert.equal(liveSlots(ended, { pending: true, blocked: true, ended: "completed" }).asking, "");
+});
+
+test("liveSlots: a question's refs on the asking step come with the asking text, and only while it shows", () => {
+  const refs = [{ match: "dev.yml", kind: "issue", target: { id: "dev.yml" } }];
+  const turn = askingTurn();
+  assert.equal(liveSlots(turn, { pending: true, blocked: true }).askingRefs, null);
+  assert.ok(model.questionRefs(turn, refs));
+  assert.deepEqual(liveSlots(turn, { pending: true, blocked: true }).askingRefs, refs);
+  assert.equal(liveSlots(turn, { pending: true }).askingRefs, null);
+  // An empty or a non-array list keeps what the step has.
+  model.questionRefs(turn, []);
+  model.questionRefs(turn, "x");
+  assert.deepEqual(liveSlots(turn, { pending: true, blocked: true }).askingRefs, refs);
+  applyEvent(turn, { type: "turn_completed" });
+  assert.equal(liveSlots(turn, { pending: true, blocked: true, ended: "completed" }).askingRefs, null);
+  assert.equal(model.questionRefs(turn, refs), null);
 });
 
 test("liveSlots: a thinking-only asking step shows no earlier step's text; the headline stays its thinking sentence", () => {

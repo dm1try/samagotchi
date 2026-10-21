@@ -441,6 +441,22 @@ test("turnHistoryNodes: an answer bubble knows its message's display_refs (no in
   assert.equal(holder.querySelector("[data-answer-at]"), null);
 });
 
+test("turnHistoryNodes: a step's text knows its message's display_refs (a question's), as an answer does", () => {
+  const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
+  const items = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Proceed with DEMO-123?", display_refs: refs, parts: { tools: [{ tool: "ask_user_question", params: "", output: "a" }] } },
+    { role: "assistant", content: "Reading.", parts: { tools: [{ tool: "read", params: 'path="R.md"', output: "[read]\nok" }] } },
+    { role: "assistant", content: "Done." },
+  ];
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs }));
+  const texts = [...holder.querySelectorAll(".gen > .gen-text")];
+  assert.deepEqual(texts.map((el) => el.textContent), ["Proceed with DEMO-123?", "Reading."]);
+  assert.deepEqual(texts.map((el) => answerRefsOf(el)), [refs, null]);
+  assert.equal(holder.querySelector("[data-answer-at]"), null);
+});
+
 test("stepText: a reloaded block's step text by iteration (1-based), \"\" for a step without text or none at all", () => {
   const items = [
     { role: "user", content: "p" },

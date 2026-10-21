@@ -350,8 +350,20 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   const full = page.locator("#history .bubble.question .question-said-full");
   await expect(full.locator("h2")).toHaveText("Two files");
   await expect(full).toHaveText(
-    "Two files I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions (why).");
+    "Two files I can start from either file: README.md describes the project and Gemfile lists its gems. JIRA-7 asks different questions (why).");
   await expect(full.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
+  // A plugin's ref on that reply (e2e-answer-refs, :question_asked): paired in the card's body and on the
+  // step's text in the history (the reload's), its action in the ref's menu.
+  await expect(full.locator('[data-ref-kind="issue"]')).toHaveText("JIRA-7");
+  const stepRef = page.locator("#history .gen > .gen-text [data-ref-kind=\"issue\"]");
+  await expect(stepRef).toHaveText("JIRA-7");
+  // Its one action: a click opens it in a new tab.
+  await page.evaluate(() => {
+    window.__opened = [];
+    window.open = (...args) => { window.__opened.push(args); return null; };
+  });
+  await full.locator('[data-ref-kind="issue"]').click();
+  expect(await page.evaluate(() => window.__opened)).toEqual([["https://example.test/JIRA-7", "_blank", "noopener,noreferrer"]]);
 });
 
 // The step limit asks as a question (kind continue) between turns: its card,

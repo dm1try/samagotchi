@@ -223,3 +223,70 @@ test("drawAsking with markdown: a new text, the empty one included, drops the cl
   assert.ok(!asking.classList.contains("md-compact"));
   assert.equal(htmlOf(asking), '<div class="ts-asking" hidden=""></div>');
 });
+
+// The page's pass as markdown_place.js linkRefsIn runs it: a plugin's refs
+// set and paired (answer_refs.js), +calls+ each call's refs.
+async function realPairing() {
+  const { pairAnswerRefs, setAnswerRefs } = await import("../../../lib/samagotchi/web/public/answer_refs.js");
+  const calls = [];
+  const linkRefs = (el, refs) => {
+    calls.push(refs);
+    if (!refs) return;
+    setAnswerRefs(el, refs);
+    pairAnswerRefs(el);
+  };
+  return { linkRefs, calls };
+}
+
+const TICKET = {
+  match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, label: "DEMO DEMO-123",
+  actions: [{ id: "open", label: "Open in DEMO", url: "https://example.com/browse/DEMO-123" }],
+};
+const OTHER = { ...TICKET, match: "DEMO-456", target: { id: "DEMO-456" }, label: "DEMO DEMO-456",
+  actions: [{ id: "open", label: "Open in DEMO", url: "https://example.com/browse/DEMO-456" }] };
+
+test("drawAsking with refs: the raw text pairs them, and the markdown swap pairs them again", async () => {
+  const r = renderer();
+  const { linkRefs } = await realPairing();
+  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs });
+  slots.drawAsking("Should I proceed with DEMO-123?", [TICKET]);
+  const raw = asking.querySelector('[data-ref-kind="issue"]');
+  assert.equal(raw?.textContent, "DEMO-123");
+  assert.equal(raw.getAttribute("title"), "DEMO DEMO-123");
+  await r.settle(0, "<p>Should I proceed with <strong>DEMO-123</strong>?</p>");
+  assert.ok(asking.classList.contains("markdown"));
+  const swapped = asking.querySelector('strong > [data-ref-kind="issue"]');
+  assert.equal(swapped?.textContent, "DEMO-123");
+  assert.equal(changes(), 1);
+});
+
+test("drawAsking with refs: new refs on the same text pair in place, no redraw; the same refs again are a no-op", async () => {
+  const r = renderer();
+  const { linkRefs, calls } = await realPairing();
+  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs });
+  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET]);
+  await r.settle(0, "<p>DEMO-123 and DEMO-456: go on?</p>");
+  const p = asking.firstChild;
+  assert.equal(asking.querySelectorAll("[data-ref-kind]").length, 1);
+  // A second question in the step: its pending question has the whole list.
+  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET, OTHER]);
+  assert.ok(asking.firstChild === p);
+  assert.deepEqual([...asking.querySelectorAll("[data-ref-kind]")].map((el) => el.textContent), ["DEMO-123", "DEMO-456"]);
+  assert.equal(r.calls.length, 1);
+  assert.equal(changes(), 1);
+  const before = calls.length;
+  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET, OTHER]);
+  assert.equal(calls.length, before);
+});
+
+test("drawAsking without refs: the ref pass gets none; reset forgets them", async () => {
+  const { linkRefs, calls } = await realPairing();
+  const { asking, slots } = slotsOf({ linkRefs });
+  slots.drawAsking("DEMO-123?", [TICKET]);
+  slots.reset();
+  slots.drawAsking("DEMO-123?");
+  assert.deepEqual(calls, [[TICKET], null]);
+  assert.equal(asking.querySelector("[data-ref-kind]"), null);
+  slots.drawAsking("DEMO-123?", []);
+  assert.deepEqual(calls, [[TICKET], null]);
+});

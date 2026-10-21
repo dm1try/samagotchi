@@ -416,3 +416,14 @@ test("reset and card", () => {
   handlers.card({ id: "c", body: "x" });
   assert.deepEqual(page.names(), ["resync", "upsertCard", "refreshCardBodies"]);
 });
+
+test("question_requested: a question's refs go on its step before the card draws (the asking slot pairs them); none, no call", () => {
+  const { page, handlers } = fakePage();
+  const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" } }];
+  handlers.question_requested({ pending_question: { id: "q1", question: "Go?", refs } });
+  assert.deepEqual(page.names(), ["turnDom.questionRefs", "questionCards.renderQuestion"]);
+  handlers.question_requested({ pending_question: { id: "q2", question: "Go?" } });
+  assert.deepEqual(page.names().slice(2), ["questionCards.renderQuestion"]);
+  handlers.question_requested({ pending_question: null });
+  assert.equal(page.names().length, 3);
+});

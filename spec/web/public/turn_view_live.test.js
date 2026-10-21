@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createTurnView, stepTemplate } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { toolRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 
 // A live turn view on a detached history, no hold (no layout under node).
 function liveView() {
@@ -259,4 +260,31 @@ test("createTurnView: a running task_wait's row has its stop-task button after i
   assert.ok(row.querySelector(".task-stop") === btn);
   view.toolCompleted({ iteration: 1, call_index: 1, tool: "task_wait", output: "[task_wait]\ndone", activity: { status: "ok", title: "t1" } });
   assert.ok(row.querySelector(".task-stop") === null);
+});
+
+test("createTurnView: a question's refs on the asking step go on its closed text (once), none on the others", () => {
+  const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
+  const { view } = liveView();
+  view.turnStarted({ prompt: "p" });
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ text: "Proceed with DEMO-123?", iteration: 1 });
+  view.flush();
+  view.generationCompleted();
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "" });
+  view.questionRefs(refs);
+  assert.equal(view.current().turn.gens[0].refs, refs);
+  // Live: nothing on the step's text yet (the stage's asking slot pairs them).
+  assert.equal(answerRefsOf(view.step(0).el.querySelector(":scope > .gen-text")), null);
+  view.toolCompleted({ iteration: 1, call_index: 1, tool: "ask_user_question", status: "ok", output: "a" });
+  view.generationStarted({ iteration: 2 });
+  const text = view.step(0).el.querySelector(":scope > .gen-text");
+  assert.equal(text.textContent, "Proceed with DEMO-123?");
+  assert.deepEqual(answerRefsOf(text), refs);
+  view.chunk({ text: "Reading.", iteration: 2 });
+  view.flush();
+  view.generationCompleted();
+  view.toolStarted({ iteration: 2, call_index: 1, tool: "read", params: 'path="R.md"' });
+  view.toolCompleted({ iteration: 2, call_index: 1, tool: "read", status: "ok", output: "ok" });
+  view.generationStarted({ iteration: 3 });
+  assert.equal(answerRefsOf(view.step(1).el.querySelector(":scope > .gen-text")), null);
 });

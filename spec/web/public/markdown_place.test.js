@@ -22,6 +22,7 @@ function setup() {
     },
     normalize: (text) => text.trim(),
     pairAnswerRefs: (el) => calls.push(["pair", el]),
+    setAnswerRefs: (el, refs) => calls.push(["set", el, refs]),
   });
   return { calls, gen, output, place, root, state };
 }
@@ -44,6 +45,30 @@ test("linkRefsIn links a rendered text against the live roots and session direct
   assert.equal(calls[0][1][0], root);
 });
 
+test("linkRefsIn with a plugin's refs sets and pairs them first, then links the path:line refs", () => {
+  const { calls, place, state } = setup();
+  const el = {};
+  const refs = [{ match: "JIRA-1", kind: "issue" }];
+  place.linkRefsIn(el, refs);
+  assert.deepEqual(calls, [
+    ["set", el, refs],
+    ["pair", el],
+    ["touched", state.roots],
+    ["link", el, state.touched, "/project"],
+  ]);
+});
+
+test("pairRefsIn pairs a plugin's refs only; without refs it does nothing", () => {
+  const { calls, place } = setup();
+  const el = {};
+  place.pairRefsIn(el, null);
+  place.pairRefsIn(el);
+  assert.deepEqual(calls, []);
+  const refs = [{ match: "JIRA-1", kind: "issue" }];
+  place.pairRefsIn(el, refs);
+  assert.deepEqual(calls, [["set", el, refs], ["pair", el]]);
+});
+
 test("applyFinalMarkdown applies answer rendering, then links the final refs", () => {
   const { calls, gen, output, place, state } = setup();
   const messages = [{ role: "assistant", content: "answer" }];
@@ -56,17 +81,19 @@ test("applyFinalMarkdown applies answer rendering, then links the final refs", (
   assert.deepEqual(calls.slice(2), [
     ["touched", state.roots],
     ["pair", output],
+    ["pair", gen],
     ["link", output, state.touched, "/project"],
     ["link", gen, state.touched, "/project"],
   ]);
 });
 
-test("linkTextRefs pairs answers and links output and closed-step text", () => {
+test("linkTextRefs pairs answers and closed-step texts (a question's refs), then links both", () => {
   const { calls, gen, output, place, state } = setup();
   place.linkTextRefs();
   assert.deepEqual(calls, [
     ["touched", state.roots],
     ["pair", output],
+    ["pair", gen],
     ["link", output, state.touched, "/project"],
     ["link", gen, state.touched, "/project"],
   ]);

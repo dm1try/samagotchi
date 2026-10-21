@@ -176,6 +176,10 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // With web.markdown on, it reads as markdown: its heading, and its link opens a new tab.
   await expect(asking.locator("h2")).toHaveText("Two files");
   await expect(asking.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
+  // A plugin's ref on the reply that asks (e2e-answer-refs, :question_asked): paired in the slot.
+  const askRef = asking.locator('[data-ref-kind="issue"]');
+  await expect(askRef).toHaveText("JIRA-7");
+  await expect(askRef).toHaveAttribute("title", "JIRA-7 Login fails");
   await expectNoHorizontalOverflow(page);
   // The card's arrival grows the stage, briefly; the top bar stays (the
   // hidden strip's pill gains "· 1 waiting" and must not wrap to a row).
@@ -189,6 +193,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(card).toBeVisible();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
+  await expect(askRef).toHaveText("JIRA-7");
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0); // its rise is over
   // A phone's keyboard (the window 420 px tall): the cap drops, the held
   // stage clamps to it at once and the waiting card stays in sight; when
@@ -247,6 +252,8 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
+  // The asking step's text in the history keeps the ref (live, at the turn's end).
+  await expect(page.locator('#history .gen > .gen-text [data-ref-kind="issue"]')).toHaveText("JIRA-7");
 });
 
 // A long "plan, then ask" reply: the question room. The stage's cap rises

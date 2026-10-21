@@ -421,7 +421,14 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   finishes the ended turn's own line by its `turn_id` (sent as `&turn_id=`, which also picks that
   turn's answer). A tail read's timing is always the newest turn's; `recent=1` is accepted and not needed.
   The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
-  read's re-render) and pairs them with the bubble's links and text before the `path:line` scan. A file ref outside the
+  read's re-render) and pairs them with the bubble's links and text before the `path:line` scan. A question's
+  refs (`pending_question.refs`, `:question_asked`) pair the same way (`markdown_place.js` `linkRefsIn`/`pairRefsIn`):
+  `question_requested` (or a snapshot's pending question) keeps them on the asking step's gen
+  (`turn_model.js` `questionRefs`) before the card draws, so the stage's asking slot (`stage_slots.js`
+  `drawAsking(text, refs)`) pairs them on its raw draw and again after its markdown swap; the card pairs its
+  question text and its kept reply (`question_cards.js`); the step's closed `.gen-text` takes them
+  (`turn_view.js`; on a reload its `data-answer-at`, the message's `display_refs`) and `linkTextRefs` pairs it at
+  the turn's end and after a reload. A file ref outside the
   session's folder is dropped, as a reload drops it: the folder `/tail` names, else (an older worker) the hub's
   session list entry's, else (refs to check, no hub entry) the session file's; with no folder known at all, every
   file ref is dropped rather than shown unchecked.
