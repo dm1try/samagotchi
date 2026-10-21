@@ -375,7 +375,24 @@ module Samagotchi
           next unless k.is_a?(String) && !k.empty?
           next unless v.is_a?(Hash)
 
+          check_hook_events(k, v)
           acc[k] = BundleHook.parse(v)
+        end
+      end
+
+      HOOK_EVENT_NAME = /\A[a-z][a-z0-9_]*\z/
+
+      # A hook's events: list holds event names (one instance registered
+      # for each); it and event: are one or the other.
+      def check_hook_events(file, entry)
+        return unless entry.key?("events")
+
+        raw = entry["events"]
+        raise ValidationError, "hooks: #{file}: give event: or events:, not both" if entry.key?("event")
+        raise ValidationError, "hooks: #{file}: events: must be a list of event names" unless raw.is_a?(Array) && !raw.empty?
+
+        raw.each do |item|
+          raise ValidationError, "hooks: #{file}: events: #{item.inspect} is not an event name" unless item.is_a?(String) && item.strip.match?(HOOK_EVENT_NAME)
         end
       end
     end

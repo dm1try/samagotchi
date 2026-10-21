@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::MemoryBundle::BundleHook do
 
     it "reads a record's symbol keys, keeping a prefixed sha" do
       hook = described_class.parse(sha256: "sha256:abc", event: "after_tool_call", on_error: "log", priority: 5)
-      expect(hook.to_h).to eq(sha256: "sha256:abc", event: "after_tool_call", on_error: "log", priority: 5)
+      expect(hook.to_h).to eq(sha256: "sha256:abc", events: ["after_tool_call"], on_error: "log", priority: 5)
     end
 
     it "fills the defaults: no sha, no event, on_error skip, priority 100" do
@@ -22,6 +22,13 @@ RSpec.describe Samagotchi::MemoryBundle::BundleHook do
         described_class.new(sha256: "", event: "before_turn", on_error: "skip", priority: 100)
       )
       expect(described_class.parse(nil)).to eq(described_class.new)
+    end
+
+    it "reads events: a list (a record's too), blanks and repeats dropped" do
+      hook = described_class.parse("events" => ["after_turn", " question_asked ", "", "after_turn"])
+      expect(hook.events).to eq(%w[after_turn question_asked])
+      expect(described_class.parse(events: %w[after_turn question_asked]).events).to eq(%w[after_turn question_asked])
+      expect(described_class.parse(nil).events).to eq([])
     end
 
     it "takes a BundleHook as it is" do
@@ -44,6 +51,26 @@ RSpec.describe Samagotchi::MemoryBundle::BundleHook do
     expect(described_class.new(sha256: "sha256:abc", event: "before_turn").to_record).to eq(
       "sha256" => "sha256:abc", "event" => "before_turn", "on_error" => "skip", "priority" => 100
     )
+  end
+
+  it "#to_record keeps event: for one event (as an older chi reads it) and events: for more" do
+    expect(described_class.new(events: %w[after_turn question_asked]).to_record).to eq(
+      "sha256" => "", "events" => %w[after_turn question_asked], "on_error" => "skip", "priority" => 100
+    )
+    expect(described_class.new.to_record).to include("event" => "")
+    expect(described_class.parse(described_class.new(events: %w[a b]).to_record).events).to eq(%w[a b])
+  end
+
+  it "#events_field names one event or the list" do
+    expect(described_class.new(event: "after_turn").events_field).to eq("event=after_turn")
+    expect(described_class.new(events: %w[after_turn question_asked]).events_field).to eq("events=after_turn,question_asked")
+  end
+
+  it "#fail_closed? holds on before_tool_call only" do
+    hook = described_class.new(events: %w[before_tool_call after_turn], on_error: "fail_closed")
+    expect(hook.fail_closed?(:before_tool_call)).to be(true)
+    expect(hook.fail_closed?("after_turn")).to be(false)
+    expect(described_class.new(event: "before_tool_call").fail_closed?(:before_tool_call)).to be(false)
   end
 
   it "#hex is the sha without its prefix" do

@@ -192,12 +192,37 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       })
       m = described_class.new(path: path)
       expect(m.hooks["guardrails.rb"].sha256).to eq("sha256:abc123")
-      expect(m.hooks["guardrails.rb"].event).to eq("before_tool_call")
+      expect(m.hooks["guardrails.rb"].events).to eq(["before_tool_call"])
       expect(m.hooks["guardrails.rb"].on_error).to eq("fail_closed")
       expect(m.hooks["guardrails.rb"].priority).to eq(10)
       expect(m.hooks["audit.rb"].on_error).to eq("skip") # default
       expect(m.hooks["audit.rb"].priority).to eq(100)
       expect(m.trust_level).to eq("reviewed")
+    end
+
+    it "parses events: a list, one hook for each event it names" do
+      path = write_manifest({ "hooks" => { "links.rb" => { "events" => %w[after_turn question_asked], "on_error" => "log" } } })
+      expect(described_class.new(path: path).hooks["links.rb"].events).to eq(%w[after_turn question_asked])
+    end
+
+    it "refuses an events: that isn't a list of event names, or one given with event:" do
+      error = described_class::ValidationError
+      { "after_turn" => "hooks: h.rb: events: must be a list of event names",
+        [] => "hooks: h.rb: events: must be a list of event names",
+        ["after_turn", 3] => "hooks: h.rb: events: 3 is not an event name",
+        ["After Turn"] => 'hooks: h.rb: events: "After Turn" is not an event name' }.each do |events, message|
+        path = write_manifest({ "hooks" => { "h.rb" => { "events" => events } } })
+        expect { described_class.new(path: path) }.to raise_error(error, message), events.inspect
+      end
+      path = write_manifest({ "hooks" => { "h.rb" => { "event" => "after_turn", "events" => ["question_asked"] } } })
+      expect { described_class.new(path: path) }.to raise_error(error, "hooks: h.rb: give event: or events:, not both")
+    end
+
+    it "write round-trips an events: list" do
+      dest = File.join(tmpdir, "out_events")
+      described_class.write(dir: dest, name: "ev", version: "1.0.0", scope: "system", description: "", files: {},
+                            hooks: { "links.rb" => { "events" => %w[after_turn question_asked] } })
+      expect(described_class.read(dir: dest).hooks["links.rb"].events).to eq(%w[after_turn question_asked])
     end
 
     it "defaults trust_level to experimental" do
@@ -234,7 +259,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         trust_level: "reviewed"
       )
       m = described_class.read(dir: dest)
-      expect(m.hooks["guardrails.rb"].event).to eq("before_tool_call")
+      expect(m.hooks["guardrails.rb"].events).to eq(["before_tool_call"])
       expect(m.trust_level).to eq("reviewed")
       expect(m.checksum_for_hook("guardrails.rb")).to eq("abc")
     end

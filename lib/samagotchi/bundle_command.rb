@@ -476,7 +476,7 @@ module Samagotchi
           hooks.each do |hk, hook|
             hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk)
             exists = File.exist?(hook_path) ? "ok" : "missing"
-            @stdout.puts "    #{hk}: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
+            @stdout.puts "    #{hk}: #{hook.events_field} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
           end
           @stdout.puts "    requires_chi: #{st[:provenance].requires_chi}" if st[:hooks_requires_failure]
           @stdout.puts "    not loaded: #{st[:hooks_requires_failure]}" if st[:hooks_requires_failure]
@@ -658,7 +658,7 @@ module Samagotchi
     end
 
     def hook_metadata_line(hook)
-      "--- metadata: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} sha256=#{hook.sha256}"
+      "--- metadata: #{hook.events_field} on_error=#{hook.on_error} priority=#{hook.priority} sha256=#{hook.sha256}"
     end
 
     def build(rest)

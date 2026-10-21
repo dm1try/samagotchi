@@ -760,6 +760,37 @@ Hooks removed: 1\n\z})
     end
   end
 
+  context "with a hook on two events installed" do
+    before do
+      @root = self.class.sandbox
+      src = File.join(@root, "src")
+      FileUtils.mkdir_p(File.join(src, "hooks"))
+      File.write(File.join(src, "hooks", "links.rb"), "class Links; def call(_e) = nil; end\n")
+      sha = Digest::SHA256.hexdigest(File.read(File.join(src, "hooks", "links.rb")))
+      File.write(File.join(src, "manifest.yml"), <<~YAML)
+        name: two-events
+        version: 1.0.0
+        scope: system
+        hooks:
+          links.rb:
+            sha256: sha256:#{sha}
+            events: [after_turn, question_asked]
+            on_error: log
+      YAML
+      @sha = sha
+      chi("install", src)
+    end
+
+    after { FileUtils.rm_rf(@root) }
+
+    it "status NAME and diff name both events" do
+      expect(chi("status", "two-events")[0]).to include("    links.rb: events=after_turn,question_asked on_error=log priority=100 [ok]\n")
+      expect(chi("diff", "two-events", "links.rb")[0]).to include(
+        "--- metadata: events=after_turn,question_asked on_error=log priority=100 sha256=sha256:#{@sha}\n"
+      )
+    end
+  end
+
   context "with a hooks bundle and a plugin bundle installed" do
     before(:context) do
       @root = sandbox_root = self.class.sandbox

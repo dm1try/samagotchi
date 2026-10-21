@@ -599,6 +599,12 @@ Notes:
 
 - Hook key = basename (flat under `hooks/`). No subdirs in v1.
 - `event` is required for auto-registration; a hook with no event is skipped.
+- `events: [after_turn, question_asked]` (a list, in place of `event:`) registers the hook for each event it
+  names: **one** instance serves them all (its state is shared), and `#call` tells them apart by
+  `event[:type]`. `event:` and `events:` together, or an `events:` that isn't a non-empty list of event names,
+  is refused at install (`hooks: <file>: …`). `on_error: fail_closed` applies to its `before_tool_call`
+  registration only. Needs chi newer than 0.97.0 (an older chi installs the hook with no event and never loads
+  it): set `requires_chi`.
 - `sha256` is integrity (not authenticity). No signing in v1. Install records the sha256 of the copied file; at `Engine.new` a hook whose file differs is not loaded (reinstall the bundle after editing one by hand).
 - Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
 - `on_error` defaults to `skip` for every event, `:before_tool_call` included: a raising hook is silent and the call goes ahead. `log` warns. `fail_closed` (only on `:before_tool_call`; on any other event it acts as `skip`) denies the call the hook raised on. Choose `fail_closed` for a hook that is a guardrail, whose failure should stop tool calls rather than let them through.

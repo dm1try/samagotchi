@@ -33,6 +33,35 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect(e[:called]).to be true
     end
 
+    it "registers a hook with events: under each event, one instance sharing its state" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "counter.rb", "class Counter; def call(e); @n = (@n || 0) + 1; e[:n] = @n; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      metadata = { "counter.rb" => { "events" => %w[after_turn question_asked], "priority" => 5 } }
+      expect(described_class.load(bundle_name: "multi", hooks_dir: hooks_dir, metadata: metadata, registry: registry)).to eq(1)
+
+      expect(registry.bundle_hook_names(:after_turn)).to eq([["multi", "counter.rb", 5]])
+      expect(registry.bundle_hook_names(:question_asked)).to eq([["multi", "counter.rb", 5]])
+      first = {}
+      second = {}
+      registry.fire(:question_asked, first)
+      registry.fire(:after_turn, second)
+      expect([first[:n], second[:n]]).to eq([1, 2])
+    end
+
+    it "fails closed on the before_tool_call registration only of an events: hook" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "boom.rb", "class Boom; def call(e); raise 'boom'; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "boom.rb")))
+      metadata = { "boom.rb" => { "events" => %w[before_tool_call after_turn], "on_error" => "fail_closed", "sha256" => sha } }
+      described_class.load(bundle_name: "fc", hooks_dir: hooks_dir, metadata: metadata, registry: registry)
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "x" })
+      registry.fire(:before_tool_call, { guardrail: verdict })
+      expect(verdict).to be_deny
+      expect { registry.fire(:after_turn, {}) }.not_to raise_error
+    end
+
     it "gives a hook whose initialize takes an argument the bundle's settings, and builds the others bare" do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "with_settings.rb", "class WithSettings; def initialize(s = {}); @s = s; end; def call(e); e[:settings] = @s; end; end")

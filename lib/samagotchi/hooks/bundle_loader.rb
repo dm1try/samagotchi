@@ -69,9 +69,9 @@ module Samagotchi
 
             hook = MemoryBundle::BundleHook.parse(raw_meta)
             # A hook with no declared event cannot be auto-registered.
-            next if hook.event.empty?
+            next if hook.events.empty?
 
-            fail_closed = hook.on_error == "fail_closed" && hook.event == "before_tool_call"
+            fail_closed = hook.events.any? { |event| hook.fail_closed?(event) }
             what = "hook #{basename} (bundle #{bundle_name})"
             file = hooks_dir && File.join(hooks_dir, basename)
             unless file && File.exist?(file)
@@ -98,9 +98,10 @@ module Samagotchi
           loaded
         end
 
-        # Build one hook file and register it in +registry+ under its
-        # event, priority and error policy (a fail_closed before_tool_call
-        # one denies when it raises). No missing-file, sha or requires_chi
+        # Build one hook file and register it in +registry+ under each of
+        # its events (one instance for all: its state is shared), with its
+        # priority and error policy (a fail_closed before_tool_call one
+        # denies when it raises). No missing-file, sha or requires_chi
         # check: #load makes them; the test kit loads a bundle's source
         # this way.
         # @param hook [MemoryBundle::BundleHook] its manifest entry
@@ -109,17 +110,19 @@ module Samagotchi
         # @raise [Exception] what loading or building the file raised;
         #   nothing is registered then
         def load_hook_file(bundle_name, basename, file, hook, registry, settings: {}, namespace: nil)
-          event_sym = hook.event.to_sym
-          fail_closed = hook.on_error == "fail_closed" && event_sym == :before_tool_call
           plugin = instantiate(bundle_name, basename, file, settings: settings, namespace: namespace)
-          policy = if fail_closed then :deny
-                   elsif hook.on_error == "log" then :log
-                   else :skip
-                   end
-          label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
-          handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
-                               fields: { bundle: bundle_name }) { |event| plugin.call(event) }
-          registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: hook.priority, &handler)
+          hook.events.each do |event_name|
+            event_sym = event_name.to_sym
+            fail_closed = hook.fail_closed?(event_sym)
+            policy = if fail_closed then :deny
+                     elsif hook.on_error == "log" then :log
+                     else :skip
+                     end
+            label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
+            handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
+                                 fields: { bundle: bundle_name }) { |event| plugin.call(event) }
+            registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: hook.priority, &handler)
+          end
           nil
         end
 

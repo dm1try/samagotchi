@@ -165,6 +165,14 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "on a chi upgrade (fix: use chi.* / ctx, or the names docs/plugins.md lists as stable)"])
   end
 
+  it "registered: a manifest hook with events: is one line per event" do
+    edit("manifest.yml") { |text| text.sub("    event: after_turn", "    events: [after_turn, before_turn]") }
+    refresh!
+    expect(findings(:info)).to include("info registered hooks/watch.rb: hook after_turn (priority 100)",
+                                       "info registered hooks/watch.rb: hook before_turn (priority 100)")
+    expect(@status).to eq(0)
+  end
+
   it "hook-event: a chi.on event chi never fires" do
     edit("plugin.rb") { |text| text.sub("chi.on(:after_tool_call)", "chi.on(:after_tool)") }
     refresh!

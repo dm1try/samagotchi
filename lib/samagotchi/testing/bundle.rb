@@ -179,7 +179,7 @@ module Samagotchi
         end
         @hooks_namespace = Module.new
         @manifest.hooks.each do |basename, hook|
-          next if hook.event.empty?
+          next if hook.events.empty?
 
           Hooks::BundleLoader.load_hook_file(@name, basename, File.join(@dir, "hooks", basename), hook, hooks,
                                              settings: @settings, namespace: @hooks_namespace)

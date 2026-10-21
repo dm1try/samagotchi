@@ -42,7 +42,8 @@ RSpec.describe Samagotchi::Testing::Bundle do
     FileUtils.rm_rf(dir)
   end
 
-  # A bundle in +dir+: plugin.rb (when given) and hooks/<file> => [event, source].
+  # A bundle in +dir+: plugin.rb (when given) and hooks/<file> => [event (a
+  # list: events:), source].
   def write_bundle(plugin: nil, hooks: {}, name: "kit-test")
     manifest = { "name" => name, "version" => "1.0.0", "files" => {} }
     if plugin
@@ -53,7 +54,7 @@ RSpec.describe Samagotchi::Testing::Bundle do
       FileUtils.mkdir_p(File.join(dir, "hooks"))
       manifest["hooks"] = hooks.to_h do |file, (event, source, on_error)|
         File.write(File.join(dir, "hooks", file), source)
-        [file, { "event" => event, "on_error" => on_error || "skip" }]
+        [file, { (event.is_a?(Array) ? "events" : "event") => event, "on_error" => on_error || "skip" }]
       end
     end
     File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
@@ -139,6 +140,16 @@ RSpec.describe Samagotchi::Testing::Bundle do
       write_settings_bundle(session_settings: [])
       expect { load(session_settings: { cap: 1 }) }.to raise_error(ArgumentError, /kit-test takes no session settings/)
     end
+  end
+
+  it "loads a hook file with events: under each event, one instance" do
+    write_bundle(hooks: { "both.rb" => [%w[before_turn after_turn],
+                                        "class Both; def call(e) = e[:seen] = (@n = (@n || 0) + 1); end"] })
+    bundle = load
+
+    expect(bundle.hook_names(:before_turn)).to eq([["kit-test", "both.rb", 100]])
+    expect(bundle.hook_names(:after_turn)).to eq([["kit-test", "both.rb", 100]])
+    expect([bundle.fire(:before_turn)[:seen], bundle.fire(:after_turn)[:seen]]).to eq([1, 2])
   end
 
   it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
