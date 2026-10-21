@@ -8,6 +8,15 @@ for (const k of ["MutationObserver", "CustomEvent", "localStorage", "getSelectio
   if (!(k in globalThis)) globalThis[k] = window[k];
 }
 globalThis.ResizeObserver ??= class { observe() {} disconnect() {} };
+// The question room's sight of its card (happy-dom's isn't a global): the
+// tests call an observer's callback themselves (seeCard).
+const sights = [];
+globalThis.IntersectionObserver ??= class {
+  constructor(fn, options) { Object.assign(this, { fn, options, els: new Set() }); sights.push(this); }
+  observe(el) { this.els.add(el); }
+  unobserve(el) { this.els.delete(el); }
+  disconnect() { this.els.clear(); }
+};
 globalThis.matchMedia ??= () => ({ matches: false });
 if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate = () => ({ finished: Promise.resolve(), cancel() {}, playState: "finished" });
 
@@ -150,7 +159,7 @@ function twoQueued(historyEl, view, append) {
 // ── the slots' markup and node identity (recorded before the split into
 // stage_frame.js, stage_watch.js and stage_slots.js; they guard it) ──────
 
-const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-asking" hidden=""></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
+const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-asking" hidden=""></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button><button class="ts-room-pill" type="button" aria-label="Go to the question" hidden="">❓ Answer ↓</button></div><div class="ts-queued"></div></section>';
 
 // A stopper as task_stop.js's: a running task_wait's task.
 const fakeTaskStop = {
@@ -200,7 +209,7 @@ test("slots: a narration headline, a running tool, its tick and the chip label",
     await frame();
     assert.equal(slot(view, ".ts-headline"), '<div class="ts-headline fresh" tabindex="0" role="button" title="Show this step\'s reasoning">Reading the readme now.</div>');
     assert.equal(slot(view, ".ts-now"), '<div class="ts-now running"><span class="ts-spin"></span><span class="ts-tool exec">execute</span><span class="ts-title" title="ls -la &amp;&amp; pwd">ls -la</span></div>');
-    assert.equal(slot(view, ".ts-foot"), '<div class="ts-foot"><button class="ts-chip" type="button" aria-expanded="false"><span class="ts-chip-label">1 step · 1 tool call</span><span class="ts-ticks"><span role="button" class="ts-tick exec running" data-step="0" title="step 1"></span></span></button></div>');
+    assert.equal(slot(view, ".ts-foot"), '<div class="ts-foot"><button class="ts-chip" type="button" aria-expanded="false"><span class="ts-chip-label">1 step · 1 tool call</span><span class="ts-ticks"><span role="button" class="ts-tick exec running" data-step="0" title="step 1"></span></span></button><button class="ts-room-pill" type="button" aria-label="Go to the question" hidden="">❓ Answer ↓</button></div>');
     assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   } finally {
     view.reset();
@@ -466,6 +475,154 @@ test("question room: the class goes at the answer, the cap stays for the turn; a
     again.view.reset();
     assert.equal(capOf(again.view), "600px");
     assert.equal(room(again.view), false);
+  } finally {
+    view.reset();
+  }
+});
+
+// ── the question room's arrival reveal and jump pill ─────────────────────
+
+// Layout stubs (happy-dom has none): the asking text at 100, the card's
+// extras from 600 to 800, the card itself from 610, a 400 px tall scroller.
+function laidOut(t, view) {
+  t.mock.method(globalThis, "matchMedia", () => ({ matches: true })); // reduced motion: the reveal is at once
+  const set = (el, props) => {
+    for (const [k, v] of Object.entries(props)) Object.defineProperty(el, k, { configurable: true, get: () => v });
+  };
+  set($(view, ".ts-asking"), { offsetTop: 100, offsetHeight: 450 });
+  set($(view, ".ts-extras"), { offsetTop: 600, offsetHeight: 200 });
+  set(view.scrollEl, { clientHeight: 400 });
+  for (const card of $(view, ".ts-extras").children) set(card, { offsetTop: 610, offsetHeight: 180 });
+}
+
+// A long ask question placed with the layout in place, then its arrival
+// reveal (two frames on, no growth running).
+async function arrived(t, opts = {}) {
+  const { view } = page({ taskStop: fakeTaskStop });
+  sizePage(t);
+  view.turnStarted({});
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Here is the plan. ".repeat(40) });
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+  const asking = $(view, ".ts-asking");
+  const overflow = opts.overflow ?? true;
+  Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (overflow ? 900 : 100) });
+  Object.defineProperty(asking, "clientHeight", { configurable: true, get: () => 100 });
+  const card = document.createElement("details");
+  card.className = opts.cls || "bubble question";
+  card.dataset.kind = opts.kind || "question";
+  card.appendChild(document.createElement("button"));
+  $(view, ".ts-extras").appendChild(card);
+  laidOut(t, view);
+  card.remove();
+  view.place(card);
+  const pill = $(view, ".ts-room-pill");
+  const pillShownBefore = !pill.hidden;
+  await frame();
+  await frame();
+  await tick();
+  return { view, card, pill, pillShownBefore };
+}
+
+// The sight's callback for +card+, as the browser's would call it.
+function seeCard(card, inSight) {
+  const sight = sights.find((s) => s.els.has(card));
+  assert.ok(sight, "the card is watched");
+  sight.fn([{ target: card, isIntersecting: inSight }]);
+}
+
+test("question room: the arrival reads from the reply's start; a short question keeps the card-end rule", async (t) => {
+  const long = await arrived(t);
+  try {
+    assert.equal(long.view.scrollEl.scrollTop, 100);
+    const sight = sights.find((s) => s.els.has(long.card));
+    assert.ok(sight.options.root === long.view.scrollEl);
+    assert.equal(sight.options.rootMargin, "0px 0px -40px 0px");
+  } finally {
+    long.view.reset();
+  }
+  const short = await arrived(t, { overflow: false });
+  try {
+    assert.equal(short.view.scrollEl.scrollTop, 400);
+  } finally {
+    short.view.reset();
+  }
+});
+
+test("question room: the pill shows only after the arrival, while the card is out of sight; never while collapsed; gone at the answer", async (t) => {
+  const { view, card, pill, pillShownBefore } = await arrived(t);
+  try {
+    assert.equal(pillShownBefore, false, "no pill while the stage grows to the card");
+    seeCard(card, false);
+    assert.equal(pill.hidden, false);
+    seeCard(card, true);
+    assert.equal(pill.hidden, true);
+    seeCard(card, false);
+    assert.equal(pill.hidden, false);
+    $(view, ".ts-fold").click();
+    await frame();
+    assert.equal(pill.hidden, true, "collapsed");
+    $(view, ".ts-fold").click();
+    await frame();
+    assert.equal(pill.hidden, false);
+    await answer(card);
+    assert.equal(pill.hidden, true);
+    assert.equal(sights.some((s) => s.els.has(card)), false, "the answered card isn't watched");
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: no pill for an approval or a short question", async (t) => {
+  for (const opts of [{ cls: "bubble question approval", kind: "approval" }, { overflow: false }]) {
+    const { view, card, pill } = await arrived(t, opts);
+    try {
+      assert.equal(sights.some((s) => s.els.has(card)), false);
+      assert.equal(pill.hidden, true);
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("question room: the pill's click brings the card's end into sight (not the reply's start)", async (t) => {
+  const { view, card, pill } = await arrived(t);
+  try {
+    seeCard(card, false);
+    pill.click();
+    assert.equal(view.scrollEl.scrollTop, 400);
+    // A reader below the card (the cloud open under it): back up to it.
+    view.scrollEl.scrollTop = 900;
+    pill.click();
+    assert.equal(view.scrollEl.scrollTop, 602);
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: a new turn hides the pill and stops watching the card", async (t) => {
+  const { view, card, pill } = await arrived(t);
+  try {
+    seeCard(card, false);
+    assert.equal(pill.hidden, false);
+    view.turnStarted({});
+    assert.equal(pill.hidden, true);
+    assert.equal(sights.some((s) => s.els.has(card)), false);
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: measured at the asking text's draws only: a short question stays short when its cap drops later", async (t) => {
+  let overflow = false;
+  const { view, asking } = askPage(t, { overflow: false });
+  try {
+    Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (overflow ? 900 : 100) });
+    // A phone's keyboard: the cap (and the slot's) drops, the text overflows now.
+    overflow = true;
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+    await frame();
+    assert.equal(room(view), false);
   } finally {
     view.reset();
   }

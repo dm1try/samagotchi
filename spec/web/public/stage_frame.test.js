@@ -117,3 +117,41 @@ test("fitCap: the question room's cap stays under the session panel (room = cent
   frame.fitCap();
   assert.equal(cap(), "758px");
 });
+
+// A waiting card under a long asking text (happy-dom has no layout: the
+// offsets are stubbed): the asking text at 100, the card from 600 to 800,
+// a 400 px tall scroller. They don't fit together.
+function tallAsk() {
+  const f = frameOf();
+  const set = (el, props) => {
+    for (const [k, v] of Object.entries(props)) Object.defineProperty(el, k, { configurable: true, get: () => v });
+  };
+  set(f.asking, { offsetTop: 100, offsetHeight: 450 });
+  set(f.extras, { offsetTop: 600, offsetHeight: 200 });
+  set(f.scroller, { clientHeight: 400 });
+  return f;
+}
+
+test("reveal: the card's end in sight; fromStart (the question room's arrival) reads from the asking text's top", () => {
+  const { frame, scroller, extras } = tallAsk();
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, 400, "the card-end rule: 800 - 400");
+  scroller.scrollTop = 0;
+  frame.reveal(extras, { now: true, fromStart: true });
+  assert.equal(scroller.scrollTop, 100);
+});
+
+test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-end rule", async (t) => {
+  const { frame, stage, scroller, centerEl, extras } = tallAsk();
+  stage.classList.add("waiting");
+  let center = 2000;
+  Object.defineProperty(centerEl, "clientHeight", { configurable: true, get: () => center });
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => 1000 });
+  t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
+  frame.fitCap();
+  center = 600;
+  frame.fitCap();
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  assert.equal(scroller.scrollTop, extras.offsetTop + extras.offsetHeight - scroller.clientHeight);
+});

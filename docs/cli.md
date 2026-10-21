@@ -895,7 +895,12 @@ nudged the model") show ahead of those calls for about 4 s, as their rows
 wait in the closed block. A card that needs you (a question, an approval, check-in)
 sits in the stage too. While a question or approval waits, the stage shows
 the whole text of the reply that asked it (in place of its newest
-sentence) above the card, until you answer. Once answered, the model's
+sentence) above the card, until you answer. A long reply that asks the
+model's own question (one that doesn't fit that slot) gets more room: the
+stage grows to about 85% of the page for the rest of the turn (never above
+the session panel), the reply reads from its start in the stage's one
+scroll, and while the card is out of view a `❓ Answer ↓` pill at the
+stage's bottom edge takes you to it. Once answered, the model's
 question or its own approval keeps that reply (a delegate's relayed
 approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,

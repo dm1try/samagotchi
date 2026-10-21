@@ -824,7 +824,12 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-answer>.bubble.output>.copy-btn{top:0;right:0}
 /* The cloud: one chip (steps, calls, a tick per call), the turn view's block behind it. */
 /* The footer: the chip at the stage's bottom edge (the cloud's steps open above it, the scroller's last slot). */
-.ts-foot{flex:none;padding:0 14px 10px}
+.ts-foot{position:relative;flex:none;padding:0 14px 10px}
+/* The question room's jump pill (stage_view.js drawPill): at the scroller's bottom edge, above the chip, while the waiting
+   card is out of the stage's view; absolute, so the frame never counts it. */
+.ts-room-pill{position:absolute;bottom:100%;right:14px;margin-bottom:6px;padding:4px 11px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-size:12.5px;font-weight:600;line-height:1.4;white-space:nowrap;box-shadow:0 2px 8px var(--shadow-strong);animation:ts-fade .2s ease}
+.ts-room-pill:hover:not(:disabled){filter:none;color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}
+.ts-room-pill[hidden]{display:none}
 /* Below the turn's card: the lines queued for after it (each a turn of its own), apart from the turn by a dashed rule. */
 .ts-queued{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 10px;border-top:1px dashed var(--border-strong);max-height:calc(var(--stage-max,60vh) * .3);overflow:auto;scrollbar-width:thin}
 .ts-queued:empty{display:none}
