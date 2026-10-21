@@ -237,6 +237,7 @@ module Samagotchi
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
         @engine.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
       end
+      prune_tombstones
       settle_interrupted_turn
       # Before the Bridge serves anything: a UI joining a resumed worker's
       # stream gets the session's history and status in its snapshot, not
@@ -489,6 +490,15 @@ module Samagotchi
 
       Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)
       save_or_log(:interrupted_turn) { save_session }
+    end
+
+    # The per-input tombstones (removed, settled) older than
+    # SessionInbox::TOMBSTONE_MAX_AGE, once per worker start: they only go
+    # with the session dir otherwise.
+    def prune_tombstones
+      removed = SessionInbox.prune_removed(@session_dir)
+      settled = TurnCheckpoint.prune_settled(@session_dir)
+      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled) if (removed + settled).positive?
     end
 
     # A saved parent_answers that isn't a level reads as hard on every

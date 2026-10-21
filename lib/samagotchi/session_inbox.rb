@@ -359,6 +359,35 @@ module Samagotchi
     end
     private_class_method :unmark_removed
 
+    # How old a per-input tombstone (input/removed/, TurnCheckpoint's
+    # input/settled/) gets before a worker's start prunes it (#prune_old).
+    # A wait reads one at its next poll (ReplyWait::POLL_INTERVAL) and a
+    # later `chi send --wait --turn` reads a settled one at its start, so
+    # only a wait whose process slept (a closed laptop) or one started long
+    # after needs it to stay. A removed one gone under a live wait would
+    # read as a merge (the wrong reply), so the age is generous: a week,
+    # half the session retention (14 days), for one small file per
+    # file-delivered command or dequeue.
+    TOMBSTONE_MAX_AGE = 7 * 24 * 3600
+
+    # Deletes the files in input/<+subdir+> last written more than
+    # +max_age+ seconds ago; one that can't be read or deleted stays.
+    # @return [Integer] how many went
+    def self.prune_old(session_dir, subdir, max_age: TOMBSTONE_MAX_AGE)
+      cutoff = Time.now - max_age
+      Dir.glob(File.join(session_dir, INPUT_DIR, subdir, "*")).count do |file|
+        next false unless File.mtime(file) < cutoff
+
+        File.delete(file)
+        true
+      rescue SystemCallError
+        false
+      end
+    end
+
+    # The removed tombstones past +max_age+ (#prune_old).
+    def self.prune_removed(session_dir, max_age: TOMBSTONE_MAX_AGE) = prune_old(session_dir, REMOVED_DIR, max_age: max_age)
+
     # @return [Boolean] whether the queued input +enqueued_id+ was removed
     #   before it ran (#take_queued_input's tombstone), or is being removed:
     #   the tombstone goes first, so while its claimed file is still there

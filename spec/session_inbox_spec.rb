@@ -3,6 +3,7 @@
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_inbox"
+require "samagotchi/turn_checkpoint"
 
 RSpec.describe Samagotchi::SessionInbox do
   let(:tmpdir) { Dir.mktmpdir("session-inbox-spec") }
@@ -87,6 +88,36 @@ RSpec.describe Samagotchi::SessionInbox do
         File.write(broken, "not json")
 
         expect(described_class.waits_for_turn_end?(broken)).to be(false)
+      end
+    end
+
+    describe "pruning the per-input tombstones (.prune_removed, TurnCheckpoint.prune_settled)" do
+      def tombstone(subdir, id, age:)
+        dir = File.join(input_dir, subdir)
+        FileUtils.mkdir_p(dir)
+        path = File.join(dir, id)
+        File.write(path, "")
+        File.utime(Time.now - age, Time.now - age, path)
+        path
+      end
+
+      it "drops only the ones older than TOMBSTONE_MAX_AGE, removed and settled alike" do
+        max = described_class::TOMBSTONE_MAX_AGE
+        old_removed = tombstone(described_class::REMOVED_DIR, "r-old", age: max + 60)
+        new_removed = tombstone(described_class::REMOVED_DIR, "r-new", age: max - 60)
+        old_settled = tombstone(Samagotchi::TurnCheckpoint::SETTLED_DIR, "s-old", age: max + 60)
+        new_settled = tombstone(Samagotchi::TurnCheckpoint::SETTLED_DIR, "s-new", age: 0)
+
+        expect(described_class.prune_removed(session_dir)).to eq(1)
+        expect(Samagotchi::TurnCheckpoint.prune_settled(session_dir)).to eq(1)
+        expect([old_removed, old_settled].map { |f| File.exist?(f) }).to eq([false, false])
+        expect([new_removed, new_settled].map { |f| File.exist?(f) }).to eq([true, true])
+        expect(described_class.removed?(session_dir, "r-new")).to be(true)
+      end
+
+      it "is a no-op for a session without any" do
+        expect(described_class.prune_removed(session_dir)).to eq(0)
+        expect(Samagotchi::TurnCheckpoint.prune_settled(session_dir)).to eq(0)
       end
     end
 

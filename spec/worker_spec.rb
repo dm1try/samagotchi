@@ -228,6 +228,25 @@ RSpec.describe Samagotchi::Worker do
       expect(Samagotchi::TurnCheckpoint.settled_turn(dir, "q1")).to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped")
     end
 
+    it "prunes week-old removed and settled tombstones as it starts, keeping newer ones" do
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      old_time = Time.now - Samagotchi::SessionInbox::TOMBSTONE_MAX_AGE - 60
+      paths = { old: %w[removed/r-old settled/s-old], new: %w[removed/r-new settled/s-new] }.transform_values do |names|
+        names.map do |name|
+          path = File.join(dir, Samagotchi::SessionInbox::INPUT_DIR, name)
+          FileUtils.mkdir_p(File.dirname(path))
+          File.write(path, "")
+          path
+        end
+      end
+      paths[:old].each { |path| File.utime(old_time, old_time, path) }
+
+      start_worker
+
+      expect(paths[:old].map { |path| File.exist?(path) }).to eq([false, false])
+      expect(paths[:new].map { |path| File.exist?(path) }).to eq([true, true])
+    end
+
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)

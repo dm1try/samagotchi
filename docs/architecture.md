@@ -339,6 +339,8 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   deletes it, and the Bridge announces `:turn_dequeued`. `200 {status: "removed", enqueued_id, prompt}`, `409 already_started`
   (a turn took it), `409 not_queued` (a next-step message: a drain may merge it any moment), `404
   unknown_enqueued_id`. It never wakes the worker. The worker names it in its sidecar features (`unqueue`).
+  A worker's start prunes the `input/removed/` and `input/settled/` tombstones older than a week
+  (`SessionInbox::TOMBSTONE_MAX_AGE`, log `tombstones_pruned`); otherwise they go with the session dir.
 - `POST /session/:id/relay` — the approval relay, on a delegated child's worker
   (`{action, relay_id, question_id}`): `opened` / `closed` (with a `reason`) set or clear the
   pending question's `relayed_to` mark (`QuestionDesk#annotate`, `:question_relay`); `answered`

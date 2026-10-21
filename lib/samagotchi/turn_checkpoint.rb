@@ -86,6 +86,12 @@ module Samagotchi
       settled_record(id)
     end
 
+    # The settled outcomes past +max_age+ (SessionInbox.prune_old).
+    # @return [Integer] how many went
+    def self.prune_settled(session_dir, max_age: SessionInbox::TOMBSTONE_MAX_AGE)
+      SessionInbox.prune_old(session_dir, SETTLED_DIR, max_age: max_age)
+    end
+
     def self.settled_record(id, ended_at: nil, seconds: nil)
       LastTurn.new(outcome: "canceled", cancel_reason: WORKER_STOPPED, ended_at: ended_at, seconds: seconds, enqueued_id: id)
     end
