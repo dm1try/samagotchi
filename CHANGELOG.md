@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A model server's 404 that lists its models puts `did you mean …?` ahead of the (cut) list, and names up to three
+  ids: every nearest typo on a tie, or the listed ids that contain the name asked for (`Qwen3.6-35B` →
+  `mlx-community--Qwen3.6-35B-A3B-4bit` or `…-8bit`).
+
 ## [0.97.0] - 2026-10-21
 
 ### Added

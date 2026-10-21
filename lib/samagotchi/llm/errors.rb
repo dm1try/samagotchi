@@ -191,11 +191,23 @@ module Samagotchi
         elsif tools_unsupported?
           "host #{host} rejected the request: #{tools_detail}; #{TOOLS_HINT}"
         else
-          "host #{host} rejected the request: #{detail}#{"; #{hint}" if hint}"
+          "host #{host} rejected the request: #{hinted_detail}"
         end
       end
 
       private
+
+      # The detail with the hint, ahead of a model list the detail has (a
+      # 404's "Available models: …", cut at the message's limit), else at
+      # its end.
+      def hinted_detail
+        return detail unless hint
+
+        list_at = detail.index(ProviderErrors::AVAILABLE_MODELS_START_RE)
+        return "#{detail}; #{hint}" unless list_at
+
+        "#{detail[0...list_at].sub(/[\s.;:]+\z/, "")}; #{hint} #{detail[list_at..].lstrip}"
+      end
 
       # The detail up to the end of the sentence that says the model takes no
       # tools: what a provider adds after it (OpenRouter: "Try disabling
@@ -395,6 +407,8 @@ module Samagotchi
       # third of the name, in a name at least HINT_FUZZY_MIN long.
       HINT_MAX_EDITS = 2
       HINT_FUZZY_MIN = 6
+      # The most ids a hint names.
+      HINT_SUGGESTIONS = 3
       # A 404's model it couldn't find: "Model 'X' not found", "model `X`
       # does not exist", "model X-1 not found" (unquoted, an id-like word,
       # checked after the match). Bounded quantifiers: a server's long token
@@ -402,6 +416,8 @@ module Samagotchi
       MODEL_NOT_FOUND_RE = /model\s+(?:["'`]([^"'`\s]{1,#{HINT_ID_MAX}})["'`]|([^"'`\s]{1,#{HINT_ID_MAX}}))\s+(?:was\s+)?(?:not found|does not exist)/i
       # The ids a 404 lists after "Available models:".
       AVAILABLE_MODELS_RE = /available models?:\s*(.+)\z/im
+      # Where that list starts, for the summary to put its hint ahead of it.
+      AVAILABLE_MODELS_START_RE = /\s*\bavailable models?:/i
       # The HTTP status an Anthropic error.type stands for, for an error
       # object that carries no numeric code (a Messages stream's error event,
       # an OpenAI error whose code is null or a name).
@@ -528,11 +544,10 @@ module Samagotchi
 
       # "did you mean 'ID'?" for a 404 that names the model it couldn't find
       # and lists the ones it has (oMLX: "Model 'X' not found. Available
-      # models: a, b, …"): the listed id that is X but for case, the one
-      # whose last segment (after "/" or "--") is X, else the one id a
-      # typo away (#typo_distance, whole or its last segment). Read from
-      # the message past the summary's cut (MESSAGE_LIMIT), within the
-      # HINT_* bounds; nil when there is no list, nothing close or a tie.
+      # models: a, b, …"), naming up to HINT_SUGGESTIONS ids
+      # (#closest_model_ids: "did you mean 'A' or 'B'?"). Read from the
+      # message past the summary's cut (MESSAGE_LIMIT), within the HINT_*
+      # bounds; nil when there is no list or nothing close.
       def model_hint(message)
         message = message[0, HINT_SCAN_CHARS]
         match = MODEL_NOT_FOUND_RE.match(message)
@@ -547,26 +562,45 @@ module Samagotchi
                   .reject { |id| id.empty? || id.length > HINT_ID_MAX }.uniq
         return nil if ids.empty? || ids.include?(requested)
 
-        close = closest_model_id(requested, ids)
-        close && "did you mean '#{close}'?"
+        close = closest_model_ids(requested, ids)
+        "did you mean #{close.map { |id| "'#{id}'" }.join(" or ")}?" unless close.empty?
       end
 
-      # The id that is +requested+ but for case, or whose last segment is,
-      # else the one id a typo away (#typo_distance); nil on a tie.
-      def closest_model_id(requested, ids)
+      # The listed ids closest to +requested+, at most HINT_SUGGESTIONS, in
+      # the first tier that has any: the ids that are +requested+ but for
+      # case, or whose last segment (after "/" or "--") is; else the ids a
+      # typo away (#typo_distance, whole or last segment), the nearest
+      # only; else the ids that contain +requested+ (HINT_FUZZY_MIN
+      # characters or more) or whose last segment it contains, the
+      # shortest first.
+      def closest_model_ids(requested, ids)
         probe = requested.downcase
-        exact = ids.find { |id| id.downcase == probe } || ids.find { |id| last_segment(id) == probe }
-        return exact if exact
+        exact = ids.select { |id| id.downcase == probe || last_segment(id) == probe }
+        return exact.first(HINT_SUGGESTIONS) unless exact.empty?
 
         scored = ids.filter_map do |id|
           distance = [id.downcase, last_segment(id)].uniq.filter_map { |name| typo_distance(probe, name) }.min
           [distance, id] if distance
         end
-        return nil if scored.empty?
+        unless scored.empty?
+          best = scored.map(&:first).min
+          return scored.select { |distance, _| distance == best }.map(&:last).first(HINT_SUGGESTIONS)
+        end
 
-        best = scored.map(&:first).min
-        closest = scored.select { |distance, _| distance == best }
-        closest.size == 1 ? closest.first.last : nil
+        containing_ids(probe, ids)
+      end
+
+      # The ids that contain +probe+ or whose last segment +probe+ contains
+      # (either one HINT_FUZZY_MIN characters or more), closest in length
+      # first, at most HINT_SUGGESTIONS.
+      def containing_ids(probe, ids)
+        return [] if probe.length < HINT_FUZZY_MIN
+
+        ids.select do |id|
+          segment = last_segment(id)
+          id.downcase.include?(probe) || (segment.length >= HINT_FUZZY_MIN && probe.include?(segment))
+        end.each_with_index.sort_by { |id, index| [(id.length - probe.length).abs, index] }
+           .first(HINT_SUGGESTIONS).map(&:first)
       end
 
       # The edit distance of +a+ and +b+ when it is a typo's: at most

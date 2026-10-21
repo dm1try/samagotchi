@@ -190,21 +190,22 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         from(404, "Model '#{requested}' not found. Available models: #{ids.join(", ")}")
       end
 
-      it "keeps the cut message and adds the listed id the short name stands for" do
+      it "keeps the cut message and puts the listed id the short name stands for ahead of the list" do
         error = omlx_404("Qwen3.6-35B-A3B-4bit")
 
         expect(error).to be_a(Samagotchi::LLM::BadRequest)
         expect(error.message.length).to eq("fw: HTTP 404: ".length + 500)
-        expect(error.summary).to start_with("host fw rejected the request: HTTP 404: Model 'Qwen3.6-35B-A3B-4bit' not found. " \
+        expect(error.summary).to start_with("host fw rejected the request: HTTP 404: Model 'Qwen3.6-35B-A3B-4bit' not found; " \
+                                            "did you mean 'mlx-community--Qwen3.6-35B-A3B-4bit'? " \
                                             "Available models: mlx-community--Qwen3.6-35B-A3B-4bit, ")
-        expect(error.summary).to end_with("; did you mean 'mlx-community--Qwen3.6-35B-A3B-4bit'?")
+        expect(error.summary).not_to end_with("?")
       end
 
       it "suggests the id a typo is close to, even one past the cut" do
         error = omlx_404("mlx-community--Devstral-Smal-2-24B-4bit")
 
         expect(error.message).not_to include("Devstral-Small-2")
-        expect(error.summary).to end_with("; did you mean 'mlx-community--Devstral-Small-2-24B-4bit'?")
+        expect(error.summary).to include("not found; did you mean 'mlx-community--Devstral-Small-2-24B-4bit'? Available models: ")
       end
 
       it "suggests an OpenRouter-style id by its last segment, its case, or a typo in its last segment" do
@@ -212,10 +213,10 @@ RSpec.describe Samagotchi::LLM::ProviderError do
                "z-ai/glm-4.6"
 
         expect(from(404, "The model `claude-sonnet-5` does not exist. #{list}").summary)
-          .to end_with("; did you mean 'anthropic/claude-sonnet-5'?")
+          .to include("does not exist; did you mean 'anthropic/claude-sonnet-5'? Available models: ")
         expect(from(404, "model \"Qwen/Qwen3.6-35B-A3B\" not found. #{list}").summary)
-          .to end_with("; did you mean 'qwen/qwen3.6-35b-a3b'?")
-        expect(from(404, "model glm-4.5 not found. #{list}").summary).to end_with("; did you mean 'z-ai/glm-4.6'?")
+          .to include("; did you mean 'qwen/qwen3.6-35b-a3b'? Available")
+        expect(from(404, "model glm-4.5 not found. #{list}").summary).to include("; did you mean 'z-ai/glm-4.6'? Available")
       end
 
       it "adds nothing when no listed id is close, there is no list, or the id is listed" do
@@ -229,16 +230,40 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         expect(from(400, "Model 'qwen' not found. Available models: x/qwen").summary).not_to include("did you mean")
       end
 
-      it "suggests no other model for a short id, and none on a tie" do
+      it "suggests no other model for a short id" do
         expect(from(404, "Model 'gpt-4' not found. Available models: gpt-4o-mini, gpt-5").summary).not_to include("did you mean")
         expect(from(404, "Model 'q1' not found. Available models: a, b, c").summary).not_to include("did you mean")
         expect(from(404, "Model 'ab' not found. Available models: ac, ad").summary).not_to include("did you mean")
-        expect(from(404, "Model 'qwen3-8b' not found. Available models: qwen3-4b, qwen3-9b").summary)
-          .not_to include("did you mean")
-        expect(from(404, "Model 'GPT-4' not found. Available models: gpt-4, gpt-5").summary).to end_with("; did you mean 'gpt-4'?")
+        expect(from(404, "Model 'GPT-4' not found. Available models: gpt-4, gpt-5").summary)
+          .to include("not found; did you mean 'gpt-4'? Available models: gpt-4, gpt-5")
       end
 
-      it "gives up quickly on a huge id or list, with no hint" do
+      it "names every nearest typo on a tie, at most three, and only the nearest" do
+        expect(from(404, "Model 'qwen3-8b' not found. Available models: qwen3-4b, qwen3-9b").summary)
+          .to include("; did you mean 'qwen3-4b' or 'qwen3-9b'? Available")
+        expect(from(404, "Model 'qwen3-8b' not found. Available models: qwen3-1b, qwen3-2b, qwen3-4b, qwen3-9b").summary)
+          .to include("; did you mean 'qwen3-1b' or 'qwen3-2b' or 'qwen3-4b'? Available")
+        expect(from(404, "Model 'qwen3-8b' not found. Available models: qwen3-1bx, qwen3-9b").summary)
+          .to include("; did you mean 'qwen3-9b'? Available")
+      end
+
+      it "names the ids that contain the name, closest in length first, when no typo is close" do
+        error = omlx_404("Qwen3.6-35B")
+        expect(error.summary).to include("; did you mean 'mlx-community--Qwen3.6-35B-A3B-4bit' or " \
+                                         "'mlx-community--Qwen3.6-35B-A3B-8bit'? Available")
+        expect(omlx_404("mlx-community--gemma-4-31b").summary)
+          .to include("; did you mean 'mlx-community--gemma-4-31b-it-4bit'? Available")
+        expect(from(404, "Model 'acme/deepseek-v4-flash:free' not found. Available models: deepseek/deepseek-v4-flash")
+                 .summary).to include("; did you mean 'deepseek/deepseek-v4-flash'? Available")
+        expect(from(404, "Model 'qwen3' not found. Available models: qwen3-4b").summary).not_to include("did you mean")
+      end
+
+      it "adds the hint at the end of a message without a list it can find" do
+        error = Samagotchi::LLM::BadRequest.new("fw: HTTP 404: no such model", host: "fw", status: 404, hint: "did you mean 'x'?")
+        expect(error.summary).to eq("host fw rejected the request: HTTP 404: no such model; did you mean 'x'?")
+      end
+
+      it "gives up quickly on a huge id or list, with no hint or three ids at most" do
         long_id = "x" * 50_000
         ids = Array.new(5000) { |i| "vendor/model-#{"y" * 150}-#{i}" }
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -248,7 +273,8 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         listed = from(404, "Model 'vendor/model-#{"y" * 150}-x' not found. Available models: #{ids.join(", ")}")
 
         expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
-        [quoted, bare, listed].each { |error| expect(error.summary).not_to include("did you mean") }
+        [quoted, bare].each { |error| expect(error.summary).not_to include("did you mean") }
+        expect(listed.hint.scan("' or '").size).to eq(2)
       end
     end
 
