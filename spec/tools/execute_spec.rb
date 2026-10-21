@@ -35,10 +35,10 @@ RSpec.describe Samagotchi::Tools::Execute do
   end
 
   describe ".call" do
-    # A limit under a second, for an example about what happens at the limit
-    # rather than its value or where it is read from: those (the timeout
-    # error's text, config.yml, the default hand-over) keep the real whole
-    # seconds of execute.timeout_sec.
+    # A limit under a second, for an example about what happens at the limit.
+    # Two examples keep a real whole-second execute.timeout_sec end to end:
+    # the kill (its error's text, the output before it) and the default
+    # hand-over.
     def short_limit(seconds = 0.5) = allow(described_class).to receive(:timeout_seconds).and_return(seconds)
 
     # A chi run by the command answers as a parent agent (ParentApprovals).
@@ -226,15 +226,6 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).to start_with("Error: cwd not found:")
     end
 
-    it "returns a timeout error when command exceeds configured timeout" do
-      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
-
-      result = described_class.call("ruby -e 'sleep 5'", on_timeout: :kill)
-
-      expect(result).to eq("Error: command timed out after 1s\n(killed at the limit; for a long command use task_create, then task_wait)")
-      expect(result).to start_with(described_class::TIMEOUT_PREFIX)
-    end
-
     it "gives a command 120 s by default, the same as the config default" do
       ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
       Dir.mktmpdir do |dir|
@@ -253,24 +244,26 @@ RSpec.describe Samagotchi::Tools::Execute do
                    "default:\n  model: m\nexecute:\n  timeout_sec: 1\n  on_timeout: kill\n")
         with_env("XDG_CONFIG_HOME" => dir) do
           expect(Samagotchi::Config.validate_yaml_sections(Samagotchi::ConfigFile.read_yaml)).to eq([])
-          # on_timeout: kill from the file too.
-          expect(described_class.call("ruby -e 'sleep 5'").lines.first).to eq("Error: command timed out after 1s\n")
+          expect(described_class.timeout_seconds).to eq(1)
+          # on_timeout: kill from the file too: killed, not handed over (at
+          # a short limit: the limit's value is the line above's).
+          short_limit
+          expect(described_class.call("sleep 31.65").lines.first).to eq("Error: command timed out after 0.5s\n")
         end
       end
     end
 
-    # A shell's echo, not a ruby child, and a few seconds: under a parallel
-    # run's load a ruby took over a second to print "before".
-    it "returns the output captured before the timeout along with the error" do
-      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
+    # The kill at a real whole-second limit, end to end. A shell's echo, not
+    # a ruby child: under a parallel run's load a ruby took over a second to
+    # print "before"; a builtin echo is there in milliseconds.
+    it "returns a timeout error past execute.timeout_sec, with the output captured before it" do
+      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
 
-      result = described_class.call("echo before; echo oops >&2; sleep 10; echo never-printed", on_timeout: :kill)
+      result = described_class.call("echo before; echo oops >&2; sleep 31.66; echo never-printed", on_timeout: :kill)
 
-      expect(result).to start_with("Error: command timed out after 3s\n(killed at the limit; for a long command use task_create, then task_wait)\n")
-      expect(result).to include("stdout:\nbefore")
-      expect(result).to include("stderr:\noops")
-      expect(result).not_to include("never-printed")
-      expect(result).not_to include("exit:")
+      expect(result).to eq("Error: command timed out after 1s\n(killed at the limit; for a long command use task_create, then task_wait)\n" \
+                           "stdout:\nbefore\n\nstderr:\noops\n")
+      expect(result).to start_with(described_class::TIMEOUT_PREFIX)
     end
 
     # Tagged log lines for each command's life (turn tag): what ran how
@@ -734,14 +727,13 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(Samagotchi::Tools::TaskWait.call(task_id(result), timeout: 10)).to include("status: failed", "exit_code: 4")
       end
 
-      # Whole seconds: the output before the limit is checked too.
       it "kills a command it can't hand over, as on_timeout: kill does" do
-        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        short_limit
         allow(Samagotchi::Tools::TaskRuntime).to receive(:adopt).and_return([nil, "Error: disk full"])
 
         result = described_class.call("echo before; sleep 31.62")
 
-        expect(result).to start_with("Error: command timed out after 1s\n")
+        expect(result).to start_with("Error: command timed out after 0.5s\n")
         expect(result).to include("stdout:\nbefore")
         expect(running?("sleep 31.62")).to be(false)
         expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
