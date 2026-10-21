@@ -21,8 +21,12 @@ module Samagotchi
       # The first chi release with each call a plugin may make (from git:
       # the first release tag holding it), for `chi bundle check`'s
       # requires-chi-floor: a bundle whose requires_chi admits an older chi.
-      # A call not listed gets no floor check: it came before the first tag
-      # (v0.2.0), or isn't listed yet. Keys have no "?" (API_CALL drops it).
+      # A call not listed gets no floor check: it is in the first tag (v0.2.0:
+      # chi.command/tool/on/service/init, ctx.settings, ctx.sessions,
+      # ctx.ask_model, ctx.notify, ctx.card, ctx.messages…). A member of
+      # one (ctx.sessions.children) is listed when it came later. Keys have
+      # no "?" (API_CALL drops it). A keyword added later (ctx.ask_model's
+      # model: in 0.80.0, ctx.sessions.send's delivery: in 0.64.0) has none.
       SINCE = {
         "ctx.steer" => "0.3.0", "ctx.stop_turn" => "0.3.0", "ctx.stop_generation" => "0.6.0",
         "Samagotchi::AtomicFile" => "0.8.0", "ctx.model" => "0.17.0", "ctx.model_key" => "0.17.0",
@@ -31,7 +35,7 @@ module Samagotchi
         "ctx.prompt_files" => "0.60.0", "chi.annotation" => "0.66.0", "chi.toolkit" => "0.66.0",
         "ctx.use_toolkit" => "0.66.0", "ctx.toolkit" => "0.66.0", "ctx.declared_tools" => "0.66.0",
         "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
-        "ctx.cost" => "0.83.0"
+        "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0"
       }.freeze
 
       # @param bundle [String]

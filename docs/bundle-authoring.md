@@ -127,7 +127,8 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
   of a checksum mismatch, and a line with no sha installs unchecked. `chi bundle check --fix` rewrites them; run it
   after the last edit.
 - **requires_chi.** Use the chi the user runs (`chi --version`). `check` warns when the plugin calls something
-  newer than the floor (`ctx.http` needs 0.80.0, `ctx.cost` 0.83.0).
+  newer than the floor (`ctx.http` needs 0.80.0, `ctx.cost` 0.83.0, `ctx.sessions.children` 0.34.0). A keyword added
+  later it can't see: `ctx.ask_model(model:)` needs 0.80.0, `ctx.sessions.send(delivery:)` 0.64.0.
 - **trust_level.** Leave it out. `reviewed` / `trusted` are for someone who reviewed the bundle, not its author.
 - **Restart.** A session loads bundles when it starts: after an install or a settings change, the user starts a
   new session (or `chi sessions restart ID`).

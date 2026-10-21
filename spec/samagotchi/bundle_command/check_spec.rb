@@ -128,6 +128,15 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "but plugin.rb uses ctx.cost, which needs chi 0.83.0 (fix: requires_chi: \">= 0.83.0\")"])
   end
 
+  it "requires-chi-floor: a member of a ctx object newer than the object itself" do
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.30.0"') }
+    edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", "ctx.notify(ctx.sessions.children.size.to_s)") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.30.0\" admits chi 0.30.0, " \
+                                   "but plugin.rb uses ctx.sessions.children, which needs chi 0.34.0 " \
+                                   "(fix: requires_chi: \">= 0.34.0\")"])
+  end
+
   it "install: a plugin that raises at load names plugin.rb:line" do
     edit("plugin.rb") { |text| text.sub("chi.command(", "raise ArgumentError, \"no word\"\n    chi.command(") }
     refresh!

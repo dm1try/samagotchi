@@ -51,8 +51,9 @@ module Samagotchi
 
       LIB_DIR = File.expand_path("../..", __dir__)
       TRUSTED = %w[reviewed trusted].freeze
-      # A call of the plugin API, or a name SINCE lists, in the source.
-      API_CALL = /\b(?:chi|ctx)\.[a-z_]+\b|\bfallback_for:|\bSamagotchi::AtomicFile\b/
+      # A call of the plugin API (with one member after it: ctx.sessions.children),
+      # or a name SINCE lists, in the source.
+      API_CALL = /\b(?:chi|ctx)\.[a-z_]+(?:\.[a-z_]+)?\b|\bfallback_for:|\bSamagotchi::AtomicFile\b/
       # A requirement's lower bound: >= X, > X, ~> X or = X.
       LOWER_BOUND = /\A(?:>=|>|~>|=)?\s*(\d+(?:\.\d+)*)\z/
 
@@ -213,7 +214,8 @@ module Samagotchi
         floor = lower_bound(manifest.requires_chi)
         return unless floor && File.file?(path(manifest.plugin[:file]))
 
-        calls = File.read(path(manifest.plugin[:file])).scan(API_CALL).uniq.select { |call| Plugin::Api::SINCE.key?(call) }
+        calls = File.read(path(manifest.plugin[:file])).scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
+                    .uniq.select { |call| Plugin::Api::SINCE.key?(call) }
         call = calls.max_by { |c| Gem::Version.new(Plugin::Api::SINCE[c]) } or return
         version = Plugin::Api::SINCE[call]
         return unless Gem::Version.new(version) > floor
