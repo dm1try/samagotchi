@@ -37,7 +37,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps) |
 | `Merger` | 3-way classification per file: `install`, `fast_forward`, `keep`, `noop`, `conflict` |
 | `Provenance` | the `.bundles/<name>/` dir: `#write` the record + bases, `#record` → `InstalledBundle`, `.each_installed`, `.claimants` (which bundles own a file) |
-| `InstalledBundle`, `BundleHook`, `PluginRef` | value objects for the record; tolerant of older records (missing keys read as empty) |
+| `InstalledBundle`, `BundleHook`, `PluginRef` | value objects for the record; tolerant of older records (missing keys read as empty). `BundleHook#events` is the manifest's `event:` or its `events:` list (written back as `event:` for one, as an older chi reads it); `Hooks::BundleLoader#load_hook_file` builds the hook once and registers it under each |
 | `Builder` | `chi bundle build`: memories (+ the installed bundle's hooks, rules, plugin, scripts) → zip/tar/dir |
 | `Profile` | meta bundles (`includes:`): install the members, record which; `InstallResult#kept_own` names a new member's memory files the user already had, with other bytes (`kept_own_line`, printed by `chi bundle`, `chi update` and `chi bootstrap`); a dry run runs each member's Installer as a dry run too, so it names them as well |
 | `SystemBundle`, `ShippedUpdate` | the built-in system bundle (`ensure!` at Engine start, `sync` in `chi update`) and `chi update`'s upgrade of shipped bundles; both drive the Installer with `upgrade: true` |

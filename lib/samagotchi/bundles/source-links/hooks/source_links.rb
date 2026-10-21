@@ -4,8 +4,8 @@
 require "open3"
 require "samagotchi/ref"
 
-# An after_turn hook that links the source refs the model's answer
-# mentions — a JIRA ticket, a GitHub issue, an internal wiki page. In the
+# An after_turn (and question_asked) hook that links the source refs the
+# model's answer mentions — a JIRA ticket, a GitHub issue, an internal wiki page. In the
 # web, each ref in the answer becomes a link (`[JIRA-123](https://…)`,
 # through event[:present]: display only, the model's text stays as it was,
 # and it survives a reload). Every UI also gets one line right after the
@@ -57,6 +57,14 @@ require "samagotchi/ref"
 # "file"), target {id: the ref's text}, label "<name> <ref>", and one
 # action, "Open in <name>", the ref's URL. A URL that isn't http(s) stays a
 # markdown link only. The web's ref menu shows the action.
+#
+# The hook is on :question_asked too (the manifest's events:, chi newer than
+# 0.97.0): while a question of the model's (or an approval of its call)
+# waits, the refs in the reply that asks it, and in the question's text and
+# options, are refs on that reply, the same as an answer's. The web pairs
+# them in the stage's asking slot, on the question's card and on that step
+# in the history (a ref only in the question's text pairs there alone). No
+# links in the text and no note line for it: the turn's end has those.
 #
 # The note is not stored in the conversation: it is an event, replayed by a
 # UI with the session's cards (a reload keeps it, after the worker stopped
@@ -120,9 +128,19 @@ class SourceLinks
   end
 
   def call(event)
-    return unless event.is_a?(Hash) && event[:type] == :after_turn
-    return unless event[:status].to_s == "completed"
+    return unless event.is_a?(Hash)
     return if @sources.empty?
+
+    case event[:type]
+    when :after_turn then after_turn(event)
+    when :question_asked then question_asked(event)
+    end
+  end
+
+  private
+
+  def after_turn(event)
+    return unless event[:status].to_s == "completed"
 
     text = last_model_text(event[:messages])
     return if text.nil? || text.empty?
@@ -141,7 +159,23 @@ class SourceLinks
     event[:notify]&.call(line(found), level: :info, fallback_for: covered ? :display : nil)
   end
 
-  private
+  # A question of the model's (or an approval of its call) is about to
+  # open: the refs in the reply that asks it and in the question's own text
+  # and options, each scanned on its own (a code span never runs from one
+  # into the next), as refs on that reply. No present (a mid-turn text has
+  # no display) and no note line (the after-turn one stays the terminals').
+  def question_asked(event)
+    refs = event[:refs]
+    return unless refs
+
+    question = event[:question].is_a?(Hash) ? event[:question] : {}
+    field = ->(key) { question.key?(key) ? question[key] : question[key.to_s] }
+    parts = [event[:text], field.call(:question), *Array(field.call(:options))]
+    parts.each do |part|
+      text = part.is_a?(String) ? part : ""
+      add_refs(refs, occurrences(text[0, MAX_SCAN])) unless text.empty?
+    end
+  end
 
   # Links the refs in the answer as shown: the model's text unless an
   # earlier hook changed it (then its offsets differ, so it is scanned

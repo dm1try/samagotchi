@@ -802,7 +802,7 @@ RSpec.describe "The source-links bundle" do
     end
     manifest["hooks"].each do |file, meta|
       expect(meta["sha256"]).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, "hooks", file)))}")
-      expect(meta).to include("event" => "after_turn", "on_error" => "log", "priority" => 90)
+      expect(meta).to include("events" => %w[after_turn question_asked], "on_error" => "log", "priority" => 90)
     end
   end
 end

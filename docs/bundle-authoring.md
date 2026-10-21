@@ -51,7 +51,8 @@ plugin:
   sha256: sha256:<hex>       # `chi bundle check --fix` fills it; never compute it by hand
 # files:                     # memories it installs (top-level *.md); without files: every *.md but README & co.
 #   my_notes.md: sha256:<hex>
-# hooks:                     # hooks/*.rb files (a plugin's chi.on is usually simpler)
+# hooks:                     # hooks/*.rb files (a plugin's chi.on is usually simpler), each with event: NAME
+#                            # or events: [a, b] (one instance for both; chi newer than 0.97.0)
 # needs: [gh]                # outside commands it relies on
 ```
 
@@ -116,7 +117,8 @@ end
 
 `bundle.tool_call` runs guarded hooks; `bundle.tool` calls a registered tool. `bundle.steers`, `cards`, `stops` and
 `questions` record effects; `bundle.answer` / `model_answers` provide `ask_user` / `ask_model` answers.
-`bundle.http.stub` stubs `ctx.http`; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
+`bundle.http.stub` stubs `ctx.http`; `bundle.question_asked(text, question:)` fires `:question_asked` and returns
+the refs; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
 The full list is in [plugins.md, Testing a bundle](plugins.md#testing-a-bundle-experimental). The kit is
 experimental (it may change before chi 1.0). If a test needs a fake of chi's own (a stub of a `Samagotchi::`
 class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather than reaching into chi.

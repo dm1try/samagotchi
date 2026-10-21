@@ -397,7 +397,14 @@ end
   step adds to the step's list, and its pending question has the whole list.
   The model never sees them.
 - The web checks them again wherever a saved one reaches it (the pending
-  question, a saved card, the history), as an answer's.
+  question, a saved card, the history), as an answer's, and pairs them as an
+  answer's (the three passes above) in: the stage's asking slot while the
+  question waits (its raw text, then again once its markdown is in), the
+  card's question text, the answered card's kept reply (raw, then its
+  markdown when opened; never its one-line summary copy), and that step's
+  text in the history, live (at the turn's end) and after a reload. A ref
+  whose `match` is only in the question's text pairs there alone; the step's
+  text drops it. **Terminals** ignore them.
 - **Its time is the question's wait**: the hooks run before the question
   opens, so a slow one delays it (and counts in `ask_user_question`'s
   `elapsed_ms` and an approval's `waited_ms`). A hook that raises is logged and
@@ -407,7 +414,10 @@ end
   block) returns nil at once here.
 - Needs chi newer than 0.97.0: set `requires_chi`.
 
-A plugin gets the same from `chi.on(:question_asked) { |event, ctx| event[:refs].call(…) }`.
+A plugin gets the same from `chi.on(:question_asked) { |event, ctx| event[:refs].call(…) }`. The bundle test
+kit fires it as chi does: `bundle.question_asked(text, kind:, question:)` returns the refs the step gets
+([plugins.md](plugins.md#testing-a-bundle-experimental)). The shipped source-links bundle subscribes (its
+sources' refs in the reply that asks, and in the question's text and options).
 
 ## Settings
 
