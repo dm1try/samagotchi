@@ -219,3 +219,30 @@ each column; `--model GLOB`, `--since DATE` and `--min-steps N` filter, `--json`
 no session text (ids, model names, note names and digests, dates, numbers), and the suite runs it only on small
 synthetic sessions. It is how a note is judged on and off (`chi --mute model_notes_<name>`) for the same kind of
 task: see [memory.md](memory.md) ("Model notes").
+
+## Dependency check
+
+`bundle exec rake deps:check` says what our dependencies did since the last check; `rake "deps:check[json]"` gives
+the same as JSON. It reads only and always exits 0: it informs (a tech-debt audit round runs it first, and its NEW
+lines go into that round's follow-ups), it doesn't gate, and CI doesn't run it. Three sections:
+
+- **Engines:** each `hosts:` entry of your config.yml on a loopback or private address (an IP, `localhost`, a
+  single-label name or `.local`/`.lan`/`.internal`/`.home.arpa`; a public API is never probed) gets `/props`
+  (`build_info`: llama.cpp) and `/status` (`identity` and `chat_template`: Splash), 2 s each. A host that doesn't
+  answer prints "down, skipped"; one that is neither is left out. Each line carries the newest upstream release
+  (GitHub, no auth) with its URL, for a model to read the notes: llama.cpp's newest `b<N>` tag and how many builds
+  behind the host is, Splash's newest release.
+- **Ruby gems:** `bundle outdated --only-explicit` (direct dependencies, with the Gemfile's requirement).
+- **npm:** `npm outdated` (direct) and `npm audit`'s advisories by severity.
+
+A section that can't be read (offline, a GitHub rate limit) says why and the others go on. What a run saw goes to
+`$XDG_STATE_HOME/samagotchi/deps-check.json` (`~/.local/state/...`; `DEPS_CHECK_STATE` overrides it), outside the
+repo since the engines are this machine's; the next run prints `NEW` on each line that changed since (the first run:
+all), NEW lines first in each section.
+
+**The Splash version** isn't in Splash's `/status`, so you record it: read `splash --version` on the engine host,
+then `rake "deps:splash_version[1.3.2]"` (every Splash host) or `rake "deps:splash_version[host:port,1.3.2]"`. It is
+kept with the build id `/status` shows (`identity.cache.build_id`); when that changes, the check asks you to confirm
+the version and record it again. This step goes once a Splash release carries its version in `/status`.
+
+The code is `script/deps/deps_check.rb`; its spec stubs every request and command (`spec/deps_check_spec.rb`).
