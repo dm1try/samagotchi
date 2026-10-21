@@ -89,10 +89,17 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   end
 
   # The block's value, run in a thread while a gated server is starting:
-  # the gate opens once that thread waits, so the block waited for the start.
+  # the gate opens once that thread's call reached the tool index's wait for
+  # a starting server (Source#wait), so the block waited for the start. Not
+  # the thread's status: any earlier sleep (a lock, a poll) looks the same.
   def start_gated_server_during(&)
+    waiting = false
+    allow_any_instance_of(Samagotchi::Tools::ToolIndex::Source).to receive(:wait).and_wrap_original do |original, *args|
+      waiting = true
+      original.call(*args)
+    end
     thread = Thread.new(&)
-    wait_until!("the call to wait for the server") { thread.status == "sleep" || !thread.alive? }
+    wait_until!("the call to wait for the server") { waiting || !thread.alive? }
     FileUtils.touch(gate)
     join!(thread, "the call", timeout: 15).value
   end
