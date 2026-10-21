@@ -65,6 +65,10 @@ module Samagotchi
     # Qwen tool_call XML blocks that survive when a tool call is rendered as text
     # e.g. <tool_call>\n<function=list_reminders>\n</function>\n</tool_call>
     QWEN_TOOL_CALL_RE = %r{<tool_call>.*?</tool_call>}m
+    # Gemma 4's closed tool-call block, <|tool_call>call:NAME{…}<tool_call|>:
+    # a native step's call, whose body #strip_markup drops (#strip keeps it:
+    # a streamed chunk may hold only one marker).
+    GEMMA_TOOL_CALL_RE = /<\|tool_call>.*?<tool_call\|>/m
 
     module_function
 
@@ -85,9 +89,11 @@ module Samagotchi
 
     # The same tokens as #strip, but the text keeps its layout (indentation,
     # runs of spaces); only the blank lines removed blocks leave collapse.
-    # For showing a whole saved message (the attached TUI's join, the web history).
+    # For showing a whole saved message (the attached TUI's join, the web history):
+    # a native Gemma step's closed tool-call blocks go with their bodies, as
+    # Qwen's do (a step that only calls a tool has no text).
     def strip_markup(text)
-      remove_tokens(text).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
+      remove_tokens(text.to_s.gsub(GEMMA_TOOL_CALL_RE, "")).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
     end
 
     def remove_tokens(text)

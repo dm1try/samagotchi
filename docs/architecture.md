@@ -514,7 +514,8 @@ Bridge's stream above): the chat loop's thinking is the
 server's `reasoning_content`; the raw-prompt loop splits each generation's
 stream with a fresh `ThoughtStreamSplitter`, seeded with the prompt's prefill (Qwen's `<think>` and Gemma's
 `<|channel>thought … <channel|>` are thinking, tool-call bodies are dropped
-from `text:`). The chat loop's model turns keep their `tool_calls` and tool results their `tool_call_id`,
+from `text:`; a saved step's text, as the web history and the attached terminal's join show it,
+drops both too: `OutputFormatter.strip_markup`). The chat loop's model turns keep their `tool_calls` and tool results their `tool_call_id`,
 so later requests and resumed sessions pair them, and their reasoning (`thinking:`), which goes back as
 `reasoning_content` on the running turn's replies (`reasoning_history`; a step-limit Continue's
 turn goes on from the run it resumes, `reasoning_since:`). It has its own system prompt

@@ -14,6 +14,11 @@ and commands may change between minor versions. How releases are made:
   ids: every nearest typo on a tie, or the listed ids that contain the name asked for (`Qwen3.6-35B` →
   `mlx-community--Qwen3.6-35B-A3B-4bit` or `…-8bit`).
 
+### Fixed
+
+- A Gemma 4 step on the native loop no longer shows its tool call's body (`call:ask_user_question{…}`) as text in
+  the web history after a reload.
+
 ## [0.97.0] - 2026-10-21
 
 ### Added

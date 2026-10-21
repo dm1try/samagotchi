@@ -24,6 +24,13 @@ RSpec.describe Samagotchi::OutputFormatter do
     it "returns an empty string for markup only" do
       expect(described_class.strip_markup("<think>x</think><tool_call>y</tool_call>")).to eq("")
     end
+
+    it "removes a native Gemma step's thought and closed tool-call blocks with their bodies" do
+      step = "<|channel>thought\nhm<channel|>Asking now.\n\n<|tool_call>call:ask_user_question{question:<|\"|>Go?<|\"|>}<tool_call|>"
+      expect(described_class.strip_markup(step)).to eq("Asking now.")
+      expect(described_class.strip_markup("<|tool_call>call:read{path:x}<tool_call|>")).to eq("")
+      expect(described_class.strip_markup("a <|tool_call>never closed")).to eq("a never closed")
+    end
   end
 
   describe ".strip" do

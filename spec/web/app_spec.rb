@@ -1232,6 +1232,25 @@ RSpec.describe Samagotchi::Web::App do
         expect(full.map { |m| m.key?("display_refs") }).to eq([false, false, false, true])
       end
 
+      it "shows a native Gemma step without its thought and tool-call body, its question refs still on it" do
+        step = "<|channel>thought\nweighing it<channel|>Before I go on: JIRA-1?\n" \
+               "<|tool_call>call:ask_user_question{question:<|\"|>Go?<|\"|>}<tool_call|>"
+        live["snapshot"]["messages"] = [{ "role" => "user", "content" => "q" },
+                                        { "role" => "model", "content" => step, "display_refs" => [jira] },
+                                        { "role" => "model", "content" => "<|tool_call>call:read{path:<|\"|>a.rb<|\"|>}<tool_call|>" }]
+
+        ["", "?parts=1"].each do |query|
+          messages = live_read(query)
+          expect(messages[1]).to include("content" => "Before I go on: JIRA-1?", "display_refs" => [jira]), query
+          expect(messages.map { |m| m["content"] }.join).not_to include("call:"), query
+        end
+        expect(live_read("").length).to eq(2)
+        parts = live_read("?parts=1")
+        expect(parts[2]["content"]).to eq("")
+        expect(parts[1]["parts"]).to include("thinking" => "weighing it")
+        expect(parts[1]["parts"]["tools"].length).to eq(1)
+      end
+
       it "sends them from a stopped session's file (symbol keys on top, as Session.load leaves them), full and tail" do
         refs = [jira, file]
         loader = Class.new(StubSessionLoader) do
