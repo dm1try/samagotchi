@@ -146,8 +146,9 @@ function renderer() {
 test("drawAsking with markdown: the raw text at once, then the HTML swapped in with the class, refs linked on both", async () => {
   const r = renderer();
   const linked = [];
-  const { asking, slots } = slotsOf({ renderMarkdown: r.render, linkRefs: (el) => linked.push(el.innerHTML) });
+  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs: (el) => linked.push(el.innerHTML) });
   slots.drawAsking("## Pick\n\n- a");
+  assert.equal(changes(), 0);
   assert.equal(asking.textContent, "## Pick\n\n- a");
   assert.ok(!asking.classList.contains("markdown"));
   assert.ok(!asking.classList.contains("md-compact"));
@@ -158,6 +159,8 @@ test("drawAsking with markdown: the raw text at once, then the HTML swapped in w
   assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><h2>Pick</h2><ul><li>a</li></ul></div>');
   assert.equal(asking.scrollTop, 0);
   assert.deepEqual(linked, ["## Pick\n\n- a", "<h2>Pick</h2><ul><li>a</li></ul>"]);
+  // The swap redraws (the stage measures the asking text's overflow again).
+  assert.equal(changes(), 1);
 });
 
 test("drawAsking with markdown: a render for a text no longer shown is dropped", async () => {

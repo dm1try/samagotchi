@@ -779,6 +779,10 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
    its room, read from the top. */
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
+/* The question room (stage_view.js drawRoom): a model's own question whose asking text overflows that cap. The slot loses its
+   cap and its own scroll, and the stage's one scroll covers the whole reply (the stage's cap rises for the turn, stage_frame.js).
+   --stage-max also scales the extras, the cloud and the queued slot: a ceiling only, content that fit stays as it is. */
+.turn-stage.question-room .ts-asking{max-height:none;overflow:visible}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}

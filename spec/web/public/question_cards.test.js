@@ -511,6 +511,24 @@ test("a relayed hook question on the parent links its delegate's session and sho
   assert.equal(card.querySelector(".question-text").textContent, "Spent $5.");
 });
 
+// The stage's question room (stage_view.js) reads what asks off the card.
+test("a card carries its kind (a plain question is a question) and a relayed one its relay mark", () => {
+  const kindOf = (pq) => {
+    const { cards } = setup();
+    cards.renderQuestion(pq);
+    const { kind, relay = null } = cards.questionCard().dataset;
+    return [kind, relay];
+  };
+  assert.deepEqual(kindOf(PQ), ["question", null]);
+  assert.deepEqual(kindOf({ ...PQ, kind: "question" }), ["question", null]);
+  assert.deepEqual(kindOf(APPROVAL), ["approval", null]);
+  assert.deepEqual(kindOf({ id: "c1", kind: "continue", question: "Keep going?", options: ["Continue", "Stop"] }), ["continue", null]);
+  assert.deepEqual(kindOf({ id: "h2", kind: "hook", question: "Spent $5.", options: ["Continue", "Stop"] }), ["hook", null]);
+  const relay = { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"] };
+  assert.deepEqual(kindOf({ ...PQ, relay }), ["question", "1"]);
+  assert.deepEqual(kindOf({ ...APPROVAL, relay }), ["approval", "1"]);
+});
+
 // A keydown on an element inside the card, bubbled to the card's listener.
 function press(card, target, key = "Enter", mods = {}) {
   const e = { key, target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...mods };

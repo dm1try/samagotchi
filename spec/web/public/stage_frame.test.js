@@ -9,7 +9,7 @@ globalThis.matchMedia ??= () => ({ matches: false });
 
 const { createStageFrame } = await import("../../../lib/samagotchi/web/public/stage_frame.js");
 
-function frameOf({ holding = true, collapsed = false, cloudOpen = false } = {}) {
+function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap = false } = {}) {
   const observedLog = [];
   const saved = globalThis.ResizeObserver;
   globalThis.ResizeObserver = class {
@@ -25,7 +25,7 @@ function frameOf({ holding = true, collapsed = false, cloudOpen = false } = {}) 
   const dockEl = el("dock");
   const centerEl = el("center");
   const composerEl = el("composer");
-  const state = { holding, collapsed, cloudOpen };
+  const state = { holding, collapsed, cloudOpen, roomCap };
   try {
     const frame = createStageFrame({
       stage, ...parts, dockEl, centerEl, composerEl,
@@ -33,8 +33,9 @@ function frameOf({ holding = true, collapsed = false, cloudOpen = false } = {}) 
       isHolding: () => state.holding,
       isCollapsed: () => state.collapsed,
       isCloudOpen: () => state.cloudOpen,
+      isRoomCap: () => state.roomCap,
     });
-    return { frame, stage, state, observedLog, centerEl, composerEl, ...parts };
+    return { frame, stage, state, observedLog, centerEl, composerEl, dockEl, ...parts };
   } finally {
     globalThis.ResizeObserver = saved;
   }
@@ -79,4 +80,40 @@ test("afterGrowth runs its function two frames on when no growth eases", async (
   assert.equal(ran, false);
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0))));
   assert.equal(ran, true);
+});
+
+// happy-dom has no layout: the page's and the panel's sizes are stubbed.
+function sized(t, { center, dock = 100, inner = 1000 }) {
+  const { frame, stage, state, centerEl, dockEl } = frameOf();
+  Object.defineProperty(centerEl, "clientHeight", { configurable: true, get: () => center });
+  Object.defineProperty(dockEl, "offsetHeight", { configurable: true, get: () => dock });
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => inner });
+  t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
+  const cap = () => stage.style.getPropertyValue("--stage-max");
+  return { frame, state, cap };
+}
+
+test("fitCap: ~60% of the page, ~80% with the cloud open, 0.85 with the question room's cap; never above the panel", (t) => {
+  // room = 2000 - (100 + 10) - 32 = 1858: the page's share is the ceiling.
+  const { frame, state, cap } = sized(t, { center: 2000 });
+  frame.fitCap();
+  assert.equal(cap(), "600px");
+  state.cloudOpen = true;
+  frame.fitCap();
+  assert.equal(cap(), "800px");
+  state.roomCap = true;
+  frame.fitCap();
+  assert.equal(cap(), "850px");
+  state.cloudOpen = false;
+  frame.fitCap();
+  assert.equal(cap(), "850px", "the room's cap wins over the cloud's either way");
+});
+
+test("fitCap: the question room's cap stays under the session panel (room = center - dock - gap - 32)", (t) => {
+  // room = 900 - (100 + 10) - 32 = 758 < 850.
+  const { frame, state, cap } = sized(t, { center: 900 });
+  state.roomCap = true;
+  frame.fitCap();
+  assert.equal(cap(), "758px");
 });

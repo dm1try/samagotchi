@@ -358,3 +358,115 @@ test("two turns in a row: the second turn's slots start empty and draw again", a
     view.reset();
   }
 });
+
+// ── the question room: a model's own question whose asking text overflows
+// its cap gets the stage's raised cap and an uncapped asking slot ─────────
+
+// The page's and the panel's sizes (happy-dom has no layout): room is
+// 2000 - 10 - 32, so the cap is the page's share (600 px, 850 px with the
+// room's cap).
+function sizePage(t) {
+  const center = document.getElementById("center");
+  Object.defineProperty(center, "clientHeight", { configurable: true, get: () => 2000 });
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => 1000 });
+  t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
+}
+
+// A turn whose reply asks: the asking text drawn, overflowing its cap
+// (+overflow+) or not, then +cards+ placed in the extras (each a
+// [className, dataset]).
+function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]] } = {}) {
+  const { view } = page({ taskStop: fakeTaskStop });
+  sizePage(t);
+  view.turnStarted({});
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Here is the plan. ".repeat(40) });
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+  const asking = $(view, ".ts-asking");
+  Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (overflow ? 900 : 100) });
+  Object.defineProperty(asking, "clientHeight", { configurable: true, get: () => 100 });
+  const els = cards.map(([cls, data]) => {
+    const card = document.createElement("details");
+    card.className = cls;
+    Object.assign(card.dataset, data);
+    // The card's buttons: an answer removes them (a childList change, as
+    // question_cards.js's resolve does).
+    card.appendChild(document.createElement("button"));
+    view.place(card);
+    return card;
+  });
+  return { view, asking, card: els[els.length - 1] };
+}
+
+const room = (view) => view.root.classList.contains("question-room");
+const capOf = (view) => view.root.style.getPropertyValue("--stage-max");
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const resize = () => window.dispatchEvent(new window.Event("resize"));
+
+async function answer(card) {
+  card.classList.add("answered");
+  card.querySelector("button")?.remove();
+  await tick();
+}
+
+test("question room: an overflowing plain ask question gets the class and the raised cap", (t) => {
+  const { view } = askPage(t);
+  try {
+    assert.equal(room(view), true);
+    assert.equal(capOf(view), "850px");
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: none for a short question, an approval, the step limit, a hook's question or a relayed one", (t) => {
+  const cases = {
+    short: { overflow: false },
+    approval: { cards: [["bubble question approval", { kind: "approval" }]] },
+    "step limit": { cards: [["bubble question step-limit", { kind: "continue" }]] },
+    "continue card": { cards: [["bubble continue", {}]] },
+    hook: { cards: [["bubble question", { kind: "hook" }]] },
+    relayed: { cards: [["bubble question", { kind: "question", relay: "1" }]] },
+  };
+  for (const [name, opts] of Object.entries(cases)) {
+    const { view } = askPage(t, opts);
+    try {
+      assert.equal(room(view), false, name);
+      assert.equal(capOf(view), "600px", name);
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("question room: none when an answered ask card sits in the extras and an approval blocks", (t) => {
+  const { view } = askPage(t, {
+    cards: [["bubble question answered", { kind: "question" }], ["bubble question approval", { kind: "approval" }]],
+  });
+  try {
+    assert.equal(room(view), false);
+    assert.equal(capOf(view), "600px");
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: the class goes at the answer, the cap stays for the turn; a new turn and a clear drop it", async (t) => {
+  const { view, card } = askPage(t);
+  try {
+    await answer(card);
+    assert.equal(room(view), false);
+    resize();
+    assert.equal(capOf(view), "850px", "the frame is grow-only: the cap never drops at the answer");
+    view.turnStarted({});
+    assert.equal(capOf(view), "600px");
+    const again = askPage(t);
+    assert.equal(capOf(again.view), "850px");
+    again.view.reset();
+    assert.equal(capOf(again.view), "600px");
+    assert.equal(room(again.view), false);
+  } finally {
+    view.reset();
+  }
+});
