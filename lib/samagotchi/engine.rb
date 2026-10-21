@@ -187,49 +187,13 @@ module Samagotchi
       @question_desk = build_question_desk
       # Built here, not on first use: the turn thread and the Bridge's read it.
       @relay_desk = RelayDesk.new
-      @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures)
-      @hooks = @extension_load.hooks
-      # The tools this session offers (the prompts' declarations and the
-      # kernel's dispatch): the built-ins, per Engine. execute.description
-      # off: execute offers no description parameter. +task_finish_notes+:
-      # a worker's, whose finish wake reports a task left running (the
-      # Worker's TaskWatch): execute and task_create say so.
-      @tools = Tools::Builtins.registry(command_description: Config.get("execute.description") != false,
-                                        policy: Config.get(LLMContextStrategy::POLICY_SETTING),
-                                        task_finish_notes: task_finish_notes)
-      restrict_scratch_tools! if @scratch
-      # Likewise the slash commands its SessionCommands run.
-      @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
-      # Installed bundles' plugins add commands, tools and hooks to these
-      # (docs/plugins.md); one that fails is announced with the load
-      # failures, and the rest still load.
-      # Their services (chi.service), which #shutdown stops, and the anytime
-      # commands running now (#spawn_anytime), which it waits for.
-      @services = Plugin::Services.new
-      @anytime_threads = []
-      # chi.init tasks (#add_init_task), started by #start_init_tasks!, and
-      # plugins' tool sets from chi.replace_tools until the turn thread
-      # applies them (#apply_staged_tools!). Built before the plugins load.
-      @plugin_tasks = build_plugin_tasks
-      # The session's toolkit: the kits (the plugins' too, chi.toolkit),
-      # what its next turn declares, the turn-start apply.
-      @toolkit_binding = build_toolkit_binding
       # The notices a turn's thinking level leads to (once per session and host).
       @thinking_notices = ThinkingNotices.new(session: -> { @session }, profile: -> { self.profile },
                                               notify: ->(text, level, source) { hook_notify(text, level, source) })
-      # The tools plugins publish without declaring (chi.tool_source), and
-      # the search and call tools that reach them (Tools::ToolIndex).
-      @tool_index = Tools::ToolIndex.new
-      # The context sources the peer bundles declare as a peer agent's
-      # answers (chi.peer_source); the worker's ContextAbsorber asks it.
-      @peer_sources = PeerSources.new
       @lifecycle_mutex = Mutex.new
       @shut_down = false
-      load_plugins if plugins
-      # Registered from what the sources published while they loaded, and
-      # with no plugins too: a toolkit's left-out built-ins are reachable
-      # either way (declared per toolkit, Tools::Registry).
-      @tool_index.declare(@tools, failures: @plugin_failures)
+      # The built-ins, the commands, and the plugins that add to them.
+      build_tools_and_plugins(load: plugins, task_finish_notes: task_finish_notes)
       guardrail_rules
       # The Engine owns the reminder store; its kernel (built here, or a
       # spec's) gets it, so tool calls via KernelLoop and reminder injection
@@ -276,6 +240,52 @@ module Samagotchi
     end
 
     # ── initialize's collaborators ──────────────────────────────────────────
+
+    # The Engine as the plugins' host: the tools and slash commands this
+    # session offers, what plugins add to them (services, init tasks, the
+    # toolkit, the tool index, peer sources), then the plugins themselves
+    # unless +load+ is false (see #initialize for when).
+    def build_tools_and_plugins(load:, task_finish_notes:)
+      @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures)
+      @hooks = @extension_load.hooks
+      # The tools this session offers (the prompts' declarations and the
+      # kernel's dispatch): the built-ins, per Engine. execute.description
+      # off: execute offers no description parameter. +task_finish_notes+:
+      # a worker's, whose finish wake reports a task left running (the
+      # Worker's TaskWatch): execute and task_create say so.
+      @tools = Tools::Builtins.registry(command_description: Config.get("execute.description") != false,
+                                        policy: Config.get(LLMContextStrategy::POLICY_SETTING),
+                                        task_finish_notes: task_finish_notes)
+      restrict_scratch_tools! if @scratch
+      # Likewise the slash commands its SessionCommands run.
+      @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
+      # Installed bundles' plugins add commands, tools and hooks to these
+      # (docs/plugins.md); one that fails is announced with the load
+      # failures, and the rest still load.
+      # Their services (chi.service), which #shutdown stops, and the anytime
+      # commands running now (#spawn_anytime), which it waits for.
+      @services = Plugin::Services.new
+      @anytime_threads = []
+      # chi.init tasks (#add_init_task), started by #start_init_tasks!, and
+      # plugins' tool sets from chi.replace_tools until the turn thread
+      # applies them (#apply_staged_tools!). Built before the plugins load.
+      @plugin_tasks = build_plugin_tasks
+      # The session's toolkit: the kits (the plugins' too, chi.toolkit),
+      # what its next turn declares, the turn-start apply.
+      @toolkit_binding = build_toolkit_binding
+      # The tools plugins publish without declaring (chi.tool_source), and
+      # the search and call tools that reach them (Tools::ToolIndex).
+      @tool_index = Tools::ToolIndex.new
+      # The context sources the peer bundles declare as a peer agent's
+      # answers (chi.peer_source); the worker's ContextAbsorber asks it.
+      @peer_sources = PeerSources.new
+      load_plugins if load
+      # Registered from what the sources published while they loaded, and
+      # with no plugins too: a toolkit's left-out built-ins are reachable
+      # either way (declared per toolkit, Tools::Registry).
+      @tool_index.declare(@tools, failures: @plugin_failures)
+    end
+    private :build_tools_and_plugins
 
     # The tools a scratch session doesn't offer, and its memory_write.
     def restrict_scratch_tools!

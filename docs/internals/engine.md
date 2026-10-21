@@ -527,10 +527,12 @@ Engine initialization (in this order, among other things):
   @event_routes (EventRoutes: where a card or a notice goes: held while the plugins load, an anytime command's, an init task's, a turn event, else announced or held)
   @hook_routes (HookRoutes: notices (through @event_routes), hook questions, stop_turn/stop_generation, steer attribution)
   @guardrail_wiring, @question_desk, @relay_desk (RelayDesk: a delegate's approval relay)
+  @thinking_notices (ThinkingNotices)
+  build_tools_and_plugins:
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
   @tools = Tools::Builtins.registry; @command_registry (SessionCommands' built-ins); @plugin_tasks
   @toolkit_binding (ToolkitBinding: the kits, the plugins' among them, and the turn-start apply)
-  @thinking_notices (ThinkingNotices); @tool_index = Tools::ToolIndex.new; @peer_sources = PeerSources.new
+  @tool_index = Tools::ToolIndex.new; @peer_sources = PeerSources.new
   the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins; each plugin's ctx is a
     Plugin::Context over plugin_host, whose ctx.sessions it builds itself: the test kit passes its own, sessions:),
     then (plugins or not) @tool_index.declare(@tools): find_tools + call_tool (source "index", not core),
