@@ -1208,6 +1208,9 @@ module Samagotchi
         dispatched[:ref_path] = result.ref_path
         dispatched[:ref_stderr_path] = result.stderr_path if result.stderr_path
       end
+      # The tools a find_tools hit loads (Tools::ToolIndex::FoundText),
+      # saved with a chat result (ToolResponse.single).
+      dispatched[:loaded] = result.loaded if result.respond_to?(:loaded) && !Array(result.loaded).empty?
       if result.respond_to?(:images) && !Array(result.images).empty?
         dispatched[:images] = Array(result.images)
         dispatched[:image_only] = true if result.respond_to?(:image_only?) && result.image_only?

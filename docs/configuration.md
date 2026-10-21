@@ -1412,8 +1412,10 @@ toolkit:
   built-ins, the MCP servers' tools as `mcp_<server>_<tool>`) also goes in the request's tools deferred
   (`defer_loading`: Messages keeps them out of the model's view until something loads them, at a flat ~100 tokens).
   A direct call of one (`list_sessions`, `mcp_fs_read`) runs, under the same guardrails, approvals and rows as
-  through `call_tool` (an MCP tool's call is `call_tool`'s). Not on Fireworks' dialect, nor on `api: openai` or a
-  native host, where such a call gets the `call_tool` route.
+  through `call_tool` (an MCP tool's call is `call_tool`'s). A `find_tools` hit **loads** its matches (up to 5):
+  the model then sees their definitions and calls them by name; only the new result is read uncached. Not on
+  Fireworks' dialect, nor on `api: openai` or a native host, where such a call gets the `call_tool` route and a hit
+  reads as text.
 - **The prompt line.** One line after the base prompt names them: `Not declared in this session (toolkit lean): ….
   Search them with find_tools; call one with call_tool.`, then `Removed (toolkit child): memory_write, …. Only the
   user can load one (/toolkit add <name>).` With `find_tools` removed, the first sentence ends `Call one with

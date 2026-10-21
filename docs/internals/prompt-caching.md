@@ -99,6 +99,13 @@ right-hand column happens.
   id: every chat request carries them, unless the host's dialect has none (`Dialect#cache_breakpoints`: `fireworks`,
   an automatic prefix cache) or the host refused `cache_control` with a 400 (no breakpoints for that worker's life).
   [anthropic.md](anthropic.md) has the details.
+- On a Messages host the tools a session reaches but doesn't declare go in `tools` deferred (`defer_loading`), after
+  the declared ones, never marked: Messages keeps them out of the cached prefix (a flat ~93 tokens, whatever their
+  number), so the list may grow mid-session (an MCP server that finished starting, sorted in by name) without a
+  re-read. A find_tools hit's load goes in its own tool_result (`tool_reference` blocks) with the text beside it,
+  rendered the same in every later request (a loaded name stays deferred, a stub once its source is gone), so the
+  request after a load reads the whole prefix and only the new result is fresh. The first request of a session
+  that gains deferred tools (a toolkit leaving tools out, MCP tools) differs from main's bytes once.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 

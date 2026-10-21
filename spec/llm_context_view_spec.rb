@@ -155,6 +155,15 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(entry[:content]).to start_with("[read] lib/x.rb\n1: x")
     end
 
+    it "keeps a forgotten find result's loaded: names, so a wire that loads tools still renders the load" do
+      entry = { role: "tool_response", content: "[find_tools]\nlong answer", tool_call_id: "c1", tool_ids: %w[t1],
+                loaded: %w[list_sessions], edits: { "t1" => edit("forget", "found list_sessions") } }
+      sent = described_class.new(strategy: [:forget]).messages([entry]).first
+
+      expect(sent[:content]).to start_with("[find_tools] (forgotten) found list_sessions")
+      expect(sent[:loaded]).to eq(%w[list_sessions])
+    end
+
     it "drops a stubbed run's images, and the images keys once none are left" do
       entry = batch.merge(edits: { "t2" => edit("forget", "two screenshots of the login page"),
                                    "t1" => edit("forget", "x is one line") })

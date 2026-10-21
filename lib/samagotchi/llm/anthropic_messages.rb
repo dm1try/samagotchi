@@ -46,7 +46,12 @@ module Samagotchi
     # - cache_control refused (Fireworks lists it unsupported): no
     #   breakpoints for the host;
     # - max_tokens over the model's output limit: the limit the message
-    #   names, per model.
+    #   names, per model;
+    # - deferred tools or a tool_reference refused: none deferred for the
+    #   model from then on (#loads_tools? false; a load goes as text);
+    # - a deferred tool's input_schema refused: that tool leaves the list
+    #   for the model (call_tool still reaches it), one fix per tool, at
+    #   most MAX_SCHEMA_FIXES per request.
     # A signature 400 (Claude 5.x preserved thinking: a replayed block bound
     # to a prefix that changed) is recovered here too (AnthropicBindingRecovery):
     # asked again with drop_block, or with the blocks stripped, and the
@@ -77,6 +82,12 @@ module Samagotchi
                     \bdisplay\W{0,4}(?:extra\s+inputs\s+are\s+not\s+permitted|is\s+not\s+(?:permitted|allowed|supported))/xi
       # "max_tokens: 200000 > 128000, which is the maximum allowed number of output tokens for …"
       OUTPUT_CAP_RE = /max_tokens`?:?\s*\d+\s*>\s*(\d+)/i
+      # A 400 refusing deferred tools or a load by reference.
+      TOOL_LOADING_RE = /defer_loading|tool_reference/i
+      # A 400 naming a tool's input schema: "tools.3.custom.input_schema: …".
+      TOOL_SCHEMA_RE = /tools\.(\d+)\.(?:custom\.)?input_schema/i
+      # The deferred tools a request drops for bad schemas, at most.
+      MAX_SCHEMA_FIXES = 5
       # max_tokens when default.max_tokens is unset and the model list names
       # none (a listed one is capped by it too).
       DEFAULT_MAX_TOKENS = 64_000
@@ -156,6 +167,7 @@ module Samagotchi
 
           fix = refusal_fix(e, body, model)
           raise if fix.nil? || fixed.include?(fix)
+          raise if fix.is_a?(Array) && fixed.count { |done| done.is_a?(Array) } >= MAX_SCHEMA_FIXES
 
           fixed << fix
           retry
@@ -235,6 +247,7 @@ module Samagotchi
         options = thinking_between_tools(options) if @refusals.refused?(:thinking_off_form, model.to_s)
         options = without_display(options) if @refusals.refused?(:thinking_display)
         cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@refusals.refused?(:cache_control)
+        tools = without_refused_tools(tools, model)
         deferred = Array(tools).filter_map { |tool| tool.dig(:function, :name).to_s if tool[:defer_loading] }
         translated = AnthropicWire.translate(messages, cache: cache, deferred: deferred)
         max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
@@ -249,6 +262,20 @@ module Samagotchi
           body[:tool_choice] = { type: "auto" }
         end
         with_budget_room(body.merge(options).compact)
+      end
+
+      # +tools+ without the deferred ones the host refused for +model+: all
+      # of them after a :tool_loading refusal, else the ones whose schema
+      # it refused. A find result that loaded one then references only the
+      # rest (AnthropicWire renders references for this request's deferred
+      # names), so no reference is left without its tool.
+      def without_refused_tools(tools, model)
+        return Array(tools).reject { |tool| tool[:defer_loading] } if @refusals.refused?(:tool_loading, model.to_s)
+
+        bad = Array(@refusals[:tool_schema, model.to_s])
+        return tools if bad.empty?
+
+        Array(tools).reject { |tool| tool[:defer_loading] && bad.include?(tool.dig(:function, :name).to_s) }
       end
 
       # Adaptive thinking at a level as the budget form: thinking enabled
@@ -333,11 +360,33 @@ module Samagotchi
           @refusals.remember(:cache_control)
           Log.info(:http, "cache_control_refused", host: @host_name, detail: detail[0, 200])
           :cache_control
+        elsif (tool = refused_schema_tool(detail, body))
+          @refusals.add(:tool_schema, model.to_s, tool)
+          Log.info(:http, "tool_schema_refused", host: @host_name, model: model.to_s, tool: tool, detail: detail[0, 200])
+          [:tool_schema, tool]
+        elsif !@refusals.refused?(:tool_loading, model.to_s) && TOOL_LOADING_RE.match?(detail) && loads?(body)
+          @refusals.remember(:tool_loading, model.to_s)
+          Log.info(:http, "tool_loading_refused", host: @host_name, model: model.to_s, detail: detail[0, 200])
+          :tool_loading
         elsif (cap = detail[OUTPUT_CAP_RE, 1]&.to_i) && cap.positive? && body[:max_tokens].to_i > cap
           @refusals.remember(:output_cap, model.to_s, cap)
           Log.info(:http, "output_cap", host: @host_name, model: model.to_s, max_tokens: cap)
           :max_tokens
         end
+      end
+
+      # The deferred tool a 400 names by its input_schema's path, or nil.
+      def refused_schema_tool(detail, body)
+        index = detail[TOOL_SCHEMA_RE, 1] or return nil
+        tool = Array(body[:tools])[index.to_i]
+        tool[:name] if tool.is_a?(Hash) && tool[:defer_loading]
+      end
+
+      # Whether +body+ declares a deferred tool or loads one by reference.
+      def loads?(body)
+        return true if Array(body[:tools]).any? { |tool| tool[:defer_loading] }
+
+        JSON.generate(body[:messages]).include?('"tool_reference"')
       end
 
       # The model list's max_tokens for +model+ (capped), else the cap.

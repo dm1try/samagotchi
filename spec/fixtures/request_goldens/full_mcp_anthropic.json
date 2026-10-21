@@ -45,7 +45,16 @@
           {
             "type": "tool_result",
             "tool_use_id": "toolu_find1",
-            "content": "[find_tools]\nCall one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\nfs/list_sessions_log: List the sessions log.\ninputSchema: {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}"
+            "content": [
+              {
+                "type": "tool_reference",
+                "tool_name": "mcp_fs_list_sessions_log"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "text": "[find_tools]\nCall one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\nfs/list_sessions_log: List the sessions log.\ninputSchema: {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}\n\nLoaded: mcp_fs_list_sessions_log. Call them directly by these names (call_tool works too)."
           }
         ]
       },

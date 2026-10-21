@@ -17,7 +17,11 @@ module Samagotchi
     # - an assistant message → its saved blocks verbatim (anthropic_content),
     #   else a text block and its tool_use blocks (arguments as the input
     #   object); one with neither is dropped;
-    # - tool messages → tool_result blocks in a user message;
+    # - tool messages → tool_result blocks in a user message; one whose
+    #   loaded: names tools this request declares deferred loads them: its
+    #   tool_result holds only their tool_reference blocks, and its text
+    #   follows as a sibling text block (Messages takes no text beside a
+    #   reference), never marked;
     # - user parts → text blocks and image blocks (a data URL as base64, an
     #   http(s) URL as a url source).
     # Consecutive messages of one role go as one message (so a turn's tool
@@ -64,7 +68,10 @@ module Samagotchi
 
           case role
           when "assistant" then append(messages, "assistant", assistant_blocks(message))
-          when "tool" then append(messages, "user", [tool_result(message)])
+          when "tool"
+            blocks = tool_blocks(message, deferred)
+            blocks.drop(1).each { |block| notes[block] = true }
+            append(messages, "user", blocks)
           when "system"
             blocks = content_blocks(message[:content])
             blocks.each { |block| notes[block] = true }
@@ -220,6 +227,23 @@ module Samagotchi
         block
       end
 
+      # A tool message's blocks: its tool_result, or, when its loaded:
+      # names tools deferred in this request, a tool_result of their
+      # references and the text after it.
+      def tool_blocks(message, deferred)
+        names = Array(message[:loaded]).map(&:to_s) & Array(deferred)
+        return [tool_result(message)] if names.empty?
+
+        refs = names.map { |name| { type: "tool_reference", tool_name: name } }
+        text = scrub(message[:content].to_s)
+        line = "Loaded: #{names.join(", ")}. #{LOADED_HINT}"
+        [{ type: "tool_result", tool_use_id: tool_id(message[:tool_call_id]), content: refs },
+         text_block(blank?(text) ? line : "#{text}\n\n#{line}")]
+      end
+
+      # The sibling text's last words (D11: the prompt itself doesn't change).
+      LOADED_HINT = "Call them directly by these names (call_tool works too)."
+
       # A String or a parts list as blocks.
       def content_blocks(content)
         return blank?(content.to_s) ? [] : [text_block(scrub(content.to_s))] unless content.is_a?(Array)
@@ -246,14 +270,23 @@ module Samagotchi
       end
 
       # Breakpoint #2: the last user block that can carry one and didn't
-      # come from a later system message (+notes+).
+      # come from a later system message or a load's text (+notes+); on a
+      # tool_result of references, its last reference.
       def mark_last(messages, cache, notes)
         markable = ->(block) { !UNMARKABLE.include?(type_of(block)) && !notes.key?(block) }
         message = messages.reverse_each.find { |m| m[:role] == "user" && m[:content].any?(&markable) } or return
         index = message[:content].rindex(&markable)
         block = message[:content][index]
         key = block.key?("type") ? "cache_control" : :cache_control
-        message[:content][index] = block.merge(key => cache)
+        message[:content][index] = references?(block) ? mark_reference(block, cache) : block.merge(key => cache)
+      end
+
+      def references?(block) = type_of(block) == "tool_result" && block[:content].is_a?(Array)
+
+      def mark_reference(block, cache)
+        refs = block[:content].dup
+        refs[-1] = refs[-1].merge(cache_control: cache)
+        block.merge(content: refs)
       end
 
       def type_of(block) = (block[:type] || block["type"]).to_s
@@ -265,7 +298,8 @@ module Samagotchi
       def scrub(text) = Utf8Scrub.call(text)
 
       private_class_method :append, :system_blocks, :assistant_blocks, :input_of, :warn_arguments, :tool_result,
-                           :content_blocks, :image_block, :mark_last, :valid_tool_use, :type_of, :text_block, :blank?, :scrub
+                           :content_blocks, :image_block, :mark_last, :valid_tool_use, :type_of, :text_block, :blank?, :scrub,
+                           :tool_blocks, :references?, :mark_reference
     end
   end
 end

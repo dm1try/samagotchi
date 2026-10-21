@@ -84,6 +84,19 @@ module Samagotchi
       # A Group's states.
       STATES = %i[ready starting failed].freeze
 
+      # A search's answer (#find): its text, and the tools it loads on a host
+      # that loads tools (+loaded+: the wire names of a keyword answer's
+      # callable matches, the ones a request can declare deferred; none for
+      # an empty query, a miss or the names listing).
+      class FoundText < String
+        attr_reader :loaded
+
+        def initialize(text, loaded = [])
+          super(text)
+          @loaded = loaded.freeze
+        end
+      end
+
       # One group of a source's tools (an MCP server): +summary+ its line in
       # the search tool's description (nil: its name and tool count only),
       # +state+ :ready, :starting (its tools may come: a lookup waits) or
@@ -287,11 +300,12 @@ module Samagotchi
       # empty query every group's tool names. +server+ is the parameter's
       # name before it was +group+: a model that still gives it is told
       # every group was searched.
+      # @return [FoundText]
       def find(query, only = nil, server: nil)
         answer = find_in(query, only)
         return answer unless (only.nil? || only.strip.empty?) && !server.to_s.strip.empty?
 
-        "(searched every group)\n#{answer}"
+        FoundText.new("(searched every group)\n#{answer}", answer.loaded)
       end
 
       # ── The call ────────────────────────────────────────────────────────
@@ -437,17 +451,32 @@ module Samagotchi
         searched = all
         if only && !only.strip.empty?
           searched = all.select { |group| group.name == only.strip }
-          return "Error: no group #{only.strip}. Groups: #{all.map(&:name).join(", ")}" if searched.empty?
+          return FoundText.new("Error: no group #{only.strip}. Groups: #{all.map(&:name).join(", ")}") if searched.empty?
         end
-        return names_text(searched) if words(query).empty?
+        return FoundText.new(names_text(searched)) if words(query).empty?
 
         matches = ranked(query, searched.flat_map(&:tools)).take(FIND_RESULTS)
-        return "No tool matches \"#{query.strip}\".\n\n#{names_text(searched)}" if matches.empty?
+        return FoundText.new("No tool matches \"#{query.strip}\".\n\n#{names_text(searched)}") if matches.empty?
 
         blocks = matches.map { |tool| match_text(tool, all) }
         unsearched = searched.filter_map { |group| "#{group.name} #{group.note}" if group.tools.empty? && group.note }
         blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
-        "Call one with #{CALL_NAME}(tool: \"<group>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}"
+        FoundText.new("Call one with #{CALL_NAME}(tool: \"<group>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}",
+                      loadable(matches))
+      end
+
+      # The wire names of +matches+ a request can declare deferred: a
+      # built-in of the index's own groups by its name, a source's tool by
+      # its acts_as when it is #deferrable.
+      def loadable(matches)
+        sourced = nil
+        matches.filter_map do |tool|
+          next tool.name if tool.entry
+          next if tool.refusal
+
+          sourced ||= deferrable.map(&:acts_as)
+          tool.acts_as if sourced.include?(tool.acts_as)
+        end
       end
 
       # What the sources hear of the declared tools (/mcp's last line).

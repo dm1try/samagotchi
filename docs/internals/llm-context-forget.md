@@ -38,7 +38,8 @@ lets the model forget its own tool outputs. The pieces:
 - **Stubs** (`LLMContextView`): `(forgotten) <note>` on the first output of a call's forgets in a row, `(forgotten
   with tN: see its note)` on the rest (a run of the same note, author and stamp, no other output between them),
   ` [restore: tN]` on a non-read with a stored id, then each kept range under `lines A-B kept:`. The entry keeps its
-  role, tool_call_id and images bookkeeping as for stale.
+  role, tool_call_id and images bookkeeping as for stale, and a find_tools result's `loaded:`, so a Messages host
+  still gets the load's references (anthropic.md, "Deferred tools"); only the sibling text is the stub.
 - **Offers**: `ContextStatus` (internals/context-telemetry.md).
 - **Persistence**: the edits ride on the entries (plan D3), so `--resume`, rollbacks and forks keep the stubs and the
   restores; `/stats` counts each applied batch's re-prefill.

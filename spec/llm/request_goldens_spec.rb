@@ -70,12 +70,16 @@ RSpec.describe "Request goldens per toolkit and wire" do
     [kernel, index]
   end
 
-  # A find_tools hit and its answer, then a new prompt.
+  # A find_tools hit and its answer (with the tools it loads, as
+  # ToolResponse.single saves them), then a new prompt.
   def conversation(index)
+    found = index.find("sessions")
+    result = { role: "tool_response", content: "[find_tools]\n#{found}", tool_call_id: "toolu_find1" }
+    result[:loaded] = found.loaded unless found.loaded.empty?
     [{ role: "system", content: "You are chi. Use tools when needed." },
      { role: "user", content: "List my chi sessions." },
      { role: "model", content: "", tool_calls: [{ id: "toolu_find1", name: "find_tools", arguments: { "query" => "sessions" } }] },
-     { role: "tool_response", content: "[find_tools]\n#{index.find("sessions")}", tool_call_id: "toolu_find1" },
+     result,
      { role: "model", content: "Found it." },
      { role: "user", content: "Now list them." }]
   end

@@ -152,7 +152,8 @@ module Samagotchi
       ToolRun.new(output: output, capped_output: capped, truncated: truncated, activity: result[:activity],
                   images: images&.any? ? images : nil,
                   shown_params: params && plugin_tool?(call[:name]) ? params : nil,
-                  shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file)
+                  shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file,
+                  loaded: result[:loaded])
     end
 
     private

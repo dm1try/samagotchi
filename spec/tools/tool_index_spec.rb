@@ -149,6 +149,34 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
   end
 
+  # What a hit loads on a host that loads tools (lean tools P2c): the wire
+  # names of a keyword answer's callable, deferrable matches.
+  describe "#find's loaded names" do
+    before do
+      added.publish([described_class::Group.new(name: "fs", tools: [
+        echo, tool("fs", "echo_bad", description: "Echo badly.", refusal: "bad schema"),
+        described_class::Tool.new(group: "fs", name: "echo_dot", acts_as: "mcp.fs.echo",
+                                  description: "Echo dotted.")
+      ])])
+      index.declare(registry)
+      registry.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+      index.refresh!
+    end
+
+    it "are a keyword answer's matches: a built-in by name, a source tool by acts_as, never a refused or odd name" do
+      expect(index.find("echo").loaded).to eq(%w[mcp_fs_echo])
+      expect(index.find("sessions").loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+      expect(index.find("sessions", server: "fs")).to start_with("(searched every group)")
+      expect(index.find("sessions", server: "fs").loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+    end
+
+    it "are none for the names listing, a miss or an unknown group" do
+      expect(index.find("").loaded).to eq([])
+      expect(index.find("zebra").loaded).to eq([])
+      expect(index.find("echo", "nope").loaded).to eq([])
+    end
+  end
+
   describe "the chi group: built-ins the toolkit leaves out" do
     def kit(name = "lean", kits: Samagotchi::Toolkit.kits, **) = Samagotchi::Toolkit.new(name: name, **).resolve(kits)
 

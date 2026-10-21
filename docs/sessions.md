@@ -253,6 +253,11 @@ declares every tool (full). The file stores only the name: a kit's tools and pro
 `/toolkit` changes it, saved at once, from the next turn's start. See
 [Toolkits](configuration.md#toolkits).
 
+A `find_tools` result on a chat host saves the tools its hit loads as `loaded: ["list_sessions", "mcp_fs_read"]` on
+its `tool_response` entry (wire names: a built-in's, an MCP tool's `mcp_<server>_<tool>`), whatever the host: a
+later turn on `api: anthropic` (after a `/model` switch, a resume) sends the load as references, any other host
+ignores it. The names stay deferred for the session's life, across respawns, `--resume` and forks.
+
 ## Parent answers
 
 A session file's `parent_answers` (`hard`, `standard`, `soft`, or `null` for none) is the session's own

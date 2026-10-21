@@ -178,6 +178,10 @@ module Samagotchi
       #
       # The conversation goes through the kernel's LLMContextView first,
       # as the native prompt does (it keeps every entry in place).
+      #
+      # On an adapter that loads tools (#loads_tools?), a find result's
+      # tool message carries its loaded: names (AnthropicWire renders the
+      # load); no other wire sees them.
       def wire_messages(conversation, since: nil, reasoning: reasoning_history)
         conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
@@ -208,7 +212,10 @@ module Samagotchi
           when "tool_response"
             id = entry[:tool_call_id]
             if id && paired.include?(id)
-              wire << { role: "tool", content: with_placeholders(entry[:content].to_s, items), tool_call_id: id }
+              message = { role: "tool", content: with_placeholders(entry[:content].to_s, items), tool_call_id: id }
+              # A find result's loads, for a wire that loads tools (AnthropicWire).
+              message[:loaded] = entry[:loaded] if entry[:loaded].is_a?(Array) && @adapter.respond_to?(:loads_tools?)
+              wire << message
               tool_images.concat(image_parts(items))
             else
               text = "[tool results]\n#{entry[:content]}"

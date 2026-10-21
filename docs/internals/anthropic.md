@@ -234,6 +234,20 @@ adapter, and only with at least one tool declared (Messages wants one). The list
 A deferred tool never carries `cache_control`, and the list sits after the declared tools, so the cached prefix holds
 (prompt-caching.md). A session with nothing to defer (full, no MCP server) sends the bytes it always did.
 
+### Loading by reference
+
+A `find_tools` keyword hit loads its callable matches (`ToolIndex::FoundText#loaded`, at most `FIND_RESULTS`: a
+built-in by its name, a source tool by its acts_as when it is deferrable; an empty query, a miss or the names listing
+load nothing). `KernelLoop#dispatch` passes them on (`dispatched[:loaded]`), `ToolRun#loaded` carries them and
+`ToolResponse.single` saves them on the result as `loaded:` (every chat host; `ToolResponse.joined` doesn't).
+`ChatLoop#wire_messages` copies them onto the tool message only for an adapter that loads tools.
+`AnthropicWire.translate(wire, cache:, deferred:)` takes the names this request declares deferred and renders a
+result's `loaded:` names among them as a tool_result holding only
+`{"type": "tool_reference", "tool_name": …}` blocks (Messages takes no other content beside a reference), followed by
+a sibling text block: the result's text, then `Loaded: a, b. Call them directly by these names (call_tool works
+too).` A result whose names aren't deferred here (declared since, or no tool loading) goes as plain text. The sibling
+text is never marked; when breakpoint #2 falls on such a tool_result, it goes on its last reference.
+
 A direct call of a deferred tool runs whether something loaded it or not (the API doesn't check): the Engine sets
 `TurnSettings#loads_tools` from the turn's final model (after the before_turn hooks), and then `ToolRunner#run` and
 `KernelLoop#dispatch` take a reachable built-in by its own name (`Registry#indexed`) through the normal gate, and wrap
@@ -259,9 +273,13 @@ client's life only):
 | `cache_control` | no breakpoints | per host (`cache_control_refused`) |
 | `max_tokens: N > M` (`OUTPUT_CAP_RE`) | `max_tokens` capped at M | per model (`output_cap`) |
 | `block_binding` or the binding beta, on a drop_block retry (`thinking_binding_unsupported?`) | the strip instead (Preserved thinking) | per host (`binding_controls_refused`) |
+| `tools.N.input_schema` (`TOOL_SCHEMA_RE`) where tool N is deferred | that tool leaves the deferred list (`call_tool` still reaches it); one fix per tool (the fix value is `[:tool_schema, name]`), at most `MAX_SCHEMA_FIXES` (5) per request; the names kept by `RefusalMemo#add` | per model (`tool_schema_refused`) |
+| `defer_loading` or `tool_reference` (`TOOL_LOADING_RE`) on a request that carries either | no deferred tools from then on (`#loads_tools?` false, loads go as text); a direct call of a reachable tool is refused again from the next turn (`TurnSettings#loads_tools`) | per model (`tool_loading_refused`) |
 
 The display check comes before the adaptive one: its path (`thinking.adaptive.display`) names adaptive too. A context
 overflow, a refused sampling field, a signature or a binding-controls 400 is not one of these (`#refusal_fix` keeps
 excluding them, so `ADAPTIVE_REFUSED_RE` never reads a binding 400's "adaptive" as a form refusal): a signature 400
 goes to the binding recovery above, the rest on as they are, to the loop's own handling (ChatLoop's sampling and
-thinking-fields fallbacks) or to the turn's failure.
+thinking-fields fallbacks) or to the turn's failure. A tool-loading fix's retry that breaks a replayed thinking
+block's binding gets a signature 400 like any other request, and the binding recovery takes it. These refusals come on
+the first request that carries the feature, normally a turn's first.

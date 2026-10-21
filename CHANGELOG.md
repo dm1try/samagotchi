@@ -13,7 +13,14 @@ and commands may change between minor versions. How releases are made:
 - Sessions on Anthropic's Messages API (`api: anthropic`) can call a tool their toolkit leaves out by its own name:
   the reachable built-ins (`list_sessions` on `lean`) and the MCP servers' tools (`mcp_fs_read`) go in each request
   deferred (`defer_loading`), and a direct call runs under the same guardrails, approvals and rows as through
-  `call_tool`. Other hosts are unchanged. See [docs/configuration.md](docs/configuration.md#toolkits).
+  `call_tool`. A `find_tools` hit loads its matches by reference, so the model calls them by name and the request
+  after a load reads its whole prompt from the cache. Other hosts are unchanged. See
+  [docs/configuration.md](docs/configuration.md#toolkits).
+
+### Changed
+
+- An Anthropic session whose toolkit leaves tools out, or that has MCP tools, may read its prompt again once on its
+  first turn after the upgrade (its request now carries the deferred tools).
 
 ## [0.98.0] - 2026-10-21
 

@@ -23,6 +23,12 @@ module Samagotchi
       # Whether +kind+ is remembered for +model+ (nil: the host).
       def refused?(kind, model = nil) = @mutex.synchronize { @facts.key?([kind, model]) }
 
+      # Add +item+ to the list remembered for +kind+ and +model+ (a value
+      # that grows: the deferred tools a model's host refused, one by one).
+      def add(kind, model, item)
+        @mutex.synchronize { (@facts[[kind, model]] ||= []) << item unless Array(@facts[[kind, model]]).include?(item) }
+      end
+
       # The value remembered for +kind+ and +model+, or nil.
       def [](kind, model = nil) = @mutex.synchronize { @facts[[kind, model]] }
     end
