@@ -187,6 +187,19 @@ An environment name used as a top-level key (`SAMAGOTCHI_DEFAULT_MODEL: my-model
 the old flat form) is not read: it warns as an unknown key with the nested one
 to use (`did you mean 'default.model'?`).
 
+A few environment variables are not settings (no config.yml key, no flag):
+
+- `SAMAGOTCHI_SKIP_SYSTEM_BUNDLE=1` (or `true`): don't install or upgrade the system bundle
+  (`samagotchi-system`) into the system memories; chi uses whatever is installed there. For isolated runs and
+  specs. `chi bundle try` drops it from its sandboxed child, so the sandbox gets the system bundle installed.
+- `SAMAGOTCHI_BOOT_FALLBACK`: internal. A worker's boot line sets it when the newest installed chi failed to
+  load and the worker fell back to its starter's version; the worker reads and unsets it, and logs
+  `boot_fallback` with the error. See [Sessions](sessions.md) (Which chi a worker runs).
+- `SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI=1`: internal. Set beside `SAMAGOTCHI_DEFAULT_MODEL` for a worker a
+  `chi --model X` spawned: X is that run's model, which the chi its commands run must not inherit.
+- `SAMAGOTCHI_LOG_STRICT=1`: an unknown log tag or a malformed log event raises instead of being dropped. The spec
+  suite sets it, and a bundle's tests keep it (`Samagotchi::Testing::Sandbox`).
+
 ## Model Server API
 
 Chi talks to a model server over HTTP in one of two ways, set by the host's `api:`:
