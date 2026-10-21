@@ -685,13 +685,12 @@ module Samagotchi
         return true
       end
 
-      ack = result.ack
       @delivered = result
       # What the worker applied, for --format json: its ack's delivery
       # (next_step for an idle session) and a cut's outcome.
-      @sent_delivery = ack["delivery"] || delivery
-      @sent_cut = ack["cut"]
-      @info.puts("#{short}  sent#{with_images}#{delivery_note(ack, delivery: delivery, running: running, owner: owner)}")
+      @sent_delivery = result.delivery || delivery
+      @sent_cut = result.cut
+      @info.puts("#{short}  sent#{with_images}#{delivery_note(result, delivery: delivery, running: running, owner: owner)}")
       true
     rescue SessionManager::OwnedByTUI
       @info.puts("#{short}  refused: it is open in a chi REPL; messages need attached mode")
@@ -706,11 +705,12 @@ module Samagotchi
     # the outcome from the ack (now, waits, off); a --queue one runs after
     # the turn (or now, when the turn ended before it went in); images keep
     # their own wording; an idle session's turn simply runs.
-    # @param ack [Hash] the Bridge's 202 body ({} for the input file)
+    # @param result [SessionManager::DeliverResult] the accepted delivery
+    #   (its ack is {} for the input file)
     # @return [String] "" or " (...)"
-    def delivery_note(ack, delivery:, running:, owner:)
+    def delivery_note(result, delivery:, running:, owner:)
       return " (started its worker)" if owner.nil?
-      return queue_note(ack, running: running) if Delivery.queue?(delivery)
+      return queue_note(result, running: running) if Delivery.queue?(delivery)
       return "" unless running
 
       # A busy worker runs a message with images as its own next turn
@@ -720,18 +720,18 @@ module Samagotchi
       # The TUIs' words for a cut's outcome. No outcome: a plain message,
       # or the input file (the Bridge went away), which the next step's
       # drain takes.
-      outcome = Delivery.cut?(delivery) ? ack["cut"].to_s : ""
+      outcome = Delivery.cut?(delivery) ? result.cut.to_s : ""
       return " (goes in at the running turn's next step)" unless CUT_OUTCOMES.include?(outcome)
 
-      " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, ack["cut_after"])}"
+      " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, result.cut_after)}"
     end
 
     # A --queue, worded from the Bridge's ack: queue when a turn ran as it
     # went in (one another client started too), next_step when none did
     # (it runs now). The input file (no Bridge) carries the queue to
     # whichever turn runs: worded from the session as chi read it.
-    def queue_note(ack, running:)
-      queued = ack.key?("delivery") ? ack["delivery"] == Delivery::QUEUE : running
+    def queue_note(result, running:)
+      queued = result.delivery.nil? ? running : result.delivery == Delivery::QUEUE
       return " (queued: runs after the current turn)" if queued
 
       running ? " (the running turn had ended: it runs now)" : " (nothing running: it runs now)"

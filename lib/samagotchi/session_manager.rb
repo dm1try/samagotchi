@@ -1177,6 +1177,17 @@ module Samagotchi
       def error = ack["error"]
 
       def detail = ack["detail"]
+
+      # What the worker applied (a Bridge ack only): the delivery asked for,
+      # or next_step for a --queue that found no turn running; nil from the
+      # input file or a worker older than delivery.
+      def delivery = ack["delivery"]
+
+      # A --cut's outcome ("now", "waits", "off"), nil when nothing was cut.
+      def cut = ack["cut"]
+
+      # The steer cut-after seconds, with a cut that waits only.
+      def cut_after = ack["cut_after"]
     end
 
     # Hand a user message to the session the way a UI does, for the web
