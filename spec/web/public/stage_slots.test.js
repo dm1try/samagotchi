@@ -290,3 +290,23 @@ test("drawAsking without refs: the ref pass gets none; reset forgets them", asyn
   slots.drawAsking("DEMO-123?", []);
   assert.deepEqual(calls, [[TICKET], null]);
 });
+
+// The stage's question room decides on the asking text's final form only:
+// the raw text is taller than its markdown (blank lines, a link's URL).
+test("askingSettled: false while the markdown is in flight; true once it is swapped in, or once a null render leaves the raw text", async () => {
+  const r = renderer();
+  const { slots, changes } = slotsOf({ renderMarkdown: r.render });
+  assert.equal(slots.askingSettled(), false);
+  slots.drawAsking("## Pick\n\n- a");
+  assert.equal(slots.askingSettled(), false);
+  await r.settle(0, "<h2>Pick</h2>");
+  assert.equal(slots.askingSettled(), true);
+  slots.drawAsking("**raw**");
+  assert.equal(slots.askingSettled(), false);
+  const before = changes();
+  await r.settle(1, null);
+  assert.equal(slots.askingSettled(), true);
+  assert.equal(changes(), before + 1, "the raw text's settling redraws too");
+  slots.reset();
+  assert.equal(slots.askingSettled(), false);
+});

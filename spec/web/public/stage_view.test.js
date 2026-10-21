@@ -22,7 +22,7 @@ if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate 
 
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 
-function page({ taskStop = null } = {}) {
+function page({ taskStop = null, renderMarkdown } = {}) {
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
   const view = createStageView({
@@ -35,6 +35,7 @@ function page({ taskStop = null } = {}) {
     centerEl: document.getElementById("center"),
     composerEl: document.getElementById("composer"),
     taskStop,
+    renderMarkdown,
   });
   // app.js's appendToHistory: the stage first, else the history's end.
   const append = (el) => { if (!view.place(el)) historyEl.appendChild(el); };
@@ -385,7 +386,7 @@ function sizePage(t) {
 // A turn whose reply asks: the asking text drawn, overflowing its cap
 // (+overflow+) or not, then +cards+ placed in the extras (each a
 // [className, dataset]).
-function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]] } = {}) {
+async function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]] } = {}) {
   const { view } = page({ taskStop: fakeTaskStop });
   sizePage(t);
   view.turnStarted({});
@@ -405,6 +406,10 @@ function askPage(t, { overflow = true, cards = [["bubble question", { kind: "que
     view.place(card);
     return card;
   });
+  // The asking text's final form (here a null render: the raw text), then
+  // the redraw that measures it.
+  await tick();
+  await frame();
   return { view, asking, card: els[els.length - 1] };
 }
 
@@ -419,8 +424,8 @@ async function answer(card) {
   await tick();
 }
 
-test("question room: an overflowing plain ask question gets the class and the raised cap", (t) => {
-  const { view } = askPage(t);
+test("question room: an overflowing plain ask question gets the class and the raised cap", async (t) => {
+  const { view } = await askPage(t);
   try {
     assert.equal(room(view), true);
     assert.equal(capOf(view), "850px");
@@ -429,7 +434,7 @@ test("question room: an overflowing plain ask question gets the class and the ra
   }
 });
 
-test("question room: none for a short question, an approval, the step limit, a hook's question or a relayed one", (t) => {
+test("question room: none for a short question, an approval, the step limit, a hook's question or a relayed one", async (t) => {
   const cases = {
     short: { overflow: false },
     approval: { cards: [["bubble question approval", { kind: "approval" }]] },
@@ -439,7 +444,7 @@ test("question room: none for a short question, an approval, the step limit, a h
     relayed: { cards: [["bubble question", { kind: "question", relay: "1" }]] },
   };
   for (const [name, opts] of Object.entries(cases)) {
-    const { view } = askPage(t, opts);
+    const { view } = await askPage(t, opts);
     try {
       assert.equal(room(view), false, name);
       assert.equal(capOf(view), "600px", name);
@@ -449,8 +454,8 @@ test("question room: none for a short question, an approval, the step limit, a h
   }
 });
 
-test("question room: none when an answered ask card sits in the extras and an approval blocks", (t) => {
-  const { view } = askPage(t, {
+test("question room: none when an answered ask card sits in the extras and an approval blocks", async (t) => {
+  const { view } = await askPage(t, {
     cards: [["bubble question answered", { kind: "question" }], ["bubble question approval", { kind: "approval" }]],
   });
   try {
@@ -462,7 +467,7 @@ test("question room: none when an answered ask card sits in the extras and an ap
 });
 
 test("question room: the class goes at the answer, the cap stays for the turn; a new turn and a clear drop it", async (t) => {
-  const { view, card } = askPage(t);
+  const { view, card } = await askPage(t);
   try {
     await answer(card);
     assert.equal(room(view), false);
@@ -470,7 +475,7 @@ test("question room: the class goes at the answer, the cap stays for the turn; a
     assert.equal(capOf(view), "850px", "the frame is grow-only: the cap never drops at the answer");
     view.turnStarted({});
     assert.equal(capOf(view), "600px");
-    const again = askPage(t);
+    const again = await askPage(t);
     assert.equal(capOf(again.view), "850px");
     again.view.reset();
     assert.equal(capOf(again.view), "600px");
@@ -615,7 +620,7 @@ test("question room: a new turn hides the pill and stops watching the card", asy
 
 test("question room: measured at the asking text's draws only: a short question stays short when its cap drops later", async (t) => {
   let overflow = false;
-  const { view, asking } = askPage(t, { overflow: false });
+  const { view, asking } = await askPage(t, { overflow: false });
   try {
     Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (overflow ? 900 : 100) });
     // A phone's keyboard: the cap (and the slot's) drops, the text overflows now.
@@ -642,7 +647,7 @@ function heldLive(view, { waiting, running }) {
 }
 
 test("question room: the next step lets the held height go under the scroll's cover (the card stays put)", async (t) => {
-  const { view, card } = askPage(t);
+  const { view, card } = await askPage(t);
   try {
     const live = heldLive(view, { waiting: 700, running: 100 });
     await answer(card);
@@ -659,7 +664,7 @@ test("question room: the next step lets the held height go under the scroll's co
   } finally {
     view.reset();
   }
-  const again = askPage(t);
+  const again = await askPage(t);
   try {
     heldLive(again.view, { waiting: 700, running: 100 });
     await answer(again.card);
@@ -673,7 +678,7 @@ test("question room: the next step lets the held height go under the scroll's co
 });
 
 test("without the room the next step lets the held height go as before (the scroll left alone)", async (t) => {
-  const { view, card } = askPage(t, { overflow: false });
+  const { view, card } = await askPage(t, { overflow: false });
   try {
     const live = heldLive(view, { waiting: 300, running: 100 });
     await answer(card);
@@ -681,6 +686,78 @@ test("without the room the next step lets the held height go as before (the scro
     view.generationStarted({ iteration: 2 });
     assert.equal(view.scrollEl.scrollTop, 150);
     assert.equal(live.style.minHeight, "");
+  } finally {
+    view.reset();
+  }
+});
+
+// The CI flake (the question test's reload at 390x700 on Linux fonts): the
+// raw text overflowed its cap, its markdown fits. The room is decided on the
+// final form only, so a short question never gets it from its raw draw.
+test("question room: decided on the asking text's final form: a raw text that overflows while its markdown fits gets none", async (t) => {
+  let settle;
+  const { view } = page({ taskStop: fakeTaskStop, renderMarkdown: () => new Promise((resolve) => { settle = resolve; }) });
+  sizePage(t);
+  try {
+    view.turnStarted({});
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "## Two files\n\nEither one." });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+    const asking = $(view, ".ts-asking");
+    Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (asking.classList.contains("markdown") ? 100 : 160) });
+    Object.defineProperty(asking, "clientHeight", { configurable: true, get: () => 147 });
+    const card = document.createElement("details");
+    card.className = "bubble question";
+    card.dataset.kind = "question";
+    view.place(card);
+    await frame();
+    assert.equal(room(view), false, "the raw draw decides nothing");
+    settle("<h2>Two files</h2><p>Either one.</p>");
+    await tick();
+    await frame();
+    assert.equal(asking.classList.contains("markdown"), true);
+    assert.equal(room(view), false);
+    assert.equal(capOf(view), "600px");
+  } finally {
+    view.reset();
+  }
+});
+
+test("question room: a room decided after the arrival reveal reads from the reply's start then; the pill only after it", async (t) => {
+  let settle;
+  const { view } = page({ taskStop: fakeTaskStop, renderMarkdown: () => new Promise((resolve) => { settle = resolve; }) });
+  sizePage(t);
+  try {
+    view.turnStarted({});
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Here is the plan. ".repeat(40) });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+    const asking = $(view, ".ts-asking");
+    Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => 900 });
+    Object.defineProperty(asking, "clientHeight", { configurable: true, get: () => 100 });
+    const card = document.createElement("details");
+    card.className = "bubble question";
+    card.dataset.kind = "question";
+    card.appendChild(document.createElement("button"));
+    $(view, ".ts-extras").appendChild(card);
+    laidOut(t, view);
+    card.remove();
+    view.place(card);
+    await frame();
+    await frame();
+    await tick();
+    assert.equal(view.scrollEl.scrollTop, 400, "no room yet: the card-end rule");
+    settle("<p>Here is the plan.</p>");
+    await tick();
+    await frame();
+    assert.equal(room(view), true);
+    seeCard(card, false);
+    assert.equal($(view, ".ts-room-pill").hidden, true, "not before its reveal");
+    await frame();
+    await frame();
+    await tick();
+    assert.equal(view.scrollEl.scrollTop, 100);
+    assert.equal($(view, ".ts-room-pill").hidden, false);
   } finally {
     view.reset();
   }
