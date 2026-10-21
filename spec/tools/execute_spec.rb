@@ -416,11 +416,20 @@ RSpec.describe Samagotchi::Tools::Execute do
         stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
         stopped = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); open(F, q(>#{@ready})); sleep 31.57'; echo after",
                                        cancelled: once_ready)
-        short_limit(0.5)
-        killed = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.58'; echo after", on_timeout: :kill)
+        # At the limit: the clock stands still until perl has set its IGNORE
+        # (touched killed_ready), so the limit never comes before it, however
+        # slow the runner; else TERM kills perl and the KILL path is skipped.
+        killed_ready = "#{@ready}-killed"
+        frozen = nil
+        allow(described_class).to receive(:monotonic_time).and_wrap_original do |original|
+          File.exist?(killed_ready) ? original.call : (frozen ||= original.call)
+        end
+        short_limit
+        killed = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); open(F, q(>#{killed_ready})); sleep 31.58'; echo after",
+                                      on_timeout: :kill)
 
         expect(stopped).to start_with(described_class::STOPPED_BY_USER)
-        expect(killed).to start_with("Error: command timed out after 0.5s")
+        expect(killed).to start_with("Error: command timed out after 0.2s")
         expect(running?("sleep 31.57")).to be(false)
         expect(running?("sleep 31.58")).to be(false)
       end
@@ -545,14 +554,16 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       it "says a holder that left the process group (setsid) was left running" do
         # The shell exits once perl has left the group (touched "ready"), so
-        # the grace starts after it: a short one does. The stop's grace and
+        # the grace starts after it: a short one does. The shell waits for it
+        # 5 s at most: a perl that never gets there fails the example at once. The stop's grace and
         # KILL wait run out in full on a holder out of its reach: short too.
         stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 0.05)
         stub_const("#{described_class}::STOP_GRACE_SEC", 0.05)
         stub_const("Samagotchi::ProcessGroup::KILL_WAIT_SEC", 0.05)
         ready = File.join(Dir.mktmpdir, "ready")
         result = described_class.call("perl -MPOSIX -e 'POSIX::setsid(); open(F, q(>#{ready})); sleep 30.85' & echo pid=$!; " \
-                                      "until [ -e #{ready} ]; do sleep 0.02; done; echo hi")
+                                      "i=0; until [ -e #{ready} ] || [ $i -ge 250 ]; do sleep 0.02; i=$((i+1)); done; " \
+                                      "[ -e #{ready} ] && echo hi || echo 'perl never touched ready'")
         pid = pid_from(result)
         begin
           expect(result).to include("hi")
