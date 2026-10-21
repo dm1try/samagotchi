@@ -727,6 +727,8 @@ module Samagotchi
           @screen.commit("#{paint("model>", 36)} #{output}")
         end
         prefill_confirm(event)
+        # /title from any client: the row's title follows.
+        @status.update(title: event[:title]) if Array(event[:changed]).include?("title")
         return unless event[:model_name]
 
         # After the output, so the status row changes with the line saying why.

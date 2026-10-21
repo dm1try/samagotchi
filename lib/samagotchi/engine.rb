@@ -1260,6 +1260,7 @@ module Samagotchi
         muted_memory_names: @muted_memory_names.dup,
         prompt_notes: prompt_notes.map(&:to_h),
         parent_id: @session&.parent_id,
+        title: @session&.title,
         model_name: effective_model_ref,
         served_model: served_pair[0],
         served_model_for: served_pair[1],

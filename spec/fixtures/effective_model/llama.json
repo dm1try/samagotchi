@@ -107,6 +107,7 @@
     "muted_memory_names",
     "prompt_notes",
     "parent_id",
+    "title",
     "model_name",
     "served_model",
     "served_model_for",

@@ -53,6 +53,36 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
     expect(surface.events).to be_empty
   end
 
+  describe "the title segment" do
+    it "shows the session's own title first" do
+      row.update(title: "Coordinator", model: "m1", context: { est_pct: 1.0, bucket: "under20" })
+
+      expect(surface.slots[:status]).to eq(["status> Coordinator | model=m1 | ctx=1.0% (under20)"])
+    end
+
+    it "shows nothing for it without a title (no first-message fallback)" do
+      row.update(title: nil, model: "m1")
+      expect(surface.slots[:status]).to eq(["status> model=m1"])
+
+      row.update(title: "  ")
+      expect(surface.slots[:status]).to eq(["status> model=m1"])
+    end
+
+    it "cuts a long title to TITLE_MAX" do
+      row.update(title: "a" * 50, model: "m1")
+
+      expect(surface.slots[:status]).to eq(["status> #{"a" * 31}… | model=m1"])
+    end
+
+    it "keeps the title to a third of a narrow row, so the model still shows" do
+      narrow = described_class.new(RecordingSurface.new(columns: 46))
+      narrow.update(title: "Coordinator of the release", model: "m1")
+
+      expect(narrow.rows(45)).to eq(["status> Coordinator of… | model=m1"])
+      expect(narrow.rows(1)).to eq(["s"])
+    end
+  end
+
   describe "the children segment" do
     def counts(running: 0, waiting: 0, unreported: 0)
       Samagotchi::ChildrenStatus::Counts.new(running: running, waiting: waiting, unreported: unreported)
@@ -99,14 +129,23 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
         .to eq(["status> model=ornith (served; asked m2) | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli | muted: gh"])
     end
 
+    it "shows the state's title and follows its clearing" do
+      row.take_state(state.merge(title: "Coordinator"), default_model: "m1")
+      expect(surface.slots[:status].first).to start_with("status> Coordinator | model=ornith")
+
+      row.take_state(state.merge(title: nil), default_model: "m1")
+      expect(surface.slots[:status].first).to start_with("status> model=ornith")
+    end
+
     it "keeps what an older state lacks, but clears the served pair" do
-      row.take_state(state, default_model: "m1")
+      row.take_state(state.merge(title: "Coordinator"), default_model: "m1")
       row.take_state({ context_status: nil })
 
       expect(row[:served]).to be_nil
       expect(row[:model]).to eq("m2")
       expect(row[:used_memories]).to eq(%w[notes])
       expect(row[:parent_id]).to eq("3f2a1c9e-0000")
+      expect(row[:title]).to eq("Coordinator")
       expect(row[:context]).to eq(est_pct: 12.34, bucket: "under20")
     end
   end

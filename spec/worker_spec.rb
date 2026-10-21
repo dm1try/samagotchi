@@ -2113,7 +2113,8 @@ RSpec.describe Samagotchi::Worker do
           release << true
 
           expect(still_running).to be(true)
-          expect(done).to include(status: "ok", output: "title: Coordinator", anytime: true, changed: ["title"])
+          expect(done).to include(status: "ok", output: "title: Coordinator", anytime: true, changed: ["title"],
+                                  title: "Coordinator")
           expect(during).to have_attributes(title: "Coordinator", status: Samagotchi::Session::STATUS_RUNNING)
           expect(wait_until { saved_messages.include?("OK") }).to be(true)
           expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).title).to eq("Coordinator")

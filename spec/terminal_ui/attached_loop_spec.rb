@@ -2303,6 +2303,27 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1")
   end
 
+  it "shows the session's title from the join and follows /title from any client" do
+    feed(join(title: "Coordinator"))
+    expect(status).to eq("status> Coordinator | model=m1")
+
+    feed({ type: :command_ran, command_id: "c", client_id: "cli:send", line: "/title Release", status: "ok",
+           output: "title: Release", changed: ["title"], title: "Release", model_name: "m1" })
+    expect(status).to eq("status> Release | model=m1")
+
+    feed({ type: :command_ran, command_id: "d", client_id: "web:1", line: "/title --clear", status: "ok",
+           output: "title: none", changed: ["title"], title: nil, model_name: "m1" })
+    expect(status).to eq("status> model=m1")
+  end
+
+  it "keeps the title through a command that didn't change it" do
+    feed(join(title: "Coordinator"))
+    feed({ type: :command_ran, command_id: "c", client_id: "web:1", line: "/title", status: "ok",
+           output: "title: Coordinator", changed: [], model_name: "m1" })
+
+    expect(status).to eq("status> Coordinator | model=m1")
+  end
+
   it "shows the served model first when the server serves another one, until /model" do
     feed(join.merge(session_state_snapshot: { status: "idle", model_name: "m1", served_model: "ornith-1.5-35b",
                                               served_model_for: "m1" }))

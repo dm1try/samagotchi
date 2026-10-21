@@ -665,6 +665,18 @@ RSpec.describe Samagotchi::Engine do
         expect(snap[:metrics][:turns]).to eq(0)
       end
 
+      it "carries the session's own title (nil without one or before a session exists)" do
+        engine = build_engine(profile: "gemma4")
+        expect(engine.session_state_snapshot).to include(title: nil)
+
+        engine.session = make_session
+        engine.session.first_preview = "hey chi"
+        expect(engine.session_state_snapshot).to include(title: nil)
+
+        engine.session.title = "Coordinator"
+        expect(engine.session_state_snapshot).to include(title: "Coordinator")
+      end
+
       it "carries the session's parent_id (nil before a session exists)" do
         engine = build_engine(profile: "gemma4")
         expect(engine.session_state_snapshot).to include(parent_id: nil)

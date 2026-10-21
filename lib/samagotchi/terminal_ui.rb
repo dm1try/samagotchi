@@ -889,6 +889,7 @@ module Samagotchi
         if command
           show_command_result(command)
           refresh_status_row(clear_unknown_context: true) if command.changed.include?(:model)
+          refresh_status_row if command.changed.include?(:title)
           persist_recent_history(input) if command.shell
           return
         end

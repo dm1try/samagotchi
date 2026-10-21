@@ -407,6 +407,24 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "/title at the prompt" do
+    let(:surface) { RecordingSurface.new }
+    let(:agent) { described_class.new(client: client, surface: surface) }
+
+    it "puts the title first in the status row, and takes it out on --clear" do
+      agent.engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m1", working_directory: Dir.pwd)
+      allow(agent.engine.session).to receive(:save)
+      allow(agent).to receive_messages(piped_input?: true)
+      status = agent.instance_variable_get(:@status_row)
+
+      agent.send(:run_input_line, nil, "/title Coordinator")
+      expect(status.rows(120).join).to start_with("status> Coordinator | model=")
+
+      agent.send(:run_input_line, nil, "/title --clear")
+      expect(status.rows(120).join).to start_with("status> model=")
+    end
+  end
+
   # P3: only a person at the REPL (a terminal, no agent marker) loosens
   # /parent-answers; a piped or marked one (a parent agent) only tightens.
   describe "/parent-answers at the prompt" do

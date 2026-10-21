@@ -5,7 +5,7 @@ require_relative "formatting"
 module Samagotchi
   class TerminalUI
     # The status row under the prompt, the same for both TUIs:
-    # `status> model=… | ↳ parent | ⑂ 2 running · 1 waiting | ctx=12.3% (under20) | mem: … | muted: …`.
+    # `status> Title | model=… | ↳ parent | ⑂ 2 running · 1 waiting | ctx=12.3% (under20) | mem: … | muted: …`.
     # A UI feeds it what it learns (attached mode from the Bridge's events,
     # the REPL from its Engine's) through #update, and the row is redrawn in
     # the surface's status slot only when its text changes.
@@ -15,6 +15,8 @@ module Samagotchi
       # Memory names shown before ", +N".
       MEMORY_LIMIT = 8
       # What the row shows:
+      #   title                 the session's own title (Session#title; not
+      #                         the first message's preview), or nil
       #   model, default_model  the model in use, and the config's default
       #                         (named beside another model)
       #   served                [served, asked, expected]: what the server said it
@@ -29,11 +31,16 @@ module Samagotchi
       #                         records them as used)
       #   muted                 its --mute list
       #   running               a turn runs: the row trails STEER_HINT
-      FIELDS = %i[model default_model served parent_id children context used_memories preloaded muted running].freeze
+      FIELDS = %i[title model default_model served parent_id children context used_memories preloaded muted running].freeze
 
       # The tail while a turn runs: where a typed line goes (the next step)
       # and the two other choices. Dropped whole first when the row is cut.
       STEER_HINT = " · typing goes in at the next step (/cut, /queue)"
+
+      # The longest title shown, and the share of the row it may take on a
+      # narrow terminal: the rest of the row still fits.
+      TITLE_MAX = 32
+      TITLE_SHARE = 3
 
       # The turn events that end a turn (the hint goes).
       TURN_END_EVENTS = %i[turn_completed turn_canceled turn_failed].freeze
@@ -74,6 +81,7 @@ module Samagotchi
         fields.merge!(model: state[:model_name], default_model: default_model) if state[:model_name]
         STATE_LISTS.each { |field, key| fields[field] = Array(state[key]) if state.key?(key) }
         fields[:parent_id] = state[:parent_id] if state.key?(:parent_id)
+        fields[:title] = state[:title] if state.key?(:title)
         # The last turn's ctx, so it shows before the next turn's.
         fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
         update(**fields)
@@ -126,7 +134,8 @@ module Samagotchi
           model_text = status_model_text(model, @values[:default_model], served: served, served_for: served_for,
                                                                          expected: expected.is_a?(String))
         end
-        segments = [model_text,
+        segments = [title_text(@values[:title], width),
+                    model_text,
                     parent ? "↳ #{parent.to_s[0, 8]}" : "",
                     children_text(@values[:children]),
                     status_context_text(estimate: @values[:context]),
@@ -145,6 +154,18 @@ module Samagotchi
         return segments if "status> #{segments.join(" | ")}#{STEER_HINT}".length > width
 
         segments[0..-2] + ["#{segments.last}#{STEER_HINT}"]
+      end
+
+      # The title cut to TITLE_MAX, and to a TITLE_SHARE-th of +width+
+      # (the row's other segments come after it); "" without one.
+      def title_text(title, width)
+        title = title.to_s.strip
+        return "" if title.empty?
+
+        max = [TITLE_MAX, width / TITLE_SHARE].min
+        return title if title.length <= max
+
+        max > 1 ? "#{title[0, max - 1]}…" : ""
       end
 
       # `⑂ 2 running · 1 waiting`, the counts there are; "" with neither (no

@@ -958,6 +958,8 @@ module Samagotchi
       event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
                 changed: changed.map(&:to_s), model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
+      # The session's title after /title (nil: cleared), for the TUIs' row.
+      event[:title] = @engine.session&.title if changed.include?(:title)
       # Its line was shown at its command_queued (waits: turn_end).
       event[:queued] = true if command.waits_for_turn_end?
       # The chips the command moved (SessionSetting#changed_by): what the next
