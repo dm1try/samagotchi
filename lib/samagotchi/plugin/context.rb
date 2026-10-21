@@ -48,7 +48,9 @@ module Samagotchi
     # :non_interactive), which ctx.frontend names for plugins.
     # +toolkit+ returns the session's toolkit name, +declared_tools+ the
     # tool names its next turn declares, +use_toolkit+ takes a name and
-    # returns whether it staged it (Engine#use_toolkit).
+    # returns whether it staged it (Engine#use_toolkit); +load_tools+ takes
+    # (names, bundle) and returns the wire names it staged
+    # (Engine#load_tools).
     # +cancel_controller+ takes (handler:) and returns the controller a
     # ctx.http call without cancel: uses, nil for none: an init task's own,
     # else the running turn's for work done for it (the turn's thread, or a
@@ -56,7 +58,7 @@ module Samagotchi
     # +cost+ returns the session's spend now (SessionMetrics::Cost).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
-                      :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit,
+                      :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
@@ -181,6 +183,23 @@ module Samagotchi
       # @return [Boolean] whether it was staged
       # @raise [ArgumentError] a toolkit no one declared
       def use_toolkit(name) = !!@host.use_toolkit&.call(name.to_s)
+
+      # Load tools the session reaches but doesn't declare, so the model
+      # calls them by name (docs/plugins.md): built-in names, MCP tools'
+      # acts_as (mcp_fs_read) or <group>/<tool>. A hint, not access: the
+      # tools stay behind the same guardrails, and only a host that takes
+      # tool changes (api: anthropic) gets one; elsewhere nothing is sent.
+      # Called from before_turn, they load for that turn; anywhere else,
+      # from the next turn's start. Idempotent: a declared tool, one loaded
+      # before, a removed or unknown one is skipped.
+      # @param names [Array<String>]
+      # @return [Array<String>] the names staged (wire names)
+      # @raise [ArgumentError] +names+ isn't an Array
+      def load_tools(names)
+        raise ArgumentError, "load_tools takes an Array of tool names" unless names.is_a?(Array)
+
+        Array(@host.load_tools&.call(names.map(&:to_s), @bundle))
+      end
 
       # Whether the session is a `chi scratch` one (deleted when it ends).
       def scratch? = !!@host.scratch&.call

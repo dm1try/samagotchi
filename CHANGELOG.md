@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
   `call_tool`. A `find_tools` hit loads its matches by reference, so the model calls them by name and the request
   after a load reads its whole prompt from the cache. Other hosts are unchanged. See
   [docs/configuration.md](docs/configuration.md#toolkits).
+- Plugins can load tools for the model with `ctx.load_tools(names)` (built-ins, MCP tools): on an Anthropic host the
+  model then calls them by name; elsewhere nothing is sent. A hint, not access: the guardrails stay. See
+  [docs/plugins.md](docs/plugins.md).
 
 ### Changed
 

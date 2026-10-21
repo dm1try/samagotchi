@@ -5,6 +5,7 @@ require_relative "prompt_literal_guard"
 require_relative "vision_context"
 require_relative "tool_response"
 require_relative "steer"
+require_relative "tool_loads"
 
 module Samagotchi
   # Formats a message list into a prompt string ready for the /completion endpoint.
@@ -48,6 +49,8 @@ module Samagotchi
     #   the model's answer (Thinking.native: Qwen's empty thought)
     # @return [Array(String, Array<String>)]
     def self.format_with_images(messages, profile: ModelProfile.default, vision: nil, prefill: "")
+      # A plugin's tool change (ToolLoads) is for a Messages host only.
+      messages = messages.reject { |message| ToolLoads.entry?(message) }
       plan = ImagePlan.new(messages, vision, data: :base64)
       images = []
       suffixes = messages.each_with_index.map { |m, index| image_lines(plan.items(m, index), profile, images) }

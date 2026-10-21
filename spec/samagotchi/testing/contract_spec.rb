@@ -63,6 +63,15 @@ RSpec.describe "The bundle test kit's contract" do
     expect(ctx.toolkit).to eq("lean")
   end
 
+  it "records ctx.load_tools: every name staged, or only the ones the test lets through" do
+    expect(ctx.load_tools(%w[delegate mcp_fs_read])).to eq(%w[delegate mcp_fs_read])
+    recorder.set(load_tools_staged: %w[delegate])
+    expect(ctx.load_tools(%w[delegate mcp_fs_read])).to eq(%w[delegate])
+    expect { ctx.load_tools("delegate") }.to raise_error(ArgumentError, /Array/)
+
+    expect(recorder.tool_loads.map(&:to_h)).to eq([{ names: %w[delegate mcp_fs_read], bundle: "b" }] * 2)
+  end
+
   it "reads the session's values from the recorder at each call" do
     expect([ctx.session_id, ctx.cwd, ctx.model, ctx.model_key, ctx.toolkit, ctx.declared_tools, ctx.frontend])
       .to eq(["test-session", "/work", "test:model", "model", "full", ["read"], :worker])

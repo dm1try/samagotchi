@@ -12,6 +12,8 @@ module Samagotchi
     Notice = Data.define(:text, :level, :hook, :fallback_for)
     # Text put into the running turn (ctx.steer, event[:steer]).
     Steer = Data.define(:text, :hook)
+    # A ctx.load_tools call: the names given, and the bundle.
+    ToolLoad = Data.define(:names, :bundle)
     # A stop_turn or stop_generation (+kind+ :turn or :generation).
     Stop = Data.define(:kind, :reason, :hook)
     # An ask_model request: the request Context built (SideQuestion), its
@@ -32,13 +34,13 @@ module Samagotchi
       DEFAULTS = {
         session_id: "test-session", cwd: nil, messages: [], messages_partial: false, model_name: "test:model",
         model_key: "model", toolkit: "full", declared_tools: nil, frontend: :worker, scratch: false, setup: nil,
-        prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true,
+        prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true, load_tools_staged: nil,
         # ctx.cost: nil (zero), a Float (reported USD), a Hash of the parts
         # (reported:, estimated:, side:, known:) or a callable giving one.
         cost: nil
       }.freeze
 
-      attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :answers,
+      attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
                   :model_answers, :values
 
       def initialize(**values)
@@ -53,6 +55,7 @@ module Samagotchi
         @questions = []
         @model_requests = []
         @toolkit_uses = []
+        @tool_loads = []
         @answers = []
         @model_answers = []
         @mutex = Mutex.new
@@ -125,6 +128,14 @@ module Samagotchi
         raise answer if answer.is_a?(Exception) || (answer.is_a?(Class) && answer <= Exception)
 
         answer.respond_to?(:call) ? answer.call(entry) : answer
+      end
+
+      # ctx.load_tools: recorded; every name is staged unless the test set
+      # load_tools_staged: (a list: those only).
+      def load_tools(names, bundle)
+        record(@tool_loads, ToolLoad.new(names: names, bundle: bundle))
+        staged = self[:load_tools_staged]
+        staged ? names & Array(staged) : names
       end
 
       # ctx.use_toolkit: +known+ the toolkits chi and the plugins declare.

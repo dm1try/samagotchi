@@ -39,6 +39,7 @@ require_relative "llm/openai_chat"
 require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "toolkit_binding"
+require_relative "tool_loads"
 require_relative "answer_tail"
 require_relative "archive_store"
 require_relative "session_observer"
@@ -277,6 +278,9 @@ module Samagotchi
       # The tools plugins publish without declaring (chi.tool_source), and
       # the search and call tools that reach them (Tools::ToolIndex).
       @tool_index = Tools::ToolIndex.new
+      # The tools plugins load (ctx.load_tools), staged until a turn's
+      # messages are built (#append_tool_loads).
+      @tool_loads = ToolLoads.new
       # The context sources the peer bundles declare as a peer agent's
       # answers (chi.peer_source); the worker's ContextAbsorber asks it.
       @peer_sources = PeerSources.new
@@ -2115,12 +2119,13 @@ module Samagotchi
         })
       end
 
-      return if turn.continue
-
-      user_message = { role: "user", content: turn.prompt, turn_id: turn.id }
-      user_message[:images] = image_refs unless image_refs.empty?
-      turn.messages << user_message
-      session.last_prompt = turn.prompt
+      unless turn.continue
+        user_message = { role: "user", content: turn.prompt, turn_id: turn.id }
+        user_message[:images] = image_refs unless image_refs.empty?
+        turn.messages << user_message
+        session.last_prompt = turn.prompt
+      end
+      append_tool_loads(turn)
     end
     private :turn_messages
 
@@ -2560,6 +2565,52 @@ module Samagotchi
 
     public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
 
+    # A plugin's ctx.load_tools: stage the reachable tools +names+ names
+    # (Tools::ToolIndex#deferred_name) that the session neither declares
+    # nor loaded with an earlier tool change, for bundle +bundle+. A name
+    # that names no tool at all is logged; a declared or removed one is
+    # skipped quietly.
+    # @return [Array<String>] the wire names staged
+    def load_tools(names, bundle)
+      added = ToolLoads.added(@session&.messages)
+      wanted = names.filter_map do |name|
+        wire = @tool_index.deferred_name(name)
+        Log.info(:plugins, "load_tools_skipped", bundle: bundle, tool: name) unless wire || @tools.key?(name)
+        wire
+      end
+      @tool_loads.stage(wanted - added, by: bundle)
+    end
+    public :load_tools
+
+    # The staged tool loads, appended to +turn+'s messages (after its user
+    # message, or the trailing results and notes of a turn with none) as
+    # one ToolLoads entry per bundle, when the turn's host takes tool
+    # changes (ChatLoop#tool_changes?). Elsewhere they are dropped, logged.
+    # A conversation that ends with a reply keeps them staged (a system
+    # change must follow a user turn).
+    def append_tool_loads(turn)
+      return unless @tool_loads.any?
+      return if turn.messages.last&.dig(:role).to_s == "model"
+
+      model = effective_model
+      host = backend(model)
+      staged = @tool_loads.take
+      added = ToolLoads.added(turn.messages)
+      unless host.respond_to?(:tool_changes?) && host.tool_changes?(bare_model_name(model.name))
+        Log.info(:plugins, "tool_loads_not_sent", tools: staged.values.flatten.join(","), model: model.name.to_s)
+        return
+      end
+
+      staged.each do |bundle, names|
+        names -= added
+        next if names.empty?
+
+        turn.messages << ToolLoads.entry(names, by: bundle)
+        hook_notify("tools loaded: #{names.join(", ")}", :info, bundle)
+      end
+    end
+    private :append_tool_loads
+
     # A plugin's ctx.use_toolkit (ToolkitBinding#use).
     # @return [Boolean] whether it was staged
     # @raise [ArgumentError] an unknown toolkit
@@ -2613,6 +2664,7 @@ module Samagotchi
         toolkit: -> { @toolkit_binding.name },
         declared_tools: -> { toolkit_explained.declared.map(&:name) },
         use_toolkit: ->(name) { use_toolkit(name) },
+        load_tools: ->(names, bundle) { load_tools(names, bundle) },
         cancel_controller: ->(handler: false) { plugin_cancel_controller(handler: handler) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller,

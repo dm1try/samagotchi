@@ -47,6 +47,7 @@ module Samagotchi
           toolkit: -> { recorder[:toolkit] },
           declared_tools: -> { recorder[:declared_tools] || tool_names.call },
           use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
+          load_tools: ->(names, bundle) { recorder.load_tools(names, bundle) },
           cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
           cost: -> { cost(recorder[:cost]) }
         )

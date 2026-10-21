@@ -43,6 +43,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
+  │     #   + the plugins' staged tool loads (ctx.load_tools: a kind "tool_change" system entry per bundle,
+  │     #   only when the turn's host takes tool changes; #append_tool_loads)
   │     # Returns false when a Stop came during the probes or the init wait, else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)

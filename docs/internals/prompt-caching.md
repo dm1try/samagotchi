@@ -105,7 +105,8 @@ right-hand column happens.
   re-read. A find_tools hit's load goes in its own tool_result (`tool_reference` blocks) with the text beside it,
   rendered the same in every later request (a loaded name stays deferred, a stub once its source is gone), so the
   request after a load reads the whole prefix and only the new result is fresh. The first request of a session
-  that gains deferred tools (a toolkit leaving tools out, MCP tools) differs from main's bytes once.
+  that gains deferred tools (a toolkit leaving tools out, MCP tools) differs from main's bytes once. A plugin's
+  `ctx.load_tools` only appends (a system `tool_addition` after the user message, never a change to `tools`).
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 

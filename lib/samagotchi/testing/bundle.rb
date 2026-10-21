@@ -352,6 +352,8 @@ module Samagotchi
       def questions = @recorder.questions
       def model_requests = @recorder.model_requests
       def toolkit_uses = @recorder.toolkit_uses
+      # Every ctx.load_tools call (ToolLoad: names, bundle).
+      def tool_loads = @recorder.tool_loads
       # Queue ask_model answers: a String, an exception, or a callable.
       def model_answers = @recorder.model_answers
 

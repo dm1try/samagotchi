@@ -258,6 +258,11 @@ its `tool_response` entry (wire names: a built-in's, an MCP tool's `mcp_<server>
 later turn on `api: anthropic` (after a `/model` switch, a resume) sends the load as references, any other host
 ignores it. The names stay deferred for the session's life, across respawns, `--resume` and forks.
 
+A plugin's `ctx.load_tools` leaves a system entry `{"role": "system", "kind": "tool_change", "content": "[tools loaded:
+delegate (bundle)]", "tool_change": {"add": ["delegate"], "by": "bundle"}}` after the turn's user message, only on a
+host that takes tool changes (`api: anthropic`). It is never the system head, counts as conversation, is hidden in
+the web and TUI histories, and goes to no other wire; its names stay deferred for the session's life like a load's.
+
 ## Parent answers
 
 A session file's `parent_answers` (`hard`, `standard`, `soft`, or `null` for none) is the session's own

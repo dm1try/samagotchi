@@ -6,6 +6,9 @@ require "samagotchi/llm/anthropic_messages"
 require "samagotchi/toolkit"
 require "samagotchi/tools/builtins"
 require "samagotchi/tools/tool_index"
+require "samagotchi/tool_loads"
+require "samagotchi/prompt"
+require "samagotchi/model_profile"
 require_relative "../support/fake_chat_adapter"
 require_relative "../support/test_kernel"
 
@@ -78,5 +81,26 @@ RSpec.describe "ChatLoop's deferred tools" do
     run(chat, history + [{ role: "user", content: "go" }])
 
     expect(logged).to eq([{ tool: "list_sessions", loaded: true }, { tool: "delegate", loaded: false }])
+  end
+
+  describe "a plugin's tool change entry" do
+    let(:change) { Samagotchi::ToolLoads.entry(%w[delegate], by: "b") }
+    let(:history) { [{ role: "system", content: "sys" }, { role: "user", content: "go" }, change] }
+
+    it "goes only to an adapter that takes tool changes, never as an empty system message elsewhere" do
+      taking = adapter(FakeChatAdapter.text("ok")).tap { |a| a.define_singleton_method(:tool_changes?) { |_m| true } }
+      loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: taking)
+      expect(loop.wire_messages(history).last).to eq(role: "system", content: change[:content], tool_change: change[:tool_change])
+
+      [adapter(FakeChatAdapter.text("ok")), adapter(FakeChatAdapter.text("ok"), loads: nil)].each do |other|
+        wire = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: other).wire_messages(history)
+        expect(wire.map { |m| m[:role] }).to eq(%w[system user])
+      end
+    end
+
+    it "is left out of a native prompt" do
+      profile = Samagotchi::ModelProfile.normalize("qwen36")
+      expect(Samagotchi::Prompt.format(history, profile: profile)).to eq(Samagotchi::Prompt.format(history.first(2), profile: profile))
+    end
   end
 end

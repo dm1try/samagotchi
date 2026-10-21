@@ -770,6 +770,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
 | `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there |
 | `ctx.use_toolkit(name)` | put the session on toolkit `name` (yours from `chi.toolkit`, or chi's): saved, applied at the next turn's start and announced (`toolkit> toolkit: NAME from the next turn's start`, the web's tools chip follows). Only before the session's first model reply and outside a turn (the declared tools start every request, and a plugin doesn't ask first); otherwise it returns false and changes nothing: tell the user to run `/toolkit NAME`. An unknown name raises ArgumentError. Needs chi 0.66.0 |
+| `ctx.load_tools(names)` | load tools the session reaches but doesn't declare, so the model calls them by name: built-ins (`"delegate"`, `"chi/delegate"`), MCP tools (`"mcp_fs_read"`, `"fs/read"`). Returns the names it staged (the wire names); a declared tool, one loaded before, a removed or unknown one is skipped (an unknown one logged), so calling it every turn is fine. From a `before_turn` hook it loads for that turn; anywhere else (mid-turn too) from the next turn's start. Call it from a hook: before the session's first turn its toolkit isn't applied yet and nothing resolves. **A hint, not access**: the tools keep their guardrails and approvals, and only a host that takes tool changes (`api: anthropic`, not Fireworks) gets one, as a system message after the user's (`[tools loaded: delegate (your-bundle)]` in the session, a notice line live); elsewhere nothing is sent or saved, and the tools stay reachable with `call_tool`. A hook may switch the model after you call it, so the return value can't promise delivery. Raises ArgumentError for anything but an Array. Needs chi 0.99.0 |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 
 The Engine itself is never handed to a plugin.
@@ -1187,6 +1188,7 @@ bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" 
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
 bundle.set(cost: 2.5)                                    # ctx.cost: reported USD, or { reported:, estimated:, side:, known: }
 bundle.set(session_settings: { "cap" => 1 })             # the session's --set values (Bundle.load takes session_settings: too)
+bundle.tool_loads.last.names                             # ctx.load_tools calls; set(load_tools_staged: [...]) limits what they stage
 bundle.shutdown
 ```
 
@@ -1287,7 +1289,9 @@ by one: the bundle publishes them into chi's tool index
 ([chi.tool_source](#chitool_sourcecall-acts_as-label-wait-prefix), a group
 per server), and the model has its two tools, `find_tools` and `call_tool` (~250 tokens in
 every request plus a line per server, whatever the servers have; `/mcp`
-says how many). Stdio servers only, for now.
+says how many). On `api: anthropic` each tool also goes out deferred as
+`mcp_<server>_<tool>`, so a `find_tools` hit loads it and the model calls it
+by that name, as `call_tool` would run it. Stdio servers only, for now.
 
 ```yaml
 # config.yml

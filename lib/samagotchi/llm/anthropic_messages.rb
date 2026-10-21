@@ -82,6 +82,10 @@ module Samagotchi
                     \bdisplay\W{0,4}(?:extra\s+inputs\s+are\s+not\s+permitted|is\s+not\s+(?:permitted|allowed|supported))/xi
       # "max_tokens: 200000 > 128000, which is the maximum allowed number of output tokens for …"
       OUTPUT_CAP_RE = /max_tokens`?:?\s*\d+\s*>\s*(\d+)/i
+      # The beta a mid-conversation system message (a tool change) needs.
+      INLINE_TOOLS_BETA = "inline-tools-2026-09-15"
+      # A 400 refusing a tool change: its block, the beta, or the system role.
+      TOOL_CHANGES_RE = /tool_addition|inline-tools|role.{0,40}system|system.{0,40}role/i
       # A 400 refusing deferred tools or a load by reference.
       TOOL_LOADING_RE = /defer_loading|tool_reference/i
       # A 400 naming a tool's input schema: "tools.3.custom.input_schema: …".
@@ -147,7 +151,7 @@ module Samagotchi
         begin
           # A rebuilt body (a refusal fix's retry) keeps the recovery.
           body, stripped = @binding.recovered_body(request_body(messages, tools, model, options), recovery)
-          headers = recovery.step == :drop_block ? { "anthropic-beta" => AnthropicBindingRecovery::BINDING_BETA } : {}
+          headers = beta_headers(body, recovery)
           request = post_request("#{@base_url}/v1/messages", body, session_id: session_id, extra_headers: headers)
           log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body), cache: cache_summary(body) }
           response, transformations =
@@ -214,6 +218,11 @@ module Samagotchi
       # dialect's tool_loading, unless the host refused it for +model+.
       def loads_tools?(model) = @dialect.tool_loading && !@refusals.refused?(:tool_loading, model.to_s)
 
+      # Whether requests for +model+ take a mid-conversation tool change (a
+      # system message with tool_addition blocks, INLINE_TOOLS_BETA): where
+      # tools load, unless the host refused changes for +model+.
+      def tool_changes?(model) = loads_tools?(model) && !@refusals.refused?(:tool_changes, model.to_s)
+
       # Whether +model+ gets the budget form (it refused adaptive thinking).
       def budget_form?(model) = @refusals.refused?(:thinking_form, model.to_s)
 
@@ -255,7 +264,7 @@ module Samagotchi
         max_tokens = [max_tokens, output_cap].min if output_cap
         body = { model: model, max_tokens: max_tokens }
         body[:system] = translated.system unless translated.system.empty?
-        body[:messages] = translated.messages
+        body[:messages] = tool_changes?(model) ? translated.messages : translated.messages.reject { |m| m[:role] == "system" }
         body[:stream] = @stream
         unless Array(tools).empty?
           body[:tools] = AnthropicWire.tools(tools)
@@ -360,6 +369,10 @@ module Samagotchi
           @refusals.remember(:cache_control)
           Log.info(:http, "cache_control_refused", host: @host_name, detail: detail[0, 200])
           :cache_control
+        elsif changes?(body) && !@refusals.refused?(:tool_changes, model.to_s) && TOOL_CHANGES_RE.match?(detail)
+          @refusals.remember(:tool_changes, model.to_s)
+          Log.info(:http, "tool_changes_refused", host: @host_name, model: model.to_s, detail: detail[0, 200])
+          :tool_changes
         elsif (tool = refused_schema_tool(detail, body))
           @refusals.add(:tool_schema, model.to_s, tool)
           Log.info(:http, "tool_schema_refused", host: @host_name, model: model.to_s, tool: tool, detail: detail[0, 200])
@@ -380,6 +393,18 @@ module Samagotchi
         index = detail[TOOL_SCHEMA_RE, 1] or return nil
         tool = Array(body[:tools])[index.to_i]
         tool[:name] if tool.is_a?(Hash) && tool[:defer_loading]
+      end
+
+      # Whether +body+ carries a tool change (a system message).
+      def changes?(body) = Array(body[:messages]).any? { |message| message[:role] == "system" }
+
+      # The anthropic-beta header: the binding beta on a drop_block step,
+      # INLINE_TOOLS_BETA with a tool change; both comma-joined.
+      def beta_headers(body, recovery)
+        betas = []
+        betas << AnthropicBindingRecovery::BINDING_BETA if recovery.step == :drop_block
+        betas << INLINE_TOOLS_BETA if changes?(body)
+        betas.empty? ? {} : { "anthropic-beta" => betas.join(",") }
       end
 
       # Whether +body+ declares a deferred tool or loads one by reference.

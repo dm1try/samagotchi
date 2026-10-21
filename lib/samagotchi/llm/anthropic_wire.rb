@@ -13,7 +13,10 @@ module Samagotchi
     # - the head system message → the top-level system, as text blocks: with
     #   its cache_split, two blocks, the breakpoint on the first; a later
     #   system message → user text (a mid-conversation system role is
-    #   model-gated);
+    #   model-gated), but a plugin's tool change (tool_change:) → a system
+    #   message of its own, tool_addition blocks by reference for the names
+    #   deferred in this request (none: dropped), placed after the run of
+    #   user-role messages it sits in, before the next assistant message;
     # - an assistant message → its saved blocks verbatim (anthropic_content),
     #   else a text block and its tool_use blocks (arguments as the input
     #   object); one with neither is dropped;
@@ -58,6 +61,8 @@ module Samagotchi
         system = []
         messages = []
         notes = {}.compare_by_identity
+        # Tool changes wait for the end of the user turn they sit in.
+        changes = []
         Array(wire).each_with_index do |raw, index|
           message = raw.to_h.transform_keys(&:to_sym)
           role = message[:role].to_s
@@ -66,8 +71,16 @@ module Samagotchi
             next
           end
 
+          if role == "system" && message[:tool_change]
+            blocks = tool_additions(message[:tool_change], deferred)
+            changes << { role: "system", content: blocks } unless blocks.empty?
+            next
+          end
+
           case role
-          when "assistant" then append(messages, "assistant", assistant_blocks(message))
+          when "assistant"
+            flush_changes(messages, changes)
+            append(messages, "assistant", assistant_blocks(message))
           when "tool"
             blocks = tool_blocks(message, deferred)
             blocks.drop(1).each { |block| notes[block] = true }
@@ -79,6 +92,7 @@ module Samagotchi
           else append(messages, "user", content_blocks(message[:content]))
           end
         end
+        flush_changes(messages, changes)
         messages.each { |message| message[:content] << text_block(PLACEHOLDER) if message[:content].empty? }
         mark_last(messages, cache, notes) if cache
         Translated.new(system: system, messages: messages)
@@ -145,8 +159,27 @@ module Samagotchi
         text.empty? ? "tool" : text
       end
 
+      # A tool change's tool_addition blocks, by reference, for its names
+      # deferred in this request (a reference must name a tool in tools).
+      def tool_additions(change, deferred)
+        change = change.to_h.transform_keys(&:to_sym)
+        names = Array(change[:add]).map(&:to_s) & Array(deferred)
+        names.map { |name| { type: "tool_addition", tool: { type: "tool_reference", name: name } } }
+      end
+
+      # The waiting tool changes after the messages so far (a user turn:
+      # Messages wants a system change after one), each a message of its
+      # own; none before the first user message.
+      def flush_changes(messages, changes)
+        return if changes.empty? || messages.last.nil? || messages.last[:role] != "user"
+
+        messages.concat(changes)
+        changes.clear
+      end
+
       # A message joins the one before it when the role is the same; an
-      # assistant message with no blocks is dropped.
+      # assistant message with no blocks is dropped. A system message (a
+      # tool change) is never joined.
       def append(messages, role, blocks)
         return if role == "assistant" && blocks.empty?
 
@@ -299,7 +332,7 @@ module Samagotchi
 
       private_class_method :append, :system_blocks, :assistant_blocks, :input_of, :warn_arguments, :tool_result,
                            :content_blocks, :image_block, :mark_last, :valid_tool_use, :type_of, :text_block, :blank?, :scrub,
-                           :tool_blocks, :references?, :mark_reference
+                           :tool_blocks, :references?, :mark_reference, :tool_additions, :flush_changes
     end
   end
 end

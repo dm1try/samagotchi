@@ -248,6 +248,22 @@ a sibling text block: the result's text, then `Loaded: a, b. Call them directly 
 too).` A result whose names aren't deferred here (declared since, or no tool loading) goes as plain text. The sibling
 text is never marked; when breakpoint #2 falls on such a tool_result, it goes on its last reference.
 
+### Tool changes (`ctx.load_tools`)
+
+A plugin's `ctx.load_tools(names)` stages wire names (`Engine#load_tools`: `ToolIndex#deferred_name`, idempotent
+against the staged names and the history's earlier changes, `ToolLoads`). `Engine#turn_messages` appends them after
+the turn's user message (on a turn with none, after its trailing results or notes; a conversation ending with a reply
+keeps them staged) as one `ToolLoads.entry` per bundle (`kind: "tool_change"`), only when the turn's host
+`tool_changes?` (`AnthropicMessages#tool_changes?`: `loads_tools?`, unless the host refused changes for the model);
+otherwise the staged names are dropped and logged (`tool_loads_not_sent`). `ChatLoop#wire_messages` sends the entry
+only to such an adapter, `Prompt.format*` skips it. `AnthropicWire.translate` turns it into a `role: "system"` message
+of its own, `{"type": "tool_addition", "tool": {"type": "tool_reference", "name": …}}` per name deferred in this
+request (none: no message; note `name` here, `tool_name` in a result's reference), held until the run of user-role
+messages it sits in ends: before the next assistant message, or last. `AnthropicMessages` adds
+`INLINE_TOOLS_BETA` (`inline-tools-2026-09-15`) to `anthropic-beta` when the body has such a message, comma-joined with
+the binding beta on a drop_block step. A 400 naming `tool_addition`, the beta or a system role (`TOOL_CHANGES_RE`)
+sets `:tool_changes` for the model: the retry and every later request drop the system messages and the beta.
+
 A direct call of a deferred tool runs whether something loaded it or not (the API doesn't check): the Engine sets
 `TurnSettings#loads_tools` from the turn's final model (after the before_turn hooks), and then `ToolRunner#run` and
 `KernelLoop#dispatch` take a reachable built-in by its own name (`Registry#indexed`) through the normal gate, and wrap
@@ -274,6 +290,7 @@ client's life only):
 | `max_tokens: N > M` (`OUTPUT_CAP_RE`) | `max_tokens` capped at M | per model (`output_cap`) |
 | `block_binding` or the binding beta, on a drop_block retry (`thinking_binding_unsupported?`) | the strip instead (Preserved thinking) | per host (`binding_controls_refused`) |
 | `tools.N.input_schema` (`TOOL_SCHEMA_RE`) where tool N is deferred | that tool leaves the deferred list (`call_tool` still reaches it); one fix per tool (the fix value is `[:tool_schema, name]`), at most `MAX_SCHEMA_FIXES` (5) per request; the names kept by `RefusalMemo#add` | per model (`tool_schema_refused`) |
+| `tool_addition`, the inline-tools beta or a system role (`TOOL_CHANGES_RE`) on a request with a tool change | no system messages and no beta from then on (`#tool_changes?` false); the tools stay deferred and callable | per model (`tool_changes_refused`) |
 | `defer_loading` or `tool_reference` (`TOOL_LOADING_RE`) on a request that carries either | no deferred tools from then on (`#loads_tools?` false, loads go as text); a direct call of a reachable tool is refused again from the next turn (`TurnSettings#loads_tools`) | per model (`tool_loading_refused`) |
 
 The display check comes before the adaptive one: its path (`thinking.adaptive.display`) names adaptive too. A context

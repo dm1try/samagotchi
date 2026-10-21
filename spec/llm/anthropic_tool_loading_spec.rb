@@ -59,6 +59,39 @@ RSpec.describe "Tool loading on a Messages host" do
       expect(text).not_to have_key(:cache_control)
     end
 
+    describe "a plugin's tool change (ctx.load_tools)" do
+      let(:change) { { role: "system", content: "[tools loaded: delegate, gone (b)]", tool_change: { add: %w[delegate gone], by: "b" } } }
+
+      it "goes as a system message of its own, after the user turn it sits in: never merged, deferred names only" do
+        wire = [{ role: "system", content: "sys" }, { role: "user", content: "go" }, change,
+                { role: "system", content: "[CONTEXT NOTE] x" }, { role: "user", content: "more" },
+                { role: "assistant", content: "ok" }]
+
+        messages = described_class.translate(wire, cache: cache, deferred: %w[delegate]).messages
+
+        expect(messages.map { |m| m[:role] }).to eq(%w[user system assistant])
+        expect(messages[0][:content].map { |b| b[:text] }).to eq(["go", "[CONTEXT NOTE] x", "more"])
+        expect(messages[1]).to eq(role: "system", content: [{ type: "tool_addition",
+                                                              tool: { type: "tool_reference", name: "delegate" } }])
+        expect(messages[0][:content].last).to have_key(:cache_control)
+      end
+
+      it "follows a turn's tool results, and is last when nothing comes after it" do
+        wire = [{ role: "system", content: "sys" }, { role: "user", content: "go" },
+                { role: "assistant", content: nil, tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: "{}" } }] },
+                { role: "tool", content: "[read] x", tool_call_id: "c1" }, change]
+
+        messages = described_class.translate(wire, deferred: %w[delegate]).messages
+
+        expect(messages.map { |m| m[:role] }).to eq(%w[user assistant user system])
+      end
+
+      it "is dropped when none of its names is deferred here" do
+        messages = described_class.translate([{ role: "user", content: "go" }, change], deferred: []).messages
+        expect(messages.map { |m| m[:role] }).to eq(%w[user])
+      end
+    end
+
     it "puts no cache_control on a deferred tool" do
       expect(described_class.tools([deferred_tool("a")]).first).to eq(name: "a", description: "a it",
                                                                       input_schema: { type: "object", properties: {} },
@@ -142,6 +175,55 @@ RSpec.describe "Tool loading on a Messages host" do
       expect(bodies.size).to eq(3)
       expect(deferred_in(bodies[1])).to eq([])
       expect(response.thinking_drop).not_to be_nil
+    end
+
+    describe "a tool change on the wire" do
+      let(:change) { { role: "system", content: "[tools loaded: list_sessions (b)]", tool_change: { add: %w[list_sessions], by: "b" } } }
+
+      def betas = server.requests.select { |r| r.path == "/v1/messages" }.map { |r| r.header("anthropic-beta") }
+
+      it "carries the inline-tools beta only with one" do
+        answer
+        answer
+        chat(messages: wire([]))
+        chat(messages: wire([]) + [change])
+
+        expect(betas).to eq([nil, described_class::INLINE_TOOLS_BETA])
+      end
+
+      it "asks again without the change and the beta when the host refuses it, per model" do
+        refuse("messages.4.role: Input should be 'user' or 'assistant' (system role not supported)")
+        answer
+        answer
+
+        chat(messages: wire([]) + [change])
+        chat(messages: wire([]) + [change])
+
+        expect(bodies.map { |b| b["messages"].count { |m| m["role"] == "system" } }).to eq([1, 0, 0])
+        expect(betas).to eq([described_class::INLINE_TOOLS_BETA, nil, nil])
+        expect(adapter.tool_changes?("m")).to be(false)
+        expect(adapter.loads_tools?("m")).to be(true)
+      end
+
+      it "joins the binding beta on a drop_block step, and the strip leaves the system message alone" do
+        server.enqueue("/v1/messages", status: 400,
+                                       json: FakeProviderServer.fixture("claude_error_400_signature_system_changed.json", api: "anthropic"))
+        server.enqueue("/v1/messages", sse: FakeProviderServer.fixture("claude_drop_block_input_transformations.sse", api: "anthropic"))
+        thinking = { "type" => "thinking", "thinking" => "t", "signature" => "sig1" }
+        messages = wire([], after: false).tap do |w|
+          w[2] = w[2].merge(anthropic_content: [thinking, { "type" => "tool_use", "id" => "toolu_f", "name" => "find_tools",
+                                                            "input" => {} }])
+        end
+        adapter.instance_variable_set(:@stream, true)
+
+        adapter.chat(messages: messages + [change], model: "claude-haiku-5-5", tools: tools,
+                     options: { max_tokens: 1000, **adapter.thinking_fields(:high) })
+
+        expect(betas.last).to eq("#{Samagotchi::LLM::AnthropicBindingRecovery::BINDING_BETA},#{described_class::INLINE_TOOLS_BETA}")
+        expect(bodies.last["messages"].last).to eq("role" => "system", "content" => [
+          { "type" => "tool_addition", "tool" => { "type" => "tool_reference", "name" => "list_sessions" } }
+        ])
+      end
     end
 
     it "fails a request whose 400 names a declared tool's schema, as before" do

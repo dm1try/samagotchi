@@ -378,6 +378,23 @@ module Samagotchi
         end.sort_by(&:acts_as)
       end
 
+      # The name a request declares +name+'s tool by when it goes out
+      # deferred (Tools::DeferredTools): a reachable built-in's (by its
+      # name or chi/<name>), a deferrable source tool's acts_as (by it or
+      # <group>/<tool>). Nil for any other: declared, removed, unknown, or a
+      # source tool that can't be deferred. Never waits for a start.
+      # @return [String, nil]
+      def deferred_name(name)
+        name = name.to_s.strip
+        bare = name.delete_prefix("#{CHI_GROUP}/")
+        return bare if @registry&.indexed(bare)
+
+        tool = lookup_quietly(name) or return nil
+        return nil if tool.entry || tool.refusal
+
+        deferrable.any? { |t| t.acts_as == tool.acts_as } ? tool.acts_as : nil
+      end
+
       # What a deferred source tool's wire name may be (Messages' tool
       # name rule).
       DEFERRABLE_NAME = /\A[a-zA-Z0-9_-]{1,128}\z/

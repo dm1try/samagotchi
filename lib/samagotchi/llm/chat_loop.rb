@@ -23,6 +23,7 @@ require_relative "../tool_response"
 require_relative "../tool_ids"
 require_relative "../tool_declarations"
 require_relative "../tools/deferred_tools"
+require_relative "../tool_loads"
 require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
@@ -129,6 +130,12 @@ module Samagotchi
         @adapter.respond_to?(:loads_tools?) && @adapter.loads_tools?(model.to_s)
       end
 
+      # Whether the adapter takes a mid-conversation tool change for +model+
+      # (AnthropicMessages#tool_changes?: a plugin's ctx.load_tools, ToolLoads).
+      def tool_changes?(model)
+        @adapter.respond_to?(:tool_changes?) && @adapter.tool_changes?(model.to_s)
+      end
+
       # The kernel's tools.
       def tools = @kernel.tools
 
@@ -181,7 +188,8 @@ module Samagotchi
       #
       # On an adapter that loads tools (#loads_tools?), a find result's
       # tool message carries its loaded: names (AnthropicWire renders the
-      # load); no other wire sees them.
+      # load); no other wire sees them. A plugin's tool change
+      # (ToolLoads) goes only to an adapter that takes tool changes.
       def wire_messages(conversation, since: nil, reasoning: reasoning_history)
         conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
@@ -198,7 +206,13 @@ module Samagotchi
           items = plan.items(entry, index)
           case entry[:role].to_s
           when "system"
-            wire << system_message(entry, index)
+            if ToolLoads.entry?(entry)
+              # Only to a host that takes tool changes; never an empty
+              # system message elsewhere.
+              wire << { role: "system", content: entry[:content].to_s, TOOL_CHANGE => entry[TOOL_CHANGE] } if tool_change_wire?
+            else
+              wire << system_message(entry, index)
+            end
           when "user"
             # A steer or merged input (always a String) goes with its header.
             content = Steer.header(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
@@ -243,6 +257,9 @@ module Samagotchi
       end
 
       TOOL_IMAGES_TEXT = "[images from tool results]"
+
+      # Whether this turn's requests carry tool changes (the turn's model).
+      def tool_change_wire? = tool_changes?(@kernel.turn_settings&.model_name)
 
       # The first index whose model entries carry their reasoning (nil:
       # none do) under +level+. Under turn: +since+ when given, where a
@@ -397,9 +414,8 @@ module Samagotchi
         removed
       end
 
-      # A system entry's tools a plugin loaded ({add:, by:}; kind
-      # "tool_change").
-      TOOL_CHANGE = :tool_change
+      # A system entry's tools a plugin loaded ({add:, by:}; ToolLoads).
+      TOOL_CHANGE = ToolLoads::KEY
 
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
