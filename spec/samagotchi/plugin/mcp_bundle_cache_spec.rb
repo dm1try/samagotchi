@@ -196,6 +196,9 @@ RSpec.describe "The mcp bundle" do
       context "when a cached server doesn't start (#{mode})" do
         it "fails the first call once, answers later calls at once, and searches say it failed; the cache stays" do
           File.write(mode_file, mode)
+          # A hung start fails at its startup_timeout: a short one, the
+          # outcome is what matters (the first run, in before, had 2 s).
+          settings["startup_timeout"] = 0.3
           next_engine
           notices = []
           engine.subscribe(observer: ->(e) { notices << e if e[:type] == :hook_notice })
