@@ -22,6 +22,10 @@ module Samagotchi
   autoload :ModelSetting, File.expand_path("model_settings", __dir__)
   # The per-model/host seconds a cut waits (like Thinking for the level).
   autoload :SteerCutAfter, File.expand_path("steer_cut_after", __dir__)
+  # A refused --set (Config.coerce! raises its Error), and recap.sentences'
+  # check (IdleRecap::RecapPrompt): both load on first use.
+  autoload :SessionConfig, File.expand_path("session_config", __dir__)
+  autoload :IdleRecap, File.expand_path("idle_recap", __dir__)
 
   # Unified configuration registry implementing the implicit convention:
   #   ENV    SAMAGOTCHI_ATTR            (UPPER + prefix + _ = nesting)
@@ -39,8 +43,12 @@ module Samagotchi
   module Config
     # invalid: what an enum's invalid value falls to, when not the default
     # (guardrails.parent_answers: the strictest).
+    # session: true for a key a session may set for itself (chi --set KEY=VALUE,
+    # SessionConfig; its value is read through Config.get(key, session:)),
+    # check: a lambda that takes a typed value and returns nil, or the
+    # "takes ..." phrase a refused --set names (recap.sentences' N or N-M).
     Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, :lifecycle, :invalid,
-                       keyword_init: true) do
+                       :session, :check, keyword_init: true) do
       def env_key
         "SAMAGOTCHI_" + yaml_path.map { |p| p.upcase }.join("_")
       end
@@ -64,6 +72,9 @@ module Samagotchi
       def config_exposed?
         expose.include?(:config)
       end
+
+      # Whether a session may set the key for itself (chi --set).
+      def session? = session == true
     end
 
     # Section names: lower alnum only, no _ or -.
@@ -93,7 +104,9 @@ module Samagotchi
       # off on local ones. hosts.<name>.first_token_timeout wins.
       Entry.new(key: "server.first_token_timeout", yaml_path: %w[server first_token_timeout], type: :integer, default: nil,          expose: %i[env config], lifecycle: :worker_start),
 
-      Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config], lifecycle: :worker_start),
+      # Both session-settable (chi --set recap.enabled=false): RecapSetup reads them through the session's layer.
+      Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config], lifecycle: :worker_start,
+                session: true),
       Entry.new(key: "recap.model",              yaml_path: %w[recap model],               type: :string, default: nil,              expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "recap.base_url",           yaml_path: %w[recap base_url],            type: :string, default: nil,              expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "recap.host_ref",           yaml_path: %w[recap host_ref],            type: :string, default: nil,              expose: %i[env config cli], yaml_aliases: %w[host], lifecycle: :worker_start),
@@ -101,7 +114,9 @@ module Samagotchi
       Entry.new(key: "recap.timeout",            yaml_path: %w[recap timeout],             type: :float,   default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
       Entry.new(key: "recap.min_user_turns",     yaml_path: %w[recap min_user_turns],      type: :integer, default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
       # "N-M" or "N" sentences (1-10); unset = 2-4. Parsed by RecapPrompt.sentences_range.
-      Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli], lifecycle: :worker_start),
+      Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli], lifecycle: :worker_start,
+                session: true,
+                check: ->(value) { "N or N-M (1-#{IdleRecap::RecapPrompt::MAX_SENTENCES})" unless IdleRecap::RecapPrompt.sentences_range(value) }),
 
       # chi broadcast (Broadcast::Recipients, Broadcast::Tags): a session that ended no turn in this many hours (and
       # no worker or REPL runs) gets no broadcast; a ticket id in the note and in a session's branch or prompts
@@ -324,6 +339,10 @@ module Samagotchi
     # And toolkit's kits (Toolkit.kits).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze }.freeze
 
+    # What a :bool value reads as (Config.coerce!), YAML 1.1's words and 1/0.
+    BOOL_WORDS = { "1" => true, "true" => true, "yes" => true, "on" => true,
+                   "0" => false, "false" => false, "no" => false, "off" => false }.freeze
+
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze
 
@@ -342,58 +361,70 @@ module Samagotchi
         ENTRIES.select(&:cli_exposed?)
       end
 
-      # Coercion helpers
-      def coerce(entry, raw)
+      # The entries a session may set for itself (Entry#session?).
+      def session_entries
+        ENTRIES.select(&:session?)
+      end
+
+      # +raw+ as +entry+'s type, strictly: a value of another shape raises.
+      # :string as given (a YAML list joined with |), :integer, :float,
+      # :bool (true/yes/on/1, false/no/off/0/""), :enum in its canonical
+      # case; nil for nil, and for a blank value of any other type than
+      # :string and :bool. #coerce is its lenient twin (config.yml, env).
+      # @raise [SessionConfig::Error] "KEY takes WHAT, not RAW"
+      def coerce!(entry, raw)
         return nil if raw.nil?
+        # A YAML list for a "|"-separated setting (web.annotate_presets).
+        # As given, trailing spaces included ("Please ").
+        return raw.is_a?(Array) ? raw.join("|") : raw.to_s if entry.type == :string
 
-        # For string, preserve as-is (including trailing spaces like "Please ")
-        if entry.type == :string
-          # A YAML list for a "|"-separated setting (web.annotate_presets).
-          str = raw.is_a?(Array) ? raw.join("|") : raw.to_s
-          return nil if str.empty? && entry.type != :string
-
-          return str
-        end
         str = raw.to_s.strip
-        return nil if str.empty? && entry.type != :string
+        return false if entry.type == :bool && str.empty?
+        return nil if str.empty?
 
+        value = case entry.type
+                when :integer then Integer(str, exception: false)
+                when :float then Float(str, exception: false)
+                when :bool then BOOL_WORDS[str.downcase]
+                when :enum then entry.enum_values.find { |v| v.downcase == str.downcase }
+                else str
+                end
+        raise SessionConfig::Error, "#{entry.key} takes #{takes(entry)}, not #{raw.to_s.inspect}" if value.nil?
+
+        value
+      end
+
+      # What +entry+'s type takes, as a refusal names it.
+      def takes(entry)
         case entry.type
-        when :string
-          str
+        when :integer then "an integer"
+        when :float then "a number"
+        when :bool then "true or false"
+        when :enum then "#{entry.enum_values[0..-2].join(", ")} or #{entry.enum_values.last}"
+        else "text"
+        end
+      end
+
+      # +raw+ as +entry+'s type (#coerce!), leniently: a value of another
+      # shape warns and falls back (the default; false for a bool; an
+      # enum's +invalid+ when it has one).
+      def coerce(entry, raw)
+        coerce!(entry, raw)
+      rescue SessionConfig::Error
+        case entry.type
         when :integer
-          Integer(str, exception: false).tap do |v|
-            if v.nil?
-              Log.warn(:config, "invalid_value", echo: "Warning: invalid integer for #{entry.key} (#{entry.env_key}): #{raw.inspect} — using default", key: entry.key)
-              return entry.default
-            end
-          end
+          Log.warn(:config, "invalid_value", echo: "Warning: invalid integer for #{entry.key} (#{entry.env_key}): #{raw.inspect} — using default", key: entry.key)
+          entry.default
         when :float
-          val = Float(str, exception: false)
-          if val.nil?
-            Log.warn(:config, "invalid_value", echo: "Warning: invalid float for #{entry.key}: #{raw.inspect}", key: entry.key)
-            return entry.default
-          end
-          val
+          Log.warn(:config, "invalid_value", echo: "Warning: invalid float for #{entry.key}: #{raw.inspect}", key: entry.key)
+          entry.default
         when :bool
-          case str.downcase
-          when "1", "true", "yes", "on" then true
-          when "0", "false", "no", "off", "" then false
-          else
-            Log.warn(:config, "invalid_value", echo: "Warning: invalid bool for #{entry.key}: #{raw.inspect} — treating as false", key: entry.key)
-            false
-          end
-        when :enum
-          lowered = str.downcase
-          allowed = entry.enum_values.map(&:downcase)
-          unless allowed.include?(lowered)
-            using = entry.invalid ? "using #{entry.invalid}" : "using default"
-            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(", ")}) — #{using}", key: entry.key)
-            return entry.invalid || entry.default
-          end
-          # return canonical casing from enum_values
-          entry.enum_values.find { |v| v.downcase == lowered }
+          Log.warn(:config, "invalid_value", echo: "Warning: invalid bool for #{entry.key}: #{raw.inspect} — treating as false", key: entry.key)
+          false
         else
-          str
+          using = entry.invalid ? "using #{entry.invalid}" : "using default"
+          Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(", ")}) — #{using}", key: entry.key)
+          entry.invalid || entry.default
         end
       end
 
@@ -406,10 +437,14 @@ module Samagotchi
       end
 
       # Same as #resolve, plus the layer the value came from:
-      # :cli, :env, :file or :default.
-      def resolve_with_origin(key, file_data: nil, env: ENV, cli_overrides: {})
+      # :session, :cli, :env, :file or :default. +session+ is a session's
+      # own values (SessionConfig::Settings#core, typed): a session-settable
+      # key's value there goes first, over the CLI (a worker gets its CLI
+      # as env, and the session's value was given for this session).
+      def resolve_with_origin(key, file_data: nil, env: ENV, cli_overrides: {}, session: nil)
         entry = find_by_key(key)
         raise ArgumentError, "unknown config key: #{key}" unless entry
+        return [session[entry.key], :session] if entry.session? && session&.key?(entry.key)
 
         # CLI wins
         if cli_overrides.key?(entry.key)
@@ -523,8 +558,9 @@ module Samagotchi
         end
       end
 
-      def get(key)
-        get_with_origin(key).first
+      # The live value of +key+; +session+ as #resolve_with_origin takes it.
+      def get(key, session: nil)
+        get_with_origin(key, session: session).first
       end
 
       # default.max_tokens: the most tokens one generation may produce, or
@@ -545,8 +581,8 @@ module Samagotchi
       end
 
       # [value, origin] for the live value #get returns; origin is one of
-      # :cli, :env, :file, :default.
-      def get_with_origin(key)
+      # :session, :cli, :env, :file, :default.
+      def get_with_origin(key, session: nil)
         entry = find_by_key(key)
         raise ArgumentError, "unknown config key: #{key}" unless entry
 
@@ -555,7 +591,7 @@ module Samagotchi
         # overrides captured via reload!
         path = Samagotchi::ConfigFile.global_path rescue nil
         file_data = Samagotchi::ConfigFile.read_yaml(path: path) if path
-        resolve_with_origin(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides)
+        resolve_with_origin(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides, session: session)
       end
 
       # Problems with the keys of a parsed config.yml, one message per key the
