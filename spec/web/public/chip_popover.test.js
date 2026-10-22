@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createChipPopover, popoverPlace } from "../../../lib/samagotchi/web/public/chip_popover.js";
+import { createChipPopover, popoverPlace, sheetPlace } from "../../../lib/samagotchi/web/public/chip_popover.js";
 import { html, render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 test("the popover opens above the chip, below it when the room above is short, capped to the room it has", () => {
@@ -117,3 +117,47 @@ for (const sameEl of [true, false]) {
     done();
   });
 }
+
+test("a sheet's place: the window's width less 8 px edges, at its bottom, at most 60 % high", () => {
+  assert.deepEqual(sheetPlace({ innerWidth: 390, innerHeight: 844 }), { left: 8, bottom: 8, width: 374, maxHeight: 506 });
+});
+
+test("open(anchor) from another opener: summary gets the anchor; a click on an opener isn't outside; Esc and × give focus back", () => {
+  const other = document.createElement("div");
+  other.className = "my-rail";
+  other.tabIndex = 0;
+  document.body.append(other);
+  const anchors = [];
+  const s = shell({ openers: ".my-chip, .my-rail", summary: (anchor) => { anchors.push(anchor); return {}; } });
+  s.ctl.open(other);
+  assert.ok(anchors[0] === other);
+  assert.ok(s.ctl.opener() === other);
+  other.click(); // the opener's own click handler decides; the document's doesn't close it
+  assert.equal(s.ctl.isOpen(), true);
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(s.ctl.isOpen(), false);
+  assert.ok(document.activeElement === other);
+  // The ×: focus was in the popover, back to the opener.
+  s.ctl.open(s.chip);
+  const x = s.ctl.pop.querySelector("[data-act=close]");
+  x.focus();
+  x.click();
+  assert.ok(document.activeElement === s.chip);
+  s.done();
+  other.remove();
+});
+
+test("a sheet popover is a bottom sheet in a narrow window, a popover at its chip in a wide one", () => {
+  const win = { innerWidth: 390, innerHeight: 800 };
+  const s = shell({ sheet: true, win });
+  s.chip.click();
+  assert.equal(s.ctl.pop.classList.contains("sheet"), true);
+  assert.deepEqual([s.ctl.pop.style.left, s.ctl.pop.style.bottom, s.ctl.pop.style.width, s.ctl.pop.style.maxHeight, s.ctl.pop.style.top],
+    ["8px", "8px", "374px", "480px", ""]);
+  s.ctl.close();
+  win.innerWidth = 1000;
+  s.chip.click();
+  assert.equal(s.ctl.pop.classList.contains("sheet"), false);
+  assert.equal(s.ctl.pop.style.width, "300px");
+  s.done();
+});
