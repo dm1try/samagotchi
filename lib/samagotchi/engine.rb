@@ -1141,6 +1141,8 @@ module Samagotchi
     # price_host: the effective model's host, whose hosts.<name>.models
     # prices the cost estimate names. kit_prompt: the next turn's kit
     # prompt text ({kit:, tokens:}), only when its toolkit has one.
+    # settings: the session's own settings ({"recap.enabled" => false}),
+    # only when it has some.
     # @return [Hash] @metrics.snapshot, filled in
     def stats_snapshot
       snapshot = @metrics.snapshot
@@ -1155,6 +1157,9 @@ module Samagotchi
                                 price_host: model.host_name)
       kit_prompt = kit_prompt_stats
       snapshot = snapshot.merge(kit_prompt: kit_prompt) if kit_prompt
+      # The session's own settings (chi --set), as --set names them.
+      settings = @session&.settings&.flat || {}
+      snapshot = snapshot.merge(settings: settings) unless settings.empty?
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(model)
         if window

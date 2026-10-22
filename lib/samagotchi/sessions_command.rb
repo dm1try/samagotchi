@@ -39,7 +39,7 @@ module Samagotchi
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
         clean [--dry-run] [--days N] [--all]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
              --all: every session, not only test and scratch ones (by the age and count limits, as prune)
-        stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
+        stats ID [--format text|json]   # a session's cost, tokens, progress and own settings, without running a model turn:
              a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT
@@ -323,10 +323,14 @@ module Samagotchi
       end
 
       metrics, live, note = stats_snapshot_for(session)
+      # The session's own settings (chi --set), as --set names them.
+      settings = session.settings.flat
       if format == "json"
-        @stdout.puts JSON.generate({ session_id: session.id, status: session.status, live: live, metrics: metrics })
+        @stdout.puts JSON.generate({ session_id: session.id, status: session.status, live: live, metrics: metrics,
+                                     settings: settings })
       else
         @stdout.puts "#{session.id[0, 8]}  #{session.status.ljust(7)} #{session.model_name}"
+        metrics = metrics.merge(settings: settings) if metrics && !settings.empty?
         @stdout.puts TerminalUI::Formatting.format_session_metrics(metrics)
         @stdout.puts note if note
       end

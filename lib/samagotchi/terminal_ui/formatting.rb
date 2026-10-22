@@ -9,6 +9,7 @@ require_relative "../steer_cut"
 require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
 require_relative "../prompt_files"
+require_relative "../session_config"
 require_relative "../tools/task_record"
 require_relative "model_segments_text"
 
@@ -640,6 +641,9 @@ module Samagotchi
         # A chat host's only: a native one ignores it (the summary is nil).
         history = setting_stats_text(snapshot[:reasoning_history])
         lines << "reasoning history: #{history}" if history
+        # The session's own settings (chi --set; JSON keys from a worker).
+        settings = snapshot[:settings]
+        lines << "settings:         #{SessionConfig.text(settings)}" if settings.is_a?(Hash) && !settings.empty?
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
           differs = !snapshot[:served_expected_by] && ServedModel.differs?(asked, snapshot[:served_model])

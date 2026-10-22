@@ -37,7 +37,7 @@ RSpec.describe "chi sessions (CLI)" do
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
         clean [--dry-run] [--days N] [--all]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
              --all: every session, not only test and scratch ones (by the age and count limits, as prune)
-        stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
+        stats ID [--format text|json]   # a session's cost, tokens, progress and own settings, without running a model turn:
              a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT

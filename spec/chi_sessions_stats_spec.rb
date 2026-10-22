@@ -199,6 +199,24 @@ RSpec.describe "chi sessions stats" do
       expect(metrics["tool_records"].map { |record| record["id"] }).to eq(%w[call-1])
     end
 
+    it "names the session's own settings (chi --set): settings in json, a settings: line in the text" do
+      session = make
+      session.settings = Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 3 } })
+      session.save(state_dir: state_dir)
+      save_analytics(session, turns: 1)
+
+      out, _err, code = run_stats("--format", "json", session.id)
+      expect(code).to eq(0)
+      expect(JSON.parse(out)["settings"]).to eq("recap.enabled" => false, "cost-cap.cap" => 3)
+      out, = run_stats(session.id)
+      expect(out).to include("settings:         recap.enabled=false · cost-cap.cap=3\n")
+
+      other = make
+      save_analytics(other, turns: 1)
+      expect(JSON.parse(run_stats("--format", "json", other.id).first)["settings"]).to eq({})
+      expect(run_stats(other.id).first).not_to include("settings:")
+    end
+
     it "--format json counts the calls a model made under an alias's name (bash run as execute)" do
       session = make
       save_analytics(session, turns: 2, called_as: "bash")
