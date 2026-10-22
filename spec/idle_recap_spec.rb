@@ -555,10 +555,12 @@ RSpec.describe Samagotchi::IdleRecap do
         engine = stub_engine_with_two_user_turns
         started = Queue.new
         proceed = Queue.new
+        finished = false
         slow_client = double("slow_client")
         allow(slow_client).to receive(:summarize) do
           started.push(:ready)
           proceed.pop  # wait for test to signal before finishing
+          finished = true
           "recap"
         end
         idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
@@ -568,6 +570,7 @@ RSpec.describe Samagotchi::IdleRecap do
         # A turn starts: the in-flight recap must never render.
         idle.invalidate!
         proceed.push(:go)
+        500.times { break if finished; sleep(0.01) } # the summarizer may still be finishing: wait for it
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
@@ -647,7 +650,8 @@ RSpec.describe Samagotchi::IdleRecap do
     it "invalidates a generation that was in-flight" do
       engine = stub_engine(messages: messages_with_two_user_turns)
       slow_client = double("slow_client")
-      allow(slow_client).to receive(:summarize) { sleep(0.3); "recap" }
+      finished = false
+      allow(slow_client).to receive(:summarize) { sleep(0.3); finished = true; "recap" }
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       gen_before = idle.generation
@@ -657,6 +661,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.generation).to be > gen_before
       allow(idle).to receive(:should_fire?).and_return(false)
       drive(idle)
+      500.times { break if finished; sleep(0.01) } # the summarizer is still sleeping: wait for it to finish
       expect(engine).not_to have_received(:emit_recap)
     end
 
@@ -746,9 +751,10 @@ RSpec.describe Samagotchi::IdleRecap do
     end
     let(:gate) { Queue.new }
     let(:called) { Queue.new }
+    let(:finished) { [] }
     let(:blocked_client) do
       c = double("blocked_client")
-      allow(c).to receive(:summarize) { called.push(:in); gate.pop; "late recap" }
+      allow(c).to receive(:summarize) { called.push(:in); gate.pop; finished << :done; "late recap" }
       c
     end
 
@@ -779,6 +785,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(ticks).to eq(5)
       expect(idle).to be_in_flight
       gate.push(:go)
+      500.times { break if finished.any?; sleep(0.01) } # let the summarizer thread finish
     end
 
     it "drops an attempt that runs past the timeout" do
@@ -791,7 +798,7 @@ RSpec.describe Samagotchi::IdleRecap do
       idle.tick
       expect(idle).not_to be_in_flight
       gate.push(:go)
-      sleep(0.05)
+      500.times { break if finished.any?; sleep(0.01) } # let the summarizer thread finish
       idle.tick
       expect(engine).not_to have_received(:emit_recap)
     end
@@ -1070,8 +1077,9 @@ RSpec.describe Samagotchi::IdleRecap do
     it "gives up after the timeout" do
       engine = stub_engine(messages: two_turns)
       gate = Queue.new
+      finished = false
       client = double("slow")
-      allow(client).to receive(:summarize) { gate.pop; "late" }
+      allow(client).to receive(:summarize) { gate.pop; finished = true; "late" }
       idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 0.2, client: client, store: store)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(idle.write_now).to be_nil
@@ -1079,19 +1087,22 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(store.saved).to be_nil
       expect(idle).not_to be_in_flight
       gate.push(:go)
+      500.times { break if finished; sleep(0.01) } # the overdue thread may still be in the stub: let it finish
     end
 
     it "waits for the attempt already in flight instead of starting another" do
       engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 500)
       gate = Queue.new
+      finished = false
       client = double("slow")
-      allow(client).to receive(:summarize) { gate.pop; "from the idle window" }
+      allow(client).to receive(:summarize) { gate.pop; finished = true; "from the idle window" }
       idle = idle_for(engine, client)
       idle.tick
       expect(idle).to be_in_flight
       Thread.new { sleep(0.1); gate.push(:go) }
       expect(idle.write_now).to eq("from the idle window")
       expect(client).to have_received(:summarize).once
+      500.times { break if finished; sleep(0.01) } # write_now joined the thread: make sure the stub really finished
     end
   end
 
@@ -1135,6 +1146,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.request_now).to eq(:started)
       expect(idle.request_now).to eq(:in_flight)
       gate.push(:go)
+      500.times { break unless idle.in_flight?; sleep(0.01); idle.tick } # collect it so the thread can't outlive the example
     end
   end
 end
