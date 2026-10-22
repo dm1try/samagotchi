@@ -48,6 +48,25 @@ RSpec.describe Samagotchi::Hooks::Loader do
       expect(registry.size).to eq(0)
     end
 
+    it "skips a bad entry with a warning naming it, keeping the others" do
+      allow(Samagotchi::Log).to receive(:warn)
+      config = YAML.safe_load(<<~YAML)
+        hooks:
+          before_turn:
+            - guard.rb
+            - on_error: log
+            - path: "  "
+            - path: ok.rb
+      YAML
+      expect(described_class.parse_definitions(config["hooks"]).map { _1[:path] }).to eq(["ok.rb"])
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:hooks, "hooks_entry_invalid", echo: "[samagotchi:hooks] config.yml hooks.before_turn[0]: must be a mapping with a path:; ignored", event: "before_turn", index: 0)
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:hooks, "hooks_entry_no_path", echo: "[samagotchi:hooks] config.yml hooks.before_turn[1]: has no path:; ignored", event: "before_turn", index: 1)
+      expect(Samagotchi::Log).to have_received(:warn).with(:hooks, "hooks_entry_no_path", hash_including(index: 2))
+      expect(Samagotchi::Log).to have_received(:warn).exactly(3).times
+    end
+
     it "loads plugins from hooks_dir and registers them" do
       Dir.mktmpdir do |tmpdir|
         hooks_dir = File.join(tmpdir, "hooks")

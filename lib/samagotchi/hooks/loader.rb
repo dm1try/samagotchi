@@ -110,8 +110,8 @@ module Samagotchi
             next
           end
 
-          configs.each do |cfg|
-            next unless cfg.is_a?(Hash) && cfg["path"]
+          configs.each_with_index do |cfg, index|
+            next unless valid_entry?(event_type, cfg, index)
 
             definitions << {
               event_type: event_type.to_s,
@@ -124,6 +124,21 @@ module Samagotchi
         end
         definitions
       end
+
+      # A hook entry is a mapping with a path:; anything else warns, naming
+      # the entry (hooks.EVENT[N], from 0), and is skipped alone.
+      def self.valid_entry?(event_type, cfg, index)
+        where = "hooks.#{event_type}[#{index}]"
+        unless cfg.is_a?(Hash)
+          Log.warn(:hooks, "hooks_entry_invalid", echo: "[samagotchi:hooks] config.yml #{where}: must be a mapping with a path:; ignored", event: event_type.to_s, index: index)
+          return false
+        end
+        return true if cfg["path"].is_a?(String) && !cfg["path"].strip.empty?
+
+        Log.warn(:hooks, "hooks_entry_no_path", echo: "[samagotchi:hooks] config.yml #{where}: has no path:; ignored", event: event_type.to_s, index: index)
+        false
+      end
+      private_class_method :valid_entry?
 
       # Load a plugin from the hooks directory.
       # Returns an instance of the plugin class. Instances are cached per

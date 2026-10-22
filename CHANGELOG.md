@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   `child:` / `default:` instead of reading as "off"; `off`, `false` and `0` stay an explicit no cap.
 - Web: a closed step's text in the history renders as markdown (with `web.markdown` on) and keeps its source refs,
   live and after a reload, as the answer does.
+- A hook entry in config.yml's `hooks:` that isn't a mapping, or has no `path:`, warns naming it
+  (`hooks.before_turn[0]`) instead of vanishing; the event's other entries still load.
 
 ## [0.100.0] - 2026-10-22
 
