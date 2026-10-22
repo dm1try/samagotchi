@@ -5,6 +5,7 @@ require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
+require_relative "llm_context_strategy"
 
 module Samagotchi
   # What the model is sent of the stored conversation: the one step
@@ -17,9 +18,9 @@ module Samagotchi
   # conversation it was given, the same Array of the same entries, so the
   # prompt is byte for byte what it was before the view existed.
   #
-  # Under a strategy of layers (:stale, :forget), each applied edit saved
-  # on a tool_response entry (LLMContextEdit) whose kind is one of the
-  # layers sends that run's output as its stub. The entry stays where it
+  # Under a strategy of layers (:stale, :forget), each edit saved on a
+  # tool_response entry (LLMContextEdit) that #sends? (applied, and its
+  # kind one of the layers) sends that run's output as its stub. The entry stays where it
   # is, with its role and tool_call_id, so a call keeps its response and
   # the image plan (which indexes by entry) lines up. A stub keeps the
   # output's "[name]" lead (Gemma's prompt writes response:NAME from it),
@@ -44,7 +45,10 @@ module Samagotchi
   # (re-reading the file is a read's restore).
   class LLMContextView
     NONE = :none
-    LAYERS = LLMContextEdit::KINDS
+    # The strategy's layers (LLMContextStrategy::LAYERS), not the edit
+    # kinds (LLMContextEdit::KINDS): a kind no strategy names never
+    # becomes a layer, whatever a caller passes as the strategy.
+    LAYERS = LLMContextStrategy::LAYERS
 
     # @return [Array<Symbol>] the layers; empty under none
     attr_reader :layers
@@ -87,6 +91,10 @@ module Samagotchi
 
     def forget? = layers.include?(:forget)
 
+    # Whether +edit+ (an LLMContextEdit) is sent: the one rule for which
+    # edits the view applies, applied and of one of the layers.
+    def sends?(edit) = edit.applied? && layers.include?(edit.kind)
+
     # The forget whose stub carries the note the next forgotten output of
     # the same call points to: its first id and its note, author and stamp.
     # +paired+: the ids of the runs that pair with their calls.
@@ -100,7 +108,7 @@ module Samagotchi
     def edited(conversation, entry, index, group)
       return entry unless entry[:role].to_s == "tool_response"
 
-      edits = LLMContextEdit.on(entry).select { |_id, edit| edit.applied? && layers.include?(edit.kind) }
+      edits = LLMContextEdit.on(entry).select { |_id, edit| sends?(edit) }
       return entry if edits.empty? && !forget?
 
       refs = ToolIds.refs_at(conversation, index)

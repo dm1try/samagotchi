@@ -196,6 +196,28 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(described_class.new.messages(conversation)).to equal(conversation)
     end
 
+    it "decides by one predicate: sends? an applied edit of one of its layers, nothing under none" do
+      stale = Samagotchi::LLMContextEdit.from_h("t1", edit("stale", "superseded"))
+      staged = Samagotchi::LLMContextEdit.from_h("t1", edit("stale", "superseded", applied: false))
+      forget = Samagotchi::LLMContextEdit.from_h("t1", edit("forget", "gone"))
+      view = described_class.new(strategy: [:stale])
+
+      expect(view.sends?(stale)).to be(true)
+      expect(view.sends?(staged)).to be(false)
+      expect(view.sends?(forget)).to be(false)
+      expect(described_class.new.sends?(stale)).to be(false)
+      expect(described_class.new(strategy: %i[stale forget]).sends?(forget)).to be(true)
+    end
+
+    it "takes its layers from the strategy's words, never an edit kind no strategy names" do
+      expect(described_class::LAYERS).to equal(Samagotchi::LLMContextStrategy::LAYERS)
+      view = described_class.new(strategy: %i[drop stale])
+
+      expect(view.layers).to eq([:stale])
+      expect(described_class.new(strategy: [:drop])).to be_none
+      expect(described_class.new(strategy: [:drop]).messages(conversation)).to equal(conversation)
+    end
+
     it "sends an entry whole when its runs don't match its ids, or its images can't be told apart" do
       short = batch.merge(tool_ids: %w[t1 t2], edits: { "t1" => edit("stale", "superseded") })
       uncounted = batch.except(:image_counts).merge(edits: { "t1" => edit("stale", "superseded") })

@@ -161,7 +161,7 @@ module Samagotchi
       return true if sent == stored || sent == with_id(stored, touch.run.ref.id)
 
       edit = LLMContextEdit.on(conversation[touch.run.index])[touch.run.ref.id]
-      return true unless edit&.applied? && view.layers.include?(edit.kind)
+      return true unless edit && view.sends?(edit)
 
       edit.kind == :forget ? edit.keep? : edit.note.match?(BY_EDIT)
     end

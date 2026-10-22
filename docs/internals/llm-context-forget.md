@@ -35,6 +35,11 @@ lets the model forget its own tool outputs. The pieces:
 - **Restore** takes the forget off the entry (`LLMContextEdit.remove`, a new edits Hash); the next request sends the
   output again, outside the apply rule (the result says the tail the server reads again, and `ContextStatus#edited!`
   restarts the estimate). A read whose stub was sent isn't restored; a staged one is.
+- **Which edits are sent** is one predicate, `LLMContextView#sends?(edit)`: applied, and its kind one of the view's
+  layers. The view stubs by it and `WorkingSet` decides "still sent" by it. The view's layers are
+  `LLMContextStrategy::LAYERS` (`stale`, `forget`), the strategy's words, not `LLMContextEdit::KINDS`: whatever a
+  caller passes as the strategy, an edit kind no strategy names never becomes a layer that `apply_llm_context!` would
+  hand to `LLMContextApply.run!`. Under none the view has no layers and `#messages` returns the Array it was given.
 - **Stubs** (`LLMContextView`): `(forgotten) <note>` on the first output of a call's forgets in a row, `(forgotten
   with tN: see its note)` on the rest (a run of the same note, author and stamp, no other output between them),
   ` [restore: tN]` on a non-read with a stored id, then each kept range under `lines A-B kept:`. The entry keeps its
