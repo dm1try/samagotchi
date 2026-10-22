@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-10-22
+
 ### Added
 
 - Sessions on Anthropic's Messages API (`api: anthropic`) can call a tool their toolkit leaves out by its own name:
@@ -3772,7 +3774,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.98.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.99.0...HEAD
+[0.99.0]: https://github.com/dm1try/samagotchi/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/dm1try/samagotchi/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/dm1try/samagotchi/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/dm1try/samagotchi/compare/v0.95.0...v0.96.0
