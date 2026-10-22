@@ -40,7 +40,8 @@ module Samagotchi
         "ctx.prompt_files" => "0.60.0", "chi.annotation" => "0.66.0", "chi.toolkit" => "0.66.0",
         "ctx.use_toolkit" => "0.66.0", "ctx.toolkit" => "0.66.0", "ctx.declared_tools" => "0.66.0",
         "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
-        "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0"
+        "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0",
+        "ctx.usage" => "0.100.0"
       }.freeze
 
       # @param bundle [String]

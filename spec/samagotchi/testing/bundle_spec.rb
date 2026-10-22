@@ -288,6 +288,49 @@ RSpec.describe Samagotchi::Testing::Bundle do
     end
   end
 
+  describe "bundle.set(usage:), what ctx.usage reads" do
+    let(:work) do
+      <<~RUBY
+        class Plugin
+          def initialize(_settings); end
+
+          def register(chi)
+            chi.command("/work", "shows ctx.usage") do |_args, ctx|
+              usage = ctx.usage
+              [usage.turns, usage.tool_calls, usage.tool_calls_by_tool, usage.steps, usage.active_ms, usage.tool_ms_by_tool]
+            end
+          end
+        end
+      RUBY
+    end
+
+    before { write_bundle(plugin: work) }
+
+    it "is zero when the test sets none" do
+      expect(load.command("/work")).to eq([0, 0, {}, 0, 0, {}])
+    end
+
+    it "takes a hash of the parts, the totals defaulting to the sums by tool" do
+      bundle = load
+      bundle.set(usage: { turns: 2, tool_calls_by_tool: { read: 3, task_wait: 1 }, tool_ms_by_tool: { "read" => 900 } })
+      expect(bundle.command("/work")).to eq([2, 4, { "read" => 3, "task_wait" => 1 }, 0, 900, { "read" => 900 }])
+      bundle.set(usage: { tool_calls: 7, active_ms: 60_000, steps: 5 })
+      expect(bundle.command("/work")).to eq([0, 7, {}, 5, 60_000, {}])
+    end
+
+    it "takes a callable, called at each read" do
+      reads = 0
+      bundle = load(host: { usage: -> { { tool_calls: reads += 1 } } })
+      expect(bundle.command("/work")[1]).to eq(1)
+      expect(bundle.command("/work")[1]).to eq(2)
+    end
+
+    it "refuses an unknown part" do
+      bundle = load(host: { usage: { calls: 1 } })
+      expect { bundle.command("/work") }.to raise_error(ArgumentError, /calls/)
+    end
+  end
+
   it "builds a before_tool_call event with the fields the real gate dispatches" do
     write_bundle
     bundle = load(host: { cwd: "/work" })

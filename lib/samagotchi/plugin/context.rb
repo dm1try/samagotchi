@@ -4,6 +4,7 @@ require "fileutils"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../session_metrics/cost"
+require_relative "../session_metrics/usage"
 require_relative "../guardrails/context"
 require_relative "../hook_question"
 require_relative "../idle_client"
@@ -55,11 +56,12 @@ module Samagotchi
     # ctx.http call without cancel: uses, nil for none: an init task's own,
     # else the running turn's for work done for it (the turn's thread, or a
     # plugin handler: +handler+) until the turn has ended.
-    # +cost+ returns the session's spend now (SessionMetrics::Cost).
+    # +cost+ returns the session's spend now (SessionMetrics::Cost),
+    # +usage+ its work now (SessionMetrics::Usage).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
-                      :cancel_controller, :cost, keyword_init: true)
+                      :cancel_controller, :cost, :usage, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -166,6 +168,12 @@ module Samagotchi
       #   #total, #reported, #estimated, #side (Float USD) and #known?
       #   (docs/plugins.md); zero and known with no session
       def cost = @host.cost&.call || SessionMetrics::Cost.zero
+
+      # @return [SessionMetrics::Usage] the session's work so far, read now:
+      #   #turns, #tool_calls, #tool_calls_by_tool, #steps, #active_ms
+      #   (#active_minutes) and #tool_ms_by_tool (docs/plugins.md); zero
+      #   with no session
+      def usage = @host.usage&.call || SessionMetrics::Usage.zero
 
       # @return [String, nil] the name of the session's toolkit ("full" for
       #   one from before toolkits; nil with no session)

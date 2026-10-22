@@ -3,6 +3,7 @@
 require_relative "../cancellation_controller"
 require_relative "../plugin/context"
 require_relative "../session_metrics/cost"
+require_relative "../session_metrics/usage"
 require_relative "recorder"
 
 module Samagotchi
@@ -49,7 +50,8 @@ module Samagotchi
           use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
           load_tools: ->(names, bundle) { recorder.load_tools(names, bundle) },
           cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
-          cost: -> { cost(recorder[:cost]) }
+          cost: -> { cost(recorder[:cost]) },
+          usage: -> { usage(recorder[:usage]) }
         )
       end
 
@@ -73,6 +75,33 @@ module Samagotchi
           SessionMetrics::Cost.new(reported: parts.fetch(:reported, 0).to_f, estimated: parts.fetch(:estimated, 0).to_f,
                                    side: parts.fetch(:side, 0).to_f, known: parts.fetch(:known, true))
         else raise ArgumentError, "cost: a number, a Hash or a callable, not #{value.inspect}"
+        end
+      end
+
+      # The parts a test may give bundle.set(usage: {...}).
+      USAGE_PARTS = %i[turns tool_calls tool_calls_by_tool steps active_ms tool_ms_by_tool].freeze
+
+      # The SessionMetrics::Usage ctx.usage returns for the recorder's
+      # +usage+ value (Recorder::DEFAULTS): zeros for the parts not given;
+      # tool_calls defaults to the sum of tool_calls_by_tool, active_ms to
+      # the sum of tool_ms_by_tool.
+      # @return [SessionMetrics::Usage]
+      def usage(value)
+        value = value.call while value.respond_to?(:call)
+        case value
+        when nil then SessionMetrics::Usage.zero
+        when SessionMetrics::Usage then value
+        when Hash
+          parts = value.transform_keys(&:to_sym)
+          unknown = parts.keys - USAGE_PARTS
+          raise ArgumentError, "unknown usage parts: #{unknown.join(", ")}" unless unknown.empty?
+
+          by_tool = parts.fetch(:tool_calls_by_tool, {}).transform_keys(&:to_s)
+          ms_by_tool = parts.fetch(:tool_ms_by_tool, {}).transform_keys(&:to_s)
+          SessionMetrics::Usage.new(turns: parts.fetch(:turns, 0), tool_calls: parts.fetch(:tool_calls, by_tool.values.sum),
+                                    tool_calls_by_tool: by_tool, steps: parts.fetch(:steps, 0),
+                                    active_ms: parts.fetch(:active_ms, ms_by_tool.values.sum), tool_ms_by_tool: ms_by_tool)
+        else raise ArgumentError, "usage: a Hash or a callable, not #{value.inspect}"
         end
       end
     end

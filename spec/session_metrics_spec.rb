@@ -895,6 +895,85 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
   end
 
+  describe "#usage (ctx.usage's value)" do
+    let(:clock) { [0.0] }
+    let(:metrics) { described_class.new(clock: -> { clock[0] }) }
+
+    def at(seconds) = clock[0] = seconds
+
+    def start(id) = metrics.call(type: :turn_started, session_id: "work", prompt: "p", turn_id: id)
+
+    def generation(iteration, from:, to:)
+      at(from)
+      metrics.call(type: :generation_started, iteration: iteration)
+      at(to)
+      metrics.call(type: :generation_completed, iteration: iteration)
+    end
+
+    def tool(iteration, index, name, from:, to:, waited_ms: 0, finish: true)
+      at(from)
+      metrics.call(type: :tool_dispatch_started, iteration: iteration) if index == 1
+      metrics.call(type: :tool_call_started, iteration: iteration, call_index: index, tool: name)
+      return unless finish
+
+      at(to)
+      metrics.call(type: :tool_call_completed, iteration: iteration, call_index: index, tool: name, status: "ok",
+                   waited_ms: waited_ms)
+    end
+
+    it "is zero before anything ran, and frozen down to its hashes" do
+      usage = metrics.usage
+      expect(usage).to eq(described_class::Usage.zero)
+      expect(usage).to have_attributes(turns: 0, tool_calls: 0, steps: 0, active_ms: 0, active_minutes: 0.0)
+      expect([usage, usage.tool_calls_by_tool, usage.tool_ms_by_tool]).to all(be_frozen)
+    end
+
+    it "counts the running turn: its calls (a running one too), steps and finished generations" do
+      start("t1")
+      generation(1, from: 0.0, to: 2.0)
+      tool(1, 1, "read", from: 2.0, to: 2.5)
+      tool(1, 2, "execute", from: 2.5, to: 0, finish: false)
+
+      usage = metrics.usage
+      expect(usage).to have_attributes(turns: 1, tool_calls: 2, steps: 1, active_ms: 2500)
+      expect(usage.tool_calls_by_tool).to eq("read" => 1, "execute" => 1)
+      expect(usage.tool_ms_by_tool).to eq("read" => 500)
+      expect(metrics.snapshot).to include(tool_calls_total: 2, tool_calls_by_tool: { "read" => 1, "execute" => 1 },
+                                          turns: 1, iterations_total: 1)
+    end
+
+    it "leaves approval waits, questions between generations and the user's answers to ask_user_question out of active_ms" do
+      start("t1")
+      generation(1, from: 0.0, to: 1.0)
+      tool(1, 1, "execute", from: 1.0, to: 4.0, waited_ms: 2_000)
+      # A plugin's question (work-cap's own) waits an hour before the next generation.
+      generation(2, from: 3604.0, to: 3605.0)
+      tool(2, 1, "ask_user_question", from: 3605.0, to: 7205.0)
+      metrics.call(type: :turn_completed)
+
+      usage = metrics.usage
+      expect(usage.active_ms).to eq(3000)
+      expect(usage.tool_calls).to eq(2)
+      expect(usage.tool_ms_by_tool).to eq("execute" => 1000)
+    end
+
+    it "counts the turns, calls, steps and time earlier workers saved (load_persisted)" do
+      dir = Dir.mktmpdir
+      metrics.state_dir = dir
+      start("t1")
+      generation(1, from: 0.0, to: 1.0)
+      tool(1, 1, "read", from: 1.0, to: 1.25)
+      tool(1, 2, "read", from: 1.25, to: 1.5)
+      metrics.call(type: :turn_completed)
+      metrics.persist
+
+      woken = described_class.new(clock: -> { clock[0] }).tap { |collector| collector.state_dir = dir }
+      woken.session_id = "work"
+      expect(woken.usage).to have_attributes(turns: 1, tool_calls: 2, steps: 1, active_ms: 1500,
+                                             tool_calls_by_tool: { "read" => 2 }, tool_ms_by_tool: { "read" => 500 })
+    end
+  end
+
   it "counts retries and cancellations" do
     feed([
       { type: :turn_started, session_id: "sess-3", prompt: "x" },

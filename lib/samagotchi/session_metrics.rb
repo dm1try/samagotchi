@@ -14,6 +14,7 @@ require_relative "session"
 require_relative "session_metrics/totals"
 require_relative "session_metrics/model_segment"
 require_relative "session_metrics/cost"
+require_relative "session_metrics/usage"
 require_relative "session_metrics/side_totals"
 require_relative "side_usage"
 
@@ -52,6 +53,10 @@ module Samagotchi
     # tiny generation would skew the session's average.
     SPEED_MIN_TOKENS = 8
     SPEED_MIN_MS = 100
+
+    # The tools whose time is a wait on the user, not work (#usage).
+    USER_WAIT_TOOLS = %w[ask_user_question].freeze
+    private_constant :USER_WAIT_TOOLS
 
     # The session's token totals as a saved analytics.json has them (zeros
     # where an older file lacks a count), with how full the context was.
@@ -377,6 +382,23 @@ module Samagotchi
       @mutex.synchronize { Cost.of(@totals.with_running(@turn), @side) }
     end
 
+    # The session's work now (ctx.usage): turns, tool calls (by tool), steps
+    # and active (work) time, earlier workers' loaded records and the
+    # running turn included. Safe from any thread.
+    # @return [Usage]
+    def usage
+      @mutex.synchronize do
+        turn = @turn
+        totals = @totals.with_running(turn)
+        calls, by_tool = tool_call_counts(turn)
+        tool_ms = @tool_tallies[:ms]
+        # Finished calls only: a running call's approval wait isn't known
+        # until it completes (waited_ms), so its time counts then.
+        Usage.new(turns: turn_count(turn), tool_calls: calls, tool_calls_by_tool: by_tool, steps: totals.iterations,
+                  active_ms: (totals.gen_ms + tool_ms.values.sum).round, tool_ms_by_tool: tool_ms.transform_values(&:round))
+      end
+    end
+
     # Event sink. Safe to call from any thread; errors are isolated by the
     # caller (SessionObserver / TerminalUI) but we still guard internally.
     # @param event [Hash]
@@ -542,10 +564,10 @@ module Samagotchi
     def build_snapshot(records_mode)
       turn = @turn
       totals = @totals.with_running(turn)
-      in_flight = turn ? turn.tool_calls_by_id.values : []
+      calls, by_tool = tool_call_counts(turn)
       {
         session_id: @session_id,
-        turns: @turn_records.size + (turn ? 1 : 0),
+        turns: turn_count(turn),
         cancellations: totals.cancellations,
         tokens: totals.tokens_block,
         # The tokens, cost and speeds per model, in order (ModelSegment.rows:
@@ -557,8 +579,8 @@ module Samagotchi
         profile_source: @profile_source,
         served_model: @served_model,
         served_model_for: @served_model_for,
-        tool_calls_total: @tool_records.size + in_flight.size,
-        tool_calls_by_tool: tally_into(@tool_tallies[:by_tool].dup, in_flight),
+        tool_calls_total: calls,
+        tool_calls_by_tool: by_tool,
         # The calls the model made under an alias's name (bash run as
         # execute), by its own spelling; only when there are any.
         **(@tool_tallies[:aliased].empty? ? {} : { tool_calls_aliased: @tool_tallies[:aliased].dup }),
@@ -580,6 +602,17 @@ module Samagotchi
         active_turn: active_turn_snapshot,
         active_tools: active_tool_snapshots
       }
+    end
+
+    # The finished turns and the running one. Caller holds the mutex.
+    def turn_count(turn) = @turn_records.size + (turn ? 1 : 0)
+
+    # Every tool call (loaded records, this process's, the running ones)
+    # and the calls by tool, a copy. Caller holds the mutex.
+    # @return [Array(Integer, Hash)]
+    def tool_call_counts(turn)
+      in_flight = turn ? turn.tool_calls_by_id.values : []
+      [@tool_records.size + in_flight.size, tally_into(@tool_tallies[:by_tool].dup, in_flight)]
     end
 
     # The model segments with the running turn in: the last one's when it
@@ -1199,7 +1232,8 @@ module Samagotchi
       @totals = Totals.zero
       @segments = []
       @last_model_ref = nil
-      @tool_tallies = { by_tool: {}, aliased: {}, errors: 0 }
+      # ms: the finished calls' time by tool (#usage's active_ms).
+      @tool_tallies = { by_tool: {}, aliased: {}, errors: 0, ms: {} }
     end
 
     def count_turn(record)
@@ -1219,6 +1253,15 @@ module Samagotchi
       tally_into(@tool_tallies[:by_tool], [record])
       called_as = record[:called_as].to_s
       @tool_tallies[:aliased][called_as] = @tool_tallies[:aliased].fetch(called_as, 0) + 1 unless called_as.empty?
+      count_tool_ms(record)
+    end
+
+    def count_tool_ms(record)
+      name = record[:tool].to_s
+      ms = record[:duration_ms]
+      return if name.empty? || !ms.is_a?(Numeric) || USER_WAIT_TOOLS.include?(name)
+
+      @tool_tallies[:ms][name] = @tool_tallies[:ms].fetch(name, 0) + ms
     end
 
     def tally_into(counts, tools)

@@ -751,6 +751,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
+| `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
 | `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use. A session's own state goes in `sessions/<id>.json` or `sessions/<id>/` there: chi removes it when the session is deleted, discarded or pruned |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
@@ -1120,7 +1121,7 @@ CHANGELOG line and bumps the shipped bundles that use it. Anything else under
 
 **Stable**
 
-1. `Samagotchi::Plugin::Api` / `chi.*` and `ctx` as documented above (`ctx.cost`'s value by its methods), including
+1. `Samagotchi::Plugin::Api` / `chi.*` and `ctx` as documented above (`ctx.cost`'s and `ctx.usage`'s values by their methods), including
    `Samagotchi::Plugin::ToolResult`, `Samagotchi::Plugin::ModelError` (and its
    subclass `Samagotchi::Plugin::ModelCancelled`),
    `Samagotchi::Plugin::Service::Stopped`, `Samagotchi::Plugin::Sessions::Error`
@@ -1187,6 +1188,7 @@ bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripte
 bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" })   # ctx.http, never the network
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
 bundle.set(cost: 2.5)                                    # ctx.cost: reported USD, or { reported:, estimated:, side:, known: }
+bundle.set(usage: { tool_calls: 40, active_ms: 600_000 }) # ctx.usage: { turns:, tool_calls:, tool_calls_by_tool:, steps:, active_ms:, tool_ms_by_tool: }
 bundle.set(session_settings: { "cap" => 1 })             # the session's --set values (Bundle.load takes session_settings: too)
 bundle.tool_loads.last.names                             # ctx.load_tools calls; set(load_tools_staged: [...]) limits what they stage
 bundle.shutdown
@@ -1222,6 +1224,10 @@ bundle.shutdown
 - **`ctx.cost`** is zero and known unless the test sets it: `bundle.set(cost: 2.5)` (reported USD), a Hash of the
   parts (`reported:`, `estimated:`, `side:`, `known:`; `total` is reported + estimated) or a callable giving either,
   called at each read (a counting lambda shows whether the bundle read it).
+- **`ctx.usage`** is zero unless the test sets it: `bundle.set(usage: {...})`, a Hash of the parts (`turns:`,
+  `tool_calls:`, `tool_calls_by_tool:`, `steps:`, `active_ms:`, `tool_ms_by_tool:`; zeros for the rest, an unknown
+  part raises; `tool_calls` defaults to the sum of `tool_calls_by_tool`, `active_ms` to the sum of
+  `tool_ms_by_tool`) or a callable giving one, called at each read.
 - **`session_settings:`** (on `Bundle.load` and `bundle.set`) are the session's own `--set` values for the bundle,
   keys its manifest lists in `session_settings:` (another key, or a value of another type than the manifest gives
   it, raises `ArgumentError`, as chi refuses it). `ctx.settings`

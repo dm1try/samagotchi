@@ -2680,7 +2680,8 @@ module Samagotchi
         # returns [] itself: the || keeps a nil builder safe).
         prompt_files: -> { @prompt_builder&.prompt_files || [] },
         frontend: -> { interface },
-        cost: -> { @metrics.cost }
+        cost: -> { @metrics.cost },
+        usage: -> { @metrics.usage }
       )
     end
 

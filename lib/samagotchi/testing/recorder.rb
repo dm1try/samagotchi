@@ -37,7 +37,11 @@ module Samagotchi
         prompt_files: [], cancelled: false, state_dir: nil, running: true, toolkit_staged: true, load_tools_staged: nil,
         # ctx.cost: nil (zero), a Float (reported USD), a Hash of the parts
         # (reported:, estimated:, side:, known:) or a callable giving one.
-        cost: nil
+        cost: nil,
+        # ctx.usage: nil (zero), a Hash of the parts (turns:, tool_calls:,
+        # tool_calls_by_tool:, steps:, active_ms:, tool_ms_by_tool:) or a
+        # callable giving one.
+        usage: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
