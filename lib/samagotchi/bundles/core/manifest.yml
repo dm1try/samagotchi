@@ -1,11 +1,12 @@
 ---
 name: core
-version: 0.3.4
+version: 0.4.0
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
-# Its members' highest floor (cost-cap's)
+# Its members' highest floor (work-cap's: ctx.usage, raised at the release)
 requires_chi: ">= 0.92.0"
+requires_chi_next: true
 includes:
 - loop-guard
 - check-in
@@ -13,3 +14,4 @@ includes:
 - slow-commands
 - agents-md
 - cost-cap
+- work-cap

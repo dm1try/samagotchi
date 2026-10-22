@@ -373,7 +373,7 @@ Hooks removed: 1\n\z})
       expect(out.lines.drop(3)).to all(match(/\A  [a-z-]+ +v\S+  \S/))
       # every shipped bundle is in a profile: the profiles list them
       expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev])
-      expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\)$/)
+      expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\)$/)
       expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes\)$/)
 
       out, err, code = chi("install", "btw")
@@ -388,18 +388,18 @@ Hooks removed: 1\n\z})
 
     it "installs the core profile's bundles, records them, and keeps one the user uninstalled out" do
       expect(chi("upgrade", "core", "--dry-run"))
-        .to eq(["core v0.3.4 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n(dry-run: no changes written)\n", "", 0])
-      expect(chi("install", "core")).to eq(["core v0.3.4 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap\n", "", 0])
-      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md check-in core cost-cap guardrails loop-guard slow-commands])
+        .to eq(["core v0.4.0 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.4.0 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md check-in core cost-cap guardrails loop-guard slow-commands work-cap])
 
-      expect(chi("install", "core")).to eq(["core v0.3.4 (profile)\n  nothing new to install\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.4.0 (profile)\n  nothing new to install\n", "", 0])
       expect(chi("uninstall", "check-in")[2]).to eq(0)
-      expect(chi("upgrade", "core")).to eq(["core v0.3.4 (profile)\n  nothing new to install\n", "", 0])
-      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md core cost-cap guardrails loop-guard slow-commands])
+      expect(chi("upgrade", "core")).to eq(["core v0.4.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md core cost-cap guardrails loop-guard slow-commands work-cap])
 
       out, err, code = chi("uninstall", "core")
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: loop-guard, guardrails, slow-commands, agents-md, cost-cap\nMoved to the trash: guardrails.md \(\S+/guardrails-\d{8}-\d{6}\)\n\z})
+      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: loop-guard, guardrails, slow-commands, agents-md, cost-cap, work-cap\nMoved to the trash: guardrails.md \(\S+/guardrails-\d{8}-\d{6}\)\n\z})
       expect(Dir.children(File.join(memories, ".bundles"))).to eq([".trash"])
     end
 
@@ -408,7 +408,7 @@ Hooks removed: 1\n\z})
       chi("uninstall", "check-in")
 
       out, = chi("list")
-      expect(out).to match(/^  core +v0\.3\.4 +scope=system  includes=loop-guard,guardrails,slow-commands,agents-md,cost-cap  left out=check-in  installed=\S+$/)
+      expect(out).to match(/^  core +v0\.4\.0 +scope=system  includes=loop-guard,guardrails,slow-commands,agents-md,cost-cap,work-cap  left out=check-in  installed=\S+$/)
       expect(out).to match(/^Available.*\n(.*\n)*  check-in +v\S+  /)
       expect(out).to match(/^  dev +v/)
 
@@ -417,8 +417,8 @@ Hooks removed: 1\n\z})
       expect(out.lines.grep(/includes /)).to eq(["  includes loop-guard [installed]\n", "  includes check-in [not installed: chi bundle install check-in]\n",
                                                  "  includes guardrails [installed]\n", "  includes slow-commands [installed]\n",
                                                  "  includes agents-md [installed]\n",
-                                                 "  includes cost-cap [installed]\n"])
-      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.4 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md,cost-cap issues=0\n"])
+                                                 "  includes cost-cap [installed]\n", "  includes work-cap [installed]\n"])
+      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.4.0 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md,cost-cap,work-cap issues=0\n"])
     end
 
     it "says which memory files of a member the profile left as the user's own" do
@@ -451,13 +451,13 @@ Hooks removed: 1\n\z})
     it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do
       chi("install", "guardrails")
       expect(chi("install", "core"))
-        .to eq(["core v0.3.4 (profile)\n  installed: loop-guard, check-in, slow-commands, agents-md, cost-cap\n  already installed: guardrails\n", "", 0])
+        .to eq(["core v0.4.0 (profile)\n  installed: loop-guard, check-in, slow-commands, agents-md, cost-cap, work-cap\n  already installed: guardrails\n", "", 0])
       expect(chi("install", "core", "--scope", "project"))
         .to eq(["", "Install failed: core is a profile: its bundles install system-wide (drop --scope project)\n", 1])
 
       File.write(File.join(memories, "guardrails.md"), "mine\n")
       expect(chi("uninstall", "core"))
-        .to eq(["Removed from core: loop-guard, check-in, slow-commands, agents-md, cost-cap\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
+        .to eq(["Removed from core: loop-guard, check-in, slow-commands, agents-md, cost-cap, work-cap\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
                 "Uninstall failed: core stays installed until guardrails goes (chi bundle uninstall core --force)\n", 1])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails])
       out, err, code = chi("uninstall", "core", "--force")

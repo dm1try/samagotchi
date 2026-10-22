@@ -78,8 +78,8 @@ Messages API, picks the
 model (or asks, when there are several), sends one test request and writes
 the config. With a config already there, it adds a `hosts:` entry and keeps
 the rest of the file. Then it installs the `core` bundles (loop-guard,
-check-in, guardrails, slow-commands, agents-md, cost-cap: the safety set for a
-small local model, the cost cap inert until you set one) and, on a terminal, offers `dev` (known-names, mcp, btw, skills,
+check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap: the safety set for a
+small local model, the cost and work caps inert until you set one) and, on a terminal, offers `dev` (known-names, mcp, btw, skills,
 source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes; see
 [Bundle profiles](docs/memory.md#bundle-profiles-core-and-dev)). Edit the
 file later as in [Configure](#configure); `chi bootstrap --help` has the

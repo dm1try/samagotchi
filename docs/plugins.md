@@ -1686,6 +1686,64 @@ its own card and doesn't wake its parent ([sessions.md](sessions.md#delegating))
 The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"cap": 3.0, "step": 3.0}`), removed
 with the session.
 
+Its sibling for work instead of money, tool calls and active minutes across the session's turns, is
+[the work-cap bundle](#the-work-cap-bundle): the cap a local model (no cost) can have.
+
+## The work-cap bundle
+
+`chi bundle install work-cap` installs the bundle shipped with chi (`chi bootstrap` installs it with the `core`
+profile; an existing install gets it with `chi update`). It caps the work one session does across its turns: tool
+calls and active minutes. The per-turn meters reset every turn (the step limit, check-in, loop-guard), and a
+Continue on the step-limit question starts the next 300 steps; a parent agent may answer that Continue itself
+(`chi answer`), so a child it keeps continuing has no overall bound but cost-cap's `$`, and on a local model none.
+work-cap is that bound, with cost-cap's shape: the harness watches, the model never sees any of it. It is inert
+without a cap, and there is none by default.
+
+```yaml
+# config.yml
+bundles:
+  work-cap:
+    child: {tool_calls: 500, minutes: 90}   # delegate children with no own value
+    default: {}         # every other session (and a delegate without child:); empty: no cap
+    warn_at: 0.8        # tell the user (only) once at this share of a cap; 0/off: no warning
+    ignore_tools: [task_wait, task_get, delegate, delegate_result]   # not counted: waiting
+```
+
+- **What counts** (`ctx.usage`): **tool calls**, the session's own across its turns and workers, less
+  `ignore_tools` (the waiting tools by default, `delegate` among them since it blocks on its child, so a session
+  waiting on a long task or a child isn't capped for waiting); and **active minutes**, work time: the generations' time plus the finished tool calls' time (less
+  `ignore_tools`' time), never a wait (a question, its own included, an approval, the user's answer to
+  `ask_user_question`), so idle time and a Continue answered hours later don't count.
+- **When it checks:** before each generation, like cost-cap: the overshoot is at most one generation's tool calls.
+  When the step limit and a work cap fall in the same turn, the work cap asks first, and its Stop ends the turn.
+- **At `warn_at` of a cap** you get one notice per meter, `work-cap> 320 of 400 tool calls (80%)`; a raised cap
+  warns again.
+- **At a cap** the turn pauses on a question (header "Work cap") that names the session's totals, so a parent
+  answering it decides on the whole picture: `Work cap reached: 412 tool calls of 400 (6 turns, 47 min active,
+  $1.20). Continue raises it to 800.` **Continue** raises the cap by another cap's worth (as many steps as it
+  takes to pass the work, saved for the session), **Stop** stops the turn (`canceled` with `stopped_by: work-cap`)
+  with a card showing the totals. Both meters at once: one question naming both, Continue raises each. With no one
+  to ask (`--non-interactive`) it stops. Continue is tagged `:spend`, as cost-cap's: a parent agent may Continue
+  under `guardrails.parent_answers: soft` or `standard`, only Stop under `hard` (see
+  [Guardrails](guardrails.md#answers-from-a-parent-agent)).
+- **The caps of a session**, each meter on its own: the one `/workcap` or a Continue set, else its own value (`chi
+  --set work-cap.tool_calls=400`, `work-cap.minutes=60`, `chi send --new --set …`; `off`, `0` or a negative number
+  for none), else `child:`'s for a delegate child, else `default:`'s. Minutes in config.yml read `90`, `90m` or
+  `1.5h`. A value that doesn't read (`tool_calls: many`, a `default:` that isn't a mapping) gets one notice,
+  `work-cap: tool_calls: "many" isn't a number or off; using default.tool_calls: (400)`, and the next value is used,
+  never a silent no cap.
+
+**`/workcap`** (works while a turn runs; the next generation reads it):
+
+- `/workcap`: `work-cap: 320 of 400 tool calls (6 turns, 47 min active, $1.20)`, or `work-cap: no cap (…)` with the
+  totals.
+- `/workcap 400`: the tool-call cap (and what Continue adds) becomes 400 for this session; `/workcap 90m` or
+  `/workcap 2h`: the active-minutes cap.
+- `/workcap off` (or `/workcap 0`): no work cap for this session, over the config.
+
+The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"tool_calls": {"cap": 800, "step":
+400}}`, a meter's `"cap": null` for off).
+
 ## The check-in bundle
 
 `chi bundle install check-in` installs the bundle shipped with chi (`chi
@@ -1718,7 +1776,8 @@ what it has found. check-in counts the turn's tool calls, and when there are
 - **`mode: notify`**: a notice line only.
 
 The count is per turn: a new turn (a prompt, a continue, a reminder) starts
-from zero; steering merged into the running turn doesn't reset it. The polling
+from zero; steering merged into the running turn doesn't reset it (a cap
+across the session's turns is [the work-cap bundle](#the-work-cap-bundle)). The polling
 tools are not counted. A nudge that arrives after the model's final answer is
 dropped (logged), never restarting a turn that is done; the card's "Nudged the
 model at N tool calls" then becomes "The answer came first; nudge not sent."

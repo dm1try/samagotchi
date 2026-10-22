@@ -47,7 +47,9 @@ chi answer ID --question QID --dismiss [--timeout S] [--format json]
 
 A child with a bundle setting of its own, such as a $ cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)):
 `chi send --new --wait --format json --set cost-cap.cap=3 -m "task"`. At the cap the wait exits 3 with the cost-cap
-question; `chi answer ID --question QID --option Continue` (or `Stop`) answers it.
+question; `chi answer ID --question QID --option Continue` (or `Stop`) answers it. A cap on the child's work across
+its turns (the [work-cap bundle](plugins.md#the-work-cap-bundle)), the bound a parent that keeps answering the step
+limit's Continue doesn't otherwise have: `--set work-cap.tool_calls=400` (or `work-cap.minutes=60`, active minutes).
 
 `chi answer` waits after answering, the same way `chi send --wait` does, so the
 next question comes back as exit 3 again. What it waits for is the answered
@@ -122,7 +124,10 @@ relayed to the parent's user the way approvals are.
 
 A session at its cost cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)) waits the same way, as a
 question of kind `hook` with header "Cost cap" and options `Continue` and `Stop`: `--option Continue` raises the cap
-by another cap's worth and the turn goes on, `--option Stop` ends it `canceled` with `stopped_by: cost-cap`.
+by another cap's worth and the turn goes on, `--option Stop` ends it `canceled` with `stopped_by: cost-cap`. A session at its work cap (the
+[work-cap bundle](plugins.md#the-work-cap-bundle)) asks the same, header "Work cap", the question naming the
+session's totals (`Work cap reached: 412 tool calls of 400 (6 turns, 47 min active, $1.20). Continue raises it to
+800.`); `stopped_by: work-cap` on Stop.
 
 ## Approvals
 

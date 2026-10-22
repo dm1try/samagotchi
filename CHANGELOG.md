@@ -13,6 +13,11 @@ and commands may change between minor versions. How releases are made:
 - Plugins can read the session's work so far with `ctx.usage`: turns, tool calls (by tool), steps and active time
   (generations plus tool calls, never a wait on a question), across workers, the same numbers `/stats` shows. The
   bundle test kit sets it with `bundle.set(usage: {...})`. See [docs/plugins.md](docs/plugins.md).
+- The `work-cap` bundle (in the `core` profile; `chi update` installs it): an optional per-session cap on tool calls
+  and active minutes across turns, the bound a session whose step-limit Continue keeps being answered otherwise
+  lacks. At a cap the turn pauses on Continue / Stop, the question naming the session's totals; `/workcap` shows or
+  sets it, `chi send --new --set work-cap.tool_calls=400` caps a child. Inert until a cap is set. See
+  [docs/plugins.md](docs/plugins.md#the-work-cap-bundle).
 
 ## [0.99.0] - 2026-10-22
 

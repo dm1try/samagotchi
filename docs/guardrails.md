@@ -125,7 +125,7 @@ answers it. Every question's options carry an **effect**, set by whoever asks:
 - `deny`: Deny on an approval, Stop on the step-limit question or a plugin's
   stop option;
 - `spend`: more time and tokens, no new permission (Continue on the step-limit
-  question, cost-cap's Continue);
+  question, cost-cap's and work-cap's Continue);
 - `permit`: one tool call (an approval's "Allow once");
 - `permit_wide`: more than one call (this session, this repo or directory,
   the rule).
@@ -140,7 +140,7 @@ guardrails:
 - `hard`: `deny` and `answer` only. A parent can deny an approval
   (`--option Deny --text "why"`, `--text` alone or `--dismiss`), Stop a
   step-limit question and answer plain questions.
-- `standard`: also `spend`: a parent may Continue a turn (or cost-cap's cap).
+- `standard`: also `spend`: a parent may Continue a turn (or cost-cap's or work-cap's cap).
 - `soft` (the default): also `permit`: `chi answer --option "Allow once"`
   goes through, picked by the option's scope, not its label.
 
