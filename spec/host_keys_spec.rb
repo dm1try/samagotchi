@@ -126,4 +126,36 @@ RSpec.describe Samagotchi::HostKeys::Keychain do
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     expect(Samagotchi::Log).to have_received(:warn).with(:config, "keychain_timeout", name: "BOX_KEY", seconds: 0.3)
   end
+
+  # A stall inside Process.spawn itself (macOS holding a first exec while it
+  # scans the binary), staged without a new binary: the child's stdin is a
+  # FIFO, whose open blocks the child before its exec until a writer comes.
+  it "cuts a stalled spawn at the deadline and kills the pid that turns up late" do
+    allow(Samagotchi::Log).to receive(:warn)
+    fifo = File.join(dir, "stdin")
+    File.mkfifo(fifo)
+    pids = Queue.new
+    spawner = lambda do |*argv, **opts|
+      Process.spawn(*argv, **opts, in: fifo).tap { |pid| pids << pid }
+    end
+    reader = described_class.new(security: security("exec sleep 30"), host_os: "darwin24",
+                                 timeout: 0.3, spawner: spawner)
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    expect(reader.read("BOX_KEY")).to be_nil
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+    expect(Samagotchi::Log).to have_received(:warn).with(:config, "keychain_timeout", name: "BOX_KEY", seconds: 0.3)
+
+    File.open(fifo, "w", &:close) # the spawn returns now, past the deadline
+    pid = pids.pop(timeout: 10)
+    expect(pid).to be_a(Integer)
+    gone = 50.times.any? do
+      Process.kill(0, pid)
+      sleep 0.1
+      false
+    rescue Errno::ESRCH
+      true
+    end
+    expect(gone).to be(true) # killed and reaped, not left sleeping
+  end
 end
