@@ -3,6 +3,7 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
 require "fileutils"
+require "io/console" # IO.console, stubbed in every example below
 require "timeout"
 require "tmpdir"
 
@@ -146,10 +147,17 @@ RSpec.configure do |config|
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.
+  # Nor see it: the suite runs as CI does (no TTY on the standard streams, no
+  # console for the width), whether it runs from a terminal or a pipe. A spec
+  # of terminal behaviour stubs its own tty? or IO.console over these.
   config.before do
     if defined?(Reline)
       allow(Reline).to receive(:readmultiline).and_return(nil)
       allow(Reline).to receive(:readline).and_return(nil)
+    end
+    allow(IO).to receive(:console).and_return(nil)
+    [STDIN, STDOUT, STDERR].each do |io|
+      allow(io).to receive_messages(tty?: false, isatty: false)
     end
     # ContextWindow remembers the last server-reported window process-wide.
     Samagotchi::ContextWindow.reset! if defined?(Samagotchi::ContextWindow)

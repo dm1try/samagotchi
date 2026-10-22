@@ -25,6 +25,8 @@ require_relative "waiting"
 # of the session owner locks this process holds.
 module ChiCli
   CHI = File.expand_path("../../bin/chi", __dir__)
+  # Ruby and its flags for a spawned bin/chi: no console (no_console.rb).
+  RUBY = [RbConfig.ruby, "-r", File.expand_path("no_console.rb", __dir__)].freeze
 
   # A chi of its own under +dir+: config, state and HOME there, and none of
   # the model settings the suite's ENV may carry.
@@ -44,9 +46,9 @@ module ChiCli
 
   # run_chi's body.
   def self.capture(*, env: {}, chdir: nil, timeout: nil)
-    return BoundedCapture.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", timeout: timeout, chdir: chdir) if timeout
+    return BoundedCapture.capture3(env, *RUBY, CHI, *, stdin_data: "", timeout: timeout, chdir: chdir) if timeout
 
-    Open3.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", **(chdir ? { chdir: chdir } : {}))
+    Open3.capture3(env, *RUBY, CHI, *, stdin_data: "", **(chdir ? { chdir: chdir } : {}))
   end
 
   # bin/chi with +args+ in a fork: ARGV, +env+ (nil unsets) and +chdir+ set
