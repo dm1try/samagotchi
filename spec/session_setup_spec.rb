@@ -40,8 +40,9 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.of(session).reasoning_history).to eq(:all)
     session.appended_prompt_files = ["/r/a.md"]
     expect(described_class.of(session).appended_prompt_files).to eq(["/r/a.md"])
-    session.settings = Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 2 } })
+    session.settings = Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 2 } })
     expect(described_class.of(session).settings.bundles).to eq("cost-cap" => { "cap" => 2 })
+    expect(described_class.of(session).settings.core).to eq("recap.enabled" => false)
     session.parent_answers = "standard"
     expect(described_class.of(session).parent_answers).to eq("standard")
     expect(described_class.of(nil)).to be_empty

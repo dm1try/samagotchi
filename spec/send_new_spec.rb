@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
   end
 
-  describe "--set BUNDLE.KEY=VALUE" do
+  describe "--set KEY=VALUE, BUNDLE.KEY=VALUE" do
     before { allow(Samagotchi::SessionConfig).to receive(:availability).and_return(Samagotchi::SessionConfig::Availability.new(offered: { "cost-cap" => ["cap"] }, notes: {})) }
 
     it "starts the session with the bundle settings, a later --set of a key winning" do
@@ -69,12 +69,19 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(run("--new", "--set", "cost-cap.default=1", "-m", "hi")).to eq(2)
       expect(err.string).to include("--set cost-cap.default: cost-cap takes cap")
       expect(run("--new", "--set", "cost-cap", "-m", "hi")).to eq(2)
-      expect(err.string).to include("--set takes BUNDLE.KEY=VALUE, not cost-cap")
+      expect(err.string).to include("--set takes KEY=VALUE or BUNDLE.KEY=VALUE, not cost-cap")
+      expect(run("--new", "--set", "guardrails.mode=strict", "-m", "hi")).to eq(2)
+      expect(err.string).to include("--set guardrails.mode: guardrails.mode is not a session setting")
       expect(spawned).to be_empty
     end
 
+    it "starts the session with a core key's own value" do
+      expect(run("--new", "--set", "recap.enabled=off", "--set", "cost-cap.cap=3", "-m", "hi")).to eq(0), err.string
+      expect(spawned.last[:setup].settings).to have_attributes(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 3 } })
+    end
+
     it "names it in usage" do
-      expect(described_class::USAGE).to include("--set BUNDLE.KEY=VALUE")
+      expect(described_class::USAGE).to include("--set KEY=VALUE")
     end
   end
 

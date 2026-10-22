@@ -119,7 +119,8 @@ own subsystems: `hosts:` (below), `models:` (see "Prompt profile" and
 `guardrails:` (see [Guardrails](guardrails.md)), `bundles:` (a bundle's
 settings for its hooks, see [Hooks: Settings](hooks.md#settings); a session's own
 `--set BUNDLE.KEY=VALUE`, for a key the bundle's manifest lists in `session_settings:`, lays over them, see
-[Per-session settings](plugins.md#per-session-settings)),
+[Per-session settings](plugins.md#per-session-settings); `--set KEY=VALUE` does the same for a few core keys,
+see "Per-session settings" below),
 `memories:` and `append_system_prompt:` (see "Appended prompt files"). Their entry names (host names, model ids, aliases) are yours to
 choose. The `memories:` list is the persistent baseline for preloaded memory entries —
 the same name shape as `--memory` (bare name or `scope/name`), merged under
@@ -160,7 +161,7 @@ or `chi web` restart.
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
 | `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `guardrails.parent_answers` is checked when a parent answers a question. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
-| `recap.*` | Worker start | The engine builds its recap job once. |
+| `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings"). |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
 | `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
@@ -171,6 +172,25 @@ or `chi web` restart.
 | `update.*` | Next `chi update` | The command reads which components to update when it runs. |
 | `kitty.*`, `tmux.*` | `chi desktop upgrade` or desktop update | These settings are copied into the desktop helper's launch file. |
 | `model.profile`, `reasoning_history` | Not from config.yml | These are CLI/environment settings; `models:` and `hosts:` provide their model- and host-specific forms. |
+
+### Per-session settings
+
+A few core keys can be set for one session: `chi --set KEY=VALUE` (or `chi send --new --set KEY=VALUE`, or
+`POST /api/sessions` `settings`) at its creation. The value is saved in the session file (`config_settings`), so a
+worker respawn, a continue and a fork keep it; a delegate child starts without it, on config.yml's. It goes first:
+
+    session (--set) → CLI → environment → config.yml → default
+
+- `recap.enabled`: `true` or `false` (also `yes`/`on`/`1`, `no`/`off`/`0`); `true` turns the recap on for the
+  session even under `recap: false`.
+- `recap.sentences`: `N` or `N-M` (1–10).
+
+A value is typed by its key and checked when given: `--set recap.enabled=maybe` is refused (`recap.enabled takes
+true or false, not "maybe"`), and so is a key no session sets (`--set guardrails.mode=strict`: not a session
+setting). The same `--set` takes a bundle's `BUNDLE.KEY` (see [Per-session settings](plugins.md#per-session-settings));
+a name that is a core key is always the core one, and a bundle can't offer a setting whose `NAME.KEY` is one.
+`/stats` lists a session's own values (`settings: recap.enabled=false · cost-cap.cap=3`), and `chi sessions stats
+--format json` has them as `settings`.
 
 ### Environment variables
 
@@ -1589,14 +1609,14 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `server.open_timeout` | `10` | yes | Connection timeout, seconds. |
 | `server.read_timeout` | `600` | yes | Read timeout, seconds. |
 | `server.first_token_timeout` | 120 remote, off local | | Seconds to the first token; `0` = off. `hosts.<name>.first_token_timeout` wins. |
-| `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. |
+| `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. Per session too: `--set recap.enabled=false` (see "Per-session settings"). |
 | `recap.model` | session's | yes | Model that writes the recap: an id, alias or `host:model` (the host then picks where to ask; a bare id goes where a bare `--model` goes). |
 | `recap.host_ref` | session's | yes | A `hosts:` name to ask (`host:` is accepted too, also a host name, not a model ref). |
 | `recap.base_url` | none | yes | An OpenAI API base to ask instead (`http://h:8081/v1`). |
 | `recap.inactivity` | `180` | yes | Idle seconds before a recap. |
 | `recap.timeout` | `30` | yes | Seconds a recap request may take. |
 | `recap.min_user_turns` | `2` | yes | Prompts a session needs before it gets a recap. |
-| `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). |
+| `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). Per session too: `--set recap.sentences=3`. |
 | `broadcast.active_hours` | `8` | | `chi broadcast` reaches a session a worker or a chi REPL runs, or whose last turn ended within this many hours. See [Broadcast](broadcast.md). |
 | `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | | A Ruby regex for ticket ids; one in the note and in a session's branch (any case) or prompts delivers the broadcast there. See [Broadcast](broadcast.md). |
 | `broadcast.triage_model` | recap's | | The model that judges a recipient no tag matched (a model ref, as `recap.model`); unset: the recap's model, else `default.model`. A ~9B dense instruct model or larger; 4B-class ones say yes to nearly everything. See [Broadcast](broadcast.md#triage). |

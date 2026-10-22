@@ -780,15 +780,18 @@ The Engine itself is never handed to a plugin.
 
 A bundle's settings are config.yml's, for every session. A setting a session may have of its own (a child's cap,
 say) is one the manifest lists in `session_settings:`; `chi --set BUNDLE.KEY=VALUE` and `chi send --new --set …`
-then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
+(which also take a few core keys, `--set recap.enabled=false`: see
+[Per-session settings](configuration.md#per-session-settings)) then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
 doesn't). chi refuses a bundle that isn't installed (or whose plugin doesn't load) and a key the manifest doesn't
 list, so a typo isn't saved. A manifest that types a key (`session_settings: {cap: number}`: `number`, which
 takes off too, `boolean`, `string`, or `any`) gets only a value of that type: `--set my-bundle.cap=five` is refused,
 exit 2, as a key it doesn't list is (a mapping needs a chi newer than 0.91.0). Values are typed simply: an integer (`3`, `-1`) or a decimal (`2.5`, `.5`, `1e1`)
 is a number, `true`, `yes` and `on` are true, `false`, `no` and `off` are false (any case, as config.yml's YAML reads
 them), and anything else stays the text as given (`010`, `0x10`, `3:30`, `y`, `null`; YAML would read the first
-three as numbers and `null` as nothing); a key typed `string` keeps its text as given (`yes`, `5`, `1.10`); `POST /api/sessions` `bundle_settings` types its strings the same way and
-keeps JSON numbers and booleans. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
+three as numbers and `null` as nothing); a key typed `string` keeps its text as given (`yes`, `5`, `1.10`); `POST /api/sessions` `settings` (`{"my-bundle.cap": 3}`) types its strings the same way and
+keeps JSON numbers and booleans. A name that is a core session setting is always chi's: a manifest whose
+`session_settings:` key `K` makes `NAME.K` one (a bundle `recap` offering `enabled`) is refused at install, and
+`chi bundle check` reports it as an `error clash`, in the same words. `ctx.settings` is the config's section with the session's values laid over it (one level: a session's
 `cap` replaces the config's `cap`). Read such a key from `ctx.settings` where it is used, not in
 `initialize(settings)`: that runs once at load, before any session, and gets the config only.
 

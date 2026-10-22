@@ -5,14 +5,14 @@ require "json"
 require "fileutils"
 require "support/fake_provider_server"
 
-# --set BUNDLE.KEY=VALUE on a session-starting run: checked against the
-# installed bundles' records (session_settings:) and saved in the new
-# session's file. One example runs a real bin/chi; the rest fork it
+# --set KEY=VALUE (a session-settable core key) or BUNDLE.KEY=VALUE on a
+# session-starting run: a bundle's checked against the installed bundles'
+# records (session_settings:); both saved in the new session's file. One example runs a real bin/chi; the rest fork it
 # (ChiCli#fork_chi).
 RSpec.describe "chi --set" do
   it "is listed in --help" do
     out, = fork_chi("--help")
-    expect(out).to include("--set BUNDLE.KEY=VALUE")
+    expect(out).to include("--set KEY=VALUE")
   end
 
   # A bundle record as an install leaves it (no plugin: only the record is read).
@@ -65,11 +65,21 @@ RSpec.describe "chi --set" do
     err, status, saved = chi_set
     expect(status).to eq(0), err
     expect(saved["bundle_settings"]).to eq({})
+    expect(saved["config_settings"]).to eq({})
+  end
+
+  it "saves a core key's value, typed by its entry, in config_settings beside bundle_settings" do
+    err, status, saved = chi_set("--set", "recap.enabled=off", "--set", "recap.sentences=2", "--set", "cost-cap.cap=3")
+    expect(status).to eq(0), err
+    expect(saved["config_settings"]).to eq("recap.enabled" => false, "recap.sentences" => "2")
+    expect(saved["bundle_settings"]).to eq("cost-cap" => { "cap" => 3 })
   end
 
   it "refuses a bad shape, a bundle that isn't installed or a key it doesn't list (exit 2), and starts nothing" do
     {
-      "foo" => "--set takes BUNDLE.KEY=VALUE, not foo",
+      "foo" => "--set takes KEY=VALUE or BUNDLE.KEY=VALUE, not foo",
+      "guardrails.mode=strict" => "--set guardrails.mode: guardrails.mode is not a session setting",
+      "recap.enabled=maybe" => "--set recap.enabled: recap.enabled takes true or false, not \"maybe\"",
       "a.b.c=1" => "one key under the bundle",
       "nope.x=1" => "--set nope.x: no installed bundle nope (bundles that take --set: cost-cap)",
       "cost-cap.default=1" => "--set cost-cap.default: cost-cap takes cap",

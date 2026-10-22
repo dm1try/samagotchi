@@ -162,6 +162,16 @@ RSpec.describe "delegate tools" do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{second.id}.json")))["parent_answers"]).to eq("standard")
     end
 
+    it "starts the child without its parent's own settings (chi --set): the child's recap is config.yml's" do
+      s = Samagotchi::Session.load(parent.id, state_dir: tmpdir)
+      s.settings = Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 1 } })
+      s.save(state_dir: tmpdir)
+      described_class.call("look", wait: "false", peers: peers)
+      child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+      expect(child.settings).to be_empty
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["config_settings"]).to eq({})
+    end
+
     describe "a toolkit of its own (toolkit:)" do
       let(:kit_peers) { worker_peers.dup.tap { |p| p.toolkit_names = %w[full lean child coding] } }
 

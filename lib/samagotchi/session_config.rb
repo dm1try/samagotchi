@@ -2,10 +2,15 @@
 
 require "yaml"
 require_relative "version"
+require_relative "config"
 
 module Samagotchi
   # A session's own settings (chi --set, chi send --new --set, POST
-  # /api/sessions bundle_settings), kept as one value (Settings). Its
+  # /api/sessions settings), kept as one value (Settings). Its core part:
+  # {key => value} for the core config keys a session may set
+  # (Config::Entry#session?), typed by their entry (Config.coerce!) and
+  # read through Config.get(key, session:) by the readers wired to it
+  # (RecapSetup). Its
   # bundles part: {bundle => {key => value}}, string keys, scalar values
   # (.typed). A bundle offers the keys a session may set in its manifest's
   # session_settings: (recorded at install, InstalledBundle#session_settings);
@@ -22,7 +27,9 @@ module Samagotchi
     KEY = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
     # The values a setting may take.
     SCALARS = [String, Integer, Float, TrueClass, FalseClass].freeze
-    REQUEST_SHAPE = "bundle_settings is an object of bundle => {key => scalar}"
+    REQUEST_SHAPE = "settings is an object of KEY or BUNDLE.KEY => scalar"
+    # What --set takes, as a malformed one is told.
+    FORMS = "KEY=VALUE or BUNDLE.KEY=VALUE"
     # What .typed reads as a number: no leading zero, no _; a decimal may
     # leave out either side of its point (.5, 5.) and take an exponent
     # (1e1, 2.5e-3), which YAML 1.1 leaves as text.
@@ -35,9 +42,10 @@ module Samagotchi
     SHIPPED_DIR = File.expand_path("bundles", __dir__)
 
     # A session's own settings, as one value: +core+ its core config keys
-    # ({key => value}; always {} for now), +bundles+ its bundle settings
-    # ({bundle => {key => value}}, .normalize's shape). Both frozen, string
-    # keys; the session file keeps +bundles+ under bundle_settings.
+    # ({key => value}, .normalize_core's shape), +bundles+ its bundle
+    # settings ({bundle => {key => value}}, .normalize's shape). Both
+    # frozen, string keys; the session file keeps +core+ under
+    # config_settings and +bundles+ under bundle_settings.
     Settings = Data.define(:core, :bundles) do
       def initialize(core: {}, bundles: {})
         super(core: SessionConfig.normalize_core(core), bundles: SessionConfig.normalize(bundles))
@@ -55,6 +63,16 @@ module Samagotchi
       end
 
       def empty? = core.empty? && bundles.empty?
+
+      # Both parts as --set names them: {"recap.enabled" => false,
+      # "cost-cap.cap" => 3} (/stats, chi sessions stats --format json).
+      # @return [Hash{String => Object}]
+      def flat
+        core.merge(bundles.flat_map { |bundle, values| values.map { |key, value| ["#{bundle}.#{key}", value] } }.to_h)
+      end
+
+      # "recap.enabled=false · cost-cap.cap=3", "" for none.
+      def text = SessionConfig.text(flat)
     end
 
     # The installed bundles a session may set settings of: +offered+ the
@@ -78,43 +96,108 @@ module Samagotchi
     module_function
 
     # --set's values as typed, in order: a later one of the same key wins.
-    # A key +types+ gives as string keeps its text as given (.value_for).
-    # @param args [Array<String>] "BUNDLE.KEY=VALUE" each
+    # A name a core config entry has (recap.enabled), or one with no dot,
+    # is a core key (.core_value: a session-settable one, typed by its
+    # entry); any other is BUNDLE.KEY, its value .typed (a key +types+
+    # gives as string keeps its text as given, .value_for).
+    # @param args [Array<String>] "KEY=VALUE" or "BUNDLE.KEY=VALUE" each
     # @param types [Hash{String => Hash{String => String}}] Availability#types
-    # @return [Hash{String => Hash{String => Object}}] frozen
-    # @raise [Error] a value of another shape
-    def parse(args, types: {})
-      settings = {}
+    # @param bundles [Hash, nil] the offered keys an unknown dotless key's
+    #   refusal names (.offered by default)
+    # @return [Settings]
+    # @raise [Error] a value of another shape, a core key no session sets
+    def parse(args, types: {}, bundles: nil)
+      core = {}
+      given = {}
       Array(args).each do |arg|
         target, sep, raw = arg.to_s.partition("=")
-        bundle, *keys = target.split(".", -1)
-        if sep.empty? || keys.empty? || !BUNDLE.match?(bundle.to_s) || keys.any? { |key| !KEY.match?(key) }
-          raise Error, "--set takes BUNDLE.KEY=VALUE, not #{arg}"
-        end
-        raise Error, "--set #{arg}: one key under the bundle (BUNDLE.KEY), no nested path" if keys.size > 1
+        raise Error, "--set takes #{FORMS}, not #{arg}" if sep.empty?
+
+        name = split(target, "--set #{arg}") { raise Error, "--set takes #{FORMS}, not #{arg}" }
         raise Error, "--set #{arg}: give a value" if raw.strip.empty?
 
-        (settings[bundle] ||= {})[keys.first] = value_for(raw, types.dig(bundle, keys.first))
+        if name.is_a?(String)
+          core[name] = core_value(name, raw, flag: "--set", bundles: bundles)
+        else
+          bundle, key = name
+          (given[bundle] ||= {})[key] = value_for(raw, types.dig(bundle, key))
+        end
       end
-      deep_freeze(settings)
+      Settings.new(core: core, bundles: given)
     end
 
-    # +settings+ when every bundle is installed and offers each key.
+    # +target+ (the part before =) as a core key (a String) or [bundle,
+    # key]; yields when it is no name at all.
+    def split(target, where)
+      return target if Config.find_by_key(target)
+
+      bundle, *keys = target.split(".", -1)
+      yield if keys.empty? ? !KEY.match?(bundle.to_s) : !BUNDLE.match?(bundle.to_s) || keys.any? { |key| !KEY.match?(key) }
+      return target if keys.empty?
+      raise Error, "#{where}: one key under the bundle (BUNDLE.KEY), no nested path" if keys.size > 1
+
+      [bundle, keys.first]
+    end
+
+    # A core key's value: +key+ names a session-settable entry, and +raw+
+    # types as it (Config.coerce!) and passes its check:.
+    # @raise [Error] "FLAG KEY: why"
+    def core_value(key, raw, flag:, bundles: nil)
+      entry = Config.find_by_key(key)
+      raise Error, "#{flag} #{key}: #{unknown_core(key, bundles: bundles)}" unless entry
+      raise Error, "#{flag} #{key}: #{key} is not a session setting (#{settable_text})" unless entry.session?
+
+      value = begin
+        Config.coerce!(entry, raw)
+      rescue Error => e
+        raise Error, "#{flag} #{key}: #{e.message}"
+      end
+      if (takes = entry.check&.call(value))
+        raise Error, "#{flag} #{key}: #{key} takes #{takes}, not #{raw.to_s.inspect}"
+      end
+
+      value
+    end
+
+    # Why +key+ (no config entry) is no session setting, with the settable
+    # keys it is near; a dotless or non-core-section key also names the
+    # bundles that take --set (it may have meant one).
+    def unknown_core(key, bundles: nil)
+      near = Config.near_names(key, Config.session_entries.map(&:key))
+      hint = near.empty? ? settable_text : "did you mean #{near.join(" or ")}?"
+      hint = "#{hint}; #{takers(bundles || offered)}" unless core_section?(key.split(".").first)
+      "no session setting #{key} (#{hint})"
+    end
+
+    # "session settings: recap.enabled, recap.sentences"
+    def settable_text = "session settings: #{Config.session_entries.map(&:key).join(", ")}"
+
+    # Whether +name+ is a core config section (recap, guardrails).
+    def core_section?(name) = Config::ENTRIES.any? { |entry| entry.yaml_path.size > 1 && entry.section == name }
+
+    # +settings+ (a Settings, or its bundles part) when every bundle is
+    # installed and offers each key; a bundle that isn't installed but
+    # names a core section (recap.enable) is a core key no session sets.
+    # Its core part was checked as it was typed (.parse, .from_request).
     # @param bundles [Hash{String => Array<String>}] the installed bundles'
     #   offered keys (.offered)
     # @param notes [Hash{String => String}] Availability#notes
     # @param types [Hash{String => Hash{String => String}}] Availability#types:
     #   a typed key's value must be of its type (TYPES)
     # @param flag [String] what a refusal names ("--set", a request field)
-    # @return [Hash] +settings+
+    # @return [Settings, Hash] +settings+
     # @raise [Error]
     def check!(settings, bundles: offered, notes: {}, types: {}, flag: "--set")
-      settings.each do |bundle, values|
+      (settings.is_a?(Settings) ? settings.bundles : settings).each do |bundle, values|
         keys = bundles[bundle]
         note = notes[bundle]
         values.each do |key, value|
           where = "#{flag} #{bundle}.#{key}"
-          raise Error, "#{where}: #{note || "no installed bundle #{bundle} (#{takers(bundles)})"}" if keys.nil?
+          if keys.nil?
+            raise Error, "#{where}: #{unknown_core("#{bundle}.#{key}", bundles: bundles)}" if note.nil? && core_section?(bundle)
+
+            raise Error, "#{where}: #{note || "no installed bundle #{bundle} (#{takers(bundles)})"}"
+          end
           raise Error, "#{where}: #{bundle} takes no session settings#{" #{note}" if note}" if keys.empty?
           raise Error, "#{where}: #{bundle} takes #{keys.join(", ")}" unless keys.include?(key)
 
@@ -127,8 +210,9 @@ module Samagotchi
 
     # --set's values parsed and checked (.parse, .check!) against the
     # installed bundles (.availability).
+    # @return [Settings]
     def from_flags(args, available: availability)
-      check!(parse(args, types: available.types), bundles: available.offered, notes: available.notes, types: available.types)
+      check!(parse(args, types: available.types, bundles: available.offered), bundles: available.offered, notes: available.notes, types: available.types)
     end
 
     # A value as --set (and a request's string) gives it: an integer
@@ -162,25 +246,35 @@ module Samagotchi
     # Float wants.
     def float_text(value) = value.sub(/\.(?=e|\z)/i, ".0")
 
-    # POST /api/sessions bundle_settings: nil for none, else an object of
-    # objects of scalars (a string typed as --set types it), checked like
-    # --set; an empty bundle entry is dropped.
+    # POST /api/sessions settings: nil for none, else an object of names
+    # as --set gives them (KEY or BUNDLE.KEY) to scalars (a string typed as
+    # --set types it), checked like --set.
     # @param bundles [Hash, nil] the offered keys (.availability's by default)
     # @param types [Hash] their types, with +bundles+ (Availability#types)
-    # @return [Hash] frozen
+    # @return [Settings]
     # @raise [Error]
     def from_request(raw, bundles: nil, types: {})
-      return {} if raw.nil?
-      raise Error, REQUEST_SHAPE unless raw.is_a?(Hash) && raw.all? { |_, values| scalar_map?(values) }
-
-      given = normalize(raw)
-      return given if given.empty?
+      return Settings::EMPTY if raw.nil?
+      raise Error, REQUEST_SHAPE unless raw.is_a?(Hash) && scalar_map?(raw)
+      return Settings::EMPTY if raw.empty?
 
       available = bundles ? Availability.new(offered: bundles, notes: {}, types: types) : availability
-      settings = normalize(given.to_h do |bundle, values|
-        [bundle, values.to_h { |key, value| [key, value_for(value, available.types.dig(bundle, key))] }]
-      end)
-      check!(settings, bundles: available.offered, notes: available.notes, types: available.types, flag: "bundle_settings")
+      core = {}
+      given = {}
+      raw.each do |target, value|
+        target = target.to_s
+        name = split(target, "settings #{target}") { raise Error, "settings takes KEY or BUNDLE.KEY names, not #{target.inspect}" }
+        raise Error, "settings #{target}: give a value" if value.is_a?(String) && value.strip.empty?
+
+        if name.is_a?(String)
+          core[name] = core_value(name, value, flag: "settings", bundles: available.offered)
+        else
+          bundle, key = name
+          (given[bundle] ||= {})[key] = value_for(value, available.types.dig(bundle, key))
+        end
+      end
+      check!(Settings.new(core: core, bundles: given), bundles: available.offered, notes: available.notes,
+                                                       types: available.types, flag: "settings")
     end
 
     # Each installed bundle's offered keys, by name (Availability#offered).
@@ -234,15 +328,43 @@ module Samagotchi
       end)
     end
 
-    # Settings#core read tolerantly: the scalar values, string keys,
-    # frozen; {} for anything else.
+    # Settings#core read tolerantly: the session-settable keys
+    # (Config::Entry#session?) whose value types as their entry and passes
+    # its check:, typed, string keys, frozen; {} for anything else (a key
+    # that is no longer settable, a hand-edited value).
     # @return [Hash{String => Object}]
     def normalize_core(raw)
       return {}.freeze unless raw.is_a?(Hash)
 
       raw.each_with_object({}) do |(key, value), kept|
-        kept[key.to_s.dup.freeze] = value.frozen? ? value : value.dup.freeze if SCALARS.any? { |kind| value.is_a?(kind) }
+        entry = Config.find_by_key(key.to_s)
+        next unless entry&.session? && SCALARS.any? { |kind| value.is_a?(kind) }
+
+        typed = begin
+          Config.coerce!(entry, value)
+        rescue Error
+          next
+        end
+        next if typed.nil? || entry.check&.call(typed)
+
+        kept[entry.key] = typed.frozen? ? typed : typed.dup.freeze
       end.freeze
+    end
+
+    # "KEY=VALUE · KEY=VALUE" for {key => value} (Settings#flat), "" for none.
+    def text(flat) = flat.map { |key, value| "#{key}=#{value}" }.join(" · ")
+
+    # Why a bundle +name+ can't offer the session settings +keys+: one
+    # whose NAME.KEY is a session-settable core key (--set NAME.KEY sets
+    # chi's), nil when none clashes. The install refuses it and chi bundle
+    # check reports it (clash), in these words.
+    # @return [String, nil]
+    def clash(name, keys)
+      clashing = Array(keys).map { |key| "#{name}.#{key}" } & Config.session_entries.map(&:key)
+      return nil if clashing.empty?
+
+      "session_settings: #{clashing.join(", ")} #{clashing.size == 1 ? "is" : "are"} chi's own session " \
+        "setting#{"s" unless clashing.size == 1} (--set #{clashing.first}=… sets chi's); rename the setting or the bundle"
     end
 
     # Why +bundle+'s plugin doesn't load, as chi's loader decides it
@@ -280,7 +402,8 @@ module Samagotchi
       settings.to_h { |bundle, values| [bundle.dup.freeze, values.to_h { |k, v| [k.dup.freeze, v.frozen? ? v : v.dup.freeze] }.freeze] }.freeze
     end
 
-    private_class_method :unloadable, :shipped_settings?, :scalar_map?, :takers, :deep_freeze
+    private_class_method :unloadable, :shipped_settings?, :scalar_map?, :takers, :deep_freeze, :split, :unknown_core,
+                         :settable_text, :core_section?
 
     # No settings (built once the module's functions are defined).
     Settings::EMPTY = Settings.new

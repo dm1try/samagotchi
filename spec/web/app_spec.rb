@@ -2123,38 +2123,44 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
-  describe "POST /api/sessions with bundle_settings" do
+  describe "POST /api/sessions with settings" do
     def create(manager, settings, **extra)
-      body = JSON.generate({ "idle" => true, "bundle_settings" => settings, **extra })
+      body = JSON.generate({ "idle" => true, "settings" => settings, **extra })
       status, _headers, resp = build_app(manager: manager).call(env_for("/api/sessions", method: "POST", body: body))
       [status, JSON.parse(resp.first)]
+    end
+
+    def setup_of(core: {}, bundles: {})
+      Samagotchi::SessionSetup.new(settings: Samagotchi::SessionConfig::Settings.new(core: core, bundles: bundles))
     end
 
     before do
       allow(Samagotchi::SessionConfig).to receive(:availability).and_return(Samagotchi::SessionConfig::Availability.new(offered: { "cost-cap" => ["cap"] }, notes: {}))
     end
 
-    it "starts the session with them (chi --set's), none for null" do
+    it "starts the session with them, flat as chi --set names them (core keys too), none for null" do
       manager = FakeResponsesManager.new
-      expect(create(manager, { "cost-cap" => { "cap" => 2.5 } }).first).to eq(201)
+      expect(create(manager, { "cost-cap.cap" => 2.5 }).first).to eq(201)
       expect(create(manager, nil).first).to eq(201)
-      expect(create(manager, { "cost-cap" => { "cap" => "0.5" } }).first).to eq(201)
-      expect(create(manager, { "cost-cap" => {} }).first).to eq(201)
+      expect(create(manager, { "cost-cap.cap" => "0.5", "recap.enabled" => false }).first).to eq(201)
+      expect(create(manager, {}).first).to eq(201)
 
       expect(manager.spawn_calls.map { |c| c[:extra][:setup] })
-        .to eq([Samagotchi::SessionSetup.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 2.5 } })), nil,
-                Samagotchi::SessionSetup.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 0.5 } })), nil])
+        .to eq([setup_of(bundles: { "cost-cap" => { "cap" => 2.5 } }), nil,
+                setup_of(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }), nil])
     end
 
-    it "answers 400 invalid_bundle_settings for another shape, a bundle or key it doesn't offer, and beside continues" do
+    it "answers 400 invalid_settings for another shape, a key no session sets, a bundle or key it doesn't offer, and beside continues" do
       manager = FakeResponsesManager.new
-      expect(create(manager, [1])).to eq([400, { "error" => "invalid_bundle_settings",
-                                                 "detail" => "bundle_settings is an object of bundle => {key => scalar}" }])
-      expect(create(manager, { "cost-cap" => { "default" => 1 } }))
-        .to eq([400, { "error" => "invalid_bundle_settings", "detail" => "bundle_settings cost-cap.default: cost-cap takes cap" }])
-      expect(create(manager, { "nope" => { "x" => 1 } }).last["detail"]).to include("no installed bundle nope")
-      expect(create(manager, { "cost-cap" => { "cap" => 1 } }, continues: "abcd").last["detail"])
-        .to include("leave out bundle_settings")
+      expect(create(manager, [1])).to eq([400, { "error" => "invalid_settings",
+                                                 "detail" => "settings is an object of KEY or BUNDLE.KEY => scalar" }])
+      expect(create(manager, { "cost-cap.default" => 1 }))
+        .to eq([400, { "error" => "invalid_settings", "detail" => "settings cost-cap.default: cost-cap takes cap" }])
+      expect(create(manager, { "guardrails.mode" => "strict" }).last["detail"])
+        .to start_with("settings guardrails.mode: guardrails.mode is not a session setting")
+      expect(create(manager, { "nope.x" => 1 }).last["detail"]).to include("no installed bundle nope")
+      expect(create(manager, { "cost-cap.cap" => 1 }, continues: "abcd").last["detail"])
+        .to include("leave out settings")
       expect(manager.spawn_calls).to be_empty
     end
   end

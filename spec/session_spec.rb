@@ -377,6 +377,26 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["bundle_settings"]).to eq({})
     end
 
+    it "round-trips its core settings as config_settings, reads {} without the field and drops what no session sets" do
+      settings = Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false, "recap.sentences" => "3" })
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                            setup: Samagotchi::SessionSetup.new(settings: settings))
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["config_settings"]).to eq("recap.enabled" => false, "recap.sentences" => "3")
+      expect(described_class.load(session.id, state_dir: tmpdir).settings.core).to eq("recap.enabled" => false, "recap.sentences" => "3")
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("config_settings" => { "recap.enabled" => "off",
+                                                                                              "guardrails.mode" => "strict",
+                                                                                              "recap.sentences" => "99" })))
+      expect(described_class.load(session.id, state_dir: tmpdir).settings.core).to eq("recap.enabled" => false)
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("config_settings")))
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.settings.core).to eq({})
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["config_settings"]).to eq({})
+    end
+
     it "round-trips its appended prompt files, and reads [] from a file without the field" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       expect(session.appended_prompt_files).to eq([])

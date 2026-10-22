@@ -133,9 +133,11 @@ parser = OptionParser.new do |opts|
   # --no-tool is taken out of ARGV before parse! (OptionParser would read it
   # as --tool's negation); this is its help line.
   opts.separator "        --no-tool NAME               Leave this tool out of the toolkit (repeatable; a comma list too)"
-  opts.on("--set BUNDLE.KEY=VALUE", "A bundle setting for this session, over config.yml's bundles: (repeatable; a key the " \
-                                  "bundle's manifest lists in session_settings:; numbers and booleans (true, off, no) are typed, the rest is " \
-                                  "text; a value of the wrong type is refused; saved in the session: --set cost-cap.cap=3)") do |v|
+  opts.on("--set KEY=VALUE", "A setting for this session, saved in it (repeatable): a core key a session may set " \
+                             "(recap.enabled, recap.sentences; typed by the key, over CLI, env and config.yml), or BUNDLE.KEY over " \
+                             "config.yml's bundles: (a key the bundle's manifest lists in session_settings:; numbers and booleans " \
+                             "(true, off, no) are typed, the rest is text). A wrong key or value is refused: " \
+                             "--set recap.enabled=false, --set cost-cap.cap=3") do |v|
     (options[:sets] ||= []) << v
   end
   opts.on("--parent-answers LEVEL", "What a parent agent may answer on this session's questions: " \
@@ -435,12 +437,13 @@ if options[:toolkit] || options[:tools] || options[:no_tools]
                                                            remove: options[:no_tools])
 end
 
-# --set BUNDLE.KEY=VALUE: a new session's bundle settings, checked here
-# against the installed bundles (a typo isn't saved).
+# --set KEY=VALUE / BUNDLE.KEY=VALUE: a new session's own settings, checked
+# here (a core key against its Config entry, a bundle's against the installed
+# bundles), so a typo isn't saved.
 if options[:sets]
   require "samagotchi/session_config"
   begin
-    options[:settings] = Samagotchi::SessionConfig::Settings.new(bundles: Samagotchi::SessionConfig.from_flags(options[:sets]))
+    options[:settings] = Samagotchi::SessionConfig.from_flags(options[:sets])
   rescue Samagotchi::SessionConfig::Error => e
     warn "Error: #{e.message}"
     exit 2

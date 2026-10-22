@@ -214,11 +214,13 @@ module Samagotchi
     end
 
     # The session's own settings (chi --set), a SessionConfig::Settings:
-    # empty for none and for a session from before them. Its bundles part
-    # ({bundle => {key => value}}) is the file's bundle_settings. Given when
-    # it was created and never changed; a respawn, a continue and a fork
-    # keep them (SessionSetup.of), a delegate child doesn't.
-    # Plugin::Context#settings lays the bundles part over config.yml's.
+    # empty for none and for a session from before them. Its core part
+    # ({key => value}: recap.enabled) is the file's config_settings, its
+    # bundles part ({bundle => {key => value}}) the file's bundle_settings.
+    # Given when it was created; a respawn, a continue and a fork keep them
+    # (SessionSetup.of), a delegate child doesn't. Plugin::Context#settings
+    # lays the bundles part over config.yml's; the core part goes first in
+    # Config.get(key, session:) (RecapSetup).
     attr_reader :settings
 
     # @param value [SessionConfig::Settings, nil]
@@ -480,6 +482,7 @@ module Samagotchi
       "appended_prompt_files" => [],
       "toolkit" => nil,
       "bundle_settings" => {},
+      "config_settings" => {},
       "interrupted_turn" => nil,
       "parent_answers" => nil
     }.freeze
@@ -491,7 +494,7 @@ module Samagotchi
       attrs = FIELDS.to_h do |key, default|
         [key.to_sym, default.equal?(REQUIRED) ? data.fetch(key) : data.fetch(key, default)]
       end
-      attrs[:settings] = SessionConfig::Settings.new(bundles: attrs.delete(:bundle_settings))
+      attrs[:settings] = SessionConfig::Settings.new(core: attrs.delete(:config_settings), bundles: attrs.delete(:bundle_settings))
       attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
       new(**attrs)
     end
@@ -621,6 +624,7 @@ module Samagotchi
                 when "reasoning_history" then reasoning_history_file
                 when "toolkit" then @toolkit&.to_file
                 when "bundle_settings" then @settings.bundles
+                when "config_settings" then @settings.core
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"

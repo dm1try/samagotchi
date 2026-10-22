@@ -670,13 +670,13 @@ module Samagotchi
         thinking, error = request_thinking(body["thinking"])
         return error if error
 
-        # bundle_settings: the session's own bundle settings (chi --set:
-        # {bundle => {key => scalar}}), checked against the installed
-        # bundles the same way.
+        # settings: the session's own settings, flat as chi --set names
+        # them ({"recap.enabled" => false, "cost-cap.cap" => 3}), checked
+        # the same way (SessionConfig.from_request).
         begin
-          settings = SessionConfig::Settings.new(bundles: SessionConfig.from_request(body["bundle_settings"]))
+          settings = SessionConfig.from_request(body["settings"])
         rescue SessionConfig::Error => e
-          return error_response(400, "invalid_bundle_settings", e.message)
+          return error_response(400, "invalid_settings", e.message)
         end
 
         folder = dir ? { working_directory: dir } : {}
@@ -709,7 +709,7 @@ module Samagotchi
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
       # link of that session's chain (SessionManager.continue_session), in its
       # folder and with its own setup (SessionSetup: llm_context, thinking
-      # and reasoning_history levels, bundle settings), so dir, llm_context, thinking and bundle_settings are
+      # and reasoning_history levels, settings), so dir, llm_context, thinking and settings are
       # refused beside it (a create takes no reasoning_history). It runs on
       # model (or model_name) when given, else on the previous link's: one
       # whose host is gone falls back to the default, and the 201's
@@ -724,9 +724,9 @@ module Samagotchi
         unless given.is_a?(String) && !given.strip.empty?
           return error_response(400, "invalid_continues", "continues is a session id")
         end
-        if (fields = %w[dir llm_context thinking bundle_settings].select { |key| body.key?(key) }).any?
+        if (fields = %w[dir llm_context thinking settings].select { |key| body.key?(key) }).any?
           return error_response(400, "invalid_continues",
-                                "continues takes the previous session's folder, llm_context, thinking and bundle_settings; " \
+                                "continues takes the previous session's folder, llm_context, thinking and settings; " \
                                 "leave out #{fields.join(", ")}")
         end
 

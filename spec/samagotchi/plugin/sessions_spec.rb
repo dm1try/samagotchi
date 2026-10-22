@@ -46,14 +46,14 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       host.setup = lambda {
         Samagotchi::SessionSetup.new(llm_context: override, thinking: :high, reasoning_history: :all,
                                      appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"),
-                                     settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 0.5 } }))
+                                     settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }))
       }
 
       child = Samagotchi::Session.load(sessions.fork(messages: []), state_dir: tmpdir)
 
       expect(child).to have_attributes(llm_context: override, thinking: :high, reasoning_history: :all,
                                        appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"),
-                                       settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 0.5 } }))
+                                       settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }))
     end
 
     it "runs a prompt as the child's first turn, within session.max_children" do

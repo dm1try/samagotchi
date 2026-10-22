@@ -46,7 +46,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set BUNDLE.KEY=VALUE]... [--parent-answers LEVEL] [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set KEY=VALUE]... [--parent-answers LEVEL] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
@@ -92,12 +92,15 @@ module Samagotchi
                     (full, lean, child, a config or bundle one; default
                     config's toolkit.default), and tools declared on top
                     of it or left out (repeatable, a comma list too)
-        --set BUNDLE.KEY=VALUE
-                    (--new) a bundle setting for this session, over
-                    config.yml's bundles: (repeatable; a key its bundle's
-                    manifest lists in session_settings:; numbers (3,
-                    .5) and booleans (true, off, no) are typed, the
-                    rest is text: --set cost-cap.cap=3)
+        --set KEY=VALUE
+                    (--new) a setting for this session, as chi --set:
+                    a core key a session may set (recap.enabled,
+                    recap.sentences), typed by it, or BUNDLE.KEY over
+                    config.yml's bundles: (a key its bundle's manifest
+                    lists in session_settings:; numbers (3, .5) and
+                    booleans (true, off, no) are typed, the rest is
+                    text); repeatable: --set recap.enabled=false,
+                    --set cost-cap.cap=3
         --parent-answers LEVEL
                     (--new) what a parent agent may answer on its
                     questions: hard, standard or soft, only stricter than
@@ -372,7 +375,7 @@ module Samagotchi
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit
       begin
-        options[:settings] = SessionConfig::Settings.new(bundles: SessionConfig.from_flags(options[:sets])) unless Array(options[:sets]).empty?
+        options[:settings] = SessionConfig.from_flags(options[:sets]) unless Array(options[:sets]).empty?
       rescue SessionConfig::Error => e
         return usage_error(e.message)
       end
