@@ -5,7 +5,7 @@ import {
   opsText, rowEntries, sessionItems, shown, stepRange, stepTag, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
-const file = (path, tool = "read", status = "ok", ref = { kind: "file", path }) => ({ tool, status, title: path.split("/").pop(), ref });
+const file = (path, tool = "read", status = "ok", ref = { kind: "file", path }) => ({ tool, status, title: path, ref });
 const memory = (title, tool = "memory_read", status = "ok") => ({ tool, status, title });
 const fetch = (url, status = "ok") => ({ tool: "web_fetch", status, params: `url=${JSON.stringify(url)}` });
 const turnOf = (...gens) => ({ gens: gens.map((tools) => ({ tools })) });
@@ -211,4 +211,11 @@ test("ariaLabel: nothing yet, and the tail", () => {
   assert.equal(ariaLabel([]), "Working set: nothing yet. Open the list.");
   const { labels } = fold(itemsOfTurn(turnOf([file("a/b.rb", "edit")]), 0), 4);
   assert.equal(ariaLabel(labels, 2), "Working set: b.rb edited, and 2 more. Open the list.");
+});
+
+test("a file shows (and groups) by its project-relative title when the absolute ref path ends with it", () => {
+  const row = { tool: "read", status: "ok", title: "lib/llm/a.rb", ref: { kind: "file", path: "/home/u/p/lib/llm/a.rb" } };
+  const [e] = rowEntries(row);
+  assert.deepEqual([e.key, e.path], ["/home/u/p/lib/llm/a.rb", "lib/llm/a.rb"]);
+  assert.equal(rowEntries({ ...row, title: "…llm/a.rb" })[0].path, "/home/u/p/lib/llm/a.rb");
 });

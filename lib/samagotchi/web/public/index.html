@@ -867,6 +867,123 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage .outline-fold{display:none}
 .turn-stage .turn-work.outline>.gen.folded{display:block}
 .turn-stage .ts-cloud-body .gen:first-of-type{margin-top:0;border-top:0}
+/* The working set (web.working_set, working_set_rail.js): a rail on the right of the live slots, out of their flow (absolute,
+   the live block's full height), so it never sets their height; its lines are fixed 18 px slots, each at its place by a
+   transform (a fold fades the absorbed lines out in place and slides the ones below up once). A stage narrower than 760 px
+   has it as a row under the trail (a fixed line, part of the live block from the turn's start); a phone has neither (the
+   session bar's chip is its entry). body.working-set: the flag is on (app.js). */
+body.working-set .turn-stage{container-type:inline-size}
+body.working-set .ts-live{position:relative;padding-right:264px}
+.ts-ws{--ws-line:18px;position:absolute;top:0;right:0;bottom:0;width:248px;box-sizing:border-box;padding:0 4px 0 12px;border-left:1px solid var(--border);border-radius:0 6px 6px 0;display:flex;flex-direction:column;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:var(--ws-line);color:var(--text-2);cursor:pointer}
+.ts-ws:hover{background:var(--bg-hover)}
+.ts-ws:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.ws-head{flex:none;display:flex;align-items:center;gap:6px;min-width:0;height:var(--ws-line);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap}
+.ws-count{margin-right:auto;font-weight:400;letter-spacing:0;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.ws-tick{display:none}
+.ws-fold{flex:none;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-muted);font-size:12px;line-height:18px;opacity:0;transition:opacity .15s}
+.ws-fold:hover:not(:disabled){filter:none;background:var(--bg-raised);color:var(--text)}
+.ts-ws:hover .ws-fold,.ts-ws:focus-within .ws-fold,.ts-ws.collapsed .ws-fold{opacity:1}
+@media (hover:none){.ws-fold{opacity:1}}
+.ws-ring{flex:none;width:14px;height:14px}
+.ws-ring circle{fill:none;stroke-width:2.4}
+.ws-ring .track{stroke:var(--border-strong)}
+.ws-ring .fill{stroke:var(--accent);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dasharray .4s ease}
+.ws-ring.warn .fill{stroke:var(--warn)}
+.ws-ring.danger .fill{stroke:var(--danger)}
+.ws-list{position:relative;flex:1;min-height:0;overflow:hidden}
+.ts-ws.empty .ws-list::before{content:"nothing read yet";font-family:ui-sans-serif,system-ui,sans-serif;font-style:italic;color:var(--text-faint)}
+.ws-item,.ws-more{position:absolute;top:0;left:0;right:0;height:var(--ws-line);transition:transform .18s cubic-bezier(.3,.7,.2,1),opacity .15s ease,background-color .8s ease}
+.ws-item{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;border-radius:4px}
+.ws-item .k{flex:none;width:12px;text-align:center;color:var(--text-faint)}
+.ws-item.memory .k{color:var(--think-text)}
+.ws-item.url .k{color:var(--accent)}
+.ws-item .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ws-item .n{flex:none;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.ws-item .e{flex:none;color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+.ws-item .n:empty,.ws-item .e:empty{display:none}
+.ws-item.enter{animation:ws-in .2s ease}
+@keyframes ws-in{from{opacity:0}}
+.ws-item.leave,.ws-more.leave{opacity:0;pointer-events:none}
+/* Just entered (FLASH_MS): an accent dot for the glyph and a tint; it settles (the tint fades 800 ms). */
+.ws-item.fresh{background:var(--accent-tint)}
+.ws-item.fresh .k{font-size:0;display:flex;align-items:center;justify-content:center;height:var(--ws-line)}
+.ws-item.fresh .k::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
+.ws-more{padding-left:17px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+/* Folded by hand (kept per browser): the head line alone at the right, the newest entry ticking through it. */
+.ts-ws.collapsed{bottom:auto;width:auto;max-width:248px;height:var(--ws-line);border-left:0;padding-left:6px}
+.ts-ws.collapsed .ws-list{display:none}
+.ts-ws.collapsed .ws-count{margin-right:0}
+.ts-ws.collapsed .ws-tick{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;margin-right:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-2)}
+.ts-ws.collapsed .ws-tick:not(:empty)::before{content:"+";margin-right:5px;color:var(--accent);font-weight:700}
+.ws-tick.fresh{animation:ts-fade .3s ease}
+/* The row form, in a stage under 760 px: one line under the trail (its room, 18 px and a gap, kept while a card waits). */
+@container (max-width:759px){
+  body.working-set .ts-live{padding-right:0;--ws-row-h:26px}
+  .ts-ws{position:static;width:auto;height:var(--ws-line);flex-direction:row;align-items:center;gap:10px;padding:0;border-left:0;border-radius:6px}
+  .ts-ws .ws-head{flex:none}
+  .ts-ws .ws-count{margin-right:0}
+  .ts-ws .ws-list{display:flex;align-items:center;gap:12px;height:var(--ws-line)}
+  .ws-item,.ws-more{position:static;flex:none;max-width:30ch;transform:none !important;transition:none}
+  .ws-more{padding-left:0}
+  .ws-item.leave,.ws-more.leave{display:none}
+  .turn-stage.waiting .ts-ws{display:none}
+}
+body.working-set .turn-stage.waiting .ts-live{min-height:calc(var(--ts-live-h) + var(--ws-row-h,0px))}
+body.working-set .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(calc(var(--ts-live-h) + var(--ws-row-h,0px)),var(--live-held,0px))}
+/* A finished turn's footprint, under its closed block (working_set_view.js): one faint line; a click opens its list. */
+.ws-foot{display:block;width:fit-content;max-width:calc(100% - 13px);box-sizing:border-box;margin:-4px 0 0 13px;padding:0 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:18px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.ws-foot:hover{color:var(--text-muted);background:var(--bg-hover)}
+.ws-foot:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.ws-foot .w{font-family:ui-sans-serif,system-ui,sans-serif}
+.ws-foot .sep{color:var(--border-strong)}
+.ws-foot .e{color:var(--accent)}
+.ws-foot .k{color:var(--think-text)}
+.ws-foot .url .k{color:var(--accent)}
+/* A step tag (s3, t2·s3, prompt): where an item entered; a button jumps to its call. */
+.ws-step{display:inline-block;padding:0 4px;border:0;border-radius:4px;background:var(--badge-bg);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:14px;font-weight:400;color:var(--text-faint);font-variant-numeric:tabular-nums;vertical-align:1px}
+.ws-step.p{color:var(--think-text)}
+button.ws-step{cursor:pointer}
+button.ws-step:hover:not(:disabled){filter:none;background:var(--accent-bg);color:var(--accent)}
+/* The expanded view (a chip popover; a bottom sheet on a phone). */
+.ws-popover{gap:0}
+.ws-popover .ctx-pop-head{align-items:center;flex-wrap:wrap;margin-bottom:4px}
+.ws-scope{display:inline-flex;gap:2px}
+.ws-scope button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px}
+.ws-scope button.on{color:var(--text-2);border-color:var(--border-strong);background:var(--bg-raised)}
+.ws-scope button:hover:not(:disabled){filter:none;color:var(--text)}
+.ws-popover .ctx-pop-meta{margin-top:6px}
+.ws-popover .ws-hint{margin-top:10px;color:var(--text-faint)}
+.ws-row{display:flex;align-items:center;gap:8px;width:100%;min-width:0;height:28px;box-sizing:border-box;padding:0 6px;border:0;border-radius:6px;background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:28px;color:var(--text-2);text-align:left}
+.ws-row:hover{background:var(--bg-hover)}
+button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
+.ws-row .k{flex:none;width:12px;text-align:center;color:var(--text-faint)}
+.ws-row.memory .k{color:var(--think-text)}
+.ws-row.url .k{color:var(--accent)}
+.ws-row .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit}
+.ws-row a.t{text-decoration:none}
+.ws-row a.t:hover{text-decoration:underline}
+.ws-row .e{flex:none;color:var(--accent);font-weight:600}
+.ws-row .n{flex:none;color:var(--text-faint)}
+.ws-row .st{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
+.ws-row .chev{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
+.ws-row .ws-step{flex:none}
+.ws-row.member{padding-left:26px}
+.ws-row.fresh{background:var(--accent-tint)}
+.ws-row.fresh .k{color:var(--accent)}
+.ws-row.muted{opacity:.6}
+.ws-popover.sheet{border-radius:14px}
+/* A phone's sheet: the name, the scope and × on the first line, the count and the ring under them. */
+.ws-popover.sheet .ctx-pop-close{order:2}
+.ws-popover.sheet .ctx-pop-head>.ctx-pop-kind{order:3;flex:1 0 calc(100% - 30px)}
+.ws-popover.sheet .ctx-pop-head>.ws-ring{order:4}
+.ws-popover.sheet .ws-row{height:30px;line-height:30px}
+/* The session bar's chip, in the mem chip's place: a dot (the accent: changed since its list was last opened) and the count. */
+#infoBar .meta .ws-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
+#infoBar .meta .ws-chip:hover:not(:disabled){filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+.ws-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);opacity:.6}
+.ws-chip.changed .ws-dot{background:var(--accent);opacity:1;box-shadow:0 0 0 2px var(--accent-ring)}
+@media(max-width:600px){body.working-set .ts-live{padding-right:0;--ws-row-h:0px}.ts-ws{display:none}}
+@media (prefers-reduced-motion:reduce){.ws-item,.ws-more,.ws-ring .fill{transition:none}.ws-item.enter,.ws-tick.fresh{animation:none}}
 @media(max-width:600px){
   .bubble.user.queued[data-delivery="queue"]{flex-wrap:wrap}
   .bubble.user.queued[data-delivery="queue"] .origin-label,.bubble.user.queued[data-delivery="queue"] .state-badge{order:0}
@@ -974,7 +1091,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
   /* The memory chip right after the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
-  #infoBar .meta .mem-chip{order:-1}
+  #infoBar .meta .mem-chip,#infoBar .meta .ws-chip{order:-1}
   /* A parent's children chip too: its waiting part is what to see. */
   #infoBar .meta .children-chip{order:-1}
   /* A chain's ← → links too: the way to the other days. */
