@@ -74,8 +74,8 @@ only edited or written is never forgotten.
 **Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
 or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
 
-**Cost.** Two `paired_runs` walks, one view build and one stat per file item. A 500-message session builds in well
-under 20 ms (spec'd in `spec/working_set_spec.rb`).
+**Cost.** Two `paired_runs` walks, one view build and one stat per file item. A 500-message session builds in about
+10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
 
 ## Delivery
 
