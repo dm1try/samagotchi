@@ -24,6 +24,21 @@ RSpec.describe Samagotchi::Hooks::Loader do
       expect(registry.size).to eq(0)
     end
 
+    it "returns an empty registry when the hooks key is empty (YAML nil)" do
+      registry = described_class.load(YAML.safe_load("hooks:\n"))
+      expect(registry.size).to eq(0)
+    end
+
+    it "returns an empty registry when the hooks key holds no mapping" do
+      expect(described_class.load({ "hooks" => "oops" }).size).to eq(0)
+      expect(described_class.load({ "hooks" => ["before_turn"] }).size).to eq(0)
+    end
+
+    it "skips an empty event key and an empty hooks_dir" do
+      registry = described_class.load(YAML.safe_load("hooks:\n  hooks_dir:\n  before_turn:\n"))
+      expect(registry.size).to eq(0)
+    end
+
     it "loads plugins from hooks_dir and registers them" do
       Dir.mktmpdir do |tmpdir|
         hooks_dir = File.join(tmpdir, "hooks")

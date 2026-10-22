@@ -52,15 +52,16 @@ module Samagotchi
 
         # Load hooks from a config hash and return a Registry with registered plugins.
         #
-        # @param config_hash [Hash, nil] the hooks section from config.yml
+        # @param config_hash [Hash, nil] the parsed config.yml
         # @param env [Hash] environment variables (default: ENV)
         # @param failures [Guardrails::LoadFailures, nil] collects hooks that
         #   failed to load
         # @return [Samagotchi::Hooks::Registry] the registry with all plugins registered
         def load(config_hash, env: ENV, failures: nil)
-          return Hooks::Registry.new unless config_hash&.key?("hooks")
+          hooks_config = config_hash["hooks"] if config_hash.is_a?(Hash)
+          # An empty `hooks:` key is nil in YAML: no hooks, like no key.
+          return Hooks::Registry.new unless hooks_config.is_a?(Hash)
 
-          hooks_config = config_hash["hooks"]
           hooks_dir = hooks_dir(env, data: config_hash)
 
           registry = Hooks::Registry.new
