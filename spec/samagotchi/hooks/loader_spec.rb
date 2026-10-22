@@ -29,13 +29,22 @@ RSpec.describe Samagotchi::Hooks::Loader do
       expect(registry.size).to eq(0)
     end
 
-    it "returns an empty registry when the hooks key holds no mapping" do
+    it "returns an empty registry when the hooks key holds no mapping, with a warning each" do
+      expect(Samagotchi::Log).to receive(:warn).with(:hooks, "hooks_section_invalid", anything).twice
       expect(described_class.load({ "hooks" => "oops" }).size).to eq(0)
       expect(described_class.load({ "hooks" => ["before_turn"] }).size).to eq(0)
     end
 
-    it "skips an empty event key and an empty hooks_dir" do
+    it "skips an empty event key and an empty hooks_dir without a warning" do
+      expect(Samagotchi::Log).not_to receive(:warn)
       registry = described_class.load(YAML.safe_load("hooks:\n  hooks_dir:\n  before_turn:\n"))
+      expect(registry.size).to eq(0)
+    end
+
+    it "skips an event key that holds no list, with a warning naming it" do
+      expect(Samagotchi::Log).to receive(:warn)
+        .with(:hooks, "hooks_event_invalid", hash_including(echo: a_string_including("hooks.before_turn: must be a list"), event: "before_turn"))
+      registry = described_class.load(YAML.safe_load("hooks:\n  before_turn: guard.rb\n"))
       expect(registry.size).to eq(0)
     end
 

@@ -26,6 +26,9 @@ hooks:
       on_error: skip
 ```
 
+Each event key holds a list of entries. A `hooks:` that isn't a mapping, or an event key that isn't a list
+(`before_turn: guard.rb`), warns at each start and loads nothing for it; an empty key loads nothing, silently.
+
 ## Plugin Format
 
 Each plugin is a `.rb` file in the hooks directory. The class name must match

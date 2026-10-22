@@ -60,7 +60,12 @@ module Samagotchi
         def load(config_hash, env: ENV, failures: nil)
           hooks_config = config_hash["hooks"] if config_hash.is_a?(Hash)
           # An empty `hooks:` key is nil in YAML: no hooks, like no key.
-          return Hooks::Registry.new unless hooks_config.is_a?(Hash)
+          return Hooks::Registry.new if hooks_config.nil?
+
+          unless hooks_config.is_a?(Hash)
+            Log.warn(:hooks, "hooks_section_invalid", echo: "[samagotchi:hooks] config.yml hooks: must be a mapping of event name to hook entries; ignored")
+            return Hooks::Registry.new
+          end
 
           hooks_dir = hooks_dir(env, data: config_hash)
 
@@ -93,10 +98,17 @@ module Samagotchi
 
       # Parse hook definitions from the config hooks section.
       # Returns an array of { event_type:, path:, on_error: } hashes.
+      # An event key that holds something other than a list warns and is
+      # skipped; an empty one (nil) is skipped silently.
       def self.parse_definitions(hooks_config)
         definitions = []
         hooks_config.each do |event_type, configs|
-          next unless event_type.to_s != "hooks_dir" && configs.is_a?(Array)
+          next if event_type.to_s == "hooks_dir" || configs.nil?
+
+          unless configs.is_a?(Array)
+            Log.warn(:hooks, "hooks_event_invalid", echo: "[samagotchi:hooks] config.yml hooks.#{event_type}: must be a list of hook entries; ignored", event: event_type.to_s)
+            next
+          end
 
           configs.each do |cfg|
             next unless cfg.is_a?(Hash) && cfg["path"]
