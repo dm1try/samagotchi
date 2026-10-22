@@ -13,6 +13,9 @@ and commands may change between minor versions. How releases are made:
 - The web's `continue →` no longer takes a draft left over from another session (or the start page) as the new
   link's first message: the opener goes in, and the toast's **Restore draft** brings the draft back. A draft written
   in the continued session still stays.
+- work-cap 0.1.1: a changed `bundles: work-cap:` setting reaches a running session (the caps are resolved again when the
+  settings change; the state file still wins per meter), and an empty key (`tool_calls:` with no value) falls through to
+  `child:` / `default:` instead of reading as "off"; `off`, `false` and `0` stay an explicit no cap.
 
 ## [0.100.0] - 2026-10-22
 

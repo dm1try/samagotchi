@@ -1,6 +1,6 @@
 ---
 name: work-cap
-version: 0.1.0
+version: 0.1.1
 scope: system
 description: "A per-session work cap (tool calls, active minutes) across turns: at a cap the turn pauses on Continue (another cap's worth) / Stop with the session's totals, a warning at 80% goes to the user only; /workcap shows or sets it"
 trust_level: reviewed
