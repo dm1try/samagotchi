@@ -367,11 +367,14 @@ class Plugin
       {}
     end
     saved = {} unless saved.is_a?(Hash)
-    saved[meter] = data
+    saved[meter] = data.transform_values { |value| whole(value) }
     Samagotchi::AtomicFile.write(path, "#{JSON.generate(saved)}\n")
     # Resolved again at the next use, from the file now holding the meter.
     @mutex.synchronize { @resolved = nil }
   end
+
+  # 800.0 as 800 (a whole cap is saved as an Integer), 2.5 as it is.
+  def whole(value) = value.is_a?(Float) && value.finite? && value == value.to_i ? value.to_i : value
 
   def state_path(ctx, session) = File.join(ctx.data_dir, "sessions", "#{session.gsub(/[^A-Za-z0-9_.-]/, "_")}.json")
 

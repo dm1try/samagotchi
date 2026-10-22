@@ -75,6 +75,18 @@ RSpec.describe "The work-cap bundle", :bundle do
       expect(bundle.questions.size).to eq(1)
     end
 
+    it "saves a whole cap as an Integer in the state file and a fraction as a Float" do
+      bundle = plugin({ "default" => { "tool_calls" => 400, "minutes" => 0.5 } },
+                      usage: calls(412, active_ms: minutes(0.7)))
+      bundle.answer({ selected: ["Continue"] })
+      generation(bundle)
+      expect(File.read(state_file)).to eq(%({"tool_calls":{"cap":800,"step":400},"minutes":{"cap":1,"step":0.5}}\n))
+
+      bundle.command("/workcap 2.5")
+      bundle.command("/workcap 2h")
+      expect(File.read(state_file)).to eq(%({"tool_calls":{"cap":2.5,"step":2.5},"minutes":{"cap":120,"step":120}}\n))
+    end
+
     it "raises past a big overshoot in whole steps, so Continue never asks again at once; by index too" do
       bundle = plugin(usage: calls(1000))
       bundle.answer({ selected: [], selected_indices: [0] })
