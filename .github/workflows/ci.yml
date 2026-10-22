@@ -142,11 +142,37 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Chromium runs in Playwright's own image, which bakes it and its
+      # system packages: no `playwright install --with-deps`, whose apt
+      # fetch from the runner's mirror once took 10 of the 15 minutes. The
+      # tag is the installed @playwright/test's version (package-lock.json),
+      # so the browser always matches the client. --network host: it reaches
+      # chi web on the runner's loopback and LAN addresses.
+      - name: Chromium in Playwright's image (run-server)
+        timeout-minutes: 5
+        run: |
+          version=$(node -p 'require("@playwright/test/package.json").version')
+          docker run -d --init --ipc=host --network host --name playwright \
+            --user pwuser --workdir /home/pwuser \
+            "mcr.microsoft.com/playwright:v${version}-noble" \
+            npx -y "playwright@${version}" run-server --port 3333 --host 127.0.0.1
+          for _ in $(seq 90); do
+            curl -s -o /dev/null http://127.0.0.1:3333/ && exit 0
+            sleep 1
+          done
+          docker logs playwright
+          exit 1
       # bundle exec: bin/chi, and the session workers it spawns, load the
-      # gems from the bundle (RUBYOPT is inherited).
-      - name: Web e2e (fake model, python3 from the runner)
+      # gems from the bundle (RUBYOPT is inherited). The tests connect to
+      # the browser (PW_TEST_CONNECT_WS_ENDPOINT); traces and the report
+      # are written here, on the runner.
+      - name: Web e2e (fake model, python3 from the runner, Chromium in the container)
+        env:
+          PW_TEST_CONNECT_WS_ENDPOINT: ws://127.0.0.1:3333/
         run: bundle exec npm run e2e
+      - name: The browser server's log
+        if: failure()
+        run: docker logs playwright || true
       - name: Upload the Playwright report and traces
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

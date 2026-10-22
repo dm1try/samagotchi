@@ -23,6 +23,13 @@ style pass: add a rule only for a bug class it would have caught. It runs in abo
 `rake release:check`; `rake lint` stays RuboCop alone (CI's rubocop job has no node). A name that is also a browser
 global (`name`, `status`, `open`…) passes even when its import is gone: give an export such a name only with care.
 
+CI's e2e job keeps the tests, chi and the fake model on the runner but runs Chromium in Playwright's image
+(`mcr.microsoft.com/playwright:v<version>-noble`, `playwright run-server` on the host network); the tests connect
+to it with `PW_TEST_CONNECT_WS_ENDPOINT`, and traces and the report stay on the runner. Nothing is installed with
+apt. The tag is the installed `@playwright/test`'s version, read at run time, so bumping it in `package-lock.json`
+moves the image too (`spec/ci_playwright_image_spec.rb` keeps a pinned tag out of the workflow). To run the suite
+that way locally: `npx playwright run-server --port 3333`, then `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3333/ npm run e2e`.
+
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 
