@@ -1,0 +1,8 @@
+{
+ "delay": 0.005,
+ "iterations": [
+  {"thinking": "The README first, then a note in it.", "tools": [{"name": "read", "arguments": {"path": "README.md"}}, {"name": "execute", "arguments": {"command": "printf '\\nChanged by a shell command.\\n' >> README.md", "description": "Note it in the README"}}]},
+  {"text": "(never asked: the first step's two results pick the next one)"},
+  {"thinking": "Noted.", "text": "Read README.md and noted it.", "hold": 3}
+ ]
+}

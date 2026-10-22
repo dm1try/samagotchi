@@ -496,4 +496,40 @@ test.describe("the working set", () => {
       fs.rmSync(note, { force: true });
     }
   });
+
+  // The server's projection (WorkingSet): a file a shell command changed after
+  // the read is stale at the next request; its rail line fades in place (no
+  // refold, no line moved), its list row says so, and after a reload (the
+  // seed's GET working_set) its footprint label is faded too.
+  test("a file changed after its read: stale in the rail, the list and the footprint", async ({ page, script, chi }) => {
+    const readme = path.join(chi.dirs.project, "README.md");
+    const readmeText = fs.readFileSync(readme, "utf8");
+    try {
+      script("working_set_stale");
+      await send(page, "Read the README and note it there.");
+      await expect(stageEl(page)).toBeVisible();
+      const rail = page.locator("#turnStage .ts-ws");
+      const line = rail.locator(".ws-item.file");
+      await expect(line.locator(".t")).toHaveText("README.md");
+      const slots = () => rail.locator(".ws-item").evaluateAll((els) => els.map((e) => `${e.querySelector(".t").textContent} ${e.style.transform}`));
+      const before = await slots();
+      await expect(line).toHaveClass(/\bstale\b/);
+      await expect(line).toBeVisible();
+      await expect(line).toHaveCSS("opacity", "0.55");
+      expect(await slots()).toEqual(before);
+      await rail.click();
+      const pop = page.locator("#workingSetPopover");
+      const row = pop.locator(".ws-row.file", { hasText: "README.md" });
+      await expect(row.locator(".st")).toContainText("stale");
+      await expect(row.locator(".t")).toHaveCSS("opacity", "0.55");
+      await pop.locator(".ctx-pop-close").click();
+      await expect(pop).toBeHidden();
+      await page.mouse.move(0, 0);
+      await handedOff(page, 1);
+      await page.reload();
+      await expect(page.locator("#history .turn-work + .ws-foot .l.file.stale")).toHaveText("README.md");
+    } finally {
+      fs.writeFileSync(readme, readmeText);
+    }
+  });
 });

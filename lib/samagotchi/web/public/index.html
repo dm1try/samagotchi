@@ -900,7 +900,14 @@ body.working-set .ts-live{position:relative;padding-right:264px}
 .ws-item .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ws-item .n{flex:none;color:var(--text-faint);font-variant-numeric:tabular-nums}
 .ws-item .e{flex:none;color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
-.ws-item .n:empty,.ws-item .e:empty{display:none}
+.ws-item .c{flex:none;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.ws-item .n:empty,.ws-item .e:empty,.ws-item .c:empty{display:none}
+/* The server's states (WorkingSet): stale faded; forgotten struck, faint and faded (a group only when all its members are). The words are the popover's and the titles' (colour is never alone). */
+.ws-item.stale{opacity:.55}
+.ws-item.forgotten{opacity:.5}
+.ws-item.forgotten .t,.ws-row.forgotten .t,.ws-foot .l.forgotten{text-decoration:line-through;color:var(--text-faint)}
+.ws-row.stale .k,.ws-row.stale .t,.ws-foot .l.stale{opacity:.55}
+.ws-row.forgotten .k,.ws-row.forgotten .t,.ws-foot .l.forgotten{opacity:.5}
 .ws-item.enter{animation:ws-in .2s ease}
 @keyframes ws-in{from{opacity:0}}
 .ws-item.leave,.ws-more.leave{opacity:0;pointer-events:none}
@@ -939,6 +946,7 @@ body.working-set .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(cal
 .ws-foot .e{color:var(--accent)}
 .ws-foot .k{color:var(--think-text)}
 .ws-foot .url .k{color:var(--accent)}
+.ws-foot .f{text-decoration:line-through}
 /* A step tag (s3, t2·s3, prompt): where an item entered; a button jumps to its call. */
 .ws-step{display:inline-block;padding:0 4px;border:0;border-radius:4px;background:var(--badge-bg);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:14px;font-weight:400;color:var(--text-faint);font-variant-numeric:tabular-nums;vertical-align:1px}
 .ws-step.p{color:var(--think-text)}
@@ -967,6 +975,7 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-row .st{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
 .ws-row .chev{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
 .ws-row .ws-step{flex:none}
+.ws-row .tk,.ws-row .c{flex:none;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
 .ws-row.member{padding-left:26px}
 .ws-row.fresh{background:var(--accent-tint)}
 .ws-row.fresh .k{color:var(--accent)}

@@ -90,8 +90,18 @@ test("every stream event type has its handler", () => {
     "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
-    "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated",
+    "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated", "working_set_updated",
   ]);
+});
+
+test("working_set_updated goes to the working set; with it off (none), it is ignored", () => {
+  const off = fakePage();
+  assert.doesNotThrow(() => off.handlers.working_set_updated({ items: [], at: 2 }));
+  const page = fakePage();
+  const got = [];
+  const handlers = createStreamHandlers({ ...page.deps, workingSet: { update: (snapshot) => got.push(snapshot) } });
+  handlers.working_set_updated({ items: [{ kind: "file", key: "/a", state: "stale" }], at: 4, event_seq: 9 });
+  assert.deepEqual(got, [{ items: [{ kind: "file", key: "/a", state: "stale" }], at: 4 }]);
 });
 
 test("a chunk goes to the turn view; its ctx lands on the session open at that moment", () => {

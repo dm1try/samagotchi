@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { footprintNode, groupItems, stampHistory, stampRows } from "../../../lib/samagotchi/web/public/working_set_view.js";
+import { createWorkingSet, footprintNode, groupItems, stampHistory, stampRows } from "../../../lib/samagotchi/web/public/working_set_view.js";
 import { itemsOfTurn } from "../../../lib/samagotchi/web/public/working_set.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming, turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
@@ -92,4 +92,48 @@ test("the info bar: off, the mem chip and the memories tooltip; on, the set chip
   assert.equal(frag.querySelector(".ws-chip").textContent, "set 1");
   assert.match(frag.querySelector(".ws-chip").title, /^Working set: 1 item /);
   assert.ok(infoBarHtml(null));
+});
+
+test("the server's snapshot: kept by its at, overlaid on every form, the footprints redrawn in place, the rail told", async () => {
+  const historyEl = document.createElement("div");
+  const infoEl = document.createElement("div");
+  infoEl.innerHTML = '<button class="ws-chip"></button>';
+  document.body.append(historyEl, infoEl);
+  const asked = [];
+  let answer = { items: [], at: 1 };
+  const ws = createWorkingSet({
+    historyEl, infoEl, state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [] }), session: () => "s1",
+    getWorkingSet: (id) => { asked.push(id); return Promise.resolve(answer); },
+  });
+  const turnItems = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { ...read("lib/b.rb"), status: "ok" }] }] }, 0);
+  const foot = footprintNode(turnItems, 0);
+  historyEl.append(foot);
+  let railRedraws = 0;
+  ws.onServer(() => { railRedraws += 1; });
+
+  ws.seed([{ items: turnItems, prompt: "first" }]);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, ["s1"], "a seed asks the server");
+  assert.equal(railRedraws, 1, "its answer is the first snapshot");
+  railRedraws = 0;
+
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "forgotten", tokens: 9 }], at: 6 });
+  assert.equal(historyEl.querySelector(".ws-foot"), foot, "the same node, drawn again in place");
+  assert.ok(foot.querySelector(".l.forgotten"));
+  assert.equal(foot.querySelector(".f").textContent, "1 forgotten");
+  assert.equal(railRedraws, 1);
+  // The live turn's items (the rail's) get the state too.
+  const live = ws.liveItems({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }] }] });
+  assert.equal(live.items[0].state, "forgotten");
+
+  // An older snapshot (a GET that answered late) changes nothing.
+  ws.update({ items: [], at: 3 });
+  assert.equal(railRedraws, 1);
+  assert.ok(foot.querySelector(".l.forgotten"));
+  // A newer one where it is live again: the strike goes.
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 90 }], at: 8 });
+  assert.equal(foot.querySelector(".l.forgotten"), null);
+  assert.equal(foot.querySelector(".f"), null);
+  historyEl.remove();
+  infoEl.remove();
 });

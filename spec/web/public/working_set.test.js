@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ariaLabel, BUDGETS, dirLabel, fold, footprint, footprintText, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames, nextSettle,
-  opsText, rowEntries, sessionItems, shown, stepRange, stepTag, urlLabel, urlOfParams,
+  ariaLabel, BUDGETS, dirLabel, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
+  newerSnapshot, nextSettle, opsText, overlay, rowEntries, sessionItems, shown, stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
 const file = (path, tool = "read", status = "ok", ref = { kind: "file", path }) => ({ tool, status, title: path, ref });
@@ -218,4 +218,87 @@ test("a file shows (and groups) by its project-relative title when the absolute 
   const [e] = rowEntries(row);
   assert.deepEqual([e.key, e.path], ["/home/u/p/lib/llm/a.rb", "lib/llm/a.rb"]);
   assert.equal(rowEntries({ ...row, title: "…llm/a.rb" })[0].path, "/home/u/p/lib/llm/a.rb");
+});
+
+// ── the server's truth (P2) ──────────────────────────────────────────────
+
+const srv = (items, at = 10) => ({ items, at });
+const sItem = (kind, key, state, tokens = 0) => ({ kind, key, state, tokens, ops: ["read"], count: 1, first_id: "t1" });
+
+test("overlay: the server's state and tokens by key; files by absolute path, memories by name, cut URLs by prefix", () => {
+  const longUrl = `https://docs.example.dev/${"a".repeat(80)}`;
+  const turn = itemsOfTurn(turnOf([
+    file("/p/lib/a.rb"), file("lib/b.rb", "read", "ok", null), memory("style"), fetch(`${longUrl.slice(0, 79)}\u2026`), fetch("https://x.dev/new"),
+  ]), 0);
+  const server = srv([
+    sItem("file", "/p/lib/a.rb", "stale", 1234), sItem("file", "/p/lib/b.rb", "forgotten"), sItem("memory", "style", "forgotten", 12),
+    sItem("url", longUrl, "stale", 99),
+  ]);
+  const out = overlay(turn, server);
+  assert.deepEqual(out.map((i) => [i.key.slice(0, 30), i.state, i.tokens]), [
+    ["/p/lib/a.rb", "stale", 1234],
+    // A title fallback (no ref) never matches the server's absolute path.
+    ["lib/b.rb", "live", undefined],
+    ["style", "forgotten", 12],
+    [`${longUrl.slice(0, 30)}`, "stale", 99],
+    // A call the server doesn't know yet (running): live.
+    ["https://x.dev/new", "live", undefined],
+  ]);
+  // The rows' at, ops and count are never the server's.
+  assert.deepEqual(out[0].at, turn[0].at);
+  assert.deepEqual(out[0].ops, turn[0].ops);
+  // Nothing changed: the same objects; no server: the items as they are.
+  assert.equal(overlay(turn, srv([]))[0], turn[0]);
+  assert.equal(overlay(turn, null), turn);
+  // An unknown state is ignored (live).
+  assert.equal(overlay(turn, srv([sItem("file", "/p/lib/a.rb", "weird")]))[0].state, "live");
+});
+
+test("newerSnapshot: the first one, then one built from as much or more of the conversation (at), never an older GET", () => {
+  const a = srv([], 5);
+  const b = srv([], 7);
+  assert.equal(newerSnapshot(null, a), a);
+  assert.equal(newerSnapshot(a, b), b);
+  assert.equal(newerSnapshot(b, a), b);
+  const same = srv([], 7);
+  assert.equal(newerSnapshot(b, same), same, "an equal at wins: a GET after an idle file change");
+  assert.equal(newerSnapshot(b, { items: [] }), b);
+  assert.equal(newerSnapshot(b, null), b);
+});
+
+test("tokensText: ~840, ~1.2k, ~12k; nothing without tokens", () => {
+  assert.equal(tokensText(840), "~840");
+  assert.equal(tokensText(1234), "~1.2k");
+  assert.equal(tokensText(2000), "~2k");
+  assert.equal(tokensText(12_400), "~12k");
+  assert.equal(tokensText(undefined), "");
+});
+
+test("state marks: a group struck only when all forgotten, faded when all stale or forgotten, ✂n its forgotten members", () => {
+  const items = itemsOfTurn(turnOf([file("/w/a.js"), file("/w/b.js"), file("/w/c.js"), file("/x/d.rb"), file("/y/e.rb")]), 0);
+  const states = (map) => overlay(items, srv(Object.entries(map).map(([key, state]) => sItem("file", key, state))));
+  const groupOf = (its) => fold(its, 3).labels[0];
+  let g = groupOf(states({ "/w/a.js": "forgotten", "/w/b.js": "stale" }));
+  assert.deepEqual([g.type, g.cut, g.state], ["dir", 1, "live"]);
+  g = groupOf(states({ "/w/a.js": "forgotten", "/w/b.js": "stale", "/w/c.js": "stale" }));
+  assert.deepEqual([g.cut, g.state], [1, "stale"]);
+  g = groupOf(states({ "/w/a.js": "forgotten", "/w/b.js": "forgotten", "/w/c.js": "forgotten" }));
+  assert.deepEqual([g.cut, g.state], [3, "forgotten"]);
+  assert.equal(groupState([]), "live");
+  // A state change never refolds: the same labels, only their marks.
+  assert.deepEqual(fold(states({ "/w/a.js": "forgotten" }), 3).labels.map((l) => l.id), fold(items, 3).labels.map((l) => l.id));
+  // A leaf carries its item's state; its title and spoken label say it.
+  const leaf = fold(states({ "/x/d.rb": "stale" }), 3).labels[1];
+  assert.deepEqual([leaf.state, leaf.cut], ["stale", 0]);
+  assert.equal(labelTitle(leaf), "/x/d.rb (stale)");
+  assert.match(ariaLabel(fold(states({ "/w/a.js": "forgotten", "/x/d.rb": "stale" }), 3).labels), /w 3 files 1 forgotten, d\.rb stale, e\.rb\./);
+});
+
+test("opsText and the footprint say stale and forgotten in words (colour is never alone)", () => {
+  const [a, b] = overlay(itemsOfTurn(turnOf([file("/p/a.rb"), file("/p/b.rb", "edit")]), 0),
+    srv([sItem("file", "/p/a.rb", "stale"), sItem("file", "/p/b.rb", "forgotten")]));
+  assert.equal(opsText(a), "read · stale");
+  assert.equal(opsText(b), "edited · forgotten");
+  assert.equal(footprint([a, b]).forgotten, 1);
+  assert.equal(footprintText([a, b]), "touched a.rb · b.rb · edited 1 · 1 forgotten");
 });
