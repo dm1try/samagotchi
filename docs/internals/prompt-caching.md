@@ -100,12 +100,13 @@ right-hand column happens.
   an automatic prefix cache) or the host refused `cache_control` with a 400 (no breakpoints for that worker's life).
   [anthropic.md](anthropic.md) has the details.
 - On a Messages host the tools a session reaches but doesn't declare go in `tools` deferred (`defer_loading`), after
-  the declared ones, never marked: Messages keeps them out of the cached prefix (a flat ~93 tokens, whatever their
-  number), so the list may grow mid-session (an MCP server that finished starting, sorted in by name) without a
-  re-read. A find_tools hit's load goes in its own tool_result (`tool_reference` blocks) with the text beside it,
-  rendered the same in every later request (a loaded name stays deferred, a stub once its source is gone), so the
-  request after a load reads the whole prefix and only the new result is fresh. The first request of a session
-  that gains deferred tools (a toolkit leaving tools out, MCP tools) differs from main's bytes once. A plugin's
+  the declared ones, never marked. Their presence is a flat ~93 tokens of the cached prefix, whatever their number
+  or names: a request with none and one with some don't share a prefix (measured 2026-10-22: a full + MCP session
+  read nothing of the prefix main's chi had cached, then read its own), but the list may grow mid-session (an MCP
+  server's `list_changed`, a tool sorted in mid-list) without a re-read. A find_tools hit's load goes in its own
+  tool_result (`tool_reference` blocks) with the text beside it, rendered the same in every later request (a
+  loaded name stays deferred, a stub once its source is gone), so the request after a load reads the whole prefix;
+  the loaded definitions and the new result are the fresh part. A plugin's
   `ctx.load_tools` only appends (a system `tool_addition` after the user message, never a change to `tools`).
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
