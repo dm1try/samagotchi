@@ -181,3 +181,92 @@ test("the server's snapshot out of order: a GET an event overtook, or one behind
   await answer(2, aIs("stale", 9, { running: false }));
   assert.equal(stateOfA(), "stale");
 });
+
+// Steering (P3a): a view whose list is open, the lines it posts recorded.
+function steeringView({ wide = true } = {}) {
+  const infoEl = document.createElement("div");
+  infoEl.innerHTML = '<button class="ws-chip"></button>';
+  document.body.append(infoEl);
+  const sent = [];
+  const win = { innerWidth: wide ? 1200 : 390, innerHeight: 800 };
+  const ws = createWorkingSet({
+    historyEl: document.createElement("div"), infoEl, session: () => "s1",
+    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [] }),
+    sendLine: (line) => { sent.push(line); return Promise.resolve(); },
+  });
+  const turn = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { ...read("lib/b.rb"), status: "ok" }] }] }, 0);
+  ws.seed([{ items: turn, prompt: "first" }]);
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
+  const pop = ws.popover.pop;
+  if (!wide) Object.defineProperty(window, "innerWidth", { value: 390, configurable: true });
+  ws.popover.open(infoEl.querySelector(".ws-chip"));
+  const row = (name) => [...pop.querySelectorAll(".ws-row[data-ws-id]")].find((r) => r.querySelector(".t")?.textContent === name);
+  return { ws, pop, sent, row, win, infoEl };
+}
+
+test("the list's drop posts the session's /working-set line; a dropped row offers undrop", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView();
+  row("a.rb").querySelector('[data-ws="steer"]').click();
+  assert.deepEqual(sent, ["/working-set drop /p/lib/a.rb"]);
+  // Between turns it ran at once: the re-emitted set strikes it.
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "dropped", tokens: 12 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
+  const dropped = row("a.rb");
+  assert.ok(dropped.classList.contains("dropped"));
+  assert.match(dropped.querySelector(".st").textContent, /dropped/);
+  const undrop = dropped.querySelector('[data-op="undrop"]');
+  assert.match(undrop.title, /cache break/);
+  undrop.click();
+  assert.equal(sent.at(-1), "/working-set undrop /p/lib/a.rb");
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("pending ops come from command_queued (any client's), net with their inverse, clear at command_ran; undo and undo all", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView();
+  ws.commandQueued({ command_id: "c1", line: "/working-set drop /p/lib/a.rb /p/lib/b.rb", waits: "turn_end", client_id: "other" });
+  ws.commandQueued({ command_id: "c0", line: "/model x", waits: "turn_end" });
+  const a = row("a.rb");
+  assert.ok(a.classList.contains("pending"));
+  assert.equal(a.querySelector(".ws-pend").textContent, "drops next turn");
+  assert.match(pop.querySelector(".ws-pending").textContent, /^2 changes pending · apply at the next turn's start · undo all/);
+  a.querySelector('[data-ws="steer"]').click();
+  assert.equal(sent.at(-1), "/working-set undrop /p/lib/a.rb", "undo: the inverse, queued after it");
+  ws.commandQueued({ command_id: "c2", line: "/working-set undrop /p/lib/a.rb", waits: "turn_end" });
+  assert.equal(row("a.rb").classList.contains("pending"), false, "a drop then its undrop: nothing pending");
+  assert.match(pop.querySelector(".ws-pending").textContent, /^1 change pending/);
+  pop.querySelector('[data-ws="undo-all"]').click();
+  assert.equal(sent.at(-1), "/working-set undrop /p/lib/b.rb");
+  ws.commandRan({ command_id: "c1" });
+  ws.commandRan({ command_id: "c2" });
+  assert.equal(pop.querySelector(".ws-pending"), null);
+  // A reload's seed drops them: the snapshot's replay brings them again.
+  ws.commandQueued({ command_id: "c3", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
+  assert.equal(ws.pending().size, 1);
+  ws.seed([]);
+  assert.equal(ws.pending().size, 0);
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("a phone's sheet: a tap on a row opens its action strip under it, one at a time", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView({ wide: false });
+  try {
+    assert.ok(pop.classList.contains("sheet"));
+    row("a.rb").querySelector(".st").click();
+    const strip = pop.querySelector(".ws-strip");
+    assert.ok(strip);
+    assert.deepEqual([...strip.querySelectorAll("button")].map((b) => b.textContent), ["drop", "open"]);
+    row("b.rb").querySelector(".st").click();
+    assert.equal(pop.querySelectorAll(".ws-strip").length, 1);
+    assert.ok(row("b.rb").classList.contains("strip-open"));
+    pop.querySelector(".ws-strip [data-ws=\"steer\"]").click();
+    assert.equal(sent.at(-1), "/working-set drop /p/lib/b.rb");
+  } finally {
+    ws.popover.close();
+    infoEl.remove();
+    pop.remove();
+    delete window.innerWidth;
+  }
+});

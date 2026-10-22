@@ -1007,7 +1007,15 @@ turn view ignores it.
   (used, preloaded, muted) and URLs, each with what was done to it (`read ×2`,
   `read, edited`, `preloaded`) and a step tag (`s3`, `t2·s3` in the session's
   scope, `prompt` for a preloaded memory) that goes to the call. A file opens
-  as its row's title does, a URL in a new tab.
+  as its row's title does, a URL in a new tab. A row (on hover or keyboard
+  focus) and a folded group offer `drop`, which runs `/working-set drop` (see
+  `/working-set` above); a dropped row offers `undrop`. Between turns it
+  applies at once; while a turn runs it waits for the turn's end: the row is
+  dashed with `drops next turn` and an `undo`, and the list's foot counts the
+  pending changes (`undo all`), in every tab and after a reload. On a phone a
+  tap on a row opens its actions under it. `drop` is greyed, with why on
+  hover, for an item only edited, a memory only preloaded, or one already
+  forgotten.
 
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.

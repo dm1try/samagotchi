@@ -905,9 +905,10 @@ body.working-set .ts-live{position:relative;padding-right:264px}
 /* The server's states (WorkingSet): stale faded; forgotten struck, faint and faded (a group only when all its members are). The words are the popover's and the titles' (colour is never alone). */
 .ws-item.stale{opacity:.55}
 .ws-item.forgotten{opacity:.5}
-.ws-item.forgotten .t,.ws-row.forgotten .t,.ws-foot .l.forgotten{text-decoration:line-through;color:var(--text-faint)}
+.ws-item.forgotten,.ws-item.dropped{opacity:.5}
+.ws-item.forgotten .t,.ws-row.forgotten .t,.ws-foot .l.forgotten,.ws-item.dropped .t,.ws-row.dropped .t,.ws-foot .l.dropped{text-decoration:line-through;color:var(--text-faint)}
 .ws-row.stale .k,.ws-row.stale .t,.ws-foot .l.stale{opacity:.55}
-.ws-row.forgotten .k,.ws-row.forgotten .t,.ws-foot .l.forgotten{opacity:.5}
+.ws-row.forgotten .k,.ws-row.forgotten .t,.ws-foot .l.forgotten,.ws-row.dropped .k,.ws-row.dropped .t,.ws-foot .l.dropped{opacity:.5}
 .ws-item.enter{animation:ws-in .2s ease}
 @keyframes ws-in{from{opacity:0}}
 .ws-item.leave,.ws-more.leave{opacity:0;pointer-events:none}
@@ -980,6 +981,23 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-row.fresh{background:var(--accent-tint)}
 .ws-row.fresh .k{color:var(--accent)}
 .ws-row.muted{opacity:.6}
+/* Steering (drop / undrop): a row's actions on hover and keyboard focus (always where there is no hover); a pending op's row dashed warn with its pill, the footer counting them. */
+.ws-act{flex:none;display:inline-flex;gap:4px;opacity:0}
+.ws-row:hover .ws-act,.ws-row:focus-within .ws-act,.ws-ghead:hover .ws-act,.ws-ghead:focus-within .ws-act,.ws-row.pending .ws-act{opacity:1}
+@media (hover:none){.ws-act{opacity:1}}
+.ws-act-b{flex:none;padding:0 6px;border:1px solid var(--border-strong);border-radius:4px;background:transparent;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:400;line-height:16px;color:var(--text-muted);cursor:pointer}
+.ws-act-b:hover:not(:disabled){filter:none;color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
+.ws-act-b:disabled{opacity:.5;cursor:default}
+.ws-ghead{display:flex;align-items:center;gap:4px}
+.ws-ghead>.ws-group-head{flex:1;min-width:0}
+.ws-row.pending{border:1px dashed var(--warn-border);background:var(--warn-bg)}
+.ws-row.pending:hover{background:var(--warn-bg)}
+.ws-pend{flex:none;padding:0 6px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;white-space:nowrap}
+.ws-pending{margin-top:8px;padding:4px 8px;border:1px dashed var(--warn-border);border-radius:6px;background:var(--warn-bg);color:var(--warn-text);font-size:11.5px;line-height:20px}
+.ws-pending .ws-act-b{color:var(--warn-text);border-color:var(--warn-border)}
+.ws-popover.sheet .ws-row .ws-act{display:none}
+.ws-strip{display:flex;gap:8px;padding:2px 6px 6px 26px}
+.ws-strip .ws-act-b{padding:0 14px;font-size:12.5px;line-height:28px;border-radius:6px}
 .ws-popover.sheet{border-radius:14px}
 /* A phone's sheet: the name, the scope and × on the first line, the count and the ring under them. */
 .ws-popover.sheet .ctx-pop-close{order:2}

@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ariaLabel, BUDGETS, dirLabel, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
-  newerSnapshot, nextSettle, opsText, overlay, rowEntries, sessionItems, shown, stepRange, stepTag, tokensText, urlLabel, urlOfParams,
+  ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
+  newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
+  stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
 const file = (path, tool = "read", status = "ok", ref = { kind: "file", path }) => ({ tool, status, title: path, ref });
@@ -315,4 +316,48 @@ test("opsText and the footprint say stale and forgotten in words (colour is neve
   assert.equal(opsText(b), "edited · forgotten");
   assert.equal(footprint([a, b]).forgotten, 1);
   assert.equal(footprintText([a, b]), "touched a.rb · b.rb · edited 1 · 1 forgotten");
+});
+
+// ── steering (P3a: drop / undrop) ────────────────────────────────────────
+
+test("steer lines: the words name a file by its path, a memory as memory:NAME, a cut URL row by the server's URL", () => {
+  const file = { kind: "file", key: "/p/lib/a.rb", ops: ["read"] };
+  const memory = { kind: "memory", key: "style", ops: ["read"] };
+  const url = { kind: "url", key: "https://x.dev/aaa…", serverKey: "https://x.dev/aaa/full", ops: ["read"] };
+  assert.equal(steerLine("drop", [file, memory, url]), "/working-set drop /p/lib/a.rb memory:style https://x.dev/aaa/full");
+  assert.deepEqual(parseSteerLine("/working-set drop /p/lib/a.rb memory:style https://x.dev/aaa/full"),
+    { op: "drop", ids: ["file:/p/lib/a.rb", "memory:style", "url:https://x.dev/aaa/full"] });
+  assert.deepEqual([file, memory, url].map(steerId), ["file:/p/lib/a.rb", "memory:style", "url:https://x.dev/aaa/full"]);
+  assert.equal(parseSteerLine("/working-set"), null);
+  assert.equal(parseSteerLine("/working-set pin /p/a.rb"), null);
+  assert.equal(parseSteerLine("/model x"), null);
+});
+
+test("pendingSteers: queued lines in order, an op then its inverse netting to nothing", () => {
+  const pending = pendingSteers(["/working-set drop /p/a.rb /p/b.rb", "/model x", "/working-set undrop /p/a.rb", "/working-set undrop memory:m"]);
+  assert.deepEqual([...pending], [["file:/p/b.rb", "drop"], ["memory:m", "undrop"]]);
+  assert.equal(pendingSteers([]).size, 0);
+});
+
+test("dropRefusal: a read item drops; edit-only, preloaded-only, forgotten ones say why; muted, dropped, unknown have no drop", () => {
+  const item = (extra) => ({ kind: "file", key: "/p/a.rb", ops: ["read"], state: "live", tokens: 40, ...extra });
+  assert.equal(dropRefusal(item()), "");
+  assert.equal(dropRefusal(item({ state: "stale" })), "");
+  assert.match(dropRefusal(item({ ops: ["edit"], tokens: 0 })), /^only edited/);
+  assert.match(dropRefusal(item({ state: "forgotten" })), /^forgotten/);
+  assert.match(dropRefusal({ kind: "memory", key: "m", ops: [], preloaded: true, state: "live" }), /^preloaded/);
+  assert.equal(dropRefusal(item({ tokens: undefined })), null);
+  assert.equal(dropRefusal(item({ state: "dropped" })), null);
+  assert.equal(dropRefusal(item({ muted: true })), null);
+});
+
+test("the server's dropped state: overlaid, struck in a group (dropped when all are), counted apart in the footprint", () => {
+  const items = itemsOfTurn(turnOf([file("/w/lib/a.rb"), file("/w/lib/b.rb")]), 0);
+  const lit = overlay(items, { items: [{ kind: "file", key: "/w/lib/a.rb", state: "dropped", tokens: 12 }, { kind: "file", key: "/w/lib/b.rb", state: "forgotten", tokens: 3 }], at: 4 });
+  assert.deepEqual(lit.map((i) => i.state), ["dropped", "forgotten"]);
+  assert.equal(groupState([lit[0]]), "dropped");
+  assert.equal(groupState(lit), "forgotten");
+  assert.match(footprintText(lit), /1 forgotten · 1 dropped$/);
+  assert.match(labelTitle(fold(lit, 1).labels[0]), /a\.rb \(dropped\)/);
+  assert.ok(STATES.includes("dropped"));
 });

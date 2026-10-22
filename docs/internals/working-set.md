@@ -191,6 +191,13 @@ passes `working_set_updated` to it, and does nothing when the flag is off. A new
 A state is the item's state now, not when its turn ran. A state change never refolds and never moves a line: the
 rail's line key carries the label's state and its forgotten count, which are patched in place.
 
+**Steering from the page.** The list's `drop`/`undrop` (and `undo`, `undo all`) post `/working-set` lines on the
+command route (`createWorkingSet`'s `sendLine`). Pending ops are the queued lines (`command_queued` with `waits:
+"turn_end"`, any client's, and the snapshot's `queued_commands` replay after a reload), parsed and netted by
+`working_set.js pendingSteers` until each one's `command_ran`; a seed clears them (the replay brings them back).
+A steer line names a file by its absolute path, a memory as `memory:NAME`, a URL by the server's full key. `dropped`
+is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
+
 **Looks** (design spec §3, §5): a stale line is faded (`opacity: .55`); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are
 forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`

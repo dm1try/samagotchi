@@ -146,6 +146,7 @@ test("llmEditLine: a reloaded row's ✂ mark for each kind of LLM context edit",
   assert.equal(llmEditLine({ kind: "forget", note: "ls shows 3 files" }), "✂ forgotten: ls shows 3 files");
   assert.equal(llmEditLine({ kind: "forget", with: "t41", kept: "12-40" }), "✂ forgotten with t41 · lines 12-40 kept");
   assert.equal(llmEditLine({ kind: "forget", staged: true, note: "x" }), "✂ forget staged");
+  assert.equal(llmEditLine({ kind: "drop", by: "user", tokens: 1002 }), "✂ dropped by the user · ~1.0k tokens");
   assert.equal(llmEditLine(null), "");
   assert.equal(llmEditLine({ kind: "file" }), "");
 });

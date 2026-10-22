@@ -497,6 +497,40 @@ test.describe("the working set", () => {
     }
   });
 
+  // Steering (P3a): a drop from the list between turns runs at once (the
+  // session's /working-set command): the row is struck `dropped`, and the next
+  // turn's first request sends the stub and the turn-start note instead of the
+  // README's text (the fake host's recorded request).
+  test("a drop from the list between turns: struck dropped, and the next request sends the stub", async ({ page, script, chi }) => {
+    test.setTimeout(60_000);
+    script("working_set");
+    await send(page, "Read the README and the style note.");
+    await expect(stageEl(page)).toBeVisible();
+    await page.mouse.move(0, 0);
+    await handedOff(page, 1);
+    await page.locator("#infoText .ws-chip").click();
+    const pop = page.locator("#workingSetPopover");
+    const row = pop.locator(".ws-row.file", { hasText: "README.md" });
+    await row.hover();
+    await row.locator('[data-ws="steer"][data-op="drop"]').click();
+    await expect(pop.locator(".ws-row.file.dropped", { hasText: "README.md" })).toBeVisible();
+    await expect(pop.locator(".ws-row.file", { hasText: "README.md" }).locator(".st")).toContainText("dropped");
+    await expect(page.locator("#history .bubble.command").last()).toContainText("dropped README.md");
+    await pop.locator(".ctx-pop-close").click();
+
+    const log = path.join(chi.dirs.fake, "requests.log");
+    const before = fs.readFileSync(log, "utf8").split("\n").length;
+    await send(page, "Again, after the drop.");
+    await expect(stageEl(page)).toBeVisible();
+    await page.mouse.move(0, 0);
+    await handedOff(page, 2);
+    const first = fs.readFileSync(log, "utf8").split("\n").slice(before - 1).filter(Boolean).map((l) => JSON.parse(l))
+      .find((r) => r.p.endsWith("/chat/completions") && r.body.includes("Again, after the drop."));
+    expect(first.body).toContain("(dropped by the user)");
+    expect(first.body).toContain("[WORKING SET: since your last turn the user dropped README.md");
+    expect(first.body).not.toContain("A file the scripted turns read.");
+  });
+
   // The server's projection (WorkingSet): a file a shell command changed after
   // the read is stale at the next request; its rail line fades in place (no
   // refold, no line moved), its list row says so, and after a reload (the
