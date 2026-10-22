@@ -78,7 +78,7 @@ module Samagotchi
           check_requires_chi(manifest)
           check_trust(manifest)
           check_clash(manifest)
-          check_install(manifest) unless missing || placeholders?
+          check_install(manifest) unless missing || placeholders? || manifest.session_settings_clash
           check_boundary(manifest)
           check_tests
         end
@@ -245,6 +245,10 @@ module Samagotchi
       # Before the sandbox: the user's installed bundles and chi's shipped ones.
       def check_clash(manifest)
         name = manifest.name
+        # A session setting --set would read as chi's own: the install refuses it.
+        if (clash = manifest.session_settings_clash)
+          add(:error, :clash, "manifest.yml", clash, line: manifest_line("session_settings"))
+        end
         shipped = MemoryBundle::Listing.shipped.map(&:name) + [MemoryBundle::SystemBundle::BUNDLE_NAME]
         if shipped.include?(name) && !shipped?
           add(:warn, :clash, "manifest.yml", "chi ships a bundle named #{name}; installing this one replaces chi's",

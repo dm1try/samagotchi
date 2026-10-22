@@ -259,6 +259,8 @@ module Samagotchi
         @source_owned = prepared.owned
         @source_commit = prepared.commit
         @manifest = Manifest.read(dir: @bundle_dir)
+        clash = @manifest.session_settings_clash
+        raise InstallError, clash if clash
       rescue SourceNormalizer::UnknownSourceError => e
         raise InstallError, "Source normalization failed: #{e.message}"
       rescue Manifest::ValidationError => e

@@ -187,6 +187,13 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     expect(@status).to eq(0)
   end
 
+  it "clash: a session setting --set would read as chi's own is an error, in the install's words (exit 1)" do
+    edit("manifest.yml") { |text| text.sub("name: check-clean", "name: recap") + "session_settings: [sentences]\n" }
+    expect(findings(:error)).to eq(["error clash manifest.yml:#{File.read(manifest).lines.size}: " \
+                                    "#{Samagotchi::SessionConfig.clash("recap", ["sentences"])}"])
+    expect(@status).to eq(1)
+  end
+
   it "clash: a same-named bundle installed whose record can't be read is a warning, not skipped" do
     with_env("XDG_CONFIG_HOME" => File.join(tmp, "user-config")) do
       record = File.join(Samagotchi::MemoryPaths.bundles_dir, "check-clean", "manifest.json")

@@ -93,6 +93,17 @@ module Samagotchi
         @session_setting_types = self.class.parse_session_setting_types(raw["session_settings"])
       end
 
+      # Why the install refuses this bundle's session_settings: a key whose
+      # NAME.KEY is chi's own session setting (SessionConfig.clash, the
+      # words chi bundle check reports too), nil when none clashes.
+      # @return [String, nil]
+      def session_settings_clash
+        return nil if @session_settings.empty?
+
+        require_relative "../session_config"
+        SessionConfig.clash(@name, @session_settings)
+      end
+
       # A profile: it installs the bundles in includes instead of files.
       def meta?
         !@includes.empty?

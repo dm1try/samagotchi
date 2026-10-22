@@ -109,6 +109,19 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(YAML.load_file(File.join(dir, "manifest.yml"))["session_settings"]).to eq("cap" => "number", "free" => "any")
     end
 
+    it "refuses at install a session setting whose NAME.KEY is chi's own (--set would set chi's), and records nothing" do
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path).sub("name: plug", "name: recap") + "session_settings: [enabled, extra]\n")
+      manifest = described_class.read(dir: src)
+      expect(manifest.session_settings_clash).to eq(Samagotchi::SessionConfig.clash("recap", %w[enabled extra]))
+      installer = Samagotchi::MemoryBundle::Installer.new(source: src, name: "recap", scope: "system", strict: true)
+      expect { installer.run }
+        .to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, /\Asession_settings: recap\.enabled is chi's own session setting/)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "recap").record).to be_nil
+      expect(described_class.read(dir: write_source).session_settings_clash).to be_nil
+    end
+
     it "refuses session_settings: that isn't a list of setting names or a mapping of them to types" do
       ["session_settings: cap\n", "session_settings: [a.b]\n", "session_settings: [{cap: 1}]\n",
        "session_settings: {a.b: number}\n", "session_settings: {cap: 1}\n"].each do |line|
