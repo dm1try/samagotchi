@@ -92,7 +92,12 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
   (`@kernel.turn_settings.llm_context`). Both loops start a generation after `apply_llm_context!`, so the set is
   what that request sends;
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
-  turn-end apply has run by then).
+  turn-end apply has run by then);
+- between turns, from `Engine#announce_working_set` (the session's messages, under the event lock): announced
+  (`working_set_updated` is in `ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
+  `holding_announcements`), under the *next* turn's strategy (`SessionModelSettings#turn_llm_context`, as the
+  turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
+  turn runs, the strategy is always the turn's.
 
 It is emitted only when the set differs from the last one emitted for the session (kept per session id), and never
 while the set is empty, so a tool-free turn on a fresh session emits nothing. One exception: when the last one had

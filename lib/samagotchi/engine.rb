@@ -786,7 +786,7 @@ module Samagotchi
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
                              command_queued command_ran context_added card hook_notice guardrail_warning
-                             plugin_init_started plugin_init_finished].freeze
+                             plugin_init_started plugin_init_finished working_set_updated].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -805,6 +805,16 @@ module Samagotchi
     # delivered meanwhile, and events the block emits keep their order.
     def synchronize_events(&)
       @session_observer.synchronize(&)
+    end
+
+    # The working set's :working_set_updated, announced between turns
+    # (after a command changed what the next request sends), when it
+    # differs from the last one emitted (#emit_working_set). Under the
+    # event lock, so it is ordered with the change's own events.
+    def announce_working_set(session = @session)
+      return unless session
+
+      synchronize_events { emit_working_set(nil, session, session.messages) }
     end
 
     # Add a context note to the session's conversation, between turns: a
@@ -2855,10 +2865,13 @@ module Samagotchi
     # rollback removed the tool calls), so a tool-free turn emits none
     # and the next empty request sends nothing more. The web overlays it
     # on the rows' set; other UIs ignore it.
+    #
+    # Between turns (#announce_working_set: no +on_event+) it is
+    # announced, under the next turn's strategy.
     def emit_working_set(on_event, session, conversation)
       return unless session && conversation
 
-      llm_context = @kernel.respond_to?(:turn_settings) ? @kernel.turn_settings&.llm_context : nil
+      llm_context = working_set_llm_context
       snapshot = WorkingSet.build(conversation, cwd: session.working_directory,
                                                 strategy: llm_context&.strategy || LLMContextView::NONE)
 
@@ -2871,11 +2884,25 @@ module Samagotchi
       end
 
       @working_set_emitted = [session.id, items]
-      emit_event(on_event, { type: :working_set_updated, items: items, at: snapshot.at })
+      event = { type: :working_set_updated, items: items, at: snapshot.at }
+      on_event ? emit_event(on_event, event) : announce_or_hold(event)
     rescue StandardError => e
       Log.warn(:turn, "working_set_failed", error: e.class.name, msg: e.message.to_s[0, 200])
     end
     private :emit_working_set
+
+    # The strategy the set is built under: the running turn's
+    # (TurnSettings#llm_context: what its requests send); between turns
+    # the next turn's (as #warm_up_next_turn: the turn's settings keep the
+    # last turn's, stale after a /llm-context or /model change), the last
+    # turn's when it can't be resolved.
+    def working_set_llm_context
+      turn = @kernel.respond_to?(:turn_settings) ? @kernel.turn_settings&.llm_context : nil
+      return turn if turn_running?
+
+      @model_settings.turn_llm_context || turn
+    end
+    private :working_set_llm_context
 
     # A :generation_completed with the generation's decode speed (`speed:`
     # {decode_tps:, source:}, nil without one), the session's running

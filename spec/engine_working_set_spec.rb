@@ -127,4 +127,48 @@ RSpec.describe Samagotchi::Engine, "working set event" do
       expect(empties.size).to eq(1)
     end
   end
+
+  describe "between turns (#announce_working_set)" do
+    let(:announced) { [] }
+
+    before do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      engine.session = session
+      run_turn
+      engine.subscribe(observer: ->(e) { announced << e if e[:type] == :working_set_updated })
+    end
+
+    def forget_the_read!
+      entry = session.messages.find { |m| m[:role].to_s == "tool_response" }
+      now = "2026-10-23T10:00:00.000Z"
+      entry[:edits] = { entry[:tool_ids].first => { "kind" => "forget", "note" => "notes", "by" => "model",
+                                                    "staged_at" => now, "applied_at" => now } }
+    end
+
+    it "announces nothing when the set didn't change since the last one emitted" do
+      engine.announce_working_set
+
+      expect(announced).to be_empty
+    end
+
+    it "announces the set under the next turn's strategy, not the last turn's, outside any turn's sink" do
+      forget_the_read!
+      engine.announce_working_set
+      expect(announced).to be_empty # the last turn's strategy is none: still live, no change
+
+      session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:forget])
+      engine.announce_working_set
+
+      expect(kernel.turn_settings.llm_context.strategy).to eq(:none)
+      expect(announced.size).to eq(1)
+      expect(announced.first[:items]).to match([include(key: path, state: "forgotten")])
+      expect(announced.first[:event_seq]).to be_a(Integer)
+      expect(updates.size).to eq(1)
+    end
+
+    it "is announceable" do
+      expect(described_class::ANNOUNCEABLE_EVENTS).to include(:working_set_updated)
+    end
+  end
 end
