@@ -90,6 +90,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - LLM context benchmarks (the offline replay, the live runs) → `docs/internals/llm-context-bench.md`, `docs/internals/llm-context-live.md`
 - Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
 - Attached context (`chi context`, refreshed outside text) → `docs/context.md`
+- The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`

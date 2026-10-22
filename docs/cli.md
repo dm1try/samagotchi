@@ -992,6 +992,25 @@ turn view ignores it.
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.
 
+What the model still has of each item comes from chi, not the page, so it is
+the same live, after a reload and in every tab:
+- **stale** (faded): the file changed since the model last read, edited or
+  wrote it, whatever changed it (a later `execute` such as `sed` or `git
+  checkout`, your editor, another session). The model's own successful edit or
+  write doesn't make a file stale. Chi checks at each request and when you
+  open the list, so a file changed while the session sat idle shows stale on
+  opening it. A turn saved before chi kept that record shows its files live.
+- **forgotten** (struck): nothing of the item's content is still sent to the
+  model under the session's current LLM context strategy (`forget_outputs`
+  forgot every read of it; see
+  [the forget layer](configuration.md#llm-context-the-forget-layer)). Lines a
+  forget kept count as still sent. Under `/llm-context strategy none` nothing
+  is cut, so a forgotten item is live again from the next request.
+
+The list says `stale` or `forgotten` in words with each row, and how many
+tokens its content costs as sent (`~1.2k`); a folded group shows its forgotten
+members as `✂n`, and a footprint adds `n forgotten`.
+
 ### Web annotate presets
 
 Selecting text in an answer, a thinking block, a tool row or one of your

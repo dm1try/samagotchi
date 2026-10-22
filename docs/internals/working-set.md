@@ -1,0 +1,130 @@
+# The working set: what the model really has
+
+The stage view's working set (`web.working_set`, [cli.md](../cli.md#the-working-set)) shows the files, memories
+and URLs a session's tool runs brought into the model's context. The page builds the set itself from its tool rows
+(`working_set.js`, phase 1). The server says what the model still has of each item: **live**, **stale** (a file
+changed since the model last saw it) or **forgotten** (nothing of it is still sent), and its size in tokens. This
+page covers the server's side and how the page overlays it.
+
+## Stamps: `tool_stamps`
+
+`ToolRunner#run` stamps an ok `read`, `edit` or `write` (`result[:activity][:status] == "ok"`) with its file right
+after the call: `ToolRun#stamp`, `{path:, mtime_ns:, size:}`. The path is the one `FileRef.for` gives (the call's
+path against the session's folder, `File.expand_path`, no realpath). A stat that fails, or that isn't a file's (a
+directory), gives no stamp; nor does any other tool.
+
+Both `ToolResponse` shapes save the stamps as `tool_stamps`, one per run, read by the run's place
+(`ToolIds::Ref#run`):
+- `ToolResponse.joined` (the native loop's batch entry): `runs.map(&:stamp)`, only when one is non-nil, like
+  `tool_refs`.
+- `ToolResponse.single` (the chat loop's entry for one call): `[stamp]`, a one-stamp array like its `tool_ids`.
+
+`tool_stamps` is in `ToolResponse::SAVED_KEYS`, so `ChatLoop#plain` keeps it and no prompt or wire ever renders it
+(the exclusion specs: `spec/llm/chat_loop_spec.rb` "a file run's stamp", `spec/kernel_loop_spec.rb`). After a
+reload the stamp hashes have string keys; the projection reads both. A session saved before the stamps has none, so
+its files are never stale.
+
+The model's own successful `edit` or `write` stamps the file after it ran, so it never makes the file stale. Anything
+else that changes it does: a later `execute` (`sed`, `git checkout`), the user's editor, another session. A failed
+edit that changed the file anyway leaves the earlier stamp, so the file shows stale. On a filesystem with 1 s mtimes a
+same-size edit in the same second goes unseen (APFS keeps nanoseconds).
+
+## The projection: `WorkingSet.build`
+
+`Samagotchi::WorkingSet.build(conversation, cwd:, strategy:, stat: File.method(:stat))` (`lib/samagotchi/working_set.rb`)
+is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's size in entries, the web's ordering
+key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state`, `tokens`, `ops`, `count` and
+`first_id` (the first run's ToolIds id).
+
+**Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what
+`LLMContextView.new(strategy:).messages(conversation)` sends (stubs keep their `[name]` lead, so they still pair).
+The two are matched by `ref.id`. The calls are the dispatched ones (`Tools::BuiltinCalls.build`), so aliases resolve
+as the loops resolve them. A run that doesn't pair (a "ran as:" corrected call, an output holding the run separator)
+is left out. So is a failed run (`LLMContextStale`'s rule: an `Error` after the `[name]` lead; a denied call's
+`Error:` too) and an interrupted one (`ToolResponse.interrupted_text?`).
+
+**Items** follow the page's `rowEntries`:
+- `read`, `edit` and `write` give a file, keyed by its `FileRef` path; `read` adds op `read`, `edit` and `write`
+  add op `edit`.
+- `memory_read` gives one memory per name (`Tools::MemoryRead.parse_names`; an empty name, the index listing, gives
+  none). A partial read ("a,b" where b is missing: the found bodies, then `Error: memory not found: b`) keeps the
+  found names only, and its tokens are split evenly among them.
+- `memory_write` gives the memory `call[:path]`, op `write`. A `remove: true` write stays in the set.
+- `web_fetch` gives the URL with its whitespace collapsed.
+
+**Tokens and forgotten.** Only content outputs (`read`, `memory_read`, `web_fetch`) carry tokens and decide
+forgotten. Their tokens are the sent text's length over `TokenUsage::CHARS_PER_TOKEN`, so a stub costs what the stub
+costs and kept lines count themselves. An image read counts its text only. `edit`, `write` and `memory_write`
+outputs are short confirmations whose content sits in the call's arguments, which no strategy cuts: they add ops
+and stamps, never tokens, and they never make an item forgotten.
+
+An item is **forgotten** when it has content outputs and none of them is still sent under the session's *current*
+strategy. A content output is still sent when:
+- its sent text equals the stored one, or the stored one with the forget layer's `[#id] ` after its lead;
+- no applied edit of a layer the strategy runs is saved on it (a staged edit doesn't count; an edit saved under a
+  strategy the session has since left, such as `/llm-context strategy none`, isn't sent, so the output is live
+  again);
+- it is a forget that keeps lines (`forget_outputs keep:`);
+- it is a stale stub an edit made ("superseded by a later edit", `llm_context.stale_edits`): the model wrote the
+  file, so what it has of it is current.
+
+A stale stub of an old read that a newer read superseded never strikes the file: the newer read is still sent. A file
+only edited or written is never forgotten.
+
+**Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
+or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
+
+**Cost.** Two `paired_runs` walks, one view build and one stat per file item. A 500-message session builds in well
+under 20 ms (spec'd in `spec/working_set_spec.rb`).
+
+## Delivery
+
+**The event.** The Engine emits `{type: :working_set_updated, items:, at:}` (`Engine#emit_working_set`):
+- after each `:generation_started`, in `build_stream_event_handler`, from the running turn's conversation
+  (`Engine#live_conversation`, read on the turn's thread) under the turn's strategy
+  (`@kernel.turn_settings.llm_context`). Both loops start a generation after `apply_llm_context!`, so the set is
+  what that request sends;
+- once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
+  turn-end apply has run by then).
+
+It is emitted only when the set differs from the last one emitted for the session (kept per session id), and never
+while the set is empty, so a tool-free turn on a fresh session emits nothing. It goes out whatever the web's flag;
+the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
+
+**The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`.
+With a live worker it builds from the worker's snapshot messages (as `handle_show` reads them, keys symbolized) and
+the worker's llm ctx chip. Without one it builds from the session file and its saved chip
+(`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. A worker's snapshot holds the
+session's messages, not the running turn's, so a GET during a turn answers an older `at` than that turn's events,
+and the page keeps the events' set.
+
+## The page's overlay
+
+The page keeps its row-derived items and their `at` ordinals (the step tags' jump path), and overlays the server's
+`state` and `tokens` by key (`working_set.js overlay`):
+- files by absolute path (the row's `ref.path`; a title fallback won't match, so it stays live);
+- memories by name;
+- URLs by the row's key, which is its params preview with whitespace collapsed, cut at 80 characters with a "…".
+  The "…" is stripped and the rest is matched as a prefix of the server's URL.
+
+An item the server doesn't know yet (a running call) stays live. Known mismatch: live rows' refs resolve against the
+worker's `Dir.pwd` (a real path), the server against `working_directory`, so a session under `/tmp` can miss
+(`/private/tmp`).
+
+`working_set_view.js` keeps one server snapshot per session and takes a new one only when its `at` is at least the
+kept one's (`newerSnapshot`): a GET that answers after a newer event never wins. The page asks for it when it seeds a
+session's set (load, resync) and when the list opens (a file changed while the session sat idle). The stream handler
+passes `working_set_updated` to it, and does nothing when the flag is off. A new snapshot redraws:
+- the session bar's chip and the open list;
+- the footprints, in place (`refreshFootprints`, the same node; a `data-ws-sig` of the items' states skips an
+  unchanged one);
+- the rail (`onServer`, the stage's `scheduleRefresh`).
+
+A state is the item's state now, not when its turn ran. A state change never refolds and never moves a line: the
+rail's line key carries the label's state and its forgotten count, which are patched in place.
+
+**Looks** (design spec §3, §5): a stale line is faded (`opacity: .55`); a forgotten one is struck in `--text-faint`
+at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are
+forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`
+in words (colour is never alone) and shows `~1.2k` tokens per row (`tokensText`). A footprint adds `n forgotten`,
+struck. Titles add `(stale)` or `(forgotten)` per member.
