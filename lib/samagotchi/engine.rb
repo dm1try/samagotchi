@@ -2850,18 +2850,28 @@ module Samagotchi
     # stream handler's :generation_started, from the running turn's
     # conversation) and at turn end (#end_turn, from the session's kept
     # messages). Only when it differs from the last one emitted for this
-    # session, and never while it is empty, so a tool-free turn emits
-    # none. The web overlays it on the rows' set; other UIs ignore it.
+    # session, and never while it is empty — except one empty event,
+    # remembered, when the last one for this session had items (a
+    # rollback removed the tool calls), so a tool-free turn emits none
+    # and the next empty request sends nothing more. The web overlays it
+    # on the rows' set; other UIs ignore it.
     def emit_working_set(on_event, session, conversation)
       return unless session && conversation
 
       llm_context = @kernel.respond_to?(:turn_settings) ? @kernel.turn_settings&.llm_context : nil
       snapshot = WorkingSet.build(conversation, cwd: session.working_directory,
                                                 strategy: llm_context&.strategy || LLMContextView::NONE)
-      return if snapshot.empty?
 
       items = snapshot.items.map(&:to_h)
-      return if @working_set_emitted == [session.id, items]
+      last = @working_set_emitted
+      if items.empty?
+        # One empty event only: when the last one for this session had
+        # items (a rollback emptied the set), so the web drops the stale
+        # ones. It is remembered, so the next empty request sends none.
+        return unless last && last[0] == session.id && !last[1].empty?
+      elsif last == [session.id, items]
+        return
+      end
 
       @working_set_emitted = [session.id, items]
       emit_event(on_event, { type: :working_set_updated, items: items, at: snapshot.at })

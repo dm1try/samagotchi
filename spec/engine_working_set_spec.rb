@@ -9,7 +9,8 @@ require_relative "support/fake_provider_server"
 
 # The working set's :working_set_updated event (WorkingSet), through the real
 # Engine and KernelLoop over HTTP: at each request after a tool ran and at
-# turn end, only when the set changed, never while it is empty.
+# turn end, only when the set changed, never while it is empty — except one
+# empty event when the set was emptied (a rollback removed the tool calls).
 RSpec.describe Samagotchi::Engine, "working set event" do
   around do |example|
     original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
@@ -87,5 +88,43 @@ RSpec.describe Samagotchi::Engine, "working set event" do
     run_turn
 
     expect(updates).to be_empty
+  end
+
+  describe "a set that was non-empty and is emptied (a rollback removed the tool calls)" do
+    before do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      engine.session = session
+      @checkpoint = engine.messages_checkpoint
+      run_turn
+      expect(updates.size).to eq(1)
+      expect(updates.first[:items]).not_to be_empty
+    end
+
+    it "sends exactly one empty event, at the next request" do
+      engine.rollback_to(@checkpoint)
+      stream("Hello.")
+
+      run_turn("again")
+
+      empties = updates.select { |u| u[:items].empty? }
+      expect(updates.size).to eq(2)
+      expect(empties.size).to eq(1)
+      expect(empties.first[:items]).to eq([])
+      expect(empties.first[:at]).to be_a(Integer)
+    end
+
+    it "sends nothing for a second empty request after the empty one" do
+      engine.rollback_to(@checkpoint)
+      stream("Hello.")
+      run_turn("again")
+
+      stream("Hi again.")
+      run_turn("and again")
+
+      empties = updates.select { |u| u[:items].empty? }
+      expect(updates.size).to eq(2)
+      expect(empties.size).to eq(1)
+    end
   end
 end
