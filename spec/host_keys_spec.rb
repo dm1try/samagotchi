@@ -76,18 +76,29 @@ end
 RSpec.describe Samagotchi::HostKeys::Keychain do
   let(:dir) { Dir.mktmpdir("host-keys-spec") }
 
-  after { FileUtils.rm_rf(dir) }
-
-  # A fake `security`: records its argv, then runs +body+.
-  def security(body)
-    path = File.join(dir, "security")
-    File.write(path, "#!/bin/sh\necho \"$@\" > #{dir}/argv\n#{body}\n")
-    File.chmod(0o755, path)
-    path
+  # The fake runs from the env it inherits; restore whatever was there.
+  around do |example|
+    was = ENV.fetch("FAKE_SECURITY_DIR", nil)
+    ENV["FAKE_SECURITY_DIR"] = dir
+    example.run
+  ensure
+    was ? ENV["FAKE_SECURITY_DIR"] = was : ENV.delete("FAKE_SECURITY_DIR")
+    FileUtils.rm_rf(dir)
   end
 
-  def keychain(body, **options)
-    described_class.new(security: security(body), host_os: "darwin24", **options)
+  # The checked-in fake `security` (spec/fixtures/host_keys/security): it
+  # records its argv, then runs +body+. Never a script written here: a
+  # just-written executable's first exec waits on macOS's malware scan,
+  # which a busy suite has seen outlast the 5 s deadline (a nil read).
+  def security(body)
+    File.write(File.join(dir, "body.sh"), "#{body}\n")
+    File.expand_path("fixtures/host_keys/security", __dir__)
+  end
+
+  # A roomy deadline unless the example tests it: a busy machine's exec is
+  # not what these examples are about.
+  def keychain(body, timeout: 30)
+    described_class.new(security: security(body), host_os: "darwin24", timeout: timeout)
   end
 
   it "reads service chi, account VAR, the password alone, and drops the newline" do

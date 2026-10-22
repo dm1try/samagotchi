@@ -1,0 +1,7 @@
+#!/bin/sh
+# A fake /usr/bin/security for spec/host_keys_spec.rb: records its argv,
+# then runs the example's body.sh. Checked in (not written per example):
+# macOS scans a just-written executable at its first exec, which under a
+# busy run can outlast Keychain's 5 s deadline; a body read by sh is not.
+echo "$@" > "$FAKE_SECURITY_DIR/argv"
+. "$FAKE_SECURITY_DIR/body.sh"
