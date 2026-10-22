@@ -227,7 +227,7 @@ module Samagotchi
       @turn_flow = TurnFlow.new(engine: @engine)
       # A recap written while a continue offer waits says the turn stopped
       # unfinished. (Answering at the prompt is typing: activity already.)
-      @engine.recap&.awaiting_continue = -> { @turn_flow.awaiting_continue? }
+      @engine.recap_awaiting_continue = -> { @turn_flow.awaiting_continue? }
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow, default_model: @default_model_name,
                                       registry: @engine.command_registry)
       # Runtime --model flag or resumed session: switch the Engine (client,

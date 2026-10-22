@@ -23,6 +23,28 @@ RSpec.describe Samagotchi::IdleScheduler do
     end
   end
 
+  describe "#replace_job" do
+    let(:job_c) { double("JobC", tick: nil) }
+
+    it "swaps a job in place, adds one for a nil old and drops one for a nil new" do
+      expect(scheduler.replace_job(job_a, job_c).jobs).to eq([job_c, job_b])
+      expect(scheduler.replace_job(job_c, nil).jobs).to eq([job_b])
+      expect(scheduler.replace_job(nil, job_a).jobs).to eq([job_b, job_a])
+      expect(scheduler.replace_job(nil, nil).jobs).to eq([job_b, job_a])
+    end
+
+    it "keeps the running thread, which ticks the new job" do
+      scheduler.start
+      thread = scheduler.instance_variable_get(:@thread)
+      scheduler.replace_job(job_a, job_c)
+      scheduler.tick
+      expect(job_c).to have_received(:tick)
+      expect(scheduler.instance_variable_get(:@thread)).to equal(thread)
+    ensure
+      scheduler.stop
+    end
+  end
+
   describe "#start" do
     it "spawns a single background thread" do
       scheduler.start

@@ -7,8 +7,10 @@ require_relative "idle_target"
 require_relative "recap_store"
 
 module Samagotchi
-  # Builds (or disables) an Engine's idle recap job from the `recap:` kwarg
-  # and the Config registry. Init-only: the Engine keeps the job it returns.
+  # Builds (or disables) an Engine's idle recap job from the `recap:` kwarg,
+  # the session's own settings and the Config registry. The Engine builds
+  # one at start, and again when it binds a session whose own recap values
+  # differ (Engine#session=).
   module RecapSetup
     # Build (or disable) the idle recap job. On by default: with no recap
     # host or model configured it asks the session's current model on its
@@ -18,9 +20,10 @@ module Samagotchi
     # --model goes; an incomplete one warns and leaves recap off.
     #
     # Single precedence path: explicit `recap:` kwarg > Config registry
-    # (CLI > ENV > file > default). An explicit disable (`recap: false` as
-    # the kwarg or in the config file, `recap: {enabled: false}`, or
-    # SAMAGOTCHI_RECAP_ENABLED=false) always wins.
+    # (session > CLI > ENV > file > default). An explicit disable
+    # (`recap: false` as the kwarg or in the config file, `recap: {enabled:
+    # false}`, or SAMAGOTCHI_RECAP_ENABLED=false) wins, but over a session's
+    # own recap.enabled (chi --set recap.enabled=true) only as the kwarg.
     #
     # @param recap          [Hash, false, nil] the Engine's `recap:` kwarg
     # @param engine         [Engine] the recap job's engine
@@ -28,13 +31,22 @@ module Samagotchi
     # @param session_target [#call] → the session's current model as a recap target
     # @param session_id     [#call] → String, nil
     # @param state_dir      [#call] → String
+    # @param session_config [#call] → the session's own core settings
+    #   (SessionConfig::Settings#core), read once here
     # @return [IdleRecap, nil]
-    def self.build(recap, engine:, host_registry:, session_target:, session_id:, state_dir:)
+    def self.build(recap, engine:, host_registry:, session_target:, session_id:, state_dir:, session_config: -> { {} })
       return nil if recap == false
-      # The REPL and a worker pass nothing: the config is read here alone
-      # (a scalar `recap: false` is only seen this way).
-      return nil if recap.nil? && ConfigFile.recap_config == false
-      return nil if Samagotchi::Config.get("recap.enabled") == false
+
+      session = session_config.call || {}
+      # The session's own recap.enabled replaces both checks below.
+      if session.key?("recap.enabled")
+        return nil unless session["recap.enabled"]
+      else
+        # The REPL and a worker pass nothing: the config is read here alone
+        # (a scalar `recap: false` is only seen this way).
+        return nil if recap.nil? && ConfigFile.recap_config == false
+        return nil if Samagotchi::Config.get("recap.enabled") == false
+      end
 
       # An explicit kwarg (a spec, an embedder) over the registry.
       kwarg_config = recap.is_a?(Hash) ? recap : {}
@@ -64,7 +76,7 @@ module Samagotchi
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
         timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float),
-        sentences: recap_sentences(string_config(kwarg_config, :sentences) || registry_string("recap.sentences")),
+        sentences: recap_sentences(string_config(kwarg_config, :sentences) || registry_string("recap.sentences", session: session)),
         store: RecapStore.new(session_id_lookup: -> { session_id.call }, state_dir_lookup: -> { state_dir.call }),
         session_id: -> { session_id.call },
         on_usage: ->(usage) { engine.note_side_usage(usage) }
@@ -108,9 +120,10 @@ module Samagotchi
     end
     private_class_method :recap_sentences
 
-    # Read a scalar recap setting via the Config registry (ENV > file > default).
-    def self.registry_string(key)
-      value = Samagotchi::Config.get(key)
+    # Read a scalar recap setting via the Config registry (session > CLI >
+    # ENV > file > default).
+    def self.registry_string(key, session: nil)
+      value = Samagotchi::Config.get(key, session: session)
       value = value.to_s.strip
       value.empty? ? nil : value
     rescue StandardError

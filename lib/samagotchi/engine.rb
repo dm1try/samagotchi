@@ -232,9 +232,9 @@ module Samagotchi
       # across UIs.
       @turn_state.restart_clock!
       @side_client_mutex = Mutex.new
-      @recap = RecapSetup.build(recap, engine: self, host_registry: @host_registry,
-                                session_target: -> { session_model_recap_target },
-                                session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
+      # Kept for a rebuild under a bound session's own recap values.
+      @recap_kwarg = recap
+      @recap = build_recap
       # One shared poller for the whole idle layer (reminders + optional
       # recap). Both jobs read the activity seam above; the scheduler owns
       # the single background thread and isolates per-job failures.
@@ -1737,6 +1737,8 @@ module Samagotchi
       @session = session
       # One session per REPL/worker process: its records carry this sid.
       Log.session_id = session.id if session&.id
+      # Its own recap values (chi --set recap.enabled=false) rebuild the job.
+      rebuild_recap_for_session!
       # A woken worker's /stats and status line count the turns before it.
       bind_metrics(session)
       @used_memories.absorb(session)
@@ -1766,6 +1768,48 @@ module Samagotchi
 
     # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
     attr_reader :recap
+
+    # Whether a continue offer waits (the Worker's or the REPL's TurnFlow),
+    # for the recap job: this one and any rebuilt one (IdleRecap#awaiting_continue=).
+    def recap_awaiting_continue=(callable)
+      @recap_awaiting_continue = callable
+      @recap&.awaiting_continue = callable
+    end
+
+    # The idle recap job (RecapSetup.build) under the current session's own
+    # recap values, which it records.
+    # @return [IdleRecap, nil]
+    def build_recap
+      @recap_built_for = session_recap_values
+      recap = RecapSetup.build(@recap_kwarg, engine: self, host_registry: @host_registry,
+                                             session_target: -> { session_model_recap_target },
+                                             session_id: -> { @session&.id }, state_dir: -> { session_state_dir },
+                                             session_config: -> { @session&.settings&.core })
+      recap.awaiting_continue = @recap_awaiting_continue if recap && @recap_awaiting_continue
+      recap
+    end
+    private :build_recap
+
+    # The bound session's own recap.* values ({} for none).
+    def session_recap_values
+      (@session&.settings&.core || {}).select { |key, _| key.start_with?("recap.") }
+    end
+    private :session_recap_values
+
+    # A new recap job when the bound session's own recap values differ from
+    # the ones the current job was built under (none at start): the old one
+    # is dropped (an attempt in flight goes stale) and the scheduler swaps
+    # it, keeping its one thread. Binding the same session again changes
+    # nothing (the REPL binds it twice).
+    def rebuild_recap_for_session!
+      return if session_recap_values == @recap_built_for
+
+      old = @recap
+      old&.invalidate!
+      @recap = build_recap
+      @idle_scheduler&.replace_job(old, @recap)
+    end
+    private :rebuild_recap_for_session!
 
     # Write the recap now, before the session is left (IdleRecap#write_now).
     # @return [String, nil] the recap written, nil when none was (recap off,

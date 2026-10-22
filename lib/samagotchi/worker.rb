@@ -259,7 +259,7 @@ module Samagotchi
                                           })
       # A recap written while a continue offer waits says the turn stopped
       # unfinished (before the idle jobs start).
-      @engine.recap&.awaiting_continue = -> { @turn_flow.awaiting_continue? }
+      @engine.recap_awaiting_continue = -> { @turn_flow.awaiting_continue? }
       # The seq of the last turn's end event: a command queued before it was
       # queued while that turn ran.
       @turn_end_seq = 0

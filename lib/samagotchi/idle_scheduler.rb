@@ -25,7 +25,7 @@ module Samagotchi
       raise ArgumentError, "IdleScheduler requires an engine" unless engine
 
       @engine = engine
-      @jobs = jobs.compact
+      @jobs = jobs.compact.freeze
       @thread = nil
       @stopped = false
     end
@@ -47,6 +47,21 @@ module Samagotchi
       @stopped = true
       @thread&.kill
       @thread = nil
+    end
+
+    # Swap the job +old+ for +new+ (Engine#session= rebuilding the recap):
+    # nil +old+ adds +new+, nil +new+ drops +old+. The list is replaced
+    # whole, so a tick on the thread steps the old list or the new one; a
+    # running scheduler keeps its one thread, and one with no jobs yet
+    # starts it once #start is called.
+    def replace_job(old, new)
+      jobs = if @jobs.any? { |job| job.equal?(old) }
+               @jobs.map { |job| job.equal?(old) ? new : job }
+             else
+               @jobs + [new]
+             end
+      @jobs = jobs.compact.freeze
+      self
     end
 
     # One step across all jobs. Public so specs can drive it deterministically.
