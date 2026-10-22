@@ -14,17 +14,21 @@ module Samagotchi
   # are replaced, never changed in place (.store), or an edit would reach
   # a checkpoint it was rolled back from.
   #
-  # kind: :stale (chi saw a later read or edit supersede it) or :forget
-  # (the model forgot it, its note keeping the finding); note: what the
-  # stub says; by: who made it ("chi", the model); staged_at/applied_at:
+  # kind: :stale (chi saw a later read or edit supersede it), :forget
+  # (the model forgot it, its note keeping the finding) or :drop (the user
+  # dropped it from the working set: WorkingSetSteer; sent whatever the
+  # strategy, LLMContextView#sends?); note: what the
+  # stub says; by: who made it ("chi", the model, "user"); staged_at/applied_at:
   # ISO 8601 times, applied_at nil while it waits to reach the prompt;
   # keep: the output's lines a forget keeps ([[first, last], …], as the
   # model named them; saved only when there are some), sent under the
   # stub; keep_offset: what those numbers are past the output's own lines
   # (a ranged read's start_line - 1: a read's keep names file lines; saved
-  # only when not 0).
-  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at, :keep, :keep_offset) do
-    def initialize(keep: [], keep_offset: 0, **fields) = super
+  # only when not 0); was: a drop's, the edit the output held before it
+  # (its saved Hash: an applied forget sent whole under none, a staged
+  # one, a stale stub), which an undrop puts back (one edit per id).
+  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at, :keep, :keep_offset, :was) do
+    def initialize(keep: [], keep_offset: 0, was: nil, **fields) = super
 
     def applied? = !applied_at.nil?
 
@@ -33,19 +37,27 @@ module Samagotchi
     # What the model reads instead of the output, after the output's
     # "[name]" lead.
     def stub
-      kind == :forget ? "(forgotten) #{note}" : note.to_s
+      case kind
+      when :forget then "(forgotten) #{note}"
+      when :drop then LLMContextEdit::DROP_STUB
+      else note.to_s
+      end
     end
 
     # The saved form, without the id (it is the key).
     def to_h
       saved = { "kind" => kind.to_s, "note" => note, "by" => by, "staged_at" => staged_at, "applied_at" => applied_at }
       saved = saved.merge("keep" => keep) if keep?
-      keep_offset.zero? ? saved : saved.merge("keep_offset" => keep_offset)
+      saved = saved.merge("keep_offset" => keep_offset) unless keep_offset.zero?
+      was ? saved.merge("was" => was) : saved
     end
   end
 
   class LLMContextEdit
-    KINDS = %i[stale forget].freeze
+    KINDS = %i[stale forget drop].freeze
+    # A user's drop is sent whatever the strategy (no layer names it).
+    DROP = :drop
+    DROP_STUB = "(dropped by the user) — read it again if the task needs it"
 
     # +hash+ as saved (string or symbol keys), or nil for one of no known
     # kind.
@@ -58,7 +70,8 @@ module Samagotchi
 
       new(id: id.to_s, kind: kind, note: field.call(:note).to_s, by: field.call(:by), staged_at: field.call(:staged_at),
           applied_at: field.call(:applied_at), keep: ranges(field.call(:keep)),
-          keep_offset: field.call(:keep_offset).is_a?(Integer) ? [field.call(:keep_offset), 0].max : 0)
+          keep_offset: field.call(:keep_offset).is_a?(Integer) ? [field.call(:keep_offset), 0].max : 0,
+          was: field.call(:was).is_a?(Hash) ? field.call(:was) : nil)
     end
 
     # Saved keep ranges as [[first, last], …]: pairs of positive Integers,
@@ -85,6 +98,15 @@ module Samagotchi
     def self.store(entry, edit)
       entry[:edits] = (entry[:edits].is_a?(Hash) ? entry[:edits] : {}).merge(edit.id => edit.to_h)
       entry
+    end
+
+    # Whether +entry+ holds a saved drop (applied or not): the cheap check
+    # LLMContextView#messages makes under none.
+    def self.drop_on?(entry)
+      saved = entry[:edits]
+      saved.is_a?(Hash) && saved.each_value.any? do |hash|
+        hash.is_a?(Hash) && (hash["kind"] || hash[:kind]).to_s == "drop"
+      end
     end
 
     # The edits saved on +entry+, by id.

@@ -36,10 +36,18 @@ lets the model forget its own tool outputs. The pieces:
   output again, outside the apply rule (the result says the tail the server reads again, and `ContextStatus#edited!`
   restarts the estimate). A read whose stub was sent isn't restored; a staged one is.
 - **Which edits are sent** is one predicate, `LLMContextView#sends?(edit)`: applied, and its kind one of the view's
-  layers. The view stubs by it and `WorkingSet` decides "still sent" by it. The view's layers are
+  layers or `:drop`. The view stubs by it and `WorkingSet` decides "still sent" by it. The view's layers are
   `LLMContextStrategy::LAYERS` (`stale`, `forget`), the strategy's words, not `LLMContextEdit::KINDS`: whatever a
   caller passes as the strategy, an edit kind no strategy names never becomes a layer that `apply_llm_context!` would
-  hand to `LLMContextApply.run!`. Under none the view has no layers and `#messages` returns the Array it was given.
+  hand to `LLMContextApply.run!`. Under none the view has no layers and, unless an entry holds a drop
+  (`LLMContextEdit.drop_on?`, one scan), `#messages` returns the Array it was given.
+- **The user's layer, always on**: an edit of kind `:drop` (`by: "user"`, the working set's drop:
+  [working-set.md](working-set.md)) is sent under every strategy, none included, as
+  `(dropped by the user) — read it again if the task needs it` after the output's lead. It is saved applied by the
+  op itself, between turns, so the apply rule never holds it and no `[#id]` is added under none. One edit per id: a
+  drop on an output that holds another edit keeps that edit's saved Hash in its `was:`, and an undrop puts it back.
+  `LLMContextApply.measure`/`.weigh` and `#restored_line` build their views from the same class, so a drop counts in
+  them under none too.
 - **Stubs** (`LLMContextView`): `(forgotten) <note>` on the first output of a call's forgets in a row, `(forgotten
   with tN: see its note)` on the rest (a run of the same note, author and stamp, no other output between them),
   ` [restore: tN]` on a non-read with a stored id, then each kept range under `lines A-B kept:`. The entry keeps its

@@ -384,6 +384,17 @@ RSpec.describe Samagotchi::MessageParts do
         .to eq([["t2", { kind: "forget", note: "ls shows 3 files" }], ["t3", { kind: "forget", with: "t2", kept: "12-40" }]])
     end
 
+    it "marks a user's drop by its author, with what it frees" do
+      drop = { "kind" => "drop", "note" => "", "by" => "user", "staged_at" => "s3", "applied_at" => "a3" }
+      dropped = messages.dup
+      dropped[2] = messages[2].merge(edits: { "t1" => drop })
+      marks = described_class.edit_marks(dropped)
+
+      expect(marks["t1"]).to eq(kind: "drop", by: "user")
+      expect(described_class.for_message(dropped[1], [dropped[2]], marks: marks)[:tools].first[:edit])
+        .to eq(kind: "drop", by: "user", tokens: 1002)
+    end
+
     [nil, "", "dup"].each do |id|
       it "pairs results by position when their tool_call_id is #{id.inspect} (omitted, empty or repeated)" do
         message = { role: "model", content: "", tool_calls: [{ id: id, name: "read", arguments: { "path" => "a.txt" } },

@@ -206,6 +206,39 @@ RSpec.describe Samagotchi::WorkingSet do
     end
   end
 
+  describe "dropped (the user's drop, always on)" do
+    let(:drop) { edit("drop", "").merge("by" => "user") }
+
+    it "is an item whose outputs are all the user's drops, under none and under every strategy" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", stamp: stamp(cart), edits: { "t1" => drop }),
+                      *read_turn("lib/tax.rb", "c2", "t2", stamp: stamp(tax))]
+
+      [:none, %i[stale], %i[stale forget]].each do |strategy|
+        expect(states(conversation, strategy: strategy)).to eq(cart => "dropped", tax => "live")
+      end
+      expect(build(conversation).items.first.tokens).to be < 20
+    end
+
+    it "pairs a native joined entry's dropped run as the chat one" do
+      conversation = [head, { role: "user", content: "go" },
+                      qwen_model(qwen_call("read", path: "lib/cart.rb"), qwen_call("read", path: "lib/tax.rb")),
+                      joined(["read", body], ["read", body], ids: %w[t1 t2]).merge(edits: { "t2" => drop })]
+
+      expect(states(conversation)).to eq(cart => "live", tax => "dropped")
+    end
+
+    it "is live while another of its reads is still sent, and forgotten when the rest is the model's forget" do
+      forget = edit("forget", "cart totals")
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => drop }), *read_turn(cart, "c2", "t2")]
+      mixed = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => drop }),
+               *read_turn(cart, "c2", "t2", edits: { "t2" => forget })]
+
+      expect(states(conversation)).to eq(cart => "live")
+      expect(states(mixed, strategy: %i[forget])).to eq(cart => "forgotten")
+      expect(states(mixed)).to eq(cart => "live")
+    end
+  end
+
   describe ".outputs_of" do
     let(:forget) { edit("forget", "cart totals are in lib/cart.rb") }
 

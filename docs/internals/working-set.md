@@ -33,7 +33,8 @@ same-size edit in the same second goes unseen (APFS keeps nanoseconds).
 
 `Samagotchi::WorkingSet.build(conversation, cwd:, strategy:, stat: File.method(:stat))` (`lib/samagotchi/working_set.rb`)
 is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's size in entries, the web's ordering
-key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state`, `tokens`, `ops`, `count` and
+key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state` (`live`, `stale`, `forgotten`,
+`dropped`), `tokens`, `ops`, `count` and
 `first_id` (the first run's ToolIds id).
 
 **Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what
@@ -70,6 +71,11 @@ strategy. A content output is still sent when:
 
 A stale stub of an old read that a newer read superseded never strikes the file: the newer read is still sent. A file
 only edited or written is never forgotten.
+
+**Dropped** is a forgotten item whose content outputs all hold the user's applied `:drop` (the user's layer, sent
+under every strategy: [llm-context-forget.md](llm-context-forget.md)), so it is dropped under any strategy and after
+a switch. An item with one output dropped and another forgotten by the model is forgotten. Under none with no drop
+saved the build doesn't pair the sent conversation at all (the view returns the stored Array).
 
 **Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
 or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.

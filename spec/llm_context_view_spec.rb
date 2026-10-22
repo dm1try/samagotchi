@@ -218,6 +218,51 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(described_class.new(strategy: [:drop]).messages(conversation)).to equal(conversation)
     end
 
+    describe "the user's drop (always on)" do
+      let(:dropped) { batch.merge(edits: { "t1" => edit("drop", "").merge("by" => "user") }) }
+
+      it "is sent under none: the stub, its lead kept, the other runs as they are" do
+        conversation = [batch_calls, dropped]
+        sent = described_class.new.messages(conversation)
+
+        expect(sent).not_to equal(conversation)
+        expect(sent.last[:content]).to eq("[read] #{Samagotchi::LLMContextEdit::DROP_STUB}\n\n---\n\n[shot] two images" \
+                                          "\n\n---\n\n[execute]\nok\n\n---\n\nstill ok")
+        expect(sent.first).to equal(batch_calls)
+        expect(dropped[:content]).to eq(batch[:content])
+      end
+
+      it "returns the very Array under none when no entry holds a drop (other kinds don't count)" do
+        conversation = [batch_calls, batch.merge(edits: { "t1" => edit("forget", "gone") })]
+
+        expect(described_class.new.messages(conversation)).to equal(conversation)
+        expect(described_class.new).to be_none
+      end
+
+      it "is sent under every strategy, and sends? admits it whatever the layers (applied only)" do
+        drop = Samagotchi::LLMContextEdit.from_h("t1", edit("drop", ""))
+        staged = Samagotchi::LLMContextEdit.from_h("t1", edit("drop", "", applied: false))
+
+        [described_class.new, described_class.new(strategy: [:stale]), described_class.new(strategy: %i[stale forget])].each do |view|
+          expect(view.sends?(drop)).to be(true)
+          expect(view.sends?(staged)).to be(false)
+          expect(view.messages([batch_calls, dropped]).last[:content]).to include(Samagotchi::LLMContextEdit::DROP_STUB)
+        end
+      end
+
+      it "goes as a chat result's content, paired with its call" do
+        kernel = test_kernel
+        backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new)
+        call = { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] }
+        result = { role: "tool_response", content: "[read] lib/x.rb\n1: x", tool_call_id: "c1", tool_ids: %w[t5],
+                   edits: { "t5" => edit("drop", "") } }
+
+        wire = backend.wire_messages([{ role: "user", content: "go" }, call, result])
+
+        expect(wire[2]).to eq(role: "tool", content: "[read] #{Samagotchi::LLMContextEdit::DROP_STUB}", tool_call_id: "c1")
+      end
+    end
+
     it "sends an entry whole when its runs don't match its ids, or its images can't be told apart" do
       short = batch.merge(tool_ids: %w[t1 t2], edits: { "t1" => edit("stale", "superseded") })
       uncounted = batch.except(:image_counts).merge(edits: { "t1" => edit("stale", "superseded") })
@@ -370,6 +415,18 @@ RSpec.describe Samagotchi::LLMContextEdit do
 
     expect(described_class.on(entry).keys).to eq(%w[t2])
     expect(described_class.on({ role: "tool_response" })).to eq({})
+  end
+
+  it "reads a user's drop with the edit it replaced (was), and writes it back the same" do
+    drop = saved.merge("kind" => "drop", "note" => "", "by" => "user", "applied_at" => "now", "was" => saved)
+    edit = described_class.from_h("t4", drop)
+
+    expect(edit).to have_attributes(kind: :drop, by: "user", was: saved)
+    expect(edit.stub).to eq(described_class::DROP_STUB)
+    expect(edit.to_h).to eq(drop)
+    expect(described_class.from_h("t4", saved).to_h).not_to have_key("was")
+    expect(described_class.drop_on?({ edits: { "t4" => drop } })).to be(true)
+    expect(described_class.drop_on?({ edits: { "t4" => saved } })).to be(false)
   end
 
   it "keeps an entry's edits through a session's save and load, and the chat loop's plain copy" do

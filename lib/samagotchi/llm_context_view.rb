@@ -16,7 +16,10 @@ module Samagotchi
   #
   # Under +none+ (the default) nothing changes: #messages returns the
   # conversation it was given, the same Array of the same entries, so the
-  # prompt is byte for byte what it was before the view existed.
+  # prompt is byte for byte what it was before the view existed. The one
+  # exception is the user's layer: an applied :drop (WorkingSetSteer, the
+  # working set's drop) is sent as its stub under every strategy, none
+  # too; a conversation without one is still returned as it is.
   #
   # Under a strategy of layers (:stale, :forget), each edit saved on a
   # tool_response entry (LLMContextEdit) that #sends? (applied, and its
@@ -82,7 +85,7 @@ module Samagotchi
     # @param conversation [Array<Hash>] the stored entries, in order
     # @return [Array<Hash>] the entries to format
     def messages(conversation)
-      return conversation if none?
+      return conversation if none? && conversation.none? { |entry| LLMContextEdit.drop_on?(entry) }
 
       group = Group.new
       group.paired = forget? ? LLMContextStale.paired_runs(conversation).to_set { |run| run.ref.id } : Set.new
@@ -92,8 +95,9 @@ module Samagotchi
     def forget? = layers.include?(:forget)
 
     # Whether +edit+ (an LLMContextEdit) is sent: the one rule for which
-    # edits the view applies, applied and of one of the layers.
-    def sends?(edit) = edit.applied? && layers.include?(edit.kind)
+    # edits the view applies, applied and of one of the layers, or the
+    # user's drop (always on: no strategy names it).
+    def sends?(edit) = edit.applied? && (edit.kind == LLMContextEdit::DROP || layers.include?(edit.kind))
 
     # The forget whose stub carries the note the next forgotten output of
     # the same call points to: its first id and its note, author and stamp.

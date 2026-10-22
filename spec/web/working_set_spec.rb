@@ -71,6 +71,18 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     expect(body["running"]).to be(false)
   end
 
+  it "says dropped for a user's drop, from the file under none and a worker's snapshot (string keys)" do
+    drop = { "t1" => { "kind" => "drop", "note" => "", "by" => "user", "staged_at" => "x", "applied_at" => "x" } }
+    session = saved_session(read_messages(edits: drop))
+
+    expect(call("/api/sessions/#{session.id}/working_set").last["items"]).to match([include("state" => "dropped")])
+
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages(edits: drop))) }, "session_state_snapshot" => {}
+    )
+    expect(call("/api/sessions/#{session.id}/working_set").last["items"]).to match([include("state" => "dropped")])
+  end
+
   it "says when a turn runs: before the turn's first set (or from an older worker), the session's messages" do
     session = saved_session([])
     live_messages = JSON.parse(JSON.generate(read_messages))

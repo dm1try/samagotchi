@@ -187,6 +187,9 @@ module Samagotchi
       mark[:staged] = true unless edit.applied?
       if edit.kind == :stale
         mark[:note] = edit.note[/superseded by .*\z/] || edit.note
+      elsif edit.kind == LLMContextEdit::DROP
+        # The user's: no note, no grouping (a forget's key is its note).
+        mark[:by] = edit.by
       else
         key = [edit.note, edit.by, edit.staged_at]
         if first.key?(key)
@@ -201,12 +204,14 @@ module Samagotchi
       mark
     end
 
-    # +output+'s ✂ mark (+marks+ by +id+); an applied stale stub says
-    # what it frees: its output, ~chars/4.
+    # +output+'s ✂ mark (+marks+ by +id+); an applied stale stub or a
+    # user's drop says what it frees: its output, ~chars/4.
+    WHOLE_STUBS = %w[stale drop].freeze
+
     def mark_of(id, marks, output)
       mark = marks[id]
       return nil unless mark
-      return mark unless mark[:kind] == "stale" && !mark[:staged] && output
+      return mark unless WHOLE_STUBS.include?(mark[:kind]) && !mark[:staged] && output
 
       mark.merge(tokens: (output.length / TokenUsage::CHARS_PER_TOKEN).ceil)
     end

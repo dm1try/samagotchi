@@ -39,10 +39,12 @@ module Samagotchi
     LIVE = "live"
     STALE = "stale"
     FORGOTTEN = "forgotten"
+    # Forgotten, every output of it by the user's drop (WorkingSetSteer).
+    DROPPED = "dropped"
 
     # One thing the model touched: +kind+ file|memory|url; +key+ a file's
     # absolute path (FileRef), a memory's name, a URL (whitespace
-    # collapsed); +state+ live|stale|forgotten; +tokens+ its content
+    # collapsed); +state+ live|stale|forgotten|dropped; +tokens+ its content
     # outputs as sent; +ops+ read|edit for a file, read|write for a memory,
     # read for a URL, in first-seen order; +count+ the runs that touched
     # it; +first_id+ the first one's chi id (ToolIds).
@@ -118,10 +120,12 @@ module Samagotchi
     # Every paired run's touches, with what +view+ sends of its output.
     def all_touches(conversation, cwd, view)
       stored = LLMContextStale.paired_runs(conversation)
-      sent = if view.none?
+      # Under none with no drop the view sends the conversation as it is.
+      messages = view.messages(conversation)
+      sent = if messages.equal?(conversation)
                {}
              else
-               LLMContextStale.paired_runs(view.messages(conversation)).to_h { |run| [run.ref.id, run.text] }
+               LLMContextStale.paired_runs(messages).to_h { |run| [run.ref.id, run.text] }
              end
       stored.flat_map { |run| touches(run, sent.fetch(run.ref.id, run.text), cwd) }
     end
@@ -169,7 +173,7 @@ module Samagotchi
       contents = group.select(&:content)
       tokens = contents.sum { |touch| touch.sent.length / TokenUsage::CHARS_PER_TOKEN / touch.share }.ceil
       state = if contents.any? && contents.none? { |touch| still_sent?(touch, conversation, view) }
-                FORGOTTEN
+                contents.all? { |touch| dropped?(touch, conversation) } ? DROPPED : FORGOTTEN
               elsif kind == FILE && changed?(key, group.last.run, conversation, stat)
                 STALE
               else
@@ -192,6 +196,12 @@ module Samagotchi
       return true unless edit && view.sends?(edit)
 
       edit.kind == :forget ? edit.keep? : edit.note.match?(BY_EDIT)
+    end
+
+    # Whether +touch+'s output holds the user's applied drop.
+    def dropped?(touch, conversation)
+      edit = LLMContextEdit.on(conversation[touch.run.index])[touch.run.ref.id]
+      !edit.nil? && edit.kind == LLMContextEdit::DROP && edit.applied?
     end
 
     def with_id(text, id)
@@ -223,6 +233,6 @@ module Samagotchi
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :all_touches, :touches, :failed?, :found_names, :item, :still_sent?, :with_id, :changed?, :stamp_of, :field
+    private_class_method :all_touches, :touches, :failed?, :found_names, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
   end
 end
