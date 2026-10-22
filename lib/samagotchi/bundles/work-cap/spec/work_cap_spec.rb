@@ -239,6 +239,21 @@ RSpec.describe "The work-cap bundle", :bundle do
       expect(bundle.ctx).to have_received(:delegate?).twice
     end
 
+    it "resolves again when the settings change, the state file still winning per meter" do
+      bundle = plugin({ "default" => { "tool_calls" => 10, "minutes" => 30 } }, usage: calls(7))
+      generation(bundle)
+      expect(bundle.questions).to be_empty
+
+      allow(bundle.ctx).to receive(:settings).and_return({ "default" => { "tool_calls" => 5, "minutes" => 30 } })
+      bundle.answer({ selected: ["Stop"] })
+      generation(bundle)
+      expect(bundle.questions.last.question).to include("7 tool calls of 5")
+
+      bundle.command("/workcap 20")
+      allow(bundle.ctx).to receive(:settings).and_return({ "default" => { "tool_calls" => 3, "minutes" => 30 } })
+      expect(bundle.command("/workcap")).to start_with("work-cap: 7 of 20 tool calls")
+    end
+
     it "works with no session (the totals zero), and /workcap can't set a cap then" do
       bundle = plugin(usage: nil)
       bundle.set(session_id: nil)

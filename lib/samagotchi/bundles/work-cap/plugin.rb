@@ -12,9 +12,10 @@
 # prompt text. cost-cap (the $ cap) is its sibling; the wordings follow it.
 #
 # Settings (config.yml, bundles: work-cap:), from ctx.settings, never at
-# load: the caps are resolved once per session (see State below), so a
-# config change reaches a running session through /workcap or a new
-# session; warn_at and ignore_tools are read at each check.
+# load: the caps are resolved once per session and settings (see State
+# below), again when ctx.settings changes, so a config change reaches a
+# running session (the state file still wins per meter); warn_at and
+# ignore_tools are read at each check.
 #   tool_calls: 400   this session's own tool-call cap (session_settings:,
 #                     chi --set work-cap.tool_calls=400); 0/off: none
 #   minutes: 60       this session's own cap on active minutes, same rules
@@ -36,8 +37,8 @@
 # "step": 400}, "minutes": {"cap": null}}, written by /workcap and by
 # Continue; a meter's "cap": null is off for the session, over the config;
 # a meter missing from the file comes from the settings. Resolved once per
-# session id (ctx.delegate? parses the session file) and kept until
-# /workcap or Continue writes a new one.
+# session id and settings (ctx.delegate? parses the session file) and kept
+# until /workcap or Continue writes a new file, or the settings change.
 require "json"
 require "fileutils"
 
@@ -57,7 +58,7 @@ class Plugin
 
   def initialize(_settings)
     @mutex = Mutex.new
-    @resolved = nil        # {session:, meters: {meter => {cap:, step:, key:}}, unreadable: {name => value}}
+    @resolved = nil        # {session:, settings:, meters: {meter => {cap:, step:, key:}}, unreadable: {name => value}}
     @warned = {}           # meter => [session id, cap] the share warning was given for
     @unread_warned = nil   # the session id the "isn't a number" notice was given for
   end
@@ -269,16 +270,17 @@ class Plugin
 
   # The session's caps now: per meter the state file's, else the session's
   # own value (--set), else child:'s for a delegate, else default:'s.
-  # Cached per session id.
+  # Cached per session id and settings (a config change resolves again).
   def resolve(ctx)
     session = ctx.session_id
+    settings = ctx.settings
     cached = @mutex.synchronize { @resolved }
-    return cached if cached && cached[:session] == session
+    return cached if cached && cached[:session] == session && cached[:settings] == settings
 
     saved = state(ctx, session)
     configured = configured(ctx)
     meters = METERS.to_h { |meter| [meter, saved[meter] || configured[:meters][meter]] }
-    resolved = { session: session, meters: meters, unreadable: configured[:unreadable] }
+    resolved = { session: session, settings: settings, meters: meters, unreadable: configured[:unreadable] }
     @mutex.synchronize { @resolved = resolved }
   end
 
