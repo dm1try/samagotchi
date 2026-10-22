@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.100.1] - 2026-10-22
+
 ### Fixed
 
 - The web's `continue →` no longer takes a draft left over from another session (or the start page) as the new
@@ -3805,7 +3807,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.100.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.100.1...HEAD
+[0.100.1]: https://github.com/dm1try/samagotchi/compare/v0.100.0...v0.100.1
 [0.100.0]: https://github.com/dm1try/samagotchi/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/dm1try/samagotchi/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/dm1try/samagotchi/compare/v0.97.0...v0.98.0
