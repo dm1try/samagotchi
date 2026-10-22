@@ -2,6 +2,8 @@
 // the composer with fixed live slots, cards in it, and the hand-off into the
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
+import fs from "node:fs";
+import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
@@ -433,4 +435,65 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
   );
   expect(order).toEqual(["Plan it", "First answer, after the long thinking.", "timing", "QUEUED-LATER please", "Answer to the queued message.", "timing"]);
   await expect(line.locator(".delivery-where.idle")).toBeVisible();
+});
+
+// The working set (web.working_set, here ?working_set=1): the rail in the
+// stage holds what the turn read (a file, a memory) without changing the
+// stage's height, the session bar's set chip stands in the mem chip's
+// place, a step tag jumps to its call live and after a reload, and the
+// footprint line lands under the handed-off block.
+test.describe("the working set", () => {
+  test.use({ workingSet: true });
+
+  test("the rail fills without a height change; set chip for the mem chip; step tags jump live and after a reload; the footprint", async ({ page, script, chi }) => {
+    test.setTimeout(60_000);
+    const memories = path.join(chi.dirs.config, "samagotchi", "memories");
+    fs.mkdirSync(memories, { recursive: true });
+    const note = path.join(memories, "e2e-style.md");
+    fs.writeFileSync(note, "Keep it short.\n");
+    try {
+      script("working_set");
+      await startSampling(page);
+      await send(page, "Read the README and the style note.");
+      await expect(stageEl(page)).toBeVisible();
+      await page.mouse.move(0, 0);
+      const rail = page.locator("#turnStage .ts-ws");
+      // The step that holds: both items in the rail, the chip counts them.
+      await expect(rail.locator(".ws-item .t")).toHaveText(["README.md", "e2e-style"]);
+      await expect(page.locator("#infoText .ws-chip")).toHaveText("set 2");
+      await expect(page.locator("#infoText .mem-chip")).toHaveCount(0);
+      await page.waitForTimeout(800); // the held step: samples after the items came too
+      const samples = (await stopSampling(page)).filter((s) => !s.hidden && !s.ended);
+      expect(samples.length).toBeGreaterThan(5);
+      expect([...new Set(samples.map((s) => s.h))]).toHaveLength(1);
+      // Live: the rail opens this turn's list; the memory's step tag goes to its call in the stage's cloud.
+      await rail.click();
+      const pop = page.locator("#workingSetPopover");
+      await expect(pop).toBeVisible();
+      await pop.locator(".ws-row.memory .ws-step").click();
+      await expect(pop).toBeHidden();
+      const liveRow = page.locator('#turnStage .turn-work[data-turn="0"] .activity-row[data-at="1.0"]');
+      await expect(liveRow).toHaveClass(/ref-flash/);
+      await expect(liveRow).toContainText("e2e-style");
+      // The used memory is real (the mem chip would show it): the session says so.
+      await page.mouse.move(0, 0); // the stage is out of use: it hands off
+      await handedOff(page, 1);
+      const id = new URL(page.url()).hash.split("/").pop();
+      const session = await (await page.request.get(new URL(`/api/sessions/${id}`, page.url()).href)).json();
+      expect(session.session.used_memory_names).toContain("e2e-style");
+      await expect(page.locator("#infoText .mem-chip")).toHaveCount(0);
+      // The footprint, right after the block, live and after a reload.
+      const foot = page.locator("#history .turn-work + .ws-foot");
+      await expect(foot).toContainText("README.md");
+      await expect(foot).toContainText("e2e-style");
+      await page.reload();
+      await expect(foot).toHaveText(/touched README\.md · ◆ e2e-style s2/);
+      await foot.locator(".ws-step").click();
+      const row = page.locator('#history .turn-work[data-turn="0"] .activity-row[data-at="1.0"]');
+      await expect(row).toHaveClass(/ref-flash/);
+      await expect(row).toBeInViewport();
+    } finally {
+      fs.rmSync(note, { force: true });
+    }
+  });
 });

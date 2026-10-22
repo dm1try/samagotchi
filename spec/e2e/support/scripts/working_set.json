@@ -1,0 +1,8 @@
+{
+ "delay": 0.005,
+ "iterations": [
+  {"thinking": "The README first.", "tools": [{"name": "read", "arguments": {"path": "README.md"}}], "text": "Reading the README."},
+  {"thinking": "Then the style memory.", "tools": [{"name": "memory_read", "arguments": {"name": "e2e-style"}}]},
+  {"thinking": "Both read.", "text": "Read README.md and the style note.", "hold": 3}
+ ]
+}

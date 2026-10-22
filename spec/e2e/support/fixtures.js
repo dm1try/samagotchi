@@ -14,6 +14,8 @@ import { startEnv, stopEnv, useConfigExtra, useHostModels, useMode, useScript, u
 
 export const test = base.extend({
   view: ["stage", { option: true }],
+  // The stage view's working set (?working_set=1; working_set.spec.js).
+  workingSet: [false, { option: true }],
   // The lan project: chi web --web-host lan (lan.spec.js).
   lan: [false, { option: true, scope: "worker" }],
   // The newest chi chi web believes installed (versions.spec.js).
@@ -83,10 +85,11 @@ export const test = base.extend({
     }
   },
 
-  page: async ({ page, chi, view }, use) => {
+  page: async ({ page, chi, view, workingSet }, use) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(chi.baseURL + (view === "turn" ? "/?view=turn" : "/"));
+    const params = [view === "turn" ? "view=turn" : "", workingSet ? "working_set=1" : ""].filter(Boolean).join("&");
+    await page.goto(chi.baseURL + (params ? `/?${params}` : "/"));
     await use(page);
     expect(errors, "page errors").toEqual([]);
   },
