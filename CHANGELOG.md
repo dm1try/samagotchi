@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-10-22
+
 ### Added
 
 - Plugins can read the session's work so far with `ctx.usage`: turns, tool calls (by tool), steps and active time
@@ -18,6 +20,11 @@ and commands may change between minor versions. How releases are made:
   lacks. At a cap the turn pauses on Continue / Stop, the question naming the session's totals; `/workcap` shows or
   sets it, `chi send --new --set work-cap.tool_calls=400` caps a child. Inert until a cap is set. See
   [docs/plugins.md](docs/plugins.md#the-work-cap-bundle).
+
+### Fixed
+
+- An empty `hooks:` key in config.yml no longer crashes chi, and a malformed `hooks:` section (or one event's
+  entry) warns instead of being dropped without a word.
 
 ## [0.99.0] - 2026-10-22
 
@@ -3785,7 +3792,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.99.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.100.0...HEAD
+[0.100.0]: https://github.com/dm1try/samagotchi/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/dm1try/samagotchi/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/dm1try/samagotchi/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/dm1try/samagotchi/compare/v0.96.0...v0.97.0

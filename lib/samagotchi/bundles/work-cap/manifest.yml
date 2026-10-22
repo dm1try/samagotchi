@@ -8,7 +8,6 @@ plugin:
   file: plugin.rb
   sha256: sha256:d4de4b835d1657223517f3d6a5d8a9b089b7c8fad08ed077f72748369323bd65
 # ask_user's effects: are in chi 0.92.0; ctx.usage is new in the next chi
-requires_chi: ">= 0.92.0"
-requires_chi_next: true
+requires_chi: ">= 0.100.0"
 # chi --set work-cap.tool_calls=400 / work-cap.minutes=60: the session's own caps, a number or off
 session_settings: {tool_calls: number, minutes: number}

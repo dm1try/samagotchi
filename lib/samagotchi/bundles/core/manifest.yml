@@ -5,8 +5,7 @@ scope: system
 description: "Recommended safety set"
 trust_level: reviewed
 # Its members' highest floor (work-cap's: ctx.usage, raised at the release)
-requires_chi: ">= 0.92.0"
-requires_chi_next: true
+requires_chi: ">= 0.100.0"
 includes:
 - loop-guard
 - check-in
