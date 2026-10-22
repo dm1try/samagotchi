@@ -1826,6 +1826,36 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "a file run's stamp (tool_stamps)" do
+    it "is saved on its result through plain(), never sent, and read back after a reload" do
+      Dir.mktmpdir("chat-stamps") do |dir|
+        path = File.join(dir, "kitty.conf")
+        File.write(path, "font_size 12\n")
+        allow(fake_kernel).to receive(:dispatch_tool_call) do |call|
+          { output: "[#{call[:name]}]\nok", activity: { tool: call[:name], status: "ok" } }
+        end
+        backend.adapter = adapter = FakeChatAdapter.new(
+          tools(["c1", "read", { "path" => path }], ["c2", "execute", { "command" => "ls" }]), text("done")
+        )
+
+        result = run
+        expect(result.conversation[2][:tool_stamps]).to match([include(path: path, size: 13)])
+        expect(result.conversation[3].keys).not_to include(:tool_stamps)
+        run(result.conversation + [{ role: "user", content: "again" }])
+        adapter.requests.each do |request|
+          request[:messages].each { |m| expect(m.keys).not_to include(:tool_stamps) }
+          expect(JSON.generate(request[:messages])).not_to include("mtime_ns")
+        end
+
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir)
+        session.messages.concat(result.conversation)
+        session.save(state_dir: dir)
+        messages = Samagotchi::Session.load(session.id, state_dir: dir).messages
+        expect(messages[2][:tool_stamps]).to match([include("path" => path, "size" => 13)])
+      end
+    end
+  end
+
   describe "a prompt's turn id" do
     it "is kept on the prompt it hands back, and never sent" do
       prompt = { role: "user", content: "hi", turn_id: "t-1" }

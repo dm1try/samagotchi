@@ -278,6 +278,25 @@ RSpec.describe Samagotchi::KernelLoop do
       end
     end
 
+    it "saves a file run's stamp on its result (tool_stamps, one per call), and the next prompt leaves it out" do
+      Dir.mktmpdir("kernel-stamps") do |dir|
+        path = File.join(dir, "notes.txt")
+        File.write(path, "one\ntwo\n")
+        prompts = []
+        allow(client).to receive(:complete) do |prompt|
+          prompts << prompt
+          next "done" if prompts.length > 1
+
+          %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) +
+            %(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>)
+        end
+        result = kernel.run([{ role: "user", content: "check" }])
+        tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
+        expect(tool_response[:tool_stamps]).to match([nil, include(path: path, size: 8)])
+        expect(prompts[1]).not_to include("mtime_ns")
+      end
+    end
+
     # A turn a worker died in, as TurnCheckpoint left it (the finished
     # steps, a merged line, a call whose results never came) and
     # TurnCheckpoint.settle ended it, then the next prompt: Gemma 4 and Qwen

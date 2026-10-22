@@ -3,6 +3,7 @@
 require_relative "tool_activity"
 require_relative "tool_row_fields"
 require_relative "row_refs"
+require_relative "file_ref"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "log"
@@ -18,12 +19,14 @@ module Samagotchi
   # One call's result from ToolRunner#run, read by ToolResponse (the loops'
   # tool_response entries) and the loops' activity list. Fields a call didn't
   # produce (images, shown_params, shown_label, refs, diff, output_file,
-  # loaded) are nil. +loaded+: the tools a find_tools hit loads
-  # (Tools::ToolIndex::FoundText#loaded), by their wire names.
+  # loaded, stamp) are nil. +loaded+: the tools a find_tools hit loads
+  # (Tools::ToolIndex::FoundText#loaded), by their wire names. +stamp+: an
+  # ok read/edit/write's file right after it ran ({path:, mtime_ns:,
+  # size:}), what WorkingSet tells a file changed since by.
   ToolRun = Data.define(:output, :capped_output, :truncated, :activity, :images, :shown_params, :shown_label, :refs, :diff,
-                        :output_file, :loaded) do
+                        :output_file, :loaded, :stamp) do
     def initialize(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil, shown_params: nil,
-                   shown_label: nil, refs: nil, diff: nil, output_file: nil, loaded: nil)
+                   shown_label: nil, refs: nil, diff: nil, output_file: nil, loaded: nil, stamp: nil)
       super
     end
   end
@@ -153,10 +156,26 @@ module Samagotchi
                   images: images&.any? ? images : nil,
                   shown_params: params && plugin_tool?(call[:name]) ? params : nil,
                   shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file,
-                  loaded: result[:loaded])
+                  loaded: result[:loaded], stamp: status == "ok" ? file_stamp(call) : nil)
     end
 
     private
+
+    # An ok read/edit/write's file as it is now, right after the call:
+    # {path:, mtime_ns:, size:}, the path as FileRef has it (against the
+    # session's folder, no realpath). nil for any other tool, a path it
+    # can't place and a stat that fails or isn't a file's.
+    def file_stamp(call)
+      ref = FileRef.for(call[:name], call, cwd: session_cwd)
+      return nil unless ref
+
+      stat = File.stat(ref.path)
+      return nil unless stat.file?
+
+      { path: ref.path, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size }
+    rescue SystemCallError
+      nil
+    end
 
     # +output+ cut to +cap+ by its tool's policy (ToolOutputCut); an
     # execute result keeps its tail too, its whole output saved in the
@@ -310,7 +329,7 @@ module Samagotchi
     # The session's folder (the Engine's, KernelLoop#session_cwd), else the
     # process's: a bare kernel (specs) has none.
     def session_cwd
-      cwd = @kernel.respond_to?(:session_cwd) && @kernel.session_cwd&.call
+      cwd = @kernel.session_cwd&.call if @kernel.respond_to?(:session_cwd)
       cwd.to_s.empty? ? Dir.pwd : cwd
     end
 

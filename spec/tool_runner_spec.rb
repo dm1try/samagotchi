@@ -33,7 +33,8 @@ RSpec.describe Samagotchi::ToolRunner do
     it "defaults every field to nil" do
       expect(described_class.new).to eq(
         described_class.new(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil,
-                            shown_params: nil, shown_label: nil, refs: nil, diff: nil, output_file: nil)
+                            shown_params: nil, shown_label: nil, refs: nil, diff: nil, output_file: nil, loaded: nil,
+                            stamp: nil)
       )
     end
   end
@@ -771,6 +772,36 @@ RSpec.describe Samagotchi::ToolRunner do
       run({ name: "write", path: path("new.md"), content: "x\n" })
       expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path)
       expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path("new.md"))
+    end
+
+    describe "stamp (the file right after an ok read/edit/write, for WorkingSet)" do
+      def stamp_of(file)
+        stat = File.stat(file)
+        { path: file, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size }
+      end
+
+      it "stamps an ok edit's, write's and read's file as it is after the call" do
+        File.write(path, "a\n")
+        expect(run({ name: "edit", path: path, old_text: "a", new_text: "bb" }).stamp).to eq(stamp_of(path))
+        expect(run({ name: "write", path: path("new.txt"), content: "xyz\n" }).stamp).to eq(stamp_of(path("new.txt")))
+        expect(run({ name: "read", content: path }).stamp).to eq(stamp_of(path))
+      end
+
+      it "resolves a relative path against the session's folder, as FileRef does" do
+        File.write(path, "a\n")
+        dir = @dir
+        kernel.define_singleton_method(:session_cwd) { -> { dir } }
+        expect(run({ name: "read", content: "f.txt" }).stamp).to eq(stamp_of(path))
+      end
+
+      it "is nil for another tool, a call that isn't ok, a directory and a file that isn't there" do
+        File.write(path, "a\n")
+        expect(run({ name: "execute", content: "ls" }).stamp).to be_nil
+        expect(run({ name: "read", content: @dir }).stamp).to be_nil
+        expect(run({ name: "read", content: path("gone.txt") }).stamp).to be_nil
+        allow(kernel).to receive(:dispatch_tool_call).and_return({ output: "[read] Error: x", activity: { tool: "read", status: "error" } })
+        expect(run({ name: "read", content: path }).stamp).to be_nil
+      end
     end
 
     describe "the note when the refreshed index line takes the index over memory.index_warn_tokens" do

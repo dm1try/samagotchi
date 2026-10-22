@@ -10,10 +10,11 @@ module Samagotchi
   module ToolResponse
     SEPARATOR = "\n\n---\n\n"
     # Saved with a result for the web's reload (a plugin tool's params line,
-    # label and row refs, an edit/write's diff) and for the LLMContextView (each
+    # label and row refs, an edit/write's diff), for the LLMContextView (each
     # run's chi-owned id, ToolIds, and a strategy's edits by id,
-    # LLMContextEdit); the prompt never renders them.
-    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_refs tool_ids edits].freeze
+    # LLMContextEdit) and for WorkingSet (a file run's stamp, ToolRun#stamp);
+    # the prompt never renders them.
+    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_refs tool_ids tool_stamps edits].freeze
     # The tools a chat result loaded (#single), saved with it.
     LOADED = :loaded
     # A run's "[name]" lead: the name, then a newline, a space or the end.
@@ -84,7 +85,7 @@ module Samagotchi
         entry[:image_counts] = runs.map { |run| Array(run.images).size }
       end
       saved = { tool_params: runs.map(&:shown_params), tool_labels: runs.map(&:shown_label),
-                tool_diffs: runs.map(&:diff), tool_refs: runs.map(&:refs) }
+                tool_diffs: runs.map(&:diff), tool_refs: runs.map(&:refs), tool_stamps: runs.map(&:stamp) }
       saved.each { |key, values| entry[key] = values if values.any? }
       entry[:tool_ids] = ids
       entry
@@ -92,8 +93,10 @@ module Samagotchi
 
     # The chat loop's entry for one call: its capped output, paired with the
     # call by +tool_call_id+, and its chi-owned id (a one-id +ids+, as
-    # #joined's tool_ids); a find_tools hit's +loaded+ names (saved on every
-    # chat backend: a wire that loads tools renders them, LLM::AnthropicWire).
+    # #joined's tool_ids) and its stamp (a one-stamp tool_stamps, likewise:
+    # read by the run's place); a find_tools hit's +loaded+ names (saved on
+    # every chat backend: a wire that loads tools renders them,
+    # LLM::AnthropicWire).
     def single(run, tool_call_id:, ids:)
       entry = { role: "tool_response", content: run.capped_output, tool_call_id: tool_call_id }
       entry[:images] = run.images if run.images&.any?
@@ -102,6 +105,7 @@ module Samagotchi
       entry[:tool_diffs] = run.diff if run.diff
       entry[:tool_refs] = run.refs if run.refs
       entry[:tool_ids] = ids
+      entry[:tool_stamps] = [run.stamp] if run.stamp
       entry[LOADED] = run.loaded if run.loaded&.any?
       entry
     end

@@ -19,13 +19,14 @@ RSpec.describe Samagotchi::ToolResponse do
   end
   let(:shot) { { file: "a.png", name: "a.png" } }
   let(:ticket) { { kind: "issue", target: { id: "T-1" }, actions: [] } }
+  let(:stamp) { { path: "/w/x", mtime_ns: 1_700_000_000_123_456_789, size: 6 } }
   let(:runs) do
     {
       "shots" => Samagotchi::ToolRun.new(output: "[shots]\none shot", capped_output: "[shots]\none",
                                          activity: { tool: "shots" }, images: [shot], shown_params: "all",
                                          shown_label: "chrome: shots", refs: [ticket]),
       "write" => Samagotchi::ToolRun.new(output: "[write]\nwrote", capped_output: "[write]\nwrote",
-                                         activity: { tool: "write" }, diff: { path: "x" }),
+                                         activity: { tool: "write" }, diff: { path: "x" }, stamp: stamp),
       "broken" => Samagotchi::ToolRun.new(output: "[broken] Error: RuntimeError: x", capped_output: "[broken] Error")
     }
   end
@@ -91,7 +92,7 @@ RSpec.describe Samagotchi::ToolResponse do
         content: "[shots]\none\n\n---\n\n[write]\nwrote\n\n---\n\n[broken] Error",
         images: [shot], image_counts: [1, 0, 0],
         tool_params: ["all", nil, nil], tool_labels: ["chrome: shots", nil, nil], tool_diffs: [nil, { path: "x" }, nil],
-        tool_refs: [[ticket], nil, nil], tool_ids: %w[t4 t5 t6]
+        tool_refs: [[ticket], nil, nil], tool_stamps: [nil, stamp, nil], tool_ids: %w[t4 t5 t6]
       )
     end
 
@@ -110,7 +111,8 @@ RSpec.describe Samagotchi::ToolResponse do
         tool_params: "all", tool_labels: "chrome: shots", tool_refs: [ticket], tool_ids: %w[t1]
       )
       expect(described_class.single(write, tool_call_id: "c2", ids: %w[t2])).to eq(
-        role: "tool_response", content: "[write]\nwrote", tool_call_id: "c2", tool_diffs: { path: "x" }, tool_ids: %w[t2]
+        role: "tool_response", content: "[write]\nwrote", tool_call_id: "c2", tool_diffs: { path: "x" }, tool_ids: %w[t2],
+        tool_stamps: [stamp]
       )
     end
 
@@ -124,7 +126,7 @@ RSpec.describe Samagotchi::ToolResponse do
   end
 
   it "names the saved-only keys (never sent to the model)" do
-    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs tool_refs tool_ids edits])
+    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs tool_refs tool_ids tool_stamps edits])
   end
 
   describe ".split" do
