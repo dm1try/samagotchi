@@ -2865,9 +2865,6 @@ module Samagotchi
       items = snapshot.items.map(&:to_h)
       last = @working_set_emitted
       if items.empty?
-        # One empty event only: when the last one for this session had
-        # items (a rollback emptied the set), so the web drops the stale
-        # ones. It is remembered, so the next empty request sends none.
         return unless last && last[0] == session.id && !last[1].empty?
       elsif last == [session.id, items]
         return

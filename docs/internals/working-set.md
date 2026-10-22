@@ -88,7 +88,9 @@ or is gone. No stamp, live. A forgotten item stays forgotten whatever its file d
   turn-end apply has run by then).
 
 It is emitted only when the set differs from the last one emitted for the session (kept per session id), and never
-while the set is empty, so a tool-free turn on a fresh session emits nothing. It goes out whatever the web's flag;
+while the set is empty, so a tool-free turn on a fresh session emits nothing. One exception: when the last one had
+items and the set is empty now (a rollback removed the tool calls), one empty event goes out, so the page drops the
+stale items; it is remembered, so the next empty request sends none. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
 **The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
