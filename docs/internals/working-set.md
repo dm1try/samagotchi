@@ -99,7 +99,8 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
   what that request sends;
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
   turn-end apply has run by then);
-- between turns, from `Engine#announce_working_set` (the session's messages, under the event lock): announced
+- between turns, from `Engine#announce_working_set` (the session's messages, under the event lock; after a
+  `/working-set` op): announced
   (`working_set_updated` is in `ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
   `holding_announcements`), under the *next* turn's strategy (`SessionModelSettings#turn_llm_context`, as the
   turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
@@ -125,6 +126,34 @@ answers it as is (no build, no stat): a page opened mid-turn gets the running tu
 event's, so the page takes it (below). Before the turn's first event the turn's set is still the session's (the
 Engine emits only a set that differs from the last one), and the GET builds from the messages as between turns; so
 does one from an older worker without the field, its answer then behind the turn's events, which the page keeps.
+
+## Steering: drop and undrop
+
+`/working-set drop KEY…` and `undrop KEY…` (`WorkingSetCommand`, `SessionCommands#working_set`; the web's list posts
+the same lines on `POST /api/sessions/:id/command`) act on the session's messages between turns: the line is
+`mid_turn: :queue`, so one sent while a turn runs waits for its end (bare `/working-set`, the listing, is
+`:anytime`). `WorkingSetSteer` does the work on a copy (`Engine#clone_messages`, then `LLMContextEdit.store`'s new
+edits Hashes), which `Engine#replace_messages` puts in place; the session is saved, the rollback window closes
+(`TurnFlow#note_conversation_changed`, as `!cmd`), the result says `changed: [:messages]` (the web reads the
+conversation again) and `Engine#announce_working_set` re-emits the set, held behind the command's `command_ran`.
+
+- **The outputs** are `WorkingSet.outputs_of` the item under the strategy the set is built under
+  (`Engine#working_set_strategy`): the ones still `sent` get an applied `:drop` (`by: "user"`), the edit each held
+  before kept in its `was:`. A drop's view is the user's layer ([llm-context-forget.md](llm-context-forget.md)).
+  The reply weighs the batch (`LLMContextApply.weigh`: what it frees, the tail the server reads again).
+- **undrop** takes the item's drops off and puts each `was:` back. Free when the drop never reached a request (its
+  op is still in the pending note), else the reply says the tail.
+- **Refusals** live on one exception, `WorkingSetSteer::Refused` (its `reason` and words): not in the working set;
+  nothing to drop (only edited or written; only a legacy entry's derived ids; none of it sent now); already
+  dropped; not dropped. `forget_outputs` uses the same words for a dropped output ("dropped by the user"): the
+  model can neither forget nor restore it. A `memory_read` of several names is one output of each: dropping one
+  name drops that read for the others too.
+- **The note**: the ops since the last turn are one tail system message, `kind: working_set` (in
+  `Prompt::ESCAPED_KINDS`), its ops in `working_set_ops`. It is pending while only system messages follow it
+  (`WorkingSetSteer.pending_note_index`); a later op joins it, and an inverse op (an undrop of a pending drop) takes
+  both off, the note too when nothing is left. A turn that sends it makes it history; the next op starts a new one.
+
+The projection shows a dropped item as `dropped` (below), the GET and the event alike.
 
 ## The page's overlay
 

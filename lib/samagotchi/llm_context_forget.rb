@@ -9,6 +9,7 @@ require_relative "llm_context_stale"
 require_relative "llm_context_apply"
 require_relative "llm_context_view"
 require_relative "tools/forget_outputs"
+require_relative "working_set_steer"
 
 module Samagotchi
   # The forget layer (LLMContextStrategy :forget, experimental): the
@@ -33,7 +34,9 @@ module Samagotchi
   #   read (CLM's lesson);
   # - a keep that holds all of the output, an output too small for a stub
   #   to free anything (SMALL), an output already stubbed or forgotten, an
-  #   id nothing in context has.
+  #   id nothing in context has;
+  # - an output the user dropped (WorkingSetSteer): neither forgotten nor
+  #   restored by the model, in WorkingSetSteer::Refused's words.
   # A read is never restored: reading the file again is its restore, and
   # the file may have changed.
   module LLMContextForget
@@ -123,7 +126,10 @@ module Samagotchi
     # the model's latest outputs.
     def refusal(conversation, output, keep, last, protect_steps, kept_reads)
       return "no output with that id in context (ids look like t42)" unless output
-      return "already forgotten or stubbed" if LLMContextEdit.on(conversation[output.index]).key?(output.ref.id)
+
+      held = LLMContextEdit.on(conversation[output.index])[output.ref.id]
+      return WorkingSetSteer::Refused.text(:dropped) if held&.kind == LLMContextEdit::DROP
+      return "already forgotten or stubbed" if held
       if protect_steps.positive? && output.step >= last - protect_steps
         return "from your last #{protect_steps} step#{"s" unless protect_steps == 1}; you may still need it, forget it later"
       end
@@ -172,7 +178,10 @@ module Samagotchi
       ids.each do |id|
         output = outputs[id]
         edit = output && LLMContextEdit.on(conversation[output.index])[id]
-        if edit.nil? || edit.kind != :forget
+        if edit&.kind == LLMContextEdit::DROP
+          # The user's: only the user takes it back (/working-set undrop).
+          refused[id] = WorkingSetSteer::Refused.text(:dropped)
+        elsif edit.nil? || edit.kind != :forget
           refused[id] = "not forgotten"
         elsif output.read? && edit.applied?
           refused[id] = "a read: read the file again instead (it may have changed)"

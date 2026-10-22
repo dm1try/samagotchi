@@ -42,12 +42,13 @@ lets the model forget its own tool outputs. The pieces:
   hand to `LLMContextApply.run!`. Under none the view has no layers and, unless an entry holds a drop
   (`LLMContextEdit.drop_on?`, one scan), `#messages` returns the Array it was given.
 - **The user's layer, always on**: an edit of kind `:drop` (`by: "user"`, the working set's drop:
-  [working-set.md](working-set.md)) is sent under every strategy, none included, as
+  [working-set.md](working-set.md#steering-drop-and-undrop)) is sent under every strategy, none included, as
   `(dropped by the user) — read it again if the task needs it` after the output's lead. It is saved applied by the
   op itself, between turns, so the apply rule never holds it and no `[#id]` is added under none. One edit per id: a
   drop on an output that holds another edit keeps that edit's saved Hash in its `was:`, and an undrop puts it back.
   `LLMContextApply.measure`/`.weigh` and `#restored_line` build their views from the same class, so a drop counts in
-  them under none too.
+  them under none too. The model can't take a drop off: forget_outputs refuses to forget or restore a dropped
+  output, in `WorkingSetSteer::Refused`'s words ("dropped by the user").
 - **Stubs** (`LLMContextView`): `(forgotten) <note>` on the first output of a call's forgets in a row, `(forgotten
   with tN: see its note)` on the rest (a run of the same note, author and stamp, no other output between them),
   ` [restore: tN]` on a non-read with a stored id, then each kept range under `lines A-B kept:`. The entry keeps its

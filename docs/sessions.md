@@ -151,6 +151,13 @@ system message marked `kind: turn_note` (the UIs don't show it; they showed the 
   nothing). The user's last message is still unanswered.]`, or `[SYSTEM: the previous turn's answer was refused by
   the provider (cyber). …]` when the provider refused it.
 
+After you drop or undrop an item of the working set between turns (`/working-set drop KEY`, the web list's
+`drop`; [cli.md](cli.md#the-working-set)), the next turn starts with one line about it (`kind: working_set`,
+escaped like a context note; the UIs don't show it): `[WORKING SET: since your last turn the user dropped
+lib/cart.rb from your context: you are sent a stub instead of its outputs; read it again only if the task needs
+it.]`. Every op since the last turn joins that one line, and an undrop before the next turn takes its drop off it.
+The drop itself is saved on the entries (`edits`, kind `drop`), so `--resume`, rollbacks and forks keep it.
+
 When the context window fills past 40% (then 60%, 80%), the native loop leaves a similar line (`kind: context`):
 `[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted
 and range reads over full-file dumps]`, once per rise; see [context telemetry](internals/context-telemetry.md).

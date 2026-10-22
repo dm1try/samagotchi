@@ -166,6 +166,17 @@ RSpec.describe Samagotchi::LLMContextForget do
     expect(context).to have_received(:edited!)
   end
 
+  it "can't forget or restore an output the user dropped: the refusal is WorkingSetSteer::Refused's" do
+    entries = conversation
+    drop = { "kind" => "drop", "note" => "", "by" => "user", "staged_at" => now, "applied_at" => now }
+    entries[5][:edits] = { "t2" => drop }
+    words = Samagotchi::WorkingSetSteer::Refused.text(:dropped)
+
+    expect(forget(entries, "ids" => %w[t2], "note" => "the log")).to include("- t2: #{words}")
+    expect(forget(entries, "restore" => %w[t2])).to eq("not done:\n- t2: #{words}")
+    expect(entries[5][:edits]).to eq("t2" => drop)
+  end
+
   it "restores a read whose forget is still staged (never sent)" do
     entries = conversation
     forget(entries, { "ids" => %w[t1], "note" => "a.rb" }, llm_context(:turn_end))

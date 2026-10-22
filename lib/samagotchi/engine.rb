@@ -817,6 +817,24 @@ module Samagotchi
       synchronize_events { emit_working_set(nil, session, session.messages) }
     end
 
+    # The strategy the working set is built under now, as LLMContextView
+    # takes it: the running turn's, else the next turn's (#emit_working_set).
+    # /working-set's ops act under it.
+    # @return [Symbol, Array<Symbol>]
+    def working_set_strategy
+      working_set_llm_context&.strategy || LLMContextView::NONE
+    end
+
+    # Replace the current session's conversation, between turns (a
+    # /working-set op's copy: #clone_messages, then its edits).
+    # @param messages [Array<Hash>]
+    # @return [Array<Hash>] the session's messages
+    def replace_messages(messages)
+      raise ArgumentError, "no current session" unless @session
+
+      replace_session_messages(@session, messages)
+    end
+
     # Add a context note to the session's conversation, between turns: a
     # tail system message the next turn sees, announced as :context_added.
     # The array is replaced, not mutated, and the append and the event
@@ -2920,9 +2938,7 @@ module Samagotchi
     def emit_working_set(on_event, session, conversation)
       return unless session && conversation
 
-      llm_context = working_set_llm_context
-      snapshot = WorkingSet.build(conversation, cwd: session.working_directory,
-                                                strategy: llm_context&.strategy || LLMContextView::NONE)
+      snapshot = WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy)
 
       items = snapshot.items.map(&:to_h)
       last = @working_set_emitted

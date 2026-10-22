@@ -4,6 +4,8 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/client"
 require "samagotchi/kernel_loop"
+require "samagotchi/session_commands"
+require "samagotchi/turn_flow"
 require "tmpdir"
 require_relative "support/fake_provider_server"
 
@@ -169,6 +171,75 @@ RSpec.describe Samagotchi::Engine, "working set event" do
 
     it "is announceable" do
       expect(described_class::ANNOUNCEABLE_EVENTS).to include(:working_set_updated)
+    end
+  end
+
+  # /working-set drop between turns (WorkingSetSteer): the native loop's
+  # next request is the first with the stub and the turn-start note, the
+  # set is announced dropped, and undrop sends the output whole again.
+  describe "a /working-set drop between turns" do
+    let(:announced) { [] }
+    let(:commands) do
+      Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine), default_model: nil,
+                                      save: ->(_session) {})
+    end
+    let(:stub) { Samagotchi::LLMContextEdit::DROP_STUB }
+
+    before do
+      File.write(path, "the original text\n")
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      engine.session = session
+      run_turn
+      engine.subscribe(observer: ->(e) { announced << e if e[:type] == :working_set_updated })
+    end
+
+    def prompt_of(request) = request.json["prompt"].to_s
+
+    it "sends the stub and one note from the next turn's first request; undrop brings the output back" do
+      expect(prompt_of(server.requests.last)).to include("the original text")
+
+      result = commands.run("/working-set drop notes.txt")
+
+      expect(result).to have_attributes(status: :ok, changed: [:messages])
+      expect(result.output).to match(/\Adropped notes\.txt \(t\d+\): the next turn's first request sends the stubs/)
+      expect(announced.last[:items]).to match([include(key: path, state: "dropped")])
+
+      stream("Ok.")
+      run_turn("go on")
+      sent = prompt_of(server.requests.last)
+      expect(sent).to include(stub)
+      expect(sent).not_to include("the original text")
+      expect(sent.scan("[WORKING SET: since your last turn the user dropped notes.txt").size).to eq(1)
+
+      commands.run("/working-set undrop notes.txt")
+      stream("Back.")
+      run_turn("and now")
+      back = prompt_of(server.requests.last)
+      expect(back).to include("the original text")
+      expect(back).not_to include(stub)
+      expect(back).to include("the user brought back notes.txt")
+
+      stream("Quiet.")
+      run_turn("no ops")
+      expect(prompt_of(server.requests.last).scan("[WORKING SET:").size).to eq(2)
+    end
+
+    it "nets to nothing when undone before a request: no note, the conversation as it was" do
+      before = session.messages.map(&:dup)
+
+      commands.run("/working-set drop notes.txt")
+      result = commands.run("/working-set undrop notes.txt")
+
+      expect(result.output).to end_with("its drop was never sent; nothing changes")
+      expect(session.messages).to eq(before)
+    end
+
+    it "refuses a key not in the set in the exception's words, changing nothing" do
+      result = commands.run("/working-set drop other.txt")
+
+      expect(result).to have_attributes(status: :error, changed: [],
+                                        output: "drop other.txt: #{Samagotchi::WorkingSetSteer::Refused.text(:not_in_set)}")
     end
   end
 end

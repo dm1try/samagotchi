@@ -27,7 +27,7 @@ module Samagotchi
   #   - Generation cue: <|im_start|>assistant\n
   module Prompt
     # Tail system messages whose text isn't the harness's own.
-    ESCAPED_KINDS = %w[note turn_note context].freeze
+    ESCAPED_KINDS = %w[note turn_note context working_set].freeze
 
     # @param messages [Array<Hash>] each element has :role and :content.
     #   Recognised roles: "system", "user", "model", "tool_response".

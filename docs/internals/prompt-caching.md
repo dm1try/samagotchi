@@ -56,7 +56,7 @@ right-hand column happens.
 │                ◄── remote Claude / Messages: breakpoint #2 on the last   │  the image cut moving
 │                    non-system message (Messages: its last user block)    │  a batch, history
 ├──────────────────────────────────────────────────────────────────────────┤  sanitizing (thinking
-│ tail notes   reminders, turn notes, steers (system/user messages)        │  stripped per spec)
+│ tail notes   reminders, turn notes, steers, the working-set note         │  stripped per spec)
 │ new prompt   this turn's user message                                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -108,6 +108,13 @@ right-hand column happens.
   loaded name stays deferred, a stub once its source is gone), so the request after a load reads the whole prefix;
   the loaded definitions and the new result are the fresh part. A plugin's
   `ctx.load_tools` only appends (a system `tool_addition` after the user message, never a change to `tools`).
+- A user's working-set drop (`/working-set drop`, [working-set.md](working-set.md#steering-drop-and-undrop)) changes
+  an earlier entry: it is saved between turns, so the next turn's first request is the first to send the stub and
+  the cache breaks there once, from the dropped output's entry on (the command's reply says that tail; an undrop
+  after the drop was sent breaks it once more). It is sent under every strategy, so it is the one edit that rewrites
+  history under `none`; without a drop, `none` sends the stored Array as it is. Its `working_set` note (what the user
+  dropped or brought back) is a tail system message after the history, one per turn with ops, escaped as context
+  notes are (`Prompt::ESCAPED_KINDS`). The turn-end warm-up never warms a drop sent after the turn: it misses once.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 

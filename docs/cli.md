@@ -603,6 +603,25 @@ the same values on its `llm context:` line. The web's info bar shows them as the
 through `/llm-context`. See "LLM context: a session's own strategy" in
 [configuration.md](configuration.md).
 
+`/working-set` lists the session's working set as the model has it (see [The
+working set](#the-working-set)): each file, memory and URL its turns read,
+edited or fetched, with its state (`stale`, `forgotten`, `dropped`) and what it
+costs as sent, then the changes the next turn starts with. `/working-set drop
+KEY…` takes an item out of what the model is sent: every read of it still sent
+goes as a stub, `(dropped by the user) — read it again if the task needs it`,
+whatever the LLM context strategy (none too), and stays dropped across a
+strategy switch. KEY is a path (absolute or the session folder's), `memory:NAME`
+or a URL. `/working-set undrop KEY…` sends it whole again. A change applies
+from the next turn's first request, which also carries one line telling the
+model what you dropped or brought back (so it doesn't read it again by reflex);
+the reply says what it frees and the tail the server reads again (a drop changes
+history, so the prompt cache breaks there once). An undrop before that request
+undoes the drop for free. Refused, with why: an item only edited or written
+(nothing of it to drop), one not in the set, an older session's output chi
+can't name. The model can't undo a drop (`forget_outputs` refuses it).
+`/working-set` alone answers mid-turn too; `drop`/`undrop` sent while a turn
+runs wait for the turn's end.
+
 `/thinking` shows the thinking level the next turn runs at and where it came
 from (`session`, `--thinking` / `SAMAGOTCHI_THINKING_LEVEL`, `models: <key>`,
 `hosts.<name>`, `thinking.level`). `/thinking off|low|medium|high` sets the
@@ -1001,6 +1020,9 @@ the same live, after a reload and in every tab:
   write doesn't make a file stale. Chi checks at each request and when you
   open the list, so a file changed while the session sat idle shows stale on
   opening it. A turn saved before chi kept that record shows its files live.
+- **dropped** (struck): you dropped it (`/working-set drop`, the list's
+  `drop`); its reads are sent as stubs under every strategy until you undrop
+  it.
 - **forgotten** (struck): nothing of the item's content is still sent to the
   model under the session's current LLM context strategy (`forget_outputs`
   forgot every read of it; see
@@ -1008,7 +1030,7 @@ the same live, after a reload and in every tab:
   forget kept count as still sent. Under `/llm-context strategy none` nothing
   is cut, so a forgotten item is live again from the next request.
 
-The list says `stale` or `forgotten` in words with each row, and how many
+The list says `stale`, `forgotten` or `dropped` in words with each row, and how many
 tokens its content costs as sent (`~1.2k`); a folded group shows its forgotten
 members as `✂n`, and a footprint adds `n forgotten`.
 

@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /thinking /title /toolkit /hello /side
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /thinking /title /toolkit /working-set /hello /side
                   /archive /cut /detach /exit /queue /quit /recap /stats /unqueue])
       expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
                                start_with("  /model              show or switch the model  (show: mid-turn too)"),
@@ -669,6 +669,41 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(result.output).to include("default updated")
       expect(result.changed).to eq([:model])
       expect(commands.default_model).to eq("alpha:gemma-small")
+    end
+  end
+
+  describe "/working-set" do
+    let(:path) { File.join(Dir.pwd, "README.md") }
+
+    before do
+      session.messages += [{ role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "README.md" } }] },
+                           { role: "tool_response", content: "[read]\n#{"readme line\n" * 40}", tool_call_id: "c1", tool_ids: ["t1"] },
+                           { role: "model", content: "Read it." }]
+    end
+
+    it "lists while a turn runs; a drop or undrop waits for the turn's end" do
+      registry = described_class.builtin_registry
+
+      expect(registry.mid_turn("/working-set")).to eq(:anytime)
+      expect(registry.mid_turn("/working-set drop README.md")).to eq(:queue)
+      expect(registry.mid_turn("/working-set undrop README.md")).to eq(:queue)
+    end
+
+    it "lists the set, then the change the next turn starts with; the conversation changes and is saved" do
+      expect(commands.run("/working-set").output).to start_with("working set (1 item):\n  README.md  read · ~")
+
+      result = commands.run("/working-set drop README.md")
+
+      expect(result).to have_attributes(status: :ok, changed: [:messages])
+      expect(saved).not_to be_empty
+      expect(session.messages.last).to include(kind: "working_set")
+      listing = commands.run("/working-set").output
+      expect(listing).to include("README.md  read · dropped")
+      expect(listing).to include("at the next turn's start: dropped README.md")
+    end
+
+    it "answers a bad line with its usage" do
+      expect(commands.run("/working-set pin README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end
   end
 

@@ -33,6 +33,7 @@ RSpec.describe Samagotchi::ComposerRoute do
     "/toolkit" => %w[command command],
     "/parent-answers" => %w[command command],
     "/title" => %w[command command],
+    "/working-set" => %w[command command],
     "/help" => %w[command command],
     "/stats" => %w[local local],
     "/recap" => %w[local local],
