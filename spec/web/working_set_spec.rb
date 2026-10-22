@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     expect(status).to eq(200)
     expect(body).to eq("items" => [{ "kind" => "file", "key" => path, "state" => "live", "tokens" => 3, "ops" => ["read"],
                                      "count" => 1, "first_id" => "t1" }],
-                       "at" => 3)
+                       "at" => 3, "running" => false)
 
     File.write(path, "one\ntwo\n")
     expect(call("/api/sessions/#{session.id}/working_set").last["items"].first["state"]).to eq("stale")
@@ -68,12 +68,25 @@ RSpec.describe Samagotchi::Web::App, "working set" do
 
     expect(body["items"]).to match([include("key" => path, "state" => "forgotten")])
     expect(body["at"]).to eq(3)
+    expect(body["running"]).to be(false)
+  end
+
+  it "says when a turn runs: the answer is the session's messages, behind that turn's events" do
+    session = saved_session([])
+    live_messages = JSON.parse(JSON.generate(read_messages))
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => live_messages, "current_turn" => { "parts" => [] } }, "session_state_snapshot" => {}
+    )
+
+    _status, body = call("/api/sessions/#{session.id}/working_set")
+
+    expect(body).to include("at" => 3, "running" => true)
   end
 
   it "is empty for a session without tool runs, and 404 for an unknown one" do
     session = saved_session([{ role: "user", content: "hi" }])
 
-    expect(call("/api/sessions/#{session.id}/working_set")).to eq([200, { "items" => [], "at" => 1 }])
+    expect(call("/api/sessions/#{session.id}/working_set")).to eq([200, { "items" => [], "at" => 1, "running" => false }])
     expect(call("/api/sessions/00000000-0000-4000-8000-000000000000/working_set").first).to eq(404)
   end
 end

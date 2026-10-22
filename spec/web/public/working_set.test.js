@@ -254,16 +254,27 @@ test("overlay: the server's state and tokens by key; files by absolute path, mem
   assert.equal(overlay(turn, srv([sItem("file", "/p/lib/a.rb", "weird")]))[0].state, "live");
 });
 
-test("newerSnapshot: the first one, then one built from as much or more of the conversation (at), never an older GET", () => {
+test("newerSnapshot: the first one; an event always (a rollback's smaller at too); a GET unless overtaken or behind a running turn", () => {
   const a = srv([], 5);
   const b = srv([], 7);
   assert.equal(newerSnapshot(null, a), a);
   assert.equal(newerSnapshot(a, b), b);
-  assert.equal(newerSnapshot(b, a), b);
+  assert.equal(newerSnapshot(b, a), a, "a GET when idle: the conversation got shorter (a rollback) while no event came");
   const same = srv([], 7);
   assert.equal(newerSnapshot(b, same), same, "an equal at wins: a GET after an idle file change");
+  // An event is the server's latest: a rollback's empty or smaller set wins.
+  assert.equal(newerSnapshot(b, a, { event: true }), a);
+  const emptied = srv([], 3);
+  assert.equal(newerSnapshot(b, emptied, { event: true }), emptied);
+  // A GET an event overtook on its way loses, whatever its at.
+  assert.equal(newerSnapshot(a, b, { overtaken: true }), a);
+  // A GET built while a turn runs is behind that turn's events.
+  assert.equal(newerSnapshot(b, { ...a, running: true }), b);
+  const running = { ...srv([], 9), running: true };
+  assert.equal(newerSnapshot(b, running), running);
   assert.equal(newerSnapshot(b, { items: [] }), b);
   assert.equal(newerSnapshot(b, null), b);
+  assert.equal(newerSnapshot(b, null, { event: true }), b);
 });
 
 test("tokensText: ~840, ~1.2k, ~12k; nothing without tokens", () => {

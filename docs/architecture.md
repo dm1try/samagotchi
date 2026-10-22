@@ -446,10 +446,10 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
 - `?cards=1`: the cards, from `/tail`; the session file is only stat'ed for the 404.
 
 The stage view's working set (`web.working_set`) has its own read, `GET /api/sessions/:id/working_set`: the
-`WorkingSet` projection (`{items, at}`: each file, memory and URL live, stale or forgotten, with its tokens) of the
-worker's `/snapshot` messages, else the session file, under the session's LLM context strategy. Its live form is the
-`:working_set_updated` event. The page overlays it on the set it builds from its tool rows
-([internals/working-set.md](internals/working-set.md)).
+`WorkingSet` projection (`{items, at, running}`: each file, memory and URL live, stale or forgotten, with its tokens)
+of the worker's `/snapshot` messages, else the session file, under the session's LLM context strategy. Its live form
+is the `:working_set_updated` event, which always wins over a GET's answer it overtook. The page overlays it on the
+set it builds from its tool rows ([internals/working-set.md](internals/working-set.md)).
 
 A worker without `/tail` (an older chi; `404 not_found`) is read through `/snapshot` in the same
 shape; any other failure (no worker, a 500, a timeout) reads the disk, trimmed to the newest

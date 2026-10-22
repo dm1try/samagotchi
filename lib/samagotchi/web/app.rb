@@ -1486,12 +1486,13 @@ module Samagotchi
       # ── The working set (web.working_set) ───────────────────────────────
 
       # GET /api/sessions/:id/working_set: the working set as the model has
-      # it ({items:, at:}, WorkingSet), what the page overlays on its rows'
+      # it ({items:, at:, running:}, WorkingSet), what the page overlays on its rows'
       # set when it seeds a session's and when the expanded view opens (a
       # file changed while the session sat idle). A live worker's snapshot
       # messages are the truth, as #handle_show's, else the file's; the
       # strategy is the session's llm ctx chip's, the folder its working
-      # directory.
+      # directory. running: a turn runs, so the answer (the session's
+      # messages) is behind that turn's events, and the page keeps theirs.
       def handle_working_set(_req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
@@ -1502,7 +1503,8 @@ module Samagotchi
           SessionSetting::LLM_CONTEXT.saved_summary(session, registry: host_registry)
         end
         snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context))
-        json_response(200, snapshot.to_h)
+        running = !live&.dig("snapshot", "current_turn").nil?
+        json_response(200, snapshot.to_h.merge(running: running))
       end
 
       # The strategy an llm ctx chip names ("none", "stale,forget"), as

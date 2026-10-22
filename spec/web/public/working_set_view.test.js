@@ -126,14 +126,58 @@ test("the server's snapshot: kept by its at, overlaid on every form, the footpri
   const live = ws.liveItems({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }] }] });
   assert.equal(live.items[0].state, "forgotten");
 
-  // An older snapshot (a GET that answered late) changes nothing.
-  ws.update({ items: [], at: 3 });
-  assert.equal(railRedraws, 1);
-  assert.ok(foot.querySelector(".l.forgotten"));
   // A newer one where it is live again: the strike goes.
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 90 }], at: 8 });
   assert.equal(foot.querySelector(".l.forgotten"), null);
   assert.equal(foot.querySelector(".f"), null);
   historyEl.remove();
   infoEl.remove();
+});
+
+// A view over session s1 whose GETs answer when the test says (+answer(i,
+// snapshot)+ resolves the i-th), the overlay read off a live turn's a.rb.
+function deferredView() {
+  const pending = [];
+  const ws = createWorkingSet({
+    historyEl: document.createElement("div"), infoEl: document.createElement("div"),
+    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [] }), session: () => "s1",
+    getWorkingSet: () => new Promise((resolve) => { pending.push(resolve); }),
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const answer = async (i, snapshot) => { await tick(); pending[i](snapshot); await tick(); };
+  const stateOfA = () => ws.liveItems({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }] }] }).items[0].state;
+  return { ws, answer, stateOfA };
+}
+const aIs = (state, at, extra = {}) => ({ items: [{ kind: "file", key: "/p/lib/a.rb", state, tokens: 9 }], at, ...extra });
+
+test("the server's snapshot after a rollback: the emptied (or smaller) event is taken, and so is a GET's answer", async () => {
+  const { ws, answer, stateOfA } = deferredView();
+  ws.seed([]);
+  await answer(0, aIs("stale", 6));
+  assert.equal(stateOfA(), "stale");
+  // A rollback took the read away: the one empty event, at a smaller at.
+  ws.update({ items: [], at: 2 });
+  assert.equal(stateOfA(), "live", "the stale state went with the read");
+  ws.update(aIs("forgotten", 9));
+  // A rollback the page missed (a resync): the GET's smaller set wins.
+  ws.seed([]);
+  await answer(1, { items: [], at: 2, running: false });
+  assert.equal(stateOfA(), "live");
+});
+
+test("the server's snapshot out of order: a GET an event overtook, or one behind a running turn, never wins", async () => {
+  const { ws, answer, stateOfA } = deferredView();
+  ws.seed([]);
+  // The seed's GET is still on its way when the turn's event comes.
+  ws.update(aIs("forgotten", 9));
+  await answer(0, aIs("stale", 12));
+  assert.equal(stateOfA(), "forgotten", "the event overtook the GET");
+  // A GET asked during the turn: the session's messages, behind its events.
+  ws.seed([]);
+  await answer(1, aIs("stale", 6, { running: true }));
+  assert.equal(stateOfA(), "forgotten");
+  // Asked once the turn ended, no event meanwhile: the idle file change shows.
+  ws.seed([]);
+  await answer(2, aIs("stale", 9, { running: false }));
+  assert.equal(stateOfA(), "stale");
 });

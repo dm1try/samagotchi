@@ -91,12 +91,12 @@ It is emitted only when the set differs from the last one emitted for the sessio
 while the set is empty, so a tool-free turn on a fresh session emits nothing. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
-**The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`.
-With a live worker it builds from the worker's snapshot messages (as `handle_show` reads them, keys symbolized) and
-the worker's llm ctx chip. Without one it builds from the session file and its saved chip
+**The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
+and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` reads them, keys
+symbolized) and the worker's llm ctx chip. Without one it builds from the session file and its saved chip
 (`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. A worker's snapshot holds the
-session's messages, not the running turn's, so a GET during a turn answers an older `at` than that turn's events,
-and the page keeps the events' set.
+session's messages, not the running turn's, so a GET during a turn is behind that turn's events: `running` is true
+when the snapshot has a turn in progress (`current_turn`), and the page then keeps the events' set.
 
 ## The page's overlay
 
@@ -111,8 +111,18 @@ An item the server doesn't know yet (a running call) stays live. Known mismatch:
 worker's `Dir.pwd` (a real path), the server against `working_directory`, so a session under `/tmp` can miss
 (`/private/tmp`).
 
-`working_set_view.js` keeps one server snapshot per session and takes a new one only when its `at` is at least the
-kept one's (`newerSnapshot`): a GET that answers after a newer event never wins. The page asks for it when it seeds a
+`working_set_view.js` keeps one server snapshot per session; `working_set.js newerSnapshot` picks which. `at` can't
+order them: a rollback (a canceled turn's `end_turn`, a failed turn's `TurnFlow` restore) shortens the conversation,
+so the right set can have the smaller `at`. The page orders by what it saw instead:
+- an event is always taken. The stream delivers them in the order the Engine built them, so the newest event is the
+  server's latest set, a rollback's smaller (or empty) one too;
+- a GET's answer is dropped when an event came while it was on its way (the view counts the events it took and
+  compares the count at the ask with the count at the answer): the event may be newer;
+- else it is taken, unless it is `running` and its `at` is smaller than the kept one's (it is behind the running
+  turn's events). An idle GET after a rollback the page missed (a resync) or after a file changed wins at any `at`.
+
+No server sequence: the GET is built in `chi web` from the worker's snapshot or the file, the events in the worker,
+and a worker's event count starts over when it respawns; the page's own order needs neither. The page asks for it when it seeds a
 session's set (load, resync) and when the list opens (a file changed while the session sat idle). The stream handler
 passes `working_set_updated` to it, and does nothing when the flag is off. A new snapshot redraws:
 - the session bar's chip and the open list;
