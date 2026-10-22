@@ -966,6 +966,32 @@ the model's context: the files it read, edited or wrote, the memories it read
 or wrote and the URLs it fetched. Off by default while it is tried out; the
 turn view ignores it.
 
+- **The rail**, on the right of the stage's live slots: the running turn's set
+  in four lines, folded as it grows (files under one folder become
+  `…/web/public/ · 9 files ✎2`, memories `◆ 3 memories`, else `N files · K
+  dirs`), with the newest entries marked for a few seconds and the context
+  ring once its fill is known. It never changes the stage's height. Its `–`
+  folds it to one line (`SET 17 + ◆ name`), kept per browser; a click opens the
+  list. In a stage narrower than 760 px it is one line under the last calls;
+  on a phone it isn't shown.
+- **The footprint**, one line under each finished turn's block, live and after
+  a reload: `touched …/web/public/ · 4 files · ◆ 2 memories s2–10 · +1 url ·
+  edited 1`. A step tag (`s2`) goes to that call's row; the rest opens the
+  turn's list. A turn that touched nothing has none.
+- **The `set N` chip** in the session bar, in place of the `mem N` chip (whose
+  tooltip goes too): the session's whole set, preloaded (`--memory`) and muted
+  (`--mute`) memories included; its dot lights when the set changed since you
+  last opened it.
+- **The list** the three open (a bottom sheet on a phone): this turn or the
+  whole session, files grouped by folder (a group opens in place), memories
+  (used, preloaded, muted) and URLs, each with what was done to it (`read ×2`,
+  `read, edited`, `preloaded`) and a step tag (`s3`, `t2·s3` in the session's
+  scope, `prompt` for a preloaded memory) that goes to the call. A file opens
+  as its row's title does, a URL in a new tab.
+
+Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
+calls that succeeded count; files an `execute` touched don't.
+
 ### Web annotate presets
 
 Selecting text in an answer, a thinking block, a tool row or one of your
