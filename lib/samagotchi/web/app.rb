@@ -1491,11 +1491,19 @@ module Samagotchi
       # file changed while the session sat idle). A live worker's snapshot
       # messages are the truth, as #handle_show's, else the file's; the
       # strategy is the session's llm ctx chip's, the folder its working
-      # directory. running: a turn runs, so the answer (the session's
-      # messages) is behind that turn's events, and the page keeps theirs.
+      # directory. running: a turn runs. The snapshot's messages lag it, so
+      # the answer is then the turn's last :working_set_updated (the
+      # snapshot's working_set, TurnAccumulator#working_set); before the
+      # turn emitted one, or from an older worker without the field, it is
+      # the session's messages, behind that turn's events, and the page
+      # keeps theirs (working_set.js newerSnapshot).
       def handle_working_set(_req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
+        running = !live&.dig("snapshot", "current_turn").nil?
+        turn_set = running && running_working_set(live["snapshot"]["working_set"])
+        return json_response(200, turn_set.merge(running: true)) if turn_set
+
         messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
         # A snapshot's entries have string keys (paired_runs reads symbols).
         messages = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
@@ -1503,8 +1511,15 @@ module Samagotchi
           SessionSetting::LLM_CONTEXT.saved_summary(session, registry: host_registry)
         end
         snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context))
-        running = !live&.dig("snapshot", "current_turn").nil?
         json_response(200, snapshot.to_h.merge(running: running))
+      end
+
+      # The running turn's set from a worker's snapshot ({"items", "at"}), as
+      # {items:, at:}; nil when it has none (none emitted yet, an older worker).
+      def running_working_set(set)
+        return nil unless set.is_a?(Hash) && set["items"].is_a?(Array) && set["at"].is_a?(Integer)
+
+        { items: set["items"], at: set["at"] }
       end
 
       # The strategy an llm ctx chip names ("none", "stale,forget"), as

@@ -246,7 +246,10 @@ module Samagotchi
     # with its own).
     # The commands queued for after the running turn (queued_commands,
     # TurnAccumulator#queued_commands) too.
-    # @return [Hash] {messages:, current_turn:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
+    # working_set: the running turn's last :working_set_updated ({items:,
+    # at:}, TurnAccumulator#working_set), which the messages lag; nil
+    # between turns and before the turn emitted one.
+    # @return [Hash] {messages:, current_turn:, working_set:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
     #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
@@ -254,6 +257,7 @@ module Samagotchi
         {
           messages: @engine.messages_checkpoint,
           current_turn: current_turn_with_generation,
+          working_set: @accumulator.working_set,
           queued: @accumulator.queued,
           queued_commands: @accumulator.queued_commands,
           recap: @accumulator.recap,

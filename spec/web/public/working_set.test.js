@@ -272,6 +272,9 @@ test("newerSnapshot: the first one; an event always (a rollback's smaller at too
   assert.equal(newerSnapshot(b, { ...a, running: true }), b);
   const running = { ...srv([], 9), running: true };
   assert.equal(newerSnapshot(b, running), running);
+  // A running GET answered from the turn's last event: its at is the kept event's, so it is taken.
+  const turnSet = { ...srv([], 7), running: true };
+  assert.equal(newerSnapshot(b, turnSet), turnSet);
   assert.equal(newerSnapshot(b, { items: [] }), b);
   assert.equal(newerSnapshot(b, null), b);
   assert.equal(newerSnapshot(b, null, { event: true }), b);

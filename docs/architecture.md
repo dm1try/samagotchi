@@ -447,7 +447,8 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
 
 The stage view's working set (`web.working_set`) has its own read, `GET /api/sessions/:id/working_set`: the
 `WorkingSet` projection (`{items, at, running}`: each file, memory and URL live, stale or forgotten, with its tokens)
-of the worker's `/snapshot` messages, else the session file, under the session's LLM context strategy. Its live form
+of the worker's `/snapshot` messages, else the session file, under the session's LLM context strategy; while a turn
+runs, the snapshot's `working_set` (the running turn's last event, which the messages lag) when it has one. Its live form
 is the `:working_set_updated` event, which always wins over a GET's answer it overtook. The page overlays it on the
 set it builds from its tool rows ([internals/working-set.md](internals/working-set.md)).
 

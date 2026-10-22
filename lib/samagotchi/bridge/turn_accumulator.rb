@@ -35,6 +35,7 @@ module Samagotchi
         @merged_origins = []
         @recap = nil
         @continue_offer = nil
+        @working_set = nil
       end
 
       def call(event)
@@ -192,6 +193,17 @@ module Samagotchi
       end
       private_class_method :with_images
 
+      # The running turn's working set: its last :working_set_updated
+      # ({items:, at:}, Engine#emit_working_set). The session's kept messages
+      # lag the running turn, so this is what a mid-turn read of the set
+      # answers (Web::App#handle_working_set).
+      # @return [Hash, nil] a copy; nil with no turn running, or before the
+      #   turn emitted one (its set is then the session's: the Engine emits
+      #   only a set that differs from the last one)
+      def working_set
+        @mutex.synchronize { @working_set && Marshal.load(Marshal.dump(@working_set)) }
+      end
+
       # @return [String, nil] the last idle recap, until a turn makes it stale
       def recap
         @mutex.synchronize { @recap }
@@ -249,6 +261,7 @@ module Samagotchi
                     parts: [], pending_question: nil }
           @turn[:resumed] = true if event[:resumed]
           @tool_started_at = {}
+          @working_set = nil
           @turn[:images] = event[:images] if event[:images]
           @turn[:cut_after] = event[:cut_after] if event[:cut_after]
         when :input_merged
@@ -261,6 +274,7 @@ module Samagotchi
         if Events::TURN_END.include?(type)
           @turn = nil
           @merged_origins = []
+          @working_set = nil
         elsif event[:event_seq]
           @turn[:event_seq] = event[:event_seq]
         end
@@ -321,6 +335,8 @@ module Samagotchi
           Array(event[:steers]).each do |steer|
             parts << { kind: "steer", iteration: event[:iteration], source: steer[:source].to_s, text: steer[:text].to_s.dup }
           end
+        when :working_set_updated
+          @working_set = { items: event[:items], at: event[:at] }
         when :reminder_injected
           parts << { kind: "reminder", reminders: Array(event[:reminders]).map(&:dup) }
         when :question_requested

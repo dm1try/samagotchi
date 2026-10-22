@@ -50,6 +50,31 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts]).to eq([{ kind: "generation", iteration: 1 }, { kind: "text", iteration: 1, text: "ok" }])
   end
 
+  describe "#working_set" do
+    let(:set_a) { { type: :working_set_updated, items: [{ kind: "file", key: "/a.rb" }], at: 3 } }
+    let(:set_b) { { type: :working_set_updated, items: [{ kind: "file", key: "/b.rb" }], at: 5 } }
+
+    it "keeps the running turn's last set, a copy, and drops it at the turn's end" do
+      feed({ type: :turn_started, prompt: "hi" }, set_a, set_b)
+      expect(acc.working_set).to eq(items: [{ kind: "file", key: "/b.rb" }], at: 5)
+      acc.working_set[:items].clear
+      expect(acc.working_set[:items].size).to eq(1)
+      expect(acc.current_turn).not_to have_key(:working_set)
+
+      feed({ type: :turn_completed })
+      expect(acc.working_set).to be_nil
+    end
+
+    it "has none between turns, nor at a turn's start before the turn emits one" do
+      feed(set_a)
+      expect(acc.working_set).to be_nil
+
+      feed({ type: :turn_started, prompt: "one" }, set_a, { type: :turn_canceled })
+      feed({ type: :turn_started, prompt: "two" })
+      expect(acc.working_set).to be_nil
+    end
+  end
+
   it "has nothing before a turn starts" do
     expect(acc.current_turn).to be_nil
     expect(acc.queued).to eq([])

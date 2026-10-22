@@ -971,6 +971,25 @@ RSpec.describe Samagotchi::Bridge do
         expect(held).to eq([true])
       end
 
+      it "carries the running turn's last working set, which its messages lag, and none between turns" do
+        start_bridge
+        set = { type: :working_set_updated, items: [{ kind: "file", key: "/w/a.rb", state: "live" }], at: 3 }
+        release = hold_turn_after({ type: :generation_started, iteration: 1 }, set,
+                                  conversation: [{ role: "model", content: "done" }])
+        expect(@bridge.snapshot[:working_set]).to be_nil
+        turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
+        wait_until { @bridge.snapshot[:working_set] }
+
+        body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")
+        release << true
+        turn.join
+
+        expect(body["snapshot"]["working_set"])
+          .to eq("items" => [{ "kind" => "file", "key" => "/w/a.rb", "state" => "live" }], "at" => 3)
+        expect(body["snapshot"]["messages"]).to eq([])
+        expect(@bridge.snapshot).to include(working_set: nil, current_turn: nil)
+      end
+
       it "serves the same snapshot over GET /session/:id/snapshot, with the session state at its seq" do
         start_bridge
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },

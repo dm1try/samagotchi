@@ -108,9 +108,17 @@ the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI 
 **The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
 and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` reads them, keys
 symbolized) and the worker's llm ctx chip. Without one it builds from the session file and its saved chip
-(`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. A worker's snapshot holds the
-session's messages, not the running turn's, so a GET during a turn is behind that turn's events: `running` is true
-when the snapshot has a turn in progress (`current_turn`), and the page then keeps the events' set.
+(`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
+snapshot has a turn in progress (`current_turn`).
+
+**The GET while a turn runs.** A worker's snapshot messages are the session's, not the running turn's, so they lag
+its events. The snapshot also carries `working_set`: the running turn's last `:working_set_updated` (`{items, at}`),
+which the Bridge's `TurnAccumulator#working_set` folds from the event log. It is cleared at `:turn_started` and at
+the turn's end, so it is nil between turns and before the turn emitted one. While a turn runs and it is set, the GET
+answers it as is (no build, no stat): a page opened mid-turn gets the running turn's set at once, and its `at` is the
+event's, so the page takes it (below). Before the turn's first event the turn's set is still the session's (the
+Engine emits only a set that differs from the last one), and the GET builds from the messages as between turns; so
+does one from an older worker without the field, its answer then behind the turn's events, which the page keeps.
 
 ## The page's overlay
 
@@ -133,7 +141,8 @@ so the right set can have the smaller `at`. The page orders by what it saw inste
 - a GET's answer is dropped when an event came while it was on its way (the view counts the events it took and
   compares the count at the ask with the count at the answer): the event may be newer;
 - else it is taken, unless it is `running` and its `at` is smaller than the kept one's (it is behind the running
-  turn's events). An idle GET after a rollback the page missed (a resync) or after a file changed wins at any `at`.
+  turn's events: a GET built from the messages). A `running` GET answered from the turn's last event has that
+  event's `at`, so it is taken. An idle GET after a rollback the page missed (a resync) or after a file changed wins at any `at`.
 
 No server sequence: the GET is built in `chi web` from the worker's snapshot or the file, the events in the worker,
 and a worker's event count starts over when it respawns; the page's own order needs neither. The page asks for it when it seeds a

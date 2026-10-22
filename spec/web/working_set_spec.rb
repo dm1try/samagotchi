@@ -71,16 +71,48 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     expect(body["running"]).to be(false)
   end
 
-  it "says when a turn runs: the answer is the session's messages, behind that turn's events" do
+  it "says when a turn runs: before the turn's first set (or from an older worker), the session's messages" do
     session = saved_session([])
     live_messages = JSON.parse(JSON.generate(read_messages))
+    [{ "messages" => live_messages, "current_turn" => { "parts" => [] }, "working_set" => nil },
+     { "messages" => live_messages, "current_turn" => { "parts" => [] } }].each do |snapshot|
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot")
+                                             .and_return("snapshot" => snapshot, "session_state_snapshot" => {})
+
+      _status, body = call("/api/sessions/#{session.id}/working_set")
+
+      expect(body).to include("at" => 3, "running" => true)
+      expect(body["items"]).to match([include("key" => path, "state" => "live")])
+    end
+  end
+
+  it "answers the running turn's last set while a turn runs (the snapshot's messages lag it)" do
+    session = saved_session([])
+    turn_set = { "items" => [{ "kind" => "memory", "key" => "notes", "state" => "live", "tokens" => 9, "ops" => ["read"],
+                               "count" => 1, "first_id" => "t2" }], "at" => 7 }
     allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
-      "snapshot" => { "messages" => live_messages, "current_turn" => { "parts" => [] } }, "session_state_snapshot" => {}
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages)), "current_turn" => { "parts" => [] },
+                      "working_set" => turn_set },
+      "session_state_snapshot" => {}
     )
 
     _status, body = call("/api/sessions/#{session.id}/working_set")
 
-    expect(body).to include("at" => 3, "running" => true)
+    expect(body).to eq(turn_set.merge("running" => true))
+  end
+
+  it "builds from the messages between turns, whatever set the snapshot carries" do
+    session = saved_session([])
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages)), "current_turn" => nil,
+                      "working_set" => { "items" => [], "at" => 9 } },
+      "session_state_snapshot" => {}
+    )
+
+    _status, body = call("/api/sessions/#{session.id}/working_set")
+
+    expect(body).to include("at" => 3, "running" => false)
+    expect(body["items"]).to match([include("key" => path)])
   end
 
   it "is empty for a session without tool runs, and 404 for an unknown one" do
