@@ -1,0 +1,6 @@
+#!/bin/sh
+# What every FakeExecutable (and spec/support/fake_executables.rb) fake
+# links to: runs the fake's body, <link>.sh, with /bin/sh. Checked in, not
+# written per process: macOS scans a just-written executable at its first
+# exec, which under a busy run can stall for minutes.
+exec /bin/sh "$0.sh" "$@"
