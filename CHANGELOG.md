@@ -8,6 +8,27 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-10-22
+
+### Added
+
+- Web (experimental, off by default): the stage view's **working set**, which shows what defines the model's
+  context: the files it read or edited, the memories, the fetched URLs and the preloaded and muted memories. It
+  shows when each one came in, folded into a few lines beside the stage. It replaces the mem chip with
+  `● set N`, adds a footprint line under each finished turn, and opens a list whose step tags jump to the call.
+  Items say whether the model still has them: **stale** (faded) when the file changed after the model last saw it,
+  through `execute`, your editor or anything else (the model's own edits don't count); **forgotten** (struck)
+  when the LLM context strategy no longer sends any of it. Each row shows its size in tokens. Turn it on with
+  `web.working_set: true`, `chi web --web-working-set` or `?working_set=1`. See
+  [docs/cli.md](docs/cli.md#the-working-set).
+
+### Fixed
+
+- macOS: reading a host's API key from the Keychain can no longer hang chi past its 5 s deadline when starting
+  `security` stalls (a first run scanned by XProtect): chi warns and goes on without the key.
+
+Update with `chi update`.
+
 ## [0.100.1] - 2026-10-22
 
 ### Fixed
@@ -3807,7 +3828,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.100.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.101.0...HEAD
+[0.101.0]: https://github.com/dm1try/samagotchi/compare/v0.100.1...v0.101.0
 [0.100.1]: https://github.com/dm1try/samagotchi/compare/v0.100.0...v0.100.1
 [0.100.0]: https://github.com/dm1try/samagotchi/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/dm1try/samagotchi/compare/v0.98.0...v0.99.0

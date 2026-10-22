@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  VERSION = "0.100.1"
+  VERSION = "0.101.0"
   # Sent as the User-Agent of every HTTP request chi makes.
   USER_AGENT = "chi/#{VERSION}"
 end
