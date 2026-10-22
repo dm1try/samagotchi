@@ -206,6 +206,68 @@ RSpec.describe Samagotchi::WorkingSet do
     end
   end
 
+  describe ".outputs_of" do
+    let(:forget) { edit("forget", "cart totals are in lib/cart.rb") }
+
+    def outputs(conversation, kind, key, strategy: :none)
+      described_class.outputs_of(conversation, kind: kind, key: key, strategy: strategy, cwd: root)
+    end
+
+    it "lists an item's content outputs by id and entry index, whether each is still sent, not its edits" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => forget }),
+                      chat_model(chat_call("c2", "edit", { "path" => cart, "old_text" => "a", "new_text" => "b" })),
+                      chat_result("c2", "edit", "Edited", "t2"),
+                      *read_turn("lib/tax.rb", "c3", "t3"),
+                      *read_turn(cart, "c4", "t4")]
+
+      expect(outputs(conversation, "file", cart, strategy: %i[forget]).map(&:to_h)).to eq([
+        { id: "t1", index: 2, derived: false, sent: false },
+        { id: "t4", index: 8, derived: false, sent: true }
+      ])
+      expect(outputs(conversation, "file", cart).map(&:sent)).to eq([true, true])
+    end
+
+    it "agrees with build: an item is forgotten when none of its outputs is sent" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => forget }), *read_turn("lib/tax.rb", "c2", "t2")]
+
+      build(conversation, strategy: %i[forget]).items.each do |item|
+        sent = outputs(conversation, item.kind, item.key, strategy: %i[forget]).map(&:sent)
+        expect(item.state == "forgotten").to eq(sent.none?)
+      end
+    end
+
+    it "pairs a native joined entry's runs as build does, all at the entry's index" do
+      conversation = [head, { role: "user", content: "go" },
+                      qwen_model(qwen_call("execute", command: "ls"), qwen_call("read", path: "lib/cart.rb"),
+                                 qwen_call("read", path: "lib/tax.rb")),
+                      joined(%w[execute files], ["read", body], ["read", body], ids: %w[t1 t2 t3])]
+
+      expect(outputs(conversation, "file", cart).map { |out| [out.id, out.index] }).to eq([["t2", 3]])
+      expect(outputs(conversation, "file", tax).map { |out| [out.id, out.index] }).to eq([["t3", 3]])
+    end
+
+    it "marks a legacy entry's derived ids" do
+      conversation = [head, chat_model(chat_call("c1", "read", { "path" => "lib/cart.rb" })),
+                      { role: "tool_response", content: "[read]\n#{body}", tool_call_id: "c1" }]
+
+      expect(outputs(conversation, "file", cart).map { |out| [out.id, out.derived] }).to eq([["e2.1", true]])
+    end
+
+    it "is one output per name of a memory_read, none for an edit-only item, a failed run or an unknown key" do
+      conversation = [head, chat_model(chat_call("c1", "memory_read", { "name" => "style, tone" })),
+                      chat_result("c1", "memory_read", "be brief\n\n---\n\nbe kind", "t1"),
+                      chat_model(chat_call("c2", "write", { "path" => "lib/new.rb", "content" => "x" }),
+                                 chat_call("c3", "read", { "path" => "lib/gone.rb" })),
+                      chat_result("c2", "write", "Wrote", "t2"), chat_result("c3", "read", "Error: no such file", "t3")]
+
+      expect(outputs(conversation, "memory", "style").map(&:id)).to eq(%w[t1])
+      expect(outputs(conversation, "memory", "tone").map(&:id)).to eq(%w[t1])
+      expect(outputs(conversation, "file", "/work/shop/lib/new.rb")).to be_empty
+      expect(outputs(conversation, "file", "/work/shop/lib/gone.rb")).to be_empty
+      expect(outputs(conversation, "url", "https://nowhere.dev")).to be_empty
+    end
+  end
+
   describe "runs left out" do
     it "leaves out failed, denied and interrupted runs" do
       conversation = [head, chat_model(chat_call("c1", "read", { "path" => "lib/a.rb" }),

@@ -85,17 +85,45 @@ module Samagotchi
     def build(conversation, cwd:, strategy:, stat: File.method(:stat))
       conversation = Array(conversation)
       view = LLMContextView.new(strategy: strategy)
+      items = all_touches(conversation, cwd, view).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
+        item(kind, key, group, conversation, view, stat)
+      end
+      Snapshot.new(items: items, at: conversation.size)
+    end
+
+    # One content output (read, memory_read, web_fetch) of an item: its
+    # chi +id+ (ToolIds), the +index+ of the tool_response entry holding
+    # it, whether the id is +derived+ (a legacy entry's: nothing can name
+    # it) and whether the model is still +sent+ it under the strategy.
+    Output = Data.define(:id, :index, :derived, :sent)
+
+    # The content outputs of the item +kind+/+key+ (#build's identity: a
+    # file's absolute path, a memory's name, a URL), in conversation
+    # order, by the same pairing #build uses, so what acts on an item's
+    # outputs and the projection never disagree. Edit-only items have
+    # none. A memory_read of several names is one output of each.
+    # @return [Array<Output>]
+    def outputs_of(conversation, kind:, key:, strategy:, cwd:)
+      conversation = Array(conversation)
+      view = LLMContextView.new(strategy: strategy)
+      all_touches(conversation, cwd, view).filter_map do |touch|
+        next unless touch.content && touch.kind == kind && touch.key == key
+
+        ref = touch.run.ref
+        Output.new(id: ref.id, index: touch.run.index, derived: ref.derived?,
+                   sent: still_sent?(touch, conversation, view))
+      end
+    end
+
+    # Every paired run's touches, with what +view+ sends of its output.
+    def all_touches(conversation, cwd, view)
       stored = LLMContextStale.paired_runs(conversation)
       sent = if view.none?
                {}
              else
                LLMContextStale.paired_runs(view.messages(conversation)).to_h { |run| [run.ref.id, run.text] }
              end
-      touches = stored.flat_map { |run| touches(run, sent.fetch(run.ref.id, run.text), cwd) }
-      items = touches.group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
-        item(kind, key, group, conversation, view, stat)
-      end
-      Snapshot.new(items: items, at: conversation.size)
+      stored.flat_map { |run| touches(run, sent.fetch(run.ref.id, run.text), cwd) }
     end
 
     # The items +run+ touched (none when it failed or was interrupted).
@@ -195,6 +223,6 @@ module Samagotchi
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :touches, :failed?, :found_names, :item, :still_sent?, :with_id, :changed?, :stamp_of, :field
+    private_class_method :all_touches, :touches, :failed?, :found_names, :item, :still_sent?, :with_id, :changed?, :stamp_of, :field
   end
 end

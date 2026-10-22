@@ -74,6 +74,13 @@ only edited or written is never forgotten.
 **Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
 or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
 
+**An item's outputs.** `WorkingSet.outputs_of(conversation, kind:, key:, strategy:, cwd:)` answers an item's
+content outputs (`WorkingSet::Output`: `id`, the tool_response entry's `index`, `derived` for a legacy entry's id,
+and `sent`, the rule above) in conversation order. It walks the runs exactly as `build` does (one shared
+`all_touches`), so what acts on an item's outputs and the projection never disagree: an item is forgotten exactly
+when it has outputs and none is `sent`. An edit-only item, a failed run's file or an unknown key has none; a
+`memory_read` of several names is an output of each name.
+
 **Cost.** Two `paired_runs` walks, one view build and one stat per file item. A 500-message session builds in about
 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
 
