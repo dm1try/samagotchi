@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The web's `continue →` no longer takes a draft left over from another session (or the start page) as the new
+  link's first message: the opener goes in, and the toast's **Restore draft** brings the draft back. A draft written
+  in the continued session still stays.
+
 ## [0.100.0] - 2026-10-22
 
 ### Added

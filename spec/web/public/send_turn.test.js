@@ -56,6 +56,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       clear: () => { cleared += 1; promptEl.value = ""; },
       openForVisit: () => log.push("openForVisit"),
       focus: () => log.push("focus"),
+      noteDraft: (id) => log.push(`noteDraft ${id}`),
     },
     historyEl,
     turnDom: {},
@@ -157,6 +158,15 @@ test("a switch while the send is in flight: the ack's follow and restore stay wi
   assert.ok(!h.log.includes("openForVisit"));
   // The restored line still comes back into the (shared) composer.
   assert.equal(h.promptEl.value, "hello");
+});
+
+test("a restored line put back after a switch is a draft of the session it went to (continue's draft origin)", async () => {
+  let h;
+  h = harness({ sendTurn: async () => { h.world.selected = "s2"; h.promptEl.value = ""; return { enqueued_id: "e1" }; } });
+  h.earlyRestores.set("e1", { origin: { client_id: "web:t1", enqueued_id: "e1" }, prompt: "hello" });
+  await h.send();
+  assert.equal(h.promptEl.value, "hello");
+  assert.ok(h.log.includes("noteDraft s1"));
 });
 
 test("a turn restored before its ack: its line back in the composer, which opens", async () => {

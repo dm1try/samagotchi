@@ -1,7 +1,7 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainClock, chainDate, chainLinks, chainStamp, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate, openerText, openTitle } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainClock, chainDate, chainLinks, chainStamp, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, freshLink, openChildrenTemplate, openerText, openerFill, openTitle, restoredComposer } from "../../../lib/samagotchi/web/public/chains.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template's markup as the page gets it (lit's marker comments dropped).
@@ -197,6 +197,30 @@ test("chainRowsTemplate: a row's date carries its HH:MM only when another link o
 });
 
 const refused = (code, body, message = "refused") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });
+
+test("openerFill: an empty composer gets the opener; a draft of this session, the new link or unknown origin stays", () => {
+  const created = { id: "new", opener: "Daily review." };
+  const base = { continuedId: "old", linkId: "new", created };
+  assert.deepEqual(openerFill({ ...base, text: "  ", hasChips: false, draftFrom: "other" }), { value: "Daily review.", displaced: null });
+  for (const draftFrom of ["old", "new", undefined]) {
+    assert.deepEqual(openerFill({ ...base, text: "mine", hasChips: false, draftFrom }), { value: null, displaced: null });
+  }
+});
+
+test("openerFill: a draft from another session or the start page gives way to the opener and is displaced; chips alone stay beside it", () => {
+  const base = { continuedId: "old", linkId: "new", created: { id: "new" } };
+  for (const draftFrom of ["other", ""]) {
+    assert.deepEqual(openerFill({ ...base, text: "shell setup", hasChips: true, draftFrom }), { value: CONTINUE_OPENER, displaced: "shell setup" });
+  }
+  assert.deepEqual(openerFill({ ...base, text: "", hasChips: true, draftFrom: "other" }), { value: CONTINUE_OPENER, displaced: null });
+  assert.deepEqual(openerFill({ ...base, text: "", hasChips: true, draftFrom: "old" }), { value: null, displaced: null });
+});
+
+test("restoredComposer: the draft replaces an empty or untouched opener, else goes after a blank line", () => {
+  assert.equal(restoredComposer({ current: "", opener: "Go on.", draft: "d" }), "d");
+  assert.equal(restoredComposer({ current: "Go on.", opener: "Go on.", draft: "d" }), "d");
+  assert.equal(restoredComposer({ current: "Go on. And X\n", opener: "Go on.", draft: "d" }), "Go on. And X\n\nd");
+});
 
 test("openerText: the continue's own opener (the previous link's first message), else the constant", () => {
   assert.equal(openerText({ id: "c", opener: "You are the coordinator again." }), "You are the coordinator again.");

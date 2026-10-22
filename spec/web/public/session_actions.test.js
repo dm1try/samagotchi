@@ -11,7 +11,8 @@ function failure(status, code = null, message = "boom", body = null) {
 }
 
 // +api+: overrides of the data.js calls (each records its call in +calls+).
-function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true } = {}) {
+// +displaced+: what fillOpener returns (a draft from another session it replaced, or null).
+function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true, displaced = null } = {}) {
   const world = { selected: open, sessions: list, state: { status: "running" } };
   const log = [];
   const calls = [];
@@ -42,7 +43,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     updateInfoBar: () => log.push(`infoBar ${[...actions.continuing].join(",")}`),
     toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
     addCreatedSession: (created) => log.push(`created ${created.id}`),
-    fillOpener: (created) => log.push(`opener ${created.id}`),
+    fillOpener: (created, continuedId) => { log.push(`opener ${created.id} from ${continuedId}`); return displaced; },
+    restoreDraft: (draft, opener) => log.push(["restoreDraft", draft, opener]),
     closeLiveStream: () => log.push("closeLiveStream"),
     workerGone: (id) => log.push(`workerGone ${id} stopping=${actions.stoppingId()}`),
     alert: (text) => alerts.push(text),
@@ -116,10 +118,29 @@ test("continueSelected: the next link opens with its opener; the previous one is
   assert.deepEqual(h.calls, [["continueSession", "s1aaaaaaaa"]]);
   assert.equal(h.world.sessions[0].archived, true);
   assert.deepEqual(h.log, [
-    "infoBar s1aaaaaaaa", "created s2bbbbbbbb", "select s2bbbbbbbb", "opener s2bbbbbbbb", "infoBar ",
+    "infoBar s1aaaaaaaa", "created s2bbbbbbbb", "select s2bbbbbbbb", "opener s2bbbbbbbb from s1aaaaaaaa", "infoBar ",
   ]);
   assert.equal(h.toasts.length, 1);
   assert.equal(h.toasts[0].action, null);
+  assert.equal(h.toasts[0].options.sticky, false);
+});
+
+test("continueSelected: a draft from another session gave way to the opener: a sticky toast's Restore draft brings it back", async () => {
+  const h = harness({ displaced: "my shell setup" });
+  await h.actions.continueSelected();
+  assert.equal(h.toasts.length, 1);
+  const { action, options } = h.toasts[0];
+  assert.equal(action.label, "Restore draft");
+  assert.equal(options.sticky, true);
+  action.run();
+  assert.deepEqual(h.log.at(-1), ["restoreDraft", "my shell setup", "Continue where we left off."]);
+});
+
+test("continueSelected: a model fallback's warning stays sticky with no draft displaced", async () => {
+  const h = harness({ api: { continueSession: async () => ({ id: "s2bbbbbbbb", continues: "s1aaaaaaaa", model_warning: "fell back" }) } });
+  await h.actions.continueSelected();
+  assert.equal(h.toasts[0].action, null);
+  assert.equal(h.toasts[0].options.sticky, true);
 });
 
 test("continueSelected: a switch meanwhile offers Open instead; one continue per session at a time", async () => {
