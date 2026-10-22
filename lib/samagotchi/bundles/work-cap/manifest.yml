@@ -6,7 +6,7 @@ description: "A per-session work cap (tool calls, active minutes) across turns: 
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:b8077c32d72b489aba3f3b98e0a54dfb6140a000528de7d13cba5554f1f3f920
+  sha256: sha256:75429769c1dbc29afe908923e6f90ee4a3ab38e65b19e41bfc8f57cc0d10db99
 # ask_user's effects: are in chi 0.92.0; ctx.usage is new in the next chi
 requires_chi: ">= 0.100.0"
 # chi --set work-cap.tool_calls=400 / work-cap.minutes=60: the session's own caps, a number or off

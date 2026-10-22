@@ -27,8 +27,10 @@
 #                     tools whose calls and time aren't counted (waiting:
 #                     delegate blocks on its child by default)
 # Each meter resolves on its own: its own value, else child:'s for a
-# delegate, else default:'s. A value that doesn't read (tool_calls: many)
-# warns the user once and the next one is used, never a silent "no cap".
+# delegate, else default:'s. An empty key (YAML nil) is unset and falls
+# through; off, false and 0 are an explicit "no cap". A value that doesn't
+# read (tool_calls: many) warns the user once and the next one is used,
+# never a silent "no cap".
 #
 # What counts: ctx.usage's tool calls and active time (generations plus
 # finished tool calls, never a question's wait), less ignore_tools'.
@@ -102,7 +104,8 @@ class Plugin
   def self.float_text(text) = text.sub(/\.(?=e|\z)/i, ".0")
 
   # Whether +value+ reads as a cap or as none: a number (text too), off,
-  # false or nil; not "many", true or a list.
+  # false or nil (nil is unset, not none: #first_readable skips it); not
+  # "many", true or a list.
   def self.readable?(value, meter)
     case value
     when false, nil then true
@@ -303,9 +306,9 @@ class Plugin
   end
 
   # Per meter the first of its own value, child:'s (a delegate's) and
-  # default:'s that is set and reads (.readable?); the ones set that don't
-  # read (and a child:/default: that isn't a mapping) are kept for the
-  # notice (#unreadable).
+  # default:'s that is set (an empty key, nil, isn't) and reads
+  # (.readable?); the ones set that don't read (and a child:/default: that
+  # isn't a mapping) are kept for the notice (#unreadable).
   def configured(ctx)
     settings = ctx.settings
     unreadable = {}
@@ -329,6 +332,8 @@ class Plugin
       next unless values.key?(meter)
 
       value = values[meter]
+      next if value.nil?
+
       unless self.class.readable?(value, meter)
         unreadable[name] = value
         next

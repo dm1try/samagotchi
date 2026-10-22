@@ -220,6 +220,28 @@ RSpec.describe "The work-cap bundle", :bundle do
         .to eq(["work-cap: child.minutes: \"soon\" isn't a number or off; using default.minutes: (60)", :warn])
     end
 
+    it "counts an empty key (nil) as unset and falls through to the next source, with no notice" do
+      bundle = plugin({ "tool_calls" => nil, "child" => { "tool_calls" => nil }, "default" => { "tool_calls" => 10 } },
+                      usage: calls(12))
+      allow(bundle.ctx).to receive(:delegate?).and_return(true)
+      bundle.answer({ selected: ["Stop"] })
+      generation(bundle)
+      expect(bundle.questions.last.question).to include("12 tool calls of 10")
+      expect(bundle.notices).to be_empty
+
+      empty_default = plugin({ "default" => nil, "minutes" => nil }, usage: calls(900))
+      generation(empty_default)
+      expect([empty_default.questions, empty_default.notices]).to all(be_empty)
+    end
+
+    it "keeps off, false and 0 as an explicit no cap that stops the resolution" do
+      ["off", false, 0, "0"].each do |value|
+        bundle = plugin({ "tool_calls" => value, "default" => { "tool_calls" => 10 } }, usage: calls(12))
+        generation(bundle)
+        expect([bundle.questions, bundle.notices]).to all(be_empty), value.inspect
+      end
+    end
+
     it "reads minutes written 90m, 1.5h or 90 min in config.yml" do
       { "90m" => 90, "1.5h" => 90, "90 min" => 90, "2h" => 120 }.each do |text, cap|
         bundle = plugin({ "default" => { "minutes" => text } })
