@@ -12,16 +12,16 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(reasoning_history: :drop)).not_to be_empty
     expect(described_class.new(appended_prompt_files: ["/r/a.md"])).not_to be_empty
     expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))).not_to be_empty
-    expect(described_class.new(bundle_settings: { "cost-cap" => { "cap" => 3 } })).not_to be_empty
-    expect(described_class.new(bundle_settings: {})).to be_empty
+    expect(described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 3 } }))).not_to be_empty
+    expect(described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: {}))).to be_empty
     expect(described_class.new(parent_answers: "hard")).not_to be_empty
   end
 
   it "keeps bundle settings frozen, string-keyed" do
-    setup = described_class.new(bundle_settings: { "cost-cap": { cap: 3 } })
-    expect(setup.bundle_settings).to eq("cost-cap" => { "cap" => 3 })
-    expect(setup.bundle_settings).to be_frozen
-    expect(described_class.new.bundle_settings).to eq({})
+    setup = described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap": { cap: 3 } }))
+    expect(setup.settings.bundles).to eq("cost-cap" => { "cap" => 3 })
+    expect(setup.settings.bundles).to be_frozen
+    expect(described_class.new.settings.bundles).to eq({})
   end
 
   it "takes a session's own settings, and none from no session" do
@@ -40,8 +40,8 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.of(session).reasoning_history).to eq(:all)
     session.appended_prompt_files = ["/r/a.md"]
     expect(described_class.of(session).appended_prompt_files).to eq(["/r/a.md"])
-    session.bundle_settings = { "cost-cap" => { "cap" => 2 } }
-    expect(described_class.of(session).bundle_settings).to eq("cost-cap" => { "cap" => 2 })
+    session.settings = Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 2 } })
+    expect(described_class.of(session).settings.bundles).to eq("cost-cap" => { "cap" => 2 })
     session.parent_answers = "standard"
     expect(described_class.of(session).parent_answers).to eq("standard")
     expect(described_class.of(nil)).to be_empty
@@ -53,11 +53,11 @@ RSpec.describe Samagotchi::SessionSetup do
                                               setup: described_class.new(llm_context: override, thinking: :medium,
                                                                          reasoning_history: :drop,
                                                                          appended_prompt_files: ["/r/a.md"],
-                                                                         bundle_settings: { "x" => { "k" => 1 } },
+                                                                         settings: Samagotchi::SessionConfig::Settings.new(bundles: { "x" => { "k" => 1 } }),
                                                                          parent_answers: "hard"))
 
     expect(session).to have_attributes(llm_context: override, thinking: :medium, reasoning_history: :drop,
-                                       appended_prompt_files: ["/r/a.md"], bundle_settings: { "x" => { "k" => 1 } },
+                                       appended_prompt_files: ["/r/a.md"], settings: Samagotchi::SessionConfig::Settings.new(bundles: { "x" => { "k" => 1 } }),
                                        parent_answers: "hard")
   end
 end

@@ -5,7 +5,7 @@ require "samagotchi/plugin/context"
 require "samagotchi/session_setup"
 
 # ctx.settings: config.yml's bundles: <name>: with the session's own --set
-# values for the bundle laid over it (SessionSetup#bundle_settings, through
+# values for the bundle laid over it (SessionSetup#settings, through
 # the Host's setup), frozen, rebuilt when the session id changes.
 RSpec.describe Samagotchi::Plugin::Context, "#settings" do
   let(:session_id) { [nil] }
@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::Plugin::Context, "#settings" do
     Samagotchi::Plugin::Host.new(session_id: -> { session_id.first },
                                  setup: lambda {
                                    setup_calls[0] += 1
-                                   Samagotchi::SessionSetup.new(bundle_settings: session_values.first)
+                                   Samagotchi::SessionSetup.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: session_values.first))
                                  })
   end
   let(:config) { { "default" => 5, "warn_at" => 0.8, "nested" => { "a" => [1] } } }
@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::Plugin::Context, "#settings" do
                                                     attempts += 1
                                                     raise "unavailable" if attempts == 1
 
-                                                    Samagotchi::SessionSetup.new(bundle_settings: { "cost-cap" => { "cap" => 2 } })
+                                                    Samagotchi::SessionSetup.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 2 } }))
                                                   })
     context = described_class.new(bundle: "cost-cap", label: "plugin.rb", settings: config, host: transient_host)
 

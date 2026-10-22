@@ -83,9 +83,9 @@ module Samagotchi
 
         attr_reader :root, :config_home, :state_home, :work_dir
 
-        def initialize(path, bundle_settings: {}, cost_cap: 1, cost_cap_override: false)
+        def initialize(path, settings: {}, cost_cap: 1, cost_cap_override: false)
           @path = File.realpath(path)
-          @bundle_settings = bundle_settings
+          @settings = settings
           @cost_cap = cost_cap
           @cost_cap_override = cost_cap_override
           read_manifest
@@ -153,7 +153,7 @@ module Samagotchi
           data["context"]&.delete("sources")
           data["bundles"] = { "cost-cap" => { "cap" => @cost_cap } }
           data["bundles"][@manifest.name] ||= {}
-          data["bundles"][@manifest.name].merge!(@bundle_settings)
+          data["bundles"][@manifest.name].merge!(@settings)
           data["bundles"]["cost-cap"]["cap"] = @cost_cap if @cost_cap_override
           @layout.write_config(data)
         end

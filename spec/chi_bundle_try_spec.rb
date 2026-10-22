@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       YAML
 
       with_env("XDG_CONFIG_HOME" => config_home) do
-        sandbox = described_class.new(bundle_at(source), bundle_settings: { "hello" => "world" })
+        sandbox = described_class.new(bundle_at(source), settings: { "hello" => "world" })
         copied = YAML.safe_load_file(File.join(sandbox.config_home, "samagotchi", "config.yml"))
         expect(copied.dig("default", "model")).to eq("local:fixture")
         expect(copied.dig("hosts", "local", "url")).to eq("http://127.0.0.1:1234")

@@ -5,12 +5,12 @@ require "tmpdir"
 require "fileutils"
 require "digest"
 require "spec_helper"
-require "samagotchi/bundle_session_settings"
+require "samagotchi/session_config"
 
 # --set BUNDLE.KEY=VALUE: the values parsed as YAML scalars, then checked
 # against the installed bundles and the keys their manifests offer
 # (session_settings:).
-RSpec.describe Samagotchi::BundleSessionSettings do
+RSpec.describe Samagotchi::SessionConfig do
   let(:offered) { { "cost-cap" => ["cap"], "loop-guard" => [] } }
 
   def parse(*args) = described_class.parse(args)
@@ -264,6 +264,23 @@ RSpec.describe Samagotchi::BundleSessionSettings do
       expect(normalized).to eq("cost-cap" => { "cap" => 3 }, "b" => { "k" => true })
       expect(normalized).to be_frozen
       expect(normalized["cost-cap"]).to be_frozen
+    end
+  end
+
+  describe "Settings" do
+    it "keeps core and bundles frozen and string-keyed, both empty by default" do
+      settings = described_class::Settings.new(core: { recap: true, bad: [1] }, bundles: { "cost-cap": { cap: 3 } })
+      expect(settings).to have_attributes(core: { "recap" => true }, bundles: { "cost-cap" => { "cap" => 3 } })
+      expect([settings.core, settings.bundles]).to all(be_frozen)
+      expect(settings).not_to be_empty
+      expect(described_class::Settings.new).to be_empty.and eq(described_class::Settings::EMPTY)
+    end
+
+    it "takes a Settings as given and nil as none (.of); refuses anything else" do
+      settings = described_class::Settings.new(bundles: { "x" => { "k" => 1 } })
+      expect(described_class::Settings.of(settings)).to equal(settings)
+      expect(described_class::Settings.of(nil)).to equal(described_class::Settings::EMPTY)
+      expect { described_class::Settings.of({ "x" => { "k" => 1 } }) }.to raise_error(ArgumentError, /SessionConfig::Settings/)
     end
   end
 end

@@ -863,17 +863,17 @@ module Samagotchi
       Try::Command.new(stdout: @stdout, stderr: @stderr).run(parsed)
     end
 
-    # --set KEY=VALUE values as typed (BundleSessionSettings.typed), or nil
+    # --set KEY=VALUE values as typed (SessionConfig.typed), or nil
     # after saying what's wrong.
     def check_settings(pairs, label:)
-      require_relative "bundle_session_settings"
+      require_relative "session_config"
       pairs.each_with_object({}) do |pair, out|
         key, sep, value = pair.partition("=")
-        unless !sep.empty? && key.match?(BundleSessionSettings::KEY)
+        unless !sep.empty? && key.match?(SessionConfig::KEY)
           @stderr.puts "chi bundle #{label}: --set takes KEY=VALUE, not #{pair}"
           return nil
         end
-        out[key] = BundleSessionSettings.typed(value)
+        out[key] = SessionConfig.typed(value)
       end
     end
 

@@ -213,16 +213,17 @@ module Samagotchi
       @toolkit = value.is_a?(Toolkit) ? value : Toolkit.from_file(value)
     end
 
-    # The session's own bundle settings (chi --set BUNDLE.KEY=VALUE):
-    # {bundle => {key => value}}, frozen, {} for none and for a session from
-    # before them. Given when it was created and never changed; a respawn,
-    # a continue and a fork keep them (SessionSetup.of), a delegate child
-    # doesn't. Plugin::Context#settings lays them over config.yml's.
-    attr_reader :bundle_settings
+    # The session's own settings (chi --set), a SessionConfig::Settings:
+    # empty for none and for a session from before them. Its bundles part
+    # ({bundle => {key => value}}) is the file's bundle_settings. Given when
+    # it was created and never changed; a respawn, a continue and a fork
+    # keep them (SessionSetup.of), a delegate child doesn't.
+    # Plugin::Context#settings lays the bundles part over config.yml's.
+    attr_reader :settings
 
-    # @param value [Hash, nil] the session file's form too
-    def bundle_settings=(value)
-      @bundle_settings = BundleSessionSettings.normalize(value)
+    # @param value [SessionConfig::Settings, nil]
+    def settings=(value)
+      @settings = SessionConfig::Settings.of(value)
     end
 
     # The session's own guardrails.parent_answers (hard|standard|soft), nil
@@ -280,7 +281,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, bundle_settings: {}, interrupted_turn: nil, parent_answers: nil, title: nil)
+                   toolkit: nil, settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -311,7 +312,7 @@ module Samagotchi
       self.reasoning_history = reasoning_history
       self.appended_prompt_files = appended_prompt_files
       self.toolkit = toolkit
-      self.bundle_settings = bundle_settings
+      self.settings = settings
       self.parent_answers = parent_answers
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
@@ -410,7 +411,7 @@ module Samagotchi
         reasoning_history: setup.reasoning_history,
         appended_prompt_files: setup.appended_prompt_files,
         toolkit: setup.toolkit,
-        bundle_settings: setup.bundle_settings,
+        settings: setup.settings,
         parent_answers: setup.parent_answers,
         continues: continues
       )
@@ -490,6 +491,7 @@ module Samagotchi
       attrs = FIELDS.to_h do |key, default|
         [key.to_sym, default.equal?(REQUIRED) ? data.fetch(key) : data.fetch(key, default)]
       end
+      attrs[:settings] = SessionConfig::Settings.new(bundles: attrs.delete(:bundle_settings))
       attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
       new(**attrs)
     end
@@ -618,6 +620,7 @@ module Samagotchi
                 when "thinking" then thinking_file
                 when "reasoning_history" then reasoning_history_file
                 when "toolkit" then @toolkit&.to_file
+                when "bundle_settings" then @settings.bundles
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"

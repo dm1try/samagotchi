@@ -438,10 +438,10 @@ end
 # --set BUNDLE.KEY=VALUE: a new session's bundle settings, checked here
 # against the installed bundles (a typo isn't saved).
 if options[:sets]
-  require "samagotchi/bundle_session_settings"
+  require "samagotchi/session_config"
   begin
-    options[:bundle_settings] = Samagotchi::BundleSessionSettings.from_flags(options[:sets])
-  rescue Samagotchi::BundleSessionSettings::Error => e
+    options[:settings] = Samagotchi::SessionConfig::Settings.new(bundles: Samagotchi::SessionConfig.from_flags(options[:sets]))
+  rescue Samagotchi::SessionConfig::Error => e
     warn "Error: #{e.message}"
     exit 2
   end
@@ -500,7 +500,7 @@ if launch == :attached
                                                        appended_prompt_files: options[:appended_prompt_files] || [],
                                                        toolkit: options[:toolkit_value],
                                                        toolkit_flags: options[:toolkit_flags] || [],
-                                                       bundle_settings: options[:bundle_settings] || {},
+                                                       settings: options[:settings],
                                                        parent_answers: options[:parent_answers])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
@@ -523,7 +523,7 @@ begin
     appended_prompt_files: options[:appended_prompt_files] || [],
     toolkit: options[:toolkit_value],
     toolkit_flags: options[:toolkit_flags] || [],
-    bundle_settings: options[:bundle_settings] || {},
+    settings: options[:settings],
     parent_answers: options[:parent_answers],
     non_interactive: options[:non_interactive],
     model_name: options[:model],

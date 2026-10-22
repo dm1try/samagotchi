@@ -104,7 +104,7 @@ module Samagotchi
 
       # config.yml `bundles: <bundle>:` with the session's own values for
       # the bundle laid over it (chi --set BUNDLE.KEY=VALUE, through the
-      # Host's setup: SessionSetup#bundle_settings), string keys, frozen.
+      # Host's setup: SessionSetup#settings's bundles), string keys, frozen.
       # Plugin init and chi.ctx run before the session is bound: with no
       # session id yet it is the config alone, and it is built again once
       # per session id (the session's values never change after it starts).
@@ -473,7 +473,7 @@ module Samagotchi
       # The session's own values for this bundle ({} without any; nil when
       # the Host couldn't tell them, so #settings can retry).
       def session_values(id)
-        values = @host.setup&.call&.bundle_settings
+        values = @host.setup&.call&.settings&.bundles
         values.is_a?(Hash) ? values.fetch(@bundle, {}) : {}
       rescue StandardError => e
         unless (@session_settings_unread ||= {}).key?(id)

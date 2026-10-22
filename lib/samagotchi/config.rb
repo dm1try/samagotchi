@@ -308,7 +308,7 @@ module Samagotchi
 
     # Top-level maps and lists read by their own code, whose entry names and
     # contents are the user's: ConfigFile.model_aliases / preloaded_memories /
-    # appended_prompt_files, Hooks::Loader, Engine#read_bundle_settings.
+    # appended_prompt_files, Hooks::Loader, ConfigFile.bundle_settings.
     FREE_FORM_MAPS = %w[model_aliases hooks bundles memories append_system_prompt].freeze
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).

@@ -4,16 +4,16 @@ require "yaml"
 require_relative "version"
 
 module Samagotchi
-  # A session's own bundle settings (chi --set BUNDLE.KEY=VALUE, chi send
-  # --new --set, POST /api/sessions bundle_settings): {bundle => {key =>
-  # value}}, string keys, scalar values (.typed). A bundle offers the keys a
-  # session may set in its manifest's session_settings: (recorded at install,
-  # InstalledBundle#session_settings); any other bundle or key is refused, so
-  # a typo isn't saved, and so is a value of another type than the manifest
-  # gives the key (session_settings: {cap: number}). The session keeps them
-  # (Session#bundle_settings, SessionSetup) and Plugin::Context#settings
-  # lays them over config.yml's bundles: <name>:.
-  module BundleSessionSettings
+  # A session's own settings (chi --set, chi send --new --set, POST
+  # /api/sessions bundle_settings), kept as one value (Settings). Its
+  # bundles part: {bundle => {key => value}}, string keys, scalar values
+  # (.typed). A bundle offers the keys a session may set in its manifest's
+  # session_settings: (recorded at install, InstalledBundle#session_settings);
+  # any other bundle or key is refused, so a typo isn't saved, and so is a
+  # value of another type than the manifest gives the key (session_settings:
+  # {cap: number}). The session keeps them (Session#settings, SessionSetup)
+  # and Plugin::Context#settings lays them over config.yml's bundles: <name>:.
+  module SessionConfig
     # A refused --set (or request field): the message says why.
     class Error < ArgumentError; end
 
@@ -33,6 +33,29 @@ module Samagotchi
     FALSE_WORDS = %w[false no off].freeze
     # The shipped bundles' sources (a stale record's hint reads them).
     SHIPPED_DIR = File.expand_path("bundles", __dir__)
+
+    # A session's own settings, as one value: +core+ its core config keys
+    # ({key => value}; always {} for now), +bundles+ its bundle settings
+    # ({bundle => {key => value}}, .normalize's shape). Both frozen, string
+    # keys; the session file keeps +bundles+ under bundle_settings.
+    Settings = Data.define(:core, :bundles) do
+      def initialize(core: {}, bundles: {})
+        super(core: SessionConfig.normalize_core(core), bundles: SessionConfig.normalize(bundles))
+      end
+
+      # A Settings as given, nil as none (EMPTY).
+      # @param value [Settings, nil]
+      # @return [Settings]
+      # @raise [ArgumentError] anything else
+      def self.of(value)
+        return value if value.is_a?(Settings)
+        return Settings::EMPTY if value.nil?
+
+        raise ArgumentError, "session settings are a SessionConfig::Settings, not #{value.class}"
+      end
+
+      def empty? = core.empty? && bundles.empty?
+    end
 
     # The installed bundles a session may set settings of: +offered+ the
     # keys of each bundle whose plugin loads ({name => keys}), +notes+ what
@@ -211,6 +234,17 @@ module Samagotchi
       end)
     end
 
+    # Settings#core read tolerantly: the scalar values, string keys,
+    # frozen; {} for anything else.
+    # @return [Hash{String => Object}]
+    def normalize_core(raw)
+      return {}.freeze unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(key, value), kept|
+        kept[key.to_s.dup.freeze] = value.frozen? ? value : value.dup.freeze if SCALARS.any? { |kind| value.is_a?(kind) }
+      end.freeze
+    end
+
     # Why +bundle+'s plugin doesn't load, as chi's loader decides it
     # (Plugin::Loader.unloadable_reason), nil when it does or has none.
     def unloadable(dir, name, bundle)
@@ -247,5 +281,8 @@ module Samagotchi
     end
 
     private_class_method :unloadable, :shipped_settings?, :scalar_map?, :takers, :deep_freeze
+
+    # No settings (built once the module's functions are defined).
+    Settings::EMPTY = Settings.new
   end
 end

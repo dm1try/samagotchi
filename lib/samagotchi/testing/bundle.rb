@@ -429,9 +429,9 @@ module Samagotchi
       #   of another type than it gives the key
       def setup_with(session_settings, setup)
         values = { @name => stringify(session_settings) }
-        BundleSessionSettings.check!(values, bundles: { @name => @manifest.session_settings },
+        SessionConfig.check!(values, bundles: { @name => @manifest.session_settings },
                                              types: { @name => @manifest.session_setting_types }, flag: "session_settings")
-        (setup || SessionSetup.new).with(bundle_settings: values)
+        (setup || SessionSetup.new).with(settings: SessionConfig::Settings.new(bundles: values))
       end
 
       def stringify(value) = Sandbox.stringify(value)

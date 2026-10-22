@@ -171,11 +171,11 @@ module Samagotchi
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
 
-      # A setting key a session may set (BundleSessionSettings::KEY).
+      # A setting key a session may set (SessionConfig::KEY).
       SESSION_SETTING = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
 
       # The types a session setting may be given (session_settings: {key:
-      # type}), checked by BundleSessionSettings.check!: number (or off),
+      # type}), checked by SessionConfig.check!: number (or off),
       # boolean, string; any (or a list's key) takes every scalar.
       SESSION_SETTING_TYPES = %w[number boolean string any].freeze
 

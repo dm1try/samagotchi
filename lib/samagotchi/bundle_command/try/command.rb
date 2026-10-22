@@ -2,7 +2,7 @@
 
 require_relative "../../cli/exit"
 require_relative "../../cli/flags"
-require_relative "../../bundle_session_settings"
+require_relative "../../session_config"
 require_relative "../../thinking"
 require_relative "sandbox"
 require_relative "run"
@@ -73,7 +73,7 @@ module Samagotchi
           render = Render.new(stdout: @stdout, stderr: @stderr)
           sandbox = nil
           begin
-            sandbox = Sandbox.new(path, bundle_settings: settings.bundle, cost_cap: settings.cost_cap,
+            sandbox = Sandbox.new(path, settings: settings.bundle, cost_cap: settings.cost_cap,
                                         cost_cap_override: settings.cost_cap_override)
             sandbox.install
             result = Run.new(sandbox).run(prompt: options[:prompt], options: options, timeout: timeout)
@@ -133,7 +133,7 @@ module Samagotchi
           nil
         end
 
-        # The --set KEY=VALUE pairs, typed as BundleSessionSettings.typed:
+        # The --set KEY=VALUE pairs, typed as SessionConfig.typed:
         # cost-cap.cap is the run's cap, the others the tried bundle's.
         # @return [Settings, nil] nil after saying what's wrong
         def parse_settings(pairs)
@@ -143,18 +143,18 @@ module Samagotchi
           pairs.each do |pair|
             key, sep, value = pair.partition("=")
             if key == COST_CAP_KEY && !sep.empty?
-              cost_cap = BundleSessionSettings.typed(value)
+              cost_cap = SessionConfig.typed(value)
               override = true
               next if (cost_cap.is_a?(Numeric) && cost_cap >= 0) || cost_cap == false
 
               @stderr.puts "chi bundle try: --set #{COST_CAP_KEY} takes a non-negative number or off"
               return nil
             end
-            unless !sep.empty? && key.match?(BundleSessionSettings::KEY)
+            unless !sep.empty? && key.match?(SessionConfig::KEY)
               @stderr.puts "chi bundle try: --set takes KEY=VALUE, not #{pair}"
               return nil
             end
-            bundle[key] = BundleSessionSettings.typed(value)
+            bundle[key] = SessionConfig.typed(value)
           end
           Settings.new(bundle: bundle, cost_cap: cost_cap, cost_cap_override: override)
         end

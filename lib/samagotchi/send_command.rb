@@ -8,7 +8,7 @@ require_relative "session_commands"
 require_relative "parent_answers_command"
 require_relative "session_inbox"
 require_relative "session_manager"
-require_relative "bundle_session_settings"
+require_relative "session_config"
 require_relative "session_chain"
 require_relative "context_quote"
 require_relative "reply_wait"
@@ -372,8 +372,8 @@ module Samagotchi
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit
       begin
-        options[:bundle_settings] = BundleSessionSettings.from_flags(options[:sets]) unless Array(options[:sets]).empty?
-      rescue BundleSessionSettings::Error => e
+        options[:settings] = SessionConfig::Settings.new(bundles: SessionConfig.from_flags(options[:sets])) unless Array(options[:sets]).empty?
+      rescue SessionConfig::Error => e
         return usage_error(e.message)
       end
 
@@ -426,7 +426,7 @@ module Samagotchi
                                                           setup: SessionSetup.new(llm_context: options[:llm_context],
                                                                                   thinking: options[:thinking],
                                                                                   toolkit: options[:toolkit_value],
-                                                                                  bundle_settings: options[:bundle_settings] || {},
+                                                                                  settings: options[:settings],
                                                                                   parent_answers: options[:parent_answers]),
                                                           state_dir: @state_dir)
                   end

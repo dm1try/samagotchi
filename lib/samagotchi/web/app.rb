@@ -674,8 +674,8 @@ module Samagotchi
         # {bundle => {key => scalar}}), checked against the installed
         # bundles the same way.
         begin
-          bundle_settings = BundleSessionSettings.from_request(body["bundle_settings"])
-        rescue BundleSessionSettings::Error => e
+          settings = SessionConfig::Settings.new(bundles: SessionConfig.from_request(body["bundle_settings"]))
+        rescue SessionConfig::Error => e
           return error_response(400, "invalid_bundle_settings", e.message)
         end
 
@@ -689,7 +689,7 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:preview] = preview unless preview.empty?
-        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, bundle_settings: bundle_settings)
+        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, settings: settings)
         folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)

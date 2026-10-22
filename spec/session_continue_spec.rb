@@ -494,7 +494,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       previous = make
       previous.thinking = :low
       previous.toolkit = Samagotchi::Toolkit.new(name: "coordinator")
-      previous.bundle_settings = { "cost-cap" => { "cap" => 3 } }
+      previous.settings = Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 3 } })
       previous.save(state_dir: tmpdir)
 
       link = continue(previous.id, model: "main:other-model")
@@ -502,7 +502,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       saved = load(link.id)
       expect(saved).to have_attributes(continues: previous.id, model_name: "main:other-model", model_typed: nil,
                                        thinking: :low, toolkit: Samagotchi::Toolkit.new(name: "coordinator"),
-                                       bundle_settings: { "cost-cap" => { "cap" => 3 } })
+                                       settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 3 } }))
       expect(link.model_warning).to be_nil
       expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.")
       expect(archived?(previous.id)).to be(true)

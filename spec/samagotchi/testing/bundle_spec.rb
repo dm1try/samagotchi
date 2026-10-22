@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::Testing::Bundle do
       expect(at_load).to eq("cap" => 5, "warn_at" => 0.5)
       expect(seen).to eq("cap" => 0.25, "warn_at" => 0.5)
       expect(seen).to be_frozen
-      expect(bundle.recorder[:setup].bundle_settings).to eq("kit-test" => { "cap" => 0.25 })
+      expect(bundle.recorder[:setup].settings.bundles).to eq("kit-test" => { "cap" => 0.25 })
     end
 
     it "changes them mid-test with set(session_settings:), on a new session id so the per-session cache is rebuilt" do
