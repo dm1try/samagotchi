@@ -264,7 +264,8 @@ RSpec.describe Samagotchi::WorkingSet do
 
     expect(build(conversation).items.size).to eq(30)
     # A guard against a blow-up (a quadratic walk), not a benchmark: ~10 ms
-    # on an M5 Ultra, ~75 ms on a CI runner.
+    # on an M5 Ultra, ~75 ms on a CI runner, ~36 ms on an Intel laptop
+    # (113 ms beside a parallel suite).
     expect(elapsed_ms).to be < 400
   end
 end
