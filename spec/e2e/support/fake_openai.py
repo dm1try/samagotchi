@@ -125,6 +125,10 @@ class H(http.server.BaseHTTPRequestHandler):
         it = its[min(done, len(its) - 1)]
         if it.get("error"): return self._send(int(it["error"]), json.dumps({"error": {"message": "boom"}}))
         delay = float(script.get("delay", 0.12))
+        # "hold_until": a path (relative to the fake's dir) to wait for first, up to 60 s, before "hold".
+        if it.get("hold_until"):
+            until = os.path.join(DIR, it["hold_until"]); deadline = time.time() + 60
+            while not os.path.exists(until) and time.time() < deadline: time.sleep(0.05)
         time.sleep(float(it.get("hold", 0)))
         self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.send_header("Transfer-Encoding", "chunked"); self.end_headers()
         def w(obj):

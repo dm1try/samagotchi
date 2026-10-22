@@ -1895,7 +1895,8 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
 // `path:line` in the answer links to that line of the PR the prompt names,
 // the Files changed anchor inside a hunk, the file at the PR's head outside.
 // The PR's data is fetched off the turn, from its start: the scripted
-// answer holds 3 s, so it comes after the fetch.
+// answer waits for the fake gh's files call (hold_until) and 1 s more, so it
+// comes after the fetch however loaded the machine is.
 test("a path:line in the answer links to the PR's line", { tag: "@turn" }, async ({ page, script }) => {
   script("pr_line_links");
   await send(page, "Review https://github.com/acme/app/pull/42");
