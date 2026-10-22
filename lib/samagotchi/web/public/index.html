@@ -345,7 +345,13 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
   --md-strong-color:var(--text-bright);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
   --md-pre-size:12.5px;--md-cell-size:13px
 }
-.md-compact:is(.ts-asking,.question-said-full){white-space:normal}
+.gen-text.md-compact{
+  --md-heading-size:14.5px;--md-heading-color:var(--text);
+  --md-subheading-size:14px;--md-subheading-color:var(--text-2);
+  --md-strong-color:var(--text);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
+  --md-pre-size:12.5px;--md-cell-size:13px
+}
+.md-compact:is(.ts-asking,.question-said-full,.gen-text){white-space:normal}
 .md-compact :is(h1,h2,h3,h4,h5,h6){font-size:var(--md-heading-size);font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--md-heading-color)}
 .md-compact :is(h4,h5,h6){font-size:var(--md-subheading-size);color:var(--md-subheading-color)}
 .md-compact :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}

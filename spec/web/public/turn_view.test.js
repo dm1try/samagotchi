@@ -457,6 +457,25 @@ test("turnHistoryNodes: a step's text knows its message's display_refs (a questi
   assert.equal(holder.querySelector("[data-answer-at]"), null);
 });
 
+test("turnHistoryNodes: a step's text with its message's rendered markdown shows it, keeping the text as written for stepText", () => {
+  const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
+  const items = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Proceed with **DEMO-123**?", html: "<p>Proceed with <strong>DEMO-123</strong>?</p>", display_refs: refs, parts: { tools: [{ tool: "ask_user_question", params: "", output: "a" }] } },
+    { role: "assistant", content: "Plain step.", parts: { tools: [{ tool: "read", params: 'path="R.md"', output: "[read]\nok" }] } },
+    { role: "assistant", content: "Done.", html: "<p>Done.</p>" },
+  ];
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs }));
+  const [md, plain] = holder.querySelectorAll(".gen > .gen-text");
+  assert.ok(md.classList.contains("markdown") && md.classList.contains("md-compact"));
+  assert.equal(md.querySelector("strong").textContent, "DEMO-123");
+  assert.deepEqual(answerRefsOf(md), refs);
+  assert.ok(!plain.classList.contains("markdown"));
+  assert.equal(plain.textContent, "Plain step.");
+  assert.equal(stepText(holder.querySelector(".turn-work"), 1), "Proceed with **DEMO-123**?");
+});
+
 test("stepText: a reloaded block's step text by iteration (1-based), \"\" for a step without text or none at all", () => {
   const items = [
     { role: "user", content: "p" },

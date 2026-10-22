@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 - work-cap 0.1.1: a changed `bundles: work-cap:` setting reaches a running session (the caps are resolved again when the
   settings change; the state file still wins per meter), and an empty key (`tool_calls:` with no value) falls through to
   `child:` / `default:` instead of reading as "off"; `off`, `false` and `0` stay an explicit no cap.
+- Web: a closed step's text in the history renders as markdown (with `web.markdown` on) and keeps its source refs,
+  live and after a reload, as the answer does.
 
 ## [0.100.0] - 2026-10-22
 
