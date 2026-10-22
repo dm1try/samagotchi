@@ -25,6 +25,7 @@ require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
 require_relative "../llm_context_override"
+require_relative "../working_set"
 require_relative "../model_catalog"
 require_relative "../model_profile"
 require_relative "../session_setting"
@@ -187,6 +188,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :session],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :session]
       ].freeze
@@ -1479,6 +1481,36 @@ module Samagotchi
         owned_by_repl(id)
       rescue SessionManager::DeleteRefused => e
         error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
+      end
+
+      # ── The working set (web.working_set) ───────────────────────────────
+
+      # GET /api/sessions/:id/working_set: the working set as the model has
+      # it ({items:, at:}, WorkingSet), what the page overlays on its rows'
+      # set when it seeds a session's and when the expanded view opens (a
+      # file changed while the session sat idle). A live worker's snapshot
+      # messages are the truth, as #handle_show's, else the file's; the
+      # strategy is the session's llm ctx chip's, the folder its working
+      # directory.
+      def handle_working_set(_req, id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        live = bridge_get_json(id, "snapshot")
+        messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
+        # A snapshot's entries have string keys (paired_runs reads symbols).
+        messages = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
+        llm_context = SessionSetting::LLM_CONTEXT.snapshot_value(live && live["session_state_snapshot"]) do
+          SessionSetting::LLM_CONTEXT.saved_summary(session, registry: host_registry)
+        end
+        snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context))
+        json_response(200, snapshot.to_h)
+      end
+
+      # The strategy an llm ctx chip names ("none", "stale,forget"), as
+      # LLMContextView takes it; none when there is no chip.
+      def working_set_strategy(llm_context)
+        named = llm_context.is_a?(Hash) ? (llm_context[:strategy] || llm_context["strategy"]).to_s : ""
+        layers = named.split(",").map(&:strip).reject { |layer| layer.empty? || layer == "none" }
+        layers.empty? ? LLMContextView::NONE : layers.map(&:to_sym)
       end
 
       # ── Attached context (ContextSources): the session bar's chips ───────

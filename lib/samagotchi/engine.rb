@@ -84,6 +84,7 @@ require_relative "relay_desk"
 require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
 require_relative "prompt_warmup"
+require_relative "working_set"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -1459,6 +1460,7 @@ module Samagotchi
       synchronize_events do
         kept, event = yield(seconds)
         replace_session_messages(turn.session, kept) if kept
+        emit_working_set(turn.on_event, turn.session, turn.session.messages)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
@@ -2835,10 +2837,38 @@ module Samagotchi
 
         event = with_generation_report(event) if event[:type] == :generation_completed
         emit_event(on_event, event)
+        # What this request sends: both loops start a generation after
+        # their apply_llm_context!.
+        emit_working_set(on_event, @session, live_conversation) if event[:type] == :generation_started
         watch.feed(**progress) if watch && progress
         @thinking_notices.generation_completed(event) if event[:type] == :generation_completed
       end
     end
+
+    # The working set (WorkingSet) as the model has it, as a
+    # :working_set_updated event ({items:, at:}): at each request (the
+    # stream handler's :generation_started, from the running turn's
+    # conversation) and at turn end (#end_turn, from the session's kept
+    # messages). Only when it differs from the last one emitted for this
+    # session, and never while it is empty, so a tool-free turn emits
+    # none. The web overlays it on the rows' set; other UIs ignore it.
+    def emit_working_set(on_event, session, conversation)
+      return unless session && conversation
+
+      llm_context = @kernel.respond_to?(:turn_settings) ? @kernel.turn_settings&.llm_context : nil
+      snapshot = WorkingSet.build(conversation, cwd: session.working_directory,
+                                                strategy: llm_context&.strategy || LLMContextView::NONE)
+      return if snapshot.empty?
+
+      items = snapshot.items.map(&:to_h)
+      return if @working_set_emitted == [session.id, items]
+
+      @working_set_emitted = [session.id, items]
+      emit_event(on_event, { type: :working_set_updated, items: items, at: snapshot.at })
+    rescue StandardError => e
+      Log.warn(:turn, "working_set_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+    end
+    private :emit_working_set
 
     # A :generation_completed with the generation's decode speed (`speed:`
     # {decode_tps:, source:}, nil without one), the session's running
