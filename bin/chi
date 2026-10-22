@@ -333,6 +333,7 @@ if options[:web]
   view = Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
                                       markdown: markdown, view: view, new_token: options[:new_token],
+                                      working_set: Samagotchi::Config.get("web.working_set"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"))
 end

@@ -97,6 +97,8 @@ module Samagotchi
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
       # @param view ["stage", "turn"] the page's view of a turn (web.view);
       #   ?view=stage|turn overrides it for one page load
+      # @param working_set [Boolean] the stage view's working set
+      #   (web.working_set); ?working_set=1|0 overrides it for one page load
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -119,7 +121,8 @@ module Samagotchi
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      editor: Config::BY_KEY["web.editor"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
-                     registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil)
+                     registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
+                     working_set: Config::BY_KEY["web.working_set"].default)
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -132,6 +135,7 @@ module Samagotchi
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @view = view
+        @working_set = working_set
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @editor_url = Editor.template(editor)
         @hub = hub
@@ -2126,6 +2130,8 @@ module Samagotchi
         # the one serving now (an upgraded chi web after a reconnect).
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd), "version" => Samagotchi::VERSION }
         attrs["view"] = view_name(req.params["view"])
+        # Only when on: the page reads its presence (the turn view ignores it).
+        attrs["working-set"] = "1" if working_set?(req.params["working_set"])
         # Always there: an empty one means no presets, not the default.
         attrs["annotate-presets"] = @annotate_presets
         dir, = scope_dir(req.params["dir"])
@@ -2152,6 +2158,16 @@ module Samagotchi
       # else leaves the config's choice (web.view).
       def view_name(param)
         VIEWS.include?(param) ? param : @view
+      end
+
+      # The working set for this page load: ?working_set=1|0 wins, anything
+      # else leaves the config's choice (web.working_set).
+      def working_set?(param)
+        case param
+        when "1" then true
+        when "0" then false
+        else @working_set
+        end
       end
 
       def json_response(status, payload)
