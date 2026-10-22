@@ -65,8 +65,11 @@ RSpec.describe "A find_tools hit loads its tools (ChatLoop on a Messages host)" 
     server.enqueue("/v1/messages", sse: tool_use("toolu_f", "find_tools", { query: "sessions" }))
     server.enqueue("/v1/messages", sse: tool_use("toolu_l", "list_sessions", {}))
     server.enqueue("/v1/messages", sse: text_reply)
+    allow(Samagotchi::Log).to receive(:info).and_call_original
 
     result = run
+
+    expect(Samagotchi::Log).to have_received(:info).with(:turn, "tool_direct_deferred", tool: "list_sessions", loaded: true)
 
     first, second, third = bodies
     expect(second["tools"]).to eq(first["tools"])
@@ -75,7 +78,8 @@ RSpec.describe "A find_tools hit loads its tools (ChatLoop on a Messages host)" 
     load = second["messages"][2]["content"]
     expect(load.first).to include("type" => "tool_result", "tool_use_id" => "toolu_f")
     expect(load.first["content"].map { |ref| ref["tool_name"] }).to include("list_sessions")
-    expect(load.last["text"]).to include("Loaded: list_sessions")
+    expect(load.last["text"]).to start_with("Loaded: list_sessions")
+    expect(load.last["text"]).not_to include("Call one with call_tool")
     # The request after the direct call extends the one before.
     expect(unmarked(third["messages"].first(3))).to eq(unmarked(second["messages"]))
     saved = result.conversation.find { |e| e[:tool_call_id] == "toolu_f" }

@@ -56,6 +56,8 @@ module Samagotchi
         group: { type: "string", description: "search only this group" }
       }.freeze
       CALL_DESCRIPTION = "Call a tool #{FIND_NAME} found.".freeze
+      # A keyword answer's first line.
+      CALL_HINT = "Call one with #{CALL_NAME}(tool: \"<group>/<tool>\", args: {…}).".freeze
       CALL_PARAMS = {
         tool: { type: "string", required: true, description: "the tool as <group>/<tool>" },
         args: { type: "object", description: "the arguments, per the inputSchema #{FIND_NAME} gave" }
@@ -478,7 +480,7 @@ module Samagotchi
         blocks = matches.map { |tool| match_text(tool, all) }
         unsearched = searched.filter_map { |group| "#{group.name} #{group.note}" if group.tools.empty? && group.note }
         blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
-        FoundText.new("Call one with #{CALL_NAME}(tool: \"<group>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}",
+        FoundText.new("#{CALL_HINT}\n\n#{blocks.join("\n\n")}",
                       loadable(matches))
       end
 

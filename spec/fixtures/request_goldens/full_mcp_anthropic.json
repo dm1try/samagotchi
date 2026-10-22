@@ -54,7 +54,7 @@
           },
           {
             "type": "text",
-            "text": "[find_tools]\nCall one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\nfs/list_sessions_log: List the sessions log.\ninputSchema: {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}\n\nLoaded: mcp_fs_list_sessions_log. Call them directly by these names (call_tool works too)."
+            "text": "Loaded: mcp_fs_list_sessions_log. Call them directly by these names.\n\n[find_tools]\nfs/list_sessions_log: List the sessions log.\ninputSchema: {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}"
           }
         ]
       },

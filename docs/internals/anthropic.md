@@ -244,8 +244,10 @@ load nothing). `KernelLoop#dispatch` passes them on (`dispatched[:loaded]`), `To
 `AnthropicWire.translate(wire, cache:, deferred:)` takes the names this request declares deferred and renders a
 result's `loaded:` names among them as a tool_result holding only
 `{"type": "tool_reference", "tool_name": …}` blocks (Messages takes no other content beside a reference), followed by
-a sibling text block: the result's text, then `Loaded: a, b. Call them directly by these names (call_tool works
-too).` A result whose names aren't deferred here (declared since, or no tool loading) goes as plain text. The sibling
+a sibling text block: `Loaded: a, b. Call them directly by these names.`, then the result's text without its
+`Call one with call_tool(…)` line (`ToolIndex::CALL_HINT`; the saved result keeps it). With that line and a trailing
+"(call_tool works too)", Sonnet and Haiku 5.5 went through `call_tool` 2/2 live; without, 5/5 called the tool by
+name. A result whose names aren't deferred here (declared since, or no tool loading) goes as plain text. The sibling
 text is never marked; when breakpoint #2 falls on such a tool_result, it goes on its last reference.
 
 ### Tool changes (`ctx.load_tools`)

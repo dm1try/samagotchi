@@ -31,13 +31,21 @@ RSpec.describe "Tool loading on a Messages host" do
   describe Samagotchi::LLM::AnthropicWire do
     def result_message(translated) = translated.messages[2]
 
+    it "drops the result's call_tool line from the text beside a load" do
+      found = wire(%w[list_sessions], after: false)
+      found[3] = found[3].merge(content: "[find_tools]\n#{Samagotchi::Tools::ToolIndex::CALL_HINT}\n\nchi/list_sessions: …")
+
+      text = described_class.translate(found, deferred: %w[list_sessions]).messages[2][:content].last[:text]
+
+      expect(text).to eq("Loaded: list_sessions. Call them directly by these names.\n\n[find_tools]\nchi/list_sessions: …")
+    end
+
     it "loads only the names deferred in this request, the text after the references" do
       translated = described_class.translate(wire(%w[list_sessions read], after: false), deferred: %w[list_sessions delegate])
 
       expect(result_message(translated)[:content]).to eq([
         { type: "tool_result", tool_use_id: "toolu_f", content: [{ type: "tool_reference", tool_name: "list_sessions" }] },
-        { type: "text", text: "[find_tools]\nfound\n\nLoaded: list_sessions. Call them directly by these names " \
-                              "(call_tool works too)." }
+        { type: "text", text: "Loaded: list_sessions. Call them directly by these names.\n\n[find_tools]\nfound" }
       ])
     end
 

@@ -4,6 +4,7 @@ require "digest"
 require "json"
 require_relative "../log"
 require_relative "utf8_scrub"
+require_relative "../tools/tool_index"
 
 module Samagotchi
   module LLM
@@ -268,14 +269,20 @@ module Samagotchi
         return [tool_result(message)] if names.empty?
 
         refs = names.map { |name| { type: "tool_reference", tool_name: name } }
-        text = scrub(message[:content].to_s)
-        line = "Loaded: #{names.join(", ")}. #{LOADED_HINT}"
         [{ type: "tool_result", tool_use_id: tool_id(message[:tool_call_id]), content: refs },
-         text_block(blank?(text) ? line : "#{text}\n\n#{line}")]
+         text_block(loaded_text(scrub(message[:content].to_s), names))]
       end
 
-      # The sibling text's last words (D11: the prompt itself doesn't change).
-      LOADED_HINT = "Call them directly by these names (call_tool works too)."
+      # The sibling text: the load first, then the result's text without the
+      # line that points at call_tool (D11: the saved result and the prompt
+      # don't change; only this wire says it).
+      def loaded_text(text, names)
+        line = "Loaded: #{names.join(", ")}. #{LOADED_HINT}"
+        text = text.sub("#{Tools::ToolIndex::CALL_HINT}\n\n", "")
+        blank?(text) ? line : "#{line}\n\n#{text}"
+      end
+
+      LOADED_HINT = "Call them directly by these names."
 
       # A String or a parts list as blocks.
       def content_blocks(content)
@@ -332,7 +339,7 @@ module Samagotchi
 
       private_class_method :append, :system_blocks, :assistant_blocks, :input_of, :warn_arguments, :tool_result,
                            :content_blocks, :image_block, :mark_last, :valid_tool_use, :type_of, :text_block, :blank?, :scrub,
-                           :tool_blocks, :references?, :mark_reference, :tool_additions, :flush_changes
+                           :tool_blocks, :loaded_text, :references?, :mark_reference, :tool_additions, :flush_changes
     end
   end
 end
