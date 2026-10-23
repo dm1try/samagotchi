@@ -138,6 +138,12 @@ RSpec.describe Samagotchi::ParentReport do
     end
   end
 
+  it "names the running turn's wait in the JSON's still-running detail when its id is known" do
+    running = Samagotchi::ReplyWait::Result.new(status: :timeout, turn_id: "t1")
+    expect(json(running, timeout: 2.5)).to eq("status" => "running", "session_id" => id, "turn_id" => "t1",
+                                              "detail" => "still running after 2.5 s: chi send --wait --turn t1 #{id}")
+  end
+
   it "says why a turn stopped when it is known: a failure's error_kind and retryable, a cancel's reason and stopper" do
     failed = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "out of credits on host or: x",
                                                error_kind: "credits", retryable: false)

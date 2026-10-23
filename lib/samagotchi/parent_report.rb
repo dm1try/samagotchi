@@ -316,7 +316,8 @@ module Samagotchi
         turn = turn_id || result.turn_id
         turn.to_s.empty? ? WAITING_FOR_OWNER : "#{WAITING_FOR_OWNER}: #{via.command("send --wait --turn #{turn} #{session_id}")}"
       else
-        wait_again = via.command("send --wait --turn #{turn_id} #{session_id}") unless turn_id.to_s.empty?
+        turn = turn_id || result.turn_id
+        wait_again = via.command("send --wait --turn #{turn} #{session_id}") unless turn.to_s.empty?
         hint = wait_again || shows
         timeout ? "still running after #{format("%g", timeout)} s: #{hint}" : "still running: #{hint}"
       end
