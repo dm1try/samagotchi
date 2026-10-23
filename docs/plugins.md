@@ -2283,8 +2283,9 @@ skill install card) works the same.
   (absolute: config.toml doesn't expand `~`), and the pair script names it
   when a write is refused ("Operation not permitted"). chi never edits
   Codex's config. Reading a payload file needs nothing: the default sandbox
-  reads anywhere. No network is needed: a push writes files, and chi wakes
-  on them.
+  reads anywhere. With chi on this machine no network is needed: a push
+  writes files, and chi wakes on them. Through a remote it is the other way
+  round (HTTP, not files): see **chi on another machine** below.
 - **Pairing** is Codex's, as with Claude: `/codex install-skill` copies the
   bundle's `scripts/chi-peer-SKILL.md` to
   `$CODEX_HOME/skills/chi-peer/SKILL.md` (else `~/.codex/…`), with the
