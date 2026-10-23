@@ -3,7 +3,6 @@
 require "spec_helper"
 require "tmpdir"
 require "socket"
-require "timeout"
 require "rack/mock"
 
 require "samagotchi/web/app"
@@ -210,7 +209,7 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
         head << conn.gets.to_s until head.end_with?("\r\n\r\n")
         heads << head
         conn.write(reply)
-        sleep
+        sleep # sleep-ok: stays open, as a stream does
       end
       thread.report_on_exception = false
       @cleanup = lambda do
@@ -232,7 +231,7 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
       sock, status, = client_at(port).connect_stream(query: "?snapshot=1", last_event_id: "4-e1", timeout: 2)
 
       expect(status).to eq(200)
-      expect(Timeout.timeout(2) { heads.pop }).to eq(
+      expect(pop!(heads, "the request head")).to eq(
         "GET /api/sessions/s1/stream?snapshot=1 HTTP/1.1\r\nHost: 127.0.0.1:#{port}\r\nAccept: text/event-stream\r\n" \
         "Last-Event-ID: 4-e1\r\nAuthorization: Bearer tok\r\nConnection: keep-alive\r\n\r\n"
       )
