@@ -1264,9 +1264,11 @@ module Samagotchi
 
     def write_sidecar
       # version: the chi this worker runs (chi update and the web's badge
-      # report older ones); features: what a client may ask of it.
+      # report older ones); features: what a client may ask of it; epoch:
+      # this worker's, as its event ids carry it.
       WorkerSidecar.new(port: @port, bind: @bind, session_id: @session_id, started_at: Time.now.iso8601(3),
-                        version: Samagotchi::VERSION, input_format: @input_format, features: FEATURES).write(session_dir)
+                        version: Samagotchi::VERSION, input_format: @input_format, features: FEATURES,
+                        epoch: @epoch).write(session_dir)
     rescue StandardError => e
       Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{WorkerSidecar::FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end

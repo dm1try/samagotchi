@@ -10,10 +10,14 @@ module Samagotchi
   # Bridge (port, bind), when it started (a new worker behind the same
   # "worker" owner), the chi it runs (chi update, the web's stale-worker
   # badge), the input-file format it reads (SessionInbox::INPUT_FORMAT) and
-  # what else it can do (Bridge::FEATURES). The Bridge writes it on start
+  # what else it can do (Bridge::FEATURES), and its Bridge's epoch (the
+  # one worker identity: the epoch in every event id, so a remote client
+  # tells a restarted worker apart; nil from a worker before it). The
+  # Bridge writes it on start
   # and removes it on stop; one a dead worker left stays until a client's
   # probe finds its port closed (.live with unlink: true).
-  class WorkerSidecar < Data.define(:port, :bind, :session_id, :started_at, :version, :input_format, :features)
+  class WorkerSidecar < Data.define(:port, :bind, :session_id, :started_at, :version, :input_format, :features,
+                                    :epoch)
     FILE = "bridge.json"
     # Seconds a liveness probe waits for the port to take a connect.
     PROBE_TIMEOUT = 0.2
@@ -29,7 +33,7 @@ module Samagotchi
       port = data["port"]
       new(port: port.respond_to?(:to_i) ? port.to_i : 0, bind: data["bind"], session_id: data["session_id"],
           started_at: data["started_at"], version: data["version"], input_format: data["input_format"],
-          features: Array(data["features"]).map(&:to_s))
+          features: Array(data["features"]).map(&:to_s), epoch: data["epoch"]&.to_s)
     rescue JSON::ParserError, SystemCallError
       nil
     end
@@ -63,13 +67,16 @@ module Samagotchi
     # @return [Integer, nil] .live's port
     def self.live_port(session_dir, unlink:, host: "127.0.0.1") = live(session_dir, unlink: unlink, host: host)&.port
 
-    def initialize(port:, bind: nil, session_id: nil, started_at: nil, version: nil, input_format: nil, features: []) = super
+    def initialize(port:, bind: nil, session_id: nil, started_at: nil, version: nil, input_format: nil, features: [],
+                   epoch: nil) = super
 
-    # Written whole or not at all; input_format only when it names one.
+    # Written whole or not at all; input_format and epoch only when they
+    # name one.
     def write(session_dir)
       FileUtils.mkdir_p(session_dir)
       record = to_h.transform_keys(&:to_s)
       record.delete("input_format") if input_format.nil?
+      record.delete("epoch") if epoch.nil?
       AtomicFile.write(self.class.path(session_dir), "#{JSON.pretty_generate(record)}\n")
     end
   end
