@@ -12,6 +12,7 @@ require_relative "pending_question"
 require_relative "llm_context_override"
 require_relative "session_setup"
 require_relative "prompt_note"
+require_relative "working_set_pin"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -249,6 +250,17 @@ module Samagotchi
                         end
     end
 
+    # The working set's items the user pinned (/working-set pin;
+    # WorkingSetPin), [] with none: the model's forget_outputs refuses
+    # their outputs. A respawn, a continue and a fork keep them
+    # (SessionSetup.of); a delegate child starts without.
+    attr_reader :working_set_pins
+
+    # @param value [Array<WorkingSetPin, Hash>] the session file's form too
+    def working_set_pins=(value)
+      @working_set_pins = WorkingSetPin.list(value)
+    end
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -283,7 +295,8 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil)
+                   toolkit: nil, settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
+                   working_set_pins: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -316,6 +329,7 @@ module Samagotchi
       self.toolkit = toolkit
       self.settings = settings
       self.parent_answers = parent_answers
+      self.working_set_pins = working_set_pins
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -415,6 +429,7 @@ module Samagotchi
         toolkit: setup.toolkit,
         settings: setup.settings,
         parent_answers: setup.parent_answers,
+        working_set_pins: setup.working_set_pins,
         continues: continues
       )
     end
@@ -484,7 +499,8 @@ module Samagotchi
       "bundle_settings" => {},
       "config_settings" => {},
       "interrupted_turn" => nil,
-      "parent_answers" => nil
+      "parent_answers" => nil,
+      "working_set_pins" => []
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -627,6 +643,7 @@ module Samagotchi
                 when "config_settings" then @settings.core
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
+                when "working_set_pins" then @working_set_pins.map(&:to_file)
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

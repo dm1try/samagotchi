@@ -5,6 +5,7 @@ require_relative "reasoning_history"
 require_relative "thinking"
 require_relative "toolkit"
 require_relative "session_config"
+require_relative "working_set_pin"
 
 module Samagotchi
   # A session's own settings that come before its model's, carried as one
@@ -20,24 +21,27 @@ module Samagotchi
   # settings chi --set gave (SessionConfig::Settings; its bundles part is
   # what Plugin::Context#settings lays over config.yml's),
   # +parent_answers+ the session's own guardrails.parent_answers (a level
-  # String, tighten-only: Guardrails::ParentPolicy.effective) or nil.
+  # String, tighten-only: Guardrails::ParentPolicy.effective) or nil,
+  # +working_set_pins+ the items the user pinned in the working set
+  # (WorkingSetPin; [] with none).
   #
   # It doesn't save itself: the session keeps each setting in its own field
   # and file key, and resolves it on its own. A delegate child starts
   # without one (but the toolkit its delegate call named, and its parent's
   # parent_answers); a continue and a fork copy their session's (.of).
   SessionSetup = Data.define(:llm_context, :thinking, :reasoning_history, :appended_prompt_files, :toolkit,
-                             :settings, :parent_answers) do
+                             :settings, :parent_answers, :working_set_pins) do
     def initialize(llm_context: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [], toolkit: nil,
-                   settings: nil, parent_answers: nil)
+                   settings: nil, parent_answers: nil, working_set_pins: [])
       super(llm_context: llm_context, thinking: thinking, reasoning_history: reasoning_history,
             appended_prompt_files: Array(appended_prompt_files).map(&:to_s).freeze, toolkit: toolkit,
-            settings: SessionConfig::Settings.of(settings), parent_answers: parent_answers&.to_s)
+            settings: SessionConfig::Settings.of(settings), parent_answers: parent_answers&.to_s,
+            working_set_pins: WorkingSetPin.list(working_set_pins))
     end
 
     def empty?
       llm_context.nil? && thinking.nil? && reasoning_history.nil? && appended_prompt_files.empty? && toolkit.nil? &&
-        settings.empty? && parent_answers.nil?
+        settings.empty? && parent_answers.nil? && working_set_pins.empty?
     end
 
     # A session's own setup, for a session that starts from it. Its
@@ -50,7 +54,8 @@ module Samagotchi
 
       new(llm_context: session.llm_context, thinking: session.thinking, reasoning_history: session.reasoning_history,
           appended_prompt_files: session.appended_prompt_files, toolkit: Toolkit.of(session.toolkit),
-          settings: session.settings, parent_answers: session.parent_answers)
+          settings: session.settings, parent_answers: session.parent_answers,
+          working_set_pins: session.working_set_pins)
     end
   end
 end

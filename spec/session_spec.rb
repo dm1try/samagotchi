@@ -343,6 +343,21 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).parent_answers).to be_nil
     end
 
+    it "round-trips its working-set pins (a respawn keeps them); none from a file without the field" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.working_set_pins = [{ kind: "file", key: "/tmp/a.rb" }, { kind: "url", key: "https://x.test/" }]
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["working_set_pins"])
+        .to eq([{ "kind" => "file", "key" => "/tmp/a.rb" }, { "kind" => "url", "key" => "https://x.test/" }])
+      expect(described_class.load(session.id, state_dir: tmpdir).working_set_pins)
+        .to eq([Samagotchi::WorkingSetPin.new(kind: "file", key: "/tmp/a.rb"),
+                Samagotchi::WorkingSetPin.new(kind: "url", key: "https://x.test/")])
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("working_set_pins")))
+      expect(described_class.load(session.id, state_dir: tmpdir).working_set_pins).to eq([])
+    end
+
     it "round-trips its toolkit as given, and reads none (full) from a file without the field" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
                                             setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean")))

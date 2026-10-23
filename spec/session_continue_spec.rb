@@ -63,6 +63,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     previous.appended_prompt_files = ["/r/extra.md"]
     previous.toolkit = Samagotchi::Toolkit.new(name: "coordinator")
     previous.parent_answers = "standard"
+    previous.working_set_pins = [{ "kind" => "file", "key" => "/r/lib/a.rb" }]
     previous.save(state_dir: tmpdir)
     save_recap(previous.id, "The user reviewed three PRs and merged two.")
     allow(Samagotchi::ConfigFile).to receive(:model_ref).and_call_original
@@ -81,6 +82,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(saved.appended_prompt_files).to eq(["/r/extra.md"])
     expect(saved.toolkit).to eq(Samagotchi::Toolkit.new(name: "coordinator"))
     expect(saved.parent_answers).to eq("standard")
+    expect(saved.working_set_pins).to eq([Samagotchi::WorkingSetPin.new(kind: "file", key: "/r/lib/a.rb")])
     expect(archived?(previous.id)).to be(true)
     # Not a descendant: the archive's cascade never reaches the new link.
     expect(archived?(link.id)).to be(false)
