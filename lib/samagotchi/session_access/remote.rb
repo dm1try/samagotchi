@@ -245,8 +245,8 @@ module Samagotchi
       # @param ttl [Integer, nil] seconds; nil: the grant's default
       # @return [Invitation]
       # @raise [BadRequest] a bad name, kind or ttl, an archived session
-      def invite(id, name:, kind:, ttl: nil)
-        reply = request(:post, "#{session_path(id)}/participants", body: { name: name, kind: kind, ttl: ttl }.compact)
+      def invite(id, name:, kind:, ttl: nil, cap: nil)
+        reply = request(:post, "#{session_path(id)}/participants", body: { name: name, kind: kind, ttl: ttl, cap: cap }.compact)
         raise_refusal(reply) unless reply.status == 201
 
         json = reply.json
@@ -263,6 +263,15 @@ module Samagotchi
         raise_refusal(reply) unless reply.status == 200
 
         Array(reply.json["revoked"]).map { |row| ParticipantView.from_h(row) }
+      end
+
+      # @return [ParticipantView] the participant with their new cap
+      # @raise [BadRequest] a cap out of range, or no such active participant
+      def set_participant_cap(id, participant:, cap:)
+        reply = request(:post, "#{session_path(id)}/participants/#{participant}/cap", body: { cap: cap })
+        raise_refusal(reply) unless reply.status == 200
+
+        ParticipantView.from_h(reply.json.fetch("participant"))
       end
 
       def note(id, text:, source:)

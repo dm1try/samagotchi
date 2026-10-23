@@ -7,6 +7,7 @@ require "securerandom"
 require "time"
 require "rack/utils"
 require_relative "../atomic_file"
+require_relative "../config"
 require_relative "../participant_name"
 require_relative "../session"
 require_relative "../redacted_inspect"
@@ -51,6 +52,17 @@ module Samagotchi
       ROLES = %w[reviewer].freeze
       NAME_MAX = ParticipantName::MAX
       ID_RE = /\Ap_[0-9a-f]{8}\z/
+      # D7: what a participant's turns (and the side calls they cause) may
+      # cost the owner, in dollars, unless chi share --cap says otherwise
+      # (config web.participants.cap); at most MAX_CAP.
+      DEFAULT_CAP = 2.0
+      MAX_CAP = 1000.0
+      # How many of a participant's turns may wait behind their running one
+      # (config web.participants.queue); at most MAX_QUEUE.
+      DEFAULT_QUEUE = 3
+      MAX_QUEUE = 20
+      # chi share --expires and config web.participants.expires: Nh or Nd.
+      EXPIRES_RE = /\A(\d+)([hd])\z/
 
       # The store's folder or file can be read by others (chi web refuses to
       # start), or a grant can't be made from what was given.
@@ -63,11 +75,20 @@ module Samagotchi
       # participant too: a turn they send is authored "p:<id>" (P3).
       # +revoked_by+ why it was revoked: "owner", "archive", "delete",
       # "gone" (the session was pruned).
+      # +cap+ (dollars) and +queue+ (turns waiting) as issued; nil in a
+      # grant from before them, which takes the config's (#spend_cap,
+      # #queue_limit).
       Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                          :revoked_by, :last_used_at) do
+                          :revoked_by, :last_used_at, :cap, :queue) do
         def self.from_h(hash)
           new(**members.to_h { |key| [key, hash[key.to_s]] })
         end
+
+        # The dollars this participant may cost the owner.
+        def spend_cap = cap.is_a?(Numeric) ? cap.to_f : Grants.default_cap
+
+        # How many of their turns may wait behind their running one.
+        def queue_limit = queue.is_a?(Integer) ? queue : Grants.default_queue
 
         # The author a participant's turn carries (Principal#author).
         def author = "p:#{id}"
@@ -94,7 +115,7 @@ module Samagotchi
         def public_h(now)
           { id: id, session_id: session_id, kind: kind, name: name, role: role, created_at: created_at,
             expires_at: expires_at, revoked_at: revoked_at, revoked_by: revoked_by, last_used_at: last_used_at,
-            state: state(now).to_s }
+            state: state(now).to_s, cap: spend_cap, queue: queue_limit }
         end
 
         def to_store = to_h.transform_keys(&:to_s)
@@ -117,6 +138,38 @@ module Samagotchi
       end
 
       def self.digest(token) = Digest::SHA256.hexdigest(token.to_s)
+
+      # Seconds for +words+ (Nh or Nd, 1 hour to MAX_TTL), nil for none,
+      # false for words that aren't that.
+      def self.parse_ttl(words)
+        return nil if words.nil?
+
+        match = EXPIRES_RE.match(words.to_s.strip) or return false
+        seconds = match[1].to_i * (match[2] == "h" ? 3600 : DAY)
+        seconds.between?(3600, MAX_TTL) ? seconds : false
+      end
+
+      # A new grant's lifetime: config web.participants.expires, else
+      # DEFAULT_TTL (a value that isn't Nh/Nd in range too).
+      def self.default_ttl
+        parse_ttl(Config.get("web.participants.expires")) || DEFAULT_TTL
+      end
+
+      # A grant's cap without its own: config web.participants.cap, else
+      # DEFAULT_CAP (a value out of range too).
+      def self.default_cap
+        value = Config.get("web.participants.cap")
+        cap?(value) ? value.to_f : DEFAULT_CAP
+      end
+
+      # A grant's queue limit without its own: config
+      # web.participants.queue, else DEFAULT_QUEUE.
+      def self.default_queue
+        value = Config.get("web.participants.queue")
+        value.is_a?(Integer) && value.between?(0, MAX_QUEUE) ? value : DEFAULT_QUEUE
+      end
+
+      def self.cap?(value) = value.is_a?(Numeric) && value.to_f.finite? && value.to_f.between?(0, MAX_CAP)
 
       def self.token?(value) = value.is_a?(String) && value.start_with?(PREFIX)
 
@@ -162,14 +215,18 @@ module Samagotchi
       def now = @clock.call
 
       # A new grant for +session_id+, written before the token is handed out.
-      # @param ttl [Integer] seconds (DEFAULT_TTL; at most MAX_TTL)
+      # @param ttl [Integer, nil] seconds (nil: Grants.default_ttl; at most MAX_TTL)
+      # @param cap [Numeric, nil] dollars (nil: Grants.default_cap)
       # @return [Issued]
       # @raise [Invalid]
-      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: DEFAULT_TTL)
+      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil)
         Session.check_id!(session_id)
+        ttl ||= Grants.default_ttl
+        cap = Grants.default_cap if cap.nil?
         raise Invalid, "kind is human or agent, not #{kind}" unless KINDS.include?(kind)
         raise Invalid, "role is reviewer, not #{role}" unless ROLES.include?(role)
         raise Invalid, "a grant lasts 1 hour to 30 days" unless ttl.is_a?(Integer) && ttl.between?(3600, MAX_TTL)
+        raise Invalid, CAP_RANGE unless Grants.cap?(cap)
 
         clean = Grants.clean_name(name)
         token = "#{PREFIX}#{SecureRandom.urlsafe_base64(BYTES)}"
@@ -178,7 +235,7 @@ module Samagotchi
           id = fresh_id(grants)
           grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
                             role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
-                            revoked_by: nil, last_used_at: nil)
+                            revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue)
           [grants + [grant], Issued.new(grant: grant, token: token)]
         end
       end
@@ -228,6 +285,27 @@ module Samagotchi
             grant.with(revoked_at: stamp(at), revoked_by: by).tap { |ended| revoked << ended }
           end
           [grants, revoked]
+        end
+      end
+
+      CAP_RANGE = "a cap is $0 to $#{MAX_CAP.to_i}".freeze
+
+      # Sets the active grant +id+'s cap to +cap+ dollars.
+      # @return [Grant, nil] the changed grant; nil when +id+ isn't an
+      #   active grant (of +session_id+, when given)
+      # @raise [Invalid] a cap out of range
+      def set_cap(id, cap, session_id: nil)
+        raise Invalid, CAP_RANGE unless Grants.cap?(cap)
+
+        at = now
+        update do |grants|
+          changed = nil
+          grants = grants.map do |grant|
+            next grant unless grant.id == id && grant.active?(at) && (session_id.nil? || grant.session_id == session_id)
+
+            changed = grant.with(cap: cap.to_f)
+          end
+          [grants, changed]
         end
       end
 

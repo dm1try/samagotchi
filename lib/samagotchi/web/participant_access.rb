@@ -205,16 +205,19 @@ module Samagotchi
         json_response(200, { participants: @grants.list(session_id: id).map { |grant| grant.public_h(now) } })
       end
 
-      # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds)}:
-      # a new grant. The answer carries the token and the link once; chi
-      # keeps only its digest.
+      # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
+      # cap? (dollars)}: a new grant. The answer carries the token and the
+      # link once; chi keeps only its digest.
       def handle_participants_invite(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         ttl = body["ttl"]
         return error_response(400, "invalid_participant", "ttl is a number of seconds") unless ttl.nil? || ttl.is_a?(Integer)
 
+        cap = body["cap"]
+        return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
+
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
-                                              ttl: ttl, state_dir: default_state_dir)
+                                              ttl: ttl, cap: cap, state_dir: default_state_dir)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
                              link: participant_link(req, id, issued.token), lan: !@lan.nil? })
       rescue Grants::Invalid => e
@@ -233,6 +236,23 @@ module Samagotchi
         revoked = Participants.revoke(@grants, session_id: id, id: grant_id, by: "owner", state_dir: default_state_dir)
         now = @grants.now
         json_response(200, { revoked: revoked.map { |grant| grant.public_h(now) } })
+      end
+
+      # POST /api/sessions/:id/participants/:participant/cap {cap}: the
+      # active participant's new spending cap (dollars), from their next
+      # turn on. 200 {participant}; 400 invalid_participant.
+      def handle_participants_cap(req, id, grant_id)
+        body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        unless Grants::ID_RE.match?(grant_id.to_s)
+          return error_response(400, "invalid_participant", "not a participant id: #{grant_id.to_s[0, 40]}")
+        end
+
+        grant = Participants.set_cap(@grants, session_id: id, id: grant_id, cap: body["cap"], state_dir: default_state_dir)
+        return error_response(400, "invalid_participant", Participants.no_participant(grant_id, id)) unless grant
+
+        json_response(200, { participant: grant.public_h(@grants.now) })
+      rescue Grants::Invalid => e
+        error_response(400, "invalid_participant", e.message)
       end
 
       # The link a participant opens: this chi web's LAN address when it has

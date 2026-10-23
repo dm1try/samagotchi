@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Participants do
       entries = described_class.read(session.id, state_dir: state_dir)
       expect(entries.map(&:to_h)).to eq([{ id: issued.grant.id, kind: "agent", name: "Alex", role: "reviewer",
                                            added_at: issued.grant.created_at, expires_at: issued.grant.expires_at,
-                                           removed_at: nil }])
+                                           removed_at: nil, cap: 2.0 }])
       expect(entries.first.active?(Time.now)).to be(true)
       sidecar = File.read(File.join(dir, described_class::FILE))
       expect(sidecar).not_to include(issued.token)

@@ -32,8 +32,10 @@ module Samagotchi
 
     # One participant as the sidecar has them. +removed_at+ when the grant
     # was revoked (nil while it works, or once it simply expired:
-    # +expires_at+ says when).
-    Entry = Data.define(:id, :kind, :name, :role, :added_at, :expires_at, :removed_at) do
+    # +expires_at+ says when). +cap+: their spending cap in dollars (the
+    # worker's check before their queued turn starts), nil in a sidecar
+    # from before caps.
+    Entry = Data.define(:id, :kind, :name, :role, :added_at, :expires_at, :removed_at, :cap) do
       def self.from_h(hash) = new(**members.to_h { |key| [key, hash[key.to_s]] })
 
       # Still in the review at +now+.
@@ -68,7 +70,8 @@ module Samagotchi
 
       entries = grants.map do |grant|
         { "id" => grant.id, "kind" => grant.kind, "name" => grant.name, "role" => grant.role,
-          "added_at" => grant.created_at, "expires_at" => grant.expires_at, "removed_at" => grant.revoked_at }
+          "added_at" => grant.created_at, "expires_at" => grant.expires_at, "removed_at" => grant.revoked_at,
+          "cap" => grant.spend_cap }
       end
       AtomicFile.write(File.join(dir, FILE), "#{JSON.pretty_generate({ "participants" => entries })}\n", perm: 0o600)
     end
@@ -88,19 +91,35 @@ module Samagotchi
     # @return [Web::Grants::Issued]
     # @raise [Web::Grants::Invalid] an archived session, or bad values
     # @raise [ArgumentError] no such session
-    def invite(grants, session_id:, name:, kind: "human", ttl: nil, state_dir: Session.default_state_dir)
+    def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, state_dir: Session.default_state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
       if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
         raise Web::Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
       end
 
-      issued = grants.issue(session_id: session_id, name: name, kind: kind, **{ ttl: ttl }.compact)
+      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap)
       write(session_id, grants.list(session_id: session_id), state_dir: state_dir)
       grant = issued.grant
       log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name, kind: grant.kind,
-                               role: grant.role, expires_at: grant.expires_at)
+                               role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap)
       issued
     end
+
+    # Sets participant +id+'s cap on +session_id+ (chi share cap): the
+    # grant, the sidecar (the worker's check) and the audit line.
+    # @return [Web::Grants::Grant, nil] nil when +id+ isn't an active grant there
+    # @raise [Web::Grants::Invalid] a cap out of range
+    def set_cap(grants, session_id:, id:, cap:, state_dir: Session.default_state_dir)
+      grant = grants.set_cap(id, cap, session_id: session_id) or return nil
+
+      write(session_id, grants.list(session_id: session_id), state_dir: state_dir)
+      log(session_id, :cap, state_dir: state_dir, participant: grant.id, cap: grant.spend_cap)
+      grant
+    end
+
+    # The refusal for a cap change of +id+, no active participant of
+    # +session_id+.
+    def no_participant(id, session_id) = "no active participant #{id} in #{session_id.to_s[0, 8]} (chi share ls lists them)"
 
     # Revokes grants (Web::Grants#revoke's arguments) and brings each
     # affected session's sidecar and audit trail along.

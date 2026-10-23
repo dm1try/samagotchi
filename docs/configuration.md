@@ -157,7 +157,7 @@ or `chi web` restart.
 | `toolkit.default`, `toolkit.child` | Session creation | The chosen toolkit is saved; changing the defaults does not move existing sessions. |
 | `toolkit.kits`, `execute.description`, `llm_context.policy` | Worker start | These are held by the engine's toolkit or tool registry. |
 | `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
-| `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. |
+| `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line`, `web.participants.*` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. A participant's grant keeps the expiry and cap it was issued with; `web.participants.*` is what the next invite gets, and the cap and queue of a grant from before caps. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
 | `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `guardrails.parent_answers` is checked when a parent answers a question. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
@@ -165,7 +165,7 @@ or `chi web` restart.
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
 | `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
-| `web.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
+| `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
 | `broadcast.*` | Next `chi broadcast` | Each broadcast invocation reads its targeting and triage settings. |
@@ -1719,6 +1719,9 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `web.working_set` | `true` | yes | The stage view's working set: the files, memories and URLs a turn brought into the model's context, in a rail in the stage, a footprint line under each finished turn and a `set N` chip in place of the mem chip; `false` brings the mem chip back. `?working_set=1` or `?working_set=0` on the page URL overrides it for that page load; the turn view ignores it. See [CLI: the working set](cli.md#the-working-set). |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `web.editor` | `vscode` | yes | What a file ref in `chi web` (a file tool row's title, a diff line) opens, for a viewer on this machine: a preset (`vscode`, `vscode-insiders`, `cursor`, `zed`) or a URL template with `{path}` and an optional `{line}`; `none` turns refs off. See [Opening files from chi web](#opening-files-from-chi-web). |
+| `web.participants.expires` | `7d` | | How long a participant's link lasts unless `chi share --expires` says otherwise: `Nh` or `Nd`, 1h to 30d. See [participants](internals/participants.md). |
+| `web.participants.cap` | `2.0` | | What a participant's turns, and the side calls they cause, may cost you in dollars unless `chi share --cap` says otherwise ($0 to $1000); at the cap their next comment is refused (429 `cap_reached`) and you get a notice. `chi share cap ID P DOLLARS` changes one grant's. |
+| `web.participants.queue` | `3` | | How many of a participant's turns may wait behind their running one (0 to 20); one more is refused (429 `too_many_turns`). |
 | `history.file` | state dir | | Prompt history path, shared by the TUI and the web composer. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the step limit of a turn to 1000 (or `turn.max_iterations`, when larger); a top-level key. |
 | `no_default_input` | `false` | `--no-default-input` | Don't pre-fill `default.input`; a top-level key. |

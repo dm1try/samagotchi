@@ -344,8 +344,8 @@ module Samagotchi
       # @return [Invitation]
       # @raise [ArgumentError] no such session
       # @raise [BadRequest] a bad name, kind or ttl, an archived session
-      def invite(id, name:, kind:, ttl: nil)
-        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, state_dir: state_dir!)
+      def invite(id, name:, kind:, ttl: nil, cap: nil)
+        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap, state_dir: state_dir!)
         ip, port = local_web
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
                        link: "http://#{ip || "127.0.0.1"}:#{port}/?token=#{issued.token}#s=#{id}", lan: !ip.nil?)
@@ -357,6 +357,17 @@ module Samagotchi
       def revoke_participants(id = nil, participant: nil)
         Participants.revoke(grants, session_id: id, id: participant, state_dir: state_dir!)
                     .map { |grant| ParticipantView.from_h(grant.public_h(grants.now)) }
+      end
+
+      # @return [ParticipantView] the participant with their new cap
+      # @raise [BadRequest] a cap out of range, or no such active participant
+      def set_participant_cap(id, participant:, cap:)
+        grant = Participants.set_cap(grants, session_id: id, id: participant, cap: cap, state_dir: state_dir!)
+        raise BadRequest.new(Participants.no_participant(participant, id), code: "invalid_participant") unless grant
+
+        ParticipantView.from_h(grant.public_h(grants.now))
+      rescue Web::Grants::Invalid => e
+        raise BadRequest.new(e.message, code: "invalid_participant")
       end
 
       private

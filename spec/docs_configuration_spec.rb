@@ -101,7 +101,7 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
   end
   row_matches = lambda do |key|
     applies_rows.call.select do |keys, excluded, _applies|
-      !excluded.include?(key) && keys.any? do |candidate|
+      excluded.none? { |out| out.include?("*") ? File.fnmatch?(out, key) : out == key } && keys.any? do |candidate|
         candidate.include?("*") ? File.fnmatch?(candidate, key) : candidate == key
       end
     end

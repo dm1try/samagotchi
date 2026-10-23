@@ -91,8 +91,9 @@ module Samagotchi
     # One participant's grant as chi share ls shows it
     # (Web::Grants::Grant#public_h): never its token or digest. +state+
     # "active", "revoked" or "expired".
+    # +cap+ dollars and +queue+ turns (nil from a chi web before them).
     ParticipantView = Data.define(:id, :session_id, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                                  :revoked_by, :last_used_at, :state) do
+                                  :revoked_by, :last_used_at, :state, :cap, :queue) do
       def self.from_h(hash) = new(**members.to_h { |key| [key, hash[key] || hash[key.to_s]] })
     end
 

@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::ShareCommand do
         grant = grants.list(session_id: session.id).first
         lines = out.string.lines.map(&:chomp)
         expires = Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")
-        expect(lines[0]).to eq("#{grant.id}  Alex (human, reviewer) · session #{session.id[0, 8]} · expires #{expires}")
+        expect(lines[0]).to eq("#{grant.id}  Alex (human, reviewer) · session #{session.id[0, 8]} · expires #{expires} · cap $2.00")
         token = lines[1][/token=(chp_[^#]+)#/, 1]
         expect(grants.lookup(token)&.id).to eq(grant.id)
         expect(lines[1]).to end_with("#s=#{session.id}")
@@ -97,6 +97,16 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(grants.list).to eq([])
       end
 
+      it "takes --cap in dollars, and refuses one out of range" do
+        expect(run(session.id, "--name", "Alex", "--cap", "5.5")).to eq(0), err.string
+        expect(grants.list.first.spend_cap).to eq(5.5)
+        expect(out.string.lines[0]).to end_with("· cap $5.50\n")
+        expect(run(session.id, "--name", "Kim", "--cap", "1001")).to eq(2)
+        expect(run(session.id, "--name", "Kim", "--cap", "lots")).to eq(2)
+        expect(err.string.lines.map(&:chomp).uniq).to eq(["chi share: #{described_class::CAP_USAGE} (see chi share --help)"])
+        expect(grants.list.size).to eq(1)
+      end
+
       it "refuses an archived session" do
         Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
         expect(run(session.id, "--name", "A")).to eq(2)
@@ -112,9 +122,11 @@ RSpec.describe Samagotchi::ShareCommand do
 
         expect(run("ls")).to eq(0), err.string
         lines = out.string.lines.map(&:rstrip)
-        expect(lines[0].split(/\s{2,}/)).to eq(["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "STATE"])
+        expect(lines[0].split(/\s{2,}/))
+          .to eq(["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP", "STATE"])
         expect(lines.size).to eq(3)
-        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 7, 8)).to eq([session.id[0, 8], a.grant.id, "Alex", "human", "reviewer", "-", "active"])
+        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 7, 8, 9))
+          .to eq([session.id[0, 8], a.grant.id, "Alex", "human", "reviewer", "-", "$2.00", "active"])
         expect(out.string).not_to include(a.token)
 
         out.truncate(0)
@@ -128,6 +140,27 @@ RSpec.describe Samagotchi::ShareCommand do
       it "says when there are none" do
         expect(run("ls", session.id)).to eq(0)
         expect(out.string).to eq("no participants in #{session.id[0, 8]} (chi share #{session.id[0, 8]} --name NAME invites one)\n")
+      end
+    end
+
+    describe "chi share cap" do
+      it "sets an active participant's cap, from their next turn; refuses another session's or a bad one" do
+        a = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+        expect(run("cap", session.id[0, 8], a.grant.id, "$10")).to eq(0), err.string
+        expect(out.string).to eq("#{a.grant.id}  Alex  cap $10.00\n")
+        expect(grants.find(a.grant.id).spend_cap).to eq(10.0)
+        expect(Samagotchi::Participants.read(session.id, state_dir: state_dir).first.cap).to eq(10.0)
+
+        other = new_session
+        expect(run("cap", other.id, a.grant.id, "3")).to eq(2)
+        expect(run("cap", session.id, a.grant.id, "1001")).to eq(2)
+        expect(run("cap", session.id, "alex", "3")).to eq(2)
+        expect(err.string.lines.map(&:chomp)).to eq([
+          "chi share cap: #{Samagotchi::Participants.no_participant(a.grant.id, other.id)} (see chi share cap --help)",
+          "chi share cap: #{described_class::CAP_USAGE} (see chi share cap --help)",
+          "chi share cap: not a participant: alex (chi share ls lists them) (see chi share cap --help)"
+        ])
+        expect(grants.find(a.grant.id).spend_cap).to eq(10.0)
       end
     end
 

@@ -146,7 +146,7 @@ module Samagotchi
                  chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
                  chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
                  chi answer ID --question QID --option N   answer a question a session waits on
-                 chi share ID --name NAME | ls [ID] | revoke ID [P]|--all   participants who review a session
+                 chi share ID --name NAME | ls [ID] | cap ID P D | revoke ID [P]|--all   participants who review a session
                  chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
                  chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
                  chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper

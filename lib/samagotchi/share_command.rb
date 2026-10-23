@@ -22,34 +22,38 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi share ID --name NAME [--agent] [--expires 3d]
+      Usage: chi share ID --name NAME [--agent] [--expires 3d] [--cap 2]
              chi share ls [ID] [--format text|json]
+             chi share cap ID PARTICIPANT DOLLARS
              chi share revoke ID [PARTICIPANT] | --all
         ID --name NAME   invite NAME to review session ID: prints the link they open (chi web on
                          the LAN, web.host: lan) and its QR code at a terminal. The link is shown
                          once; chi keeps only a digest of its token.
           --agent        the participant is an agent (the same link, used as a Bearer token)
-          --expires N    Nh or Nd, 1h to 30d (default 7d)
+          --expires N    Nh or Nd, 1h to 30d (default 7d, web.participants.expires)
+          --cap DOLLARS  what their turns may cost you, $0 to $1000 (default $2, web.participants.cap)
         ls [ID]          the participants of ID, or of every session (never a token)
+        cap ID P D       set participant P's cap to D dollars, from their next turn
         revoke ID [P]    end participant P's link, or every link to ID; --all every session's
-      Archiving or deleting a session revokes its links. A participant sees the session's title
-      and status; comments come in a later chi.
+      Archiving or deleting a session revokes its links. A participant's comments run as
+      review turns: you pay for them, and they may only read.
     TEXT
 
-    SUBCOMMANDS = %w[ls revoke].freeze
+    SUBCOMMANDS = %w[ls cap revoke].freeze
 
     # The invite's flags (chi share ID …), and ls's and revoke's.
     FLAGS = CLI::Flags.new(help: HELP_WORDS) do |f|
       f.value "--name"
       f.switch "--agent"
       f.value "--expires"
+      f.value "--cap"
     end
     SUB_FLAGS = {
       "ls" => CLI::Flags.new(help: HELP_WORDS) { |f| f.value "--format" },
+      "cap" => CLI::Flags.new(help: HELP_WORDS) { |_f| nil },
       "revoke" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--all" }
     }.freeze
 
-    EXPIRES_RE = /\A(\d+)([hd])\z/
     TIME_FORMAT = "%m-%d %H:%M"
 
     # @param access [SessionAccess::Local, SessionAccess::Remote, nil]
@@ -93,11 +97,14 @@ module Samagotchi
       return usage_error("give one session ID") unless args.size == 1
       return usage_error("--name NAME: who the link is for") if options[:name].to_s.strip.empty?
 
-      ttl = expires(options[:expires])
+      ttl = Web::Grants.parse_ttl(options[:expires])
       return usage_error("--expires takes Nh or Nd, 1h to 30d (e.g. 3d)") if ttl == false
 
+      cap = options[:cap] && dollars(options[:cap])
+      return usage_error(CAP_USAGE) if cap == false
+
       id = @access.resolve(args.first)
-      invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl)
+      invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap)
       print_invitation(id, invitation)
       0
     end
@@ -120,6 +127,34 @@ module Samagotchi
       0
     end
 
+    CAP_USAGE = "a cap is dollars, $0 to $#{Web::Grants::MAX_CAP.to_i} (e.g. --cap 5)".freeze
+
+    def run_cap(_options, args)
+      return usage_error("give a session ID, a participant and dollars (chi share cap ID p_… 5)") unless args.size == 3
+
+      participant = args[1]
+      return usage_error("not a participant: #{participant} (chi share ls lists them)") unless Web::Grants::ID_RE.match?(participant)
+
+      cap = dollars(args[2])
+      return usage_error(CAP_USAGE) if cap == false
+
+      id = @access.resolve(args.first)
+      row = @access.set_participant_cap(id, participant: participant, cap: cap)
+      @stdout.puts("#{row.id}  #{row.name}  cap #{money(row.cap)}")
+      0
+    end
+
+    # A Float for "5", "2.50" or "$3" in the cap's range; false otherwise.
+    def dollars(words)
+      text = words.to_s.strip.delete_prefix("$")
+      return false unless text.match?(/\A\d+(?:\.\d+)?\z/)
+
+      value = text.to_f
+      Web::Grants.cap?(value) ? value : false
+    end
+
+    def money(value) = value.nil? ? "-" : format("$%.2f", value)
+
     def run_revoke(options, args)
       if options[:all]
         return usage_error("--all takes no session ID") unless args.empty?
@@ -136,18 +171,10 @@ module Samagotchi
       0
     end
 
-    # Seconds, nil for the default, false for words that aren't Nh/Nd.
-    def expires(words)
-      return nil if words.nil?
-
-      match = EXPIRES_RE.match(words.to_s.strip) or return false
-      seconds = match[1].to_i * (match[2] == "h" ? 3600 : Web::Grants::DAY)
-      seconds.between?(3600, Web::Grants::MAX_TTL) ? seconds : false
-    end
-
     def print_invitation(id, invitation)
       row = invitation.participant
-      @stdout.puts("#{row.id}  #{row.name} (#{row.kind}, #{row.role}) · session #{id[0, 8]} · expires #{local(row.expires_at, "%Y-%m-%d %H:%M")}")
+      @stdout.puts("#{row.id}  #{row.name} (#{row.kind}, #{row.role}) · session #{id[0, 8]} · expires " \
+                   "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}")
       @stdout.puts(invitation.link)
       @stdout.puts("(shown once: chi keeps only its digest; chi share revoke #{id[0, 8]} #{row.id} ends it)")
       unless invitation.lan
@@ -156,12 +183,12 @@ module Samagotchi
       @stdout.puts(Web::QR.lines(invitation.link)) if @tty
     end
 
-    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "STATE"].freeze
+    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP", "STATE"].freeze
 
     def print_table(rows)
       cells = rows.map do |row|
         [row.session_id[0, 8], row.id, row.name, row.kind, row.role, local(row.created_at), local(row.expires_at),
-         row.last_used_at ? local(row.last_used_at) : "-", row.state]
+         row.last_used_at ? local(row.last_used_at) : "-", money(row.cap), row.state]
       end
       widths = COLUMNS.each_index.map { |i| ([COLUMNS[i]] + cells.map { |c| c[i] }).map(&:length).max }
       [COLUMNS, *cells].each do |line|

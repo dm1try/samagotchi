@@ -40,6 +40,30 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     [status, JSON.parse(chunks.join)]
   end
 
+  describe "POST /api/sessions/:id/participants/:participant/cap" do
+    it "sets an active participant's cap (grant and sidecar), and takes one at the invite" do
+      _, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex", cap: 4 })
+      id = invited["participant"]["id"]
+      expect(invited["participant"]).to include("cap" => 4.0, "queue" => 3)
+
+      status, body = call("/api/sessions/#{session.id}/participants/#{id}/cap", method: "POST", body: { cap: 0.5 })
+      expect(status).to eq(200)
+      expect(body["participant"]).to include("id" => id, "cap" => 0.5)
+      expect(Samagotchi::Participants.read(session.id, state_dir: state_dir).first.cap).to eq(0.5)
+    end
+
+    it "refuses a cap out of range, an unknown participant and a bad id (400 invalid_participant)" do
+      _, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
+      id = invited["participant"]["id"]
+      expect(call("/api/sessions/#{session.id}/participants/#{id}/cap", method: "POST", body: { cap: "5" }))
+        .to eq([400, { "error" => "invalid_participant", "detail" => Samagotchi::Web::Grants::CAP_RANGE }])
+      expect(call("/api/sessions/#{session.id}/participants/p_00000000/cap", method: "POST", body: { cap: 1 }).first).to eq(400)
+      expect(call("/api/sessions/#{session.id}/participants/x/cap", method: "POST", body: { cap: 1 }).first).to eq(400)
+      expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "B", cap: 5000 }).first).to eq(400)
+      expect(grants.find(id).spend_cap).to eq(2.0)
+    end
+  end
+
   describe "POST /api/sessions/:id/participants" do
     it "issues a grant and answers its token and LAN link once; chi keeps only the digest" do
       status, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex", kind: "agent", ttl: 3 * 86_400 })

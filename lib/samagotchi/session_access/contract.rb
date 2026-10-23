@@ -122,6 +122,8 @@ module Samagotchi
         "share --name" => SUPPORTED,
         "share --agent" => SUPPORTED,
         "share --expires" => SUPPORTED,
+        "share --cap" => SUPPORTED,
+        "share cap" => SUPPORTED,
         "share ls" => SUPPORTED,
         "share ls --format" => SUPPORTED,
         "share revoke" => SUPPORTED,

@@ -232,6 +232,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_list, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_revoke, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/participants/([^/]+)/cap\z}, :handle_participants_cap, :owner, :session],
         ["GET", %r{\A/api/participants\z}, :handle_participants_list, :owner],
         ["DELETE", %r{\A/api/participants\z}, :handle_participants_revoke, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],

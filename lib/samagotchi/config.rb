@@ -311,6 +311,11 @@ module Samagotchi
       Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli], lifecycle: :web_start),
       # What a file ref (a tool row's file, a diff line) opens on this machine: a preset (vscode, vscode-insiders, cursor, zed, none) or a URL template with {path} and an optional {line} (Web::Editor).
       Entry.new(key: "web.editor",               yaml_path: %w[web editor],               type: :string, default: "vscode",        expose: %i[env config cli], lifecycle: :web_start),
+      # Participants (chi share): a new grant's lifetime (Nh or Nd, 1h to 30d), and what a grant without its own
+      # takes: its spending cap in dollars ($0 to $1000) and how many of its turns may wait (0 to 20). Read when used.
+      Entry.new(key: "web.participants.expires", yaml_path: %w[web participants expires], type: :string, default: "7d", expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
+      Entry.new(key: "web.participants.cap",     yaml_path: %w[web participants cap],     type: :float,  default: 2.0,  expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
+      Entry.new(key: "web.participants.queue",   yaml_path: %w[web participants queue],   type: :integer, default: 3,   expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
@@ -609,7 +614,7 @@ module Samagotchi
           elsif MAP_ENTRY_KEYS.key?(key)
             map_entry_problems(key, value)
           elsif value.is_a?(Hash) && (known_sections.include?(key) || ENTRIES.any? { |e| e.yaml_path.size > 1 && e.section == key })
-            value.keys.filter_map { |leaf| key_problem("#{key}.#{leaf}") }
+            value.flat_map { |leaf, inner| leaf_problems("#{key}.#{leaf}", inner) }
           elsif known_sections.include?(key)
             # An all-commented section is nil; recap: false turns recaps off.
             value.nil? || (key == "recap" && value == false) ? [] : ["config: '#{key}' must be a mapping of settings; ignored"]
@@ -617,6 +622,16 @@ module Samagotchi
             [key_problem(key)].compact
           end
         end + model_ref_problems(data)
+      end
+
+      # A section's leaf: a key the registry knows, or a mapping of a
+      # third level (web.participants.cap) whose keys it knows.
+      def leaf_problems(path, value)
+        if value.is_a?(Hash) && ENTRIES.any? { |e| e.key.start_with?("#{path}.") }
+          value.keys.filter_map { |leaf| key_problem("#{path}.#{leaf}") }
+        else
+          [key_problem(path)].compact
+        end
       end
 
       # What a model ref in config.yml won't do as written: an alias whose
