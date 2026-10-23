@@ -112,6 +112,10 @@ module Samagotchi
 
     attr_reader :session_id, :port, :host
 
+    # Which worker this client talks to, for EventStream: a rediscovered
+    # client with another key is a new worker. A Bridge's port.
+    def worker_key = @port
+
     # @param read_timeout [Numeric] see READ_TIMEOUT
     def initialize(session_id:, port:, host: HOST, read_timeout: READ_TIMEOUT)
       @session_id = session_id

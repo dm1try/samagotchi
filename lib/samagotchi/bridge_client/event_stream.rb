@@ -19,11 +19,11 @@ module Samagotchi
     # it without that event.
     #
     # With +rediscover+, a failed connection first looks for the session's
-    # live worker (its sidecar): a new one (a restart) is followed from its
-    # snapshot, announced by a synthetic `{"type" => "worker_changed",
-    # "port" => ...}` first, since its event ids start over. (A new worker
-    # on the old one's port is the plain reconnect: its Bridge can't replay
-    # the old ids and sends a reset.)
+    # live worker (its sidecar): a new one (a restart: a client with another
+    # BridgeClient#worker_key) is followed from its snapshot, announced by a
+    # synthetic `{"type" => "worker_changed", "port" => ...}` first, since its
+    # event ids start over. (A new worker on the old one's port is the plain
+    # reconnect: its Bridge can't replay the old ids and sends a reset.)
     class EventStream
       DEFAULT_RECONNECT_DELAYS = [0.1, 0.25, 0.5, 1.0, 2.0].freeze
       # Long enough for a restarted worker to boot (its Engine, the plugins).
@@ -174,7 +174,7 @@ module Samagotchi
 
         found = @rediscover.call
         return :gone if found == :gone
-        return nil if found.nil? || found.port == @client.port
+        return nil if found.nil? || found.worker_key == @client.worker_key
 
         @client = found
         @last_event_id = nil
