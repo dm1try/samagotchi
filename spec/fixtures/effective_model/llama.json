@@ -119,7 +119,8 @@
     "toolkit",
     "recap_enabled",
     "recap_min_user_turns",
-    "recap_inactivity_seconds"
+    "recap_inactivity_seconds",
+    "participants"
   ],
   "session_state": {
     "model_name": "box:qwen-small",

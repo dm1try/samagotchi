@@ -481,7 +481,9 @@ TUI. Errors in the sink or an observer are caught; they never break the turn.
 
 `Engine#announce` puts an event that belongs to no turn (`ANNOUNCEABLE_EVENTS`: `turn_enqueued`, `turn_dequeued`
 (a queued message taken back before it ran, `{enqueued_id, client_id}`: the remover's), `card`,
-`hook_notice`, `guardrail_warning`, `plugin_init_started`, and more) to the observers only. `:side_usage`
+`hook_notice`, `guardrail_warning`, `plugin_init_started`, `participants_changed` (`{participants, joined, left}`:
+who is in the review now and who was invited, revoked or expired since the worker last looked; `ParticipantsWatch`,
+[participants](participants.md#the-owners-terminal)), and more) to the observers only. `:side_usage`
 (`{kind, side}`: a side request's usage, the recap's, `/btw`'s or `ask_model`'s, and the session's side sums) goes
 to the observers the same way from `Engine#note_side_usage` (any thread), without being announceable.
 

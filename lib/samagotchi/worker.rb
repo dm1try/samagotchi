@@ -250,6 +250,9 @@ module Samagotchi
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
       @engine.session = @session
+      # Who is in the review as the worker starts: no notice for them
+      # (#watch_participants announces the changes from here on).
+      watch_participants
       # Input already waiting in the inbox starts the next turn at once, and
       # a command queued mid-turn (/thinking, /model, /llm-context) changes
       # what it starts with: no turn-end warm-up then.
@@ -410,8 +413,18 @@ module Samagotchi
       return left(:idle_exit) if @idle_exit.due? && leave_idle
       return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
 
+      watch_participants
       @waker.wait(idle_wait)
       nil
+    end
+
+    # A participant invited, revoked or expired since the last look: the
+    # UIs hear it (Engine#announce_participants: :participants_changed).
+    # Between turns, at most once a fallback tick; a failure only logs.
+    def watch_participants
+      @engine.announce_participants
+    rescue StandardError => e
+      Log.warn(:worker, "participants_watch_failed", error: e.class.name)
     end
 
     # A participant's input file is held (left in the inbox, still queued

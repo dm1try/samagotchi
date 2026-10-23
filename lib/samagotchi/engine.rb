@@ -85,6 +85,7 @@ require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
 require_relative "prompt_warmup"
 require_relative "working_set"
+require_relative "participants_watch"
 require_relative "session_participants"
 
 module Samagotchi
@@ -224,6 +225,8 @@ module Samagotchi
       @participants = SessionParticipants.new(state_dir: -> { session_state_dir })
       # Whether the system prompt carries the participants line.
       @participants_line = false
+      # Who is in the review now, and who came or went (#announce_participants).
+      @participants_watch = ParticipantsWatch.new(session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -818,7 +821,7 @@ module Samagotchi
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
                              command_queued command_ran context_added card hook_notice guardrail_warning
-                             plugin_init_started plugin_init_finished working_set_updated].freeze
+                             plugin_init_started plugin_init_finished working_set_updated participants_changed].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -1328,6 +1331,8 @@ module Samagotchi
     #     that served model under served: (#served_expected_by)
     #   :recap_enabled [Boolean]   whether an idle recap is configured, with
     #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
+    #   :participants  [Array<Hash>] who is in the review now ({id:, name:,
+    #     kind:}; ParticipantsWatch#active), [] for nobody
     def session_state_snapshot
       served_pair = served_model(probe: false)
       metrics = @metrics.snapshot
@@ -1356,7 +1361,8 @@ module Samagotchi
         **setting_chips(SessionSetting::ALL, model),
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
-        recap_inactivity_seconds: @recap&.inactivity&.to_i
+        recap_inactivity_seconds: @recap&.inactivity&.to_i,
+        participants: @participants_watch.active
       }
     end
 
@@ -1497,6 +1503,17 @@ module Samagotchi
                                        enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
                                        author: Steer.sender_author(origin.is_a?(Hash) ? origin[:author] : nil),
                                        **stop_facts(event))
+    end
+
+    # A participant joined (invited) or left (revoked, expired) since the
+    # last look: :participants_changed to the observers (ParticipantsWatch;
+    # the worker looks on its idle tick). The first look announces nobody.
+    # @return [ParticipantsWatch::Change, nil]
+    def announce_participants
+      change = @participants_watch.changes or return nil
+
+      announce(change.to_event)
+      change
     end
 
     # Reads the session's participants at a turn's start; the first to join
