@@ -580,6 +580,20 @@ module Samagotchi
 
       public
 
+      # What each participant's review turns and the side requests they
+      # caused cost the owner: "Alex $0.42 (3 turns), Kim $0.10 (1 turn)";
+      # nil when none spent any.
+      def participants_spend_text(rows)
+        return nil unless rows.is_a?(Hash) && !rows.empty?
+
+        rows.map do |author, row|
+          name = row[:name].to_s.empty? ? author.to_s.delete_prefix("p:") : row[:name]
+          turns = row[:turns].to_i
+          format("%<name>s $%<cost>.2f (%<turns>d turn%<s>s)", name: name, cost: row[:cost].to_f, turns: turns,
+                                                               s: turns == 1 ? "" : "s")
+        end.join(", ")
+      end
+
       # Render the analytics snapshot as a compact, user-facing report. Raw event
       # logs (debug-only) are intentionally excluded; this surface is for the REPL
       # and `chi sessions stats` (the module function above).
@@ -621,6 +635,8 @@ module Samagotchi
         # The side requests, never in the totals above.
         side = side_requests_text(snapshot[:side])
         lines << "side requests:    #{side} (not in the totals above)" unless side.empty?
+        participants = participants_spend_text(snapshot[:spend_by_author])
+        lines << "participants:     #{participants} (in the totals above)" if participants
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"

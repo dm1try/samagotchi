@@ -12,11 +12,15 @@ module Samagotchi
     # +cost_sum+ is nil until a request reports a cost (a reported 0
     # included), +cost_estimate_sum+ 0 until one is estimated from a price
     # (ModelPrice.estimate, the turns' rule). +by_kind+ is a frozen Hash
-    # kind => {requests:, cost_sum:, cost_estimate_sum:} in first-seen order.
+    # kind => {requests:, cost_sum:, cost_estimate_sum:} in first-seen order;
+    # +by_author+ the same rows by the participant who caused them ("p:<id>":
+    # their turn's ctx.ask_model, the recap after it), the owner's not kept.
     class SideTotals < Data.define(:requests, :prompt_sum, :completion_sum, :cached_sum, :cache_write_sum,
-                                   :reasoning_sum, :cost_sum, :cost_estimate_sum, :by_kind)
+                                   :reasoning_sum, :cost_sum, :cost_estimate_sum, :by_kind, :by_author)
       # The counts summed as they are (the costs and by_kind apart).
       COUNTS = %i[requests prompt_sum completion_sum cached_sum cache_write_sum reasoning_sum].freeze
+
+      def initialize(by_author: {}.freeze, **) = super
 
       def self.zero
         new(**COUNTS.to_h { |key| [key, 0] }, cost_sum: nil, cost_estimate_sum: 0, by_kind: {}.freeze)
@@ -35,7 +39,7 @@ module Samagotchi
           **COUNTS.to_h { |key| [key, count(hash[key.to_s])] },
           cost_sum: cost(hash["cost_sum"]),
           cost_estimate_sum: number(hash["cost_estimate_sum"]),
-          by_kind: saved_kinds(hash["by_kind"])
+          by_kind: saved_kinds(hash["by_kind"]), by_author: saved_kinds(hash["by_author"])
         )
       end
 
@@ -59,13 +63,14 @@ module Samagotchi
         one = { requests: 1, cost_sum: usage.cost&.to_f, cost_estimate_sum: estimate || 0 }
         kind = usage.kind.to_s
         rows = by_kind.merge(kind => sum_row(by_kind[kind], one))
+        authors = usage.author ? by_author.merge(usage.author => sum_row(by_author[usage.author], one)).freeze : by_author
         with(requests: requests + 1, prompt_sum: prompt_sum + usage.prompt_tokens.to_i,
              completion_sum: completion_sum + usage.completion_tokens.to_i,
              cached_sum: cached_sum + usage.cached_tokens.to_i,
              cache_write_sum: cache_write_sum + usage.cache_write_tokens.to_i,
              reasoning_sum: reasoning_sum + usage.reasoning_tokens.to_i,
              cost_sum: add_cost(cost_sum, one[:cost_sum]),
-             cost_estimate_sum: cost_estimate_sum + one[:cost_estimate_sum], by_kind: rows.freeze)
+             cost_estimate_sum: cost_estimate_sum + one[:cost_estimate_sum], by_kind: rows.freeze, by_author: authors)
       end
 
       # These totals with +other+'s added (a loaded block and the requests
@@ -74,18 +79,27 @@ module Samagotchi
       # @return [SideTotals]
       def merge(other)
         rows = other.by_kind.each_with_object(by_kind.dup) { |(kind, row), all| all[kind] = sum_row(all[kind], row) }
+        authors = other.by_author.each_with_object(by_author.dup) { |(who, row), all| all[who] = sum_row(all[who], row) }
         with(**COUNTS.to_h { |key| [key, public_send(key) + other.public_send(key)] },
              cost_sum: add_cost(cost_sum, other.cost_sum),
-             cost_estimate_sum: cost_estimate_sum + other.cost_estimate_sum, by_kind: rows.freeze)
+             cost_estimate_sum: cost_estimate_sum + other.cost_estimate_sum, by_kind: rows.freeze, by_author: authors.freeze)
       end
 
       def empty? = requests.zero?
 
-      # The snapshot's side block (symbol keys; by_kind keyed by kind).
+      # The snapshot's side block (symbol keys; by_kind keyed by kind;
+      # by_author only when a participant caused any).
       # @return [Hash]
       def to_h
         counts = COUNTS.to_h { |key| [key, public_send(key)] }
-        counts.merge(cost_sum: cost_sum, cost_estimate_sum: cost_estimate_sum, by_kind: by_kind.transform_values(&:dup))
+        block = counts.merge(cost_sum: cost_sum, cost_estimate_sum: cost_estimate_sum, by_kind: by_kind.transform_values(&:dup))
+        by_author.empty? ? block : block.merge(by_author: by_author.transform_values(&:dup))
+      end
+
+      # The dollars +author+'s side requests cost (reported and estimated).
+      def spent_by(author)
+        row = by_author[author] or return 0.0
+        row[:cost_sum].to_f + row[:cost_estimate_sum].to_f
       end
 
       def self.count(value) = value.is_a?(Numeric) ? value.to_i : 0

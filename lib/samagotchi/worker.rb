@@ -34,6 +34,8 @@ require_relative "context_absorber"
 require_relative "context_poller"
 require_relative "task_watch"
 require_relative "tools/task_runtime"
+require_relative "participants"
+require_relative "participant_name"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -576,6 +578,10 @@ module Samagotchi
     # @param prompt [WorkerInbound::Prompt]
     def run_prompt(prompt)
       origin = prompt.origin
+      # A participant's turn queued before their cap was reached doesn't
+      # start past it (chi web refuses new ones; this is the worker's check).
+      return refuse_capped_turn(origin) if participant_capped?(origin&.dig(:author))
+
       # A first turn sees the context attached before it, and any turn the
       # background tasks that finished since the last look.
       absorb_context(before_turn: true)
@@ -592,6 +598,48 @@ module Samagotchi
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
+      participant_capped?(origin&.dig(:author))
+    end
+
+    # Whether the participant +author+ ("p:<id>") has spent their cap
+    # (participants.json's, else the config's; their turns and the side
+    # requests they caused, Engine#metrics). The owner hears it once per
+    # cap (#cap_notice). false for the owner.
+    def participant_capped?(author)
+      author = Steer.sender_author(author) or return false
+
+      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| "p:#{e.id}" == author }
+      cap = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
+      return false if @engine.metrics.spend(author) < cap
+
+      cap_notice(author, entry&.name, cap)
+      true
+    end
+
+    # The owner's notice that a participant reached their cap: once per
+    # participant and cap (a raised cap that is reached again says so again).
+    def cap_notice(author, name, cap)
+      key = [author, cap]
+      return if (@cap_noticed ||= Set.new).include?(key)
+
+      @cap_noticed << key
+      id = author.delete_prefix("p:")
+      who = ParticipantName.clean(name)
+      @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
+                       text: format(CAP_NOTICE, name: who.empty? ? id : who, cap: cap, session: @session_id[0, 8], id: id))
+    end
+
+    CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \
+                 "(chi share cap %<session>s %<id>s AMOUNT)."
+
+    # A participant's queued turn that would start past their cap: taken
+    # off the queue (:turn_dequeued, so every UI drops its bubble) and
+    # audited; it never runs.
+    def refuse_capped_turn(origin)
+      Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin[:author].delete_prefix("p:"),
+                                           enqueued_id: origin[:enqueued_id], status: "refused", reason: "cap_reached")
+      @engine.announce(type: :turn_dequeued, enqueued_id: origin[:enqueued_id], client_id: origin[:client_id])
+      nil
     end
 
     # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn

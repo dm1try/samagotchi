@@ -10,6 +10,7 @@ require "samagotchi/web/grants"
 require "samagotchi/participants"
 require "samagotchi/prompt_history"
 require "samagotchi/session_manager"
+require "samagotchi/analytics_file"
 
 # POST /api/sessions/:id/turn and …/turn/:eid/dequeue from a participant:
 # a review turn whose author and client id are the grant's, always queued,
@@ -87,6 +88,21 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(delivered).to eq([])
     expect(audit.map { |line| line.values_at("status", "reason") }).to all(eq(%w[refused not_permitted]))
     expect(audit.size).to eq(4)
+  end
+
+  it "refuses a turn once the grant spent its cap (429 cap_reached), from the saved analytics" do
+    dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    record = { "id" => "t1", "author" => grant.author, "cost" => 1.5, "cost_estimate" => 0.25 }
+    side = { "requests" => 1, "by_author" => { grant.author => { "requests" => 1, "cost_sum" => 0.25 } } }
+    File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [record], "side" => side }))
+
+    expect(turn({ prompt: "one more" })).to eq([429, { "error" => "cap_reached",
+                                                       "detail" => Samagotchi::ParticipantMessages::CAP_REACHED }])
+    expect(delivered).to eq([])
+    expect(audit.last.values_at("status", "reason")).to eq(%w[refused cap_reached])
+
+    Samagotchi::Participants.set_cap(grants, session_id: session.id, id: grant.id, cap: 5, state_dir: state_dir)
+    expect(turn({ prompt: "one more" }).first).to eq(202)
   end
 
   it "passes the Bridge's 429 too_many_turns through, audited" do

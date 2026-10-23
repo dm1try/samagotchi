@@ -371,6 +371,48 @@ module Samagotchi
     # side block, apart from the turns' totals. Safe from any thread.
     # @param usage [SideUsage]
     # @return [Hash] the side block now (SideTotals#to_h)
+    # What a finished turn's record cost: reported and estimated dollars.
+    def self.record_cost(record) = record[:cost].to_f + record[:cost_estimate].to_f
+
+    # What +author+ ("p:<id>") has cost the session from its saved
+    # analytics.json: their turns' records and the side requests they
+    # caused. 0.0 without a file. chi web's cap check (a running turn's
+    # spend is saved at its end).
+    # @return [Float]
+    def self.saved_spend(session_dir, author)
+      data = AnalyticsFile.read(session_dir) or return 0.0
+      records = Array(data["turn_records"]).select { |record| record.is_a?(Hash) && record["author"] == author }
+      turns = records.sum { |record| record_cost(record.transform_keys(&:to_sym)) }
+      turns + SideTotals.from_saved(data["side"]).spent_by(author)
+    rescue TypeError
+      0.0
+    end
+
+    # What +author+ has cost so far: their finished turns, their running
+    # one's finished generations, and the side requests they caused.
+    # @return [Float]
+    def spend(author)
+      @mutex.synchronize { spend_rows[author]&.dig(:cost) || 0.0 }
+    end
+
+    # Caller holds the mutex. author => {turns:, cost:, side_cost:}, the
+    # running turn and the side requests in; {} for a session no
+    # participant spent in.
+    def spend_rows
+      rows = @author_turns.transform_values(&:dup)
+      if (turn = @turn) && turn.author
+        row = rows[turn.author] ||= { turns: 0, cost: 0.0 }
+        row[:cost] += turn.cost_sum.to_f + turn.cost_estimate_sum.to_f
+      end
+      @side.by_author.each_key do |author|
+        side = @side.spent_by(author)
+        row = rows[author] ||= { turns: 0, cost: 0.0 }
+        row[:cost] += side
+        row[:side_cost] = side
+      end
+      rows
+    end
+
     def add_side(usage)
       @mutex.synchronize do
         @side = @side.add(usage)
@@ -591,6 +633,9 @@ module Samagotchi
         # The side requests (recap, ctx.ask_model), apart from +tokens+;
         # only when there were any.
         **(@side.empty? ? {} : { side: @side.to_h }),
+        # What each participant's turns and side requests cost; only when
+        # one spent any.
+        **((spend = spend_rows).empty? ? {} : { spend_by_author: spend }),
         tool_errors: @tool_tallies[:errors],
         iterations_total: totals.iterations,
         gen_latency_ms: totals.gen_ms.round,
@@ -1237,6 +1282,9 @@ module Samagotchi
     def reset_totals
       @totals = Totals.zero
       @segments = []
+      # A participant's finished turns: author => {turns:, cost:} (dollars,
+      # reported and estimated), the owner's not kept.
+      @author_turns = {}
       @last_model_ref = nil
       # ms: the finished calls' time by tool (#usage's active_ms).
       @tool_tallies = { by_tool: {}, aliased: {}, errors: 0, ms: {} }
@@ -1244,6 +1292,7 @@ module Samagotchi
 
     def count_turn(record)
       @totals = @totals.add(record)
+      count_author(record)
       if ModelSegment.splits?(@segments.last, record)
         @segments << ModelSegment.open(record)
       else
@@ -1252,6 +1301,13 @@ module Samagotchi
       # The model the last turn that named one ran on: what a switch is
       # told by (#note_model_ref).
       @last_model_ref = record[:model_ref].to_s unless record[:model_ref].to_s.empty?
+    end
+
+    def count_author(record)
+      author = Steer.sender_author(record[:author]) or return
+
+      row = @author_turns[author] || { turns: 0, cost: 0.0 }
+      @author_turns[author] = { turns: row[:turns] + 1, cost: row[:cost] + SessionMetrics.record_cost(record) }
     end
 
     def count_tool(record)

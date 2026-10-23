@@ -8,6 +8,8 @@ require_relative "../archive_store"
 require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../session_inbox"
+require_relative "../session_metrics"
+require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../log"
@@ -228,9 +230,16 @@ module Samagotchi
         participant_cap_refusal(grant)
       end
 
-      # [429, cap_reached, …] once the grant spent its cap (P3b: spend by
-      # author), nil before.
-      def participant_cap_refusal(_grant) = nil
+      # [429, cap_reached, …] once the grant spent its cap (D7: their turns
+      # and the side requests they caused, from the session's saved
+      # analytics; a running turn's spend counts from its end, and the
+      # worker checks again before a queued one starts), nil before.
+      def participant_cap_refusal(grant)
+        dir = Session.session_dir(grant.session_id, state_dir: default_state_dir)
+        return nil if SessionMetrics.saved_spend(dir, grant.author) < grant.spend_cap
+
+        [429, "cap_reached", ParticipantMessages::CAP_REACHED]
+      end
 
       def participant_turn_refused(grant, prompt, status, code, detail)
         audit_turn(grant, prompt, status: "refused", reason: code)

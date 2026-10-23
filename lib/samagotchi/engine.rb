@@ -595,9 +595,12 @@ module Samagotchi
     # recreate a deleted session's folder; the folder itself may not exist
     # yet before a first turn). Safe from any thread: the recap's, a
     # plugin's, the turn's.
+    # A side request counts against the participant who caused it
+    # (#side_author), its usage's own author when it names one.
     # @param usage [SideUsage]
     # @return [void]
     def note_side_usage(usage)
+      usage = usage.with(author: side_author(usage.kind)) if usage.author.nil?
       synchronize_events do
         block = @metrics.add_side(usage)
         @session_observer.notify(type: :side_usage, kind: usage.kind, side: block)
@@ -608,6 +611,24 @@ module Samagotchi
 
       @metrics.persist(state_dir: session_state_dir)
     end
+
+    # Who caused a side request of +kind+ now: the running turn's author (a
+    # plugin's ctx.ask_model in it), the last turn's for the idle recap
+    # (it recaps that turn); nil, the owner's, for anything else (an owner
+    # command's ask_model between turns).
+    # @return [String, nil]
+    def side_author(kind)
+      return nil unless turn_running? || kind.to_s == RECAP_SIDE_KIND
+
+      Steer.sender_author(@guardrail_wiring.turn_author)
+    end
+
+    RECAP_SIDE_KIND = "recap"
+
+    # The running turn's author when a participant wrote it, else nil
+    # (ctx.turn_author, the hooks' author).
+    # @return [String, nil]
+    def turn_author = turn_running? ? Steer.sender_author(@guardrail_wiring.turn_author) : nil
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
@@ -1186,6 +1207,11 @@ module Samagotchi
                                 price_host: model.host_name)
       kit_prompt = kit_prompt_stats
       snapshot = snapshot.merge(kit_prompt: kit_prompt) if kit_prompt
+      # Each participant's spend under their name (participants.json's).
+      if (spend = snapshot[:spend_by_author])
+        named = spend.to_h { |author, row| [author, row.merge(name: @participants.name_for(author, session: @session))] }
+        snapshot = snapshot.merge(spend_by_author: named)
+      end
       # The session's own settings (chi --set), as --set names them.
       settings = @session&.settings&.flat || {}
       snapshot = snapshot.merge(settings: settings) unless settings.empty?

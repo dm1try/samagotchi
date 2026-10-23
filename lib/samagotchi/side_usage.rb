@@ -16,10 +16,12 @@ module Samagotchi
   #   usage.cost), nil when not reported
   # @!attribute price [ModelPrice, nil] the target host's price for the
   #   model (IdleTarget#price), what the cost is estimated from
+  # @!attribute author [String, nil] the participant whose turn caused it
+  #   ("p:<id>", Engine#note_side_usage stamps it), nil for the owner
   SideUsage = Data.define(:kind, :model, :prompt_tokens, :completion_tokens, :cached_tokens, :cache_write_tokens,
-                          :reasoning_tokens, :cost, :price) do
+                          :reasoning_tokens, :cost, :price, :author) do
     def initialize(kind:, model: nil, prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0, cache_write_tokens: 0,
-                   reasoning_tokens: 0, cost: nil, price: nil)
+                   reasoning_tokens: 0, cost: nil, price: nil, author: nil)
       super
     end
 

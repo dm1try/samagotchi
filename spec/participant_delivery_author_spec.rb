@@ -101,6 +101,32 @@ RSpec.describe "a participant's author on delivery" do
       expect(pop!(prompts, "the participant's own turn")).to eq(["is step 3 safe?", author])
     end
 
+    it "doesn't start a participant's queued turn past their cap: dropped from the queue, audited, the owner told once" do
+      author = grant.author
+      notices = Queue.new
+      dequeued = Queue.new
+      engine.subscribe(observer: lambda { |event|
+        notices << event if event[:type] == :hook_notice
+        dequeued << event if event[:type] == :turn_dequeued
+      })
+      allow(engine.metrics).to receive(:spend).with(author).and_return(2.5)
+      allow(engine).to receive(:run_turn).and_return(result)
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q2", client_id: "review:p", author: author, enqueued_id: "e2")
+
+      expect(pop!(dequeued, "the first refused turn")).to include(enqueued_id: "e1")
+      expect(pop!(dequeued, "the second refused turn")).to include(enqueued_id: "e2")
+      notice = pop!(notices, "the owner's cap notice")
+      expect(notice[:text]).to eq("Alex reached their $2.00 review cap: their comments are refused until you raise it " \
+                                  "(chi share cap #{session.id[0, 8]} #{grant.id} AMOUNT).")
+      expect(notices).to be_empty
+      expect(engine).not_to have_received(:run_turn)
+      refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                    .select { |line| line["event"] == "turn" }
+      expect(refused.map { |line| line.values_at("enqueued_id", "reason") }).to eq([%w[e1 cap_reached], %w[e2 cap_reached]])
+    end
+
     it "saves a participant's prompt as theirs before the loop's first boundary (a worker killed there keeps the author)" do
       author = grant.author
       engine.session_state_dir = tmpdir
