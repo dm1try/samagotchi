@@ -94,7 +94,9 @@ module Samagotchi
       private
 
       def http(read_timeout)
-        Net::HTTP.new(@uri.host, @uri.port).tap do |http|
+        # hostname: an IPv6 address bare ([::1] is the URL's); Net::HTTP
+        # brackets it in Host.
+        Net::HTTP.new(@uri.hostname, @uri.port).tap do |http|
           http.use_ssl = @uri.scheme == "https"
           http.open_timeout = @open_timeout
           http.read_timeout = read_timeout

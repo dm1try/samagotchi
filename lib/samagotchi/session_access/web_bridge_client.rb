@@ -203,7 +203,7 @@ module Samagotchi
         return refused("tls_unsupported") if uri.scheme == "https"
 
         token = @remote.entry.token
-        opened = BridgeClient::StreamRequest.open(host: uri.host, port: uri.port,
+        opened = BridgeClient::StreamRequest.open(host: uri.hostname, port: uri.port,
                                                   path: "/api/sessions/#{@session_id}/stream#{query}",
                                                   last_event_id: last_event_id, timeout: timeout,
                                                   headers: token ? { "Authorization" => "Bearer #{token}" } : {})

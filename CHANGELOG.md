@@ -68,6 +68,8 @@ and commands may change between minor versions. How releases are made:
   stream reconnect after 5 s, so it ends within about two minutes instead of about seventeen.
 - `chi --remote NAME context push` with a name that isn't a source's (`a/b`, `Bad Name`) gives the name rule, as
   it does locally, instead of "too old for this command … update chi there" or a URI error.
+- A remote at an IPv6 address (`chi remote add box http://[::1]:4567`) connects: its commands and its attached
+  TUI's stream used the bracketed host as a name to look up ("can't find host").
 
 ## [0.106.0] - 2026-10-23
 

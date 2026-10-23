@@ -27,7 +27,8 @@ module Samagotchi
     # path) and its access +token+ (nil for a loopback chi web, which needs
     # none). #inspect leaves the token out.
     Entry = Data.define(:name, :url, :token) do
-      def host = URI(url).host
+      # The host as an address, an IPv6 one bare (::1, not [::1]).
+      def host = URI(url).hostname
 
       # How a failure names it: "remote studio (http://192.168.1.29:4567)".
       def label = "remote #{name} (#{url})"

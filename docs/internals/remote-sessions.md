@@ -315,6 +315,8 @@ message, so a loop that rescues `IOError` around Bridge calls never crashes on o
 
 **The stream.** `connect_stream` writes `GET /api/sessions/:id/stream…` through `BridgeClient::StreamRequest` (the
 GET a local stream writes, with `Authorization: Bearer` and `Last-Event-ID`; `Host` is the entry's host and port).
+An IPv6 entry (`http://[::1]:4567`) connects on the bare address (`URI#hostname`, as `HTTPTransport` does) and keeps
+the brackets in `Host`.
 Its connect is bounded by the header timeout (`StreamRequest::CONNECT_TIMEOUT`, 5 s, without one): a dead host's
 SYN isn't waited on for the OS's minutes on every reconnect.
 chi web proxies the Bridge's bytes unchanged (under WEBrick a hijacked body is raw, `Connection: close`). No chunked

@@ -59,6 +59,15 @@ RSpec.describe Samagotchi::SessionAccess::HTTPTransport do
     expect(http).to have_received(:read_timeout=).with(45)
   end
 
+  it "connects to an IPv6 remote's bare address (Net::HTTP brackets its Host)" do
+    http = instance_double(Net::HTTP, "use_ssl=": nil, "open_timeout=": nil, "max_retries=": nil, "read_timeout=": nil,
+                                      "write_timeout=": nil, request: instance_double(Net::HTTPOK, code: "200", body: "{}"))
+    allow(Net::HTTP).to receive(:new).and_return(http)
+
+    described_class.new(entry.with(url: "http://[fe80::1]:4567")).call(:get, "/api/info")
+    expect(Net::HTTP).to have_received(:new).with("fe80::1", 4567)
+  end
+
   it "never shows the token in inspect" do
     expect(transport.inspect).not_to include("tok\"")
     expect(transport.inspect).to include("remote studio")

@@ -21,7 +21,7 @@ module Samagotchi
       module_function
 
       # Open the stream and read past the response headers.
-      # @param host [String]
+      # @param host [String] a name or an address, an IPv6 one bare (::1)
       # @param port [Integer]
       # @param path [String] the request path with its query
       # @param last_event_id [String, nil] the reconnect cursor
@@ -56,6 +56,7 @@ module Samagotchi
         lei = last_event_id.to_s.strip
         last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
         extra = headers.map { |name, value| "#{name}: #{value}\r\n" }.join
+        host = "[#{host}]" if host.include?(":") && !host.start_with?("[")
         "GET #{path} HTTP/1.1\r\nHost: #{host}:#{port}\r\nAccept: text/event-stream\r\n#{last_event_line}#{extra}" \
           "Connection: keep-alive\r\n\r\n"
       end

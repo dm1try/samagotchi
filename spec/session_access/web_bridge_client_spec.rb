@@ -200,8 +200,8 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
 
   describe "#connect_stream" do
     # A chi web stand-in: reads one request head, answers +reply+, stays open.
-    def serve(reply)
-      server = TCPServer.new("127.0.0.1", 0)
+    def serve(reply, bind: "127.0.0.1")
+      server = TCPServer.new(bind, 0)
       heads = Queue.new
       thread = Thread.new do
         conn = server.accept
@@ -235,6 +235,20 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
         "GET /api/sessions/s1/stream?snapshot=1 HTTP/1.1\r\nHost: 127.0.0.1:#{port}\r\nAccept: text/event-stream\r\n" \
         "Last-Event-ID: 4-e1\r\nAuthorization: Bearer tok\r\nConnection: keep-alive\r\n\r\n"
       )
+    ensure
+      sock&.close
+    end
+
+    it "reaches an IPv6 chi web: the socket on the bare address, Host bracketed as the URL has it" do
+      begin
+        port, heads = serve("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n", bind: "::1")
+      rescue SystemCallError, SocketError
+        skip("no IPv6 loopback here")
+      end
+      sock, status, = client_at(port, url: "http://[::1]:#{port}").connect_stream(timeout: 2)
+
+      expect(status).to eq(200)
+      expect(pop!(heads, "the request head")).to include("\r\nHost: [::1]:#{port}\r\n")
     ensure
       sock&.close
     end
