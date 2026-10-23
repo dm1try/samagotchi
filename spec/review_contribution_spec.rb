@@ -8,6 +8,8 @@ require "samagotchi/model_profile"
 require "samagotchi/session"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/llm/anthropic_messages"
+require "samagotchi/idle_recap"
+require "samagotchi/plugin/side_question"
 require_relative "support/fake_provider_server"
 require_relative "support/test_kernel"
 require_relative "support/fake_chat_adapter"
@@ -124,6 +126,22 @@ RSpec.describe "a participant's review contribution" do
         expect((0...messages.size).map { |i| described_class.author_at(messages, i) })
           .to eq([nil, nil, nil, "p:p_1", "p:p_1", "p:p_1", nil, "p:p_1"])
       end
+    end
+  end
+
+  describe "the transcripts a side model reads" do
+    let(:saved) { JSON.parse(JSON.generate(history)) }
+
+    it "the idle recap's: a participant's message is theirs, not the user's words" do
+      text = Samagotchi::IdleRecap::TranscriptFilter.build(saved)
+      expect(text).to eq("Review docs/plan.md\n\nRead it.\n\n" \
+                         "(a review contribution from Alex, a participant; not the user's words)\nIs step 3 safe?")
+    end
+
+    it "ctx.ask_model's: a participant's paragraph is a Participant's" do
+      expect(Samagotchi::Plugin::SideQuestion.transcript(history).split("\n\n").values_at(0, 2))
+        .to eq(["User: Review docs/plan.md",
+                "Participant: (a review contribution from Alex, a participant; not the user's words)\nIs step 3 safe?"])
     end
   end
 

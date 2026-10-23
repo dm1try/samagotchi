@@ -55,6 +55,8 @@ module Samagotchi
       TOOL_OUTPUT_SEPARATOR = "\n\n---\n\n"
       TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
       DELEGATE_REPORT_LINE = "(a delegate session's report, delivered by chi; not the user's words)"
+      # A participant's message (chi share): a reviewer's, not the user's.
+      PARTICIPANT_LINE = "(a review contribution from %s, a participant; not the user's words)"
 
       module_function
 
@@ -75,6 +77,8 @@ module Samagotchi
             # A delegate child's report (ChildReports) is chi's news, not
             # what the user said.
             content = "#{DELEGATE_REPORT_LINE}\n#{content}" if message["source"].to_s == Steer::DELEGATE_REPORT
+            # A participant's is theirs, by the name it was saved with.
+            content = "#{participant_line(message)}\n#{content}" if Steer.participant_message?(message)
             images = ImageRef.placeholder_only?(content) ? [] : image_lines(message["images"])
             [content, *images].reject(&:empty?).join("\n")
           when "model", "assistant"
@@ -95,6 +99,11 @@ module Samagotchi
             chunk[TOOL_OUTPUT_HEADER_RE, 1]
           end
         end
+      end
+
+      def participant_line(message)
+        name = ParticipantName.clean(message["author_name"])
+        format(PARTICIPANT_LINE, name.empty? ? "a participant" : name)
       end
 
       def image_lines(images)

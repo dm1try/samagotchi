@@ -42,11 +42,19 @@ module Samagotchi
           line = IdleRecap::TranscriptFilter.build([message])
           next if line.strip.empty?
 
-          "#{message["role"] == "user" ? "User" : "Assistant"}: #{line}"
+          "#{speaker(message)}: #{line}"
         end.join("\n\n")
         return text if text.length <= MAX_TRANSCRIPT_CHARS
 
         "[earlier conversation left out]\n\n#{text[-MAX_TRANSCRIPT_CHARS..]}"
+      end
+
+      # Who a paragraph is: a participant's message is a Participant's (the
+      # filter's line names them), any other user message the User's.
+      def speaker(message)
+        return "Assistant" unless message["role"] == "user"
+
+        Steer.participant_message?(message) ? "Participant" : "User"
       end
 
       # String keys, as TranscriptFilter reads a saved session.
