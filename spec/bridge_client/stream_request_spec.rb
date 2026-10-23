@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::BridgeClient::StreamRequest do
       head << conn.gets.to_s until head.end_with?("\r\n\r\n")
       heads << head
       conn.write(reply)
-      sleep
+      conn.read # holds the connection until the client hangs up
     end
     thread.report_on_exception = false
     @cleanup = -> { thread.kill; server.close }
