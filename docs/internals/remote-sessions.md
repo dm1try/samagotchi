@@ -196,15 +196,30 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 
 ## Extension points (not built yet)
 
-- **Remote attach.** `--attach`, `-p` and `--resume` are refused today (`Dispatch::RUN_FLAGS`). `TerminalUI::AttachedLoop`
-  and `AttachLauncher` talk to a `BridgeClient` (`follow`, `post_turn`, `post_command`, `answer`, `dismiss_question`,
-  `dequeue`, `cancel`, `request_exit`, `request_recap`, `get_json`) and `session_id`, `host`. They also make Bridge
-  clients themselves: `AttachLauncher` through `BridgeClient.wait_for` / `.discover`, and `AttachedLoop#live_worker`
-  (`follow`'s `rediscover:`) and `#switch_worker` (`BridgeClient.new` on a restart). A web-backed client needs those
-  seams too. A remote attach would plug a web-backed client with
-  that interface into them, on its own Bearer transport. chi web has no route for exit, recap, stats or state, and none
-  that wakes an idle session for a stream: `handle_stream` waits at most 2 s for a Bridge, then answers 503 `not_live`.
-  `POST …/turn` does not forward `no_interrupt`.
+- **Remote attach.** `--attach`, `-p` and `--resume` are refused today (`Dispatch::RUN_FLAGS`). The seams it plugs into
+  are in place:
+  - `TerminalUI::AttachLink` (terminal_ui/attach_link.rb): what `AttachedLoop` knows about *where* the session is,
+    beside its client: `live_worker` (`[client, nil]`, `[nil, nil]`, `[:gone, reason]`) and `switched(event)` for
+    the stream's rediscovery and a restart; `queues?` / `unqueues?`; `stats_metrics`; `ingest_images`; the saved
+    records and `children_counts`; `delete_session`, `archive_session`; `installed_version`, `default_model_name`,
+    `parent_strategy`; `completions` (Tab's `@path` and `#memory`); `reconnect_delays`; and `via`, the
+    `ChiInvocation` every printed command is spelled with. `LocalLink` is this machine's; `AttachedLoop.new` makes
+    one of `client:` and its keywords, and takes `link:` instead.
+  - The connector: `AttachLauncher.run(connector:)` asks its `#connect` for the `AttachLink` instead of `.connect`
+    (which a local run still calls, returning a `BridgeClient`); `report_unanswered` takes the link's
+    `strategy:` and `via:`.
+  - The client the loop and `BridgeClient::EventStream` use: `follow`, `post_turn`, `post_command`, `answer`,
+    `dismiss_question`, `dequeue`, `cancel`, `request_exit`, `request_recap`, `session_id`, and for the stream
+    `connect_stream(query:, last_event_id:, timeout:)` and `worker_key` (a new worker is a client with another key;
+    a Bridge's is its port). `BridgeClient::StreamRequest` writes the stream's GET (host, port, path, extra headers)
+    and reads its headers, for a stream through chi web too.
+  - `RunOptions.parse(argv)` is bin/chi's one run-flag parser (`RunOptions.switches` lists its flags), so a remote
+    branch can take the parsed options before bin/chi's local checks; `LaunchMode.attached_conflict` and
+    `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE` are the words both would print.
+
+  chi web has no route for exit, recap, stats or state, and none that wakes an idle session for a stream:
+  `handle_stream` waits at most 2 s for a Bridge, then answers 503 `not_live`. `POST …/turn` does not forward
+  `no_interrupt`.
 - **Shared sessions (guests, roles).** The only access point is `App#token_gate`: one token, the owner's. Roles would
   attach there and to the routes. The claude-peer / codex-peer inbox leg (chi → this machine's Claude or Codex) would
   need a relay through chi web.
