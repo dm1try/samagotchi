@@ -240,6 +240,6 @@ RSpec.describe "a participant red-teaming a session" do
     kits = Samagotchi::Toolkit.kits(config: { "review" => { "base" => "full", "add" => ["execute"] } }, errors: errors)
     expect(errors).to eq([Samagotchi::Toolkit::RESERVED_REVIEW])
     expect(kits["review"].tools).to eq(%w[read memory_read])
-    expect(boundary::ALLOWED).to eq(%w[read memory_read forget_outputs])
+    expect(boundary::ALLOWED).to eq(%w[read memory_read])
   end
 end

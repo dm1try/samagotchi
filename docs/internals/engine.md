@@ -545,7 +545,7 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any autho
   `SessionMetrics#spend`) before their turn starts and after it ends (the owner's notice, once per cap). A Continue
   keeps the offer turn's author (`ContinueOffer#run_continue_turn`, from `last_turn.author`).
 - **The gate**: `GuardrailWiring#review_boundary` (`Guardrails::ReviewBoundary`) is the first core check; it reads
-  `#turn_author` and denies a participant's turn all but `Toolkit::REVIEW_TOOLS` and `forget_outputs`
+  `#turn_author` and denies a participant's turn all but `Toolkit::REVIEW_TOOLS` (not `forget_outputs`)
   (docs/guardrails.md). The declared tools stay the session's (D3: no rebuild per author).
 - **Hooks and plugins**: `Engine#turn_author` (the running turn's participant author, nil otherwise) is the hook
   runtime's `turn_author` (`Hooks::Registry#with_runtime` adds `author:` to every event of such a turn) and the

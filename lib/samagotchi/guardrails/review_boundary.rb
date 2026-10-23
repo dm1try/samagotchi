@@ -15,7 +15,9 @@ module Samagotchi
     # it. It denies, never asks (nobody on the participant's side may
     # approve, and the owner's approval would be the participant's text
     # acting with the owner's power), every call outside the review kit
-    # (Toolkit::REVIEW_TOOLS and the forget layer's forget_outputs):
+    # (Toolkit::REVIEW_TOOLS). Not forget_outputs: it would replace the
+    # owner's earlier tool outputs with a note of the participant's, which
+    # later owner turns read as their own output, with no review header.
     #   read: only under the session's project root, and never a file of
     #     the read denylist (chi's state and config dirs, home secret dirs,
     #     project secret files), checked on the path as given and as it
@@ -30,18 +32,25 @@ module Samagotchi
     class ReviewBoundary
       RULE = "review-boundary"
       SOURCE = "core"
-      ALLOWED = (Toolkit::REVIEW_TOOLS + %w[forget_outputs]).freeze
+      ALLOWED = Toolkit::REVIEW_TOOLS
       PROJECT_SCOPE = "project"
 
       # Home folders that hold keys and tokens, never read in a review turn.
       HOME_SECRET_DIRS = %w[.ssh .gnupg .aws].freeze
-      # Project files that hold secrets, by basename (and .git/config).
-      SECRET_FILE = /\A(?:\.env(?:\..*)?|\.netrc|_netrc|.*\.pem|.*\.key|\.?credentials(?:\.[a-z]+)?)\z/i
-      GIT_CONFIG = File.join(".git", "config")
+      # Project files that hold secrets, by a path part's name: .env*,
+      # netrc, keys and certificates, anything named credentials, package
+      # registry tokens (.npmrc, .pypirc), ssh keys, terraform state, a
+      # secrets file; and a git config (.git/config, a submodule's
+      # .git/modules/x/config), checked apart.
+      SECRET_FILE = /\A(?:\.env.*|[._]netrc|.*\.(?:pem|key|p12|pfx|tfstate(?:\.backup)?)|.*credentials.*|
+                       \.npmrc|\.pypirc|\.git-credentials|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|secrets?\.(?:ya?ml|json))\z/xi
+      # The .docker/config.json kind: a dot dir's config holding tokens.
+      SECRET_DIR_FILES = { ".docker" => "config.json", ".kube" => "config" }.freeze
+      GIT_DIR = ".git"
 
       ADVICE = "This is a participant's review turn: answer from what you can read and propose any change as " \
                "text or a diff for the owner to apply."
-      NOT_IN_KIT = "a participant's review turn may only read (read, memory_read, forget_outputs): %s is not allowed"
+      NOT_IN_KIT = "a participant's review turn may only read (read, memory_read): %s is not allowed"
       OUTSIDE = "a participant's review turn reads only inside the session's project"
       SECRET = "a participant's review turn can't read secrets or chi's own files"
       HOME_ROOT = "a participant's review turn reads only inside a project, and this session's folder is the " \
@@ -122,8 +131,17 @@ module Samagotchi
         return true if dirs.any? { |dir| ShellPaths.within?(path, dir) }
 
         parts = path.split(File::SEPARATOR)
-        parts.any? { |part| SECRET_FILE.match?(part) } || path.end_with?(File::SEPARATOR + GIT_CONFIG) ||
-          path.include?("#{File::SEPARATOR}#{GIT_CONFIG}#{File::SEPARATOR}")
+        return true if parts.any? { |part| SECRET_FILE.match?(part) }
+        return true if parts.each_cons(2).any? { |dir, file| SECRET_DIR_FILES[dir.downcase] == file.downcase }
+
+        git_config?(parts)
+      end
+
+      # A config file anywhere under a .git dir (.git/config,
+      # .git/modules/<sub>/config, a worktree's config.worktree).
+      def git_config?(parts)
+        git = parts.index { |part| part.casecmp?(GIT_DIR) } or return false
+        parts[(git + 1)..].any? { |part| part.downcase.start_with?("config") }
       end
     end
   end

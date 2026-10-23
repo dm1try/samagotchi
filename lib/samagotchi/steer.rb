@@ -217,9 +217,13 @@ module Samagotchi
     end
 
     # A line of a participant's text that opens like one of chi's own
-    # headers (another participant's review header, a steer's, an
-    # automatic input's, a delegate report's).
-    FORGED_HEADER = /^([ \t]*)\[(?=(?:Review contribution|Steer|Automatic input|Delegate report)\b)/
+    # headers or frames (another participant's review header, a steer's, an
+    # automatic input's, a delegate report's, a context note's or a task's
+    # frame), in any case, after any spaces (Unicode ones too); a line
+    # starts after \n or \r.
+    FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
+                       "TASK FINISHED", "END NOTE"].freeze
+    FORGED_HEADER = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=(?:#{FORGED_OPENINGS.map { |o| Regexp.escape(o) }.join("|")})\b)/i
     # What such a line is led by on the wire, so it reads as quoted text
     # under the real header, not as a header of its own.
     FORGED_MARK = "(quoted) "
@@ -228,7 +232,7 @@ module Samagotchi
     # only (the saved content stays raw) and deterministic, so a replay
     # sends the same bytes and keeps the prompt cache.
     def quote_forged_headers(text)
-      text.to_s.gsub(FORGED_HEADER) { "#{::Regexp.last_match(1)}#{FORGED_MARK}[" }
+      text.to_s.gsub(FORGED_HEADER) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}[" }
     end
 
     def message(text:, source:, author: nil, author_name: nil)

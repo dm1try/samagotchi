@@ -2283,7 +2283,9 @@ module Samagotchi
       # Inject due reminders as a tail system message (after history, before
       # the new user prompt) to preserve prefix KV cache. Mutating the head
       # system prompt invalidates cache for the entire prefix.
-      due_reminders = @reminder_queue.inject!(turn.messages)
+      # Not into a participant's turn: the owner's reminders are the owner's,
+      # and would be used up there under the review boundary.
+      due_reminders = Steer.participant_author?(turn.origin&.dig(:author)) ? [] : @reminder_queue.inject!(turn.messages)
       if due_reminders.any?
         emit_event(turn.on_event, {
           type: :reminder_injected,

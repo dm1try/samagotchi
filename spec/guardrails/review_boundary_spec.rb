@@ -61,7 +61,9 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
   end
 
   it "denies the project's secret files and chi's own dirs inside it" do
-    %w[.env .env.local config/.netrc certs/server.pem tls/site.key .aws/credentials credentials.json .git/config].each do |path|
+    %w[.env .env.local .envrc .env-local .env_production config/.netrc certs/server.pem tls/site.key .aws/credentials
+       credentials.json .git-credentials config/credentials.yml.enc .git/config .git/modules/sub/config .npmrc .pypirc
+       keys/id_ed25519 .docker/config.json infra/terraform.tfstate config/secrets.yml].each do |path|
       expect(read(path).reason).to eq(described_class::SECRET), path
     end
     expect(read(".git/HEAD")).to be_allow
@@ -89,13 +91,13 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
     expect(verdict_for({ name: "memory_read", content: "notes" }).reason).to eq(described_class::MEMORY_SCOPE)
   end
 
-  it "allows forget_outputs" do
-    expect(verdict_for({ name: "forget_outputs", content: "[]" })).to be_allow
+  it "denies forget_outputs: it would rewrite the owner's earlier outputs with the participant's note" do
+    expect(verdict_for({ name: "forget_outputs", content: "[]" }).reason).to eq(format(described_class::NOT_IN_KIT, "forget_outputs"))
   end
 
   it "denies, never asks, every other tool" do
     %w[write edit memory_write execute task_create task_wait delegate delegate_result send_note list_sessions
-       register_reminder web_fetch context_read ask_user_question call_tool find_tools load_tools].each do |tool|
+       register_reminder web_fetch context_read ask_user_question call_tool find_tools load_tools forget_outputs].each do |tool|
       verdict = verdict_for({ name: tool, content: "x", path: "docs/plan.md" })
       expect(verdict).to be_deny, tool
       expect(verdict.reason).to eq(format(described_class::NOT_IN_KIT, tool)), tool

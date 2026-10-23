@@ -313,20 +313,24 @@ participant's turn may call only the `review` kit's tools:
   and never a secret: chi's state and config dirs (sessions, the grants, the
   web token, memories and their `.bundles`, `config.yml`, hooks), `~/.ssh`,
   `~/.gnupg`, `~/.aws`, and the project's `.env*`, `.netrc`, `*.pem`, `*.key`,
-  `credentials` files and `.git/config`. The path is checked as given and as it
+  `*.p12`, anything named `credentials` (`.git-credentials` too), `.npmrc`,
+  `.pypirc`, ssh keys (`id_rsa`, `id_ed25519`, …), `*.tfstate`,
+  `secrets.yml`/`.json`, `.docker/config.json`, `.kube/config` and any config
+  under `.git` (a submodule's too). The path is checked as given and as it
   resolves, so a symlink in the project to `~/.ssh` is `~/.ssh`. A session
   whose folder is the home folder or above it reads nothing.
 - `memory_read` with `scope: project` (a read without a scope would fall back
   to the system memories). The prompt's preloaded memories and the memory
   index are in the system prompt anyway: a review session should start
   without personal ones.
-- `forget_outputs`, under the `forget` layer.
 
 Everything else is denied with "a participant's review turn may only read …",
 and the model is told to propose the change as text or a diff for the owner
 to apply: `write`, `edit`, `memory_write`, `execute`, the task tools,
 `delegate`, `send_note`, `list_sessions`, `register_reminder` (it would fire
-an owner turn later), `web_fetch`, `context_read`, `ask_user_question`, and
+an owner turn later), `web_fetch`, `context_read`, `ask_user_question`,
+`forget_outputs` (it would replace the owner's earlier tool outputs with the
+participant's note, which later owner turns would read as their own), and
 every plugin or MCP tool, including through `call_tool` (a built-in reached
 through `call_tool` is checked as that built-in). The session's declared tools
 stay its own (no prompt rebuild per author), so the model may still try a
@@ -751,7 +755,10 @@ is make the model *say* what the history holds: a review turn's model sees the
 whole conversation, earlier tool outputs included, so start a review in a
 fresh session (or a continue), not on a working session full of outputs. A
 line of a participant's text that looks like one of chi's own headers goes
-out quoted (`(quoted) [Steer from the user, …]`), under the real one.
+out quoted (`(quoted) [Steer from the user, …]`), under the real one, in any
+case and after any spaces (chi's context-note and task frames too). The owner's
+due reminders wait for the owner's next turn: they never go into a
+participant's.
 
 ## Limits
 

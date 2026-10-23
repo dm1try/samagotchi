@@ -55,4 +55,13 @@ RSpec.describe "hooks on a participant's turn" do
     expect(seen.map(&:last).uniq).to eq([:none])
     expect(ctx_author).to eq([nil])
   end
+
+  it "leaves the owner's due reminders out of a participant's turn, for the owner's next one" do
+    queue = engine.instance_variable_get(:@reminder_queue)
+    allow(queue).to receive(:inject!).and_return([])
+    run({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
+    expect(queue).not_to have_received(:inject!)
+    run({ client_id: "web:t" })
+    expect(queue).to have_received(:inject!).once
+  end
 end

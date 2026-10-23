@@ -1402,7 +1402,7 @@ toolkit:
 | `child` | `lean` plus `send_note`, without `memory_write`, `delegate`, `delegate_result` |
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions` (declared by the coordinator bundle) |
 | `coding` | `child`, with the prompt text `- Be concise in your responses` / `- Show file paths clearly when working with files` (declared by the coordinator bundle, for build and fix children) |
-| `review` | `read`, `memory_read` (and `forget_outputs` under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
+| `review` | `read`, `memory_read` (not `forget_outputs`, even under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
   the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:` and `prompt:` (any other

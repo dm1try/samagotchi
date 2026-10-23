@@ -143,10 +143,10 @@ module Samagotchi
       ask_user_question web_fetch context_read
     ].freeze
 
-    # The built-ins a participant's turn may call (REVIEW): reads only. The
-    # forget layer's forget_outputs is its too (a layer tool, declared with
-    # every kit); ReviewBoundary denies everything else, whatever the
-    # session declares (D3: the declared tools stay the session's).
+    # The built-ins a participant's turn may call (REVIEW): reads only.
+    # ReviewBoundary denies everything else, whatever the session declares
+    # (D3: the declared tools stay the session's), the forget layer's
+    # forget_outputs too (a layer tool, declared with every kit).
     REVIEW_TOOLS = %w[read memory_read].freeze
 
     BUILTIN_KITS = [
