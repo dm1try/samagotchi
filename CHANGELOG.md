@@ -53,6 +53,8 @@ and commands may change between minor versions. How releases are made:
 - Participants: each refusal has one wording wherever it is met: a participant's `chi --remote` refused an
   owner's command says "a participant can't do that: only the session's owner can", as chi web does, and an ended
   link's page says whether it was revoked or expired.
+- `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
+  as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
 
 ## [0.106.0] - 2026-10-23
 

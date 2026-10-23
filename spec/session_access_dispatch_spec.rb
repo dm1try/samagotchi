@@ -110,6 +110,22 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
       expect(described_class.new(%w[note -m hi ab], remote: "studio").run(subcommands, stderr: err, transport: down)).to eq(1)
       expect(err.string).to include("chi note: remote studio (http://192.0.2.10:4567): connection refused")
     end
+
+    it "words the remote's refusal of a flag's value in one line (exit 2), and another refusal (exit 1)" do
+      Samagotchi::Remotes.put(RemoteBackend.entry, path: remotes)
+      state_dir = File.join(tmpdir, "state")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap { |s| s.save(state_dir: state_dir) }
+      transport = RemoteBackend::RackTransport.new(RemoteBackend.app(state_dir: state_dir))
+      commands = subcommands.merge("sessions" => ["samagotchi/sessions_command", "SessionsCommand"])
+      allow($stdout).to receive(:puts)
+
+      expect(described_class.new(%w[sessions list --cwd rel/dir], remote: "studio").run(commands, stderr: err, transport: transport)).to eq(2)
+      expect(described_class.new(["note", session.id[0, 8], "-m", "hi", "--source", " "], remote: "studio")
+               .run(commands, stderr: err, transport: transport)).to eq(2)
+      refused = ->(*_a, **_o) { raise Samagotchi::SessionAccess::Refused.new("no vision there", code: "no_vision") }
+      expect(described_class.new(%w[note -m hi ab], remote: "studio").run(commands, stderr: err, transport: refused)).to eq(1)
+      expect(err.string.lines).to match([/\Achi sessions: .*absolute/, /\Achi note: .*source/, "chi note: no vision there\n"])
+    end
   end
 
   describe "#run with chi share" do

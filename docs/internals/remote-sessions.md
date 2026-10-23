@@ -54,8 +54,9 @@ subcommand:
   this machine's), runs `RemoteAttachCommand.new(options, access: Remote.new(entry)).run`. A word left over exits 1.
   Without a remote, `--dir` exits 2 ("--dir goes with --remote; cd there instead").
 - Otherwise it calls `Remotes.find`, then `Samagotchi.const_get(klass).new(argv, access: Remote.new(entry)).run`.
-  `Remotes::Invalid` (including `NotFound`) exits 2. A `RemoteFailed` that escapes the command prints
-  `chi <cmd>: <message>` and exits 1.
+  `Remotes::Invalid` (including `NotFound`) exits 2. A `RemoteFailed` or `Refused` that escapes the command prints
+  `chi <cmd>: <message>` and exits 1; a `BadRequest` (a value chi web refused, e.g. `sessions list --cwd rel/dir`)
+  prints the same line and exits 2.
 
 ### Contract
 

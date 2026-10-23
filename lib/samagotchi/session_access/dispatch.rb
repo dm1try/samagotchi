@@ -78,7 +78,10 @@ module Samagotchi
       end
 
       # The session command against the remote: refused (exit 2), or run
-      # with a Remote. A failure to reach it is the command's line, exit 1.
+      # with a Remote. A failure to reach it is the command's line, exit 1;
+      # a refusal the command doesn't word itself is its line too: exit 2
+      # when chi web refused a value (BadRequest, a usage error here), 1
+      # for any other.
       # @param subcommands [Hash] bin/chi's SUBCOMMANDS
       # @return [Integer] the exit status
       def run(subcommands, stderr: $stderr, transport: nil)
@@ -100,7 +103,10 @@ module Samagotchi
       rescue Remotes::Invalid => e
         stderr.puts("Error: #{e.message}")
         CLI::Exit::USAGE
-      rescue RemoteFailed => e
+      rescue BadRequest => e
+        stderr.puts("chi #{@argv.first}: #{e.message}")
+        CLI::Exit::USAGE
+      rescue RemoteFailed, Refused => e
         stderr.puts("chi #{@argv.first}: #{e.message}")
         CLI::Exit::FAILED
       end
