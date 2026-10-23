@@ -430,6 +430,31 @@ module Samagotchi
           return answer_question(text)
         end
 
+        text, kept = split_prefilled(text)
+        submitted = submit_line(text)
+        # The removed text the command was typed after, back in the input
+        # (unless an /unqueue put its own there, or the loop ends).
+        @prefilled = kept if kept && submitted != :detach && @prefilled.nil? && @reader&.prefill(kept)
+        submitted
+      end
+
+      # A line typed after an /unqueue's text (#unqueued) without clearing
+      # it, the text untouched and then a command ("fix it/unqueue"): the
+      # command alone, and the text to put back. Any other line as is.
+      # @return [Array(String, String|nil)]
+      def split_prefilled(text)
+        kept = @prefilled
+        @prefilled = nil
+        return [text, nil] unless kept && text.length > kept.length && text.start_with?(kept)
+
+        rest = text[kept.length..].strip
+        route = ComposerRoute.call(rest, running: @running, registry: command_registry)
+        command = route.choice || %i[local command usage].include?(route.kind)
+        command ? [rest, kept] : [text, nil]
+      end
+
+      # @return [Symbol, nil] :detach to end the loop
+      def submit_line(text)
         # /cut TEXT and /queue TEXT are this UI's own deliveries, read before
         # every command check (ComposerRoute; SessionCommands registers them
         # for Tab and /help only). A plain line sends no delivery: it goes in
@@ -715,7 +740,9 @@ module Samagotchi
         @screen.commit("removed: #{first_line_clip(prompt)}")
         return if @wait_at_eof || prompt.strip.empty?
 
-        @screen.commit("(the removed message is in the input history: ↑)") unless @reader&.prefill(prompt)
+        return @prefilled = prompt.strip if @reader&.prefill(prompt)
+
+        @screen.commit("(the removed message is in the input history: ↑)")
       end
 
       def first_line_clip(text, max = 60)

@@ -36,6 +36,9 @@ and commands may change between minor versions. How releases are made:
 - The ctx % no longer dips at the start of each turn on a chat host (`api: openai` / `anthropic`): the turn's first
   estimate, made before the host counts anything, left out the tool schemas; it now uses the last count's chars per
   token.
+- Attached terminal: a command typed right after the text `/unqueue` put back in the input (`/unqueue` again,
+  `/queue TEXT`) runs as the command, with the text kept in the input, instead of going out joined to the text as
+  one prompt.
 - The terminal's status line, cut to the terminal's width, ends at a word with `…` instead of mid-word (in a pipe
   too).
 

@@ -1491,6 +1491,40 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
     expect([reads.pop(timeout: 2), reads.pop(timeout: 2)]).to eq([nil, "fix the tests"])
     expect(screen.lines).to include("removed: fix the tests")
   end
+
+  it "runs a command typed after the removed text as the command, and puts the text back" do
+    typed << "/queue fix the tests"
+    reads.pop(timeout: 2)
+    typed << "/unqueue"
+    2.times { reads.pop(timeout: 2) }
+
+    # What the read holds once /unqueue is typed again without clearing it.
+    typed << "fix the tests/unqueue"
+    expect([reads.pop(timeout: 2), reads.pop(timeout: 2)]).to eq([nil, "fix the tests"])
+    expect(client).to have_received(:post_turn).once
+    expect(screen.lines).to include("(nothing queued: /queue TEXT queues a message for after the running turn)")
+
+    typed << "fix the tests/queue later"
+    expect([reads.pop(timeout: 2), reads.pop(timeout: 2)]).to eq([nil, "fix the tests"])
+    expect(client).to have_received(:post_turn).with(prompt: "later", client_id: "tui:1")
+  end
+
+  it "sends the removed text with more typed after it as one prompt, when the rest is no command" do
+    typed << "/queue fix the tests"
+    reads.pop(timeout: 2)
+    typed << "/unqueue"
+    2.times { reads.pop(timeout: 2) }
+
+    sent = []
+    allow(client).to receive(:post_turn) do |**options|
+      sent << options[:prompt]
+      Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e2"}')
+    end
+    typed << "fix the tests/lib/a.rb"
+    expect(reads.pop(timeout: 2)).to be_nil
+    SpecWaiting.wait_for("the prompt sent") { sent.any? }
+    expect(sent).to eq(["fix the tests/lib/a.rb"])
+  end
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue offer" do

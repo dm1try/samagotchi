@@ -757,7 +757,9 @@ REPL alike:
   queued that hasn't started: `removed: <its first 60 characters>`, and its text
   goes back into the input to change and send again (not over typed text: then
   it is in the input history, ↑; not with input from a pipe; its images don't
-  come back), then the one before it on the next `/unqueue`; `(nothing queued: …)` when none waits,
+  come back), then the one before it on the next `/unqueue`. A command typed
+  after that text without clearing it (`fix it/unqueue`, `fix it/queue more`)
+  runs as the command, and the text stays in the input. `(nothing queued: …)` when none waits,
   `(not removed: it already started)` when its turn won the race, `(not removed:
   it is already gone)` when another client removed it. Other terminals that
   showed it say `(a queued message was removed)`; the web drops its bubble. A
