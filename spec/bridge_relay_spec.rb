@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
     box = {}
     child_engine.subscribe(observer: ->(e) { events << e })
     (@threads ||= []) << Thread.new { box[:answer] = child_engine.open_question(fields) }
-    wait_until(timeout: 2) { child_engine.pending_question }
+    wait_for("the child's question") { child_engine.pending_question }
     [box, child_engine.pending_question.id]
   end
 
@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       cards.call({ type: :turn_started })
       _box, qid = ask_child
       relay("opened", "r-1", qid)
-      card = wait_until(timeout: 2) { cards.list.find { |e| e[:type] == :question && e[:pending_question][:relayed_to] } }
+      card = wait_for("the relayed question's card") { cards.list.find { |e| e[:type] == :question && e[:pending_question][:relayed_to] } }
       expect(card[:pending_question][:relayed_to]).to include(relay_id: "r-1")
     end
 
@@ -110,11 +110,11 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       _box, qid = ask_child
       relay("opened", "r-1", qid)
 
-      wait_until(timeout: 2) { child_engine.pending_question.relayed_to.nil? }
+      wait_for("the mark to clear") { child_engine.pending_question.relayed_to.nil? }
       expect(child_engine.pending_question).to have_attributes(id: qid, status: "pending")
       expect(child_engine.pending_question).to have_attributes(relayed_to: nil)
       # The event follows the mark's clearing: wait for it too.
-      wait_until(timeout: 2) { events.last&.dig(:reason) == "parent_gone" }
+      wait_for("the parent_gone event") { events.last&.dig(:reason) == "parent_gone" }
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "parent_gone")
     end
 
@@ -176,7 +176,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
 
       response = relay("answered", relay_id, qid)
       expect(response.status).to eq(200)
-      @threads.last.join(2)
+      join!(@threads.last, "the answered question")
       expect(box[:answer].to_h).to include(selected: ["Allow this call for the session"], selected_indices: [1])
       expect(box[:answer].by).to be_nil
       # The 200 body carries the answer object, not an inspect string.
@@ -187,12 +187,12 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
     it "takes a deny with the user's reason, and a dismiss as a cancel (the approval denied)" do
       box, qid = ask_child
       expect(relay("answered", parent_relay(qid, indices: [2], freeform: "not on main"), qid).status).to eq(200)
-      @threads.last.join(2)
+      join!(@threads.last, "the answered question")
       expect(box[:answer].to_h).to include(selected: ["Deny"], freeform: "not on main")
 
       box, qid = ask_child
       expect(relay("answered", parent_relay(qid, indices: [], dismissed: true), qid).status).to eq(200)
-      @threads.last.join(2)
+      join!(@threads.last, "the answered question")
       expect(box[:answer].to_h).to include(error: "no answer")
     end
 
@@ -245,7 +245,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       box, qid = ask_child
       relay_id = parent_relay(qid)
       child_engine.answer_question(id: qid, selected: ["Deny"])
-      @threads.last.join(2)
+      join!(@threads.last, "the answered question")
       expect(box[:answer].to_h).to include(selected: ["Deny"])
 
       _box, _next_qid = ask_child
