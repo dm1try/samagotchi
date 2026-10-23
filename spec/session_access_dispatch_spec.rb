@@ -39,7 +39,8 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
     it "lets the supported session commands and flags through" do
       [%w[send -m x ab], %w[send --new --dir /p --wait -m x], %w[answer ab --question q --option 1], %w[note --all -m x],
        %w[context add x --push ab], %w[context push x ab], %w[context ls --format json ab], %w[sessions list --live],
-       %w[sessions delete --force ab], %w[send --help]].each do |argv|
+       %w[sessions delete --force ab], %w[send --help], %w[share ab --name A --agent --expires 3d], %w[share ls --format json],
+       %w[share revoke ab p_0123abcd], %w[share revoke --all]].each do |argv|
         expect(refusal(*argv)).to be_nil, argv.join(" ")
       end
     end
@@ -108,6 +109,36 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
       down = ->(*_a, **_o) { raise Samagotchi::SessionAccess::RemoteFailed, "remote studio (http://192.0.2.10:4567): connection refused" }
       expect(described_class.new(%w[note -m hi ab], remote: "studio").run(subcommands, stderr: err, transport: down)).to eq(1)
       expect(err.string).to include("chi note: remote studio (http://192.0.2.10:4567): connection refused")
+    end
+  end
+
+  describe "#run with chi share" do
+    let(:err) { StringIO.new }
+    let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions") }
+    let(:subcommands) { { "share" => ["samagotchi/share_command", "ShareCommand"] } }
+
+    around { |example| with_env("XDG_CONFIG_HOME" => File.join(tmpdir, "config")) { example.run } }
+
+    it "invites on the remote, and words a participant's token on an owner's route once (exit 1)" do
+      require "samagotchi/participants"
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap { |s| s.save(state_dir: state_dir) }
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+      app = RemoteBackend.app(state_dir: state_dir)
+      Samagotchi::Remotes.put(RemoteBackend.entry, path: File.join(tmpdir, "config", "samagotchi", "remotes.yml"))
+      out = StringIO.new
+      allow($stdout).to receive(:puts) { |*lines| out.puts(*lines) }
+
+      owner = RemoteBackend::RackTransport.new(app)
+      expect(described_class.new(["share", session.id[0, 8], "--name", "Alex"], remote: "studio")
+               .run(subcommands, stderr: err, transport: owner)).to eq(0), err.string
+      expect(out.string).to include("Alex (human, reviewer)", "http://#{RemoteBackend::LAN_IP}:4567/?token=chp_")
+
+      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+      token = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bot", kind: "agent", state_dir: state_dir).token
+      Samagotchi::Remotes.put(RemoteBackend.entry(token: token), path: File.join(tmpdir, "config", "samagotchi", "remotes.yml"))
+      participant = RemoteBackend::RackTransport.new(app, token: token)
+      expect(described_class.new(%w[share ls], remote: "studio").run(subcommands, stderr: err, transport: participant)).to eq(1)
+      expect(err.string).to eq("chi share: #{RemoteBackend.entry.label}: this token is a participant's: only the session's owner can do that\n")
     end
   end
 

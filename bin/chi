@@ -52,6 +52,8 @@ SUBCOMMANDS = {
   "send" => ["samagotchi/send_command", "SendCommand"],
   # answer the question a session waits on, then wait (--question, --option)
   "answer" => ["samagotchi/answer_command", "AnswerCommand"],
+  # invite participants to review a session, list them, revoke them
+  "share" => ["samagotchi/share_command", "ShareCommand"],
   # find a model server and write config.yml (--model, --name)
   "bootstrap" => ["samagotchi/bootstrap_command", "BootstrapCommand"],
   # bring an installed chi up to date

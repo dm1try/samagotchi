@@ -146,12 +146,13 @@ module Samagotchi
                  chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
                  chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
                  chi answer ID --question QID --option N   answer a question a session waits on
+                 chi share ID --name NAME | ls [ID] | revoke ID [P]|--all   participants who review a session
                  chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
                  chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
                  chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
                  chi models [--format json] [TEXT]   the models --model takes, from every host
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
-                 chi --remote NAME <send|answer|note|context|sessions> …   those commands on that machine (or CHI_REMOTE=NAME)
+                 chi --remote NAME <send|answer|note|context|sessions|share> …   those commands on that machine (or CHI_REMOTE=NAME)
                  chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
                  chi self                         version, paths, model and bundles
                  chi update [--dry-run]           update this chi, its bundles and the desktop helper
