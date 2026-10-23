@@ -113,11 +113,21 @@ module Samagotchi
 
     # The gate's core checks, in order. A delegate child's boundary comes
     # before the rules, so its ask keeps the child-boundary rule id (and
-    # its once/session scopes) when a strict rule asks too.
+    # its once/session scopes) when a strict rule asks too. The review
+    # boundary comes before both: a participant's turn is denied what it
+    # may not do, never asked about it (deny is sticky, so no later vote
+    # can turn it into a question).
     def checks
       rules = self.rules
-      [@failures, rules.hook_asks, protected_paths, (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch),
-       child_boundary, rules].compact
+      [@failures, review_boundary, rules.hook_asks, protected_paths,
+       (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch), child_boundary, rules].compact
+    end
+
+    # A participant's turn's boundary (Guardrails::ReviewBoundary): in
+    # every session, a no-op unless the running turn's author is a
+    # participant's.
+    def review_boundary
+      @review_boundary ||= Guardrails::ReviewBoundary.new(author: -> { turn_author }, root: -> { boundary_root })
     end
 
     # The delegate child's boundary (Guardrails::ChildBoundary); nil for
