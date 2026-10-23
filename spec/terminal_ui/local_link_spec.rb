@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
       # The stop marker in the link's state dir.
       allow(Samagotchi::Session).to receive(:stopped_marker?).with(id, state_dir: state_dir).and_return(true)
-      expect(link.live_worker).to eq([:gone, "unreachable"])
+      expect(link.live_worker).to eq([:gone, "stopped"])
     end
   end
 

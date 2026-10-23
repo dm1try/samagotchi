@@ -359,7 +359,9 @@ module Samagotchi
 
       # The session's live worker for the stream to follow (EventStream's
       # rediscover): nil while there is none yet, :gone once no worker is
-      # coming (AttachLink#live_worker; the reason isn't used yet).
+      # coming (AttachLink#live_worker). The reason isn't passed on: the
+      # stream closes as "unreachable", the words a stopped session has
+      # always had here.
       def live_worker
         found, _reason = @link.live_worker
         found

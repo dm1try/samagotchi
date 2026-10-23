@@ -53,7 +53,7 @@ module Samagotchi
       # stopped (no worker is coming): its stop marker in +state_dir+.
       def live_worker
         id = @client.session_id
-        return [:gone, "unreachable"] if Session.stopped_marker?(id, state_dir: @state_dir)
+        return [:gone, "stopped"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
         [BridgeClient.discover(id, session_dir: session_dir, host: @client.host), nil]
       end
