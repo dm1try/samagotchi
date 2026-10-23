@@ -441,6 +441,51 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
   end
 
+  describe "answer and dismiss: chi answer's client_id, the worker's refusals" do
+    let(:session) { make(status: "running") }
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:ok) { Samagotchi::BridgeClient::Response.new(status: 200, body: "{}") }
+
+    before { allow(app).to receive(:bridge_client).and_return(bridge) }
+
+    def answer(body) = call("/api/sessions/#{session.id}/answer", method: "POST", body: { id: "q1", selected: ["A"] }.merge(body))
+
+    it "passes on chi answer's client_id only; any other is dropped" do
+      allow(bridge).to receive(:answer).and_return(ok)
+
+      answer(client_id: "cli:answer")
+      answer(client_id: "web:abc")
+      answer({})
+
+      expect(bridge).to have_received(:answer).with(id: "q1", selected: ["A"], freeform: nil, client_id: "cli:answer").once
+      expect(bridge).to have_received(:answer).with(id: "q1", selected: ["A"], freeform: nil, client_id: nil).twice
+    end
+
+    it "passes the worker's 403 parent_answer_refused through, and sends once more after a 408 (504 after two)" do
+      refused = Samagotchi::BridgeClient::Response.new(
+        status: 403, body: '{"error":"parent_answer_refused","reason":"permit","detail":"only Deny can be given here"}'
+      )
+      allow(bridge).to receive(:answer).and_return(refused)
+      expect(answer(client_id: "cli:answer")).to eq([403, { "error" => "parent_answer_refused", "reason" => "permit",
+                                                            "detail" => "only Deny can be given here" }])
+
+      late = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
+      allow(bridge).to receive(:answer).and_return(late, ok)
+      expect(answer({}).first).to eq(200)
+      allow(bridge).to receive(:answer).and_return(late, late)
+      expect(answer({})).to match([504, include("error" => "worker_timeout")])
+    end
+
+    it "passes a dismissal's 409 not_dismissable through, with the worker's words" do
+      allow(bridge).to receive(:dismiss_question).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"not_dismissable","detail":"answer Continue or Stop"}')
+      )
+
+      expect(call("/api/sessions/#{session.id}/question/dismiss", method: "POST", body: { id: "q1" }))
+        .to eq([409, { "error" => "not_dismissable", "detail" => "answer Continue or Stop" }])
+    end
+  end
+
   describe "DELETE /api/sessions/:id: force" do
     it "refuses a live worker's session without force: 409 worker_running with DeleteRefused's message" do
       session = make

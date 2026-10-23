@@ -1248,14 +1248,35 @@ module Samagotchi
         qid = body["id"]
         return error_response(400, "missing_fields", "id is required") if qid.to_s.strip.empty?
 
-        request = ->(client) { client.answer(id: qid, selected: body["selected"], freeform: body["freeform"]) }
+        # client_id: only chi answer's (a parent agent's answer, which the
+        # worker holds to its guardrails.parent_answers) is passed on; any
+        # other is dropped, so a forward can only tighten (an answer never
+        # passes for the user's own by it).
+        client_id = body["client_id"] == ClientId::CLI_ANSWER ? ClientId::CLI_ANSWER : nil
+        request = once_more_on_late do |client|
+          client.answer(id: qid, selected: body["selected"], freeform: body["freeform"], client_id: client_id)
+        end
         relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
           case reply.status
           when 200 then json_response(200, { status: "answered", session_id: id, id: qid })
           # Another client answered first (or the question was cancelled).
           when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
           when 400 then error_response(400, "invalid_answer", reply_detail(reply, "answer rejected"))
+          # The worker's guardrails.parent_answers refused a parent's option.
+          when 403 then json_response(403, { error: "parent_answer_refused", reason: reply.json&.dig("reason"),
+                                             detail: reply_detail(reply, "the worker refused that option") })
           end
+        end
+      end
+
+      # A request to the worker sent once more when the worker dropped it as
+      # past its deadline (408), as chi answer does on this machine
+      # (SessionAccess::Local#answer); a second 408 is #relay's 504
+      # worker_timeout. The question stays open either way.
+      def once_more_on_late
+        lambda do |client|
+          reply = yield client
+          reply.status == 408 ? yield(client) : reply
         end
       end
 
@@ -1268,11 +1289,14 @@ module Samagotchi
         qid = body["id"].to_s
         return error_response(400, "missing_fields", "id is required") if qid.strip.empty?
 
-        request = ->(client) { client.dismiss_question(id: qid) }
+        request = once_more_on_late { |client| client.dismiss_question(id: qid) }
         relay(id, bridge_client(id), request, what: "the question was not dismissed", cant: "dismiss questions") do |reply|
           case reply.status
           when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
-          when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
+          when 409
+            # The step-limit question can't be left unanswered.
+            code = reply.json&.dig("error") == "not_dismissable" ? "not_dismissable" : "question_not_pending"
+            error_response(409, code, reply_detail(reply, "question not pending"))
           end
         end
       end
