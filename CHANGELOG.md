@@ -66,6 +66,8 @@ and commands may change between minor versions. How releases are made:
   `chi remote add`'s check; the attached TUI reads it as unreachable), instead of a Ruby backtrace.
 - The attached TUI on a remote whose host went away (no answer at all, not a refused connection) gives up each
   stream reconnect after 5 s, so it ends within about two minutes instead of about seventeen.
+- `chi --remote NAME context push` with a name that isn't a source's (`a/b`, `Bad Name`) gives the name rule, as
+  it does locally, instead of "too old for this command … update chi there" or a URI error.
 
 ## [0.106.0] - 2026-10-23
 

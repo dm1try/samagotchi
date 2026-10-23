@@ -211,6 +211,14 @@ RSpec.describe Samagotchi::ContextCommand do
         expect(run("push", "notes", "-m", "  ", a.id)).to eq(1)
         expect(err.string).to include("the output is empty")
       end
+
+      it "refuses a name that isn't a source's with the name rule (never a remote's \"too old\")" do
+        a = make
+        ["a/b", "x?y", "Bad Name"].each do |name|
+          expect(run("push", name, "-m", "x", a.id)).to eq(1), name
+          expect(err.string.lines.last).to include("#{name.inspect} isn't a source name"), err.string
+        end
+      end
     end
 
     describe "ls and show" do

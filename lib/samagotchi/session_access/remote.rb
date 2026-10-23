@@ -458,6 +458,7 @@ module Samagotchi
       # @param fetched [ContextSources::Fetched]
       # @return [ContextPush]
       def context_push(target, name, fetched)
+        ContextSources.check_name!(name)
         reply = request(:post, "#{session_path(target.session_id)}/context/#{name}/push",
                         body: { text: fetched.text, summary: fetched.summary, wake: fetched.wake, hint: fetched.hint })
         case reply.status
