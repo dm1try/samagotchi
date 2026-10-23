@@ -9,14 +9,14 @@
 #
 # The ids are the rerun lines parallel_tests' FailuresLogger appends to
 # tmp/parallel_failures.log (.rspec_parallel): `rspec ./spec/x_spec.rb:12 # …`,
-# colour stripped; or the lines of rspec's own `--format failures`
-# (`./spec/x_spec.rb:12:description`, rake bundles:specs'
-# tmp/bundle_failures.log). --rspec is the rerun's command (default
+# colour stripped; or rspec's `--format json` report (its failed examples'
+# ids and full descriptions; rake bundles:specs' tmp/bundle_failures.json). --rspec is the rerun's command (default
 # `bundle exec rspec`; the bundles job reruns on the bundle test kit alone). The summary goes to $GITHUB_STEP_SUMMARY (stdout without
 # one): "Flaky: passed on rerun" or "Failed twice", with the ids, the Ruby
 # version and the job. It always exits 1: a flake still fails the job. See
 # docs/testing.md (Flakes).
 
+require "json"
 require "optparse"
 require "shellwords"
 
@@ -29,16 +29,28 @@ class RerunFailures
 
   # The FailuresLogger's lines, colorized when colour is on.
   RERUN_LINE = /\Arspec (\S+)(?: # (.*))?\s*\z/
-  # rspec's --format failures: `./path_spec.rb:12:description`, or an
-  # id `./path_spec.rb[1:2]:description`.
-  LIST_LINE = %r{\A(\./\S+?_spec\.rb(?::\d+|\[[\d:]+\])):(.*?)\s*\z}
-
   def self.parse(text)
+    return parse_json(text) if text.lstrip.start_with?("{")
+
     text.gsub(/\e\[[\d;]*m/, "").each_line.filter_map do |line|
-      next unless (match = line.match(RERUN_LINE) || line.match(LIST_LINE))
+      next unless (match = line.match(RERUN_LINE))
 
       Failure.new(id: match[1], description: match[2].to_s.strip)
     end.uniq(&:id)
+  end
+
+  # rspec's --format json: each failed example's id (`./x_spec.rb[1:2]`,
+  # which reruns it alone) and full description, as the FailuresLogger's
+  # rerun lines have it. A report cut short (a crash mid-write) has none.
+  def self.parse_json(text)
+    examples = JSON.parse(text).fetch("examples", [])
+    examples.filter_map do |example|
+      next unless example["status"] == "failed"
+
+      Failure.new(id: example["id"].to_s, description: example["full_description"].to_s.strip)
+    end.uniq(&:id)
+  rescue JSON::ParserError
+    []
   end
 
   # runner: takes the ids, returns true when they all pass.

@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
+require "json"
 require "tmpdir"
 require "yaml"
 require_relative "../../script/rerun_failures"
 
 # CI's "passed on rerun" check (script/rerun_failures.rb): the failed ids from
-# parallel_tests' failures log (or rspec's failures list), rerun once, and the summary that says which.
+# parallel_tests' failures log (or rspec's json report), rerun once, and the summary that says which.
 RSpec.describe RerunFailures do
   let(:dir) { Dir.mktmpdir("rerun-failures-") }
   let(:log) { File.join(dir, "parallel_failures.log") }
@@ -42,15 +43,25 @@ RSpec.describe RerunFailures do
       expect(failures.first.description).to eq("Worker wakes on a note | and replies")
     end
 
-    it "reads rspec's --format failures list too (rake bundles:specs), a description with colons kept whole" do
-      list = "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb:7:runs: then stops\n" \
-             "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:2]:in a shared group\n"
+    it "reads rspec's --format json report too (rake bundles:specs): the failed examples' ids and full descriptions" do
+      report = JSON.generate(
+        "version" => "3.13.0",
+        "examples" => [
+          { "id" => "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:1]", "description" => "runs",
+            "full_description" => "the ruby hook runs: then stops", "status" => "failed" },
+          { "id" => "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:2]", "description" => "passes",
+            "full_description" => "the ruby hook passes", "status" => "passed" },
+          { "id" => "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:3:1]", "description" => "in a shared group",
+            "full_description" => "the ruby hook | in a shared group", "status" => "failed" }
+        ]
+      )
 
-      failures = described_class.parse(list)
+      failures = described_class.parse(report)
 
-      expect(failures.map(&:id)).to eq(["./lib/samagotchi/bundles/ruby/spec/hook_spec.rb:7",
-                                        "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:2]"])
-      expect(failures.first.description).to eq("runs: then stops")
+      expect(failures.map(&:id)).to eq(["./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:1]",
+                                        "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:3:1]"])
+      expect(failures.map(&:description)).to eq(["the ruby hook runs: then stops", "the ruby hook | in a shared group"])
+      expect(described_class.parse("{\"examples\": [")).to be_empty
     end
 
     it "ignores everything that isn't a rerun line" do
@@ -89,16 +100,16 @@ RSpec.describe RerunFailures do
     expect(summaries.join).to start_with("### Failed: 21 examples, not rerun (more than 20)")
   end
 
-  it "runs in the bundles job after failed bundle specs, from their failures list, on the bundle test kit" do
+  it "runs in the bundles job after failed bundle specs, from their json report, on the bundle test kit" do
     workflow = YAML.safe_load_file(File.expand_path("../../.github/workflows/ci.yml", __dir__))
     rakefile = File.read(File.expand_path("../../Rakefile", __dir__))
     steps = workflow.dig("jobs", "bundles", "steps")
     specs = steps.index { |step| step["id"] == "specs" }
 
     expect(steps[specs]["run"]).to eq("bundle exec rake bundles:specs")
-    expect(rakefile).to include('"--format", "failures", "--out", File.join(ROOT, "tmp/bundle_failures.log")')
+    expect(rakefile).to include('"--format", "json", "--out", File.join(ROOT, "tmp/bundle_failures.json")')
     expect(steps[specs + 1]).to include("if" => "failure() && steps.specs.outcome == 'failure'")
-    expect(steps[specs + 1]["run"]).to include("--log tmp/bundle_failures.log")
+    expect(steps[specs + 1]["run"]).to include("--log tmp/bundle_failures.json")
     expect(steps[specs + 1]["run"]).to include('--rspec "bundle exec rspec --options /dev/null -r samagotchi/testing/rspec"')
   end
 
