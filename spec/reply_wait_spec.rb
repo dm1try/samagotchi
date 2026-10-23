@@ -54,6 +54,7 @@ RSpec.describe Samagotchi::ReplyWait do
   # after +delay+ seconds when the time itself matters.
   def later(delay = nil, &)
     threads << Thread.new do
+      # sleep-ok: a delay is given only where the time is the behaviour (a save inside the settle wait)
       delay ? sleep(delay) : looked(1)
       yield
     end
@@ -66,7 +67,7 @@ RSpec.describe Samagotchi::ReplyWait do
   # what the caller set just before.
   def looked(count)
     start = polls[0]
-    wait_until { polls[0] >= start + count }
+    wait_for("the wait to look #{count} more time(s)") { polls[0] >= start + count }
   end
 
   def wait(cursor: nil, timeout: 5, interject: nil, **opts)
@@ -169,7 +170,7 @@ RSpec.describe Samagotchi::ReplyWait do
   it "times out, and waits with no limit on nil" do
     expect(wait(timeout: 0).status).to eq(:timeout)
 
-    later(0.3) { write_reply("eventually") }
+    later { write_reply("eventually") }
     expect(wait(timeout: nil).text).to eq("eventually")
   end
 
@@ -179,7 +180,7 @@ RSpec.describe Samagotchi::ReplyWait do
     calls = 0
     interject = lambda do
       calls += 1
-      sleep(0.5) if calls == 1
+      sleep(0.5) if calls == 1 # sleep-ok: the interject's own time, longer than the timeout, is the behaviour
       write_reply("after the interject") if calls == 2
     end
     result = wait(timeout: 0.3, interject: interject)
@@ -210,7 +211,7 @@ RSpec.describe Samagotchi::ReplyWait do
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       s.messages << { role: "system", content: "[CONTEXT NOTE from context notes]", kind: "note" }
       s.save(state_dir: tmpdir)
-      later(0.2) { write_reply("the answer") }
+      later { write_reply("the answer") }
 
       expect(wait(baseline: baseline).to_h).to include(status: :done, text: "the answer")
     end
@@ -264,8 +265,11 @@ RSpec.describe Samagotchi::ReplyWait do
       s.status = "running"
       s.save(state_dir: tmpdir)
       baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
-      later(0.1) { set(status: "idle") }
-      later(0.3) { set(status: "running") }
+      later do
+        set(status: "idle")
+        looked(2)
+        set(status: "running")
+      end
 
       expect(wait(baseline: baseline, timeout: 0.6).status).to eq(:timeout)
 

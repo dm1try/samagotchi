@@ -10,10 +10,13 @@ require "samagotchi/tools/delegate_result"
 require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
 require "samagotchi/reply_wait"
+require "support/reply_wait_looks"
 
 # delegate / delegate_result: a child session as a visible peer; only its
 # final reply (an output/ file) comes back to the parent.
 RSpec.describe "delegate tools" do
+  include ReplyWaitLooks
+
   let(:tmpdir) { Dir.mktmpdir("delegate-tools") }
   let(:locks) { [] }
   let(:threads) { [] }
@@ -29,6 +32,7 @@ RSpec.describe "delegate tools" do
 
   before do |example|
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
+    count_reply_wait_looks
     # A reply's session left running in the fixture never gets the worker's
     # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
     # here, but in an example about that wait (:real_settle).
@@ -97,10 +101,11 @@ RSpec.describe "delegate tools" do
     Samagotchi::ModelListStore.save(host, ids, at: at)
   end
 
-  # The child's turn as its worker plays it, on another thread.
-  def later(delay = 0.15, &)
+  # The child's turn as its worker plays it, on another thread, once the
+  # wait has looked.
+  def later(&)
     Thread.new do
-      sleep(delay)
+      looked(1)
       yield
     end.tap { |t| threads << t }
   end
@@ -475,7 +480,7 @@ RSpec.describe "delegate tools" do
           expect([id, prompt, client_id, state_dir]).to eq([child.id, "and the second?", "delegate:#{parent.id[0, 8]}", tmpdir])
           later do
             set_status(child, "running")
-            sleep(0.1)
+            looked(2)
             write_reply(child, "the second answer")
             set_status(child, "idle")
           end
@@ -740,7 +745,7 @@ RSpec.describe "delegate tools" do
       set_status(child, "idle")
       later do
         set_status(child, "running")
-        sleep(0.1)
+        looked(2)
         write_reply(child, "late reply")
         set_status(child, "idle")
       end

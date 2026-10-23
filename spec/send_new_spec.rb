@@ -7,6 +7,7 @@ require "spec_helper"
 require "samagotchi/send_command"
 require "samagotchi/reply_wait"
 require_relative "support/remote_backend"
+require_relative "support/reply_wait_looks"
 
 # chi send --new: a worker session started headlessly, the way the web start
 # page does, so it shows in the web at once.
@@ -360,6 +361,8 @@ end
 # chi send --wait: block until the session's next reply and print it, so an
 # agent gets a one-shot answer the user can watch in the web.
 RSpec.describe Samagotchi::SendCommand, "--wait" do
+  include ReplyWaitLooks
+
   let(:tmpdir) { Dir.mktmpdir("send-wait") }
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
@@ -369,6 +372,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
   before do
     stub_const("Samagotchi::SendCommand::POLL_INTERVAL", 0.02)
+    count_reply_wait_looks
     # A reply's session left running in the fixture never gets the worker's
     # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for.
     stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1)
@@ -420,9 +424,12 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
   end
 
-  def later(delay = 0.1, &)
+  # The worker's step on another thread, once the wait has looked (+delay+
+  # nil), or after +delay+ seconds when the time itself matters.
+  def later(delay = nil, &)
     threads << Thread.new do
-      sleep(delay)
+      # sleep-ok: a delay is given only where the time is the behaviour (past the worker-gone grace)
+      delay ? sleep(delay) : looked(1)
       yield
     end
   end
@@ -489,7 +496,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       @on_deliver = lambda do
         later do
           update(old, status: "running")
-          sleep(0.05)
+          looked(2)
           write_reply(old, "the new answer")
           update(old, status: "idle")
         end
@@ -533,7 +540,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
                                                         ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
         end
-        later(0.05) do
+        later do
           Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
                                                             status: "ok")
         end
@@ -549,7 +556,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
                                                         ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
         end
-        later(0.05) do
+        later do
           Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(a.id, state_dir: tmpdir), enqueued_id,
                                                             status: "error")
         end
@@ -566,7 +573,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
                                                         ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
         end
-        later(0.05) do
+        later do
           Samagotchi::TurnCheckpoint.record_command_outcome(Samagotchi::Session.session_dir(@started.id, state_dir: tmpdir),
                                                             enqueued_id, status: "ok")
         end
@@ -620,7 +627,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
             write_turn_reply(busy, "the running turn's answer", "r0")
             end_turn(busy, "r0")
             update(busy, status: "running")
-            sleep(0.05)
+            looked(2)
             write_turn_reply(busy, "the queued answer", "q1")
             end_turn(busy, "q1")
           end
@@ -638,7 +645,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
           later do
             write_turn_reply(busy, "an earlier turn's answer", "r0")
-            sleep(0.05)
+            looked(2)
             write_turn_reply(busy, "mine", "q1")
             end_turn(busy, "q1")
           end
@@ -655,7 +662,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
           later do
             end_turn(busy, "r0") # the running turn's end is not this wait's
-            sleep(0.1)
+            looked(2)
             update(busy, status: "running")
             end_turn(busy, "q1", outcome: "canceled")
           end
@@ -674,7 +681,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
             update(idle, status: "running") # another client's turn, started first
             write_turn_reply(idle, "the other turn's answer", "w1")
             end_turn(idle, "w1")
-            sleep(0.05)
+            looked(2)
             write_turn_reply(idle, "mine", "q1")
             end_turn(idle, "q1")
           end

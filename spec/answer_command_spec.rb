@@ -6,10 +6,13 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/answer_command"
 require_relative "support/remote_backend"
+require_relative "support/reply_wait_looks"
 
 # chi answer: a parent agent (or a script) answers the question a session's
 # worker waits on, then waits for what comes next, as chi send --wait does.
 RSpec.describe Samagotchi::AnswerCommand do
+  include ReplyWaitLooks
+
   # Remotely the parent's options are checked by the worker alone (chi web
   # passes chi answer's client_id on; the fake Bridge here takes anything).
   PARENT_CHECK = "the parent check before posting is this machine's; remotely the worker's"
@@ -52,6 +55,7 @@ RSpec.describe Samagotchi::AnswerCommand do
 
   before do
     stub_const("Samagotchi::AnswerCommand::POLL_INTERVAL", 0.02)
+    count_reply_wait_looks
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
     allow(Samagotchi::BridgeClient).to receive(:discover) { bridge }
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -98,11 +102,12 @@ RSpec.describe Samagotchi::AnswerCommand do
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
   end
 
-  # The worker takes the answer: the question goes, a reply comes.
+  # The worker takes the answer: the question goes, a reply comes, once
+  # the wait has looked (the answered question still pending there).
   def replies_after_answer(session, text)
     threads << Thread.new do
       wait_for("the answer to be posted", timeout: 10) { posted.any? }
-      sleep(0.05)
+      looked(1)
       update(session, pending_question: nil)
       write_reply(session, text)
       update(session, status: "idle")
@@ -137,7 +142,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       s = asking(question)
       threads << Thread.new do
         wait_for("the answer to be posted", timeout: 10) { posted.any? }
-        sleep(0.1)
+        looked(1)
         update(s, pending_question: { id: "q2", question: "And then?", options: %w[Stop Go] })
       end
 
@@ -457,17 +462,18 @@ RSpec.describe Samagotchi::AnswerCommand do
       it "prints the answered turn's reply when a queued turn behind it answers later (newer file)" do
         s = asking(question)
         running(s, "x1")
-        threads << Thread.new do
-          wait_for("the answer to be posted", timeout: 10) { posted.any? }
-          sleep(0.05)
+        # The worker takes the answer as it is posted, so the queued turn's
+        # reply is there before the wait's first look.
+        allow(bridge).to receive(:answer) do |id:, selected:, freeform: nil, client_id: nil|
+          posted << [:answer, id, selected, freeform]
+          clients << client_id
           turn_reply(s, "x1 answer", "x1")
           end_turn(s, "x1")
           running(s, "q1")
           turn_reply(s, "queued answer", "q1")
           end_turn(s, "q1")
+          respond
         end
-        # The queued turn's reply is there before the wait's first look.
-        sleep(0.01)
 
         expect(run(s.id, "--question", "q1", "--option", "1")).to eq(0), err.string
         expect(out.string).to eq("x1 answer\n")
