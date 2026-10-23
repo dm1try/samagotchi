@@ -256,7 +256,7 @@ test("pending ops come from command_queued (any client's), net with their invers
   const a = row("a.rb");
   assert.ok(a.classList.contains("pending"));
   assert.equal(a.querySelector(".ws-pend").textContent, "drops next turn");
-  assert.match(pop.querySelector(".ws-pending").textContent, /^2 changes pending · apply at the next turn's start · undo all/);
+  assert.match(pop.querySelector(".ws-pending").textContent, /^2 changes pending · apply at the next turn's start\s*undo all/);
   a.querySelector('[data-ws="steer"]').click();
   assert.equal(sent.at(-1), "/working-set undrop /p/lib/a.rb", "undo: the inverse, queued after it");
   ws.commandQueued({ command_id: "c2", line: "/working-set undrop /p/lib/a.rb", waits: "turn_end" });
