@@ -1490,7 +1490,7 @@ test("two tabs: one in front, the one behind shows no notification and no badge"
   // own on the channel); past its hold, it has neither notified nor badged.
   const qid = await card.getAttribute("data-qid");
   await expect.poll(() => behind.evaluate(() => window.__heard)).toContainEqual(expect.stringContaining(qid));
-  await behind.waitForTimeout(600);
+  await behind.waitForTimeout(600); // eslint-disable-line no-restricted-syntax -- past the 300 ms notify hold: an absence only its time shows
   expect(await notes(behind)).toEqual([]);
   await expect(behind).not.toHaveTitle(/^\(/);
   await card.locator(".question-option", { hasText: "README.md" }).click();

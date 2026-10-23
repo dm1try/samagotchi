@@ -4,7 +4,7 @@
   "scripts": {
     "test": "node --test --test-isolation=none spec/web/public/*.test.js",
     "e2e": "playwright test -c spec/e2e",
-    "lint": "eslint lib/samagotchi/web/public"
+    "lint": "eslint lib/samagotchi/web/public spec/e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

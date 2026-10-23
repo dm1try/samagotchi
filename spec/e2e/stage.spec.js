@@ -12,6 +12,14 @@ const stageEl = (page) => page.locator("#turnStage");
 // A shift's source in the top bar, or the session panel it pushes down.
 const TOP_BAR = /#topBar|#sessionTitle|#stripStatus|#stripGrip|#notifyBtn|section#center$/;
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
+// The history at rest: its bottom reserve's ease (#center's padding
+// transition), its eased follow (#history[data-following]) and the handed-off
+// pieces' arrival (.ts-arrive, gone at animationend) are over. With
+// +stage+, the stage's own rise too.
+const settled = (page, { stage = false } = {}) => page.waitForFunction((stage) =>
+  document.querySelector("#center").getAnimations().length === 0 &&
+  !document.querySelector("#history[data-following], #history .ts-arrive") &&
+  (!stage || document.querySelector("#turnStage").getAnimations().length === 0), stage);
 
 async function send(page, prompt) {
   await page.locator("#prompt").fill(prompt);
@@ -37,11 +45,11 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await send(page, "Second round");
   await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
-  await page.waitForTimeout(500); // the rise and the history's follow are over
+  await settled(page, { stage: true }); // the rise and the history's follow are over
   const scrolledAt = await pageNow(page);
   const scrollTopSet = await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; return performance.now(); });
   await handedOff(page, 2);
-  await page.waitForTimeout(600); // the fold and the arrival are over
+  await settled(page); // the fold and the arrival are over
   const samples = await stopSampling(page);
   const running = samples.filter((s) => !s.hidden && !s.ended);
   expect(running.length).toBeGreaterThan(10);
@@ -115,7 +123,7 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
   await send(page, "Check the shell and the README");
   await stageEl(page).hover();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "answered");
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(5000); // eslint-disable-line no-restricted-syntax -- the dwell is the behaviour
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page).locator(".ts-defer")).toBeVisible();
   await handedOff(page, 0);
@@ -246,7 +254,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // The hand-off to a reader at the history's end: the reserve eases down
   // under the sliding stage and the history follows the turn's arrival.
   await expect(stageEl(page)).toBeHidden();
-  await page.waitForTimeout(600);
+  await settled(page);
   expect(await shiftSum(page, { from: leaveAt })).toBeLessThan(0.01);
   expect(await snaps(page, { from: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
@@ -474,7 +482,9 @@ test.describe("the working set", () => {
       await expect(rail.locator(".ws-item .t")).toHaveText(["README.md", "e2e-style"]);
       await expect(page.locator("#infoText .ws-chip")).toHaveText("set 2");
       await expect(page.locator("#infoText .mem-chip")).toHaveCount(0);
-      await page.waitForTimeout(800); // the held step: samples after the items came too
+      // The held step: samples after the items came too (the sampler's 100 ms passes).
+      const sampled = await page.evaluate(() => window.samples.length);
+      await expect.poll(() => page.evaluate(() => window.samples.length)).toBeGreaterThanOrEqual(sampled + 8);
       const samples = (await stopSampling(page)).filter((s) => !s.hidden && !s.ended);
       expect(samples.length).toBeGreaterThan(5);
       expect([...new Set(samples.map((s) => s.h))]).toHaveLength(1);
