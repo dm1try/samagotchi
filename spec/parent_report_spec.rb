@@ -335,19 +335,19 @@ RSpec.describe Samagotchi::ParentReport do
   describe "through a remote (via: chi --remote NAME)" do
     let(:via) { Samagotchi::ChiInvocation.new(remote: "studio") }
 
-    it "spells every command it prints with --remote NAME, and names the remote's chi web for what runs here only" do
+    it "spells every command it prints with --remote NAME, an attach too, and names the remote's chi web" do
       strategy("soft")
       text = described_class.question_text(approval, session_id: id, via: via)
       expect(text).to include("  allow: chi --remote studio answer #{id} --question a1 --option \"Allow once\"\n")
       expect(text).to include("  deny: chi --remote studio answer #{id} --question a1 --option Deny --text WHY\n")
       expect(text).to include("tell your user it waits in chi web on studio (session #{id[0, 8]}); " \
                               "chi --remote studio send --wait --format json #{id} waits until they answer")
-      expect(described_class.question_text(question, session_id: id, via: via)).to include("  or open it: chi web on studio\n")
+      expect(described_class.question_text(question, session_id: id, via: via))
+        .to include("  or open it: chi --remote studio --attach #{id} or chi web on studio\n")
       expect(described_class.detail(Samagotchi::ReplyWait::Result.new(status: :worker_gone), session_id: id, via: via))
-        .to eq("the worker is gone; chi web on studio shows what happened")
+        .to eq("the worker is gone; chi --remote studio --attach #{id} shows what happened")
       expect(described_class.detail(Samagotchi::ReplyWait::Result.new(status: :timeout), session_id: id, turn_id: "t1", via: via))
         .to eq("still running: chi --remote studio send --wait --turn t1 #{id}")
-      expect(text).not_to include("--attach")
     end
   end
 end

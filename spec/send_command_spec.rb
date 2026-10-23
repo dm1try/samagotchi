@@ -856,7 +856,7 @@ RSpec.describe Samagotchi::SendCommand do
 
         expect(run("--new", "--image", png, "-m", "hi")).to eq(1)
         started = Samagotchi::Session.list(state_dir: tmpdir).first
-        expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept#{" (chi --attach #{started.id})" unless backend == :remote}\n")
+        expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept (#{via.attach(started.id)})\n")
         expect(Process).to have_received(:spawn).once
       end
     end

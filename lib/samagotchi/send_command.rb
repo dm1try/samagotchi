@@ -646,7 +646,7 @@ module Samagotchi
       # its preview; the user can attach and send it again.
       unless result
         attach = @access.invocation.attach(session.id)
-        @info.puts("#{session.id}  failed: its worker did not start; the session is kept#{" (#{attach})" if attach}")
+        @info.puts("#{session.id}  failed: its worker did not start; the session is kept (#{attach})")
         return false
       end
       unless result.accepted?

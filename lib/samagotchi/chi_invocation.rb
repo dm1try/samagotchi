@@ -2,12 +2,10 @@
 
 module Samagotchi
   # How the follow-up commands chi prints (ParentReport's chi answer and
-  # chi send --wait, a stop's chi --resume) are spelled so that they work
-  # when pasted: on this machine plain chi, against a remote (chi --remote
-  # NAME, CHI_REMOTE=NAME alike) chi --remote NAME. What runs on this
-  # machine only (--attach, --resume: remote attach is its own phase) has
-  # no remote form: #attach and #resume are nil there, and #open_it and
-  # #shows name the remote's chi web instead.
+  # chi send --wait, a stop's chi --resume, the attached TUI's re-attach
+  # lines) are spelled so that they work when pasted: on this machine plain
+  # chi, against a remote (chi --remote NAME, CHI_REMOTE=NAME alike) chi
+  # --remote NAME. A remote's chi web is named where the page is meant.
   # @!attribute remote [String, nil] the remote's name; nil: this machine
   ChiInvocation = Data.define(:remote) do
     def remote? = !remote.nil?
@@ -18,19 +16,18 @@ module Samagotchi
     # +words+ after #chi: command("answer ID …").
     def command(words) = "#{chi} #{words}"
 
-    # chi --attach ID; nil remotely.
-    def attach(id) = ("chi --attach #{id}" unless remote?)
+    # chi --attach ID (chi --remote NAME --attach ID).
+    def attach(id) = command("--attach #{id}")
 
-    # chi --resume ID; nil remotely.
-    def resume(id) = ("chi --resume #{id}" unless remote?)
+    # chi --resume ID (chi --remote NAME --resume ID).
+    def resume(id) = command("--resume #{id}")
 
-    # What shows the session ("… shows it"): chi --attach ID, or the
-    # remote's chi web.
-    def shows(id) = attach(id) || web
+    # What shows the session ("… shows it"): its attach.
+    def shows(id) = attach(id)
 
-    # Where the user opens it ("open it: …"): chi --attach ID or the web,
-    # or the remote's chi web.
-    def open_it(id) = remote? ? web : "#{attach(id)} or the web"
+    # Where the user opens it ("open it: …"): its attach, or the web (the
+    # remote's chi web).
+    def open_it(id) = "#{attach(id)} or #{remote? ? web : "the web"}"
 
     # The remote's chi web, by name.
     def web = "chi web on #{remote}"

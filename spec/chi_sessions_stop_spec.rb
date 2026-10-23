@@ -90,16 +90,15 @@ RSpec.describe "chi sessions stop" do
         Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| s.save(state_dir: state_dir) }
       end
 
-      it "says the worker let go, or that it is still shutting down, in the same words (no chi --resume remotely)" do
+      it "says the worker let go, or that it is still shutting down, in the same words (chi --remote NAME --resume remotely)" do
         allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
         expect(stop(session.id)).to eq(0)
-        resume = " chi --resume #{session.id} starts a fresh worker." unless backend == :remote
-        expect(out.string).to eq("Stopped session #{session.id}.#{resume}\n")
+        expect(out.string).to eq("Stopped session #{session.id}. #{via.resume(session.id)} starts a fresh worker.\n")
 
         allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
         expect(stop(session.id)).to eq(0)
-        try = "; try chi --resume #{session.id} in a moment" unless backend == :remote
-        expect(err.string).to eq("Stopped session #{session.id}, but its worker is still shutting down#{try}.\n")
+        expect(err.string).to eq("Stopped session #{session.id}, but its worker is still shutting down; " \
+                                 "try #{via.resume(session.id)} in a moment.\n")
       end
     end
   end

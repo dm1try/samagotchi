@@ -399,13 +399,13 @@ module Samagotchi
           @stderr.puts e.message
           next false
         end
-        # Remotely no chi --resume (remote attach is its own phase).
+        # chi --resume ID, or chi --remote NAME --resume ID.
         resume = @access.invocation.resume(id)
         if released
-          @stdout.puts "Stopped session #{id}.#{" #{resume} starts a fresh worker." if resume}"
+          @stdout.puts "Stopped session #{id}. #{resume} starts a fresh worker."
         else
           @stdout.flush
-          @stderr.puts "Stopped session #{id}, but its worker is still shutting down#{"; try #{resume} in a moment" if resume}."
+          @stderr.puts "Stopped session #{id}, but its worker is still shutting down; try #{resume} in a moment."
         end
         true
       end
