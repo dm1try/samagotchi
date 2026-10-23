@@ -8,6 +8,32 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-10-23
+
+### Added
+
+- `/working-set` lists the session's working set as the model has it: each file, memory and URL its turns read,
+  edited or fetched, with its state (`stale`, `forgotten`, `dropped`) and its size as sent. `/working-set drop KEY…`
+  takes an item out of what the model is sent (its reads go as a stub saying you dropped it, under any LLM context
+  strategy); `/working-set undrop KEY…` sends it whole again. A change applies from the next turn. In the web's
+  working set list (still experimental, `web.working_set: true`), rows offer `drop` / `undrop`; mid-turn they wait
+  for the turn's end, with an `undo`. See [docs/cli.md](docs/cli.md).
+- `--set` takes chi's own session settings too: `--set recap.enabled=false` or `--set recap.sentences=3` for this
+  session, over config.yml. A bad value or a key no session sets is an error (exit 2). See
+  [docs/configuration.md](docs/configuration.md#per-session-settings).
+- `/recap on|off|default` turns the idle recap on or off for this session, at once and in any UI (mid-turn too);
+  saved with the session.
+
+### Changed
+
+- `POST /api/sessions`: the field `bundle_settings` is now `settings` (it takes core keys too). No alias.
+- An attached TUI started before this release treats `/recap off` as the plain `/recap`; restart it.
+
+### Fixed
+
+- The web's working set no longer keeps the last item when the set is emptied, and a reply to an older request can
+  no longer overwrite a newer one.
+
 ## [0.101.0] - 2026-10-22
 
 ### Added
@@ -3828,7 +3854,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.101.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.102.0...HEAD
+[0.102.0]: https://github.com/dm1try/samagotchi/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/dm1try/samagotchi/compare/v0.100.1...v0.101.0
 [0.100.1]: https://github.com/dm1try/samagotchi/compare/v0.100.0...v0.100.1
 [0.100.0]: https://github.com/dm1try/samagotchi/compare/v0.99.0...v0.100.0
