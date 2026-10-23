@@ -344,7 +344,8 @@ module Samagotchi
 
         text = result[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         text = result.status == :done ? ParticipantView.reply(text, viewer) : ParticipantMessages::TURN_FAILED if text
-        { status: result.status.to_s, text: text, turn_id: result[:turn_id], cancel_reason: result[:cancel_reason] }.compact
+        { status: result.status.to_s, text: text, turn_id: result[:turn_id], outcome: result[:outcome],
+          cancel_reason: result[:cancel_reason] }.compact
       end
 
       # Whether a principal's stream may go on (the proxy's running check,

@@ -233,6 +233,14 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
         status, body = wait_on(result)
         expect(body["text"].to_s).not_to include("ENOENT", "sk-ant", Dir.home)
         expect([status, body["status"], body["text"]]).to eq([200, result.status.to_s, Samagotchi::ParticipantMessages::TURN_FAILED])
+        expect(body["outcome"]).to eq(result.outcome)
+      end
+    end
+
+    it "names a turn that ended without a reply by its outcome, so their chi send --wait reads failed or canceled as such" do
+      %w[failed canceled limit].each do |outcome|
+        _status, body = wait_on(Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: outcome, cancel_reason: "stop"))
+        expect(body.slice("status", "outcome", "cancel_reason")).to eq("status" => "no_reply", "outcome" => outcome, "cancel_reason" => "stop")
       end
     end
 
