@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "support/test_kernel"
 require "support/failing_saves"
+require "support/worker_loop_rounds"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -13,6 +14,8 @@ require "samagotchi/worker"
 # A worker takes context notes from notes/ between turns: each becomes a
 # tail system message, saved at once, and no turn runs for it.
 RSpec.describe Samagotchi::Worker, "context notes" do
+  include WorkerLoopRounds
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
@@ -61,9 +64,10 @@ RSpec.describe Samagotchi::Worker, "context notes" do
   def start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
     worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                  idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+    count_loop_rounds(worker)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
+    wait_for("the worker's sidecar") { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }
   end
 
   def write_note(text, **opts)
@@ -79,15 +83,16 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     path = write_note("deploy frozen", source: "slack")
 
-    expect(wait_until { saved_notes.any? }).to be(true)
+    wait_for("the note to be saved") { saved_notes.any? }
     note = saved_notes.first
     expect(note[:note_id]).to eq(File.basename(path, ".json"))
     expect(note[:content]).to include("[CONTEXT NOTE from slack", "deploy frozen")
     expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.map { |m| m[:content] }.first(3)).to eq(%w[sys a b])
     expect(events.map { |e| e[:type] }).to include(:context_added)
     # The worker deletes the note files after it saved the session.
-    expect(wait_until { Dir.empty?(notes_dir) }).to be(true)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    wait_for("the worker to delete the note files") { Dir.empty?(notes_dir) }
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   describe "a failing save" do
@@ -101,12 +106,12 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
       path = write_note("deploy frozen")
 
-      expect(wait_until { failed_saves.include?(:notes) }).to be(true)
+      wait_for("the notes save to fail") { failed_saves.include?(:notes) }
       expect(@thread).to be_alive
       expect(Dir.children(notes_dir)).to eq(["#{File.basename(path)}.processing"])
 
       saves_fail!(false)
-      expect(wait_until { Dir.empty?(notes_dir) }).to be(true)
+      wait_for("the note's file to go once a save works") { Dir.empty?(notes_dir) }
       expect(saved_notes.map { |m| m[:note_id] }).to eq([File.basename(path, ".json")])
       expect(events.count { |e| e[:type] == :context_added }).to eq(1)
     end
@@ -114,23 +119,31 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
   it "takes a note sent during a turn after that turn, and the next turn sees it" do
     release = Queue.new
-    allow(engine).to receive(:run_turn) do |turn_session, prompt, **|
+    boundary = Queue.new
+    allow(engine).to receive(:run_turn) do |turn_session, prompt, pending_input: nil, **|
       turns << [prompt, turn_session.messages.map { |m| m[:note_id] }.compact]
-      release.pop if prompt == "one"
+      if prompt == "one"
+        release.pop
+        # An iteration boundary after the note came: the only place a turn
+        # takes input mid-turn.
+        boundary << pending_input.call
+        release.pop
+      end
       result
     end
     start_worker
 
     Samagotchi::SessionManager.write_turn_input(session.id, prompt: "one", state_dir: tmpdir)
-    expect(turns.pop(timeout: 2)).to eq(["one", []])
+    expect(pop!(turns, "the first turn")).to eq(["one", []])
     path = write_note("api moved")
-    sleep(0.2)
+    release << true
+    expect(pop!(boundary, "the turn's iteration boundary")).to eq([])
     expect(engine.messages_checkpoint.none? { |m| m[:kind] == "note" }).to be(true)
     release << true
 
-    expect(wait_until { saved_notes.any? }).to be(true)
+    wait_for("the note to be saved after the turn") { saved_notes.any? }
     Samagotchi::SessionManager.write_turn_input(session.id, prompt: "two", state_dir: tmpdir)
-    expect(turns.pop(timeout: 2)).to eq(["two", [File.basename(path, ".json")]])
+    expect(pop!(turns, "the second turn")).to eq(["two", [File.basename(path, ".json")]])
   end
 
   it "takes notes that waited for the worker before it runs anything else" do
@@ -139,7 +152,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     start_worker
 
-    expect(turns.pop(timeout: 2)).to eq(["hello", [File.basename(path, ".json")]])
+    expect(pop!(turns, "the queued turn")).to eq(["hello", [File.basename(path, ".json")]])
   end
 
   it "still runs a new session's first prompt when a note came first" do
@@ -150,7 +163,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     start_worker
 
-    expect(turns.pop(timeout: 2)).to eq(["first prompt", [File.basename(path, ".json")]])
+    expect(pop!(turns, "the first prompt's turn")).to eq(["first prompt", [File.basename(path, ".json")]])
   end
 
   it "still runs the first prompt of a session that holds only a note (a worker restarted before it ran)" do
@@ -160,7 +173,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     start_worker
 
-    expect(turns.pop(timeout: 2)&.first).to eq("first prompt")
+    expect(pop!(turns, "the first prompt's turn").first).to eq("first prompt")
   end
 
   it "doesn't add a note twice when a crash left it claimed after the save" do
@@ -172,7 +185,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     start_worker
 
-    expect(wait_until { !File.exist?(claimed) }).to be(true)
+    wait_for("the claimed note file to go") { !File.exist?(claimed) }
     expect(saved_notes.count { |m| m[:note_id] == note_id }).to eq(1)
     expect(events.map { |e| e[:type] }).not_to include(:context_added)
   end
@@ -183,7 +196,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
     start_worker
 
-    expect(wait_until { Dir.empty?(notes_dir) }).to be(true)
+    wait_for("the broken note file to go") { Dir.empty?(notes_dir) }
     expect(saved_notes).to be_empty
   end
 
@@ -191,7 +204,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     start_worker(idle_exit_minutes: 0.005)
     write_note("still leaves")
 
-    expect(@thread.join(3)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker's idle exit").value).to eq(:idle_exit)
     expect(saved_notes.size).to eq(1)
   end
 end
