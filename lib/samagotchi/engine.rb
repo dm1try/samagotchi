@@ -222,6 +222,8 @@ module Samagotchi
       # The session's participants (participants.json), read at each turn's
       # start: their names for the messages they wrote.
       @participants = SessionParticipants.new(state_dir: -> { session_state_dir })
+      # Whether the system prompt carries the participants line.
+      @participants_line = false
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -418,7 +420,8 @@ module Samagotchi
       SystemPrompt.new(profile: -> { profile }, tools: -> { @tools }, session: -> { @session },
                        thinking: -> { turn_thinking }, model: -> { model_identity },
                        model_notes: -> { model_notes }, memories: memories,
-                       muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files)
+                       muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files,
+                       participants: -> { @participants_line })
     end
     private :build_system_prompt
 
@@ -1470,6 +1473,18 @@ module Samagotchi
                                        **stop_facts(event))
     end
 
+    # Reads the session's participants at a turn's start; the first to join
+    # and the last to leave rebuild the system prompt (its participants
+    # line), once each: a turn in between sends the same prefix.
+    def refresh_participants!(session)
+      active = @participants.refresh!(session).active?
+      return if active == @participants_line
+
+      @participants_line = active
+      @prompt_builder.reset!
+    end
+    private :refresh_participants!
+
     # The author fields a message +author+ wrote carries (Steer.author_fields:
     # author:, and author_name: from participants.json), {} for the owner.
     # The worker's drain names a participant's merged lines with it, and
@@ -2121,7 +2136,7 @@ module Samagotchi
       # prompt built next declares, unchanged until the next turn's start.
       apply_staged_tools!
       apply_toolkit!(session, turn.on_event)
-      @participants.refresh!(session)
+      refresh_participants!(session)
       # A Stop during the wait above: the turn ends here,
       # before the hooks run or a reminder is used up.
       return false if turn.controller.cancelled?

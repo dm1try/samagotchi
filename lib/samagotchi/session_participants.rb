@@ -25,6 +25,10 @@ module Samagotchi
       self
     end
 
+    # Whether anyone is still in the review (Participants::Entry#active?),
+    # as of the last #refresh!.
+    def active? = @entries.any? { |entry| entry.active?(@clock.call) }
+
     # The name +author+ ("p:<id>") had when it was invited, nil for none
     # (the owner, or a participant the sidecar doesn't name). A miss reads
     # the sidecar again: someone invited after the turn began. +session+:
