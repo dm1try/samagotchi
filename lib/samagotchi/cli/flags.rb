@@ -68,6 +68,11 @@ module Samagotchi
         add(names, Flag.new(refusal: message))
       end
 
+      # Each declared flag's names, in the order declared ([["-m",
+      # "--message"], ["--new"]]); refused flags too.
+      # @return [Array<Array<String>>]
+      def names = @flags.keys.group_by { |name| @flags[name].object_id }.values
+
       # @param defaults [Hash] the options before any flag (not changed)
       # @return [Result]
       def parse(argv, defaults = {})

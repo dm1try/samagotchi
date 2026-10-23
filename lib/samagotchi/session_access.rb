@@ -12,6 +12,7 @@ module Samagotchi
   # docs/architecture.md (Session access).
   module SessionAccess
     autoload :Local, File.expand_path("session_access/local", __dir__)
+    autoload :Contract, File.expand_path("session_access/contract", __dir__)
 
     # A session to create (chi send --new): a new one, or with +continues+
     # the next link of that session's chain (which brings its own folder,
