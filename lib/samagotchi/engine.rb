@@ -347,6 +347,8 @@ module Samagotchi
       # A plugin tool's row refs resolve against the session's folder, as
       # answer refs do (AnswerRefs), not the process's.
       @kernel.session_cwd = -> { @session&.working_directory }
+      # forget_outputs refuses what the user pinned in the working set.
+      @kernel.working_set_pins = -> { @session&.working_set_pins || [] }
       # A cut tool output is saved whole in the session's folder.
       @kernel.session_dir = -> { @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir) }
       @kernel.guardrail_gate = @guardrail_wiring.gate
@@ -2958,7 +2960,8 @@ module Samagotchi
     def emit_working_set(on_event, session, conversation)
       return unless session && conversation
 
-      snapshot = WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy)
+      snapshot = WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy,
+                                  pins: session.working_set_pins)
 
       items = snapshot.items.map(&:to_h)
       last = @working_set_emitted

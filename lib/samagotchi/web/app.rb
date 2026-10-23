@@ -1510,7 +1510,8 @@ module Samagotchi
         llm_context = SessionSetting::LLM_CONTEXT.snapshot_value(live && live["session_state_snapshot"]) do
           SessionSetting::LLM_CONTEXT.saved_summary(session, registry: host_registry)
         end
-        snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context))
+        snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context),
+                                    pins: session.working_set_pins)
         json_response(200, snapshot.to_h.merge(running: running))
       end
 

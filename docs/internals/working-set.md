@@ -31,11 +31,13 @@ same-size edit in the same second goes unseen (APFS keeps nanoseconds).
 
 ## The projection: `WorkingSet.build`
 
-`Samagotchi::WorkingSet.build(conversation, cwd:, strategy:, stat: File.method(:stat))` (`lib/samagotchi/working_set.rb`)
+`Samagotchi::WorkingSet.build(conversation, cwd:, strategy:, stat: File.method(:stat), pins: [])` (`lib/samagotchi/working_set.rb`)
 is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's size in entries, the web's ordering
 key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state` (`live`, `stale`, `forgotten`,
-`dropped`), `tokens`, `ops`, `count` and
-`first_id` (the first run's ToolIds id).
+`dropped`), `tokens`, `ops`, `count`,
+`first_id` (the first run's ToolIds id) and `pinned` (the session's `working_set_pins` name it, whatever the
+strategy: the page shows the mark only under forget, so a switch shows it at once). The Engine's event and the GET
+both pass the session's pins.
 
 **Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what
 `LLMContextView.new(strategy:).messages(conversation)` sends (stubs keep their `[name]` lead, so they still pair).

@@ -49,12 +49,22 @@ lets the model forget its own tool outputs. The pieces:
   `LLMContextApply.measure`/`.weigh` and `#restored_line` build their views from the same class, so a drop counts in
   them under none too. The model can't take a drop off: forget_outputs refuses to forget or restore a dropped
   output, in `WorkingSetSteer::Refused`'s words ("dropped by the user").
+- **The user's pins**: an item the user pinned in the working set (`Session#working_set_pins`,
+  [working-set.md](working-set.md#steering-pin-and-unpin)) is guarded against the model's forget only: forget_outputs
+  refuses an output of it, in `WorkingSetSteer::Refused`'s words ("pinned by the user: it stays in your context").
+  `KernelLoop#forget_outputs` passes `LLMContextForget.call` a `pinned:` callable (`WorkingSet.pinned_ids` of the
+  session's pins, by the projection's pairing, the Engine's `working_set_pins`), asked once per forget; a pin covers
+  the item's later reads too. A restore of a pinned item's forget (one from before the pin) goes through. Stale stubs
+  still apply (a superseded read's newer read is sent, so the pin holds in substance), and a pin changes nothing that
+  is sent: no cache break.
 - **Stubs** (`LLMContextView`): `(forgotten) <note>` on the first output of a call's forgets in a row, `(forgotten
   with tN: see its note)` on the rest (a run of the same note, author and stamp, no other output between them),
   ` [restore: tN]` on a non-read with a stored id, then each kept range under `lines A-B kept:`. The entry keeps its
   role, tool_call_id and images bookkeeping as for stale, and a find_tools result's `loaded:`, so a Messages host
   still gets the load's references (anthropic.md, "Deferred tools"); only the sibling text is the stub.
-- **Offers**: `ContextStatus` (internals/context-telemetry.md).
+- **Offers**: `ContextStatus` (internals/context-telemetry.md). Its `TIDY`/`COMPACT` lines name no output, so a pin
+  has nothing to take out of them; the refusal is how the model learns of one if it tries (and the turn-start
+  `working_set` note says it was pinned).
 - **Persistence**: the edits ride on the entries (plan D3), so `--resume`, rollbacks and forks keep the stubs and the
   restores; `/stats` counts each applied batch's re-prefill.
 - **Measuring**: the bench's `forget_outputs` strategy (internals/llm-context-bench.md).

@@ -76,11 +76,11 @@ RSpec.describe Samagotchi::WorkingSet do
       expect(snapshot.at).to eq(conversation.size)
       expect(snapshot.items.map(&:to_h)).to eq([
         { kind: "file", key: cart, state: "live", tokens: ((body.length + 7) / 4.0).ceil,
-          ops: %w[read edit], count: 2, first_id: "t1" },
+          ops: %w[read edit], count: 2, first_id: "t1", pinned: false },
         { kind: "memory", key: "style", state: "live", tokens: 6, ops: %w[read write],
-          count: 2, first_id: "t2" },
+          count: 2, first_id: "t2", pinned: false },
         { kind: "url", key: "https://x.dev/a b", state: "live", tokens: 4, ops: %w[read],
-          count: 1, first_id: "t3" }
+          count: 1, first_id: "t3", pinned: false }
       ])
     end
 
@@ -239,6 +239,35 @@ RSpec.describe Samagotchi::WorkingSet do
     end
   end
 
+  describe "pins" do
+    let(:pins) do
+      [Samagotchi::WorkingSetPin.new(kind: "file", key: cart), Samagotchi::WorkingSetPin.new(kind: "memory", key: "tone")]
+    end
+
+    it "marks a pinned item, under every strategy and whatever its state" do
+      forget = edit("forget", "cart totals")
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => forget }), *read_turn("lib/tax.rb", "c2", "t2")]
+
+      [:none, %i[forget]].each do |strategy|
+        items = described_class.build(conversation, cwd: root, strategy: strategy, stat: stat, pins: pins).items
+        expect(items.map { |item| [item.key, item.pinned] }).to eq([[cart, true], [tax, false]])
+      end
+      expect(described_class.build(conversation, cwd: root, strategy: %i[forget], stat: stat, pins: pins).items.first.state)
+        .to eq("forgotten")
+    end
+
+    it "names the content outputs the pins hold, by the projection's pairing, not an edit's" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1"),
+                      chat_model(chat_call("c2", "edit", { "path" => cart, "old_text" => "a", "new_text" => "b" }),
+                                 chat_call("c3", "memory_read", { "name" => "style, tone" })),
+                      chat_result("c2", "edit", "Edited", "t2"), chat_result("c3", "memory_read", "a\n\n---\n\nb", "t3"),
+                      *read_turn("lib/tax.rb", "c4", "t4")]
+
+      expect(described_class.pinned_ids(conversation, pins: pins, cwd: root)).to eq(Set["t1", "t3"])
+      expect(described_class.pinned_ids(conversation, pins: [], cwd: root)).to be_empty
+    end
+  end
+
   describe ".outputs_of" do
     let(:forget) { edit("forget", "cart totals are in lib/cart.rb") }
 
@@ -333,7 +362,7 @@ RSpec.describe Samagotchi::WorkingSet do
                       chat_result("c1", "memory_write", "Removed old", "t1")]
 
       expect(build(conversation).items.map(&:to_h)).to eq([{ kind: "memory", key: "old", state: "live", tokens: 0, ops: %w[write],
-                                                             count: 1, first_id: "t1" }])
+                                                             count: 1, first_id: "t1", pinned: false }])
     end
   end
 

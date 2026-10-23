@@ -30,6 +30,7 @@ require_relative "tool_ids"
 require_relative "llm_context_view"
 require_relative "llm_context_apply"
 require_relative "llm_context_forget"
+require_relative "working_set"
 require_relative "llm_context_notice"
 require_relative "answer_display"
 require_relative "llm/model_result"
@@ -178,6 +179,10 @@ module Samagotchi
     # a plugin tool's row refs resolve their files against (ToolRunner,
     # RowRefs); the Engine sets it. nil: the process's own (Dir.pwd).
     attr_accessor :session_cwd
+    # The session's working-set pins (a callable → Array<WorkingSetPin>),
+    # which forget_outputs refuses (LLMContextForget); the Engine sets it.
+    # nil: none.
+    attr_accessor :working_set_pins
     # The session's folder (a callable → String or nil), where ToolRunner
     # saves a cut output whole (ToolOutputFiles); the Engine sets it. nil:
     # none (a bare kernel), the cut says the output wasn't saved.
@@ -945,8 +950,15 @@ module Samagotchi
       end
 
       apply = -> { apply_llm_context!(turn.conversation, llm_context, context: turn.context, emit: turn.emit) }
-      LLMContextForget.call(turn, call, llm_context: llm_context, apply: apply)
+      LLMContextForget.call(turn, call, llm_context: llm_context, apply: apply, pinned: method(:pinned_ids))
     end
+
+    # The ids of +conversation+'s outputs the session's pins hold.
+    def pinned_ids(conversation)
+      pins = Array(@working_set_pins&.call)
+      WorkingSet.pinned_ids(conversation, pins: pins, cwd: @session_cwd&.call)
+    end
+    private :pinned_ids
 
     # Before each request of both loops (+moment+ :request; the warm-up
     # too, on its own copy, as the next turn's first request) and at the

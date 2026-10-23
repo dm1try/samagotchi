@@ -48,11 +48,19 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     status, body = call("/api/sessions/#{session.id}/working_set")
     expect(status).to eq(200)
     expect(body).to eq("items" => [{ "kind" => "file", "key" => path, "state" => "live", "tokens" => 3, "ops" => ["read"],
-                                     "count" => 1, "first_id" => "t1" }],
+                                     "count" => 1, "first_id" => "t1", "pinned" => false }],
                        "at" => 3, "running" => false)
 
     File.write(path, "one\ntwo\n")
     expect(call("/api/sessions/#{session.id}/working_set").last["items"].first["state"]).to eq("stale")
+  end
+
+  it "marks the items the session pinned" do
+    session = saved_session(read_messages)
+    session.working_set_pins = [{ "kind" => "file", "key" => path }]
+    session.save(state_dir: state_dir)
+
+    expect(call("/api/sessions/#{session.id}/working_set").last["items"]).to match([include("key" => path, "pinned" => true)])
   end
 
   it "builds it from a live worker's snapshot (string keys) under the worker's strategy" do

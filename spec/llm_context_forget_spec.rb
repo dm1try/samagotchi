@@ -42,14 +42,14 @@ RSpec.describe Samagotchi::LLMContextForget do
   end
 
   # Runs a call on +entries+ under +resolved+, the apply rule at a request.
-  def forget(entries, args, resolved = llm_context, context = nil)
+  def forget(entries, args, resolved = llm_context, context = nil, pinned = nil)
     apply = lambda do
       Samagotchi::LLMContextApply.run!(entries, layers: resolved.active_layers, rule: resolved.apply, moment: :request,
                                                 protect_steps: resolved.protect_steps, root: dir, now: now)
     end
     call = Samagotchi::Tools::BuiltinCalls.build("forget_outputs", args)
     described_class.call(described_class::Turn.new(conversation: entries, context: context), call,
-                         llm_context: resolved, apply: apply, root: dir, now: now)
+                         llm_context: resolved, apply: apply, root: dir, pinned: pinned, now: now)
   end
 
   def edits(entries) = entries.select { |entry| entry[:edits] }.to_h { |entry| [entry[:tool_ids].first, entry[:edits]] }
@@ -177,6 +177,24 @@ RSpec.describe Samagotchi::LLMContextForget do
     expect(entries[5][:edits]).to eq("t2" => drop)
   end
 
+  it "can't forget an output of an item the user pinned (the refusal is WorkingSetSteer::Refused's), but restores one" do
+    entries = conversation
+    pins = [Samagotchi::WorkingSetPin.new(kind: "file", key: File.join(dir, "a.rb"))]
+    pinned = ->(conversation) { Samagotchi::WorkingSet.pinned_ids(conversation, pins: pins, cwd: dir) }
+    words = Samagotchi::WorkingSetSteer::Refused.text(:pinned_by_user)
+
+    result = forget(entries, { "ids" => %w[t1 t2], "note" => "a.rb and the log" }, llm_context(protect_steps: 0), nil,
+                    pinned)
+    expect(result).to start_with("forgot t2: applied")
+    expect(result).to include("not done:\n- t1: #{words}")
+    expect(edits(entries).keys).to eq(%w[t2])
+
+    # A forget from before the pin: the model may still bring it back.
+    forget(entries, { "ids" => %w[t1], "note" => "a.rb" }, llm_context(:turn_end, protect_steps: 0))
+    expect(forget(entries, { "restore" => %w[t1] }, llm_context, nil, pinned))
+      .to eq("restored t1: its stub was never sent")
+  end
+
   it "restores a read whose forget is still staged (never sent)" do
     entries = conversation
     forget(entries, { "ids" => %w[t1], "note" => "a.rb" }, llm_context(:turn_end))
@@ -255,6 +273,26 @@ RSpec.describe Samagotchi::LLMContextForget do
       expect(last.find { |message| message[:tool_call_id] == "a" }[:content])
         .to eq("[execute] [#t1] (forgotten) it counts to 40 [restore: t1]")
       expect(last.find { |message| message[:tool_call_id] == "b" }[:content]).to start_with("[forget_outputs]\n[#t2] forgot t1")
+    end
+
+    it "chat: a pinned file's read isn't forgotten, and the refusal reaches the model" do
+      file = File.join(dir, "a.rb").tap { |path| File.write(path, "#{source}\n") }
+      adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["a", "read", { "path" => file }]),
+                                    FakeChatAdapter.tools(["b", "forget_outputs", { "ids" => ["t1"], "note" => "40 lines" }]),
+                                    FakeChatAdapter.text("Done."))
+      kernel = test_kernel
+      kernel.session_cwd = -> { dir }
+      kernel.working_set_pins = -> { [Samagotchi::WorkingSetPin.new(kind: "file", key: file)] }
+      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0))
+      chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
+
+      chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5,
+                    on_stream_event: ->(_event) {})
+
+      last = adapter.requests.last[:messages]
+      expect(last.find { |message| message[:tool_call_id] == "a" }[:content]).to include("line 40 of a.rb")
+      expect(last.find { |message| message[:tool_call_id] == "b" }[:content])
+        .to include("nothing forgotten\nnot done:\n- t1: #{Samagotchi::WorkingSetSteer::Refused.text(:pinned_by_user)}")
     end
   end
 end

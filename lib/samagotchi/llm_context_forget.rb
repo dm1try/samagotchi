@@ -36,7 +36,10 @@ module Samagotchi
   #   to free anything (SMALL), an output already stubbed or forgotten, an
   #   id nothing in context has;
   # - an output the user dropped (WorkingSetSteer): neither forgotten nor
-  #   restored by the model, in WorkingSetSteer::Refused's words.
+  #   restored by the model, in WorkingSetSteer::Refused's words;
+  # - an output of an item the user pinned (+pinned+: WorkingSet.pinned_ids
+  #   of the session's pins), in WorkingSetSteer::Refused's words too (a
+  #   restore of one is fine: it brings the output back).
   # A read is never restored: reading the file again is its restore, and
   # the file may have changed.
   module LLMContextForget
@@ -74,8 +77,10 @@ module Samagotchi
     # call (both loops add the model's entry before its calls run).
     # @param apply [#call] → LLMContextApply::Outcome: the apply rule at a
     #   request, on the turn's conversation (KernelLoop#apply_llm_context!)
+    # @param pinned [#call, nil] conversation → the ids the user's pins
+    #   hold (WorkingSet.pinned_ids), asked only when a forget is asked
     # @return [String] the tool result
-    def call(turn, call, llm_context:, apply:, root: Dir.pwd, now: Time.now.utc.iso8601(3))
+    def call(turn, call, llm_context:, apply:, root: Dir.pwd, pinned: nil, now: Time.now.utc.iso8601(3))
       request = Tools::ForgetOutputs.parse(call)
       conversation = turn.conversation
       return restore(turn, request.restore, llm_context) if request.restore? && request.ids.empty?
@@ -85,7 +90,8 @@ module Samagotchi
                "what's ruled out, NEXT), since it is all that stays of them"
       end
 
-      forgotten, refused = forget(conversation, request, llm_context.protect_steps, root, now)
+      pinned_ids = pinned ? pinned.call(conversation) : Set.new
+      forgotten, refused = forget(conversation, request, llm_context.protect_steps, root, now, pinned_ids)
       lines = if forgotten.empty?
                 ["nothing forgotten"]
               else
@@ -99,7 +105,7 @@ module Samagotchi
     # Saves a staged forget on each output +request+ names that may go.
     # @return [Array(Array<String>, Hash{String => String})] the ids
     #   forgotten, and the refused ones with why
-    def forget(conversation, request, protect_steps, root, now)
+    def forget(conversation, request, protect_steps, root, now, pinned_ids)
       outputs = outputs(conversation)
       last = LLMContextStale.step_count(conversation)
       # The steps before the call's own: protected_ids counts that one too.
@@ -107,7 +113,7 @@ module Samagotchi
                                                                root: root)
       refused = {}
       forgotten = request.ids.select do |id|
-        why = refusal(conversation, outputs[id], request.keep[id], last, protect_steps, kept_reads)
+        why = refusal(conversation, outputs[id], request.keep[id], last, protect_steps, kept_reads, pinned_ids)
         refused[id] = why if why
         why.nil?
       end
@@ -124,11 +130,12 @@ module Samagotchi
     # Why +output+ can't go (a String for the result), nil when it can.
     # +last+: the call's own step; the protect_steps steps before it are
     # the model's latest outputs.
-    def refusal(conversation, output, keep, last, protect_steps, kept_reads)
+    def refusal(conversation, output, keep, last, protect_steps, kept_reads, pinned_ids)
       return "no output with that id in context (ids look like t42)" unless output
 
       held = LLMContextEdit.on(conversation[output.index])[output.ref.id]
       return WorkingSetSteer::Refused.text(:dropped) if held&.kind == LLMContextEdit::DROP
+      return WorkingSetSteer::Refused.text(:pinned_by_user) if pinned_ids.include?(output.ref.id)
       return "already forgotten or stubbed" if held
       if protect_steps.positive? && output.step >= last - protect_steps
         return "from your last #{protect_steps} step#{"s" unless protect_steps == 1}; you may still need it, forget it later"

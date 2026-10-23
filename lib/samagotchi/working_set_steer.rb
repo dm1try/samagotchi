@@ -47,6 +47,7 @@ module Samagotchi
     class Refused < StandardError
       MESSAGES = {
         dropped: "dropped by the user",
+        pinned_by_user: "pinned by the user: it stays in your context",
         not_in_set: "not in the working set",
         only_edited: "nothing to drop: only edited or written (no read of it is sent)",
         derived: "nothing to drop: an older session's output that chi can't name",

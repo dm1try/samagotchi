@@ -47,8 +47,10 @@ module Samagotchi
     # collapsed); +state+ live|stale|forgotten|dropped; +tokens+ its content
     # outputs as sent; +ops+ read|edit for a file, read|write for a memory,
     # read for a URL, in first-seen order; +count+ the runs that touched
-    # it; +first_id+ the first one's chi id (ToolIds).
-    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id)
+    # it; +first_id+ the first one's chi id (ToolIds); +pinned+ whether
+    # the user pinned it (WorkingSetPin: the model's forget_outputs refuses
+    # its outputs), whatever the strategy.
+    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned)
 
     # A projection and the conversation's size (entries) it was built
     # from: the web keeps the newer of an event's and a GET's by it.
@@ -83,12 +85,14 @@ module Samagotchi
     # @param strategy [Symbol, Array<Symbol>] :none or the layers, as
     #   LLMContextView takes it (the session's current one)
     # @param stat [#call] File.stat, or a stand-in (specs)
+    # @param pins [Array<WorkingSetPin>] the session's pins
     # @return [Snapshot]
-    def build(conversation, cwd:, strategy:, stat: File.method(:stat))
+    def build(conversation, cwd:, strategy:, stat: File.method(:stat), pins: [])
       conversation = Array(conversation)
       view = LLMContextView.new(strategy: strategy)
+      pinned = pins.to_set { |pin| [pin.kind, pin.key] }
       items = all_touches(conversation, cwd, view).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
-        item(kind, key, group, conversation, view, stat)
+        item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]))
       end
       Snapshot.new(items: items, at: conversation.size)
     end
@@ -115,6 +119,19 @@ module Samagotchi
         Output.new(id: ref.id, index: touch.run.index, derived: ref.derived?,
                    sent: still_sent?(touch, conversation, view))
       end
+    end
+
+    # The ids of the content outputs of the items +pins+ name (the ones
+    # the model's forget_outputs refuses), by the same pairing as #build.
+    # @param pins [Array<WorkingSetPin>]
+    # @return [Set<String>]
+    def pinned_ids(conversation, pins:, cwd:)
+      return Set.new if pins.empty?
+
+      conversation = Array(conversation)
+      pinned = pins.to_set { |pin| [pin.kind, pin.key] }
+      touches = all_touches(conversation, cwd, LLMContextView.new(strategy: LLMContextView::NONE))
+      touches.select { |touch| touch.content && pinned.include?([touch.kind, touch.key]) }.to_set { |touch| touch.run.ref.id }
     end
 
     # Every paired run's touches, with what +view+ sends of its output.
@@ -168,7 +185,7 @@ module Samagotchi
       names - missing
     end
 
-    def item(kind, key, group, conversation, view, stat)
+    def item(kind, key, group, conversation, view, stat, pinned)
       first = group.first
       contents = group.select(&:content)
       tokens = contents.sum { |touch| touch.sent.length / TokenUsage::CHARS_PER_TOKEN / touch.share }.ceil
@@ -180,7 +197,7 @@ module Samagotchi
                 LIVE
               end
       Item.new(kind: kind, key: key, state: state, tokens: tokens, ops: group.map(&:op).uniq, count: group.size,
-               first_id: first.run.ref.id)
+               first_id: first.run.ref.id, pinned: pinned)
     end
 
     # Whether the model is still sent +touch+'s output: whole (with the
