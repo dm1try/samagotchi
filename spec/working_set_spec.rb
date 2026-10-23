@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/working_set"
+require "samagotchi/working_set_pin"
 
 RSpec.describe Samagotchi::WorkingSet do
   let(:now) { "2026-10-22T18:00:00.000Z" }
