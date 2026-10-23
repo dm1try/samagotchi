@@ -326,11 +326,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       def once_ready = -> { File.exist?(@ready) }
 
       # A grandchild killed with the group may take a moment to be reaped.
-      def running?(pattern)
-        deadline = now + 1
-        sleep 0.05 while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && now < deadline
-        alive
-      end
+      def running?(pattern) = !wait_until(timeout: 1, interval: 0.05) { !system("pgrep", "-f", pattern, out: File::NULL) }
 
       it "kills the command, keeping its output so far" do
         started = now
@@ -455,16 +451,13 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       # The orphan is reaped by init: give it a moment.
-      def alive?(pid)
-        deadline = now + 2
-        loop do
-          Process.kill(0, pid)
-          return true if now > deadline
+      def alive?(pid) = !wait_until(timeout: 2, interval: 0.05) { gone?(pid) }
 
-          sleep 0.05
-        rescue Errno::ESRCH
-          return false
-        end
+      def gone?(pid)
+        Process.kill(0, pid)
+        false
+      rescue Errno::ESRCH
+        true
       end
 
       # Left running: the call has returned, so nothing of it stops the
@@ -731,8 +724,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         result = described_class.call("trap 'echo mine' EXIT; #{until_touched("go")}; exit 4")
         record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
         FileUtils.touch("go")
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-        sleep 0.05 until File.exist?(record.exit_code_path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        wait_for("the waiter's exit code file", timeout: 10, interval: 0.05) { File.exist?(record.exit_code_path) }
 
         expect(Samagotchi::Tools::TaskWait.call(task_id(result), timeout: 10)).to include("status: failed", "exit_code: 4")
       end
@@ -772,11 +764,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(running?("sleep 31.64")).to be(false)
       end
 
-      def running?(pattern)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
-        sleep 0.05 while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
-        alive
-      end
+      def running?(pattern) = !wait_until(timeout: 2, interval: 0.05) { !system("pgrep", "-f", pattern, out: File::NULL) }
     end
 
     describe ".sweep_leftovers" do

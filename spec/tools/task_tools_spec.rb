@@ -308,7 +308,7 @@ RSpec.describe "task tools" do
 
     it "stops the task's whole group, a grandchild the shell waits on too" do
       record, = described_class.create_task("sleep 31.75 & wait")
-      expect(wait_until { system("pgrep", "-f", "sleep 31.75", out: File::NULL) }).to be(true)
+      wait_for("the grandchild sleep 31.75 to start") { system("pgrep", "-f", "sleep 31.75", out: File::NULL) }
 
       stopped, = described_class.stop_task(record.id, by: "model")
 
@@ -319,7 +319,7 @@ RSpec.describe "task tools" do
     it "KILLs a task that ignores TERM once the grace is over" do
       stub_const("#{described_class}::STOP_GRACE_SEC", 0.3)
       record, = described_class.create_task("trap '' TERM; sleep 31.76")
-      expect(wait_until { system("pgrep", "-f", "sleep 31.76", out: File::NULL) }).to be(true)
+      wait_for("the TERM-ignoring sleep 31.76 to start") { system("pgrep", "-f", "sleep 31.76", out: File::NULL) }
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       stopped, = described_class.stop_task(record.id, by: "model")
@@ -336,7 +336,7 @@ RSpec.describe "task tools" do
       reader = Thread.new do
         until done
           seen << described_class.get_record(record.id).first&.status
-          sleep 0.005
+          sleep 0.005 # sleep-ok: the reader's polling pace, sampling the status during the stop
         end
       end
 
@@ -535,7 +535,7 @@ RSpec.describe "task tools" do
       task_id = extract_field(create_result, "task_id")
       # Both lines out first: under load the child may take over the 1 s wait to print.
       output_path = extract_field(create_result, "output_path")
-      wait_until(timeout: 10, interval: 0.05) { File.read(output_path).include?("second") }
+      wait_for("the task to print its second line", timeout: 10, interval: 0.05) { File.read(output_path).include?("second") }
       result = described_class.call(task_id, timeout: 1, tail_lines: 1)
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: running")
@@ -592,13 +592,19 @@ RSpec.describe "task tools" do
       create_result = Samagotchi::Tools::TaskCreate.call("echo one; echo two; echo three; sleep 30")
       task_id = extract_field(create_result, "task_id")
       output_path = extract_field(create_result, "output_path")
-      wait_until(timeout: 10, interval: 0.05) { File.read(output_path).include?("three") }
+      wait_for("the task to print three", timeout: 10, interval: 0.05) { File.read(output_path).include?("three") }
+      # The user stops it once task_wait is polling (its cancelled check runs each poll).
+      polling = Queue.new
       stopper = Thread.new do
-        sleep 0.3
+        pop!(polling, "task_wait's first poll")
         Samagotchi::Tools::TaskRuntime.stop_task(task_id, by: "user")
       end
 
-      result = described_class.call(task_id, tail_lines: 2)
+      polled = lambda do
+        polling << true
+        false # never cancelled: the user's stop ends the wait
+      end
+      result = described_class.call(task_id, tail_lines: 2, cancelled: polled)
       join!(stopper, "the stopper")
 
       expect(result).to include("status: stopped").and include("stop_reason: stopped_by_user")
@@ -868,10 +874,10 @@ RSpec.describe "task tools" do
   describe "the exit code from chi's waiter (a shell that wrote none)" do
     let(:runtime) { Samagotchi::Tools::TaskRuntime }
 
-    def wait_for_file(path, timeout: 10.0) = wait_until(timeout: timeout) { File.exist?(path) }
+    def wait_for_file(path, timeout: 10.0) = wait_for("#{path} to exist", timeout: timeout) { File.exist?(path) }
 
     # SpecWaiting's, with this group's longer default (a real shell's exit).
-    def wait_until(timeout: 10.0, interval: 0.05, &) = super
+    def wait_for(what, timeout: 10.0, interval: 0.05, **, &) = super
 
     it "records 128 + the signal for a shell killed by one, with no stop_reason" do
       record, = runtime.create_task("kill -TERM $$; sleep 5")
@@ -901,13 +907,13 @@ RSpec.describe "task tools" do
       }.each do |command, (status, code)|
         it "corrects it to #{status} / #{code} for #{command.inspect}, keeping finished_at" do
           record, = runtime.create_task(command)
-          wait_until { !Samagotchi::ProcessGroup.alive?(record.pid) }
+          wait_for("the task's shell to exit") { !Samagotchi::ProcessGroup.alive?(record.pid) }
 
           early, = runtime.get_record(record.id)
           expect(early).to have_attributes(status: "failed", exit_code: nil, stop_reason: "process_ended_without_exit_code")
 
           @gate << true
-          wait_until { runtime.load_record(record.id).exit_code }
+          wait_for("the waiter's exit code in the record") { runtime.load_record(record.id).exit_code }
 
           expect(runtime.load_record(record.id)).to have_attributes(status: status, exit_code: code, stop_reason: nil,
                                                                     finished_at: early.finished_at)
@@ -1056,7 +1062,7 @@ RSpec.describe "task tools" do
   # The record once it no longer runs (each poll is a refresh).
   def finished_record(task_id, timeout: 10.0)
     record = nil
-    wait_until(timeout: timeout, interval: 0.05) do
+    wait_for("task #{task_id} to finish", timeout: timeout, interval: 0.05, seen: -> { record&.status }) do
       record, = Samagotchi::Tools::TaskRuntime.get_record(task_id)
       !record.running?
     end
@@ -1076,7 +1082,7 @@ RSpec.describe "task tools" do
 
   def wait_for_task(task_id, timeout: 10.0)
     result = nil
-    wait_until(timeout: timeout, interval: 0.05) { !(result = Samagotchi::Tools::TaskGet.call(task_id)).include?("status: running") }
+    wait_for("task #{task_id} to end", timeout: timeout, interval: 0.05) { !(result = Samagotchi::Tools::TaskGet.call(task_id)).include?("status: running") }
     result
   end
 
