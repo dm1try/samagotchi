@@ -237,8 +237,11 @@ test("inside the session's folder a line names a file by its relative path (the 
 
 test("pending ops come from command_queued (any client's), net with their inverse, clear at command_ran; undo and undo all", () => {
   const { ws, pop, sent, row, infoEl } = steeringView();
+  let railDraws = 0;
+  ws.onServer(() => { railDraws += 1; });
   ws.commandQueued({ command_id: "c1", line: "/working-set drop /p/lib/a.rb /p/lib/b.rb", waits: "turn_end", client_id: "other" });
   ws.commandQueued({ command_id: "c0", line: "/model x", waits: "turn_end" });
+  assert.equal(railDraws, 1, "a pending op redraws the rail's marks");
   const a = row("a.rb");
   assert.ok(a.classList.contains("pending"));
   assert.equal(a.querySelector(".ws-pend").textContent, "drops next turn");

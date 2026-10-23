@@ -914,6 +914,7 @@ body.working-set .ts-live{position:relative;padding-right:264px}
 .ws-item.leave,.ws-more.leave{opacity:0;pointer-events:none}
 /* Just entered (FLASH_MS): an accent dot for the glyph and a tint; it settles (the tint fades 800 ms). */
 .ws-item.fresh{background:var(--accent-tint)}
+.ws-item.pending{outline:1px dashed var(--warn-border);outline-offset:-1px;background:var(--warn-bg)}
 .ws-item.fresh .k{font-size:0;display:flex;align-items:center;justify-content:center;height:var(--ws-line)}
 .ws-item.fresh .k::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
 .ws-more{padding-left:17px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}

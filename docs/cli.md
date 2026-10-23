@@ -1024,7 +1024,8 @@ turn view ignores it.
   `/working-set` above); a dropped row offers `undrop`. Between turns it
   applies at once; while a turn runs it waits for the turn's end: the row is
   dashed with `drops next turn` and an `undo`, and the list's foot counts the
-  pending changes (`undo all`), in every tab and after a reload. On a phone a
+  pending changes (`undo all`), in every tab and after a reload; the stage's
+  rail dashes the item's line too (its tooltip says `drops next turn`). On a phone a
   tap on a row opens its actions under it. `drop` is greyed, with why on
   hover, for an item only edited, a memory only preloaded, or one already
   forgotten. Under a strategy with forget a row also offers `pin`

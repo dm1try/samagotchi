@@ -232,6 +232,9 @@ has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or prelo
 exception's words, so it must keep a way out). A pending pin or unpin is dashed with `applies next turn`, and
 `pendingSteers` nets it with its inverse; a pin queued after a drop stands for both (the worker's pin takes the
 pending drop off).
+The rail stays read-only but marks a line with a pending op: dashed, its title adding `drops next turn` (or `pinned
+next turn`…; `working_set_rail.js pendingText`, a group's from its members). The view runs its `onServer` listeners
+on a change of the pending ops too, so the stage redraws the rail with `pending()`.
 
 **Looks** (design spec §3, §5): a stale line is faded (`opacity: .55`); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are

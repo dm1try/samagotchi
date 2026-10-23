@@ -63,3 +63,20 @@ test("the rail folds to its head line by its button (kept per browser); a click 
 test("ringBucket: warn from 70 %, danger from 90 %", () => {
   assert.deepEqual([10, 70, 89, 90].map(ringBucket), ["", "warn", "warn", "danger"]);
 });
+
+test("the rail marks a line with a pending op (dashed, its title says it), in place; read-only", () => {
+  const s = rail();
+  s.r.draw(items("a.rb", "b.rb"), { now: 0 });
+  const line = (name) => [...s.r.el.querySelectorAll(".ws-item")].find((n) => n.querySelector(".t").textContent === name);
+  const a = line("a.rb");
+  assert.equal(a.classList.contains("pending"), false);
+  s.r.draw(items("a.rb", "b.rb"), { now: 0, pending: new Map([["file:a.rb", "drop"]]) });
+  assert.ok(line("a.rb") === a, "the same node, patched");
+  assert.ok(a.classList.contains("pending"));
+  assert.match(a.title, /drops next turn$/);
+  assert.equal(line("b.rb").classList.contains("pending"), false);
+  assert.equal(s.r.el.querySelector("button.ws-act-b"), null);
+  s.r.draw(items("a.rb", "b.rb"), { now: 0, pending: new Map() });
+  assert.equal(a.classList.contains("pending"), false);
+  s.done();
+});
