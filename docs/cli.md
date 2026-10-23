@@ -1297,7 +1297,8 @@ chi share revoke --all          # every link to every session
   participant has a spending cap (`--cap DOLLARS`, default $2, `web.participants.cap`), counted from their turns'
   cost and the side requests they cause; at the cap their next comment is refused and you get a notice, and `chi
   share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review
-  boundary: restart an older one.
+  boundary: restart an older one. While your turn waits at the step limit (Continue or Stop), their turns wait too
+  (still queued, still counted): they run, in order, once you continue, stop or send a turn of your own.
 - For now a participant's page shows the session's title and status; the thread and the comment box come in a later
   chi (an agent participant can wait on its turns' replies through the API). They can't reach anything else: every
   other route answers them 403, another session 404.

@@ -73,7 +73,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `POST /api/sessions/:id/turn` | participant | a queued review turn of their own ([Turns](#turns)) |
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
-| `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
+| `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
 | `GET /` | participant | the participant page (server-rendered, no script): "Alex's review", the session's title and status, "Comments open soon", the participants' names. Never the owner's page, where every route would refuse them. |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
@@ -111,8 +111,17 @@ worker checks their link (`participants.json`: revoked, expired) and their cap a
 dequeued (`:turn_dequeued`) and audited (`revoked`, `cap_reached`) instead of run, so a revoke also stops what they
 had queued. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin keeps
 their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; it isn't
-continued once their link ended or their cap is reached. Their `wait` always waits as for a queued turn of theirs,
-never for the next reply past a cursor (which could be anyone's).
+continued once their link ended or their cap is reached. The step-limit Continue offer of the owner's turn is the
+owner's to answer: while one stands, the worker **holds** a participant's input file (`Worker#run_input_files`,
+`SessionInbox.participant_input?`; an unreadable file counts) instead of running it, which would drop the offer. It
+stays in the inbox: still queued on the Bridge (counted against their queue limit, `turn/dequeue` takes it back),
+and it doesn't hold back a command written after it (`#ready_command?`: that may be the owner's `/continue`). Once
+the owner continues, stops or sends a turn of their own (which drops the offer, as any owner prompt does), the held
+turns run in the order they came, each through the link and cap check above as it starts; a reminder turn drops the
+offer too and so releases them. The offer lives in the worker: a worker that restarts has none, and runs them.
+Their `wait` always waits as for a queued turn of theirs, never for the next reply past a cursor (which could be
+anyone's); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`), the offer asked before the wait
+began too.
 
 **The tool calls.** `Guardrails::ReviewBoundary` denies a participant's turn everything but reads of the project
 ([guardrails](../guardrails.md#a-participants-review-boundary)). Approvals and questions are owner-only: the boundary
@@ -238,3 +247,4 @@ A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
   shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary, which denies
   everything but reads of the project.
 - A participant's message is never sent without its review header, and never merged into the owner's message.
+- A participant's turn never answers or drops the owner's Continue offer: it waits until the owner has.
