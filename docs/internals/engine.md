@@ -523,6 +523,24 @@ owner wrote it (its input file's `author`, stamped by chi web from the request's
 has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn` gets the
 origin, and `#turn_author` reads its author for the gate's checks.
 
+Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any author but none or `"owner"`) goes:
+
+- **The opening message**: `{role: "user", content:, turn_id:, author:, author_name:}` (`Engine#author_fields`;
+  the name from `participants.json` at the turn's start, `SessionParticipants`, left out when the sidecar doesn't
+  name the participant). Merged input and steers carry the same two keys (`Steer::Line#author`, grouped by sender
+  and author so a participant's lines never share the owner's message). Assistant and tool messages carry none:
+  `Steer.author_at(messages, index)` resolves the turn's author by position. `ChatLoop#plain` keeps the keys
+  (`Steer::AUTHOR_KEYS`).
+- **The wire**: such a message goes out under the review-contribution header (`Steer.header` /
+  `Steer.review_header`, both loops through `Steer.wire_text`; see prompt-caching.md). Saved raw.
+- **`Session#last_turn.author`** (`LastTurn#origin` stays the category) and the turn's analytics record's `author`
+  (`SessionMetrics`).
+- **Commands and queued turns**: `QueuedCommand#author` (a `/word` input file, `WorkerInbound#take_input`, or a
+  `/word` POST /turn, `Bridge#queue_command_request`), in `command_queued`; `turn_enqueued`; the accumulator's
+  queued rows.
+- **The system prompt**: `Engine#refresh_participants!` at a turn's start (after `apply_toolkit!`) rebuilds the
+  prompt when the session gains its first active participant or loses its last (the participants line).
+
 ### Hook points (not events)
 
 `:session_start`, `:before_turn`, `:after_turn` and `:session_end` are hook points: the Engine fires them on the

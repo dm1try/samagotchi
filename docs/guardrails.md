@@ -691,6 +691,19 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
 - Every load failure is shown once, at the start of the first turn
   (`guardrails> …` in the terminal, a red line on the web).
 
+## Participants' text in later turns
+
+A participant's message (a review contribution, see
+[internals/participants.md](internals/participants.md#attribution)) stays in
+the history, so later **owner** turns read it. chi marks it: the wire header
+above it says it is a participant's and not the owner's instruction, and the
+system prompt says the same while the session has participants. Owner turns
+keep every guardrail. But an owner turn that says "do what Alex said" hands
+Alex's text the owner's tools: the model will act on it as the owner asked.
+That is the residual risk, documented rather than engineered away: on a
+session with sensitive tools, quote the proposal you want applied in your own
+turn instead.
+
 ## Limits
 
 Text matching on shell commands stops accidents, not a model set on getting

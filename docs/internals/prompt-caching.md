@@ -44,6 +44,7 @@ right-hand column happens.
 │                ◄── remote Claude / Messages: cache_control breakpoint #1 │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ SYSTEM, volatile tail (per session, least → most changing)               │
+│   Participants: … (only while the session has participants)              │  first joins / last leaves
 │   Model: this session runs on …                                          │  another session
 │   working directory (location)                                           │  (expected: only
 │   session id + log                                                       │  this tail differs)
@@ -115,6 +116,13 @@ right-hand column happens.
   history under `none`; without a drop, `none` sends the stored Array as it is. Its `working_set` note (what the user
   dropped or brought back) is a tail system message after the history, one per turn with ops, escaped as context
   notes are (`Prompt::ESCAPED_KINDS`). The turn-end warm-up never warms a drop sent after the turn: it misses once.
+- **Participants** ([participants.md](participants.md#attribution)). A participant's message carries a wire-only
+  header line (`Steer.review_header`), a pure function of the saved message (its `author_name` included), so a
+  replay sends the same bytes; the owner's messages are sent as before (`spec/review_contribution_spec.rb`, per loop
+  and on a Messages host). The participants line opens the system prompt's volatile tail, after breakpoint #1:
+  a new session's cache is untouched. The Engine checks the sidecar at each turn's start and rebuilds (`reset!`)
+  only when the first participant joins and when the last leaves or expires: one history re-read each, then stable.
+  Under D3(a) the declared tools stay the session's, so an author switch costs nothing.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 
