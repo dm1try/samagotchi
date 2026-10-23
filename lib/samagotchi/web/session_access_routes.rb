@@ -10,6 +10,9 @@ require_relative "../context_command"
 require_relative "../send_command"
 require_relative "../launch_mode"
 require_relative "../model_profile"
+require_relative "../client_id"
+require_relative "../children_status"
+require_relative "../session_metrics"
 
 module Samagotchi
   module Web
@@ -264,11 +267,13 @@ module Samagotchi
       # started (SessionAccess::Local#worker): a remote attach's
       # rediscovery and its features after a restart. 200 {session_id,
       # live, stopped, owner: worker|tui|null, worker: {epoch, started_at,
-      # version, features}|null, parent_strategy}; 404 not_found.
+      # version, features}|null, default_model (this machine's config, as
+      # the wake's), parent_strategy}; 404 not_found.
       def handle_worker(_req, id)
         state = session_access.worker(id)
         json_response(200, { session_id: id, live: state.live?, stopped: state.stopped, owner: state.owner&.kind,
                              worker: state.sidecar && worker_json(state.sidecar),
+                             default_model: ModelProfile.default_model_name,
                              parent_strategy: strategy_json(session_access.parent_strategy(id)) })
       end
 
@@ -276,6 +281,110 @@ module Samagotchi
       # identity (the one in its event ids).
       def worker_json(sidecar)
         { epoch: sidecar.epoch, started_at: sidecar.started_at, version: sidecar.version, features: sidecar.features }
+      end
+
+      # POST /api/sessions/:id/exit {client_id, delete}: a remote attached
+      # TUI's /exit (and the worker's half of /exit --delete and /archive),
+      # relayed to the live worker's exit (BridgeClient#request_exit; never
+      # wakes one). client_id is passed on only when it is an attached TUI's
+      # (tui:…): any other is dropped, and then every stream counts as a UI,
+      # which only keeps the worker up. 200 the Bridge's {status: exiting,
+      # session_id, discard}; 409 held with its {status, reason, tasks,
+      # hint}; 503 not_live, 501 not_supported (an older worker), 504
+      # worker_timeout.
+      def handle_exit(req, id)
+        body = body_hash(req) or return refusal(400, "invalid_json", "invalid JSON body")
+        @session_class.load(id, state_dir: default_state_dir)
+        client_id = body["client_id"] if body["client_id"].is_a?(String) && body["client_id"].start_with?(ClientId::TUI_PREFIX)
+        delete = body["delete"] == true
+
+        request = ->(client) { client.request_exit(client_id: client_id, delete: delete) }
+        with_message(relay(id, bridge_client(id), request, what: "the worker was not asked to exit", cant: "exit from here") do |reply|
+          case reply.status
+          when 200 then json_response(200, reply.json || { status: "exiting", session_id: id })
+          when 409
+            held = reply.json || {}
+            words = "the session's worker stays up (#{held["reason"] || "held"})"
+            json_response(409, held.merge("error" => "held", "detail" => words, "message" => words, "session_id" => id))
+          end
+        end)
+      end
+
+      # POST /api/sessions/:id/recap: the saved recap, and a new one asked for
+      # (BridgeClient#request_recap; it arrives on the stream as
+      # :recap_ready). 200 the Bridge's {enabled, saved, request,
+      # min_user_turns, session_off}; 503, 501, 504 as every relay.
+      def handle_recap(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        request = lambda(&:request_recap)
+        with_message(relay(id, bridge_client(id), request, what: "no recap was read", cant: "recap") do |reply|
+          json_response(200, reply.json || {}) if reply.status == 200
+        end)
+      end
+
+      # GET /api/sessions/:id/stats: the live worker's metrics for /stats
+      # (its stats route; a worker from before it answers only its state's
+      # metrics). 200 {session_id, metrics}; 503 not_live, 504
+      # worker_timeout, 502 bridge_error.
+      def handle_stats(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        client = bridge_client(id) or return with_message(not_live(id))
+
+        status, json = client.get("stats")
+        metrics = json["metrics"] if status == 200 && json.is_a?(Hash)
+        if status == 404 && !(json.is_a?(Hash) && json["error"] == "unknown_session")
+          status, json = client.get("state")
+          metrics = json.dig("session_state_snapshot", "metrics") if status == 200 && json.is_a?(Hash)
+        end
+        return json_response(200, { session_id: id, metrics: metrics }) if status == 200
+        return with_message(worker_timeout("the stats were not read")) if status.nil?
+        return with_message(not_live(id)) if status == 404
+
+        with_message(error_response(502, "bridge_error", "the stats were not read: the session's worker answered #{status}"))
+      end
+
+      # GET /api/sessions/:id/children/counts: the session's delegates'
+      # counts (ChildrenStatus.counts, from their files here), a remote
+      # TUI's status row segment. 200 {running, waiting, unreported}; 404.
+      def handle_children_counts(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        json_response(200, ChildrenStatus.counts(id, state_dir: default_state_dir).to_h)
+      end
+
+      # A turn id as a session's prompts carry it (a uuid; any word-ish id).
+      TURN_ID = /\A[\w.:-]{1,128}\z/
+
+      # GET /api/sessions/:id/turns/:turn_id/records: a turn's saved tool
+      # records and turn record (SessionMetrics, from analytics.json here),
+      # as saved: what a remote TUI's join draws the steps' durations and a
+      # failed turn's line from. 200 {tool_records: […], turn_record: {…} |
+      # null}; 400 invalid_turn_id; 404 not_found.
+      def handle_turn_records(_req, id, turn_id)
+        return refusal(400, "invalid_turn_id", "not a turn id: #{turn_id.to_s[0, 80]}") unless TURN_ID.match?(turn_id)
+
+        @session_class.load(id, state_dir: default_state_dir)
+        dir = Session.session_dir(id, state_dir: default_state_dir)
+        json_response(200, { tool_records: SessionMetrics.saved_tool_records(dir, turn_id),
+                             turn_record: SessionMetrics.saved_turn_record(dir, turn_id) })
+      end
+
+      # {error, detail, message}: the words a remote client raises with.
+      def refusal(status, code, words, **fields)
+        json_response(status, { error: code, detail: words, message: words, **fields })
+      end
+
+      # A relay's error answer (#relay's {error, detail}) with its message
+      # too, as a remote attach's routes answer every refusal.
+      def with_message(response)
+        status, _headers, chunks = response
+        return response if status < 400
+
+        body = JSON.parse(chunks.join)
+        return response unless body.is_a?(Hash) && body["error"] && !body.key?("message")
+
+        json_response(status, body.merge("message" => body["detail"]))
+      rescue JSON::ParserError
+        response
       end
 
       # POST /api/sessions/:id/notes {text, source}: a context note for the

@@ -740,4 +740,100 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(call("/api/sessions/#{session.id}/worker").last["worker"]).to include("epoch" => nil)
     end
   end
+
+  describe "a remote attach's terminal commands: exit, recap, stats, children counts, a turn's records" do
+    let(:session) { make(status: "running") }
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:path) { "/api/sessions/#{session.id}" }
+
+    before { allow(app).to receive(:bridge_client).and_return(bridge) }
+
+    def reply(status, body) = Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
+
+    it "relays /exit with an attached TUI's client id only, and delete; 200 as the worker said" do
+      allow(bridge).to receive(:request_exit).and_return(reply(200, { status: "exiting", session_id: session.id, discard: false }))
+
+      expect(call("#{path}/exit", method: "POST", body: { client_id: "tui:1@mac", delete: true }))
+        .to eq([200, { "status" => "exiting", "session_id" => session.id, "discard" => false }])
+      call("#{path}/exit", method: "POST", body: { client_id: "web:x" })
+      call("#{path}/exit", method: "POST", body: {})
+
+      expect(bridge).to have_received(:request_exit).with(client_id: "tui:1@mac", delete: true).once
+      expect(bridge).to have_received(:request_exit).with(client_id: nil, delete: false).twice
+    end
+
+    it "answers a held worker's 409 with its reason and tasks, and the words" do
+      allow(bridge).to receive(:request_exit)
+        .and_return(reply(409, { status: "held", reason: "other_ui", tasks: [{ id: "t1", command: "sleep 9" }], session_id: session.id }))
+
+      status, body = call("#{path}/exit", method: "POST", body: { client_id: "tui:1@mac" })
+
+      expect(status).to eq(409)
+      expect(body).to include("error" => "held", "status" => "held", "reason" => "other_ui", "session_id" => session.id,
+                              "tasks" => [{ "id" => "t1", "command" => "sleep 9" }])
+      expect(body["message"]).to eq(body["detail"])
+    end
+
+    it "maps exit's and recap's failures as every relay, with {error, detail, message}" do
+      allow(bridge).to receive_messages(request_exit: reply(404, { error: "not_found" }), request_recap: reply(408, { error: "deadline_passed" }))
+
+      exit_status, exit_body = call("#{path}/exit", method: "POST", body: {})
+      recap_status, recap_body = call("#{path}/recap", method: "POST")
+      expect([exit_status, exit_body["error"], recap_status, recap_body["error"]]).to eq([501, "not_supported", 504, "worker_timeout"])
+      [exit_body, recap_body].each { |body| expect(body["message"]).to eq(body["detail"]) }
+
+      allow(app).to receive(:bridge_client).and_return(nil)
+      %w[exit recap].each do |route|
+        expect(call("#{path}/#{route}", method: "POST", body: {}))
+          .to eq([503, { "error" => "not_live", "detail" => "no live bridge for session #{session.id}",
+                         "message" => "no live bridge for session #{session.id}" }])
+      end
+      expect(call("#{path}/stats").first).to eq(503)
+    end
+
+    it "relays /recap: the worker's saved recap and what came of asking" do
+      recap = { enabled: true, saved: { text: "Fixed it.", turns_since: 0 }, request: "started", min_user_turns: 2 }
+      allow(bridge).to receive(:request_recap).and_return(reply(200, recap))
+
+      expect(call("#{path}/recap", method: "POST")).to eq([200, JSON.parse(JSON.generate(recap))])
+    end
+
+    it "reads /stats from the worker, its state's metrics for an older one, 504 when it doesn't answer" do
+      allow(bridge).to receive(:get).with("stats").and_return([200, { "metrics" => { "turns" => 2 } }])
+      expect(call("#{path}/stats")).to eq([200, { "session_id" => session.id, "metrics" => { "turns" => 2 } }])
+
+      allow(bridge).to receive(:get).with("stats").and_return([404, { "error" => "not_found" }])
+      allow(bridge).to receive(:get).with("state").and_return([200, { "session_state_snapshot" => { "metrics" => { "turns" => 1 } } }])
+      expect(call("#{path}/stats").last["metrics"]).to eq("turns" => 1)
+
+      allow(bridge).to receive(:get).with("stats").and_return([nil, nil])
+      status, body = call("#{path}/stats")
+      expect([status, body["error"], body["message"]]).to eq([504, "worker_timeout", body["detail"]])
+    end
+
+    it "counts the session's delegates here; 404 for no session, never a missing route's words" do
+      expect(call("#{path}/children/counts")).to eq([200, { "running" => 0, "waiting" => 0, "unreported" => 0 }])
+
+      status, body = call("/api/sessions/feedbeef00/children/counts")
+      expect([status, body["error"]]).to eq([404, "not_found"])
+      expect(body["detail"]).not_to start_with("not found: /")
+    end
+
+    it "gives a turn's saved records as saved, none for a turn without; 400 for a bad id, 404 for no session" do
+      File.write(File.join(dir_of(session), "analytics.json"), JSON.generate(
+        "tool_records" => [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "read", "duration_ms" => 42 },
+                           { "turn_id" => "t0", "iteration" => 1, "call_index" => 1, "tool" => "read", "duration_ms" => 9 }],
+        "turn_records" => [{ "id" => "t1", "status" => "failed", "failure" => { "summary" => "boom" } }]
+      ))
+
+      status, body = call("#{path}/turns/t1/records")
+      expect(status).to eq(200)
+      expect(body["tool_records"].map { |r| r["duration_ms"] }).to eq([42])
+      expect(body["turn_record"]).to include("status" => "failed")
+      expect(call("#{path}/turns/t9/records")).to eq([200, { "tool_records" => [], "turn_record" => nil }])
+
+      expect(call("#{path}/turns/a%20b/records")).to match([400, include("error" => "invalid_turn_id", "message" => anything)])
+      expect(call("/api/sessions/feedbeef00/turns/t1/records").first).to eq(404)
+    end
+  end
 end

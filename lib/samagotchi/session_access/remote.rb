@@ -492,7 +492,7 @@ module Samagotchi
 
         json = reply.json
         WorkerReply.new(live: json["live"] == true, stopped: json["stopped"] == true, worker: json["worker"],
-                        strategy: strategy_or_hard(json["parent_strategy"]))
+                        strategy: strategy_or_hard(json["parent_strategy"]), default_model: json["default_model"])
       end
 
       # One request to a route, as the session commands make them (the

@@ -117,8 +117,11 @@ module Samagotchi
 
     # A remote session's worker now (Remote#attach_worker, chi web's GET
     # …/worker): +live+, +stopped+ (its stop marker), +worker+ as in
-    # WakeReply (nil: none runs), the parent +strategy+ read now.
-    WorkerReply = Data.define(:live, :stopped, :worker, :strategy)
+    # WakeReply (nil: none runs), the parent +strategy+ read now, and that
+    # machine's +default_model+ (nil from a chi web before it sent one).
+    WorkerReply = Data.define(:live, :stopped, :worker, :strategy, :default_model) do
+      def initialize(live:, stopped:, worker:, strategy:, default_model: nil) = super
+    end
 
     # What chi send --wait and chi answer read before anything is sent, so
     # neither an older reply nor a turn that ends before the first look is

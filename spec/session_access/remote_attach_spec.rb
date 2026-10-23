@@ -73,10 +73,11 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
     expect { remote.attach_wake("feedbeef00", wait: 1) }.to raise_error(ArgumentError)
   end
 
-  it "reads the worker now: live with its epoch, or stopped" do
+  it "reads the worker now: live with its epoch and that machine's default model, or stopped" do
     session = make
     live_worker(session, epoch: "e2e2e2e2")
-    expect(remote.attach_worker(session.id)).to have_attributes(live: true, stopped: false)
+    allow(Samagotchi::ModelProfile).to receive(:default_model_name).and_return("studio-default")
+    expect(remote.attach_worker(session.id)).to have_attributes(live: true, stopped: false, default_model: "studio-default")
     expect(remote.attach_worker(session.id).worker).to include("epoch" => "e2e2e2e2")
 
     stopped = make
