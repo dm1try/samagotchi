@@ -241,6 +241,25 @@ The server's details are the same words (`ParticipantMessages`), with no label.
 
 A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
 
+## The owner's terminal
+
+The attached TUI (`TerminalUI::AttachedLoop`, local or through `--remote`) is the owner's only; there is no
+participant TUI in v1.
+
+- **Who is in the review.** The worker's `ParticipantsWatch` reads `participants.json` again when its mtime moves and
+  measures each grant's expiry at every look. On its idle tick (between turns, `Worker::FALLBACK_TICK_SECONDS`) the
+  worker announces `:participants_changed` (`Engine#announce_participants`: `{participants: [{id, name, kind}],
+  joined: […], left: [{…, reason: revoked | expired}]}`) to every UI; its start announces nobody. "Joined" means
+  invited: participants have no presence of their own yet. `session_state_snapshot`'s `participants` names who is in
+  the review now, so a UI that joins has them. Owner frames only: no participant stream carries them (P4a's filter).
+- **Lines.** A participant's prompt (`turn_enqueued`'s `author`, an origin's, a queued row's, a saved message's
+  `author` / `author_name`) is led by their name (`Formatting#participant_prefix`: `Alex ▸ review>`, cleaned by
+  `ParticipantName`, the id when the TUI knows no name), in a colour picked from their id. Each change is one line per
+  participant; the status row counts who is in.
+- **Commands.** `/share`, `/participants` (`TerminalUI::ParticipantCommands`) run `ShareCommand` for the attached
+  session through the link's `SessionAccess` (`AttachLink#session_access`: `Local`, or the remote's), so their words
+  and refusals are `chi share`'s, led by the command as typed. The REPL answers them with a note.
+
 ## Invariants
 
 - The owner is a loopback peer or the owner's token; nothing else. A participant token never widens to the owner.

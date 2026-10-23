@@ -1305,6 +1305,15 @@ chi share revoke --all          # every link to every session
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
   this machine's chi web; without one on the LAN, chi says the link opens on this machine only.
 - The owner's own token and the `chi web --new-token` rotation are separate: rotating it ends no participant's link.
+- **In the attached terminal.** A participant's message reads `Alex ▸ review> is step 3 right?`, the name in that
+  participant's own colour (queued, running, and the last exchange when you join); yours stay as they were. A line
+  says when someone is invited, revoked or their link expires (`participants> Alex joined (p_7c01d2aa)`,
+  `participants> Alex left: their link was revoked`), within a few seconds and between turns, and the status row
+  counts who is in the review (`2 participants`). The same commands work from there, on the attached session:
+  `/share NAME [--agent] [--expires 3d] [--cap 2]` (the link and its QR code, once), `/participants` (the list),
+  `/participants revoke [P]` (one participant, or everyone) and `/participants cap P DOLLARS`. They are `chi share`'s
+  own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does. The REPL
+  (`--no-shared`) answers them with a note: a participant's turns run on the session's worker.
 
 How it works inside (grants, the gate, the routes, the audit trail):
 [internals/participants.md](internals/participants.md).
@@ -1430,7 +1439,7 @@ changes:
 
 ```
 status> Coordinator | model=Qwen3.6-35B | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli_usage | muted: gh-helper
-status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | mem: skill_coordinator
+status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | 2 participants | ctx=8.1% (under20) | mem: skill_coordinator
 ```
 
 - The session's title first, when it has one (`/title`; not the first message a session without one is named by),
@@ -1447,6 +1456,7 @@ status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | me
   ends and when a delegate's report merges into a turn, the REPL whenever it draws the row. A
   child that starts waiting on an approval (which doesn't wake the parent) shows at the next of
   those.
+- `N participants`: who is in the session's review now ([Participants](#participants)), attached only.
 - `ctx=`: the kernel's context estimate and its bucket, updated during a turn (on hosts that
   report none, `api: openai`, at the turn's end).
 - `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.

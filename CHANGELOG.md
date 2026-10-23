@@ -22,7 +22,9 @@ and commands may change between minor versions. How releases are made:
   `ctx.turn_author`; a hook still runs with the owner's power. The participant's page still shows only the session's
   title and status (an agent participant can wait on its turns' replies through chi web's API). The `review`
   toolkit is new and reserved: config's `toolkit.kits.review` is refused. A session whose worker predates this
-  release takes no participant's turn until it is restarted. See [docs/cli.md](docs/cli.md#participants) and
+  release takes no participant's turn until it is restarted. In the attached terminal a participant's message reads
+  `Alex ▸ review> …`, a line says when someone is invited, revoked or expires, the status row counts them, and
+  `/share` and `/participants` (list, revoke, cap) run `chi share` on the session there. See [docs/cli.md](docs/cli.md#participants) and
   [docs/guardrails.md](docs/guardrails.md#a-participants-review-boundary).
 
 ### Fixed
