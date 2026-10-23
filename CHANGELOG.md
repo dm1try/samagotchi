@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-10-23
+
 ### Added
 
 - Remote sessions: `chi --remote NAME send|answer|note|context|sessions …` (or `CHI_REMOTE=NAME`) runs the session
@@ -17,6 +19,11 @@ and commands may change between minor versions. How releases are made:
   stats`, `context mute`, `broadcast`, …) is refused with exit 2. The next-step commands it prints (`chi answer …`,
   `chi send --wait …`) carry `--remote NAME`; where chi points at `chi --attach` here it names that machine's chi web.
   See [docs/cli.md](docs/cli.md#remote-sessions).
+- `/working-set pin KEY…` keeps an item from the model's `forget_outputs`: its reads, those to come too, stay
+  whole until `/working-set unpin KEY…`. `/working-set add KEY…` brings an item in: the next turn's line asks the
+  model to read it first (one tool call; what it reads is an ordinary read); `/working-set unadd KEY…` takes an
+  add back before then. In the web's working set list (still experimental, `web.working_set: true`), rows offer
+  `pin` / `unpin`, `+` adds an item, and a stale or forgotten row offers a refresh. See [docs/cli.md](docs/cli.md).
 
 ### Changed
 
@@ -27,6 +34,17 @@ and commands may change between minor versions. How releases are made:
 - codex-peer (0.3.3): the same for `pair` through a remote: it attaches only `codex-outbox`, says chi there can't
   send to that Codex, and when chi can't reach the remote names Codex's sandbox `network_access` setting as a
   possible cause. Update with `chi update`.
+- chi web's `POST /api/sessions/:id/stop` also answers `released`; `DELETE /api/sessions/:id` takes `force` (the
+  page sends it). Both are additive.
+
+### Fixed
+
+- The web's stage shrinks back when you close its steps list by hand, instead of keeping its grown height.
+- `/working-set`: a `memory_read` of several names is dropped, pinned or added as a whole (the reply names the
+  others); a quoted KEY keeps its spaces, in the TUI and the web; a file in the session's folder is shown by its
+  relative path.
+- The idle recap's summarize thread ends quietly, logged, on a failure.
+- On Linux a worker stops at once (not ~0.5 s later), and its address is gone before its streams end, so an attached UI follows a restarted worker straight away.
 
 ## [0.102.0] - 2026-10-23
 
@@ -3874,7 +3892,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.102.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.103.0...HEAD
+[0.103.0]: https://github.com/dm1try/samagotchi/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/dm1try/samagotchi/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/dm1try/samagotchi/compare/v0.100.1...v0.101.0
 [0.100.1]: https://github.com/dm1try/samagotchi/compare/v0.100.0...v0.100.1
