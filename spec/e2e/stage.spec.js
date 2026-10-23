@@ -237,6 +237,8 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(asking).toBeHidden();
+  // The frames are sampled at the next frame after the answer: wait for the answered one.
+  await expect.poll(async () => (await frames(page)).some((f) => f.phase === "answered")).toBe(true);
   const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
   expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
   // The card stays where it was (its collapse and the swap above it happen
