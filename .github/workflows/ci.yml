@@ -16,6 +16,11 @@ jobs:
   rspec:
     name: rspec (Ruby ${{ matrix.ruby }})
     runs-on: ubuntu-latest
+    # Spec helper deadlines (wait_for, wait_until, join!, pop!, eventually)
+    # × 2 on the shared runners: headroom, not a slower pass (docs/testing.md,
+    # "Waiting and time").
+    env:
+      SPEC_TIME_SCALE: "2"
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +54,11 @@ jobs:
     # The desktop helper and pbpaste paths are macOS-only.
     name: rspec (macOS, Ruby 3.4)
     runs-on: macos-latest
+    # Spec helper deadlines (wait_for, wait_until, join!, pop!, eventually)
+    # × 2 on the shared runners: headroom, not a slower pass (docs/testing.md,
+    # "Waiting and time").
+    env:
+      SPEC_TIME_SCALE: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
@@ -89,6 +99,11 @@ jobs:
   bundles:
     name: bundles:check
     runs-on: ubuntu-latest
+    # Spec helper deadlines (wait_for, wait_until, join!, pop!, eventually)
+    # × 2 on the shared runners: headroom, not a slower pass (docs/testing.md,
+    # "Waiting and time").
+    env:
+      SPEC_TIME_SCALE: "2"
     steps:
       # The full history and tags: the version check diffs each bundle
       # against the last v* tag (a shallow clone has none and skips it).
