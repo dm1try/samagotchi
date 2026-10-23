@@ -22,7 +22,7 @@ RSpec.describe "Engine#shutdown" do
     add_service("a")
     add_service("b")
     engine.spawn_anytime do
-      sleep(0.2)
+      sleep(0.2) # sleep-ok: a slow command, which the shutdown waits for
       log << "command done"
     end
     engine.shutdown

@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::ChildrenStatus do
       s.pending_question = pending
       s.save(state_dir: tmpdir)
       rewrite(s, "updated_at" => updated_at) if updated_at
-      sleep(0.01)
+      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 
@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::ChildrenStatus do
 
   def reply(child, text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), text)
-    sleep(0.002)
+    sleep(0.002) # sleep-ok: distinct reply names (timestamps)
     Samagotchi::ReplyWait.newest_reply(child.id, state_dir: tmpdir)
   end
 

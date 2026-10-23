@@ -104,9 +104,9 @@ RSpec.describe Samagotchi::ProjectScope do
 
     it "filters Session.list before offset and limit" do
       # updated_at has millisecond precision: keep the order unambiguous.
-      ids = %w[a b c].map { |p| session_in(repo, preview: p).id.tap { sleep 0.005 } }
+      ids = %w[a b c].map { |p| session_in(repo, preview: p).id.tap { sleep 0.005 } } # sleep-ok: distinct updated_at (ms timestamps)
       session_in(plain)
-      sleep 0.005
+      sleep 0.005 # sleep-ok: distinct updated_at (ms timestamps)
       ids << session_in(repo, preview: "d").id
       newest_first = ids.reverse
 

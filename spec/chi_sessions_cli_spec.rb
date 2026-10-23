@@ -70,7 +70,7 @@ RSpec.describe "chi sessions (CLI)" do
       s.last_prompt = prompt
       s.status = status
       s.save(state_dir: state_dir)
-      sleep(0.01) # distinct created_at / updated_at
+      sleep(0.01) # sleep-ok: distinct created_at / updated_at (ms timestamps)
       next if days_old.zero?
 
       path = File.join(state_dir, "#{s.id}.json")

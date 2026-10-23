@@ -272,7 +272,7 @@ RSpec.describe Samagotchi::Broadcast::Triage do
     it "gives the threads still asking one shared grace past the deadline, not one each" do
       stub_const("#{described_class}::JOIN_GRACE", 0.3)
       stuck = Object.new
-      # Ignores the cancel.
+      # sleep-ok: a stuck judge, which ignores the cancel
       def stuck.judge(_note, _card) = sleep(10)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 

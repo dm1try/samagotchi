@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::Broadcast::TriageLog do
   it "rotates once when broadcasts append at the same time: the size check and the rename are under the lock" do
     stub_const("#{described_class}::MAX_BYTES", 2000)
     add("b-00000000", text: "x" * 2000)
-    # Widens the window between the size check and the rename.
+    # sleep-ok: widens the window between the size check and the rename
     allow(File).to(receive(:size).and_wrap_original { |original, *args| original.call(*args).tap { sleep 0.05 } })
 
     threads = %w[b-11111111 b-22222222 b-33333333 b-44444444].map { |id| Thread.new { add(id) } }

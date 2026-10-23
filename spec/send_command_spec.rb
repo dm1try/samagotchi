@@ -772,7 +772,7 @@ RSpec.describe Samagotchi::SendCommand do
           # the session, then serves its Bridge.
           started ||= Samagotchi::Session.list(state_dir: tmpdir).first
           worker ||= Thread.new do
-            sleep(0.3)
+            sleep(0.3) # sleep-ok: the worker comes up a moment after the send began waiting
             locks << Samagotchi::OwnerLock.acquire(dir_of(started), kind: "worker")
             serve(started)
           end

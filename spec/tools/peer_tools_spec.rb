@@ -27,7 +27,7 @@ RSpec.describe "peer tools" do
       s.test_run = test_run
       s.save(state_dir: tmpdir)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: tmpdir), kind: owner) if owner
-      sleep(0.01)
+      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 

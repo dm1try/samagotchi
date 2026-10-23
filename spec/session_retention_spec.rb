@@ -117,7 +117,7 @@ RSpec.describe Samagotchi::SessionRetention do
       3.times do
         s = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
         s.save(state_dir: tmpdir)
-        sleep(0.01)
+        sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
       end
       result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 2)
       expect(result[:deleted].size).to eq(1)

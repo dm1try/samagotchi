@@ -119,7 +119,7 @@ RSpec.describe Samagotchi::ModelRef do
     # The hosts' model lists, as /models gets them (+slow+ answers last).
     def list_models(lists, slow: nil)
       allow(registry).to receive(:list_models_for) do |entry|
-        sleep 0.2 if entry.name == slow
+        sleep 0.2 if entry.name == slow # sleep-ok: the slow host answers last
         Array(lists[entry.name]).map { |id| info(id) }
       end
       registry.list_all_models

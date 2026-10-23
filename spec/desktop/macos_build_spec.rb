@@ -353,7 +353,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         expect([out, status]).to eq(["pasted\n", 0])
         expected = "\e[200~#{message}\n\e[201~"
         expect(received(out_file, expected.bytesize)).to eq(expected.b)
-        sleep 0.2
+        sleep 0.2 # sleep-ok: a late Enter shows by now (tmux has no pass to count)
         expect(File.binread(out_file)).to eq(expected.b)
       end
 

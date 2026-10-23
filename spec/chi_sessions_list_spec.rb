@@ -59,7 +59,7 @@ RSpec.describe "chi sessions list" do
       s.last_turn = last_turn
       s.save(state_dir: state_dir)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
-      sleep(0.01) # distinct updated_at
+      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 

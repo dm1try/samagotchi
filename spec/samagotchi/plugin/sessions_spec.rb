@@ -185,7 +185,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
                                       parent_id: parent_id, delegate: delegate).tap do |s|
         s.last_prompt = prompt
         s.save(state_dir: tmpdir)
-        sleep(0.01)
+        sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
       end
     end
 
