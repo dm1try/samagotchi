@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-10-23
+
 ### Changed
 
 - Web: the stage view's **working set** is on by default (no longer experimental). Beside the running turn a rail
@@ -24,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   whole line.
 - Attaching to a session whose last turn was stopped or canceled shows the turn's canceled line, not the text it
   streamed before the stop as if it were the answer.
+
+Update with `chi update`.
 
 ## [0.104.0] - 2026-10-23
 
@@ -3961,7 +3965,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.104.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.105.0...HEAD
+[0.105.0]: https://github.com/dm1try/samagotchi/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/dm1try/samagotchi/compare/v0.103.0...v0.104.0
 [0.103.0]: https://github.com/dm1try/samagotchi/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/dm1try/samagotchi/compare/v0.101.0...v0.102.0
