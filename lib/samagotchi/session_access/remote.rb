@@ -12,6 +12,7 @@ require_relative "../bridge_client"
 require_relative "../session_continue"
 require_relative "../guardrails/parent_policy"
 require_relative "http_transport"
+require_relative "../chi_invocation"
 
 module Samagotchi
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
@@ -54,6 +55,10 @@ module Samagotchi
 
       def remote? = true
       def name = @entry.name
+
+      # The printed commands' spelling: chi --remote NAME.
+      # @return [ChiInvocation]
+      def invocation = ChiInvocation.new(remote: name)
 
       # Web::SessionAccessRoutes::FEATURE (GET /api/info's), without
       # loading chi web here.
@@ -251,7 +256,9 @@ module Samagotchi
         raise_refusal(reply) unless reply.status == 409 && %w[busy waiting].include?(reply.error)
 
         require_relative "../send_command/busy"
-        SendCommand::Busy.new(error: reply.error, message: reply.json["message"] || reply.json["detail"])
+        SendCommand::Busy.new(error: reply.error, session_id: reply.json["session_id"] || id,
+                              question: PendingQuestion.from_file(reply.json["question"]),
+                              strategy: strategy_of(reply.json["parent_strategy"]))
       end
 
       # ReplyWait on the server, asked again each WAIT_SLICE until it ends

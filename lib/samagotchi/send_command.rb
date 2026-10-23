@@ -582,7 +582,7 @@ module Samagotchi
       # server's wait prepare route reads both (Busy's words).
       session = @access.show(id) unless @access.remote?
       if (busy = @access.busy(id, queue: @queue, session: session))
-        error_line("#{id[0, 8]}  #{busy.message}")
+        error_line("#{id[0, 8]}  #{busy.message(via: @access.invocation)}")
         return 1
       end
 
@@ -642,7 +642,8 @@ module Samagotchi
       # Kept, not deleted: it holds the images, and the message shows as
       # its preview; the user can attach and send it again.
       unless result
-        @info.puts("#{session.id}  failed: its worker did not start; the session is kept (chi --attach #{session.id})")
+        attach = @access.invocation.attach(session.id)
+        @info.puts("#{session.id}  failed: its worker did not start; the session is kept#{" (#{attach})" if attach}")
         return false
       end
       unless result.accepted?
@@ -711,7 +712,7 @@ module Samagotchi
     # for it. Its output shows where the session is open.
     # @return [Integer] 0
     def report_command(id)
-      detail = "#{SENT_COMMAND}: no reply to wait for (its output shows in chi --attach #{id} or the web)"
+      detail = "#{SENT_COMMAND}: no reply to wait for (its output shows in #{@access.invocation.open_it(id)})"
       if @json
         @stdout.puts(JSON.generate({ status: "command", session_id: id, detail: detail }))
         @stdout.flush

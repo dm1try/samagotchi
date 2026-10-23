@@ -85,9 +85,12 @@ exist. **A new session command or flag fails that spec until you choose one.**
    its own `--timeout` runs out, at which point it builds the `timeout` result itself. A 503 `server_stopping` (chi web
    shutting down mid-wait: `ReplyWait`'s `cancelled:` returns `:canceled`) is retried after `RETRY_AFTER` (1 s).
    `HTTPTransport::READ_TIMEOUT` (75 s) is set above the longest answer, a wait slice or a create's wait for its worker.
-6. **The report.** `ParentReport.report` prints it exactly as it does locally. It uses `Remote#parent_strategy`, which
+6. **The report.** `ParentReport.report` prints it as it does locally. It uses `Remote#parent_strategy`, which
    is the last wait's `parent_strategy` (the server's config.yml tightened by the session's own), or `HARD` if no wait
-   has returned one. The exit codes match the local ones (3 for a question, 130 for Ctrl-C).
+   has returned one. The exit codes match the local ones (3 for a question, 130 for Ctrl-C). The commands it prints
+   are spelled by `via:`, the backend's `invocation` (a `ChiInvocation`): `chi --remote NAME answer …` remotely, and
+   what runs here only (`--attach`, `--resume`) gives way to "chi web on NAME". The commands pass it to each text that
+   prints a command (`ParentReport`, `SendCommand::Busy#message`, `sessions stop`, `AnswerCommand`).
 
 The routes, their bodies and their refusals are tabled in [architecture.md](../architecture.md), *chi web's routes for
 the session commands*. Keep that table in step with `SessionAccessRoutes`.
@@ -135,7 +138,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 | `--parent-answers` looser than config.yml (`Guardrails::ParentPolicy.capped_note`) | client | server: the create's `parent_answers_warning` |
 | A parent's option on `chi answer` (`AnswerCommand#parent_refusal`) | client, then the worker | skipped on the client; the worker checks (the answer route forwards `cli:answer`), and its 403 `parent_answer_refused` passes through |
 | What a parent may pick, for the report (`ParentReport.strategy_for`) | client | server: the wait route's `parent_strategy` |
-| `send --wait` busy check (`SendCommand::Busy`) | client | server: `wait/prepare` with `busy: true` → 409 `busy`/`waiting` |
+| `send --wait` busy check (`SendCommand::Busy`) | client | server: `wait/prepare` with `busy: true` → 409 `busy`/`waiting` with the `Busy` fields (`question`, `parent_strategy`); the client words it (`Busy#message(via:)`) |
 | `--continues`' previous link and model (`SendCommand#continued_model`) | client | server: `handle_continue` |
 | `--toolkit`, `--tool`, `--set` (`Toolkit.from_flags`, `SessionConfig.from_flags`) | client | server: sent as `SetupWords` → 400 `invalid_*` → exit 2 |
 | `--dir` (default: the cwd) | client, `File.directory?` | required and absolute on the client (`remote_new_options`); chi web's `scope_dir` checks it exists |
@@ -208,8 +211,6 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 
 ## Known gaps
 
-- The follow-up commands chi prints (`ParentReport`'s `chi answer …`, `chi send --wait …`, `still running: chi --attach
-  ID`, `sessions stop`'s `chi --resume ID`) don't add `--remote NAME`.
 - Remote `sessions stop` always prints "Stopped session …": `Remote#stop` returns true because chi web's stop doesn't
   say whether the worker released the session.
 - `send -m /stats` is refused (UI-only) with "use chi sessions stats ID", which is local-only under a remote.

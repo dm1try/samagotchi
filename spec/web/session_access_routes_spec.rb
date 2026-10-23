@@ -192,6 +192,9 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(body["error"]).to eq("waiting")
       expect(body["message"]).to start_with("waiting for an answer: chi answer #{waiting.id}")
       expect(body["message"]).to end_with("(or --text); chi --attach #{waiting.id} shows it")
+      # Its fields, which a chi --remote client words with its own commands.
+      expect(body).to include("session_id" => waiting.id, "question" => include("id" => "q1", "question" => "Which?"),
+                              "parent_strategy" => include("name", "allowed", "origin"))
     end
 
     it "answers 400 for a body that isn't an object or a turn that isn't a string, and 404 for no such session" do

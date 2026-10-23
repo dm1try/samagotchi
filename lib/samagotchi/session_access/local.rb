@@ -9,6 +9,7 @@ require_relative "../note_delivery"
 require_relative "../image_store"
 require_relative "../context_sources"
 require_relative "../send_command/busy"
+require_relative "../chi_invocation"
 
 module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
@@ -29,6 +30,10 @@ module Samagotchi
       end
 
       def remote? = false
+
+      # The printed commands' spelling: this machine's chi.
+      # @return [ChiInvocation]
+      def invocation = ChiInvocation::HERE
 
       # --- ids and sessions
 

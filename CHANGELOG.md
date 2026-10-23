@@ -14,7 +14,9 @@ and commands may change between minor versions. How releases are made:
   commands against another machine's sessions, through its `chi web --web-host lan`. `chi remote add NAME URL
   --token-file FILE` checks the address and token and saves the remote (`chi remote ls`, `chi remote rm`).
   `send --new` there needs `--dir`, a folder on that machine; what runs on this machine only (attach, `sessions
-  stats`, `context mute`, `broadcast`, …) is refused with exit 2. See [docs/cli.md](docs/cli.md#remote-sessions).
+  stats`, `context mute`, `broadcast`, …) is refused with exit 2. The next-step commands it prints (`chi answer …`,
+  `chi send --wait …`) carry `--remote NAME`; where chi points at `chi --attach` here it names that machine's chi web.
+  See [docs/cli.md](docs/cli.md#remote-sessions).
 
 ### Changed
 

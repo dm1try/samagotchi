@@ -142,7 +142,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       end
 
       expect(run(s.id, "--question", "q1", "--option", "1", "--format", "json")).to eq(3)
-      expect(json_out).to include("status" => "question", "answer_with" => "chi answer #{s.id} --question q2 --option N")
+      expect(json_out).to include("status" => "question", "answer_with" => "#{via.chi} answer #{s.id} --question q2 --option N")
       expect(json_out["question"]).to include("id" => "q2", "options" => %w[Stop Go])
     end
 
@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::AnswerCommand do
 
       expect(run(s.id, "--question", "q1", "--option", "1")).to eq(1)
       expect(err.string).to eq("chi answer: the worker is gone and the question with it; " \
-                               "send the task again: chi send --wait -m \"…\" #{s.id}\n")
+                               "send the task again: #{via.chi} send --wait -m \"…\" #{s.id}\n")
 
       allow(bridge).to receive(:answer).and_raise(Errno::ECONNREFUSED)
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(bridge)
@@ -255,7 +255,9 @@ RSpec.describe Samagotchi::AnswerCommand do
       replies.replace([[404, { error: "not_found" }]])
 
       expect(run(s.id, "--question", "q1", "--dismiss")).to eq(1)
-      expect(err.string).to include("this session's worker runs an older chi and can't dismiss a question")
+      expect(err.string).to include("this session's worker runs an older chi and can't dismiss a question; " \
+                                    "restart it: #{via.chi} sessions stop #{s.id}")
+      expect(err.string).to include(backend == :remote ? "then a message (chi --remote studio send #{s.id} -m …)" : "chi --resume #{s.id}")
     end
 
     it "gives up after --timeout with exit 4, the turn still running" do

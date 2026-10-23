@@ -1206,8 +1206,12 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   before sending to any.
 - Waits run on the server, 30 s at a time, until the answer or your own
   `--timeout`; exit codes are the same. The commands chi prints for what to
-  do next (`chi answer …`, `chi send --wait …`) are for the same remote: add
-  `--remote NAME`, or run with `CHI_REMOTE` set.
+  do next work as pasted: they carry `--remote NAME` (`chi --remote studio
+  answer ab12 --question q1 --option N`, `chi --remote studio send --wait …`),
+  under `CHI_REMOTE` too. What runs on this machine only isn't offered:
+  where chi says `chi --attach ID` here it names that machine's chi web
+  (`chi web on studio shows it`), and `sessions stop` names no `chi
+  --resume`.
 - A remote that can't be reached names itself and why (`chi send: remote
   studio (http://192.168.1.29:4567): connection refused`, exit 1; with
   `--format json` an `error` object).

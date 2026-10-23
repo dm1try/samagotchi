@@ -116,8 +116,9 @@ module Samagotchi
       # none), turn (--turn: known_turn says whether it can be waited for),
       # created (a session just created: no reply, no question), busy (chi
       # send --wait with a message: refuse a running turn, 409 busy or
-      # waiting in SendCommand::Busy's words; queue: true, --queue, refuses
-      # only a waiting question). 200 {session_id, cursor, baseline:
+      # waiting in SendCommand::Busy's words, with its fields: question,
+      # parent_strategy; queue: true, --queue, refuses only a waiting
+      # question). 200 {session_id, cursor, baseline:
       # {messages, question_id, last_turn}, own_turn, known_turn, running,
       # live, settled, last_turn_id}.
       def handle_wait_prepare(req, id)
@@ -129,7 +130,7 @@ module Samagotchi
         if body["busy"] == true
           owner = session_access.owner(id) if session.status == Session::STATUS_RUNNING
           busy = SendCommand::Busy.for(session, owner: owner, queue: body["queue"] == true)
-          return json_response(409, { error: busy.error, detail: busy.message, message: busy.message, session_id: id }) if busy
+          return json_response(409, busy_json(busy)) if busy
         end
 
         question_id = body.key?("question_id") ? body["question_id"]&.to_s : :pending
@@ -137,6 +138,15 @@ module Samagotchi
                                                 created: body["created"] == true)
         json_response(200, wait_start_json(id, start))
       end
+
+      # A Busy refusal: its words here, and its fields, which a chi --remote
+      # client words with its own commands (SessionAccess::Remote#busy).
+      def busy_json(busy)
+        { error: busy.error, detail: busy.message, message: busy.message, session_id: busy.session_id,
+          question: busy.question&.to_file, parent_strategy: (strategy_json(busy.strategy) if busy.strategy) }.compact
+      end
+
+      def strategy_json(strategy) = { name: strategy.name, allowed: strategy.allowed, origin: strategy.origin.to_s }
 
       def wait_start_json(id, start)
         { session_id: id, cursor: start.cursor, baseline: start.baseline.to_h, own_turn: start.own_turn,
@@ -207,7 +217,7 @@ module Samagotchi
         RESULT_FIELDS.each { |key| json[key] = result[key] }
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         json[:question] = result.question&.to_file
-        json[:parent_strategy] = { name: strategy.name, allowed: strategy.allowed, origin: strategy.origin.to_s }
+        json[:parent_strategy] = strategy_json(strategy)
         json
       end
 

@@ -479,8 +479,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
             1. Allow once
             2. Deny
           allowing it is up to your user: deny it, and tell your user
-          deny: chi answer #{@started.id} --question q1 --option Deny --text WHY
-          or leave it open: tell your user it waits in chi web (session #{@started.id[0, 8]}); chi send --wait --format json #{@started.id} waits until they answer
+          deny: #{via.chi} answer #{@started.id} --question q1 --option Deny --text WHY
+          or leave it open: tell your user it waits in #{backend == :remote ? "chi web on studio" : "chi web"} (session #{@started.id[0, 8]}); #{via.chi} send --wait --format json #{@started.id} waits until they answer
       TEXT
     end
 
@@ -592,7 +592,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       busy = make(status: "running")
 
       expect(run("--wait", "-m", "and?", busy.id)).to eq(1)
-      expect(err.string).to eq("#{busy.id[0, 8]}  busy: a turn is running; wait or attach\n")
+      expect(err.string).to eq("#{busy.id[0, 8]}  busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}\n")
       expect(delivered).to be_empty
     end
 
@@ -692,7 +692,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
 
         expect(run("--queue", "--wait", "-m", "later", waiting.id)).to eq(1)
-        expect(err.string).to include("waiting for an answer: chi answer #{waiting.id} --question q1")
+        expect(err.string).to include("waiting for an answer: #{via.chi} answer #{waiting.id} --question q1")
         expect(delivered).to be_empty
       end
     end
@@ -701,8 +701,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
 
       expect(run("--wait", "-m", "the first one", waiting.id)).to eq(1)
-      expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an answer: chi answer #{waiting.id} --question q1 --option N " \
-                               "(or --text); chi --attach #{waiting.id} shows it\n")
+      expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an answer: #{via.chi} answer #{waiting.id} --question q1 --option N " \
+                               "(or --text); #{via.shows(waiting.id)} shows it\n")
       expect(delivered).to be_empty
     end
 
@@ -711,7 +711,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       expect(run("--wait", "-m", "go on", waiting.id)).to eq(1)
       expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an approval: deny it, and tell your user " \
-                               "(chi answer #{waiting.id} --question a1 --option Deny --text WHY)\n")
+                               "(#{via.chi} answer #{waiting.id} --question a1 --option Deny --text WHY)\n")
     end
 
     # P3: its guidance follows the session's own, stricter parent_answers.
@@ -740,7 +740,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       expect(run("--wait", "-m", "x", idle.id)).to eq(1)
       expect(err.string).to end_with("chi send: the turn ended without a reply (canceled, failed or empty); " \
-                                     "chi --attach #{idle.id} shows it\n")
+                                     "#{via.shows(idle.id)} shows it\n")
     end
 
     it "says a failed turn's work stayed (its steps and why), so the task isn't sent again" do
@@ -753,7 +753,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
       expect(err.string).to end_with("chi send: the turn failed after 3 tool steps: out of credits on host or: x; " \
-                                     "its work so far stays; chi --attach #{idle.id} shows it\n")
+                                     "its work so far stays; #{via.shows(idle.id)} shows it\n")
     end
 
     it "sees a turn that failed before the first look with nothing new in the messages (a failure after a failure)" do
@@ -770,18 +770,18 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
       expect(err.string).to end_with("chi send: the turn failed: model refused the image; " \
-                                     "chi --attach #{idle.id} shows it\n")
+                                     "#{via.shows(idle.id)} shows it\n")
     end
 
     it "says a canceled or empty turn in its own words" do
       idle = make(status: "idle")
       @on_deliver = -> { update(idle, last_turn: { "outcome" => "canceled", "ended_at" => "t1" }) }
       expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
-      expect(err.string).to end_with("chi send: the turn was canceled; chi --attach #{idle.id} shows it\n")
+      expect(err.string).to end_with("chi send: the turn was canceled; #{via.shows(idle.id)} shows it\n")
 
       @on_deliver = -> { update(idle, last_turn: { "outcome" => "completed", "ended_at" => "t2" }) }
       expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
-      expect(err.string).to end_with("chi send: the turn ended with no visible answer; chi --attach #{idle.id} shows it\n")
+      expect(err.string).to end_with("chi send: the turn ended with no visible answer; #{via.shows(idle.id)} shows it\n")
     end
 
     it "without a message, sees a turn that started and ended between two looks" do
@@ -792,7 +792,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       end
 
       expect(run("--wait", "--timeout", "2", idle.id)).to eq(1)
-      expect(err.string).to end_with("chi send: the turn failed: boom; chi --attach #{idle.id} shows it\n")
+      expect(err.string).to end_with("chi send: the turn failed: boom; #{via.shows(idle.id)} shows it\n")
     end
 
     it "reports a worker that died without saying so" do
@@ -800,7 +800,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       owner[0] = nil
 
       expect(run("--new", "--wait", "-m", "x")).to eq(1)
-      expect(err.string).to end_with("chi send: the worker is gone; chi --attach #{@started.id} shows what happened\n")
+      expect(err.string).to end_with("chi send: the worker is gone; #{via.shows(@started.id)} shows what happened\n")
     end
 
     it "reports a failed worker and a stopped session" do
@@ -815,14 +815,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
     it "gives up after --timeout with exit 4, the session still running" do
       expect(run("--new", "--wait", "--timeout", "0.1", "-m", "x")).to eq(4)
-      expect(err.string).to end_with("chi send: still running after 0.1 s: chi --attach #{@started.id}\n")
+      expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.shows(@started.id)}\n")
     end
 
     it "leaves the turn running on Ctrl-C and exits 130" do
       allow(Samagotchi::ReplyWait).to receive(:call).and_raise(Interrupt)
 
       expect(run("--new", "--wait", "-m", "x")).to eq(130)
-      expect(err.string).to end_with("chi send: still running: chi --attach #{@started.id}\n")
+      expect(err.string).to end_with("chi send: still running: #{via.shows(@started.id)}\n")
       expect(Samagotchi::Session.load(@started.id, state_dir: tmpdir).status).to eq("running")
     end
 
@@ -890,7 +890,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         out.truncate(0)
         out.rewind
         expect(run("--wait", "--turn", "running-1", "--timeout", "0.1", busy.id)).to eq(4)
-        expect(err.string).to end_with("chi send: still running after 0.1 s: chi send --wait --turn running-1 #{busy.id}\n")
+        expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait --turn running-1 #{busy.id}\n")
       end
 
       it "rejects --turn with a message" do
@@ -997,10 +997,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         later { update(busy, pending_question: { id: "q2", question: "Delete it?" }) }
         expect(run("--wait", busy.id)).to eq(3)
         expect(err.string).to include("chi send: waiting for an answer (question): Delete it?\n",
-                                      "answer: chi answer #{busy.id} --question q2 --option N")
+                                      "answer: #{via.chi} answer #{busy.id} --question q2 --option N")
 
         expect(run("--wait", "--timeout", "0.1", busy.id)).to eq(4)
-        expect(err.string).to end_with("chi send: still running after 0.1 s: chi --attach #{busy.id}\n")
+        expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.shows(busy.id)}\n")
         expect(delivered).to be_empty
       end
 
@@ -1037,14 +1037,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           "status" => "question", "session_id" => @started.id,
           "question" => { "id" => "q1", "kind" => "question", "text" => "Which file?", "options" => %w[README.md Gemfile],
                           "multi_select" => false, "allow_freeform" => false },
-          "answer_with" => "chi answer #{@started.id} --question q1 --option N"
+          "answer_with" => "#{via.chi} answer #{@started.id} --question q1 --option N"
         )
       end
 
       it "prints running on a timeout (exit 4) and the other ends with a detail (exit 1)" do
         expect(run("--new", "--wait", "--format", "json", "--timeout", "0.1", "-m", "x")).to eq(4)
         expect(json_out).to eq("status" => "running", "session_id" => @started.id,
-                               "detail" => "still running after 0.1 s: chi --attach #{@started.id}")
+                               "detail" => "still running after 0.1 s: #{via.shows(@started.id)}")
 
         out.truncate(0)
         out.rewind
@@ -1057,15 +1057,15 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         busy = make(status: "running")
         expect(run("--wait", "--format", "json", "-m", "and?", busy.id)).to eq(1)
         expect(json_out).to eq("status" => "error", "session_id" => busy.id,
-                               "detail" => "#{busy.id[0, 8]}  busy: a turn is running; wait or attach")
+                               "detail" => "#{busy.id[0, 8]}  busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}")
 
         out.truncate(0)
         out.rewind
         waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
         expect(run("--wait", "--format", "json", "-m", "and?", waiting.id)).to eq(1)
         expect(json_out).to eq("status" => "error", "session_id" => waiting.id,
-                               "detail" => "#{waiting.id[0, 8]}  waiting for an answer: chi answer #{waiting.id} --question q1 " \
-                                           "--option N (or --text); chi --attach #{waiting.id} shows it")
+                               "detail" => "#{waiting.id[0, 8]}  waiting for an answer: #{via.chi} answer #{waiting.id} --question q1 " \
+                                           "--option N (or --text); #{via.shows(waiting.id)} shows it")
 
         out.truncate(0)
         out.rewind

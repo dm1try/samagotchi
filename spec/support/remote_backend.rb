@@ -5,6 +5,7 @@ require "samagotchi/web/app"
 require "samagotchi/session_manager"
 require "samagotchi/remotes"
 require "samagotchi/session_access/remote"
+require "samagotchi/chi_invocation"
 
 # SessionAccess::Remote against chi web's Rack app in this process: no
 # socket, the same state dir (so a spec's sessions, owner locks and stubs
@@ -77,6 +78,9 @@ module RemoteBackend
     %i[local remote].each do |backend|
       group.context("on the #{backend} backend", backend: backend) do
         let(:backend) { backend }
+        # How the commands it prints are spelled there: chi, or chi
+        # --remote studio (the Remote's name).
+        let(:via) { backend == :remote ? Samagotchi::ChiInvocation.new(remote: "studio") : Samagotchi::ChiInvocation::HERE }
         before do |example|
           reason = example.metadata[:local_only]
           skip("local only: #{reason}") if backend == :remote && reason

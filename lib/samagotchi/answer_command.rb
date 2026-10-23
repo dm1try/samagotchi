@@ -210,7 +210,7 @@ module Samagotchi
         return failure(worker_gone(id)) if reply.json&.dig("error") == "unknown_session"
 
         cant = options[:dismiss] ? "dismiss a question" : "take an answer"
-        failure(BridgeClient.stale_worker_message(id, cant: cant))
+        failure(BridgeClient.stale_worker_message(id, cant: cant, via: @access.invocation))
       else failure("the worker answered #{reply.status}: #{reply.json&.dig("detail") || reply.body}")
       end
     rescue Errno::ETIMEDOUT
@@ -230,7 +230,8 @@ module Samagotchi
     end
 
     def worker_gone(id)
-      "the worker is gone and the question with it; send the task again: chi send --wait -m \"…\" #{id}"
+      "the worker is gone and the question with it; send the task again: " \
+        "#{@access.invocation.command("send --wait -m \"…\" #{id}")}"
     end
 
     # @return [Integer] 1, after the line

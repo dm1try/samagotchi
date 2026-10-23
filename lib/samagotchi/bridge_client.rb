@@ -5,6 +5,7 @@ require "socket"
 
 require_relative "worker_sidecar"
 require_relative "delivery"
+require_relative "chi_invocation"
 require_relative "bridge_client/sse_parser"
 require_relative "bridge_client/event_stream"
 
@@ -54,9 +55,16 @@ module Samagotchi
     # What a UI says when the Bridge answers a route with 404: the worker runs
     # code from before the route. Restarting it picks up the installed chi.
     # @param cant [String] what the old worker can't do, e.g. "run commands"
-    def self.stale_worker_message(session_id, cant:)
-      "this session's worker runs an older chi and can't #{cant}; " \
-        "restart it: chi sessions stop #{session_id} && chi --resume #{session_id} (its turns still work)"
+    # @param via [ChiInvocation] how the commands are spelled (chi --remote
+    #   NAME: no --resume there, a message starts the fresh worker)
+    def self.stale_worker_message(session_id, cant:, via: ChiInvocation::HERE)
+      stop = via.command("sessions stop #{session_id}")
+      restart = if via.remote?
+                  "#{stop}, then a message (#{via.command("send #{session_id} -m …")}) starts a fresh one"
+                else
+                  "#{stop} && chi --resume #{session_id}"
+                end
+      "this session's worker runs an older chi and can't #{cant}; restart it: #{restart} (its turns still work)"
     end
 
     # Port of the live Bridge advertised in +session_dir+'s sidecar, or nil.

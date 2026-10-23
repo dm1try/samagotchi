@@ -87,7 +87,8 @@ module Samagotchi
         # server's (P2's wait route).
         strategy = @access.parent_strategy(id)
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
-                                    json: @json, timeout: timeout, extra: report_extra, strategy: strategy)
+                                    json: @json, timeout: timeout, extra: report_extra, strategy: strategy,
+                                    via: @access.invocation)
       rescue Interrupt
         if @json
           @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled, turn_id: report_turn_id), session_id: id,
@@ -95,7 +96,7 @@ module Samagotchi
           @stdout.flush
           @reported = true
         end
-        error_line("#{command_name}: still running: chi --attach #{id}")
+        error_line("#{command_name}: still running: #{@access.invocation.shows(id)}")
         Exit::INTERRUPTED
       rescue ArgumentError
         error_line("#{command_name}: the session is gone (deleted while waiting)")

@@ -397,7 +397,7 @@ RSpec.describe Samagotchi::SendCommand do
         serve(a, cut: :now)
 
         expect(run("--cut", "--wait", "-m", "go", a.id)).to eq(1)
-        expect(err.string).to include("busy: a turn is running; wait or attach")
+        expect(err.string).to include("busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}")
         expect(inputs_of(a)).to be_empty
       end
     end
@@ -856,7 +856,7 @@ RSpec.describe Samagotchi::SendCommand do
 
         expect(run("--new", "--image", png, "-m", "hi")).to eq(1)
         started = Samagotchi::Session.list(state_dir: tmpdir).first
-        expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept (chi --attach #{started.id})\n")
+        expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept#{" (chi --attach #{started.id})" unless backend == :remote}\n")
         expect(Process).to have_received(:spawn).once
       end
     end
