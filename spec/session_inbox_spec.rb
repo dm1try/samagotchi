@@ -222,10 +222,9 @@ RSpec.describe Samagotchi::SessionInbox do
     let(:output_dir) { File.join(session_dir, described_class::OUTPUT_DIR) }
 
     it "names a turn's reply by time, with its input's enqueued_id when it has one; the names still sort by time" do
+      # No pause between: each name's timestamp has nanosecond digits, which two writes never share.
       described_class.write_output(session_dir, "bare")
-      sleep(0.002)
       described_class.write_output(session_dir, "mine", enqueued_id: "1b2c-3d")
-      sleep(0.002)
       described_class.write_output(session_dir, "odd id", enqueued_id: "../x")
 
       names = Dir.children(output_dir).sort

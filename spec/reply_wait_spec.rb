@@ -48,7 +48,6 @@ RSpec.describe Samagotchi::ReplyWait do
 
   def write_reply(text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
-    sleep(0.002)
   end
 
   # Runs the block on a thread once the wait has looked (+delay+ nil), or
@@ -337,11 +336,12 @@ RSpec.describe Samagotchi::ReplyWait do
 
     it "returns the finished turn's no-reply outcome when its newest reply is an earlier turn's" do
       # The earlier turn's reply is older than the finished turn's end
-      # (it was written at the earlier turn's, so it predates this one).
+      # (it was written at the earlier turn's, so it predates this one): the
+      # end is 10 ms on, past the millisecond its ended_at keeps.
       write_reply("an earlier answer")
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       s.status = "idle"
-      s.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: Time.now.iso8601(3),
+      s.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: (Time.now + 0.01).iso8601(3),
                                              error_kind: "server")
       s.save(state_dir: tmpdir)
 
@@ -397,7 +397,6 @@ RSpec.describe Samagotchi::ReplyWait do
 
     def write_turn_reply(text, id)
       Samagotchi::SessionInbox.write_output(dir, text, enqueued_id: id)
-      sleep(0.002)
     end
 
     def queue_input(id)
@@ -828,7 +827,6 @@ RSpec.describe Samagotchi::ReplyWait do
         s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id,
                                                exhausted: true, limit: 30)
         s.save(state_dir: tmpdir)
-        sleep(0.002)
       end
 
       def sidecar(features)

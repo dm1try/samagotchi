@@ -44,7 +44,6 @@ RSpec.describe "delegate reports" do
 
   def write_reply(session, text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
-    sleep(0.002)
   end
 
   # A turn's end as its worker saves it: idle, last_turn moved on.
@@ -54,7 +53,6 @@ RSpec.describe "delegate reports" do
     s.pending_question = pending_question
     s.last_turn = { "outcome" => outcome, "ended_at" => Time.now.iso8601(6) }
     s.save(state_dir: tmpdir)
-    sleep(0.002)
   end
 
   def ring(session = child, why: "turn_end")
@@ -250,7 +248,6 @@ RSpec.describe "delegate reports" do
       dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
       Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "x1", state_dir: tmpdir)
       Samagotchi::SessionInbox.write_output(dir, "follow-up answer", enqueued_id: "x1")
-      sleep(0.002)
       Samagotchi::SessionInbox.write_output(dir, "queued answer", enqueued_id: "q1")
       end_turn(child)
       ring

@@ -418,7 +418,6 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
   def write_reply(session, text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
-    sleep(0.002)
   end
 
   def later(delay = 0.1, &)
@@ -611,7 +610,6 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       def write_turn_reply(session, text, enqueued_id)
         Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text,
                                               enqueued_id: enqueued_id)
-        sleep(0.002)
       end
 
       it "is not refused for a running turn: it sends a queue and prints its own turn's reply, not the running one's" do

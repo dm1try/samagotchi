@@ -60,7 +60,8 @@ RSpec.describe "delegate tools" do
       s.status = status if status
       s.save(state_dir: tmpdir)
       own(s, kind: owner) if owner
-      sleep(0.01)
+      # sleep-ok: the next session's updated_at (ms) sorts after this one's (newest child first); Session#save takes no clock
+      sleep(0.002)
     end
   end
 
@@ -78,7 +79,6 @@ RSpec.describe "delegate tools" do
 
   def write_reply(session, text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
-    sleep(0.002)
   end
 
   # A turn that failed as its worker records it: idle, no reply, last_turn moved on.
@@ -511,7 +511,6 @@ RSpec.describe "delegate tools" do
 
         def turn_reply(text, id)
           Samagotchi::SessionInbox.write_output(child_dir, text, enqueued_id: id)
-          sleep(0.002)
         end
 
         def cursor = Samagotchi::Tools::DelegateCursors.get(parent.id, child.id, state_dir: tmpdir)

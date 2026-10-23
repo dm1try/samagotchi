@@ -436,7 +436,6 @@ RSpec.describe Samagotchi::AnswerCommand do
 
       def turn_reply(session, text, id)
         Samagotchi::SessionInbox.write_output(session_dir(session), text, enqueued_id: id)
-        sleep(0.002)
       end
 
       def end_turn(session, id, outcome: "completed")
