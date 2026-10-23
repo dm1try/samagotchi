@@ -263,6 +263,13 @@ module Samagotchi
     # Whether this is a review session (chi review, the web's Start review).
     def review? = !@review.nil?
 
+    # How many tool outputs its history holds: its tool messages
+    # (tool_response, a chat loop's tool; a native step's one message holds
+    # every call's output and counts once).
+    def tool_output_count = @messages.count { |msg| TOOL_ROLES.include?((msg[:role] || msg["role"]).to_s) }
+
+    TOOL_ROLES = %w[tool_response tool].freeze
+
     # The working set's items the user pinned (/working-set pin;
     # WorkingSetPin), [] with none: the model's forget_outputs refuses
     # their outputs. A respawn, a continue and a fork keep them

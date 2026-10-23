@@ -10,6 +10,7 @@ require_relative "../delivery"
 require_relative "../session_inbox"
 require_relative "../session_metrics"
 require_relative "../parent_report"
+require_relative "../review_start"
 require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
@@ -371,7 +372,8 @@ module Samagotchi
 
       # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
       # cap? (dollars)}: a new grant. The answer carries the token and the
-      # link once; chi keeps only its digest.
+      # link once (chi keeps only its digest), and +warning+ for a session
+      # that isn't a review session (ReviewStart.share_warning; null for one).
       def handle_participants_invite(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         ttl = body["ttl"]
@@ -383,8 +385,9 @@ module Samagotchi
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
                                               ttl: ttl, cap: cap, state_dir: default_state_dir)
         link = participant_link(req, id, issued.token)
+        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
-                             link: link, lan: !@lan.nil?, qr_svg: QR.svg(link) })
+                             link: link, lan: !@lan.nil?, qr_svg: QR.svg(link), warning: warning })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
       end

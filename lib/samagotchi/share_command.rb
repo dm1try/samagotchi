@@ -189,6 +189,9 @@ module Samagotchi
                    "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}")
       @stdout.puts(invitation.link)
       @stdout.puts("(shown once: chi keeps only its digest; chi share revoke #{id[0, 8]} #{row.id} ends it)")
+      if invitation.warning
+        error_line("#{command_name}: warning: #{invitation.warning} (#{@access.invocation.command("review --from #{id[0, 8]}")} starts one)")
+      end
       unless invitation.lan
         @stdout.puts("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only")
       end

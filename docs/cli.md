@@ -1356,6 +1356,10 @@ chi review --from 3f9a1c2e docs/plan.md       # a review of a working session: i
   asks), never its transcript. ID keeps running, unarchived, its delegates its own. Its FILEs are relative to ID's
   folder.
 - `chi --remote NAME review … --dir /path/there` starts it on that machine; its chi web checks the files there.
+- Sharing a working session (one `chi review` didn't start) still works, with a warning on stderr that says how many
+  tool outputs its history holds: `chi share: warning: 3f9a1c2e is a working session, not a review session: a
+  participant's review turn can quote what its history holds (42 tool outputs so far). … (chi review --from 3f9a1c2e
+  starts one)`. The web's Invite shows the same words above the link.
 
 How it works inside (grants, the gate, the routes, the audit trail):
 [internals/participants.md](internals/participants.md).

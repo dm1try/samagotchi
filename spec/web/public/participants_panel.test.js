@@ -74,6 +74,9 @@ test("participants: the panel lists the active ones with Cap and Revoke, folds t
   assert.match(shown, /shown once/);
   assert.match(shown, /data-act="share"/);
   assert.doesNotMatch(shown, /class="pp-invite"/);
+  const warned = markupOf(panelTemplate([], { now: NOW, sessionId: "s", invite: { name: "Alex", link: "http://x/", lan: true, warning: "3f9a1c2e is a working session" } }));
+  assert.match(warned, /class="pp-warning"[^>]*>3f9a1c2e is a working session</);
+  assert.doesNotMatch(shown, /pp-warning/);
 });
 
 test("participants: names and badges for the owner's bubbles", () => {

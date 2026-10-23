@@ -102,8 +102,11 @@ module Samagotchi
     # What chi share made: the participant, their token and the link that
     # carries it (both shown this once: chi keeps only a digest), and
     # whether that chi web listens on the LAN (+lan+ false: the link works
-    # on that machine only).
-    Invitation = Data.define(:participant, :token, :link, :lan) do
+    # on that machine only), and the warning for sharing a working session
+    # (ReviewStart.share_warning; nil for a review session).
+    Invitation = Data.define(:participant, :token, :link, :lan, :warning) do
+      def initialize(participant:, token:, link:, lan:, warning: nil) = super
+
       def inspect = "#<Invitation #{participant.id}>"
       alias_method :to_s, :inspect
     end

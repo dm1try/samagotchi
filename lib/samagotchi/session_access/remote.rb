@@ -259,7 +259,7 @@ module Samagotchi
 
         json = reply.json
         Invitation.new(participant: ParticipantView.from_h(json.fetch("participant")), token: json.fetch("token"),
-                       link: json.fetch("link"), lan: json["lan"] == true)
+                       link: json.fetch("link"), lan: json["lan"] == true, warning: json["warning"])
       end
 
       # Revokes one participant (+participant+), a session's, or with no

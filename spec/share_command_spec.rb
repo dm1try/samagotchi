@@ -24,8 +24,10 @@ RSpec.describe Samagotchi::ShareCommand do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def new_session
-    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap do |session|
+  # A review session (chi review), what one shares; a working session
+  # sets review: nil (chi share warns).
+  def new_session(review: { "subjects" => ["plan.md"] })
+    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, review: review).tap do |session|
       session.save(state_dir: state_dir)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     end
@@ -60,6 +62,25 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(lines[2]).to eq("(shown once: chi keeps only its digest; chi share revoke #{session.id[0, 8]} #{grant.id} ends it)")
         expect(Time.iso8601(grant.expires_at) - Time.iso8601(grant.created_at)).to eq(3 * 86_400)
         expect(File.read(grants.path)).not_to include(token)
+      end
+
+      it "warns, naming its tool outputs, when the session isn't a review session; not for a review session" do
+        session.review = nil
+        session.messages = [{ role: "user", content: "go" }, { role: "tool_response", content: "out" },
+                            { role: "tool", content: "out2" }]
+        session.save(state_dir: state_dir)
+        expect(run(session.id, "--name", "Alex")).to eq(0), err.string
+        short = session.id[0, 8]
+        expect(err.string).to eq("chi share: warning: #{Samagotchi::ReviewStart.share_warning(session)} " \
+                                 "(#{via.command("review --from #{short}")} starts one)\n")
+        expect(err.string).to include("#{short} is a working session").and include("(2 tool outputs so far)")
+
+        err.truncate(0)
+        err.rewind
+        session.review = { "subjects" => ["plan.md"] }
+        session.save(state_dir: state_dir)
+        expect(run(session.id, "--name", "Kim")).to eq(0), err.string
+        expect(err.string).to eq("")
       end
 
       it "names the remote's LAN address in a remote's link" do

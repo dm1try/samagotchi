@@ -138,6 +138,20 @@ module Samagotchi
       parts.join("\n\n")
     end
 
+    # The warning for inviting a participant to +session+ when it isn't a
+    # review session (D2: sharing a working session is allowed, with a
+    # warning that names how many tool outputs it holds); nil for a review
+    # session. chi share and the web's Invite show it as it is.
+    # @param session [Session]
+    # @return [String, nil]
+    def share_warning(session)
+      return nil if session.review?
+
+      count = session.tool_output_count
+      "#{session.id[0, 8]} is a working session, not a review session: a participant's review turn can quote what " \
+        "its history holds (#{count} tool output#{"s" unless count == 1} so far). A review session starts from its recap instead."
+    end
+
     def relative(full, root)
       real_root = Guardrails::ProtectedPaths.real(root)
       real = Guardrails::ProtectedPaths.real(full)
