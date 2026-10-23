@@ -32,7 +32,7 @@ module Samagotchi
     # workers: +epoch_watch+ (a frame whose id has another epoch than the
     # cursor's is a new worker: worker_changed first, the client's key
     # updated), +announce_retries+ (stream_retrying once a reconnect fails,
-    # stream_resumed at the next frame), +idle_timeout+ (no byte, not even
+    # stream_resumed once a stream answers again), +idle_timeout+ (no byte, not even
     # the Bridge's 15 s ping, for that long: a half-open connection,
     # reconnected with the cursor).
     class EventStream
@@ -153,6 +153,9 @@ module Samagotchi
         return :unknown_session if status == 404
         return :unreachable unless status == 200
 
+        # Back as soon as the stream answers: a replay may bring nothing
+        # (the session was quiet), and the next frame could be minutes away.
+        announce_resumed
         yielded = false
         parser = SSEParser.new
         loop do
@@ -163,7 +166,6 @@ module Samagotchi
             event = parse(frame[:data])
             next unless event
 
-            announce_resumed
             watch_epoch(frame[:id]) if @epoch_watch
             @last_event_id = frame[:id] if frame[:id]
             yielded = true

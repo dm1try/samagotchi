@@ -125,7 +125,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
   end
 
   describe "announce_retries" do
-    it "says once that it is reconnecting, and that it is back at the next frame" do
+    it "says once that it is reconnecting, and that it is back" do
       port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) },
                         ->(conn) { conn.close },
                         ->(conn) { conn.close },
@@ -133,6 +133,15 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
       stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
 
       expect(types(collect(4))).to eq(%w[snapshot stream_retrying stream_resumed turn_started])
+    end
+
+    it "says it is back once the stream answers, before any frame (a quiet session's replay is empty)" do
+      port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) },
+                        ->(conn) { conn.close },
+                        ->(conn) { conn.write(sse_head + ": ping\n\n") && sleep(2) }])
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
+
+      expect(types(collect(3))).to eq(%w[snapshot stream_retrying stream_resumed])
     end
   end
 
