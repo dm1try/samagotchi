@@ -50,7 +50,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
     turn_thread.report_on_exception = false
     # Wait until the question is pending (question_requested emitted)
-    wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+    wait_for("the pending question", interval: 0.005) { engine.pending_question }
     [turn_thread, result_box, events]
   end
 
@@ -122,7 +122,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       # The question is saved right after it is set: wait for the file, not just the engine.
       on_disk = nil
-      wait_until(timeout: 2) do
+      wait_for("the question saved in the session") do
         on_disk = Samagotchi::Session.load(session.id, state_dir: state_dir)
         on_disk.pending_question
       rescue ArgumentError
@@ -187,7 +187,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         result_box[:result] = engine.request_question(payload)
       end
       turn_thread.report_on_exception = false
-      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
 
       ctrl.cancel!(:user)
       turn_thread.join(2)
@@ -211,7 +211,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       result_box = {}
       turn_thread = Thread.new { result_box[:result] = engine.request_question(payload) }
       turn_thread.report_on_exception = false
-      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
 
       held = Queue.new
       go = Queue.new
@@ -254,7 +254,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       turn_thread = Thread.new { engine.request_question(payload) }
       turn_thread.report_on_exception = false
-      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       id = engine.pending_question.id
 
       engine.cancel_question("user")
@@ -300,7 +300,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         result = engine.open_question(question: "Run it?", options: %w[Yes No], kind: "approval",
                                       approval: { tool: "execute" })
       end
-      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending).to have_attributes(kind: "approval", approval: { tool: "execute" }, status: "pending")
       engine.answer_question(id: pending.id, selected: ["No"])
@@ -356,7 +356,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     def open_approval(engine, fields = approval_fields)
       result = {}
       thread = Thread.new { result[:answer] = engine.open_question(fields) }
-      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       [thread, result, engine.pending_question.id]
     end
 

@@ -99,7 +99,7 @@ RSpec.describe "Engine: a scratch session's approvals" do
     end
     offered = nil
     if scope
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       offered = pending.approval[:scopes]
       engine.answer_question(id: pending.id, selected: [pending.options[offered.index(scope)]])

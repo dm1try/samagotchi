@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     thread = Thread.new { box[:answer] = desk.open_question(fields, **opts) }
     thread.report_on_exception = false
     # Past a standing question pending before it.
-    wait_until(timeout: 2) { desk.pending && desk.pending.kind != "continue" }
+    wait_for("the question pending") { desk.pending && desk.pending.kind != "continue" }
     [thread, box, desk.pending.id]
   end
 
@@ -72,7 +72,7 @@ RSpec.describe Samagotchi::QuestionDesk do
         "child_gone"
       end
       thread = Thread.new { box[:answer] = desk.open_question(fields, watch: watch) }
-      wait_until(timeout: 2) { desk.pending }
+      wait_for("the question pending") { desk.pending }
       desk.answer(id: desk.pending.id, selected: ["No"])
       gate << :go
       thread.join(2)
@@ -82,8 +82,9 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
 
     it "keeps a watch that raises from closing anything" do
-      thread, box, id = open_in_background(watch: -> { raise "boom" })
-      sleep(0.1)
+      calls = 0
+      thread, box, id = open_in_background(watch: -> { calls += 1; raise "boom" })
+      wait_for("the raising watch to run twice") { calls >= 2 }
       desk.answer(id: id, selected: ["Yes"])
       thread.join(2)
       expect(box[:answer].to_h).to include(selected: ["Yes"])
@@ -223,7 +224,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       box = {}
       thread = Thread.new { box[:result] = desk.request(question: "Run it?", options: %w[Yes No]) }
       thread.report_on_exception = false
-      wait_until(timeout: 2) { desk.pending }
+      wait_for("the question pending") { desk.pending }
       id = desk.pending.id
 
       answer = desk.answer(id: id, selected: ["Yes"], client_id: "cli:answer")

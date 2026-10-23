@@ -54,7 +54,7 @@ RSpec.describe "Engine guardrail wiring" do
       engine.interface = :worker
       result = nil
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending).to have_attributes(kind: "approval", header: "Approve tool call?")
       expect(pending.approval).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
@@ -72,7 +72,7 @@ RSpec.describe "Engine guardrail wiring" do
       v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
       thread = Thread.new { engine.request_approval(v) }
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       expect(engine.pending_question).to have_attributes(effects: %w[permit deny], user_only: true)
       engine.cancel_question("user")
       thread.join(2)
@@ -87,7 +87,7 @@ RSpec.describe "Engine guardrail wiring" do
       v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
       thread = Thread.new { engine.request_approval(v) }
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending.approval).to include(tool: "mcp_x_echo", label: "x: echo")
       expect(pending.question.lines.first).to start_with("x: echo: ")
@@ -107,7 +107,7 @@ RSpec.describe "Engine guardrail wiring" do
       v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context, registry: tools)
       thread = Thread.new { engine.request_approval(v) }
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending.approval).to include(tool: "call_tool", acts_as: "mcp_x_echo", label: "x: echo")
       expect(pending.question.lines.first).to eq("x: echo: m=hi\n")
@@ -129,7 +129,7 @@ RSpec.describe "Engine guardrail wiring" do
         v.context = guardrail_context(engine)
         v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context, registry: tools)
         thread = Thread.new { engine.request_approval(v) }
-        wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+        wait_for("the pending question", interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
         engine.cancel_question("dismissed", id: pending.id)
         thread.join(2)
@@ -147,7 +147,7 @@ RSpec.describe "Engine guardrail wiring" do
       engine.interface = :worker
       result = nil
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
-      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      wait_for("the pending question", interval: 0.005) { engine.pending_question }
       engine.cancel_question("dismissed", id: engine.pending_question.id)
       thread.join(2)
       expect(result.deny_text).to include("The approval was cancelled.")
@@ -166,7 +166,7 @@ RSpec.describe "Engine guardrail wiring" do
 
       def pending_for(engine, verdict)
         thread = Thread.new { engine.request_approval(verdict) }
-        wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+        wait_for("the pending question", interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
         yield pending if block_given?
         engine.cancel_question("dismissed", id: pending.id)
@@ -186,7 +186,7 @@ RSpec.describe "Engine guardrail wiring" do
         pending = pending_for(engine, ask_for(engine, call)) do
           # The question is saved right after it is set: wait for the file, not just the engine.
           reloaded = nil
-          wait_until(timeout: 2) do
+          wait_for("the question saved in the session") do
             reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
           rescue ArgumentError
             nil
