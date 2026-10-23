@@ -418,5 +418,16 @@ RSpec.describe ReleaseTools do
          "(rake release:bump does both)"]
       )
     end
+
+    it "names the remote attach's temporary refusals while RemoteLink::NOT_YET is defined" do
+      write(ReleaseTools::REMOTE_LINK, "class RemoteLink\n  NOT_YET = \"(%s isn't available)\"\nend\n")
+      git("add", ".")
+      git("commit", "-q", "-m", "not yet")
+      expect(described_class.consistency_problems(tmp)).to eq([described_class.remote_not_yet_problem])
+
+      write(ReleaseTools::REMOTE_LINK, "class RemoteLink\nend\n")
+      git("commit", "-q", "-am", "done")
+      expect(described_class.consistency_problems(tmp)).to eq([])
+    end
   end
 end

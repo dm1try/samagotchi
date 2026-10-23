@@ -397,6 +397,22 @@ module ReleaseTools
       problems << "#{File.basename(dir)}: #{NEXT_KEY} is still set: raise its requires_chi to \">= #{version}\" " \
                   "and drop the marker (rake release:bump does both)"
     end
+    problems << remote_not_yet_problem if remote_not_yet?(root)
     problems
+  end
+
+  # The remote attach's temporary refusals (TerminalUI::RemoteLink::NOT_YET:
+  # /exit, /archive, /stats, /recap through a remote) ship only with their
+  # routes (remote-sessions P4-D8: P4a and P4b in one release).
+  REMOTE_LINK = "lib/samagotchi/terminal_ui/remote_link.rb"
+
+  def remote_not_yet?(root)
+    path = File.join(root, REMOTE_LINK)
+    File.exist?(path) && File.read(path).match?(/^\s*NOT_YET\s*=/)
+  end
+
+  def remote_not_yet_problem
+    "#{REMOTE_LINK}: RemoteLink::NOT_YET is still defined: the remote attach's /exit, /archive, /stats and " \
+      "/recap need their chi web routes (P4b) before a release"
   end
 end
