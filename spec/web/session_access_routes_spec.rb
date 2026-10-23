@@ -352,4 +352,43 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(project.source("ours")).not_to be_nil
     end
   end
+
+  describe "the refusals' fields: a remote client raises the same exception" do
+    it "names an archive's reason and the delegate that holds it" do
+      session = make(status: "running")
+      own(session)
+
+      expect(call("/api/sessions/#{session.id}/archive", method: "POST", body: {}))
+        .to eq([409, { "error" => "busy", "detail" => "a turn is running; wait for it or cancel it first",
+                       "message" => "a turn is running; wait for it or cancel it first", "session_id" => session.id,
+                       "reason" => "busy", "busy_id" => session.id }])
+    end
+
+    it "gives a chi REPL's session its OwnedByTUI message and id, and a restart refusal its reason" do
+      session = make
+      own(session, kind: "tui")
+
+      expect(call("/api/sessions/#{session.id}/stop", method: "POST", body: {}))
+        .to eq([409, { "error" => "owned_by_tui", "detail" => "session #{session.id} is open in a chi REPL; close it there first",
+                       "message" => "session #{session.id} is open in a chi REPL; close it there first",
+                       "session_id" => session.id }])
+      idle = make
+      status, body = call("/api/sessions/#{idle.id}/restart", method: "POST", body: {})
+      expect(status).to eq(409)
+      expect(body).to include("error" => "not_running", "reason" => "not_running", "session_id" => idle.id)
+      expect(body["message"]).to eq(body["detail"])
+    end
+
+    it "lists an ambiguous continue's sessions" do
+      a = make
+      b = make
+      File.rename(Samagotchi::Session.session_file(b.id, state_dir: state_dir),
+                  Samagotchi::Session.session_file("#{a.id[0, 4]}#{b.id[4..]}", state_dir: state_dir))
+
+      status, body = call("/api/sessions", method: "POST", body: { continues: a.id[0, 4], idle: true })
+
+      expect(status).to eq(400)
+      expect(body).to include("error" => "ambiguous_id", "ids" => [a.id, "#{a.id[0, 4]}#{b.id[4..]}"].sort)
+    end
+  end
 end

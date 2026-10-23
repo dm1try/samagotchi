@@ -764,16 +764,16 @@ module Samagotchi
       def continue_from(given, prompt:, preview:, model:)
         [@manager.continue_session(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir), nil]
       rescue SessionContinue::Refused => e
-        extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
-        [nil, json_response(409, { error: e.reason.to_s, detail: e.message, **extra })]
+        extra = e.reason == :continued ? { next_id: e.ids.first } : {}
+        [nil, refusal_response(409, e.reason.to_s, e, session_id: e.session_id, reason: e.reason.to_s, ids: e.ids, **extra)]
       rescue SessionManager::ArchiveRefused => e
-        [nil, error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)]
-      rescue SessionManager::OwnedByTUI
-        [nil, owned_by_repl(given)]
+        [nil, archive_refused(e)]
+      rescue SessionManager::OwnedByTUI => e
+        [nil, owned_by_repl(given, e)]
       rescue ModelProfile::MissingModel => e
         [nil, error_response(400, "invalid_model", e.message)]
       rescue Session::AmbiguousId => e
-        [nil, error_response(400, "ambiguous_id", e.message)]
+        [nil, refusal_response(400, "ambiguous_id", e, ids: e.ids)]
       rescue ArgumentError => e
         [nil, error_response(404, "not_found", e.message)]
       end
@@ -1179,7 +1179,7 @@ module Samagotchi
           end
         end
       rescue SessionManager::OwnedByTUI => e
-        error_response(409, "owned_by_tui", e.message)
+        owned_by_tui(e)
       end
 
       # Hand a request to the session's live Bridge (+client+, nil without
@@ -1217,8 +1217,22 @@ module Samagotchi
 
       # 409 owned_by_tui in the words a refused archive, delete or continue
       # shows (stop, restart, a turn and a command show OwnedByTUI's own).
-      def owned_by_repl(id)
-        error_response(409, "owned_by_tui", SessionManager::OwnedByTUI.new(id).message)
+      def owned_by_repl(id, error = nil)
+        named = SessionManager::OwnedByTUI.new(id)
+        error ||= named
+        refusal_response(409, "owned_by_tui", error, detail: named.message, session_id: error.session_id)
+      end
+
+      # 409 owned_by_tui in OwnedByTUI's own words (stop, restart, a turn, a
+      # command).
+      def owned_by_tui(error) = refusal_response(409, "owned_by_tui", error, session_id: error.session_id)
+
+      # 409 scratch or busy (every other reason: a turn, a queued prompt, an
+      # open step-limit question, in it or a delegate, +busy_id+), with the
+      # reason for a remote client.
+      def archive_refused(error)
+        refusal_response(409, error.reason == :scratch ? "scratch" : "busy", error, session_id: error.session_id,
+                                                                                  reason: error.reason.to_s, busy_id: error.busy_id)
       end
 
       def not_live(id)
@@ -1439,7 +1453,7 @@ module Samagotchi
         @hub&.touch(id)
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
-        error_response(409, "owned_by_tui", e.message)
+        owned_by_tui(e)
       end
 
       # POST /api/sessions/:id/restart: hand the session to a new worker on
@@ -1455,9 +1469,9 @@ module Samagotchi
                              version: result.version })
       rescue SessionManager::RestartRefused => e
         error = %i[not_running unsupported failed].include?(e.reason) ? e.reason.to_s : "held"
-        json_response(409, { error: error, reason: e.reason.to_s, detail: e.message, session_id: id })
+        refusal_response(409, error, e, reason: e.reason.to_s, session_id: id, version: e.version)
       rescue SessionManager::OwnedByTUI => e
-        error_response(409, "owned_by_tui", e.message)
+        owned_by_tui(e)
       end
 
       # POST /api/sessions/:id/archive: hide it (and its delegates) from the
@@ -1469,10 +1483,10 @@ module Samagotchi
         (result[:archived] + result[:discarded]).each { |sid| @hub&.touch(sid) }
         json_response(200, { status: "archived", session_id: result[:id], archived: result[:archived],
                              stopped: result[:stopped], discarded: result[:discarded] })
-      rescue SessionManager::OwnedByTUI
-        owned_by_repl(id)
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_repl(id, e)
       rescue SessionManager::ArchiveRefused => e
-        error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
+        archive_refused(e)
       end
 
       # POST /api/sessions/:id/unarchive: back to the lists, delegates too.
