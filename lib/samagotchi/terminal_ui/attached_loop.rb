@@ -369,6 +369,8 @@ module Samagotchi
       def switch_worker(event)
         @client = @link.switched(event)
         @worker_changed = true
+        # The new worker's machine may name another default model.
+        @default_model_name = nil
         @view.finish_thinking_spinner
         Log.info(:attached, "worker_changed", port: AttachLink.event_port(event), epoch: event[:epoch])
         nil
@@ -439,11 +441,6 @@ module Samagotchi
         # REPL reads the same words). Before the continue offer: the
         # leaving ones are no answer to it.
         local = route.local
-        # The link can't run it (a remote's, until chi web has its route).
-        if (refused = local && @link.unavailable(local, text))
-          @screen.commit(refused)
-          return nil
-        end
         return submit(nil) if local == :detach
         return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
         return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
@@ -970,6 +967,9 @@ module Samagotchi
       def show_stats
         metrics = @link.stats_metrics
         @screen.commit(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
+      rescue SystemCallError, IOError => e
+        # Through chi web: the message names the remote and what failed.
+        @screen.commit("(no metrics: #{via.remote? ? e.message : "the worker did not answer"})")
       end
 
       # One read on the reader thread: the REPL's multiline read with Tab
@@ -1012,8 +1012,8 @@ module Samagotchi
         @screen.commit(recap_command_text(enabled: answer["enabled"], saved: answer["saved"],
                                           request: answer["request"], min_user_turns: answer["min_user_turns"],
                                           session_off: answer["session_off"] == true))
-      rescue SystemCallError, IOError
-        @screen.commit("(no recap: the worker did not answer)")
+      rescue SystemCallError, IOError => e
+        @screen.commit("(no recap: #{via.remote? ? e.message : "the worker did not answer"})")
       end
 
       def prompt_text

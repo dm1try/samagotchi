@@ -8,8 +8,8 @@ require_relative "../support/recording_surface"
 
 # AttachedLoop on a RemoteLink (chi --remote studio --attach ID): the same
 # TUI, every printed command spelled with --remote studio, the terminal's
-# commands chi web can't run yet refused in one line, and a failure to
-# reach chi web a line, never a crash. The Remote and its client are
+# own commands (/exit, /archive, /stats, /recap) through chi web's routes,
+# and a failure to reach chi web a line, never a crash. The Remote and its client are
 # doubles; RemoteLink is real.
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
   let(:screen) { RecordingSurface.new(columns: 100) }
@@ -36,6 +36,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
       "chi remote add studio http://192.0.2.10:4567 --token-file FILE)"
   end
 
+  # The join's children segment (GET …/children/counts): none by default.
+  before { allow(client).to receive(:children_counts).and_return({ "running" => 0, "waiting" => 0, "unreported" => 0 }) }
+
   def run_with(inputs, events: [])
     allow(client).to receive(:follow) do |&block|
       block.call(joined)
@@ -53,13 +56,108 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
     expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi --remote studio --attach s-1234")
   end
 
-  it "refuses /exit, /exit --delete, /archive, /stats and /recap in one line each, asks nothing, and goes on" do
-    run_with(["/exit", "/exit --delete", "/archive", "/stats", "/recap", nil])
+  def response(status, body) = Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
 
-    ["/exit", "/exit --delete", "/archive", "/stats", "/recap"].each do |word|
-      expect(screen.lines).to include("(#{word} isn't available through a remote yet: /detach leaves the session running)")
+  describe "the terminal's own commands through chi web" do
+    it "/exit: asks the worker to exit with this TUI's client id, and spells the resume with --remote" do
+      allow(client).to receive(:request_exit).and_return(response(200, { status: "exiting", session_id: "s-1234" }))
+
+      expect(run_with(["/exit"])).to eq(:detached)
+
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1@mac")
+      expect(screen.lines.last).to eq("Detached; the session's worker is stopping. Resume with: chi --remote studio --resume s-1234")
     end
-    expect(screen.lines.last).to start_with("Detached; the session keeps running.")
+
+    it "/exit: a worker held up says why, and how to re-attach there" do
+      allow(client).to receive(:request_exit)
+        .and_return(response(409, { error: "held", status: "held", reason: "other_ui", session_id: "s-1234" }))
+
+      run_with(["/exit"])
+
+      expect(screen.lines.last).to match(/\ADetached; the session keeps running \(.+\)\. Re-attach with: chi --remote studio --attach s-1234\z/)
+    end
+
+    it "/exit through a chi web without the route: one line in Remote.too_old_message's words" do
+      too_old = Samagotchi::SessionAccess::Remote.too_old_message(entry, "0.1.0")
+      allow(client).to receive(:request_exit).and_raise(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, too_old)
+
+      run_with(["/exit"])
+
+      expect(screen.lines.last).to eq("Detached (could not ask the worker to stop: #{too_old}). Re-attach with: chi --remote studio --attach s-1234")
+    end
+
+    it "/exit --delete: the worker exits, then the session is deleted there (force)" do
+      allow(client).to receive(:request_exit).and_return(response(200, { status: "exiting", session_id: "s-1234" }))
+      allow(remote).to receive(:delete).and_return({ id: "s-1234", stopped: true })
+
+      run_with(["/exit --delete"])
+
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1@mac", delete: true)
+      expect(remote).to have_received(:delete).with("s-1234", force: true)
+      expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
+    end
+
+    it "/exit --delete refused there: not deleted, and the remote's command to do it" do
+      allow(client).to receive(:request_exit).and_return(response(200, { status: "exiting", session_id: "s-1234" }))
+      allow(remote).to receive(:delete).and_raise(Samagotchi::SessionManager::DeleteRefused.new("s-1234", :still_stopping))
+
+      run_with(["/exit --delete"])
+
+      expect(screen.lines.last).to eq("Detached; the worker is stopping, but session s-1234 was not deleted " \
+                                      "(session s-1234's worker is still shutting down): chi --remote studio sessions delete s-1234")
+    end
+
+    it "/archive: the worker exits, then the session is archived there" do
+      allow(client).to receive(:request_exit).and_return(response(200, { status: "exiting", session_id: "s-1234" }))
+      allow(remote).to receive(:archive).and_return({ id: "s-1234", archived: ["s-1234"], stopped: [], discarded: [] })
+
+      run_with(["/archive"])
+
+      expect(remote).to have_received(:archive).with("s-1234")
+      expect(screen.lines.last).to eq("Detached; archived session s-1234. chi --remote studio sessions list --archived finds it.")
+    end
+
+    it "/stats: that worker's metrics as here, and why when chi web couldn't give them" do
+      allow(client).to receive(:stats).and_return({ "turns" => 2 })
+      down = "no live worker for session s-1234 on studio"
+      run_with(["/stats", nil])
+      expect(screen.lines).to include(attached.send(:format_session_metrics, { turns: 2 }))
+
+      allow(client).to receive(:stats).and_raise(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, down)
+      attached.send(:show_stats)
+      expect(screen.lines.last).to eq("(no metrics: #{down})")
+    end
+
+    it "/recap: the saved recap in the REPL's words, and why when chi web couldn't give it" do
+      allow(client).to receive(:request_recap)
+        .and_return(response(200, { enabled: true, saved: { text: "Fixed the spec.", turns_since: 0 }, request: "started", min_user_turns: 1 }))
+
+      run_with(["/recap", nil])
+
+      expect(client).to have_received(:request_recap)
+      expect(screen.lines.join("\n")).to include("Fixed the spec.")
+
+      allow(client).to receive(:request_recap).and_raise(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, "remote studio: timed out")
+      attached.send(:show_recap)
+      expect(screen.lines.last).to eq("(no recap: remote studio: timed out)")
+    end
+  end
+
+  it "joins with that machine's saved records: the steps' durations, a failed turn's line" do
+    allow(client).to receive(:turn_records).with("t1").and_return(
+      { "tool_records" => [{ "turn_id" => "t1", "tool" => "execute", "duration_ms" => 1234 }],
+        "turn_record" => { "id" => "t1", "status" => "failed", "duration_ms" => 2000, "failure" => { "summary" => "HTTP 500: boom" } } }
+    )
+    messages = [{ role: "user", content: "find it", turn_id: "t1" },
+                { role: "model", content: "Searching.", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+                { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+                { role: "model", content: "Still searching." }]
+    attached.handle_event(JSON.parse(JSON.generate(type: :snapshot, snapshot: { messages: messages, queued: [], event_seq: 1 },
+                                                   session_state_snapshot: { status: "idle", message_count: 4 })))
+
+    expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") })
+      .to eq(["user> find it", 'tool> running command (execute command="true"): ok (1.2s)', "✕ turn failed: HTTP 500: boom · 2.0s"])
+    expect(client).to have_received(:turn_records).once
   end
 
   it "says a mid-session refused token or a too-old chi web in its own words, and goes on" do

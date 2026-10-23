@@ -25,16 +25,11 @@ module Samagotchi
     class RemoteLink
       include AttachLink
 
-      # The terminal's own commands a remote can't do yet (chi web has no
-      # route for them: P4b adds them, and removes this). `rake
-      # release:check` fails while it exists, so it never ships.
-      NOT_YET = "(%s isn't available through a remote yet: /detach leaves the session running)"
-      # The registry ids (SessionCommands' local: true, :attached) NOT_YET
-      # answers.
-      NOT_YET_COMMANDS = %i[exit archive stats recap].freeze
-      # The ones the attached loop runs remotely as it does here: its own
-      # leaving, the deliveries, the dequeue route.
-      HANDLED_COMMANDS = %i[detach cut queue unqueue].freeze
+      # The registry ids (SessionCommands' local: true, :attached) the
+      # attached loop runs remotely as it does here: its own leaving, the
+      # deliveries, the dequeue route, and the exit, archive, stats and
+      # recap through chi web's routes.
+      HANDLED_COMMANDS = %i[detach cut queue unqueue exit archive stats recap].freeze
 
       # About a minute of reconnects (P4-D5); a Bridge here keeps
       # EventStream::REDISCOVER_DELAYS.
@@ -61,6 +56,8 @@ module Samagotchi
         @no_worker_since = nil
         @woken_once = false
         @failure = nil
+        @default_model = woke.default_model
+        @last_records = nil
       end
 
       # GET …/worker, with the reason when there is none: [client, nil]
@@ -112,23 +109,61 @@ module Samagotchi
         raise SessionAccess::WebBridgeClient::Unreachable, e.message
       end
 
-      # chi web has no route for these yet (P4b): the join draws without
-      # durations, as for an older session, and the row has no children.
-      def saved_tool_records(_turn_id) = []
-      def saved_turn_record(_turn_id) = nil
-      def children_counts = ChildrenStatus::Counts.none
+      # A turn's saved records there (GET …/turns/:turn_id/records): [] and
+      # nil when they can't be read, as for an older session. A join asks
+      # for the tool records, then the turn record, of the same turn: one
+      # read gives both, so the second takes what the first read.
+      def saved_tool_records(turn_id)
+        @last_records = [turn_id, turn_records(turn_id)]
+        Array(@last_records[1]&.fetch("tool_records", nil))
+      end
 
-      # /stats, /exit --delete and /archive are NOT_YET's (the loop asks
-      # #unavailable first): never asked until P4b adds their routes.
-      def stats_metrics = nil
-      def delete_session = raise(NotImplementedError, format(NOT_YET, "/exit --delete"))
-      def archive_session = raise(NotImplementedError, format(NOT_YET, "/archive"))
+      def saved_turn_record(turn_id)
+        read = @last_records&.first == turn_id ? @last_records[1] : turn_records(turn_id)
+        @last_records = nil
+        record = read&.fetch("turn_record", nil)
+        record.is_a?(Hash) ? record : nil
+      end
+
+      # The delegates' counts there (GET …/children/counts); none when they
+      # can't be read (the status row keeps no children segment).
+      def children_counts
+        json = @client.children_counts
+        ChildrenStatus::Counts.new(running: json["running"].to_i, waiting: json["waiting"].to_i,
+                                   unreported: json["unreported"].to_i)
+      rescue StandardError => e
+        Log.debug(:attached, "children_counts_failed", error: e.class.name, message: e.message)
+        ChildrenStatus::Counts.none
+      end
+
+      # GET …/stats (nil when the worker didn't give them).
+      # @raise [SessionAccess::WebBridgeClient::Unreachable] chi web couldn't
+      #   be asked, or has no worker for it: the loop says why
+      def stats_metrics = @client.stats
+
+      # /exit --delete, once the worker let go: DELETE …?force=true there
+      # (SessionManager.delete_session's refusals, raised from chi web's
+      # fields).
+      def delete_session
+        @remote.delete(session_id, force: true)
+      rescue SessionAccess::RemoteFailed => e
+        raise SessionAccess::WebBridgeClient::Unreachable, e.message
+      end
+
+      # /archive: POST …/archive there ({discarded: […]}, as
+      # SessionManager.archive_session's).
+      def archive_session
+        @remote.archive(session_id)
+      rescue SessionAccess::RemoteFailed => e
+        raise SessionAccess::WebBridgeClient::Unreachable, e.message
+      end
 
       # That machine's newest chi (the wake's).
       def installed_version = @woke.installed
 
-      # That machine's config's default model (the wake's).
-      def default_model_name = @woke.default_model
+      # That machine's config's default model: the wake's, then the newest
+      # worker read's (a restart may come with another config).
+      def default_model_name = @default_model
 
       # Read again now (a parent's report at the end of a run), the wake's
       # when chi web can't be asked.
@@ -149,14 +184,6 @@ module Samagotchi
       # Why chi web couldn't be asked, the last time it couldn't (its
       # message: the remote's label and the cause), for the closing line.
       attr_reader :failure
-
-      # The line for a terminal command a remote can't do yet, nil for the
-      # rest.
-      # @param local [Symbol] the registry's id
-      # @param text [String] the line as typed
-      def unavailable(local, text)
-        format(NOT_YET, text.strip) if NOT_YET_COMMANDS.include?(local)
-      end
 
       # The images' scratch dir goes with the attach.
       def close
@@ -194,9 +221,22 @@ module Samagotchi
         nil
       end
 
+      # nil without a turn id (an older session's prompt) or when chi web
+      # can't give them (a join reads them within JOIN_READ_TIMEOUT).
+      def turn_records(turn_id)
+        return nil if turn_id.to_s.empty?
+
+        json = @client.turn_records(turn_id)
+        json.is_a?(Hash) ? json : nil
+      rescue StandardError => e
+        Log.debug(:attached, "turn_records_failed", error: e.class.name, message: e.message)
+        nil
+      end
+
       def refresh_features
         state = @remote.attach_worker(session_id)
         @features = Array(state.worker&.fetch("features", nil)) if state.live
+        @default_model = state.default_model if state.default_model
       rescue StandardError => e
         Log.debug(:attached, "worker_features_failed", error: e.class.name, message: e.message)
       end

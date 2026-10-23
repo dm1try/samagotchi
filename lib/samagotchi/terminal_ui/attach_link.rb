@@ -49,6 +49,8 @@ module Samagotchi
 
       # The session's metrics for /stats, nil when the worker did not answer.
       # @return [Hash, nil] string keys
+      # @raise [IOError] the session's machine couldn't be asked (a remote's
+      #   Unreachable: the loop shows its message)
       def stats_metrics = raise(NotImplementedError)
 
       # Store a prompt's @path images where the worker reads them.
@@ -99,11 +101,6 @@ module Samagotchi
       # How the commands the TUI prints are spelled.
       # @return [ChiInvocation]
       def via = raise(NotImplementedError)
-
-      # The line for a terminal command (the registry's local id, the line
-      # as typed) this link can't run, nil when it can.
-      # @return [String, nil]
-      def unavailable(_local, _text) = raise(NotImplementedError)
 
       # Why the session's machine couldn't be asked the last time (for the
       # stream's closing line), nil when there is nothing more to say.

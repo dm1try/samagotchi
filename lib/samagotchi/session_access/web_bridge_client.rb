@@ -36,6 +36,9 @@ module Samagotchi
       # No byte for this long on the stream (the Bridge pings every 15 s): a
       # half-open connection (Wi-Fi gone, the laptop asleep), reconnected.
       STREAM_IDLE_TIMEOUT = 40.0
+      # A read a join waits on (a turn's saved records, the children
+      # counts): a slow chi web can't hold the join up for long (L9).
+      JOIN_READ_TIMEOUT = 5
       # chi web answers no live worker for the session (Mapping).
       NO_WORKER = "no live worker for session %s on %s"
 
@@ -44,7 +47,7 @@ module Samagotchi
         module_function
 
         # @param route [Symbol] :turn, :command, :answer, :dismiss,
-        #   :dequeue, :cancel
+        #   :dequeue, :cancel, :exit, :recap, :stats, :children, :records
         # @param reply [HTTPTransport::Reply]
         # @param session_id [String]
         # @param remote [String] the remote's name
@@ -133,6 +136,51 @@ module Samagotchi
         post(:cancel, "cancel", { reason: reason })
       end
 
+      # POST …/exit: the worker asked to exit (chi web passes client_id on
+      # only when it is an attached TUI's).
+      # @return [BridgeClient::Response] 200 {status: exiting, discard}, 409
+      #   held {reason, tasks}, 408 late, 404 an older worker's
+      def request_exit(client_id:, delete: false)
+        body = { client_id: client_id }
+        body[:delete] = true if delete
+        post(:exit, "exit", body)
+      end
+
+      # POST …/recap: the saved recap, and a new one asked for.
+      # @return [BridgeClient::Response] 200 {enabled, saved, request, min_user_turns, session_off}
+      def request_recap = post(:recap, "recap", {})
+
+      # GET …/stats: the worker's metrics (its state's, for an older
+      # worker), nil when it didn't give them.
+      # @return [Hash, nil]
+      # @raise [Unreachable]
+      def stats
+        response = get(:stats, "stats", read_timeout: READ_TIMEOUT)
+        response.status == 200 ? response.json&.dig("metrics") : nil
+      end
+
+      # GET …/children/counts: the session's delegates' counts there.
+      # @return [Hash] {running, waiting, unreported}
+      # @raise [Unreachable] chi web couldn't answer (or the session is gone)
+      def children_counts
+        response = get(:children, "children/counts", read_timeout: JOIN_READ_TIMEOUT)
+        raise Unreachable, "children counts: chi web answered #{response.status}" unless response.status == 200
+
+        response.json
+      end
+
+      # GET …/turns/:turn_id/records: a turn's saved tool records and turn
+      # record there.
+      # @return [Hash] {tool_records: [...], turn_record: {...} | nil}
+      # @raise [Unreachable]
+      def turn_records(turn_id)
+        response = get(:records, "turns/#{URI.encode_www_form_component(turn_id.to_s)}/records",
+                       read_timeout: JOIN_READ_TIMEOUT)
+        raise Unreachable, "turn records: chi web answered #{response.status}" unless response.status == 200
+
+        response.json
+      end
+
       # Follow the session's events through chi web (see EventStream): with
       # epoch_watch, announce_retries and STREAM_IDLE_TIMEOUT.
       # @return [BridgeClient::EventStream] started
@@ -167,6 +215,13 @@ module Samagotchi
 
       def post(route, path, body, read_timeout: READ_TIMEOUT)
         reply = @remote.route_request(:post, "/api/sessions/#{@session_id}/#{path}", body: body, read_timeout: read_timeout)
+        Mapping.response(route, reply, session_id: @session_id, remote: @remote.name)
+      rescue RemoteFailed => e
+        raise Unreachable, e.message
+      end
+
+      def get(route, path, read_timeout:)
+        reply = @remote.route_request(:get, "/api/sessions/#{@session_id}/#{path}", read_timeout: read_timeout)
         Mapping.response(route, reply, session_id: @session_id, remote: @remote.name)
       rescue RemoteFailed => e
         raise Unreachable, e.message

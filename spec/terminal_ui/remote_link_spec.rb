@@ -48,8 +48,6 @@ RSpec.describe Samagotchi::TerminalUI::RemoteLink do
     expect(link.via.attach("s-1")).to eq("chi --remote studio --attach s-1")
     expect(link.completions).to eq(Samagotchi::TerminalUI::AttachLink::Completions.new(paths: true, memories: false))
     expect(link.reconnect_delays.sum).to be_between(55, 65)
-    expect([link.saved_tool_records("t"), link.saved_turn_record("t"), link.children_counts])
-      .to eq([[], nil, Samagotchi::ChildrenStatus::Counts.none])
   end
 
   describe "#live_worker" do
@@ -146,19 +144,79 @@ RSpec.describe Samagotchi::TerminalUI::RemoteLink do
     link.close
   end
 
-  it "refuses the terminal's commands chi web has no route for yet, in one line, and only those" do
-    expect(link.unavailable(:exit, "/exit --delete ")).to eq(format(described_class::NOT_YET, "/exit --delete"))
-    expect(link.unavailable(:stats, "/stats")).to eq("(/stats isn't available through a remote yet: /detach leaves the session running)")
-    expect(link.unavailable(:unqueue, "/unqueue")).to be_nil
+  describe "the join's reads: a turn's saved records, the children counts" do
+    it "reads a turn's records once for both, and nothing for a prompt without a turn id" do
+      allow(link.client).to receive(:turn_records)
+        .and_return({ "tool_records" => [{ "tool" => "read", "duration_ms" => 12 }], "turn_record" => { "status" => "failed" } })
+
+      expect(link.saved_tool_records("t1")).to eq([{ "tool" => "read", "duration_ms" => 12 }])
+      expect(link.saved_turn_record("t1")).to eq({ "status" => "failed" })
+      expect([link.saved_tool_records(nil), link.saved_turn_record(nil)]).to eq([[], nil])
+      expect(link.client).to have_received(:turn_records).once
+    end
+
+    it "reads again at the next join (a running turn's records grow)" do
+      allow(link.client).to receive(:turn_records).and_return({ "tool_records" => [], "turn_record" => nil })
+      2.times do
+        link.saved_tool_records("t1")
+        link.saved_turn_record("t1")
+      end
+      expect(link.client).to have_received(:turn_records).twice
+    end
+
+    it "draws without them when chi web can't give them: [] and nil, Counts.none" do
+      unreachable = Samagotchi::SessionAccess::WebBridgeClient::Unreachable.new("remote studio: timed out")
+      allow(link.client).to receive(:turn_records).and_raise(unreachable)
+      allow(link.client).to receive(:children_counts).and_raise(unreachable)
+
+      expect([link.saved_tool_records("t1"), link.saved_turn_record("t1"), link.children_counts])
+        .to eq([[], nil, Samagotchi::ChildrenStatus::Counts.none])
+    end
+
+    it "gives the children counts chi web read there" do
+      allow(link.client).to receive(:children_counts).and_return({ "running" => 2, "waiting" => 1, "unreported" => 0 })
+      expect(link.children_counts).to eq(Samagotchi::ChildrenStatus::Counts.new(running: 2, waiting: 1, unreported: 0))
+    end
+  end
+
+  describe "/stats, /exit --delete and /archive" do
+    it "reads the stats through the client, and lets chi web's failure through for the loop to word" do
+      allow(link.client).to receive(:stats).and_return({ "turns" => 3 })
+      expect(link.stats_metrics).to eq("turns" => 3)
+
+      allow(link.client).to receive(:stats).and_raise(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, "down")
+      expect { link.stats_metrics }.to raise_error(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, "down")
+    end
+
+    it "deletes (force) and archives there; a request that can't be made is Unreachable" do
+      allow(remote).to receive(:delete).and_return({ id: "s-1", stopped: true })
+      allow(remote).to receive(:archive).and_return({ id: "s-1", archived: ["s-1"], stopped: [], discarded: [] })
+
+      expect(link.delete_session).to eq({ id: "s-1", stopped: true })
+      expect(remote).to have_received(:delete).with("s-1", force: true)
+      expect(link.archive_session[:archived]).to eq(["s-1"])
+
+      allow(remote).to receive(:archive).and_raise(Samagotchi::SessionAccess::RemoteFailed, "remote studio: refused")
+      expect { link.archive_session }.to raise_error(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, "remote studio: refused")
+      allow(remote).to receive(:delete).and_raise(Samagotchi::SessionManager::DeleteRefused.new("s-1", :worker_running))
+      expect { link.delete_session }.to raise_error(Samagotchi::SessionManager::DeleteRefused)
+    end
+  end
+
+  it "takes the default model of a new worker's machine (GET …/worker), the wake's until then" do
+    allow(remote).to receive(:attach_worker).and_return(
+      Samagotchi::SessionAccess::WorkerReply.new(live: true, stopped: false, worker: worker, strategy: hard,
+                                                 default_model: "after-restart")
+    )
+    expect(link.default_model_name).to eq("studio-default")
+    link.switched({ epoch: "e2" })
+    expect(link.default_model_name).to eq("after-restart")
   end
 
   # A new terminal command (local: true, shown in the attached TUI) must
-  # say what it does remotely: handled, or refused for now.
-  it "covers every terminal command of the attached TUI: handled remotely, or NOT_YET" do
+  # say what it does remotely.
+  it "handles every terminal command of the attached TUI remotely" do
     ids = Samagotchi::SessionCommands.builtin_registry.entries.select { |entry| entry.local && entry.in_ui?(:attached) }.map(&:id).uniq
-    covered = described_class::HANDLED_COMMANDS + described_class::NOT_YET_COMMANDS
-    expect(ids - covered).to eq([])
-    expect(covered - ids).to eq([])
-    expect(described_class::HANDLED_COMMANDS & described_class::NOT_YET_COMMANDS).to eq([])
+    expect(ids.sort).to eq(described_class::HANDLED_COMMANDS.sort)
   end
 end

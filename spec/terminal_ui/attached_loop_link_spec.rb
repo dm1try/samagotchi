@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a link" do
   let(:link) do
     instance_double(Samagotchi::TerminalUI::LocalLink, client: client, via: via, reconnect_delays: [0.5], queues?: true,
                                                        unqueues?: true, children_counts: Samagotchi::ChildrenStatus::Counts.none,
-                                                       installed_version: nil, default_model_name: "dm", unavailable: nil,
+                                                       installed_version: nil, default_model_name: "dm",
                                                        completions: Samagotchi::TerminalUI::AttachLink::Completions::ALL)
   end
   let(:attached) { described_class.new(link: link, screen: screen, client_id: "tui:1") }

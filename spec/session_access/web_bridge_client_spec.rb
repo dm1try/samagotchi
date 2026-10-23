@@ -121,6 +121,59 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     end
   end
 
+  describe "the terminal's commands and the join's reads (P4b)" do
+    it "asks the worker to exit (delete when asked) and passes its 200 and 409 held through" do
+      allow(bridge).to receive(:request_exit).and_return(reply(200, { status: "exiting", discard: true }),
+                                                         reply(409, { status: "held", reason: "other_ui" }))
+
+      expect(client.request_exit(client_id: "tui:1@mac", delete: true).json).to include("status" => "exiting", "discard" => true)
+      held = client.request_exit(client_id: "tui:1@mac")
+      expect([held.status, held.json["reason"]]).to eq([409, "other_ui"])
+      expect(bridge).to have_received(:request_exit).with(client_id: "tui:1@mac", delete: true)
+      expect(bridge).to have_received(:request_exit).with(client_id: "tui:1@mac", delete: false)
+    end
+
+    it "maps exit's and recap's failures as every route: an older worker, late, no worker" do
+      allow(bridge).to receive_messages(request_exit: reply(404, { error: "not_found" }), request_recap: reply(408, { error: "deadline_passed" }))
+      expect(client.request_exit(client_id: "tui:1").json).to include("error" => "not_found")
+      expect(client.request_recap.status).to eq(408)
+
+      allow(app).to receive_messages(bridge_client: nil)
+      expect { client.request_recap }.to raise_error(described_class::Unreachable, "no live worker for session #{session.id} on studio")
+      expect { client.stats }.to raise_error(described_class::Unreachable)
+    end
+
+    it "reads the recap, the stats, the children counts and a turn's records" do
+      allow(bridge).to receive(:request_recap).and_return(reply(200, { enabled: false, session_off: true }))
+      allow(bridge).to receive(:get).with("stats").and_return([200, { "metrics" => { "turns" => 4 } }])
+
+      expect(client.request_recap.json).to eq("enabled" => false, "session_off" => true)
+      expect(client.stats).to eq("turns" => 4)
+      expect(client.children_counts).to eq("running" => 0, "waiting" => 0, "unreported" => 0)
+      expect(client.turn_records("t1")).to eq("tool_records" => [], "turn_record" => nil)
+    end
+
+    it "raises Unreachable for a join read chi web can't answer (the link swallows it)" do
+      gone = remote.attach_client("feedbeef00", worker: { "epoch" => "e1" })
+      expect { gone.children_counts }.to raise_error(described_class::Unreachable)
+      expect { gone.turn_records("t1") }.to raise_error(described_class::Unreachable)
+    end
+
+    it "reads a chi web without the P4b routes (a missing route) in Remote.too_old_message's words" do
+      transport = instance_double(RemoteBackend::RackTransport)
+      old = Samagotchi::SessionAccess::Remote.new(RemoteBackend.entry, transport: transport)
+      info = Samagotchi::SessionAccess::HTTPTransport::Reply.of(200, JSON.generate(app: "chi-web", version: "0.1.0",
+                                                                                   features: %w[session_commands remote_attach]))
+      missing = Samagotchi::SessionAccess::HTTPTransport::Reply.of(404, JSON.generate(error: "not_found", detail: "not found: /api/x"))
+      allow(transport).to receive(:call) { |_method, path, **| path == "/api/info" ? info : missing }
+      words = Samagotchi::SessionAccess::Remote.too_old_message(RemoteBackend.entry, "0.1.0")
+
+      attached = old.attach_client(session.id, worker: { "epoch" => "e1" })
+      expect { attached.request_exit(client_id: "tui:1") }.to raise_error(described_class::Unreachable, words)
+      expect { attached.stats }.to raise_error(described_class::Unreachable, words)
+    end
+  end
+
   describe "a request that can't be made (H2: never a crash in the loop)" do
     it "is Unreachable with the message, for a refused token" do
       refused = RemoteBackend.access(state_dir: state_dir, app: app, token: "wrong")
