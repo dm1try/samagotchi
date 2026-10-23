@@ -294,6 +294,21 @@ test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed
   pop.remove();
 });
 
+test("a strategy change (/llm-context's command_ran) redraws the open list: pin comes and goes with forget", () => {
+  const llmContext = { strategy: "none" };
+  const { ws, pop, row, infoEl } = steeringView({ llmContext });
+  assert.equal(row("a.rb").querySelector('[data-op="pin"]'), null);
+  llmContext.strategy = "stale,forget";
+  ws.strategyChanged();
+  assert.ok(row("a.rb").querySelector('[data-op="pin"]'));
+  llmContext.strategy = "none";
+  ws.strategyChanged();
+  assert.equal(row("a.rb").querySelector('[data-op="pin"]'), null);
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
 test("a pinned row keeps its unpin without the forget layer (its drop waits for it)", () => {
   const { ws, pop, row, infoEl } = steeringView();
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40, pinned: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });

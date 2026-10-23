@@ -102,7 +102,7 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
   turn-end apply has run by then);
 - between turns, from `Engine#announce_working_set` (the session's messages, under the event lock; after a
-  `/working-set` op): announced
+  `/working-set` op, and after an `/llm-context` change: the states are the next turn's strategy's): announced
   (`working_set_updated` is in `ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
   `holding_announcements`), under the *next* turn's strategy (`SessionModelSettings#turn_llm_context`, as the
   turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
@@ -227,7 +227,8 @@ with whitespace is quoted (`quoteWord`), and `steerWords` reads a line as the wo
 (`"…"` or `'…'` keeps its spaces, a backslash escapes the quote or itself). `dropped`
 is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
 `overlay` carries the server's `pinned`. A row offers `pin` only when the strategy the session's `llm ctx` chip names
-has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A pinned row shows
+has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A `command_ran` that carries
+`llm_context` redraws the open list (`strategyChanged`), so its pins come and go with the strategy at once. A pinned row shows
 `📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the
 exception's words, so it must keep a way out). A pending pin or unpin is dashed with `applies next turn`, and
 `pendingSteers` nets it with its inverse; a pin queued after a drop stands for both (the worker's pin takes the

@@ -501,6 +501,9 @@ module Samagotchi
     def llm_context(text)
       output, changed = LLMContextCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
                                          .run(text.delete_prefix(LLM_CONTEXT_COMMAND))
+      # What the model has of each item is the next turn's strategy's: the
+      # working set goes out again (sent only when it differs).
+      @engine.announce_working_set if changed
       reply(output, changed: changed ? [:llm_context] : [])
     rescue ArgumentError => e
       reply(e.message, status: :error)

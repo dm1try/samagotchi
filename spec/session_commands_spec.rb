@@ -750,6 +750,16 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run(%(/working-set undrop "my notes/x y.md")).output).to eq(%(undrop "my notes/x y.md": not in the working set))
     end
 
+    it "goes out again after an /llm-context change (the next turn's strategy), not after a look" do
+      announced = []
+      allow(engine).to receive(:announce_working_set) { announced << engine.working_set_strategy }
+
+      commands.run("/llm-context")
+      expect(announced).to be_empty
+      commands.run("/llm-context strategy stale forget")
+      expect(announced).to eq([%i[stale forget]])
+    end
+
     it "answers a bad line with its usage" do
       expect(commands.run("/working-set pinch README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end
