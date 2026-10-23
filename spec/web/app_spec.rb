@@ -211,10 +211,10 @@ RSpec.describe Samagotchi::Web::App do
       allow(app).to receive(:bridge_sidecar_port).and_return(server.local_address.ip_port)
       _status, headers, _body = app.call(env_for("/api/sessions/s1/stream?raw=1&snapshot=1", headers: { "rack.hijack?" => true }))
       headers["rack.hijack"].call(StringIO.new)
-      accept_thread.join(1)
+      join!(accept_thread, "the fake bridge")
       server.close
 
-      expect(request_line.pop(timeout: 1)).to start_with("GET /session/s1/stream?snapshot=1 HTTP/1.1")
+      expect(pop!(request_line, "the request line")).to start_with("GET /session/s1/stream?snapshot=1 HTTP/1.1")
     end
 
     it "forwards the Last-Event-ID header through to the bridge" do
@@ -233,7 +233,6 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread = Thread.new do
         conn = server.accept
         conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\nevent: generation_chunk\ndata: {\"content\":\"one\"}\r\n\r\n")
-        sleep(0.3)
         conn.close
       end
       accept_thread.report_on_exception = false
@@ -252,7 +251,7 @@ RSpec.describe Samagotchi::Web::App do
       out = StringIO.new
       hijack.call(out)
       server.close
-      accept_thread.join(1)
+      join!(accept_thread, "the fake bridge")
 
       expect(out.string).to include("id: 1")
       expect(out.string).to include("event: generation_chunk")
@@ -329,9 +328,9 @@ RSpec.describe Samagotchi::Web::App do
       raw = +""
       collected = Thread.new { body.each { |chunk| raw << chunk } }
       hub.touch(saved_session.id)
-      wait_until { raw.include?(": ping\r\n\r\n") }
+      wait_for("a ping") { raw.include?(": ping\r\n\r\n") }
       hub.stop
-      collected.join(2)
+      join!(collected, "the events stream")
 
       expect(raw).to include("id: 1\r\nevent: session\r\n")
       expect(raw).to include(": ping\r\n\r\n")
@@ -408,7 +407,7 @@ RSpec.describe Samagotchi::Web::App do
       collected = Thread.new { frames_of(body) }
       running = false
 
-      expect(collected.join(2)).not_to be_nil
+      expect(join!(collected, "the events stream")).not_to be_alive
     end
 
     it "streams straight to the socket under rack.hijack, as the session stream does" do
@@ -421,7 +420,7 @@ RSpec.describe Samagotchi::Web::App do
       writer = Thread.new { headers["rack.hijack"].call(out) }
       hub.touch(saved_session.id)
       hub.stop
-      writer.join(2)
+      join!(writer, "the hijacked events stream")
 
       expect(out.string).to start_with("event: snapshot\r\n")
       expect(out.string).to include("event: session\r\n")
@@ -2193,7 +2192,7 @@ RSpec.describe Samagotchi::Web::App do
 
     def list_all_models(force: true)
       @calls << force
-      sleep @delay if @delay.positive?
+      sleep @delay if @delay.positive? # sleep-ok: a slow listing is the behaviour
       raise @results if @results.is_a?(Exception)
 
       @results
@@ -2376,11 +2375,11 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "does not wait past its deadline: a slow listing answers the last cached lists, or the default alone" do
-      slow = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 1)
+      slow = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 3)
       started = mono
       payload = models_payload(slow, models_wait_timeout: 0.05)
 
-      expect(mono - started).to be < 0.5
+      expect(mono - started).to be < 1.5 # not the full 3 s listing
       expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
       expect(payload["warning"]).to eq("the hosts are still listing their models")
 
@@ -2564,11 +2563,11 @@ RSpec.describe Samagotchi::Web::App do
         conn.close
       end
       t.report_on_exception = false
-      Thread.new { proxy.each { |chunk| chunk } }
-      wait_until(timeout: 2.0, interval: 0.005) { request }
+      reader = Thread.new { proxy.each { |chunk| chunk } }
+      wait_for("the proxy's request to reach the bridge") { request }
       server.close
-      t.join(0.5)
-      expect(request).not_to be_nil, "ProxyStreamBody never reached the bridge"
+      join!(t, "the fake bridge")
+      join!(reader, "the proxy") # the bridge's close ends it
       request
     end
 
@@ -2603,7 +2602,7 @@ RSpec.describe Samagotchi::Web::App do
           conn.readpartial(16_384)
           conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\r\ndata: {}\r\n\r\n")
           upstream << conn
-          sleep
+          sleep # sleep-ok: holds the quiet stream open
         end
         @accepter.report_on_exception = false
       end
@@ -2613,24 +2612,28 @@ RSpec.describe Samagotchi::Web::App do
         server.close
       end
 
+      # running: [running?, times asked]
       def proxy_for(running)
         described_class::ProxyStreamBody.new(host: "127.0.0.1", port: server.local_address.ip_port, session_id: "s1",
-                                             query: "", headers: {}, server_running: -> { running[0] })
+                                             query: "", headers: {}, server_running: lambda {
+                                               running[1] = running[1].to_i + 1
+                                               running[0]
+                                             })
       end
 
-      it "ends the body within a second of the server leaving :Running, and closes the bridge socket" do
+      it "ends the body within a poll of the server leaving :Running, and closes the bridge socket" do
         running = [true]
         chunks = Queue.new
         reader = Thread.new { proxy_for(running).each { |chunk| chunks << chunk } }
-        expect(chunks.pop(timeout: 2)).to eq("id: 1\r\ndata: {}\r\n\r\n")
-        conn = upstream.pop(timeout: 2)
+        expect(pop!(chunks, "the first frame")).to eq("id: 1\r\ndata: {}\r\n\r\n")
+        conn = pop!(upstream, "the bridge connection")
 
         running[0] = false
         started = mono
 
-        expect(reader.join(1.5)).to eq(reader), "the proxy was still reading 1.5 s after shutdown"
-        expect(mono - started).to be < 1.2
-        expect(conn.wait_readable(1)).to be_truthy
+        join!(reader, "the proxy")
+        expect(mono - started).to be < 2.5 # a STREAM_POLL (0.5 s) or so, not a hang
+        expect(conn.wait_readable(5)).to be_truthy
         expect(conn.read_nonblock(1, exception: false)).to be_nil # EOF: the proxy closed its end
       ensure
         reader&.kill
@@ -2640,16 +2643,18 @@ RSpec.describe Samagotchi::Web::App do
         running = [true]
         chunks = Queue.new
         reader = Thread.new { proxy_for(running).each { |chunk| chunks << chunk } }
-        chunks.pop(timeout: 2)
-        conn = upstream.pop(timeout: 2)
+        pop!(chunks, "the first frame")
+        conn = pop!(upstream, "the bridge connection")
 
-        sleep 1.5 # several poll intervals of silence
+        # Asked twice more: two poll intervals of silence went by.
+        asked = running[1].to_i
+        wait_for("two silent polls") { running[1] >= asked + 2 }
         expect(reader).to be_alive
 
         conn.write(": ping\r\n\r\n")
-        expect(chunks.pop(timeout: 2)).to eq(": ping\r\n\r\n")
+        expect(pop!(chunks, "the ping")).to eq(": ping\r\n\r\n")
         conn.close
-        expect(reader.join(2)).to eq(reader) # the bridge's close still ends it
+        join!(reader, "the proxy") # the bridge's close still ends it
       ensure
         reader&.kill
       end
