@@ -3,6 +3,7 @@
 require "time"
 require_relative "last_turn"
 require_relative "log"
+require_relative "steer"
 
 module Samagotchi
   # A session worker's continue offer: what it announces when a turn runs out
@@ -34,12 +35,15 @@ module Samagotchi
     # @param max_iterations [#call] (no_interrupt) → Integer
     # @param queue_command [#call] (line, client_id:) queues a session
     #   command as a card's (Bridge#queue_command, card: true)
-    def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil)
+    # +participant_refused+ (author → Boolean): whether a participant's
+    # turn may no longer run (revoked, expired, at the cap: Worker's check).
+    def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) { false })
       @engine = engine
       @turn_flow = turn_flow
       @run_turn = run_turn
       @max_iterations = max_iterations
       @queue_command = queue_command
+      @participant_refused = participant_refused
       # A question was posted since the last close (it may have been
       # answered or superseded meanwhile).
       @asked = false
@@ -124,12 +128,18 @@ module Samagotchi
     # never began leaves it to no other.
     # The continue turn is the offer turn's: its origin carries that turn's
     # enqueued_id, so its last_turn, its reply file and its checkpoint mark
-    # do too, and a wait on that turn (chi answer) gets its reply.
+    # do too, and a wait on that turn (chi answer) gets its reply; and its
+    # author, so a participant's turn continues as theirs, inside the
+    # review boundary and on their spend (never as the owner's). One whose
+    # participant may no longer run a turn isn't continued.
     def run_continue_turn(command)
       offer = @turn_flow.offer
       resume_from = @turn_flow.resume_from
       enqueued_id = offer_turn_id
+      author = Steer.sender_author(@engine.session&.last_turn&.author)
       close("answered")
+      return if author && @participant_refused.call(author)
+
       steer = @continue_steer
       @continue_steer = nil
       begin
@@ -140,7 +150,7 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
           return announce_offer(offer)
         end
-        origin = { client_id: command.client_id, enqueued_id: enqueued_id }.compact
+        origin = { client_id: command.client_id, enqueued_id: enqueued_id, author: author }.compact
         @run_turn.call(nil, continue: true, origin: origin, resumed: true, resume_from: resume_from,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error

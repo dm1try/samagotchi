@@ -261,6 +261,7 @@ module Samagotchi
       # Bridge exists by the time anyone answers).
       @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
+                                          participant_refused: ->(author) { !participant_refusal(author).nil? },
                                           queue_command: lambda { |line, client_id:|
                                             @bridge.queue_command(line, client_id: client_id, card: true)
                                           })
@@ -578,9 +579,12 @@ module Samagotchi
     # @param prompt [WorkerInbound::Prompt]
     def run_prompt(prompt)
       origin = prompt.origin
-      # A participant's turn queued before their cap was reached doesn't
-      # start past it (chi web refuses new ones; this is the worker's check).
-      return refuse_capped_turn(origin) if participant_capped?(origin&.dig(:author))
+      # A participant's turn queued before their link ended or their cap was
+      # reached doesn't start (chi web refuses new ones; this is the
+      # worker's check).
+      if (reason = participant_refusal(origin&.dig(:author)))
+        return refuse_participant_turn(origin, reason)
+      end
 
       # A first turn sees the context attached before it, and any turn the
       # background tasks that finished since the last look.
@@ -598,22 +602,26 @@ module Samagotchi
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
-      participant_capped?(origin&.dig(:author))
+      participant_refusal(origin&.dig(:author))
     end
 
-    # Whether the participant +author+ ("p:<id>") has spent their cap
-    # (participants.json's, else the config's; their turns and the side
-    # requests they caused, Engine#metrics). The owner hears it once per
-    # cap (#cap_notice). false for the owner.
-    def participant_capped?(author)
-      author = Steer.sender_author(author) or return false
+    # Why the participant +author+ ("p:<id>") may run no more turns, nil
+    # while they may (and for the owner): "revoked" when participants.json
+    # has no active entry for them (revoked, expired, never invited),
+    # "cap_reached" once they spent their cap (its own, else the config's;
+    # their turns and the side requests they caused, Engine#metrics). The
+    # owner hears the cap once per cap (#cap_notice).
+    def participant_refusal(author)
+      author = Steer.sender_author(author) or return nil
 
       entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| "p:#{e.id}" == author }
-      cap = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
-      return false if @engine.metrics.spend(author) < cap
+      return "revoked" unless entry&.active?(Time.now)
 
-      cap_notice(author, entry&.name, cap)
-      true
+      cap = entry.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
+      return nil if @engine.metrics.spend(author) < cap
+
+      cap_notice(author, entry.name, cap)
+      "cap_reached"
     end
 
     # The owner's notice that a participant reached their cap: once per
@@ -632,12 +640,12 @@ module Samagotchi
     CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \
                  "(chi share cap %<session>s %<id>s AMOUNT)."
 
-    # A participant's queued turn that would start past their cap: taken
-    # off the queue (:turn_dequeued, so every UI drops its bubble) and
-    # audited; it never runs.
-    def refuse_capped_turn(origin)
+    # A participant's queued turn that may not start (#participant_refusal):
+    # taken off the queue (:turn_dequeued, so every UI drops its bubble)
+    # and audited; it never runs.
+    def refuse_participant_turn(origin, reason)
       Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin[:author].delete_prefix("p:"),
-                                           enqueued_id: origin[:enqueued_id], status: "refused", reason: "cap_reached")
+                                           enqueued_id: origin[:enqueued_id], status: "refused", reason: reason)
       @engine.announce(type: :turn_dequeued, enqueued_id: origin[:enqueued_id], client_id: origin[:client_id])
       nil
     end

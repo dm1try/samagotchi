@@ -127,6 +127,23 @@ RSpec.describe "a participant's author on delivery" do
       expect(refused.map { |line| line.values_at("enqueued_id", "reason") }).to eq([%w[e1 cap_reached], %w[e2 cap_reached]])
     end
 
+    it "doesn't start a revoked participant's queued turn (dropped from the queue, audited)" do
+      author = grant.author
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+      Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
+      allow(engine).to receive(:run_turn).and_return(result)
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:p", author: author, enqueued_id: "e1")
+
+      expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "e1")
+      expect(engine).not_to have_received(:run_turn)
+      refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                    .select { |line| line["event"] == "turn" }
+      expect(refused.map { |line| line["reason"] }).to eq(["revoked"])
+    end
+
     it "saves a participant's prompt as theirs before the loop's first boundary (a worker killed there keeps the author)" do
       author = grant.author
       engine.session_state_dir = tmpdir

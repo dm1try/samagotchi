@@ -33,6 +33,13 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
 
   before do
     FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
+    # p_1 and p_2 are invited (the worker runs no turn of a participant
+    # the sidecar doesn't list as active).
+    active = %w[p_1 p_2].map do |id|
+      { "id" => id, "kind" => "human", "name" => id, "role" => "reviewer", "added_at" => "2026-10-23T10:00:00Z",
+        "expires_at" => (Time.now + 3600).utc.iso8601, "removed_at" => nil, "cap" => 2.0 }
+    end
+    File.write(File.join(session_dir, "participants.json"), JSON.generate({ "participants" => active }))
     allow(Samagotchi::Engine).to receive(:new).and_return(engine)
     allow(engine).to receive_messages(start_idle: nil, stop_idle: nil)
     engine.subscribe(observer: ->(event) { merged_origins << event[:origins] if event[:type] == :input_merged })

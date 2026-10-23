@@ -152,6 +152,26 @@ RSpec.describe Samagotchi::ContinueOffer do
       expect(args[:origin]).to eq(client_id: "cli:answer", enqueued_id: "q1")
     end
 
+    it "keeps a participant's author: their turn continues as theirs, inside the review boundary" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
+                                                   author: "p:p_0123abcd")
+
+      recording.run_continue_turn(command_from("web:owner"))
+
+      expect(args[:origin]).to eq(client_id: "web:owner", enqueued_id: "q1", author: "p:p_0123abcd")
+    end
+
+    it "doesn't continue a participant's turn they may no longer run (revoked, at the cap)" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
+                                                   author: "p:p_0123abcd")
+      refusing = described_class.new(engine: engine, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+                                     max_iterations: ->(_) { 100 }, participant_refused: ->(author) { author == "p:p_0123abcd" })
+
+      refusing.run_continue_turn(command_from("web:owner"))
+
+      expect(args).to eq({})
+    end
+
     it "leaves the origin as the client's alone when the offer turn ran no input (or an older last_turn)" do
       session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100)
 
