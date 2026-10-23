@@ -353,6 +353,94 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
   end
 
+  describe "POST /api/sessions: toolkit, tools, no_tools, parent_answers and chi send's refusals" do
+    def create(body) = call("/api/sessions", method: "POST", body: body)
+
+    it "saves the toolkit and parent_answers in the new session, and warns of a looser one than config.yml's" do
+      parent_answers_config("standard")
+
+      status, body = create(prompt: "hi", dir: folder, toolkit: "lean", tools: ["delegate"], no_tools: ["execute"],
+                            parent_answers: "soft")
+
+      expect(status).to eq(201), body.inspect
+      saved = Samagotchi::Session.load(body["id"], state_dir: state_dir)
+      expect(saved.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean", add: ["delegate"], remove: ["execute"]))
+      expect(saved.parent_answers).to eq("soft")
+      expect(body).to include("parent_answers_warning" => "soft is looser than config.yml's guardrails.parent_answers: standard; " \
+                                                          "standard applies", "model_warning" => nil)
+    end
+
+    it "refuses a bad toolkit or parent_answers, and either beside continues" do
+      previous = make
+      expect(create(prompt: "hi", toolkit: 3)).to match([400, include("error" => "invalid_toolkit")])
+      expect(create(prompt: "hi", tools: "x")).to match([400, include("error" => "invalid_toolkit")])
+      expect(create(prompt: "hi", parent_answers: "loose")).to match([400, include("error" => "invalid_parent_answers")])
+      expect(create(continues: previous.id, idle: true, toolkit: "lean", parent_answers: "hard").last["detail"])
+        .to end_with("leave out toolkit, parent_answers")
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "refuses chi send's loosening /parent-answers and a parent's /continue yes under hard, before anything spawns" do
+      parent_answers_config("hard")
+
+      expect(create(idle: true, preview: "/parent-answers soft", parent_answers: "standard", client_id: "cli:send"))
+        .to match([403, include("error" => "parent_answers_refused", "detail" => Samagotchi::ParentAnswersCommand::REFUSED)])
+      expect(create(idle: true, preview: "/continue yes", client_id: "cli:answer"))
+        .to match([403, include("error" => "parent_continue_refused",
+                                "detail" => include("a parent agent may only stop this turn here"))])
+      previous = make(parent_answers: "hard")
+      expect(create(continues: previous.id, idle: true, preview: "/parent-answers soft", client_id: "cli:send").first).to eq(403)
+      expect(Process).not_to have_received(:spawn)
+      # The page's lines aren't checked here (the worker checks every line).
+      expect(create(idle: true, preview: "/parent-answers soft", dir: folder).first).to eq(201)
+    end
+
+    it "with check_vision refuses a model known not to take images (422 no_vision), the continued link's too" do
+      blind = Samagotchi::VisionSupport::Answer.new(value: false, reason: "models.blind sets vision: false")
+      allow(Samagotchi::SendCommand).to receive(:vision_answer).and_return(Samagotchi::SendCommand::UNKNOWN_VISION)
+      allow(Samagotchi::SendCommand).to receive(:vision_answer).with("blind", typed: nil).and_return(blind)
+
+      expect(create(idle: true, preview: "look", model: "blind", check_vision: true))
+        .to eq([422, { "error" => "no_vision",
+                       "detail" => "blind can't take images (models.blind sets vision: false); " \
+                                   "send text only or switch the model (/model)" }])
+      expect(create(continues: make(model: "blind").id, idle: true, check_vision: true).first).to eq(422)
+      expect(create(idle: true, preview: "look", model: "blind", dir: folder).first).to eq(201)
+    end
+  end
+
+  describe "POST /api/sessions/:id/turn: chi send's refusals" do
+    def turn(session, body) = call("/api/sessions/#{session.id}/turn", method: "POST", body: body)
+
+    it "refuses chi send's loosening /parent-answers and a parent's /continue yes the session's own level refuses" do
+      parent_answers_config("soft")
+      session = make(parent_answers: "hard")
+
+      expect(turn(session, { prompt: "/parent-answers soft", client_id: "cli:send" }))
+        .to match([403, include("error" => "parent_answers_refused")])
+      expect(turn(session, { prompt: "/continue yes", client_id: "cli:answer" }))
+        .to match([403, include("error" => "parent_continue_refused", "detail" => include("parent_answers: hard (this session)"))])
+      expect(Dir[File.join(dir_of(session), "input", "*")]).to be_empty
+    end
+
+    it "with check_vision refuses images to a model known not to take them" do
+      session = make(model: "blind")
+      ref = Samagotchi::ImageStore.ingest(dir_of(session), bytes: File.binread(fixture_png), name: "a.png", source: "user")
+      blind = Samagotchi::VisionSupport::Answer.new(value: false, reason: "models.blind sets vision: false")
+      allow(Samagotchi::SendCommand).to receive(:vision_answer).and_return(blind)
+
+      expect(turn(session, { prompt: "look", images: [ref], check_vision: true })).to match([422, include("error" => "no_vision")])
+    end
+
+    def fixture_png
+      File.join(@tmp, "a.png").tap do |path|
+        # A 1x1 PNG.
+        File.binwrite(path, ["89504e470d0a1a0a0000000d4948445200000001000000010806000000" \
+                             "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"].pack("H*"))
+      end
+    end
+  end
+
   describe "DELETE /api/sessions/:id: force" do
     it "refuses a live worker's session without force: 409 worker_running with DeleteRefused's message" do
       session = make

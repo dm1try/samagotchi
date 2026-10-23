@@ -42,6 +42,11 @@ require_relative "../context_note"
 require_relative "../context_sources"
 require_relative "../context_providers"
 require_relative "../recap_store"
+require_relative "../toolkit"
+require_relative "../turn_flow"
+require_relative "../session_chain"
+require_relative "../parent_answers_command"
+require_relative "../guardrails/parent_policy"
 require_relative "markdown_renderer"
 require_relative "capabilities"
 require_relative "editor"
@@ -691,17 +696,32 @@ module Samagotchi
           return error_response(400, "invalid_settings", e.message)
         end
 
+        # toolkit, tools, no_tools: its toolkit (chi send --new --toolkit,
+        # --tool, --no-tool: a name, tool names added and left out);
+        # parent_answers: what a parent agent may answer on its questions
+        # (hard, standard or soft; a looser one than config.yml's is capped,
+        # and the 201's parent_answers_warning says so).
+        toolkit, error = request_toolkit(body)
+        return error if error
+
+        parent_answers, error = request_parent_answers(body["parent_answers"])
+        return error if error
+
+        model = (body["model"] || body["model_name"]).to_s.strip
+        refused = create_refusal(body, idle ? body["preview"] : prompt, values: [parent_answers], model: model)
+        return refused if refused
+
         folder = dir ? { working_directory: dir } : {}
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
-        model = (body["model"] || body["model_name"]).to_s.strip
         folder[:model_name] = model unless model.empty?
         # preview: an idle session's first message, sent as its first turn
         # next; the list and the notifications name the session by it
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:preview] = preview unless preview.empty?
-        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, settings: settings)
+        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, settings: settings, toolkit: toolkit,
+                                 parent_answers: parent_answers)
         folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
@@ -715,7 +735,8 @@ module Samagotchi
         # The projection holds it before the page hears back (no tick wait).
         @hub&.touch(session.id)
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
-        json_response(201, session_to_json(session).merge(bridge_port: port))
+        json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning,
+                                                          parent_answers_warning: Guardrails::ParentPolicy.capped_note(parent_answers)))
       end
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
@@ -736,14 +757,17 @@ module Samagotchi
         unless given.is_a?(String) && !given.strip.empty?
           return error_response(400, "invalid_continues", "continues is a session id")
         end
-        if (fields = %w[dir llm_context thinking settings].select { |key| body.key?(key) }).any?
+        if (fields = CONTINUE_TAKES.select { |key| body.key?(key) }).any?
           return error_response(400, "invalid_continues",
-                                "continues takes the previous session's folder, llm_context, thinking and settings; " \
-                                "leave out #{fields.join(", ")}")
+                                "continues takes the previous session's folder, llm_context, thinking, toolkit, " \
+                                "settings and parent_answers; leave out #{fields.join(", ")}")
         end
 
         preview = idle ? body["preview"].to_s.strip : ""
         model = (body["model"] || body["model_name"]).to_s.strip
+        refused = continue_refusal(given, body, idle ? body["preview"] : prompt, model: model)
+        return refused if refused
+
         session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, preview: preview.empty? ? nil : preview,
                                               model: model.empty? ? nil : model)
         return error if error
@@ -756,6 +780,107 @@ module Samagotchi
         json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
                                                           model_warning: session.model_warning,
                                                           opener: session.opener))
+      end
+
+      # chi send's client ids: its lines are checked as chi send checks them
+      # (#parent_gate).
+      CLI_SEND_IDS = [ClientId::CLI_SEND, ClientId::CLI_ANSWER].freeze
+
+      # What a continue takes from the previous link: refused beside it.
+      CONTINUE_TAKES = %w[dir llm_context thinking settings toolkit tools no_tools parent_answers].freeze
+
+      # The previous link's parent_answers and the model the new one runs,
+      # for #create_refusal; nil when the previous link isn't there
+      # (continue_from says so).
+      def continue_refusal(given, body, line, model:)
+        return nil unless body["check_vision"] == true || CLI_SEND_IDS.include?(body["client_id"])
+
+        previous = Session.load(SessionChain.resolve(given, state_dir: default_state_dir), state_dir: default_state_dir)
+        create_refusal(body, line, values: [previous.parent_answers], model: model, previous: previous)
+      rescue ArgumentError, ModelProfile::MissingModel
+        nil
+      end
+
+      # A create refused before anything spawns, as chi send --new refuses
+      # it (SendCommand::ParentGate, the vision check): its first line
+      # (+line+, the prompt or an idle one's preview) when it is a parent
+      # agent's /continue yes or a /parent-answers that loosens +values+
+      # (#parent_gate), and with check_vision: true (its first message
+      # brings images) a model known not to take them (422 no_vision).
+      # @param previous [Session, nil] a continue's previous link: its model
+      #   decides when +model+ is blank
+      # @return [Array, nil] the response, or nil to go on
+      def create_refusal(body, line, values:, model:, previous: nil)
+        refused = parent_gate(line, client_id: body["client_id"], values: values)
+        return refused if refused
+        return nil unless body["check_vision"] == true
+
+        name, typed = if previous
+                        SendCommand.continued_model(previous, model)
+                      else
+                        [model.empty? ? nil : model, nil]
+                      end
+        vision_refused(name, typed)
+      end
+
+      # A line from chi send (client_id cli:send, or cli:answer for a parent
+      # agent's /continue yes) refused here as chi send refuses it on its own
+      # machine (SendCommand::ParentGate), held to this server's config.yml:
+      # a parent's /continue yes that guardrails.parent_answers (tightened by
+      # +values+, the targets' own parent_answers) refuses, 403
+      # parent_continue_refused; a /parent-answers line that loosens one of
+      # +values+, 403 parent_answers_refused (loosening is the user's at a
+      # UI). The page's lines (web:…) and others aren't checked here; the
+      # worker checks every line again.
+      # @return [Array, nil] the response, or nil to go on
+      def parent_gate(line, client_id:, values:)
+        line = line.to_s
+        return nil unless CLI_SEND_IDS.include?(client_id)
+
+        if client_id == ClientId::CLI_ANSWER && TurnFlow.continue_yes?(line) &&
+           (refusal = SendCommand::ParentGate.continue_refusal_for(values))
+          return error_response(403, "parent_continue_refused", refusal)
+        end
+        return nil unless SendCommand::ParentGate.loosens_any?(line, values)
+
+        error_response(403, "parent_answers_refused", ParentAnswersCommand::REFUSED)
+      end
+
+      # 422 no_vision in chi send's words when the model (+name+, nil: the
+      # default) is known not to take images; nil when it does or is
+      # unknown (the worker decides when the turn runs).
+      def vision_refused(name, typed)
+        refusal = SendCommand.vision_refusal(name, SendCommand.vision_answer(name, typed: typed))
+        refusal && error_response(422, "no_vision", refusal)
+      end
+
+      # The create request's toolkit (a name), tools and no_tools (names, a
+      # comma list each too), as chi send --new's --toolkit, --tool and
+      # --no-tool: [toolkit, nil] (nil for none), or [nil, a 400 response].
+      def request_toolkit(body)
+        name = body["toolkit"]
+        lists = %w[tools no_tools].to_h { |key| [key, body[key]] }
+        unless (name.nil? || name.is_a?(String)) &&
+               lists.values.all? { |list| list.nil? || (list.is_a?(Array) && list.all?(String)) }
+          return [nil, error_response(400, "invalid_toolkit", "toolkit is a name; tools and no_tools are lists of names")]
+        end
+
+        [Toolkit.from_flags(name: name, add: lists["tools"] || [], remove: lists["no_tools"] || []), nil]
+      end
+
+      # The create request's parent_answers (hard, standard or soft;
+      # "default" or none: config.yml's): [level, nil] or [nil, a 400].
+      def request_parent_answers(raw)
+        return [nil, nil] if raw.nil?
+
+        level = raw.is_a?(String) ? Guardrails::ParentPolicy.parse_level(raw) : :invalid
+        return [nil, nil] if level == :unset
+        unless Guardrails::ParentPolicy::ORDER.include?(level)
+          return [nil, error_response(400, "invalid_parent_answers",
+                                      "parent_answers takes #{Guardrails::ParentPolicy::ORDER.join(", ")}")]
+        end
+
+        [level, nil]
       end
 
       # SessionManager.continue_session, its refusals as responses: [session,
@@ -1292,6 +1417,9 @@ module Samagotchi
           return error_response(400, refused[:error], refused[:detail])
         end
 
+        refused = turn_refusal(id, body, prompt.to_s, images)
+        return refused if refused
+
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
@@ -1304,7 +1432,23 @@ module Samagotchi
         else error_response(500, "enqueue_failed", "could not write turn input")
         end
       rescue SessionManager::OwnedByTUI => e
-        error_response(409, "owned_by_tui", e.message)
+        owned_by_tui(e)
+      end
+
+      # A turn refused before it goes in, as chi send refuses it on its own
+      # machine: a chi send line #parent_gate refuses (the session's own
+      # parent_answers), and with check_vision: true images to a model known
+      # not to take them (422 no_vision). The page sends neither.
+      # @return [Array, nil] the response, or nil to go on
+      def turn_refusal(id, body, prompt, images)
+        vision = body["check_vision"] == true && !images.empty?
+        return nil unless vision || CLI_SEND_IDS.include?(body["client_id"])
+
+        session = @session_class.load(id, state_dir: default_state_dir)
+        refused = parent_gate(prompt, client_id: body["client_id"], values: [session.parent_answers])
+        return refused if refused
+
+        vision ? vision_refused(session.model_name, session.model_typed) : nil
       end
 
       # A turn's images as [{file:, name:}] (refs to uploads already in the
