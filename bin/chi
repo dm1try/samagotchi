@@ -371,6 +371,10 @@ if launch == :attached
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
+  rescue Interrupt
+    # Ctrl-C while it connects (a wait for a leaving worker, a late Bridge):
+    # no backtrace.
+    exit Samagotchi::CLI::Exit::INTERRUPTED
   end
   exit Samagotchi::TerminalUI::AttachLauncher.exit_status(ended)
 end

@@ -102,6 +102,14 @@ RSpec.describe Samagotchi::RemoteAttachCommand do
                                     "Error: unknown toolkit nope\n"])
   end
 
+  it "exits 130, quietly, on a Ctrl-C before the TUI runs (a wait for a leaving worker there)" do
+    allow(remote).to receive(:resolve).and_return("ab12")
+    allow(launcher).to receive(:run).and_raise(Interrupt)
+
+    expect(run(attach: "ab")).to eq(130)
+    expect(err.string).to eq("")
+  end
+
   it "maps the end of the attach to chi's exit status: 3 for a question left waiting" do
     allow(remote).to receive(:resolve).and_return("ab12")
     allow(launcher).to receive(:run).and_return(:unanswered)

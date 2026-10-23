@@ -31,7 +31,8 @@ module Samagotchi
     end
 
     # @return [Integer] the exit status: AttachLauncher.exit_status's, 1 a
-    #   launch that failed, 2 a usage error
+    #   launch that failed, 2 a usage error, 130 a Ctrl-C before the TUI
+    #   ran (the wake, a wait for a leaving worker there)
     def run
       if (conflict = LaunchMode.attached_conflict(@options))
         return failed(conflict)
@@ -49,6 +50,8 @@ module Samagotchi
     rescue TerminalUI::AttachLauncher::Error, SessionAccess::RemoteFailed, SessionAccess::Refused,
            SessionManager::OwnedByTUI, ModelProfile::MissingModel, ArgumentError => e
       e.is_a?(SessionAccess::BadRequest) ? usage(e.message) : failed(e.message)
+    rescue Interrupt
+      CLI::Exit::INTERRUPTED
     end
 
     private
