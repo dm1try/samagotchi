@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "support/test_kernel"
 require "support/failing_saves"
+require "support/worker_loop_rounds"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -14,6 +15,8 @@ require "samagotchi/context_sources"
 # A worker turns its attached context's changes into context notes between
 # turns (ContextAbsorber), never into a session that has had no turn yet.
 RSpec.describe Samagotchi::Worker, "attached context" do
+  include WorkerLoopRounds
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
@@ -62,9 +65,10 @@ RSpec.describe Samagotchi::Worker, "attached context" do
   def start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
     worker = described_class.new(session_id: session.id, state_dir: state_dir, session_dir: session_dir,
                                  idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+    count_loop_rounds(worker)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
+    wait_for("the worker's sidecar") { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }
     worker
   end
 
@@ -86,15 +90,16 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     start_worker
 
     attach("notes", "first")
-    expect(wait_until { saved_context_notes.size == 1 }).to be(true)
+    wait_for("the attached note to be saved") { saved_context_notes.size == 1 }
     expect(saved_context_notes.first[:content]).to include("[CONTEXT NOTE from context notes", "Attached: notes. Why: spec.")
     expect(events).to include(include(type: :context_added, context_source: "notes", source: "context notes"))
-    expect(wait_until { own.subscription("notes").seen }).to be_truthy
+    wait_for("the note's change to be marked seen") { own.subscription("notes").seen }
 
     push("notes", "second")
-    expect(wait_until { saved_context_notes.size == 2 }).to be(true)
+    wait_for("the updated note to be saved") { saved_context_notes.size == 2 }
     expect(saved_context_notes.last[:content]).to include("Updated: notes.")
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "runs a command source at start, notes its text, and still exits idle on time (polling isn't activity)" do
@@ -102,9 +107,9 @@ RSpec.describe Samagotchi::Worker, "attached context" do
                                                    hint: nil, scope: "session", added_by: "cli", created_at: nil))
     start_worker(idle_exit_minutes: 0.01)
 
-    expect(wait_until { saved_context_notes.any? }).to be(true)
+    wait_for("the command source's note to be saved") { saved_context_notes.any? }
     expect(saved_context_notes.first[:content]).to include("Attached: date.")
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 
   context "in a session with no turn yet" do
@@ -113,18 +118,18 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     it "waits for the first prompt, and its turn sees the note" do
       start_worker
       attach("notes", "early")
-      sleep(0.3)
+      loop_rounds
       expect(saved_context_notes).to be_empty
 
       Samagotchi::SessionManager.write_turn_input(session.id, prompt: "hello", state_dir: state_dir)
 
-      expect(turns.pop(timeout: 2)).to eq(["hello", ["notes"]])
+      expect(pop!(turns, "the first prompt's turn")).to eq(["hello", ["notes"]])
     end
 
     it "still lets the session count as empty" do
       start_worker
       attach("notes", "early")
-      sleep(0.3)
+      loop_rounds
 
       expect(Samagotchi::SessionManager.empty_session?(session.id, state_dir: state_dir, default_model: "Gemma-4B-it"))
         .to be(true)
@@ -134,7 +139,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
   it "doesn't preview a session by an attached context note" do
     start_worker
     attach("notes", "first")
-    expect(wait_until { saved_context_notes.any? }).to be(true)
+    wait_for("the attached note to be saved") { saved_context_notes.any? }
 
     reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir)
     reloaded.messages = reloaded.messages.reject { |m| %w[user model].include?(m[:role].to_s) }
@@ -167,7 +172,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     # Attached and noted, so the next text is an update.
     def attach_seen(name)
       attach(name, "v1")
-      expect(wait_until { own.subscription(name).seen }).to be_truthy
+      wait_for("the attached change to be marked seen") { own.subscription(name).seen }
     end
 
     it "starts a continue turn from context:<name> whose first message is the wake note, marked as the turn's start" do
@@ -176,7 +181,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       push("pr-7", "v2", wake: true, summary: "review: changes requested by @bob")
 
-      prompt, kwargs, last = wake_turns.pop(timeout: 3)
+      prompt, kwargs, last = pop!(wake_turns, "the wake turn")
       expect(prompt).to be_nil
       expect(kwargs).to include(continue: true, origin: { client_id: "context:pr-7" })
       expect(last).to include(role: "system", kind: "note", context_source: "pr-7", turn_start: true, turn_id: kwargs[:id])
@@ -192,7 +197,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       push("claude-outbox", "looks good", wake: true)
 
-      prompt, kwargs, last = wake_turns.pop(timeout: 3)
+      prompt, kwargs, last = pop!(wake_turns, "the wake turn")
       expect(prompt).to be_nil
       expect(kwargs).to include(continue: true, origin: { client_id: "context:claude-outbox" })
       expect(last).to include(role: "system", kind: "note", context_source: "claude-outbox", turn_start: true)
@@ -205,13 +210,14 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       start_worker
       attach_seen("pr-7")
       push("pr-7", "v2", wake: true)
-      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+      pop!(wake_turns, "the wake turn")
 
       push("pr-7", "v3", wake: true)
-      expect(wait_until { saved_context_notes.size == 3 }).to be(true)
+      wait_for("the second change's plain note") { saved_context_notes.size == 3 }
       expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
       expect(saved_context_notes.last).not_to have_key(:turn_start)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
 
     it "doesn't wake with context.wake false" do
@@ -220,8 +226,9 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       attach_seen("pr-7")
       push("pr-7", "v2", wake: true)
 
-      expect(wait_until { saved_context_notes.size == 2 }).to be(true)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      wait_for("the change's note") { saved_context_notes.size == 2 }
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
 
     it "shares session.max_wakes with delegate reports: past it changes are plain notes" do
@@ -230,11 +237,12 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       attach_seen("a")
       attach_seen("b")
       push("a", "v2", wake: true)
-      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+      pop!(wake_turns, "the wake turn")
 
       push("b", "v2", wake: true)
-      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      wait_for("b's change as a plain note") { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
 
     describe "a peer agent's answers (a source a peer bundle declared)" do
@@ -248,11 +256,10 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       def answer(text, summary: "step 2: VERDICT CHANGES")
         push("codex-outbox", text, wake: true, summary: summary)
-        expect(wait_until { own.subscription("codex-outbox")&.seen == Samagotchi::ContextSources.revision_of(text) })
-          .to be(true)
+        wait_for("the peer's answer to be marked seen") { own.subscription("codex-outbox")&.seen == Samagotchi::ContextSources.revision_of(text) }
       end
 
-      def wake_turn = wake_turns.pop(timeout: 3)
+      def wake_turn = pop!(wake_turns, "the wake turn")
 
       def type(prompt, client_id)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, client_id: client_id, state_dir: state_dir)
@@ -273,7 +280,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn&.last&.dig(:content)).to include("What changed, as your peer agent Codex reports it")
 
         answer("v3")
-        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        loop_rounds
+        expect(wake_turns).to be_empty
         expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
         answer("v4")
         expect(peer_notices.map { |e| e[:text] })
@@ -288,7 +296,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
         type("go on", "cli:send")
         answer("v2")
-        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        loop_rounds
+        expect(wake_turns).to be_empty
 
         type("go on", "web:tab1")
         answer("v3")
@@ -313,7 +322,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn).not_to be_nil
 
         answer("v2", summary: "step 2: VERDICT OK")
-        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        loop_rounds
+        expect(wake_turns).to be_empty
         expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
         expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
                                                          "message (1 wake turn in a row, context.peer_turns)"])
@@ -326,7 +336,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn).not_to be_nil
 
         answer("v2")
-        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        loop_rounds
+        expect(wake_turns).to be_empty
         expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
                                                          "message (1 wake turn in a row, session.max_wakes)"])
       end
@@ -338,7 +349,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(wake_turn).not_to be_nil
 
         answer("v2")
-        expect(wake_turns.pop(timeout: 0.5)).to be_nil
+        loop_rounds
+        expect(wake_turns).to be_empty
         expect(peer_notices.map { |e| e[:text] }).to eq(["Codex answered again; it waits as a note for your next " \
                                                          "message (1 wake turn in a row, session.max_wakes)"])
       end
@@ -352,13 +364,13 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       waker = worker.instance_variable_get(:@waker)
       attach("pr-7", "v1")
       waker.wake
-      expect(wait_until { own.subscription("pr-7").seen }).to be_truthy
+      wait_for("the attached change to be marked seen") { own.subscription("pr-7").seen }
 
       push("pr-7", "v2", wake: true)
       expect(worker.send(:exit_request, "web:tab")).to be_nil
 
-      expect(@thread.join(5)&.value).to eq(:exit_requested)
-      expect(wake_turns.pop(timeout: 0.2)).to be_nil
+      expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+      expect(wake_turns).to be_empty
       expect(saved_context_notes.last[:content]).to include("Updated: pr-7.")
     end
 
@@ -368,9 +380,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       attach_seen("b")
       @fail_next = true
       push("a", "v2", wake: true)
-      expect(wake_turns.pop(timeout: 3)).not_to be_nil
-      expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
-        .to be(true)
+      pop!(wake_turns, "the wake turn")
+      wait_for("the failed wake turn's turn note") { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" }
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
         .to include("The wake turn for the change in attached context a was not answered")
       note = saved_context_notes.last
@@ -379,8 +390,9 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(note[:content]).to include("don't act on it unless your user asks you to")
 
       push("b", "v2", wake: true)
-      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      wait_for("b's change as a plain note") { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
 
     # A Stop (or a before_turn hook's cancel) before the model call restores
@@ -397,15 +409,15 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       attach_seen("a")
       attach_seen("b")
       push("a", "v2", wake: true)
-      expect(wake_turns.pop(timeout: 3)).not_to be_nil
-      expect(wait_until { saved_context_notes.last.then { |m| m[:context_source] == "a" && !m.key?(:turn_start) } })
-        .to be(true)
+      pop!(wake_turns, "the wake turn")
+      wait_for("the stopped wake turn's note, unmarked") { saved_context_notes.last.then { |m| m[:context_source] == "a" && !m.key?(:turn_start) } }
       expect(saved_context_notes.last).not_to include(:turn_id)
 
       push("b", "v2", wake: true)
-      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
+      wait_for("b's change as a plain note") { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }
       expect(saved_context_notes.last).not_to include(:turn_start)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
 
     it "keeps a failed wake turn that got to tool steps, its wake mark too, and still pauses wakes" do
@@ -414,16 +426,16 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       attach_seen("b")
       @fail_next = :kept
       push("a", "v2", wake: true)
-      expect(wake_turns.pop(timeout: 3)).not_to be_nil
-      expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
-        .to be(true)
+      pop!(wake_turns, "the wake turn")
+      wait_for("the failed wake turn's turn note") { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" }
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
         .to include("failed after 2 tool steps").and include("the wake turn for the change in attached context a stopped there")
       expect(saved_context_notes.last).to include(context_source: "a", turn_start: true)
 
       push("b", "v2", wake: true)
-      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
-      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+      wait_for("b's change as a plain note") { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }
+      loop_rounds
+      expect(wake_turns).to be_empty
     end
   end
 
@@ -435,11 +447,11 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       saves_fail!
 
       attach("notes", "first")
-      expect(wait_until { failed_saves.include?(:context) }).to be(true)
+      wait_for("the context save to fail") { failed_saves.include?(:context) }
       expect(own.subscription("notes").seen).to be_nil
 
       saves_fail!(false)
-      expect(wait_until { own.subscription("notes").seen }).to be_truthy
+      wait_for("the change to be marked seen once a save holds") { own.subscription("notes").seen }
       expect(saved_context_notes.size).to eq(1)
     end
   end
