@@ -550,10 +550,16 @@ module Samagotchi
       @client
     end
 
+    # The summarize thread: its recap, or nil when it failed. A failure of
+    # any kind (a LoadError, a stack overflow too) ends it quietly, logged:
+    # no recap this time, and no dead thread's trace on the worker's
+    # stderr. A real exit or interrupt goes on as raised.
     def spawn_summarize(client, prompt)
       Thread.new do
         client.summarize(prompt, session_id: @session_id.call, on_usage: @on_usage)
-      rescue StandardError => e
+      rescue SystemExit, SignalException
+        raise
+      rescue Exception => e # rubocop:disable Lint/RescueException -- a recap's failure, whatever it is, is no recap
         # No recap this time (the next idle window tries again); say why.
         Log.exception(:recap, "summarize_failed", e)
         nil

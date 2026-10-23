@@ -508,6 +508,24 @@ RSpec.describe Samagotchi::IdleRecap do
         FileUtils.remove_entry(dir)
       end
 
+      it "ends the summarize thread quietly on a failure outside StandardError (a LoadError), logged" do
+        dir = Dir.mktmpdir("samagotchi-log")
+        path = File.join(dir, "chi.log")
+        Samagotchi::Log.configure(path: path)
+        engine = stub_engine_with_two_user_turns
+        failing = double("client")
+        allow(failing).to receive(:summarize).and_raise(LoadError, "cannot load such file -- nope")
+        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
+        allow(idle).to receive(:should_fire?).and_return(true)
+
+        expect { drive(idle) }.not_to output.to_stderr
+        expect(engine).not_to have_received(:emit_recap)
+        record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "summarize_failed" } }
+        expect(record.fields).to include("error" => "LoadError")
+      ensure
+        FileUtils.remove_entry(dir)
+      end
+
       it "does not emit when recap is nil" do
         engine = stub_engine_with_two_user_turns
         idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: nil), clock: -> { base_time })
