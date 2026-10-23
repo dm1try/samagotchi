@@ -44,6 +44,21 @@ RSpec.describe Samagotchi::WorkingSetSteer do
     end
   end
 
+  describe ".words and .quote" do
+    it "splits a line on whitespace, a quoted word keeping its spaces; quote reads back through words" do
+      expect(described_class.words(%(drop "my dir/a b.rb" memory:style  'two words' https://x.dev/a?b=1)))
+        .to eq(["drop", "my dir/a b.rb", "memory:style", "two words", "https://x.dev/a?b=1"])
+      expect(described_class.words(%("say \\"hi\\"" "back\\\\slash" "open end))).to eq(['say "hi"', "back\\slash", "open end"])
+      expect(described_class.words("it's ok \"\"")).to eq(%w[it's ok])
+
+      ["plain", "my dir/a b.rb", %(a "b\\c), "'lead", "memory:two words"].each do |word|
+        expect(described_class.words(described_class.quote(word))).to eq([word])
+      end
+      expect(described_class.quote("lib/cart.rb")).to eq("lib/cart.rb")
+      expect(described_class.quote("my dir/a.rb")).to eq(%("my dir/a.rb"))
+    end
+  end
+
   describe ".drop" do
     it "saves an applied user drop on every sent output of the item, and the view sends the stubs under none" do
       conversation = [head, *read_turn("lib/cart.rb", "c1", "t1"), *read_turn(cart, "c2", "t2")]

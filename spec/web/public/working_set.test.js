@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
-  forgetOn, pinnable,
+  forgetOn, pinnable, quoteWord, steerWords,
   stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
@@ -334,6 +334,22 @@ test("steer lines: the words name a file by its path, a memory as memory:NAME, a
   assert.deepEqual(parseSteerLine("/working-set unpin memory:m"), { op: "unpin", ids: ["memory:m"] });
   assert.equal(parseSteerLine("/working-set pinch /p/a.rb"), null);
   assert.equal(parseSteerLine("/model x"), null);
+});
+
+test("steer words: a key with spaces is quoted on the line and read back whole, as WorkingSetSteer.words reads it", () => {
+  const spaced = { kind: "file", key: "/p/my notes/a b.md", ops: ["read"] };
+  const memory = { kind: "memory", key: "two words", ops: ["read"] };
+  const line = steerLine("drop", [spaced, memory]);
+  assert.equal(line, '/working-set drop "/p/my notes/a b.md" "memory:two words"');
+  assert.deepEqual(parseSteerLine(line), { op: "drop", ids: ["file:/p/my notes/a b.md", "memory:two words"] });
+  assert.deepEqual(steerWords(`drop "my dir/a b.rb" memory:style  'two words' https://x.dev/a?b=1`),
+    ["drop", "my dir/a b.rb", "memory:style", "two words", "https://x.dev/a?b=1"]);
+  assert.deepEqual(steerWords('"say \\"hi\\"" "back\\\\slash" "open end'), ['say "hi"', "back\\slash", "open end"]);
+  assert.deepEqual(steerWords(`it's ok ""  `), ["it's", "ok"]);
+  for (const word of ["plain", "my dir/a b.rb", 'a "b\\c', "'lead", "memory:two words"]) {
+    assert.deepEqual(steerWords(quoteWord(word)), [word]);
+  }
+  assert.equal(quoteWord("lib/cart.rb"), "lib/cart.rb");
 });
 
 test("pendingSteers: queued lines in order, an op then its inverse netting to nothing", () => {

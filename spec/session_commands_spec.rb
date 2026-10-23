@@ -740,6 +740,16 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/working-set").output).to match(/memory:tone +read · dropped/)
     end
 
+    it "takes a quoted KEY with spaces and lists it quoted" do
+      session.messages += [{ role: "model", content: "", tool_calls: [{ id: "c2", name: "read", arguments: { "path" => "my notes/a b.md" } }] },
+                           { role: "tool_response", content: "[read]\n#{"note line\n" * 40}", tool_call_id: "c2", tool_ids: ["t2"] }]
+
+      expect(commands.run("/working-set").output).to include(%(  "my notes/a b.md"  read · ~))
+      expect(commands.run(%(/working-set drop "my notes/a b.md" README.md)))
+        .to have_attributes(status: :ok, output: a_string_starting_with("dropped my notes/a b.md (t2): ").and(include("dropped README.md (t1)")))
+      expect(commands.run(%(/working-set undrop "my notes/x y.md")).output).to eq(%(undrop "my notes/x y.md": not in the working set))
+    end
+
     it "answers a bad line with its usage" do
       expect(commands.run("/working-set pinch README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end

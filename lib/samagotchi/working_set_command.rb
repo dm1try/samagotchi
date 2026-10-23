@@ -8,7 +8,9 @@ module Samagotchi
   # as the web's list shows it: each item, what was done to it, its state
   # and tokens, then the changes the next turn starts with); `drop KEY…`,
   # `undrop KEY…`, `pin KEY…` and `unpin KEY…` steer it (WorkingSetSteer).
-  # KEY: a path (absolute or the session's folder's), memory:NAME, a URL.
+  # KEY: a path (absolute or the session's folder's), memory:NAME, a URL;
+  # one with spaces quoted ("my dir/a.rb", WorkingSetSteer.words), as the
+  # listing shows it.
   # A pin is saved on the session (Session#working_set_pins); the turn-start
   # note names it only where the model has forget_outputs (the strategy's
   # forget layer), or to cancel a pin or an unpin it named.
@@ -18,7 +20,7 @@ module Samagotchi
   # replaces them, so the next turn's first request is the first with it.
   class WorkingSetCommand
     NAME = "/working-set"
-    USAGE = "usage: #{NAME} [drop KEY… | undrop KEY… | pin KEY… | unpin KEY…] (KEY: a path, memory:NAME or a URL)".freeze
+    USAGE = "usage: #{NAME} [drop KEY… | undrop KEY… | pin KEY… | unpin KEY…] (KEY: a path, memory:NAME or a URL; \"quote\" one with spaces)".freeze
     VERBS = [WorkingSetSteer::DROP, WorkingSetSteer::UNDROP, WorkingSetSteer::PIN, WorkingSetSteer::UNPIN].freeze
     OP_WORDS = { WorkingSetSteer::DROP => "dropped", WorkingSetSteer::UNDROP => "undropped",
                  WorkingSetSteer::PIN => "pinned", WorkingSetSteer::UNPIN => "unpinned" }.freeze
@@ -38,7 +40,7 @@ module Samagotchi
     #   :ok or :error (every key refused)
     # @raise [ArgumentError] a line that isn't one (its message and USAGE)
     def run(args)
-      verb, *words = args.to_s.split
+      verb, *words = WorkingSetSteer.words(args)
       return [listing, [], :ok] if verb.nil?
       raise ArgumentError, USAGE unless VERBS.include?(verb) && !words.empty?
 
@@ -62,7 +64,7 @@ module Samagotchi
         lines << done_line(result, strategy)
         done += 1
       rescue WorkingSetSteer::Refused => e
-        lines << "#{verb} #{word}: #{e.message}"
+        lines << "#{verb} #{WorkingSetSteer.quote(word)}: #{e.message}"
       end
       changed = done.positive? ? save(session, noted && messages, pins) : []
       [lines.join("\n"), changed, done.positive? ? :ok : :error]
@@ -78,7 +80,7 @@ module Samagotchi
                                pins: session.working_set_pins).items
       return "working set: empty (the files, memories and URLs the turns read show here)\n#{USAGE}" if items.empty?
 
-      rows = items.map { |item| [name(item, session.working_directory), words(item)] }
+      rows = items.map { |item| [WorkingSetSteer.quote(name(item, session.working_directory)), words(item)] }
       width = rows.map { |row, _| row.length }.max
       lines = ["working set (#{items.size} item#{"s" unless items.size == 1}):"]
       lines.concat(rows.map { |row, text| "  #{row.ljust(width)}  #{text}" })

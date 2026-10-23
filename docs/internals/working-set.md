@@ -220,7 +220,9 @@ rail's line key carries the label's state and its forgotten count, which are pat
 command route (`createWorkingSet`'s `sendLine`). Pending ops are the queued lines (`command_queued` with `waits:
 "turn_end"`, any client's, and the snapshot's `queued_commands` replay after a reload), parsed and netted by
 `working_set.js pendingSteers` until each one's `command_ran`; a seed clears them (the replay brings them back).
-A steer line names a file by its absolute path, a memory as `memory:NAME`, a URL by the server's full key. `dropped`
+A steer line names a file by its absolute path, a memory as `memory:NAME`, a URL by the server's full key; a key
+with whitespace is quoted (`quoteWord`), and `steerWords` reads a line as the worker's `WorkingSetSteer.words` does
+(`"…"` or `'…'` keeps its spaces, a backslash escapes the quote or itself). `dropped`
 is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
 `overlay` carries the server's `pinned`. A row offers `pin` only when the strategy the session's `llm ctx` chip names
 has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A pinned row shows

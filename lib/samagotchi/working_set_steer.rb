@@ -100,6 +100,33 @@ module Samagotchi
 
     module_function
 
+    # A word quoted ("…" or '…'): runs to its closing quote, spaces and
+    # all; a backslash escapes the quote or itself. Else a bare word.
+    WORD = /\G\s*(?:"((?:[^"\\]|\\.)*)"?|'((?:[^'\\]|\\.)*)'?|(\S+))/m
+    # What a quoted word unescapes (\" \' \\); any other backslash stays.
+    ESCAPE = /\\(["'\\])/
+    # A word that needs quoting on a line: whitespace, or a leading quote.
+    QUOTE = /\s|\A["']/
+
+    # The KEY words of a /working-set line (what follows the verb):
+    # whitespace-separated, a quoted word keeps its spaces ("my dir/a.rb").
+    # An unclosed quote runs to the end. The web's working_set.js
+    # (steerWords) reads lines the same way.
+    # @return [Array<String>]
+    def words(text)
+      text.to_s.scan(WORD).filter_map do |double, single, bare|
+        quoted = double || single
+        quoted ? quoted.gsub(ESCAPE, '\\1') : bare
+      end.reject(&:empty?)
+    end
+
+    # +word+ as a line names it: quoted when it has whitespace or starts
+    # with a quote (#words reads it back), else as it is.
+    def quote(word)
+      word = word.to_s
+      word.match?(QUOTE) ? %("#{word.gsub(/["\\]/) { |char| "\\#{char}" }}") : word
+    end
+
     # +word+ (a path, absolute or the session's folder's; memory:NAME; a
     # URL) as a Target.
     def target(word, cwd:)

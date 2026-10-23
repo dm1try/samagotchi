@@ -611,7 +611,7 @@ KEY…` takes an item out of what the model is sent: every read of it still sent
 goes as a stub, `(dropped by the user) — read it again if the task needs it`,
 whatever the LLM context strategy (none too), and stays dropped across a
 strategy switch. KEY is a path (absolute or the session folder's), `memory:NAME`
-or a URL. `/working-set undrop KEY…` sends it whole again. A change applies
+or a URL; quote one with spaces (`"my notes/a b.md"`, as the listing shows it). `/working-set undrop KEY…` sends it whole again. A change applies
 from the next turn's first request, which also carries one line telling the
 model what you dropped or brought back (so it doesn't read it again by reflex);
 the reply says what it frees and the tail the server reads again (a drop changes
