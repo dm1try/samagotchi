@@ -60,17 +60,25 @@ module Samagotchi
       #   loosening route from a command line)
       # @param state_dir [String, nil] where the sessions are (the default
       #   state dir by default): the worker's, for the attached loop too
+      # @param connector [#connect, nil] finds or starts the session
+      #   elsewhere: its #connect returns the AttachLink the loop runs on
+      #   (nil: this machine's, through .connect)
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-              toolkit_flags: [], settings: nil, parent_answers: nil, state_dir: nil)
+              toolkit_flags: [], settings: nil, parent_answers: nil, state_dir: nil, connector: nil)
         state_dir ||= Session.default_state_dir
-        client = connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
-                         memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking,
-                         appended_prompt_files: appended_prompt_files, toolkit: toolkit, toolkit_flags: toolkit_flags,
-                         settings: settings, parent_answers: parent_answers)
+        link = connector&.connect
+        client = if link
+                   link.client
+                 else
+                   connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
+                           memories: memories, muted_memories: muted_memories, llm_context: llm_context,
+                           thinking: thinking, appended_prompt_files: appended_prompt_files, toolkit: toolkit,
+                           toolkit_flags: toolkit_flags, settings: settings, parent_answers: parent_answers)
+                 end
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
@@ -78,18 +86,26 @@ module Samagotchi
         commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
         surface = open_surface
-        attached = AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
-                                    first_command: first_command, no_interrupt: no_interrupt,
-                                    default_input: default_input && !prompt && !attach && !resume,
-                                    wait_at_eof: !$stdin.tty?,
-                                    as_parent: Guardrails::ParentApprovals.parent_process?, state_dir: state_dir)
+        options = { screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
+                    first_command: first_command, no_interrupt: no_interrupt,
+                    default_input: default_input && !prompt && !attach && !resume,
+                    wait_at_eof: !$stdin.tty?,
+                    as_parent: Guardrails::ParentApprovals.parent_process? }
+        attached = if link
+                     AttachedLoop.new(link: link, **options)
+                   else
+                     AttachedLoop.new(client: client, **options, state_dir: state_dir)
+                   end
         ended = begin
           attached.run
         ensure
           close_surface(surface)
         end
         if ended == :unanswered && attached.unanswered
-          report_unanswered(attached.unanswered, session_id: client.session_id, state_dir: state_dir)
+          # A link's strategy is read where the session is, its commands
+          # spelled its way.
+          where = link ? { strategy: link.parent_strategy, via: link.via } : {}
+          report_unanswered(attached.unanswered, session_id: client.session_id, state_dir: state_dir, **where)
         end
         report_ended(ended)
         ended
@@ -101,10 +117,16 @@ module Samagotchi
       # @param pending [Hash] the pending question as the Bridge sent it
       # @param state_dir [String, nil] where the session file is: what a
       #   parent may pick follows its own parent_answers too
-      def report_unanswered(pending, session_id:, err: $stderr, state_dir: nil)
+      # @param strategy [Guardrails::ParentPolicy::Strategy, nil] that
+      #   strategy, read already (an AttachLink's); nil:
+      #   ParentReport.strategy_for here
+      # @param via [ChiInvocation, nil] how its commands are spelled (nil:
+      #   this machine's)
+      def report_unanswered(pending, session_id:, err: $stderr, state_dir: nil, strategy: nil, via: nil)
         question = PendingQuestion.from_file(pending)
-        strategy = ParentReport.strategy_for(session_id, state_dir: state_dir || Session.default_state_dir)
-        err.print("chi: #{ParentReport.question_text(question, session_id: session_id, strategy: strategy)}")
+        strategy ||= ParentReport.strategy_for(session_id, state_dir: state_dir || Session.default_state_dir)
+        words = via ? { via: via } : {}
+        err.print("chi: #{ParentReport.question_text(question, session_id: session_id, strategy: strategy, **words)}")
         err.flush
       end
 
