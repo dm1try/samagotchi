@@ -8,6 +8,7 @@ require_relative "../parent_report"
 require_relative "../note_delivery"
 require_relative "../image_store"
 require_relative "../context_sources"
+require_relative "../send_command/busy"
 
 module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
@@ -139,6 +140,17 @@ module Samagotchi
           settled: session.status == Session::STATUS_IDLE && !session.last_turn.nil? && session.pending_question.nil?,
           last_turn_id: session.last_turn&.enqueued_id
         )
+      end
+
+      # Why chi send --wait may not send into the session now (a turn runs,
+      # or a question waits on it with --queue), or nil.
+      # @param session [Session, nil] the session as the caller just read
+      #   it; nil reads it here
+      # @return [SendCommand::Busy, nil]
+      def busy(id, queue:, session: nil)
+        session ||= show(id)
+        owner = owner(id) if session.status == Session::STATUS_RUNNING
+        SendCommand::Busy.for(session, owner: owner, queue: queue)
       end
 
       # ReplyWait.call: blocks until the reply, a question, the turn's end
