@@ -91,9 +91,11 @@ module Samagotchi
     # and the tail the server reads again from its earliest entry on.
     # +free+: an undrop that took back a drop never sent (nothing changes),
     # a pin or an unpin (nothing sent changes). +undone+: the pending drop
-    # a pin took off (a Done), else nil.
-    Done = Data.define(:target, :op, :ids, :freed_chars, :tail_chars, :free, :undone) do
-      def initialize(undone: nil, **fields) = super
+    # a pin took off (a Done), else nil. +shared_with+: the other memories a
+    # memory_read of several names holds in an output the op acted on (the
+    # op acts on that output whole, so on them too).
+    Done = Data.define(:target, :op, :ids, :freed_chars, :tail_chars, :free, :undone, :shared_with) do
+      def initialize(undone: nil, shared_with: [], **fields) = super
     end
 
     module_function
@@ -147,7 +149,7 @@ module Samagotchi
       freed, tail = LLMContextApply.weigh(conversation, layers: layers(strategy), edits: edits)
       edits.each { |index, edit| LLMContextEdit.store(conversation[index], edit) }
       Done.new(target: target, op: DROP, ids: edits.map { |_, edit| edit.id }, freed_chars: freed, tail_chars: tail,
-               free: false)
+               free: false, shared_with: shared_with(sent))
     end
 
     # Takes +target+'s drops off, putting back what each output held before
@@ -172,7 +174,7 @@ module Samagotchi
       view = LLMContextView.new(strategy: strategy)
       tail = sent ? LLMContextView.chars(view.messages(conversation)[first..]) : 0
       Done.new(target: target, op: UNDROP, ids: dropped.map { |output, _| output.id }, freed_chars: 0, tail_chars: tail,
-               free: !sent)
+               free: !sent, shared_with: shared_with(dropped.map(&:first)))
     end
 
     # Pins +target+ (an item the set holds; an edit-only one too: its later
@@ -193,8 +195,9 @@ module Samagotchi
 
         undone = undrop(conversation, target, strategy: strategy, cwd: cwd, sent: false)
       end
-      Done.new(target: target, op: PIN, ids: outputs.reject(&:derived).map(&:id), freed_chars: 0, tail_chars: 0,
-               free: true, undone: undone)
+      named = outputs.reject(&:derived)
+      Done.new(target: target, op: PIN, ids: named.map(&:id), freed_chars: 0, tail_chars: 0, free: true, undone: undone,
+               shared_with: shared_with(named))
     end
 
     # Unpins +target+: the model may forget it again. Only the pins are
@@ -214,6 +217,9 @@ module Samagotchi
       rest = Array(pins).reject { |held| held == pin }
       (done.op == PIN ? rest + [pin] : rest).freeze
     end
+
+    # The other memory names +outputs+ hold (WorkingSet::Output#shared_with).
+    def shared_with(outputs) = outputs.flat_map(&:shared_with).uniq
 
     # Whether +pins+ hold +target+.
     def pinned?(pins, target)
@@ -319,6 +325,6 @@ module Samagotchi
       tokens >= 1000 ? format("%.1fk tokens", tokens / 1000.0) : "#{tokens} tokens"
     end
 
-    private_class_method :relative, :drop_of, :known?, :layers, :same?, :labels
+    private_class_method :relative, :shared_with, :drop_of, :known?, :layers, :same?, :labels
   end
 end

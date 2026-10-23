@@ -101,7 +101,9 @@ module Samagotchi
     # chi +id+ (ToolIds), the +index+ of the tool_response entry holding
     # it, whether the id is +derived+ (a legacy entry's: nothing can name
     # it) and whether the model is still +sent+ it under the strategy.
-    Output = Data.define(:id, :index, :derived, :sent)
+    # +shared_with+: the other names a memory_read of several names holds in the
+    # same output (an op on the output acts on them too), else empty.
+    Output = Data.define(:id, :index, :derived, :sent, :shared_with)
 
     # The content outputs of the item +kind+/+key+ (#build's identity: a
     # file's absolute path, a memory's name, a URL), in conversation
@@ -117,7 +119,7 @@ module Samagotchi
 
         ref = touch.run.ref
         Output.new(id: ref.id, index: touch.run.index, derived: ref.derived?,
-                   sent: still_sent?(touch, conversation, view))
+                   sent: still_sent?(touch, conversation, view), shared_with: shared_with(touch, key))
       end
     end
 
@@ -175,6 +177,9 @@ module Samagotchi
     def failed?(text)
       ToolResponse.interrupted_text?(text) || text.sub(ToolResponse::LEAD, "").lstrip.start_with?("Error")
     end
+
+    # The other names +touch+'s output holds (a memory_read of several).
+    def shared_with(touch, key) = touch.share > 1 ? found_names(touch.run) - [key] : []
 
     # A memory_read's names (Tools::MemoryRead.parse_names: none for the
     # index listing), less the ones its output says weren't found.
@@ -250,6 +255,6 @@ module Samagotchi
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :all_touches, :touches, :failed?, :found_names, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
+    private_class_method :all_touches, :touches, :failed?, :found_names, :shared_with, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
   end
 end

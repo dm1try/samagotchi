@@ -99,6 +99,17 @@ RSpec.describe Samagotchi::WorkingSetSteer do
         }
       end
     end
+
+    it "acts on a memory_read of several names whole, and says which other names went with it" do
+      conversation = [head, chat_model("c1", "memory_read", { "name" => "style, tone" }),
+                      chat_result("c1", "memory_read", "be brief\n\n---\n\nbe kind", "t1"),
+                      chat_model("c2", "memory_read", { "name" => "tone" }), chat_result("c2", "memory_read", "be kind", "t2")]
+
+      expect(drop(conversation, "memory:style")).to have_attributes(ids: %w[t1], shared_with: %w[tone])
+      expect(states(conversation)).to eq("style" => "dropped", "tone" => "live")
+      expect(undrop(conversation, "memory:style")).to have_attributes(ids: %w[t1], shared_with: %w[tone])
+      expect(drop(conversation, "memory:tone")).to have_attributes(ids: %w[t1 t2], shared_with: %w[style])
+    end
   end
 
   describe ".undrop" do

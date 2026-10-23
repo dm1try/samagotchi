@@ -150,7 +150,19 @@ module Samagotchi
 
     def done_line(done, strategy = nil)
       ids = done.ids.empty? ? "" : " (#{done.ids.join(", ")})"
-      what = "#{OP_WORDS[done.op]} #{done.target.label}#{ids}"
+      "#{op_line(done, "#{OP_WORDS[done.op]} #{done.target.label}#{ids}", strategy)}#{with_line(done)}"
+    end
+
+    # A memory_read of several names is one output: the op acted on the
+    # others' read too. Says which names went with it.
+    def with_line(done)
+      return "" if done.shared_with.empty?
+
+      names = done.shared_with.map { |name| "memory #{name}" }.join(", ")
+      "; the same memory_read holds #{names}: #{OP_WORDS[done.op]} with it (that read only)"
+    end
+
+    def op_line(done, what, strategy)
       case done.op
       when WorkingSetSteer::PIN
         off = forget?(strategy) ? "" : " (the strategy has no forget layer now: the pin holds when it has)"

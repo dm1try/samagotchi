@@ -618,7 +618,10 @@ the reply says what it frees and the tail the server reads again (a drop changes
 history, so the prompt cache breaks there once). An undrop before that request
 undoes the drop for free. Refused, with why: an item only edited or written
 (nothing of it to drop), one not in the set, an older session's output chi
-can't name. The model can't undo a drop (`forget_outputs` refuses it).
+can't name. The model can't undo a drop (`forget_outputs` refuses it). One
+`memory_read` of several names is one output: dropping, undropping or pinning
+one name acts on that read whole, so on the others too, and the reply names
+them (`; the same memory_read holds memory tone: dropped with it`).
 `/working-set pin KEY…` keeps an item from the model's `forget_outputs` (the
 [forget layer](configuration.md#llm-context-the-forget-layer)): it refuses every
 read of it, those to come too, until `/working-set unpin KEY…`. A pin sends

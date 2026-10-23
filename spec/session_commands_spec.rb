@@ -730,6 +730,16 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("unpin README.md: #{Samagotchi::WorkingSetSteer::Refused.text(:not_pinned)}")
     end
 
+    it "says which other names a memory_read of several holds: the op acts on that read whole" do
+      session.messages += [{ role: "model", content: "", tool_calls: [{ id: "c2", name: "memory_read", arguments: { "name" => "style, tone" } }] },
+                           { role: "tool_response", content: "[memory_read]\nbe brief\n\n---\n\nbe kind", tool_call_id: "c2",
+                             tool_ids: ["t2"] }]
+
+      expect(commands.run("/working-set drop memory:style").output)
+        .to start_with("dropped memory style (t2): ").and end_with("; the same memory_read holds memory tone: dropped with it (that read only)")
+      expect(commands.run("/working-set").output).to match(/memory:tone +read · dropped/)
+    end
+
     it "answers a bad line with its usage" do
       expect(commands.run("/working-set pinch README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end

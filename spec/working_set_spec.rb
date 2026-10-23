@@ -283,8 +283,8 @@ RSpec.describe Samagotchi::WorkingSet do
                       *read_turn(cart, "c4", "t4")]
 
       expect(outputs(conversation, "file", cart, strategy: %i[forget]).map(&:to_h)).to eq([
-        { id: "t1", index: 2, derived: false, sent: false },
-        { id: "t4", index: 8, derived: false, sent: true }
+        { id: "t1", index: 2, derived: false, sent: false, shared_with: [] },
+        { id: "t4", index: 8, derived: false, sent: true, shared_with: [] }
       ])
       expect(outputs(conversation, "file", cart).map(&:sent)).to eq([true, true])
     end
@@ -322,8 +322,8 @@ RSpec.describe Samagotchi::WorkingSet do
                                  chat_call("c3", "read", { "path" => "lib/gone.rb" })),
                       chat_result("c2", "write", "Wrote", "t2"), chat_result("c3", "read", "Error: no such file", "t3")]
 
-      expect(outputs(conversation, "memory", "style").map(&:id)).to eq(%w[t1])
-      expect(outputs(conversation, "memory", "tone").map(&:id)).to eq(%w[t1])
+      expect(outputs(conversation, "memory", "style").map { |out| [out.id, out.shared_with] }).to eq([["t1", %w[tone]]])
+      expect(outputs(conversation, "memory", "tone").map { |out| [out.id, out.shared_with] }).to eq([["t1", %w[style]]])
       expect(outputs(conversation, "file", "/work/shop/lib/new.rb")).to be_empty
       expect(outputs(conversation, "file", "/work/shop/lib/gone.rb")).to be_empty
       expect(outputs(conversation, "url", "https://nowhere.dev")).to be_empty

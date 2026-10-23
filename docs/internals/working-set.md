@@ -84,7 +84,7 @@ or is gone. No stamp, live. A forgotten item stays forgotten whatever its file d
 
 **An item's outputs.** `WorkingSet.outputs_of(conversation, kind:, key:, strategy:, cwd:)` answers an item's
 content outputs (`WorkingSet::Output`: `id`, the tool_response entry's `index`, `derived` for a legacy entry's id,
-and `sent`, the rule above) in conversation order. It walks the runs exactly as `build` does (one shared
+`sent`, the rule above, and `shared_with`, the other names a `memory_read` of several holds there) in conversation order. It walks the runs exactly as `build` does (one shared
 `all_touches`), so what acts on an item's outputs and the projection never disagree: an item is forgotten exactly
 when it has outputs and none is `sent`. An edit-only item, a failed run's file or an unknown key has none; a
 `memory_read` of several names is an output of each name.
@@ -149,7 +149,8 @@ conversation again) and `Engine#announce_working_set` re-emits the set, held beh
   nothing to drop (only edited or written; only a legacy entry's derived ids; none of it sent now); already
   dropped; not dropped. `forget_outputs` uses the same words for a dropped output ("dropped by the user"): the
   model can neither forget nor restore it. A `memory_read` of several names is one output of each: dropping one
-  name drops that read for the others too.
+  name drops that read for the others too (an op acts on the output whole). `WorkingSet::Output#shared_with` names the
+  others an output holds and `Done#shared_with` the ones an op took along; the reply says them.
 - **The note**: the ops since the last turn are one tail system message, `kind: working_set` (in
   `Prompt::ESCAPED_KINDS`), its ops in `working_set_ops`. It is pending while only system messages follow it
   (`WorkingSetSteer.pending_note_index`); a later op joins it, and an inverse op (an undrop of a pending drop) takes
