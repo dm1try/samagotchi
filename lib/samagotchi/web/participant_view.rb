@@ -364,8 +364,9 @@ module Samagotchi
       # in a reply, or one in a prompt.
       module Redact
         MARK = "[redacted]"
+        PRIVATE_KEY = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)/m
         PATTERNS = [
-          /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)/m,
+          PRIVATE_KEY,
           /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}/,
           /\bgh[pousr]_[A-Za-z0-9]{20,}/,
           /\bgithub_pat_[A-Za-z0-9_]{20,}/,
@@ -384,6 +385,10 @@ module Samagotchi
           # A URL's password: scheme://user:PASSWORD@host.
           %r{(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)[^@\s/]+(?=@)}i
         ].freeze
+        # A text that ends where one of VALUES' values (or a private key's
+        # BEGIN line) would go on: a stream cut there would send the value
+        # on its own, unredacted (ParticipantStreamFilter never cuts there).
+        OPEN_VALUE = /(?:\bAuthorization:\s*(?:(?:Bearer|Basic|Token)\s*)?|[A-Za-z0-9_-]*?(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)["']?\s*(?:[=:]\s*["']?)?|-----BEGIN [A-Z0-9 ]*)\z/i
 
         module_function
 

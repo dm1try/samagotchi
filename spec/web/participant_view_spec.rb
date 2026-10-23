@@ -224,6 +224,36 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
     expect(texts(out)).to eq("token [redacted] done\n")
   end
 
+  # +text+ streamed in chunks of +size+ characters, then the turn's end: the reply text the participant got.
+  def streamed(text, size)
+    stream = described_class.new(viewer)
+    out = text.chars.each_slice(size).map { |chars| stream.call(frame("1", { type: "generation_chunk", text: chars.join })) }.join
+    texts(out + stream.call(frame("2", { type: "turn_completed" })))
+  end
+
+  {
+    "password: hunter2supersecret" => "hunter2supersecret",
+    "Authorization: Bearer abcDEF123valuexyz" => "abcDEF123valuexyz",
+    "api_key = 'qwertyQWERTY0987'" => "qwertyQWERTY0987",
+    "sk-ant-abcdefghijklmnopqrstuvwxyz0123" => "abcdefghijklmnop",
+    "-----BEGIN RSA PRIVATE KEY-----\nKEYBODYKEYBODY\n-----END RSA PRIVATE KEY-----" => "KEYBODY"
+  }.each do |secret, value|
+    it "never splits #{secret.lines.first.strip} at a length cut, wherever the line puts it (400 or 1600 characters)" do
+      filler = "lorem ipsum dolor sit amet " * 70
+      (360..440).each do |at|
+        [1, 7].each do |size|
+          got = streamed("#{filler[0, at]} #{secret} and more words\n", size)
+          expect(got).not_to include(value), "spaced, at #{at}, chunks of #{size}: #{got[-120..].inspect}"
+          expect(got).to include("[redacted]")
+        end
+      end
+      (1580..1620).step(4).each do |at|
+        got = streamed("#{"x" * at}/#{secret} more\n", 5)
+        expect(got).not_to include(value), "unbroken, at #{at}: #{got[-120..].inspect}"
+      end
+    end
+  end
+
   it "withholds a private key block streamed over several chunks, from its BEGIN line to its END line" do
     parts = ["Here:\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blb", "nNzaC1rZXk\nAAAA\n-----END OPENSSH PRIVATE KEY-----\nafter\n"]
     out = parts.each_with_index.map { |text, i| filter.call(frame(i.to_s, { type: "generation_chunk", text: text })) }.join

@@ -42,6 +42,9 @@ and commands may change between minor versions. How releases are made:
 - Participants: an agent participant's `chi send --wait` no longer reads its reply unfiltered: the reply is
   redacted as the page shows it (secret shapes, the owner's token, host paths, no thinking or tool calls), and a
   failed turn says "this turn failed: the session's owner can see why", never the error's own words.
+- Participants: a secret on a long streamed line (`password: …`, an `Authorization:` header, an `sk-…` key, a
+  private key's BEGIN line) is no longer sent unredacted when the participant's stream cuts the line at 400
+  characters; a line with no space for 1600 characters ends in `[redacted]`.
 
 ## [0.106.0] - 2026-10-23
 

@@ -302,6 +302,21 @@ RSpec.describe "a participant red-teaming a session" do
       expect(out).not_to include(root)
     end
 
+    it "can't read a secret the reply streams on a long line, split by the stream's length cut" do
+      observer = engine.instance_variable_get(:@session_observer)
+      observer.notify({ type: :turn_started, prompt: "go", turn_id: "t1", origin: { client_id: "web:tab" } })
+      line = "#{"word " * 77}the password: hunter2supersecret, Authorization: Bearer abcDEF123valuexyz then " \
+             "#{"x" * 1700}/sk-ant-abcdefghijklmnopqrstuvwxyz0123 tail\nend\n"
+      line.chars.each_slice(11) { |chars| observer.notify({ type: :generation_chunk, text: chars.join, iteration: 1 }) }
+      observer.notify({ type: :turn_completed, turn_id: "t1" })
+
+      out = participant_stream("turn_completed")
+      text = out.scan(/^data: (.*)\r$/).flatten.map { |json| JSON.parse(json) }
+                .select { |event| event["type"] == "generation_chunk" }.sum("") { |event| event["text"] }
+      expect(text).to include("the password: [redacted], Authorization: Bearer [redacted] then", "\nend\n")
+      %w[hunter2 abcDEF123 abcdefghijklmnop].each { |leak| expect(out).not_to include(leak), leak }
+    end
+
     it "can't take back the owner's queued turn" do
       Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
                                            prompt: "owner's", client_id: "web:o", enqueued_id: "owner-eid", delivery: "queue")

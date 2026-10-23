@@ -18,7 +18,11 @@ module Samagotchi
     # private key block is withheld from its BEGIN line to its END line.
     # The rest of a line waits for its end, a boundary (a tool call, the
     # turn's end, the owner's question) or MAX_HELD characters (then up to
-    # its last space).
+    # its last space). A cut never splits a secret: never inside what
+    # Redact would redact in the held text, nor after a key word whose
+    # value is still to come (Redact::OPEN_VALUE); past MAX_HELD * 4 with
+    # no such space, the held text goes out redacted but its last unbroken
+    # run, which with the rest of its line is one [redacted].
     #
     # One per stream (it keeps the partial frame and line between chunks),
     # called from the stream's one thread.
@@ -44,6 +48,10 @@ module Samagotchi
         @held = +""
         @held_iteration = nil
         @in_key = false
+        # While a hard cut drops the rest of its line (#hard_cut): the last
+        # of what it dropped, and whether that holds a key's BEGIN line.
+        @dropped = nil
+        @dropped_key = false
       end
 
       # @param chunk [String] the Bridge's next read
@@ -90,6 +98,7 @@ module Samagotchi
 
         if shown["type"] == "generation_retrying" && shown["restarted"]
           @held = +""
+          @dropped = nil
           return frame(id, shown)
         end
         return flush + frame(id, shown) if FLUSH_BEFORE.include?(shown["type"])
@@ -100,10 +109,9 @@ module Samagotchi
       # A reply chunk: its text joins the held line; the whole lines go out.
       def chunk(event, shown, id)
         @held_iteration = shown["iteration"]
-        @held << event["text"].to_s
-        cut = @held.rindex("\n")
-        cut ||= @held.rindex(/\s/) if @held.size > MAX_HELD
-        cut ||= @held.size - 1 if @held.size > MAX_HELD * 4
+        @held << undropped(event["text"].to_s)
+        cut = safe_cut
+        return hard_cut(id, shown) if cut.nil? && @held.size > MAX_HELD * 4
         return "" unless cut
 
         text = @held[0..cut]
@@ -112,8 +120,80 @@ module Samagotchi
         out.empty? ? "" : frame(id, shown.merge("text" => out))
       end
 
+      # MAX_HELD * 4 held with no safe cut (one unbroken run, mostly): the
+      # held text goes out redacted but for its last run, which with the rest
+      # of its line is one MARK (fail closed: it may be a secret's start).
+      def hard_cut(id, shown)
+        text = @held.sub(/\S*\z/, "")
+        # A key word or a key's BEGIN line before that run goes with it.
+        open = ParticipantView::Redact::OPEN_VALUE.match(text[-80..] || text)
+        text = text[0, text.size - open[0].size] if open
+        @dropped = +""
+        @dropped_key = false
+        dropping = @held[text.size..]
+        @held = +""
+        @held << undropped(dropping)
+        frame(id, shown.merge("text" => "#{lines_of(text)}#{ParticipantView::Redact::MARK}"))
+      end
+
+      # The last newline (past MAX_HELD, the last space) the held text may
+      # be cut after: not inside a secret Redact would match in it, and not
+      # where a secret's value would follow. nil: hold on.
+      def safe_cut
+        spaces = (@held.size > MAX_HELD ? /\s/ : /\n/)
+        spans = nil
+        at = @held.size
+        while (at = at.positive? && @held.rindex(spaces, at - 1))
+          spans ||= secret_spans(@held)
+          return at unless spans.any? { |from, to| from <= at && at < to } || open_value?(at)
+        end
+        nil
+      end
+
+      # Whether the held text up to +at+ (a cut's last character) ends where
+      # a secret's value would go on.
+      def open_value?(at)
+        from = [at - 80, 0].max
+        ParticipantView::Redact::OPEN_VALUE.match?(@held[from..at])
+      end
+
+      SPAN_PATTERNS = (ParticipantView::Redact::PATTERNS - [ParticipantView::Redact::PRIVATE_KEY] +
+                       ParticipantView::Redact::VALUES).freeze
+
+      # [from, to) of every match Redact would redact in +text+ (but a
+      # private key's block: lines_of withholds it by its lines).
+      def secret_spans(text)
+        literals = @viewer.secrets.map { |secret| Regexp.new(Regexp.escape(secret)) }
+        (literals + SPAN_PATTERNS).flat_map do |pattern|
+          text.to_enum(:scan, pattern).map { Regexp.last_match.offset(0) }
+        end
+      end
+
+      # +text+ without what a hard cut drops: the rest of its line. A
+      # private key's BEGIN line in what it dropped (read through a window:
+      # the line may be long) withholds its block still.
+      def undropped(text)
+        return text unless @dropped
+
+        line_end = text.index("\n")
+        window = @dropped + text[0, line_end || text.size]
+        last_begin = window.rindex(PEM_BEGIN)
+        last_end = window.rindex(PEM_END)
+        @dropped_key = (last_begin || -1) > (last_end || -1) if last_begin || last_end
+        @dropped = window[-DROPPED_WINDOW..] || window
+        return "" unless line_end
+
+        @in_key = true if @dropped_key
+        @dropped = nil
+        text[line_end..]
+      end
+
+      # Longer than a BEGIN or END line.
+      DROPPED_WINDOW = 80
+
       # The held text as a chunk of its own (no cursor), before a boundary.
       def flush
+        @dropped = nil
         return "" if @held.empty?
 
         text = lines_of(@held)
@@ -123,19 +203,24 @@ module Samagotchi
         frame(nil, { "type" => "generation_chunk", "text" => text, **(@held_iteration ? { "iteration" => @held_iteration } : {}) })
       end
 
-      # +text+'s lines redacted, a private key block's withheld whole.
+      # +text+ redacted (each run of lines as one, so a secret over a line
+      # break is redacted as one), a private key block's withheld whole.
       def lines_of(text)
-        text.each_line.map do |line|
+        out = +""
+        run = +""
+        text.each_line do |line|
           if @in_key
             @in_key = false if PEM_END.match?(line)
-            next ""
-          end
-          if PEM_BEGIN.match?(line) && !PEM_END.match?(line)
+          elsif PEM_BEGIN.match?(line) && !PEM_END.match?(line)
+            out << ParticipantView::Redact.text(run, @viewer)
+            run = +""
             @in_key = true
-            next "#{ParticipantView::Redact::MARK}#{"\n" if line.end_with?("\n")}"
+            out << "#{ParticipantView::Redact::MARK}#{"\n" if line.end_with?("\n")}"
+          else
+            run << line
           end
-          ParticipantView::Redact.text(line, @viewer)
-        end.join
+        end
+        out << ParticipantView::Redact.text(run, @viewer)
       end
 
       def frame(id, shown)
