@@ -96,6 +96,10 @@ module Samagotchi
       end
       private_class_method :listed_mid_turn
 
+      # A name is taken once, with one exception: core may give a name two
+      # entries, one the UIs run (local) and one the session runs, each with
+      # its own match (/recap shows in a UI, /recap off runs in the worker).
+      # #listing then has the name twice, /help and Tab once.
       # @param anytime [Boolean] mid_turn: :anytime (a bundle's command)
       # @param mid_turn [Symbol, #call, nil] see Entry; nil takes +anytime+
       # @param match [#call, nil] the default matches the name alone or the
@@ -104,7 +108,7 @@ module Samagotchi
       # @return [Entry]
       def register(name, description, id: nil, anytime: false, mid_turn: nil, local: false, uis: nil, match: nil,
                    source: "core", annotations: [], &handler)
-        raise ArgumentError, "command #{name} is already registered" if @entries.any? { |entry| entry.name == name }
+        raise ArgumentError, "command #{name} is already registered" unless name_free?(name, local: local, source: source)
 
         entry = Entry.new(id: id || name.delete_prefix("/").to_sym, name: name, description: description,
                           mid_turn: mid_turn || (anytime ? :anytime : :refuse), local: local, uis: uis, match: match || default_match(name),
@@ -201,6 +205,13 @@ module Samagotchi
 
       def add(entry)
         @entries << entry
+      end
+
+      def name_free?(name, local:, source:)
+        taken = @entries.select { |entry| entry.name == name }
+        return true if taken.empty?
+
+        source == "core" && taken.size == 1 && taken.first.source == "core" && !taken.first.local != !local
       end
 
       def default_match(name)

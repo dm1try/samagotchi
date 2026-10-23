@@ -42,6 +42,18 @@ RSpec.describe Samagotchi::Commands::Registry do
     expect { registry.register("/b", "b") }.to raise_error(FrozenError)
   end
 
+  it "lets core give a name one UI entry and one session entry, each with its own match; nothing more" do
+    registry.register("/r", "set", match: ->(text) { text.start_with?("/r ") }) { |_text| nil }
+    registry.register("/r", "show", local: true, match: ->(text) { text == "/r" })
+    expect(registry.lookup("/r off")&.description).to eq("set")
+    expect(registry.lookup_local("/r")&.description).to eq("show")
+    expect(registry.completions(:repl)).to eq(%w[/r])
+    expect { registry.register("/r", "third", local: true) }.to raise_error(ArgumentError, /already registered/)
+    registry.register("/p", "a bundle's", source: "plug")
+    expect { registry.register("/p", "local", local: true, source: "plug") }.to raise_error(ArgumentError, /already registered/)
+    expect { registry.register("/p", "core's", local: true) }.to raise_error(ArgumentError, /already registered/)
+  end
+
   describe "#unknown_command_word? and #unknown_command_hint" do
     let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
 
