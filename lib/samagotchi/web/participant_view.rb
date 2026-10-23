@@ -158,31 +158,48 @@ module Samagotchi
 
       # @param shown [Array<Hash>] the owner's display messages
       #   (App#messages_for_display with parts: true)
+      # @param automatic [#include?] the ids of turns no person sent (their
+      #   analytics records' +automatic+, and the running one's): their
+      #   prompt is shown as an automatic turn, without its text
       # @return [Array<Hash>] {role: "user", content, turn_id, author,
       #   author_name, mine, automatic, images} and {role: "assistant",
       #   content, tools: [{tool, path}]}; no notes, steers, automatic
       #   input or empty-answer markers. html is added by the caller, from
       #   this (redacted) content.
-      def messages(shown, viewer)
+      def messages(shown, viewer, automatic: [])
         Array(shown).filter_map do |message|
           next unless message.is_a?(Hash)
 
           out = case field(message, :role).to_s
-                when "user" then user_message(message, viewer)
+                when "user" then user_message(message, viewer, automatic)
                 when "assistant" then assistant_message(message, viewer)
                 end
           out && Redact.deep(out, viewer)
         end
       end
 
-      def user_message(message, viewer)
+      # A user message a participant sees: a turn's prompt (it has the
+      # turn's id) or a person's line merged into a turn. Every other user
+      # message is dropped: the owner's `!` line and its output, a
+      # delegate's report (a wake turn's input), the notes chi adds (a
+      # Continue the owner declined). Any message from a source that isn't a
+      # person's is dropped whatever it is.
+      def user_message(message, viewer, automatic = [])
         source = field(message, :source).to_s
-        return nil if field(message, :merged) && !PERSON_SOURCES.include?(source)
+        return nil unless PERSON_SOURCES.include?(source)
 
-        out = { "role" => "user", "content" => field(message, :content).to_s }
         turn_id = field(message, :turn_id)
+        merged = field(message, :merged)
+        return nil unless turn_id || merged
+
+        out = { "role" => "user" }
+        if turn_id && automatic.include?(turn_id.to_s)
+          out.merge!("content" => "", "automatic" => true, "turn_id" => turn_id.to_s)
+          return out
+        end
+        out["content"] = field(message, :content).to_s
         out["turn_id"] = turn_id.to_s if turn_id
-        out["merged"] = true if field(message, :merged)
+        out["merged"] = true if merged
         out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer))
         images = field(message, :images)
         out["images"] = images.size if images.is_a?(Array) && !images.empty?

@@ -178,9 +178,13 @@ fields: a field added to an event later reaches nobody until it is named there.
   one kept for the next chunk, one over 1 MiB dropped to its end); each frame's JSON goes through `.event` and is
   written again (`id:` the Bridge's cursor when it looks like one, `event:` the filtered type); a comment is a
   `: ping`; anything that doesn't parse is dropped. The owner's stream never goes through it (a byte pipe).
-- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`): user messages (the turn's prompt
-  and a person's merged input: no delegate report, plugin or automatic input) with their author and an image count;
-  replies with their text and their step's tool rows. Notes, steers and empty-answer markers are dropped. The reply's
+- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`): a user message only when it is a
+  turn's prompt (it has the turn's id) or a person's merged line, and never one from a source that isn't a person's;
+  so the owner's `!` line and its output, a delegate's report (a wake turn's too), and the notes chi adds (a declined
+  Continue) never show. A turn no person sent (its analytics record's `automatic`, `SessionMetrics`: a task's or a
+  plugin's; the running turn's by its start) shows as an automatic turn without its prompt, as the stream does. Each
+  prompt carries its author and an image count; replies their text and their step's tool rows. Notes, steers and
+  empty-answer markers are dropped. The reply's
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.

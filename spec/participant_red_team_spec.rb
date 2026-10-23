@@ -323,24 +323,35 @@ RSpec.describe "a participant red-teaming a session" do
         Samagotchi::Steer.message(text: "PLUGIN-STEER", source: "check-in"),
         { role: "user", kind: "input", source: "delegate_report", content: "DELEGATE-REPORT" },
         { role: "model", content: "Deployed; notes in #{project}/docs/notes.md" },
+        { role: "user", content: "!(cat .env)\nAPI_KEY=SHELL-OUTPUT-SECRET" },
+        { role: "user", kind: "input", source: "delegate_report", turn_start: true, turn_id: "tw",
+          content: "session: 0badc0de-other-session\nWAKE-REPORT" },
+        { role: "model", content: "The child finished." },
+        { role: "user", content: "The user chose not to continue: DECLINED-NOTE" },
+        { role: "user", content: "TASK-WAKE-PROMPT finished", turn_id: "tt" },
+        { role: "model", content: "Noted the task." },
         { role: "user", content: "is step 3 safe?", turn_id: "t2", author: grant.author, author_name: "Mallory" },
         { role: "model", content: "Yes." }
       )
       session.save(state_dir: state_dir)
+      File.write(Samagotchi::AnalyticsFile.path(Samagotchi::Session.session_dir(session.id, state_dir: state_dir)),
+                 JSON.generate({ "turn_records" => [{ "id" => "tt", "automatic" => true }] }))
     end
 
-    it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report or a host path" do
+    it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report, the owner's ! output, an automatic prompt or a host path" do
       status, body = get("/api/sessions/#{session.id}/review")
       expect(status).to eq(200)
       review = JSON.parse(body)
       expect(review["messages"].map { |m| [m["role"], m["content"]] }).to eq([
         ["user", "deploy it, key [redacted]"], ["assistant", ""], ["assistant", "Deployed; notes in docs/notes.md"],
+        ["assistant", "The child finished."], ["user", ""], ["assistant", "Noted the task."],
         ["user", "is step 3 safe?"], ["assistant", "Yes."]
       ])
       expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" }, { "tool" => "read", "path" => ".env" },
                                                     { "tool" => "memory_read" }])
-      expect(review["messages"][3]).to include("author_name" => "Mallory", "mine" => true)
-      %w[sk-ant id_rsa .ssh KEYBYTES ENV-SECRET MEMORY-TEXT launch THINKING PLUGIN-STEER DELEGATE-REPORT shot.png].each do |leak|
+      expect(review["messages"][4]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
+      expect(review["messages"][6]).to include("author_name" => "Mallory", "mine" => true)
+      ["sk-ant", "id_rsa", ".ssh", "KEYBYTES", "ENV-SECRET", "MEMORY-TEXT", "launch", "THINKING", "PLUGIN-STEER", "DELEGATE-REPORT", "shot.png", "SHELL-OUTPUT", "cat .env", "WAKE-REPORT", "0badc0de", "DECLINED-NOTE", "TASK-WAKE-PROMPT"].each do |leak|
         expect(body).not_to include(leak), leak
       end
       expect(body).not_to include(root)

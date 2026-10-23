@@ -6,6 +6,7 @@ require "time"
 require "fileutils"
 require "securerandom"
 require_relative "analytics_file"
+require_relative "client_id"
 require_relative "atomic_file"
 require_relative "log"
 require_relative "token_usage"
@@ -178,6 +179,10 @@ module Samagotchi
       # Who wrote the turn when it wasn't the owner (:turn_started's
       # origin author, "p:<id>"); its record carries it, the owner's none.
       :author,
+      # A turn no person sent (its origin's client isn't a human's,
+      # ClientId.human?: a task's or a context's wake, a plugin's send);
+      # its record carries it (a participant's page hides its prompt).
+      :automatic,
       :id,
       :started_at,
       :started_monotonic,
@@ -762,6 +767,7 @@ module Samagotchi
           continue: event[:continue] ? true : false,
           resumed: event[:resumed] ? true : false,
           author: Steer.sender_author(event[:origin].is_a?(Hash) ? event[:origin][:author] : nil),
+          automatic: automatic_origin?(event[:origin]),
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
@@ -803,12 +809,20 @@ module Samagotchi
           record[:continue] = @turn.continue
           record[:resumed] = @turn.resumed
           record[:author] = @turn.author if @turn.author
+          record[:automatic] = true if @turn.automatic
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)
         end
         @turn = nil
       end
+    end
+
+    # Whether a turn's +origin+ names a client that is no person's: false
+    # without one (an in-process turn is the owner's).
+    def automatic_origin?(origin)
+      client_id = origin.is_a?(Hash) ? origin[:client_id] : nil
+      !client_id.nil? && !ClientId.human?(client_id)
     end
 
     # The running turn's record so far, as end_turn would make it for a
@@ -819,7 +833,7 @@ module Samagotchi
       {
         id: @turn.id, status: "canceled", started_at: @turn.started_at, completed_at: now.iso8601(3),
         duration_ms: elapsed_ms(@turn.started_monotonic), cancellation_reason: "worker_stopped",
-        continue: @turn.continue, resumed: @turn.resumed, **{ author: @turn.author }.compact
+        continue: @turn.continue, resumed: @turn.resumed, **{ author: @turn.author, automatic: @turn.automatic || nil }.compact
       }.merge(turn_token_fields(@turn))
     end
 

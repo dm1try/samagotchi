@@ -49,18 +49,33 @@ module Samagotchi
         raw = live_or_saved(turn_snapshot, "messages") { session.messages }
         shown = messages_for_display(raw, parts: true, cwd: session.working_directory)
         current = turn_snapshot && ParticipantView.current_turn(turn_snapshot["current_turn"], viewer)
+        automatic = automatic_turn_ids(id, shown, current)
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
                      (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
         json_response(200, {
           viewer: review_viewer(req, id),
           session: { id: session.id, title: participant_title(session), status: displayed_status(session, state) },
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
-          messages: with_reply_html(ParticipantView.messages(shown, viewer)),
+          messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
           current_turn: current,
           waiting_for_owner: waiting,
           queued: review_queue(snapshot_list(turn_snapshot, "queued"), viewer),
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
+      end
+
+      # The ids of the turns no person sent, whose prompt a participant
+      # doesn't read: the saved analytics' records marked automatic, and the
+      # running turn's (its record isn't saved yet: the last prompt's id)
+      # when its start says so.
+      def automatic_turn_ids(id, shown, current)
+        records = Array(read_analytics(id)&.fetch("turn_records", nil))
+        ids = records.filter_map { |record| record["id"].to_s if record.is_a?(Hash) && record["automatic"] }
+        if current&.dig("automatic")
+          last = shown.reverse.find { |message| message[:role] == "user" && message[:turn_id] }
+          ids << last[:turn_id].to_s if last
+        end
+        ids
       end
 
       # Who is reading: a participant (their id, name, whether they may

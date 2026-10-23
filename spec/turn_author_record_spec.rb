@@ -92,6 +92,16 @@ RSpec.describe "a turn's author on the record" do
       expect(Samagotchi::Steer.header(opening)).to start_with("[Review contribution from p_0000abcd (participant")
     end
 
+    it "marks the analytics record of a turn no person sent automatic (a participant's page hides its prompt); a person's carries no mark" do
+      engine.run_turn(session, "task finished", origin: { client_id: "task:20261023-abcd1234", enqueued_id: "e1" })
+      engine.run_turn(session, "hi", origin: { client_id: "web:t", enqueued_id: "e2" })
+      engine.run_turn(session, "from chi send", origin: { client_id: "cli:send" })
+
+      first, *people = analytics["turn_records"].last(3)
+      expect(first).to include("automatic" => true)
+      people.each { |record| expect(record).not_to have_key("automatic") }
+    end
+
     it "keeps the owner's turn free of any author: message, last_turn, analytics, even with participants invited" do
       invite("Alex")
       events = []
