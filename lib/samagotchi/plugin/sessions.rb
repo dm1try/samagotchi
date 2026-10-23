@@ -7,6 +7,8 @@ require_relative "../bridge_client"
 require_relative "../bridge/turn_accumulator"
 require_relative "../tools/delegate"
 require_relative "../children_status"
+require_relative "../review_start"
+require_relative "../model_profile"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -58,6 +60,29 @@ module Samagotchi
           setup: @host.setup&.call || SessionSetup.new
         )
         child.id
+      end
+
+      # A review of this session (ReviewStart.fork, chi review --from): a new
+      # session in its folder, on its model and setup, seeded with its recap
+      # (never its transcript) and +seed+ (more context: the coordinator's
+      # handoff, say), idle, to share with participants (chi share). This
+      # session keeps running, unarchived. Not a child: it has no parent.
+      # The recap is the one saved (the worker is asked for a fresh one, not
+      # waited on unless +recap_wait+ seconds are given: this runs in this
+      # session's own worker).
+      # @param subjects [Array<String>] files under review, relative to its
+      #   folder (ReviewStart.check_subjects)
+      # @return [String] the review session's id
+      # @raise [Error] no session yet, a scratch session, a subject refused
+      #   (its one message), or it could not start
+      def review(subjects: [], seed: nil, recap_wait: 0)
+        source = @host.session_id.call or raise Error, "this session has no id yet"
+        raise Error, "a scratch session starts no other sessions: they would outlive it" if @host.scratch&.call
+
+        ReviewStart.fork(from: source, subjects: Array(subjects), seed: seed, state_dir: state_dir,
+                         recap_wait: recap_wait).id
+      rescue ReviewStart::Refused, ModelProfile::MissingModel, ArgumentError => e
+        raise Error, e.message
       end
 
       # Send +text+ to session +id+ as a user message (it runs as a turn;

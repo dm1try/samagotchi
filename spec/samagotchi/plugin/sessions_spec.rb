@@ -26,6 +26,31 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
   before { allow(Process).to receive(:spawn).and_return(12_345) }
 
+  describe "#review" do
+    before do
+      system("git", "init", "-q", tmpdir, exception: true)
+      File.write(File.join(tmpdir, "plan.md"), "# Plan\n")
+    end
+
+    it "starts a review fork of this session seeded with the seed, not a child, the session left as it was" do
+      id = sessions.review(subjects: ["plan.md"], seed: "HANDOFF")
+
+      review = Samagotchi::Session.load(id, state_dir: tmpdir)
+      expect(review).to have_attributes(parent_id: nil, continues: nil, messages: [], status: "idle",
+                                        review: Samagotchi::SessionReview.new(subjects: ["plan.md"], from: parent.id))
+      notes = Samagotchi::SessionInbox.find_new_note_files(Samagotchi::Session.session_dir(id, state_dir: tmpdir))
+                                      .map { |f| Samagotchi::SessionInbox.read_note(f)[:text] }
+      expect(notes.join).to include("HANDOFF").and include("starts from #{parent.id[0, 8]}")
+      expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir)).to be_empty
+    end
+
+    it "raises Error with the subject's one message" do
+      File.write(File.join(tmpdir, ".env"), "X=1")
+      expect { sessions.review(subjects: [".env"]) }
+        .to raise_error(described_class::Error, format(Samagotchi::ReviewStart::SUBJECT_REFUSED, ".env"))
+    end
+  end
+
   describe "#fork" do
     it "starts an idle child of this session from the messages (frozen ones too)" do
       seed = [{ role: "user", content: "hello" }.freeze, { role: "model", content: "hi" }.freeze,

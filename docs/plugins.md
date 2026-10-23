@@ -988,6 +988,7 @@ ctx.sessions.send(id, "then the docs", delivery: :queue)  # after its running tu
 ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}  (title: its /title, else its preview)
 ctx.sessions.children      # => [{id:, short_id:, state:, branch:, last_reply:, reported:, ...}]
 ctx.sessions.stop(id)      # one of this session's own children
+ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review session's id (chi review --from)
 ```
 
 - `fork(messages:, title: nil, prompt: nil)` starts a child session in its
@@ -1001,6 +1002,18 @@ ctx.sessions.stop(id)      # one of this session's own children
     `/title` of its own (see [Session titles](sessions.md#session-titles)).
   - An image a message names is copied into the child. One whose file is
     gone is dropped, with `[image x.png was not copied]` in its message.
+- `review(subjects: [], seed: nil, recap_wait: 0)` starts a review session of
+  this one, as `chi review --from` does (see [Review sessions](sessions.md#review-sessions)):
+  a new session in this session's folder, on its model and setup, seeded with
+  its recap (never its transcript) and `seed:` (more context, a handoff say),
+  idle, to share with participants (`chi share ID`). This session keeps
+  running, unarchived; the review isn't its child. `subjects:` are project
+  files relative to its folder (a secret or a file outside the project raises
+  `Error` with chi review's one message). It uses the recap already saved: the
+  worker is asked for a fresh one but not waited on unless `recap_wait:` (in
+  seconds) says so, as it runs in this session's own worker. It returns the
+  review session's id. The test kit's `bundle.sessions` answers `review-1`,
+  `review-2`…
 - `send(id, text)` sends a user message to a session (an id or a unique
   prefix); it runs as a turn, and a stopped session is woken. It waits up to
   5 s for the session's worker, so call it from an anytime command or a

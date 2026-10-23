@@ -9,19 +9,21 @@ module Samagotchi
 
     # ctx.sessions recorded (Plugin::Sessions' methods, same signatures:
     # the contract spec checks): each call lands in #calls and returns a
-    # scripted answer (#on), or by default: fork a new id ("fork-1"…), send
+    # scripted answer (#on), or by default: fork a new id ("fork-1"…),
+    # review a new id ("review-1"…), send
     # and stop the id they got, children [], read raises
     # Plugin::Sessions::Error (no such session).
     #
     #   bundle.sessions.on(:children) { |all:| [{ id: "c1", status: "running" }] }
     #   bundle.sessions.on(:send) { |id, text, delivery:| raise Samagotchi::Plugin::Sessions::Error, "busy" }
     class Sessions
-      METHODS = %i[fork send read children stop].freeze
+      METHODS = %i[fork review send read children stop].freeze
 
       def initialize
         @calls = []
         @scripts = {}
         @forks = 0
+        @reviews = 0
         @mutex = Mutex.new
       end
 
@@ -44,6 +46,12 @@ module Samagotchi
       def fork(messages:, title: nil, prompt: nil)
         answer(:fork, [], { messages: messages, title: title, prompt: prompt }) do
           "fork-#{@mutex.synchronize { @forks += 1 }}"
+        end
+      end
+
+      def review(subjects: [], seed: nil, recap_wait: 0)
+        answer(:review, [], { subjects: subjects, seed: seed, recap_wait: recap_wait }) do
+          "review-#{@mutex.synchronize { @reviews += 1 }}"
         end
       end
 
