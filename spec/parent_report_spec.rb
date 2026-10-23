@@ -138,6 +138,24 @@ RSpec.describe Samagotchi::ParentReport do
     end
   end
 
+  # A participant's queued turn the worker refused (its settled record; chi
+  # web's participant wait sends the reason and no outcome): refused, exit 1.
+  it "reads a refused participant turn as refused, with its reason, from either wait" do
+    {
+      "revoked" => "this review link was revoked or expired",
+      "cap_reached" => Samagotchi::ParticipantMessages::CAP_REACHED
+    }.each do |reason, words|
+      [{ outcome: "canceled" }, {}].each do |outcome|
+        result = Samagotchi::ReplyWait::Result.new(status: :no_reply, cancel_reason: reason, **outcome)
+        expect(json(result)).to eq("status" => "refused", "session_id" => id, "cancel_reason" => reason,
+                                   "detail" => "the turn was refused (#{words}); no turn ran for it; chi --attach #{id} shows it")
+        expect(described_class.exit_status(result)).to eq(1)
+      end
+    end
+    other = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled", cancel_reason: "user")
+    expect(described_class.status(other)).to eq("canceled")
+  end
+
   it "names the running turn's wait in the JSON's still-running detail when its id is known" do
     running = Samagotchi::ReplyWait::Result.new(status: :timeout, turn_id: "t1")
     expect(json(running, timeout: 2.5)).to eq("status" => "running", "session_id" => id, "turn_id" => "t1",

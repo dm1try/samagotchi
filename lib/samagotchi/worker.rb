@@ -684,8 +684,10 @@ module Samagotchi
 
     # A participant's queued turn that may not start (#participant_refusal):
     # taken off the queue (:turn_dequeued, so every UI drops its bubble)
-    # and audited; it never runs.
+    # and audited; it never runs. Its settled record (canceled, the reason)
+    # ends the sender's wait on it (chi send --wait, chi web's /wait).
     def refuse_participant_turn(origin, reason)
+      TurnCheckpoint.record_refused(@session_dir, origin[:enqueued_id], reason: reason)
       Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin[:author].delete_prefix("p:"),
                                            enqueued_id: origin[:enqueued_id], status: "refused", reason: reason)
       @engine.announce(type: :turn_dequeued, enqueued_id: origin[:enqueued_id], client_id: origin[:client_id])

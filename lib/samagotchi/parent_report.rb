@@ -9,6 +9,7 @@ require_relative "pending_question"
 require_relative "session"
 require_relative "turn_checkpoint"
 require_relative "guardrails/parent_policy"
+require_relative "participant_messages"
 
 module Samagotchi
   # How a wait's end (ReplyWait::Result) reads to whoever runs chi as a
@@ -46,8 +47,12 @@ module Samagotchi
     #   answered the step-limit question), removed (the queued message was
     #   taken back before it ran), no_answer, error, worker_gone, stopped,
     #   waiting_for_owner (a participant's turn waits on the owner: chi
-    #   web's participant wait, through --remote) or running
+    #   web's participant wait, through --remote), refused (a participant's
+    #   queued turn the worker refused: revoked, expired, at their cap; no
+    #   turn ran) or running
     def status(result)
+      return "refused" if refused?(result)
+
       case result.status
       when :done then "answered"
       when :waiting_for_answer then "question"
@@ -68,6 +73,18 @@ module Samagotchi
       # and :timeout the deadline: the turn goes on either way.
       else "running"
       end
+    end
+
+    # The reasons a worker refuses a participant's queued turn
+    # (Worker#participant_refusal), as its settled record's cancel_reason.
+    REFUSED_LINES = { "revoked" => "this review link was revoked or expired",
+                      "cap_reached" => ParticipantMessages::CAP_REACHED }.freeze
+
+    # A participant's turn the worker refused before it ran: by its
+    # cancel_reason (chi web's participant wait sends no outcome).
+    def refused?(result)
+      result.status == :no_reply && REFUSED_LINES.key?(result.cancel_reason.to_s) &&
+        [nil, "canceled"].include?(result.outcome)
     end
 
     # @return [Integer] 0 answered (or not continued: the Stop asked for
@@ -116,6 +133,8 @@ module Samagotchi
       case status(result)
       when "failed" then { error_kind: result.error_kind, retryable: result.retryable, kept_steps: result.kept_steps }.compact
       when "canceled" then { cancel_reason: result.cancel_reason, stopped_by: result.stopped_by }.compact
+      # The refusal's code: revoked or cap_reached.
+      when "refused" then { cancel_reason: result.cancel_reason }
       else {}
       end
     end
@@ -365,6 +384,9 @@ module Samagotchi
 
     def no_reply_line(result, session_id = nil, strategy: nil, via: ChiInvocation::HERE)
       return command_line(result) if result.origin == TurnCheckpoint::COMMAND_ORIGIN
+      if refused?(result)
+        return "the turn was refused (#{REFUSED_LINES.fetch(result.cancel_reason.to_s)}); no turn ran for it"
+      end
 
       case result.outcome
       when "failed" then failed_line(result)

@@ -32,6 +32,9 @@ and commands may change between minor versions. How releases are made:
 - The owner's Continue on the step-limit offer of a participant whose turn is refused since (revoked, expired, at
   their cap) ends the offer as a Stop does, with a notice: no "resumed" for a turn that never runs, and idle exit,
   `/exit` and that participant's queued turns no longer wait on an offer nobody can answer.
+- A participant's queued turn the worker refuses (revoked, expired, at their cap) ends their `chi send --wait` (and
+  chi web's participant wait) at once: status `refused`, exit 1, `cancel_reason` `revoked` or `cap_reached`, instead
+  of waiting to the timeout (none by default).
 
 ## [0.106.0] - 2026-10-23
 

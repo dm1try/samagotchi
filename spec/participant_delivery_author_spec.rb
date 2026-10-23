@@ -127,6 +127,29 @@ RSpec.describe "a participant's author on delivery" do
       expect(refused.map { |line| line.values_at("enqueued_id", "reason") }).to eq([%w[e1 cap_reached], %w[e2 cap_reached]])
     end
 
+    # Their chi send --wait (and chi web's participant /wait) reads the
+    # refusal from the settled record: it ends at once, never at its timeout.
+    it "ends a wait on a refused participant turn with the refusal, not at its timeout" do
+      author = grant.author
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      allow(engine.metrics).to receive(:spend).with(author).and_return(2.5)
+      allow(engine).to receive(:run_turn).and_return(result)
+      baseline = Samagotchi::ReplyWait.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+      pop!(dequeued, "the refused turn")
+
+      wait = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 5, poll_interval: 0.02,
+                                                    baseline: baseline, turn: "e1", queued: true)
+
+      expect(wait).to have_attributes(status: :no_reply, outcome: "canceled", cancel_reason: "cap_reached")
+      expect(Samagotchi::ParentReport.status(wait)).to eq("refused")
+      expect(Samagotchi::ParentReport.exit_status(wait)).to eq(Samagotchi::CLI::Exit::FAILED)
+      expect(Samagotchi::ParentReport.json(wait, session_id: session.id)[:detail])
+        .to start_with("the turn was refused (#{Samagotchi::ParticipantMessages::CAP_REACHED}); no turn ran for it")
+    end
+
     it "doesn't start a revoked participant's queued turn (dropped from the queue, audited)" do
       author = grant.author
       dequeued = Queue.new
