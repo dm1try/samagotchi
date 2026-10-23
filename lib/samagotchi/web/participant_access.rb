@@ -174,7 +174,13 @@ module Samagotchi
       # first prompt's opening words: the conversation).
       def participant_title(session)
         title = session.title.to_s.strip
-        title.empty? ? UNTITLED : title
+        return title unless title.empty?
+
+        # A review session's subjects are what participants read anyway.
+        subjects = session.review&.subjects || []
+        return UNTITLED if subjects.empty?
+
+        "review of #{subjects.first}#{" +#{subjects.size - 1}" if subjects.size > 1}"
       end
 
       UNTITLED = "an untitled session"

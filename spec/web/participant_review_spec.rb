@@ -62,7 +62,8 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     status, body = review(issued.token)
     expect(status).to eq(200)
     expect(body.keys).to contain_exactly("viewer", "session", "participants", "messages", "current_turn", "waiting_for_owner",
-                                         "queued", "last_event_id")
+                                         "queued", "last_event_id", "subjects")
+    expect(body["subjects"]).to eq([])
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex", "can_comment" => true)
     expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])

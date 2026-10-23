@@ -18,6 +18,7 @@ require "samagotchi/analytics_file"
 require "samagotchi/toolkit"
 require "samagotchi/web/app"
 require "samagotchi/web/grants"
+require "samagotchi/review_start"
 
 # The P3b gate (the shared-sessions plan, "Phases", P3b's red-team): a
 # scripted participant tries everything a review turn must not do, and
@@ -355,6 +356,36 @@ RSpec.describe "a participant red-teaming a session" do
         expect(body).not_to include(leak), leak
       end
       expect(body).not_to include(root)
+    end
+
+    it "reads the review's subjects redacted, and never a secret, a file outside the project or a symlink out of it, whatever the session file names" do
+      outside = File.join(root, "outside.txt")
+      File.write(outside, "OUTSIDE-SECRET\n")
+      File.write(File.join(project, "key.pem"), "PEM-SECRET\n")
+      File.symlink(outside, File.join(project, "docs", "link.md"))
+      File.write(plan, "# The plan\n\nDeploy with token=PLAN-TOKEN-VALUE and key sk-ant-abcdefghijklmnopqrstuvwx\n")
+      session.review = { "subjects" => ["docs/plan.md", ".env", "key.pem", "../outside.txt", outside, "docs/link.md",
+                                        "#{Samagotchi::Paths.state_dir}/web-token"] }
+      session.save(state_dir: state_dir)
+
+      status, body = get("/api/sessions/#{session.id}/review")
+      expect(status).to eq(200)
+      subjects = JSON.parse(body)["subjects"]
+      expect(JSON.parse(body).dig("session", "title")).to eq("review of docs/plan.md +6")
+      expect(subjects.first).to include("path" => "docs/plan.md", "truncated" => false)
+      expect(subjects.first["text"]).to include("token=[redacted]").and include("key [redacted]")
+      expect(subjects.drop(1)).to all(include("missing" => true))
+      expect(subjects.drop(1).map(&:keys)).to all(eq(%w[path missing]))
+      %w[PLAN-TOKEN-VALUE sk-ant- sk-secret PEM-SECRET OUTSIDE-SECRET owner-token].each { |secret| expect(body).not_to include(secret) }
+    end
+
+    it "can't be made a subject at chi review: a secret, a file outside the project, chi's own" do
+      File.write(File.join(project, "key.pem"), "PEM\n")
+      outside = File.join(root, "outside.txt").tap { |f| File.write(f, "x") }
+      [".env", "key.pem", "../outside.txt", outside, File.join(Samagotchi::Paths.state_dir, "web-token")].each do |given|
+        expect { Samagotchi::ReviewStart.check_subjects([given], dir: project) }
+          .to raise_error(Samagotchi::ReviewStart::Refused, format(Samagotchi::ReviewStart::SUBJECT_REFUSED, given))
+      end
     end
 
     it "reads no cut-off thought or tool call in a raw loop's reply, and no delegate child's first prompt" do

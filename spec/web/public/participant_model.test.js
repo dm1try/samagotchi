@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, endedText, cursorSeq, streamURL, reloads,
-  liveFrom, applyLive, liveText, AUTHOR_SLOTS,
+  liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
 test("participant: an author's colour slot is stable per id and in range; the owner has their own colour", () => {
@@ -84,4 +84,20 @@ test("participant: a run of tool-only steps folds into the next reply's rows, or
     ["user", "go", []], ["assistant", "Done.", ["execute", "read", "memory_read"]], ["assistant", "", ["ask_user_question"]],
     ["user", "next", []],
   ]);
+});
+
+test("participant: the Plan view picks its subject, says why one can't show, and redraws only on a change", () => {
+  const subjects = [{ path: "docs/plan.md", text: "# P", html: "<h1>P</h1>" }, { path: "notes.txt", text: "n", truncated: true },
+    { path: "gone.md", missing: true }];
+  assert.equal(pickSubject(subjects, "notes.txt").path, "notes.txt");
+  assert.equal(pickSubject(subjects, "nope").path, "docs/plan.md");
+  assert.equal(pickSubject([], "x"), null);
+  assert.deepEqual(subjectBody(subjects[0]), { kind: "html", html: "<h1>P</h1>", note: null });
+  assert.deepEqual(subjectBody(subjects[1]), { kind: "text", text: "n", note: "Only the start of this file is shown: it is long." });
+  assert.match(subjectBody(subjects[2]).text, /gone\.md can't be shown/);
+  assert.equal(subjectsKey(subjects), subjectsKey(subjects.map((s) => ({ ...s, html: "changed html only" }))));
+  assert.notEqual(subjectsKey(subjects), subjectsKey([{ ...subjects[0], text: "# Q" }]));
+  assert.equal(narrowView("plan", subjects), "plan");
+  assert.equal(narrowView("plan", []), "thread");
+  assert.equal(narrowView(undefined, subjects), "thread");
 });

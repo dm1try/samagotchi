@@ -3,6 +3,8 @@
 require_relative "participant_view"
 require_relative "participant_stream_filter"
 require_relative "../session_metrics"
+require_relative "../review_start"
+require_relative "../guardrails/review_paths"
 
 module Samagotchi
   module Web
@@ -19,6 +21,10 @@ module Samagotchi
       # cursor and its join. Not client_id (a stream named as a TUI's would
       # count as one), not raw.
       STREAM_KEYS = %w[from_seq snapshot].freeze
+      # How much of each review subject the page gets; the rest is cut
+      # (+truncated+).
+      SUBJECT_BYTES = 256 * 1024
+      MARKDOWN_EXT = %w[.md .markdown .mdown .mkd].freeze
 
       private
 
@@ -38,8 +44,8 @@ module Samagotchi
 
       # GET /api/sessions/:id/review: the participant page's data, always
       # filtered (the owner gets the participant view of it).
-      # @return {viewer, session, participants, messages, current_turn,
-      #   waiting_for_owner, queued: {mine, others}, last_event_id}
+      # @return {viewer, session, subjects, participants, messages,
+      #   current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}
       def handle_review(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         viewer = participant_viewer(req, session)
@@ -55,6 +61,7 @@ module Samagotchi
         json_response(200, {
           viewer: review_viewer(req, id),
           session: { id: session.id, title: participant_title(session), status: displayed_status(session, state) },
+          subjects: review_subjects(session, viewer),
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
           messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
           current_turn: current,
@@ -62,6 +69,36 @@ module Samagotchi
           queued: review_queue(snapshot_list(turn_snapshot, "queued"), viewer),
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
+      end
+
+      # A review session's subjects as the page shows them (the Plan view):
+      # each {path, text, html (markdown only), truncated}, or {path,
+      # missing: true} for one that is gone or that ReviewPaths refuses now
+      # (it became a symlink out of the project, say): checked at every
+      # read, as a review turn's read is. The text is cut at SUBJECT_BYTES
+      # and redacted like everything else a participant gets; [] for a
+      # session that isn't a review session.
+      def review_subjects(session, viewer)
+        review = session.review or return []
+        root = ReviewStart.root_for(session.working_directory)
+        check = Guardrails::ReviewPaths.new(root: root)
+        review.subjects.map do |path|
+          full = File.expand_path(path, root)
+          next { path: path, missing: true } unless File.file?(full) && check.refusal([full]).nil?
+
+          review_subject(path, full, viewer)
+        end
+      end
+
+      def review_subject(path, full, viewer)
+        raw = File.open(full, "rb") { |file| file.read(SUBJECT_BYTES + 1) }.to_s
+        text = ParticipantView::Redact.text(raw.byteslice(0, SUBJECT_BYTES).force_encoding(Encoding::UTF_8).scrub, viewer)
+        entry = { path: path, text: text, truncated: raw.bytesize > SUBJECT_BYTES }
+        markdown = MARKDOWN_EXT.include?(File.extname(path).downcase)
+        entry[:html] = @markdown_renderer.render(text) if markdown && @markdown_renderer.available?
+        entry
+      rescue SystemCallError
+        { path: path, missing: true }
       end
 
       # The saved messages with each model message's content as a

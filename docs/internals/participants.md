@@ -74,7 +74,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
 | `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
-| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}` |
+| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}` |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
@@ -197,6 +197,16 @@ fields: a field added to an event later reaches nobody until it is named there.
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
+- **The subjects** (`subjects`, a review session's: [docs/sessions.md](../sessions.md#review-sessions)): each
+  `{path, text, truncated, html}` (`html` for markdown only, rendered from the redacted text), or `{path, missing:
+  true}`. Every read checks the path again with `Guardrails::ReviewPaths` (a review turn's own check: under the
+  project root, as given and as it resolves, never a secret file or chi's own), so a subject that became a symlink
+  out of the project, or a session file edited to name `.env` or `../x`, is `missing`, never read. The text is cut
+  at 256 KiB (`SUBJECT_BYTES`) and redacted. `[]` for a session that isn't a review session. The page's title for a
+  review session with no title of its own is `review of docs/plan.md` (`+N` for more), never the first prompt. The
+  page shows them as the Plan: beside the thread on a wide screen (≥ 1100 px), a Plan | Thread toggle on a narrower
+  one (the thread first, the composer pinned in both views); several subjects get a file picker. It re-reads them
+  with the rest at every turn boundary and redraws the Plan only when they changed.
 - **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
@@ -209,7 +219,9 @@ fields: a field added to an event later reaches nobody until it is named there.
 
 The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, the review, every show variant, `/output`
 and an image as a participant, with an approval, a question, a tool's call and output, thinking, a memory, a steer,
-a delegate report, an unknown event and host paths in the session, and finds none of them.
+a delegate report, an unknown event and host paths in the session, and finds none of them. It also names a secret,
+a file outside the project and a symlink out of it as subjects in the session file and reads none of them through
+`…/review`, and has `chi review` refuse each as a subject.
 
 ## The owner's controls
 
