@@ -1041,6 +1041,11 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 #infoBar .meta .copy-attach{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong)}
 #infoBar .meta .copy-attach:hover{color:var(--text-hover);border-color:var(--border-strong)}
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
+/* The status word takes the widest word's room (running, stopped; idle and error are narrower), so a turn's idle ↔ running doesn't move the rest of the line. */
+#infoBar .meta .status{display:inline-grid;justify-items:center}
+#infoBar .meta .status>span,#infoBar .meta .status::before,#infoBar .meta .status::after{grid-area:1/1}
+#infoBar .meta .status::before{content:"running";visibility:hidden}
+#infoBar .meta .status::after{content:"stopped";visibility:hidden}
 /* The whole path on one line: a long one loses its start ("…/project/dir", the end is what tells dirs apart); the title holds all of it. */
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */

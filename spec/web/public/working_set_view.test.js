@@ -87,6 +87,8 @@ test("the info bar: off, the mem chip and the memories tooltip; on, the set chip
   // An empty set: no chip at all, and no mem chip either.
   renderInfoBar(div, bar({ workingSet: { chip: null } }));
   assert.equal(div.querySelectorAll(".ws-chip, .mem-chip").length, 0);
+  // The status word in its own span (its sizers are CSS's): the text is the word alone.
+  assert.equal(div.querySelector(".status").textContent, "idle");
   const frag = document.createElement("div");
   render(workingSetChipTemplate({ n: 1, changed: false }), frag);
   assert.equal(frag.querySelector(".ws-chip").textContent, "set 1");

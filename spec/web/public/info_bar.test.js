@@ -24,7 +24,7 @@ test("infoBarHtml: a bare session's line, as the string builder wrote it", () =>
   assert.equal(markupOf(infoBarHtml(bare)), canon(
     `<div class="meta"><span class="id" title="${ID}">01234567</span>` +
     `<button type="button" class="copy-attach" title="Copy &quot;chi --attach ${ID}&quot; to attach a terminal">copy chi --attach</button>` +
-    `<span class="status idle">idle</span><span class="model" title="qwen">qwen</span>` +
+    `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span>` +
     `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span></div>`,
   ));
 });
