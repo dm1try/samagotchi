@@ -14,6 +14,7 @@ require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "version_lines"
+require_relative "local_link"
 require_relative "../bridge/turn_accumulator"
 require_relative "../bridge_client"
 require_relative "../delivery"
@@ -84,7 +85,8 @@ module Samagotchi
       #   waiting when it ended :unanswered
       attr_reader :unanswered
 
-      # @param client [BridgeClient]
+      # @param client [BridgeClient] the session's on this machine (a
+      #   LocalLink is made of it and the keywords below), or nil with +link+
       # @param screen [Surface] with #synchronize and #columns (a Screen, or a
       #   PlainSurface when the terminal can't show a live region)
       # @param client_id [String] this UI's id in the events ("tui:<pid>")
@@ -108,19 +110,20 @@ module Samagotchi
       #   ChildrenStatus::Counts, the status row's children segment
       # @param state_dir [String] the state dir the worker was found in: its
       #   session folder (@path images, saved records) is under it
-      def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
+      # @param link [AttachLink, nil] where the session is, instead of
+      #   +client+ and the keywords that make a LocalLink
+      def initialize(screen:, client_id:, client: nil, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, as_parent: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
                      state_dir: Session.default_state_dir,
-                     children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) })
-        @client = client
-        @state_dir = state_dir
-        @installed_version = installed_version
-        @delete_session = delete_session
-        @archive_session = archive_session
+                     children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) }, link: nil)
+        @link = link || LocalLink.new(client: client, state_dir: state_dir, delete_session: delete_session,
+                                      archive_session: archive_session, installed_version: installed_version,
+                                      children_counts: children_counts)
+        @client = @link.client
         @screen = screen
         @client_id = client_id
         # A parent agent drives this attach (AttachLauncher:
@@ -170,7 +173,6 @@ module Samagotchi
         @continue_offer = nil
         # The status row: the worker's model, ctx, the session's memories.
         @status = StatusRow.new(screen)
-        @children_counts = children_counts
       end
 
       def running? = @running
@@ -197,7 +199,7 @@ module Samagotchi
         # A new worker (a restart) is followed, not lost: its sidecar is
         # looked for whenever the stream drops.
         stream = @client.follow(client_id: @client_id, rediscover: method(:live_worker),
-                                reconnect_delays: BridgeClient::EventStream::REDISCOVER_DELAYS) do |event|
+                                reconnect_delays: @link.reconnect_delays) do |event|
           queue << [:event, event]
         end
         @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
@@ -338,7 +340,7 @@ module Samagotchi
         when :stream_closed
           @view.finish_thinking_spinner
           @screen.commit("Lost the session's worker (#{event[:reason]}). " \
-                             "Resume it with: chi --shared --resume #{@client.session_id}")
+                             "Resume it with: #{via.command("--shared --resume #{@client.session_id}")}")
           return :closed
         else @renderer.call(event)
         end
@@ -349,24 +351,25 @@ module Samagotchi
 
       # The newest chi installed, looked at once, at the join.
       def installed_version
-        @installed_version.call
+        @link.installed_version
       rescue StandardError
         nil
       end
 
-      # The session's live worker for the stream to follow (EventStream's
-      # rediscover): nil while there is none yet, :gone once the session was
-      # stopped (no worker is coming).
-      def live_worker
-        id = @client.session_id
-        return :gone if Session.stopped_marker?(id)
+      # How the commands this TUI prints are spelled (AttachLink#via).
+      def via = @link.via
 
-        BridgeClient.discover(id, session_dir: Session.session_dir(id, state_dir: @state_dir), host: @client.host)
+      # The session's live worker for the stream to follow (EventStream's
+      # rediscover): nil while there is none yet, :gone once no worker is
+      # coming (AttachLink#live_worker; the reason isn't used yet).
+      def live_worker
+        found, _reason = @link.live_worker
+        found
       end
 
       # The stream moved to a new worker (a restart): requests go there too.
       def switch_worker(event)
-        @client = BridgeClient.new(session_id: @client.session_id, port: event[:port], host: @client.host)
+        @client = @link.switched(event)
         @worker_changed = true
         @view.finish_thinking_spinner
         Log.info(:attached, "worker_changed", port: event[:port])
@@ -390,7 +393,7 @@ module Samagotchi
 
       # @return [Symbol, nil] :detach to end the loop
       def submit(line)
-        return detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if line.nil?
+        return detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if line.nil?
 
         text = line.strip
         if @question
@@ -455,7 +458,7 @@ module Samagotchi
       # @return [nil]
       def submit_delivery(route)
         return @screen.commit(STEER_CHOICE_USAGE) if route.kind == :usage
-        return @screen.commit(QUEUE_NEEDS_NEWER_WORKER) if Delivery.queue?(route.delivery) && !worker_queues?
+        return @screen.commit(queue_needs_newer_worker) if Delivery.queue?(route.delivery) && !worker_queues?
 
         # To an idle session it is an ordinary prompt: no delivery to send.
         send_prompt(route.text, delivery: route.delivery)
@@ -465,10 +468,7 @@ module Samagotchi
       # Whether the attached worker runs delivery: queue (its sidecar names
       # Delivery::QUEUE_FEATURE). No sidecar to read: true, its Bridge
       # answers (a P0-P2 worker refuses a queue: #send_prompt).
-      def worker_queues?
-        sidecar = WorkerSidecar.read(Session.session_dir(@client.session_id, state_dir: @state_dir))
-        sidecar.nil? || sidecar.features.include?(Delivery::QUEUE_FEATURE)
-      end
+      def worker_queues? = @link.queues?
 
       # @return [Symbol] :detach
       def detach(line)
@@ -502,12 +502,13 @@ module Samagotchi
         # An empty session: the worker deletes it as it leaves.
         return detach(EMPTY_EXIT) if discards?(reply)
 
-        @delete_session.call(id)
+        @link.delete_session
         detach("Detached; deleted session #{id}.")
       rescue SystemCallError, IOError => e
         detach("#{exit_failed_line(e.message)} Not deleted.")
       rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e
-        detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): chi sessions delete #{id}")
+        detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): " \
+               "#{via.command("sessions delete #{id}")}")
       end
 
       # /archive during a turn (D2): it waits for the turn's end and the
@@ -540,14 +541,14 @@ module Samagotchi
         return detach(EMPTY_EXIT) if reply.status == 200 && discards?(reply)
         return detach("#{exit_line(reply)} Not archived.") unless [200, 409].include?(reply.status)
 
-        result = @archive_session.call(id)
+        result = @link.archive_session
         return detach("Detached; the session was empty, so it is discarded.") if result[:discarded].include?(id)
 
-        detach("Detached; archived session #{id}. chi sessions list --archived finds it.")
+        detach("Detached; archived session #{id}. #{via.command("sessions list --archived")} finds it.")
       rescue SystemCallError, IOError => e
         detach("#{exit_failed_line(e.message)} Not archived.")
       rescue SessionManager::ArchiveRefused, SessionManager::OwnedByTUI, ArgumentError => e
-        detach("Detached; session #{id} was not archived (#{e.message}). Re-attach with: chi --attach #{id}")
+        detach("Detached; session #{id} was not archived (#{e.message}). Re-attach with: #{via.attach(id)}")
       end
 
       def exit_line(reply)
@@ -557,16 +558,18 @@ module Samagotchi
         when 200
           return EMPTY_EXIT if discards?(reply)
 
-          "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
+          "Detached; the session's worker is stopping. Resume with: #{via.resume(id)}"
         when 409
           reason = reply.json&.fetch("reason", nil).to_s
           "Detached; the session keeps running (#{held_words(reason, reply.json&.fetch("tasks", nil))}). " \
-            "Re-attach with: chi --attach #{id}"
+            "Re-attach with: #{via.attach(id)}"
         when 0 then exit_failed_line("no reply")
         when 408 then exit_failed_line(LATE)
         else
           # A worker from before the route answers the Bridge's plain 404.
-          return "Detached; this worker runs an older chi and can't be stopped from here: chi sessions stop #{id}" if error == "not_found"
+          if error == "not_found"
+            return "Detached; this worker runs an older chi and can't be stopped from here: #{via.command("sessions stop #{id}")}"
+          end
 
           exit_failed_line([reply.status, reply.json&.fetch("detail", nil) || error].compact.join(" "))
         end
@@ -584,7 +587,7 @@ module Samagotchi
       def discards?(reply) = reply.json&.fetch("discard", nil) == true
 
       def exit_failed_line(why)
-        "Detached (could not ask the worker to stop: #{why}). Re-attach with: chi --attach #{@client.session_id}"
+        "Detached (could not ask the worker to stop: #{why}). Re-attach with: #{via.attach(@client.session_id)}"
       end
 
       # The worker says what became of it (:continue_resolved); an invalid
@@ -639,27 +642,31 @@ module Samagotchi
 
       QUEUED_NOTE = "(queued: runs after this turn)"
       QUEUE_RUNS_NOW = "(the turn had ended: runs as the next turn)"
-      # /queue to a worker from before queueing, which would steer it.
-      QUEUE_NEEDS_NEWER_WORKER = "(/queue needs a newer worker: restart it with chi sessions restart, then send again)"
-      UNQUEUE_NEEDS_NEWER_WORKER = "(/unqueue needs a newer worker: restart it with chi sessions restart)"
       NOTHING_QUEUED = "(nothing queued: /queue TEXT queues a message for after the running turn)"
       UNQUEUE_REFUSED = { "already_started" => "(not removed: it already started)",
                           "unknown_enqueued_id" => "(not removed: it is already gone)",
                           "not_queued" => "(not removed: it goes in at the next step)" }.freeze
+
+      # /queue to a worker from before queueing, which would steer it.
+      def queue_needs_newer_worker
+        "(/queue needs a newer worker: restart it with #{via.command("sessions restart")}, then send again)"
+      end
+
+      def unqueue_needs_newer_worker = "(/unqueue needs a newer worker: restart it with #{via.command("sessions restart")})"
 
       # /unqueue: take back the newest prompt this run queued for after the
       # turn, before it runs (POST turn/dequeue). Its :turn_dequeued comes
       # to every UI; here the reply says what became of it. A worker whose
       # sidecar lacks "unqueue" is not asked.
       def unqueue_newest
-        return @screen.commit(UNQUEUE_NEEDS_NEWER_WORKER) unless worker_unqueues?
+        return @screen.commit(unqueue_needs_newer_worker) unless worker_unqueues?
 
         id = @my_queued.last
         return @screen.commit(NOTHING_QUEUED) unless id
 
         reply = @client.dequeue(enqueued_id: id, client_id: @client_id)
         error = reply.json&.fetch("error", nil)
-        return @screen.commit(UNQUEUE_NEEDS_NEWER_WORKER) if reply.status == 404 && error == "not_found"
+        return @screen.commit(unqueue_needs_newer_worker) if reply.status == 404 && error == "not_found"
 
         # Removed, started or gone: no longer this run's to take back.
         @my_queued.delete(id) if [200, 404, 409].include?(reply.status)
@@ -689,10 +696,7 @@ module Samagotchi
       # Whether the attached worker takes queued messages back (its sidecar
       # names SessionInbox::UNQUEUE_FEATURE). No sidecar to read: true, its Bridge
       # answers (an older one's 404 not_found says so).
-      def worker_unqueues?
-        sidecar = WorkerSidecar.read(Session.session_dir(@client.session_id, state_dir: @state_dir))
-        sidecar.nil? || sidecar.features.include?(SessionInbox::UNQUEUE_FEATURE)
-      end
+      def worker_unqueues? = @link.unqueues?
 
       # A command queued for after the running turn (command_queued with
       # waits): its line now (another client's) and a note; its command_ran
@@ -861,7 +865,7 @@ module Samagotchi
         # Read after its deadline and dropped (BridgeClient::DEADLINE_SHARE).
         return @screen.commit("could not send the prompt (#{LATE})") if detail == "deadline_passed"
         # A worker from 0.51 to 0.63 refuses a queue (nothing was sent).
-        return @screen.commit(QUEUE_NEEDS_NEWER_WORKER) if detail == "delivery_unavailable"
+        return @screen.commit(queue_needs_newer_worker) if detail == "delivery_unavailable"
 
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
       rescue SystemCallError, IOError => e
@@ -905,7 +909,7 @@ module Samagotchi
 
       # The input ended and nothing of ours is left to wait for.
       def end_of_input
-        detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if @input_ended
+        detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if @input_ended
         return :turn_failed if @own_failed
 
         @own_empty ? :empty_answer : :detached
@@ -913,30 +917,26 @@ module Samagotchi
 
       def unanswered_question(pending)
         @unanswered = pending
-        detach("A question waits for an answer: chi --attach #{@client.session_id}")
+        detach("A question waits for an answer: #{via.attach(@client.session_id)}")
         :unanswered
       end
 
-      # The prompt's `@path` images, stored in the session's images/ here
-      # (this machine, the worker's state dir) and sent as refs: the Bridge
-      # never takes a path. nil (after a line saying why) when one can't be.
+      # The prompt's `@path` images, stored where the worker reads them
+      # (AttachLink#ingest_images: the session's images/ here) and sent as
+      # refs: the Bridge never takes a path. nil (after a line saying why)
+      # when one can't be.
       def attach_images(text)
         paths = ImageInput.extract(text)
         return [] if paths.empty?
 
-        session_dir = Session.session_dir(@client.session_id, state_dir: @state_dir)
-        paths.map do |image|
-          ref = ImageStore.ingest(session_dir, path: image[:path])
-          { file: ref[:file], name: ref[:name] }
-        end
+        @link.ingest_images(paths.map { |image| image[:path] })
       rescue ImageStore::Error => e
         @screen.commit("could not attach the image: #{e.message}")
         nil
       end
 
       def show_stats
-        # A worker from before the stats route answers only /state.
-        metrics = @client.get_json("stats")&.dig("metrics") || @client.get_json("state")&.dig("session_state_snapshot", "metrics")
+        metrics = @link.stats_metrics
         @screen.commit(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
       end
 
@@ -954,6 +954,16 @@ module Samagotchi
 
       # The attached TUI's commands, for Tab.
       def slash_commands = command_registry.completions(:attached)
+
+      # @path and #memory candidates, as the link offers them
+      # (AttachLink#completions).
+      def build_project_path_completion_candidates(path_fragment)
+        @link.completions.paths ? super : []
+      end
+
+      def build_memory_completion_candidates(memory_fragment)
+        @link.completions.memories ? super : []
+      end
 
       # The session's commands as its worker's snapshot names them (its
       # plugins' too); the built-ins until one arrives, or from a worker too
@@ -1072,7 +1082,7 @@ module Samagotchi
       end
 
       def stale_worker(cant)
-        BridgeClient.stale_worker_message(@client.session_id, cant: cant)
+        BridgeClient.stale_worker_message(@client.session_id, cant: cant, via: via)
       end
 
       # The worker rolled a failed turn back and handed its prompt back: ours
@@ -1208,7 +1218,7 @@ module Samagotchi
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
           @screen.commit("plugins> #{snapshot[:plugin_warning]}") if snapshot[:plugin_warning]
           version_line = VersionLines.at_attach(worker: snapshot[:chi_version], installed: installed_version,
-                                                session_id: @client.session_id)
+                                                session_id: @client.session_id, via: via)
           @screen.commit(paint(version_line, 2)) if version_line
         end
         if snapshot[:commands]
@@ -1381,13 +1391,11 @@ module Samagotchi
         end
       end
 
-      # The prompt's turn's saved tool records (SessionMetrics, in this
-      # machine's state dir, as #attach_images): none for a prompt with no
-      # turn id (an older session) or a session with no analytics.
+      # The prompt's turn's saved tool records (AttachLink: SessionMetrics,
+      # in this machine's state dir, as #attach_images): none for a prompt
+      # with no turn id (an older session) or a session with no analytics.
       def join_tool_records(prompt)
-        SessionMetrics.saved_tool_records(Session.session_dir(@client.session_id, state_dir: @state_dir), prompt[:turn_id] || prompt["turn_id"])
-      rescue Session::InvalidId
-        []
+        @link.saved_tool_records(prompt[:turn_id] || prompt["turn_id"])
       end
 
       # The turn's saved record when it failed with the fields its line is
@@ -1395,16 +1403,13 @@ module Samagotchi
       # canceled or older turn — or one saved before the failure field —
       # draws its answer as before.
       def join_failed_record(prompt)
-        record = SessionMetrics.saved_turn_record(Session.session_dir(@client.session_id, state_dir: @state_dir),
-                                                  prompt[:turn_id] || prompt["turn_id"])
+        record = @link.saved_turn_record(prompt[:turn_id] || prompt["turn_id"])
         return nil unless record && record["status"] == "failed" && record["failure"].is_a?(Hash)
 
         failure = record["failure"]
         return nil if failure["summary"].to_s.empty? && failure["message"].to_s.empty?
 
         record
-      rescue Session::InvalidId
-        nil
       end
 
       # The saved record of +part+'s call (its duration and status): the
@@ -1631,14 +1636,14 @@ module Samagotchi
       def refresh_children
         return unless @status.enabled?
 
-        @status.update(children: @children_counts.call(@client.session_id))
+        @status.update(children: @link.children_counts)
       rescue StandardError => e
         Log.debug(:attached, "children_counts_failed", error: e.class.name)
       end
 
       # The config's default model, as the worker's /model names it.
       def default_model_name
-        @default_model_name ||= ModelProfile.default_model_name
+        @default_model_name ||= @link.default_model_name
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::SYSTEM_PREFIX)

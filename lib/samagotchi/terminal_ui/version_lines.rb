@@ -2,6 +2,7 @@
 
 require_relative "../installed_versions"
 require_relative "../version"
+require_relative "../chi_invocation"
 
 module Samagotchi
   class TerminalUI
@@ -15,8 +16,9 @@ module Samagotchi
       # @param worker [String, nil] the worker's chi_version (nil: a worker
       #   from before it said so; nothing is said then)
       # @param installed [String, nil] InstalledVersions#newest
+      # @param via [ChiInvocation] how the commands in it are spelled
       # @return [String, nil] one "chi> ..." line, or nil when all is current
-      def at_attach(worker:, installed:, session_id:, terminal: VERSION)
+      def at_attach(worker:, installed:, session_id:, terminal: VERSION, via: ChiInvocation::HERE)
         return nil if worker.to_s.empty?
 
         newest = [installed, terminal].select { |v| Gem::Version.correct?(v.to_s) && !v.to_s.empty? }
@@ -26,8 +28,8 @@ module Samagotchi
         return nil unless worker_old || terminal_old
 
         id = session_id.to_s[0, 8]
-        restart = "chi sessions restart #{id}"
-        attach = "/detach, then chi --attach #{id}"
+        restart = via.command("sessions restart #{id}")
+        attach = "/detach, then #{via.attach(id)}"
         if worker_old && terminal_old
           "chi> chi #{newest} is installed; this session's worker runs #{worker} and this terminal #{terminal}. " \
             "#{restart} moves the worker; #{attach} for the terminal."
