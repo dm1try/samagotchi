@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     status, body = call("/api/sessions/#{session.id}/working_set")
     expect(status).to eq(200)
     expect(body).to eq("items" => [{ "kind" => "file", "key" => path, "state" => "live", "tokens" => 3, "ops" => ["read"],
-                                     "count" => 1, "first_id" => "t1", "pinned" => false }],
+                                     "count" => 1, "first_id" => "t1", "pinned" => false, "has_drop" => false }],
                        "at" => 3, "running" => false)
 
     File.write(path, "one\ntwo\n")

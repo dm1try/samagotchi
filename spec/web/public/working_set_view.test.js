@@ -328,6 +328,18 @@ test("a strategy change (/llm-context's command_ran) redraws the open list: pin 
   pop.remove();
 });
 
+test("an item holding the user's drop on some reads (has_drop) offers undrop: alone when forgotten, beside drop when partly sent", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView({ llmContext: { strategy: "stale,forget" } });
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "forgotten", tokens: 12, has_drop: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9, has_drop: true }], at: 6 });
+  assert.deepEqual([...row("a.rb").querySelectorAll("button.ws-act-b")].map((b) => b.textContent), ["undrop"]);
+  assert.deepEqual([...row("b.rb").querySelectorAll("button.ws-act-b")].map((b) => b.textContent), ["drop", "undrop"]);
+  row("a.rb").querySelector('[data-op="undrop"]').click();
+  assert.equal(sent.at(-1), "/working-set undrop /p/lib/a.rb");
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
 test("a pinned row keeps its unpin without the forget layer (its drop waits for it)", () => {
   const { ws, pop, row, infoEl } = steeringView();
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40, pinned: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });

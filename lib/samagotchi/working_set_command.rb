@@ -145,6 +145,8 @@ module Samagotchi
       parts = [item.ops.join(", ")]
       parts << "×#{item.count}" if item.count > 1
       parts << item.state unless item.state == WorkingSet::LIVE
+      # A drop on some of its reads (the rest forgotten or still sent): undrop takes it back.
+      parts << "part dropped" if item.has_drop && item.state != WorkingSet::DROPPED
       parts << "pinned" if item.pinned
       parts << "~#{item.tokens} tokens" if item.tokens.positive?
       parts.join(" · ")

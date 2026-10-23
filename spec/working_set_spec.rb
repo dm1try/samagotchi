@@ -76,11 +76,11 @@ RSpec.describe Samagotchi::WorkingSet do
       expect(snapshot.at).to eq(conversation.size)
       expect(snapshot.items.map(&:to_h)).to eq([
         { kind: "file", key: cart, state: "live", tokens: ((body.length + 7) / 4.0).ceil,
-          ops: %w[read edit], count: 2, first_id: "t1", pinned: false },
+          ops: %w[read edit], count: 2, first_id: "t1", pinned: false, has_drop: false },
         { kind: "memory", key: "style", state: "live", tokens: 6, ops: %w[read write],
-          count: 2, first_id: "t2", pinned: false },
+          count: 2, first_id: "t2", pinned: false, has_drop: false },
         { kind: "url", key: "https://x.dev/a b", state: "live", tokens: 4, ops: %w[read],
-          count: 1, first_id: "t3", pinned: false }
+          count: 1, first_id: "t3", pinned: false, has_drop: false }
       ])
     end
 
@@ -362,7 +362,7 @@ RSpec.describe Samagotchi::WorkingSet do
                       chat_result("c1", "memory_write", "Removed old", "t1")]
 
       expect(build(conversation).items.map(&:to_h)).to eq([{ kind: "memory", key: "old", state: "live", tokens: 0, ops: %w[write],
-                                                             count: 1, first_id: "t1", pinned: false }])
+                                                             count: 1, first_id: "t1", pinned: false, has_drop: false }])
     end
   end
 

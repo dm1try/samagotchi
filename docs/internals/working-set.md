@@ -35,8 +35,9 @@ same-size edit in the same second goes unseen (APFS keeps nanoseconds).
 is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's size in entries, the web's ordering
 key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state` (`live`, `stale`, `forgotten`,
 `dropped`), `tokens`, `ops`, `count`,
-`first_id` (the first run's ToolIds id) and `pinned` (the session's `working_set_pins` name it, whatever the
-strategy: the page shows the mark only under forget, so a switch shows it at once). The Engine's event and the GET
+`first_id` (the first run's ToolIds id), `pinned` (the session's `working_set_pins` name it, whatever the
+strategy: the page shows the mark only under forget, so a switch shows it at once) and `has_drop` (any of its content
+outputs holds the user's applied drop, whatever the state: an undrop has something to take back). The Engine's event and the GET
 both pass the session's pins.
 
 **Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what
@@ -77,7 +78,9 @@ only edited or written is never forgotten.
 **Dropped** is a forgotten item whose content outputs all hold the user's applied `:drop` (the user's layer, sent
 under every strategy: [llm-context-forget.md](llm-context-forget.md)), so it is dropped under any strategy and after
 a switch. An item with one output dropped and another forgotten by the model is forgotten. Under none with no drop
-saved the build doesn't pair the sent conversation at all (the view returns the stored Array).
+saved the build doesn't pair the sent conversation at all (the view returns the stored Array). Such a mixed item
+(one output dropped, another stubbed by the stale layer, or still sent) has `has_drop`: the listing says `part
+dropped` and the page offers its undrop.
 
 **Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
 or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
@@ -226,7 +229,9 @@ items by absolute path and reads a relative word of any client's line against th
 with whitespace is quoted (`quoteWord`), and `steerWords` reads a line as the worker's `WorkingSetSteer.words` does
 (`"…"` or `'…'` keeps its spaces, a backslash escapes the quote or itself). `dropped`
 is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
-`overlay` carries the server's `pinned`. A row offers `pin` only when the strategy the session's `llm ctx` chip names
+`overlay` carries the server's `pinned` and `has_drop` (as `hasDrop`; `undroppable`): a forgotten item holding a
+drop offers only `undrop`, a live one `drop` and `undrop`, and neither offers `pin` (the worker asks for the undrop
+first). A row offers `pin` only when the strategy the session's `llm ctx` chip names
 has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A `command_ran` that carries
 `llm_context` redraws the open list (`strategyChanged`), so its pins come and go with the strategy at once. A pinned row shows
 `📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the

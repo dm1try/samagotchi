@@ -760,6 +760,18 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(announced).to eq([%i[stale forget]])
     end
 
+    it "lists an item whose drop holds on some reads only as part dropped, and undrop takes it back" do
+      stale = { "kind" => "stale", "note" => "README.md: superseded by a later read", "by" => "chi", "staged_at" => "x", "applied_at" => "x" }
+      session.messages[-2] = session.messages[-2].merge(edits: { "t1" => stale })
+      session.messages += [{ role: "model", content: "", tool_calls: [{ id: "c2", name: "read", arguments: { "path" => "README.md" } }] },
+                           { role: "tool_response", content: "[read]\n#{"readme line\n" * 40}", tool_call_id: "c2", tool_ids: ["t2"] }]
+      allow(engine).to receive(:working_set_strategy).and_return(%i[stale])
+
+      expect(commands.run("/working-set drop README.md").output).to start_with("dropped README.md (t2): ")
+      expect(commands.run("/working-set").output).to include("README.md  read · ×2 · forgotten · part dropped · ~")
+      expect(commands.run("/working-set undrop README.md").output).to start_with("undropped README.md (t2)")
+    end
+
     it "answers a bad line with its usage" do
       expect(commands.run("/working-set pinch README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end

@@ -49,8 +49,11 @@ module Samagotchi
     # read for a URL, in first-seen order; +count+ the runs that touched
     # it; +first_id+ the first one's chi id (ToolIds); +pinned+ whether
     # the user pinned it (WorkingSetPin: the model's forget_outputs refuses
-    # its outputs), whatever the strategy.
-    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned)
+    # its outputs), whatever the strategy; +has_drop+ whether any of its
+    # content outputs holds the user's applied drop (an undrop has
+    # something to take back: a forgotten item too, its other outputs
+    # stubbed by the model's layers).
+    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned, :has_drop)
 
     # A projection and the conversation's size (entries) it was built
     # from: the web keeps the newer of an event's and a GET's by it.
@@ -202,7 +205,7 @@ module Samagotchi
                 LIVE
               end
       Item.new(kind: kind, key: key, state: state, tokens: tokens, ops: group.map(&:op).uniq, count: group.size,
-               first_id: first.run.ref.id, pinned: pinned)
+               first_id: first.run.ref.id, pinned: pinned, has_drop: contents.any? { |touch| dropped?(touch, conversation) })
     end
 
     # Whether the model is still sent +touch+'s output: whole (with the

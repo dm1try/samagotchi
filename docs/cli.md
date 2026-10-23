@@ -1021,7 +1021,9 @@ turn view ignores it.
   scope, `prompt` for a preloaded memory) that goes to the call. A file opens
   as its row's title does, a URL in a new tab. A row (on hover or keyboard
   focus) and a folded group offer `drop`, which runs `/working-set drop` (see
-  `/working-set` above); a dropped row offers `undrop`. Between turns it
+  `/working-set` above); a dropped row offers `undrop`, and so does one whose
+  drop holds on some reads only (`part dropped` in `/working-set`'s listing:
+  an older read stubbed by the stale layer, or a newer read sent). Between turns it
   applies at once; while a turn runs it waits for the turn's end: the row is
   dashed with `drops next turn` and an `undo`, and the list's foot counts the
   pending changes (`undo all`), in every tab and after a reload; the stage's

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
-  forgetOn, pinnable, quoteWord, steerWords,
+  forgetOn, pinnable, quoteWord, steerWords, undroppable,
   stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
@@ -419,4 +419,17 @@ test("the server's dropped state: overlaid, struck in a group (dropped when all 
   assert.match(footprintText(lit), /1 forgotten · 1 dropped$/);
   assert.match(labelTitle(fold(lit, 1).labels[0]), /a\.rb \(dropped\)/);
   assert.ok(STATES.includes("dropped"));
+});
+
+test("the server's has_drop: overlaid as hasDrop; such an item offers undrop and no pin (undrop it first)", () => {
+  const items = [{ kind: "file", key: "/w/a.rb", ops: ["read"], state: "live" }, { kind: "file", key: "/w/b.rb", ops: ["read"], state: "live" }];
+  const lit = overlay(items, { items: [{ kind: "file", key: "/w/a.rb", state: "forgotten", tokens: 9, has_drop: true }, { kind: "file", key: "/w/b.rb", state: "live", tokens: 3, has_drop: false }], at: 4 });
+  assert.equal(lit[0].hasDrop, true);
+  assert.equal("hasDrop" in lit[1], false);
+  assert.deepEqual(lit.map(undroppable), [true, false]);
+  assert.equal(undroppable({ state: "dropped" }), true);
+  assert.equal(pinnable(lit[0]), false);
+  assert.equal(pinnable(lit[1]), true);
+  // Taken off when the server's set no longer has it.
+  assert.equal("hasDrop" in overlay(lit, { items: [{ kind: "file", key: "/w/a.rb", state: "live", tokens: 40 }], at: 5 })[0], false);
 });

@@ -115,6 +115,18 @@ RSpec.describe Samagotchi::WorkingSetSteer do
       end
     end
 
+    it "drops only the newer read when the stale layer stubs the older: the item is forgotten, holding a drop (has_drop)" do
+      stale = { "kind" => "stale", "note" => "lib/cart.rb: superseded by a later read", "by" => "chi", "staged_at" => now, "applied_at" => now }
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1", edits: { "t1" => stale }), *read_turn(cart, "c2", "t2")]
+
+      expect(drop(conversation, "lib/cart.rb", strategy: %i[stale])).to have_attributes(ids: %w[t2])
+      item = ->(strategy) { Samagotchi::WorkingSet.build(conversation, cwd: root, strategy: strategy, stat: ->(_) { raise Errno::ENOENT }).items.first }
+      expect(item.call(%i[stale])).to have_attributes(state: "forgotten", has_drop: true)
+      expect(item.call(:none)).to have_attributes(state: "live", has_drop: true)
+      expect(undrop(conversation, "lib/cart.rb", strategy: %i[stale])).to have_attributes(ids: %w[t2])
+      expect(item.call(%i[stale])).to have_attributes(state: "live", has_drop: false)
+    end
+
     it "acts on a memory_read of several names whole, and says which other names went with it" do
       conversation = [head, chat_model("c1", "memory_read", { "name" => "style, tone" }),
                       chat_result("c1", "memory_read", "be brief\n\n---\n\nbe kind", "t1"),
