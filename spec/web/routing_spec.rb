@@ -25,7 +25,9 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     %i[serve_index handle_list handle_create handle_info handle_models handle_events handle_stream
        handle_output handle_cancel handle_stop handle_archive handle_unarchive handle_turn
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
-       handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render]
+       handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render
+       handle_resolve handle_summaries handle_wait_prepare handle_wait handle_notes handle_context_add
+       handle_context_push]
   end
 
   before do
@@ -64,7 +66,8 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     routes = [["GET", "stream"], ["GET", "output"], ["POST", "cancel"], ["POST", "stop"], ["POST", "archive"],
               ["POST", "unarchive"], ["POST", "turn"], ["POST", "answer"], ["POST", "question/dismiss"],
               ["POST", "command"], ["POST", "images"], ["GET", "images/abc.png"], ["GET", nil], ["DELETE", nil],
-              ["GET", "context"], ["GET", "context/pr-1"], ["DELETE", "context/pr-1"]]
+              ["GET", "context"], ["GET", "context/pr-1"], ["DELETE", "context/pr-1"], ["POST", "wait/prepare"],
+              ["POST", "wait"], ["POST", "notes"], ["POST", "context"], ["POST", "context/pr-1/push"]]
     ["..", "..%2Fx", "%2Ftmp", "a%00b", "a%2Fb", "x.json"].each do |id|
       routes.each do |method, tail|
         path = ["/api/sessions/#{id}", tail].compact.join("/")
@@ -82,6 +85,8 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["GET", "/index.html"] => ["serve_index"],
       ["GET", "/api/sessions"] => ["handle_list"],
       ["POST", "/api/sessions"] => ["handle_create"],
+      ["GET", "/api/sessions/resolve"] => ["handle_resolve"],
+      ["GET", "/api/sessions/summaries"] => ["handle_summaries"],
       ["GET", "/api/info"] => ["handle_info"],
       ["GET", "/api/models"] => ["handle_models"],
       ["GET", "/api/events"] => ["handle_events"],
@@ -93,6 +98,11 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["POST", "/api/sessions/s1/archive"] => %w[handle_archive s1],
       ["POST", "/api/sessions/s1/unarchive"] => %w[handle_unarchive s1],
       ["POST", "/api/sessions/s1/turn"] => %w[handle_turn s1],
+      ["POST", "/api/sessions/s1/wait/prepare"] => %w[handle_wait_prepare s1],
+      ["POST", "/api/sessions/s1/wait"] => %w[handle_wait s1],
+      ["POST", "/api/sessions/s1/notes"] => %w[handle_notes s1],
+      ["POST", "/api/sessions/s1/context"] => %w[handle_context_add s1],
+      ["POST", "/api/sessions/s1/context/pr-1/push"] => %w[handle_context_push s1 pr-1],
       ["POST", "/api/sessions/s1/answer"] => %w[handle_question_answer s1],
       ["POST", "/api/sessions/s1/question/dismiss"] => %w[handle_question_dismiss s1],
       ["POST", "/api/sessions/s1/command"] => %w[handle_command s1],
@@ -114,7 +124,8 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["POST", "/"], ["PUT", "/api/sessions"], ["DELETE", "/api/info"], ["POST", "/api/events"], ["GET", "/api/render"],
       ["GET", "/api/sessions/s1/turn"], ["POST", "/api/sessions/s1/stream"], ["GET", "/api/sessions/s1/archive"],
       ["GET", "/api/sessions/s1/question/dismiss"], ["POST", "/api/sessions/s1"], ["PUT", "/api/sessions/s1"],
-      ["DELETE", "/api/sessions/s1/images/abc.png"]
+      ["DELETE", "/api/sessions/s1/images/abc.png"], ["POST", "/api/sessions/resolve"], ["GET", "/api/sessions/s1/wait"],
+      ["GET", "/api/sessions/s1/notes"], ["GET", "/api/sessions/s1/context/pr-1/push"]
     ].each do |method, path|
       status, headers, body = call(path, method: method)
       expect([status, headers["Content-Type"], JSON.parse(body)])

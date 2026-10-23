@@ -77,6 +77,11 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
         expect(call(path).first).to eq(401), path
       end
       expect(call("/api/sessions", method: "POST").first).to eq(401)
+      # chi's session commands' routes (a remote chi send, answer, note, context push).
+      %w[/api/sessions/resolve?id=0123 /api/sessions/summaries].each { |path| expect(call(path).first).to eq(401), path }
+      %w[wait/prepare wait notes context/notes/push].each do |tail|
+        expect(call("/api/sessions/0123456789abcdef/#{tail}", method: "POST").first).to eq(401), tail
+      end
     end
 
     it "gets a 401 for a wrong token, in any form" do

@@ -47,6 +47,7 @@ require_relative "capabilities"
 require_relative "editor"
 require_relative "../message_parts"
 require_relative "session_summary"
+require_relative "session_access_routes"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
@@ -63,6 +64,7 @@ module Samagotchi
     class App
       # @lan holds the LAN access token.
       include RedactedInspect
+      include SessionAccessRoutes
 
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
@@ -113,6 +115,8 @@ module Samagotchi
       #   (nil: built from config.yml's hosts:, again when they change)
       # @param models_wait_timeout [Float] bounded seconds GET /api/models
       #   waits for the hosts' lists
+      # @param wait_poll_interval [Float] how often POST
+      #   /api/sessions/:id/wait looks at the session (ReplyWait's poll)
       # @param lan [Hash, nil] LAN mode (web.host: lan): { ip:, token: },
       #   the address the server also listens on and its access token (a
       #   String, or a Web::Token::Source that follows the file); nil:
@@ -123,7 +127,7 @@ module Samagotchi
                      editor: Config::BY_KEY["web.editor"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
-                     working_set: Config::BY_KEY["web.working_set"].default)
+                     working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL)
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -146,6 +150,7 @@ module Samagotchi
         @lan = lan
         @refused_mutex = Mutex.new
         @refused_logged = {}
+        @wait_poll_interval = wait_poll_interval
       end
 
       def call(env)
@@ -164,6 +169,8 @@ module Samagotchi
         ["GET", %r{\A/(?:index\.html)?\z}, :serve_index],
         ["GET", %r{\A/api/sessions\z}, :handle_list],
         ["POST", %r{\A/api/sessions\z}, :handle_create],
+        ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve],
+        ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries],
         ["GET", %r{\A/api/info\z}, :handle_info],
         ["GET", %r{\A/api/models\z}, :handle_models],
         ["GET", %r{\A/api/history\z}, :handle_history],
@@ -179,6 +186,9 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer],
         ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss],
         ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :session],
@@ -187,6 +197,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :session],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :session],
@@ -207,7 +218,8 @@ module Samagotchi
           next unless req.request_method == verb && (m = pattern.match(req.path_info))
           # Every /api/sessions/:id route: an id that isn't one (Session.valid_id?,
           # "..", a %2F) is an unknown session before any handler makes a path.
-          if req.path_info.start_with?("/api/sessions/") && !Session.valid_id?(m.captures.first)
+          # (/api/sessions/resolve and /summaries take no id.)
+          if req.path_info.start_with?("/api/sessions/") && !m.captures.empty? && !Session.valid_id?(m.captures.first)
             return error_response(404, "not_found", "Session not found: #{m.captures.first.to_s[0, 80]}")
           end
 
@@ -1554,12 +1566,20 @@ module Samagotchi
         json_response(200, context_row(attached, own, own.subscriptions).merge(text: attached.snapshot.text))
       end
 
-      # POST /api/sessions/:id/context {url, why}: the source an installed
-      # bundle's provider makes of +url+, attached to this session.
+      # POST /api/sessions/:id/context: a source attached to this session.
+      # {url, why, hint}: the one an installed bundle's provider makes of
+      # +url+ (the page's only kind). As chi context add: {name, push: true,
+      # why, hint}, a source chi context push fills, or {name, cmd, every,
+      # why, hint}, a command chi runs every so often. added_by: "cli" or
+      # "agent" (chi context's), else "web". 201 {status: "attached", name};
+      # 400 invalid_json or invalid_source (a bad name or every), 422
+      # not_a_url or no_provider, 409 exists.
       def handle_context_add(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         body = parse_json(request_body(req))
-        return error_response(400, "invalid_json", "give {url, why}") unless body.is_a?(Hash) && body["url"].is_a?(String)
+        return error_response(400, "invalid_json", CONTEXT_ADD_BODIES) unless body.is_a?(Hash)
+        return context_add_named(id, body) if body.key?("name")
+        return error_response(400, "invalid_json", CONTEXT_ADD_BODIES) unless body["url"].is_a?(String)
 
         url = body["url"].strip
         return error_response(422, "not_a_url", "give an http(s) URL") unless url.match?(%r{\Ahttps?://\S+\z})
@@ -1568,7 +1588,7 @@ module Samagotchi
         return error_response(422, "no_provider", "no installed bundle resolves #{url[0, 200]}") unless resolved
 
         own = ContextSources.session_location(session.id, state_dir: default_state_dir)
-        own.add(web_source(resolved, body["why"], own.scope))
+        own.add(web_source(resolved, body, own.scope))
         json_response(201, { status: "attached", name: resolved.name })
       rescue ContextProviders::Invalid => e
         error_response(422, "no_provider", e.message)
@@ -1576,16 +1596,49 @@ module Samagotchi
         error_response(409, "exists", e.message)
       end
 
-      def web_source(resolved, why, scope)
-        why = ContextSources.one_line(why.is_a?(String) ? why : nil, ContextSources::LINE_MAX_CHARS) || resolved.why
-        ContextSources::Source.new(name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds, why: why,
-                                   hint: resolved.hint, scope: scope, added_by: "web", created_at: Time.now.utc.iso8601,
+      CONTEXT_ADD_BODIES = "give {url, why}, {name, push: true, why, hint} or {name, cmd, every, why, hint}"
+
+      # A --push or --cmd source (chi context add NAME), checked as chi
+      # context checks it, attached through SessionAccess::Local.
+      def context_add_named(id, body)
+        name, cmd, push, every = body.values_at("name", "cmd", "push", "every")
+        unless name.is_a?(String) && ((push == true) ^ cmd.is_a?(String)) && (every.nil? || every.is_a?(Integer))
+          return error_response(400, "invalid_json", CONTEXT_ADD_BODIES)
+        end
+        return error_response(400, "invalid_source", "every is for a cmd source") if push && every
+        return error_response(400, "invalid_source", "cmd is empty") if cmd && cmd.strip.empty?
+
+        source = begin
+          ContextSources.check_name!(name)
+          ContextSources::Source.new(name: name, cmd: cmd, every_seconds: ContextSources.check_every!(every),
+                                     why: context_line(body["why"]), hint: context_line(body["hint"]), scope: nil,
+                                     added_by: context_added_by(body), created_at: Time.now.utc.iso8601)
+        rescue ContextSources::Invalid => e
+          return error_response(400, "invalid_source", e.message)
+        end
+        session_access.context_add(context_target(id), source)
+        json_response(201, { status: "attached", name: name })
+      end
+
+      def context_line(value) = ContextSources.one_line(value.is_a?(String) ? value : nil, ContextSources::LINE_MAX_CHARS)
+      def context_added_by(body) = %w[cli agent].include?(body["added_by"]) ? body["added_by"] : "web"
+
+      def web_source(resolved, body, scope)
+        ContextSources::Source.new(name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds,
+                                   why: context_line(body["why"]) || resolved.why,
+                                   hint: context_line(body["hint"]) || resolved.hint, scope: scope,
+                                   added_by: context_added_by(body), created_at: Time.now.utc.iso8601,
                                    provider: resolved.bundle)
       end
 
       # DELETE /api/sessions/:id/context/:name: the session's own source is
-      # detached; a project's is muted for this session only.
-      def handle_context_delete(_req, id, name)
+      # detached; a project's is muted for this session only (the page's
+      # ×). With ?own=1 (chi context rm) only the session's own is
+      # detached: a project's is 409 project_source, as chi context rm
+      # refuses it.
+      def handle_context_delete(req, id, name)
+        return context_remove_own(id, name) if truthy_param?(req.params["own"])
+
         session = @session_class.load(id, state_dir: default_state_dir)
         attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
         if attached.location.session?
@@ -1595,6 +1648,17 @@ module Samagotchi
           ContextSources.session_location(id, state_dir: default_state_dir).mute(attached.name)
           json_response(200, { status: "muted", name: attached.name })
         end
+      end
+
+      def context_remove_own(id, name)
+        case session_access.context_remove(context_target(id), name)
+        when :removed then json_response(200, { status: "detached", name: name })
+        when :project
+          error_response(409, "project_source", ContextCommand.project_source_message(name))
+        else error_response(404, "not_found", "no source #{name[0, 40]}")
+        end
+      rescue ContextSources::Invalid
+        error_response(404, "not_found", "no source #{name[0, 40]}")
       end
 
       def attached_context(session)
