@@ -35,7 +35,11 @@ RSpec.describe Samagotchi::SessionAccess::HTTPTransport do
       Errno::ECONNREFUSED => "connection refused", Net::OpenTimeout => "no answer within 5 s",
       Net::ReadTimeout => "it took the request but sent no answer within 75 s", Errno::EHOSTUNREACH => "host unreachable",
       SocketError.new("getaddrinfo: nodename nor servname provided") => "can't find host 192.168.1.29",
-      Errno::ECONNRESET => "the connection broke (ECONNRESET)"
+      Errno::ECONNRESET => "the connection broke (ECONNRESET)",
+      Net::HTTPBadResponse.new("wrong status line: \"SSH-2.0-OpenSSH_9.6\"") => "it didn't answer HTTP (is it chi web's port?)",
+      Net::HTTPHeaderSyntaxError.new("wrong header line format") => "it didn't answer HTTP (is it chi web's port?)",
+      Net::WriteTimeout => "it took no request within 75 s",
+      Timeout::Error => "no answer in time"
     }.each do |error, words|
       stub_request(:get, "http://192.168.1.29:4567/api/info").to_raise(error)
       expect { transport.call(:get, "/api/info") }

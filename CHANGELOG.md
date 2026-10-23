@@ -55,6 +55,9 @@ and commands may change between minor versions. How releases are made:
   link's page says whether it was revoked or expired.
 - `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
   as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
+- A remote whose address answers something other than HTTP (another server on that port, an SSH banner), or a
+  request that can't be written in time, is the one "remote NAME (URL): …" failure line, exit 1 (`chi --remote`,
+  `chi remote add`'s check; the attached TUI reads it as unreachable), instead of a Ruby backtrace.
 
 ## [0.106.0] - 2026-10-23
 

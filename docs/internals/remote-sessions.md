@@ -130,7 +130,9 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   Bridge's 408; 501 → its 404). Anything unmapped becomes `RemoteFailed` "remote NAME (URL) answered STATUS code:
   message".
 - **Transport.** `HTTPTransport#call` turns socket errors into `RemoteFailed` "remote studio (http://…): connection
-  refused" (also: no answer within 5 s, a read timeout, can't find host, host unreachable, TLS, a broken connection).
+  refused" (also: no answer within 5 s, a read or write timeout, can't find host, host unreachable, TLS, a broken
+  connection, and "it didn't answer HTTP" for a reply that isn't HTTP: `Net::HTTPBadResponse`, `ProtocolError`, as
+  another server on that port gives). The attached TUI's `WebBridgeClient` reads each as `Unreachable`.
   `ParentWait#run` catches `RemoteFailed` so that `--format json` still prints its error object. Dispatch catches it for
   the other commands.
 - **Auth.** `Remote.access_error`, keyed by chi web's error code on any route: a 401 `unauthorized` → "the token was

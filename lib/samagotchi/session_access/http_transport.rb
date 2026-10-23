@@ -74,6 +74,13 @@ module Samagotchi
         failed("no answer within #{@open_timeout} s")
       rescue Net::ReadTimeout
         failed("it took the request but sent no answer within #{read_timeout} s")
+      rescue Net::WriteTimeout
+        failed("it took no request within #{read_timeout} s")
+      rescue Timeout::Error
+        failed("no answer in time")
+      rescue Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::ProtocolError
+        # Something else listens there (an SSH banner, another server).
+        failed("it didn't answer HTTP (is it chi web's port?)")
       rescue SocketError => e
         failed(e.message.include?("getaddrinfo") ? "can't find host #{@uri.host}" : e.message)
       rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH
