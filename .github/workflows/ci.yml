@@ -136,7 +136,15 @@ jobs:
       # The shipped bundles' own specs on the bundle test kit alone (no
       # spec_helper), as an external bundle's run.
       - name: Bundle specs (rake bundles:specs)
+        id: specs
         run: bundle exec rake bundles:specs
+      # As the rspec jobs' flake check, from the specs' --format failures
+      # list, rerun on the bundle test kit alone (docs/testing.md, "Flakes").
+      - name: Rerun the failed examples (flake check)
+        if: failure() && steps.specs.outcome == 'failure'
+        run: >-
+          ruby script/rerun_failures.rb --job "bundles:check" --log tmp/bundle_failures.log
+          --rspec "bundle exec rspec --options /dev/null -r samagotchi/testing/rspec"
 
   web:
     name: npm test

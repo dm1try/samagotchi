@@ -5,7 +5,7 @@ require "yaml"
 require_relative "../../script/rerun_failures"
 
 # CI's "passed on rerun" check (script/rerun_failures.rb): the failed ids from
-# parallel_tests' failures log, rerun once, and the summary that says which.
+# parallel_tests' failures log (or rspec's failures list), rerun once, and the summary that says which.
 RSpec.describe RerunFailures do
   let(:dir) { Dir.mktmpdir("rerun-failures-") }
   let(:log) { File.join(dir, "parallel_failures.log") }
@@ -42,6 +42,17 @@ RSpec.describe RerunFailures do
       expect(failures.first.description).to eq("Worker wakes on a note | and replies")
     end
 
+    it "reads rspec's --format failures list too (rake bundles:specs), a description with colons kept whole" do
+      list = "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb:7:runs: then stops\n" \
+             "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:2]:in a shared group\n"
+
+      failures = described_class.parse(list)
+
+      expect(failures.map(&:id)).to eq(["./lib/samagotchi/bundles/ruby/spec/hook_spec.rb:7",
+                                        "./lib/samagotchi/bundles/ruby/spec/hook_spec.rb[1:2]"])
+      expect(failures.first.description).to eq("runs: then stops")
+    end
+
     it "ignores everything that isn't a rerun line" do
       expect(described_class.parse("Failed examples:\n\nrandom output\n")).to be_empty
     end
@@ -76,6 +87,19 @@ RSpec.describe RerunFailures do
     expect(run).to eq(1)
     expect(reruns).to be_empty
     expect(summaries.join).to start_with("### Failed: 21 examples, not rerun (more than 20)")
+  end
+
+  it "runs in the bundles job after failed bundle specs, from their failures list, on the bundle test kit" do
+    workflow = YAML.safe_load_file(File.expand_path("../../.github/workflows/ci.yml", __dir__))
+    rakefile = File.read(File.expand_path("../../Rakefile", __dir__))
+    steps = workflow.dig("jobs", "bundles", "steps")
+    specs = steps.index { |step| step["id"] == "specs" }
+
+    expect(steps[specs]["run"]).to eq("bundle exec rake bundles:specs")
+    expect(rakefile).to include('"--format", "failures", "--out", File.join(ROOT, "tmp/bundle_failures.log")')
+    expect(steps[specs + 1]).to include("if" => "failure() && steps.specs.outcome == 'failure'")
+    expect(steps[specs + 1]["run"]).to include("--log tmp/bundle_failures.log")
+    expect(steps[specs + 1]["run"]).to include('--rspec "bundle exec rspec --options /dev/null -r samagotchi/testing/rspec"')
   end
 
   it "runs in both rspec jobs, right after a failed parallel_rspec" do

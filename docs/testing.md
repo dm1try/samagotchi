@@ -138,7 +138,9 @@ When `parallel_rspec` fails in CI's `rspec` or `rspec-macos` job, the next step 
 only the failed examples, once, with plain `rspec`. It reads their ids from `tmp/parallel_failures.log`
 (`.rspec_parallel`'s `FailuresLogger`) and writes the job summary: **Flaky: passed on rerun** or **Failed twice**,
 with the example ids, the Ruby version and the job. It skips the rerun when no ids were logged (a load error) or more
-than 20 failed (a real breakage). The job fails either way: a flake is a bug to fix, not a pass.
+than 20 failed (a real breakage). The job fails either way: a flake is a bug to fix, not a pass. The `bundles` job
+does the same after `rake bundles:specs`: that run writes rspec's own `--format failures` list to
+`tmp/bundle_failures.log`, and the rerun (`--rspec`) runs on the bundle test kit alone, as the specs ran.
 
 Every flake is classified into one of the four patterns, each with its own fix:
 

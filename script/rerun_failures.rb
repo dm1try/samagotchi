@@ -5,16 +5,20 @@
 # examples that failed, with plain rspec, and say in the job summary whether
 # they passed this time (a flake) or failed again.
 #
-#   ruby script/rerun_failures.rb --job NAME [--log PATH]
+#   ruby script/rerun_failures.rb --job NAME [--log PATH] [--rspec CMD]
 #
 # The ids are the rerun lines parallel_tests' FailuresLogger appends to
 # tmp/parallel_failures.log (.rspec_parallel): `rspec ./spec/x_spec.rb:12 # …`,
-# colour stripped. The summary goes to $GITHUB_STEP_SUMMARY (stdout without
+# colour stripped; or the lines of rspec's own `--format failures`
+# (`./spec/x_spec.rb:12:description`, rake bundles:specs'
+# tmp/bundle_failures.log). --rspec is the rerun's command (default
+# `bundle exec rspec`; the bundles job reruns on the bundle test kit alone). The summary goes to $GITHUB_STEP_SUMMARY (stdout without
 # one): "Flaky: passed on rerun" or "Failed twice", with the ids, the Ruby
 # version and the job. It always exits 1: a flake still fails the job. See
 # docs/testing.md (Flakes).
 
 require "optparse"
+require "shellwords"
 
 class RerunFailures
   DEFAULT_LOG = "tmp/parallel_failures.log"
@@ -24,9 +28,14 @@ class RerunFailures
   Failure = Data.define(:id, :description)
 
   # The FailuresLogger's lines, colorized when colour is on.
+  RERUN_LINE = /\Arspec (\S+)(?: # (.*))?\s*\z/
+  # rspec's --format failures: `./path_spec.rb:12:description`, or an
+  # id `./path_spec.rb[1:2]:description`.
+  LIST_LINE = %r{\A(\./\S+?_spec\.rb(?::\d+|\[[\d:]+\])):(.*?)\s*\z}
+
   def self.parse(text)
     text.gsub(/\e\[[\d;]*m/, "").each_line.filter_map do |line|
-      next unless (match = line.match(/\Arspec (\S+)(?: # (.*))?\s*\z/))
+      next unless (match = line.match(RERUN_LINE) || line.match(LIST_LINE))
 
       Failure.new(id: match[1], description: match[2].to_s.strip)
     end.uniq(&:id)
@@ -78,11 +87,12 @@ class RerunFailures
 end
 
 if $PROGRAM_NAME == __FILE__
-  options = { log: RerunFailures::DEFAULT_LOG, job: ENV.fetch("GITHUB_JOB", "local") }
+  options = { log: RerunFailures::DEFAULT_LOG, job: ENV.fetch("GITHUB_JOB", "local"), rspec: "bundle exec rspec" }
   OptionParser.new do |opts|
-    opts.banner = "usage: ruby script/rerun_failures.rb --job NAME [--log PATH]"
+    opts.banner = "usage: ruby script/rerun_failures.rb --job NAME [--log PATH] [--rspec CMD]"
     opts.on("--job NAME", "the job's name in the summary") { |v| options[:job] = v }
     opts.on("--log PATH", "the failures log (#{RerunFailures::DEFAULT_LOG})") { |v| options[:log] = v }
+    opts.on("--rspec CMD", "the rerun's command (bundle exec rspec)") { |v| options[:rspec] = v }
   end.parse!
 
   summary_path = ENV.fetch("GITHUB_STEP_SUMMARY", "")
@@ -92,7 +102,7 @@ if $PROGRAM_NAME == __FILE__
   end
   runner = lambda do |ids|
     puts "Rerunning #{ids.size} failed example(s): #{ids.join(" ")}"
-    system("bundle", "exec", "rspec", *ids)
+    system(*Shellwords.split(options[:rspec]), *ids)
   end
   exit RerunFailures.new(log: options[:log], job: options[:job], runner:, summary:).run
 end

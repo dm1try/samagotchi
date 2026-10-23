@@ -89,7 +89,10 @@ namespace :bundles do
     dirs = Dir[File.join(ROOT, "lib/samagotchi/bundles/*/spec")].sort
     abort "No bundle has a spec/ folder." if dirs.empty?
 
-    sh "bundle", "exec", "rspec", "--options", File::NULL, "-r", "samagotchi/testing/rspec", *dirs
+    # The failed ids for CI's flake check (script/rerun_failures.rb --log).
+    FileUtils.mkdir_p(File.join(ROOT, "tmp"))
+    sh "bundle", "exec", "rspec", "--options", File::NULL, "-r", "samagotchi/testing/rspec", "--format", "progress",
+       "--format", "failures", "--out", File.join(ROOT, "tmp/bundle_failures.log"), *dirs
   end
 end
 
