@@ -1358,7 +1358,7 @@ bundles:
   sentence of the server's `instructions` (from `initialize`), for its line
   in `find_tools`.
 - **The first run** (no saved list, or the config changed) starts the
-  server in an [init task](#chiinitlabel-provides_tools-false-quiet-false-timeout-nil--ctx--):
+  server in an [init task](#chiinitlabel-provides_tools-false-quiet-false-timeout-nil-failed-nil--ctx--):
   every UI shows `Starting MCP server x (first run, saving its tools)`, and
   a turn sent meanwhile waits for its tools. A server that doesn't start,
   answer or list its tools within `startup_timeout` (each step) is a warn

@@ -39,7 +39,7 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 **Lazy sweep:** automatic prune runs only while `chi web` runs, at most once per `session.sweep_interval_hours` (default 24): the web's session hub gives it a chance on its periodic full scan, and `GET /api/sessions` does too. No cron, and a terminal-only chi never sweeps. Manual prune is always available.
 
-**CLI:**
+<a id="cli"></a>**CLI:**
 
 ```sh
 chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N] [--scope=all]
