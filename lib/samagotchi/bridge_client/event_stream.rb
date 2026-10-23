@@ -24,6 +24,17 @@ module Samagotchi
     # synthetic `{"type" => "worker_changed", "port" => ...}` first, since its
     # event ids start over. (A new worker on the old one's port is the plain
     # reconnect: its Bridge can't replay the old ids and sends a reset.)
+    # Rediscovery may also give a reason ([nil, reason] while it retries,
+    # [:gone, reason] to stop): the stream_closed event carries the last one.
+    #
+    # Off by default, for a stream through chi web (SessionAccess::
+    # WebBridgeClient), where the client stays the same object across
+    # workers: +epoch_watch+ (a frame whose id has another epoch than the
+    # cursor's is a new worker: worker_changed first, the client's key
+    # updated), +announce_retries+ (stream_retrying once a reconnect fails,
+    # stream_resumed at the next frame), +idle_timeout+ (no byte, not even
+    # the Bridge's 15 s ping, for that long: a half-open connection,
+    # reconnected with the cursor).
     class EventStream
       DEFAULT_RECONNECT_DELAYS = [0.1, 0.25, 0.5, 1.0, 2.0].freeze
       # Long enough for a restarted worker to boot (its Engine, the plugins).
@@ -40,12 +51,26 @@ module Samagotchi
       # @param reconnect_delays [Array<Float>] sleeps between failed attempts;
       #   one more failure than there are delays gives up
       # @param rediscover [#call, nil] → a BridgeClient for the session's live
-      #   worker now, nil when there is none yet, or :gone to give up now
+      #   worker now, nil when there is none yet, or :gone to give up now;
+      #   or AttachLink#live_worker's pair, [one of those, a reason]
+      # @param epoch_watch [Boolean] see the class comment; the client takes
+      #   worker_key= then
+      # @param announce_retries [Boolean] see the class comment
+      # @param idle_timeout [Float, nil] seconds; nil: a quiet stream is
+      #   never cut (a Bridge on this machine)
       # @yieldparam event [Hash] string-keyed event
       def initialize(client, snapshot: true, client_id: nil, reconnect_delays: DEFAULT_RECONNECT_DELAYS, rediscover: nil,
-                     &on_event)
+                     epoch_watch: false, announce_retries: false, idle_timeout: nil, &on_event)
         @client = client
+        # The worker followed: a client that keeps its object across
+        # workers (epoch_watch) changes its key, not itself.
+        @worker_key = client.worker_key
         @rediscover = rediscover
+        @epoch_watch = epoch_watch
+        @announce_retries = announce_retries
+        @idle_timeout = idle_timeout
+        @retrying = false
+        @reason = nil
         params = []
         params << %w[snapshot 1] if snapshot
         params << ["client_id", client_id] if client_id
@@ -96,18 +121,21 @@ module Samagotchi
 
           if outcome == :events
             failures = 0
+            @reason = nil
             next
           end
 
+          announce_retry
           case rediscover_worker
           when :moved
             failures = 0
+            @reason = nil
             next
-          when :gone then return finish("unreachable")
+          when :gone then return finish(@reason || "unreachable")
           end
 
           failures += 1
-          return finish("unreachable") if failures > @reconnect_delays.size
+          return finish(@reason || "unreachable") if failures > @reconnect_delays.size
 
           sleep(@reconnect_delays[failures - 1])
         end
@@ -128,11 +156,15 @@ module Samagotchi
         yielded = false
         parser = SSEParser.new
         loop do
+          raise Errno::ETIMEDOUT if @idle_timeout && !sock.wait_readable(@idle_timeout)
+
           chunk = sock.readpartial(4096)
           parser.feed(chunk) do |frame|
             event = parse(frame[:data])
             next unless event
 
+            announce_resumed
+            watch_epoch(frame[:id]) if @epoch_watch
             @last_event_id = frame[:id] if frame[:id]
             yielded = true
             @on_event.call(event)
@@ -172,16 +204,53 @@ module Samagotchi
       def rediscover_worker
         return nil unless @rediscover
 
-        found = @rediscover.call
+        found, reason = @rediscover.call
+        @reason = reason if reason
         return :gone if found == :gone
-        return nil if found.nil? || found.worker_key == @client.worker_key
+        return nil if found.nil? || found.worker_key == @worker_key
 
         @client = found
         @last_event_id = nil
-        @on_event.call({ "type" => "worker_changed", "port" => found.port }) unless closed?
+        moved(found.port, found.worker_key)
         :moved
       rescue StandardError
         nil
+      end
+
+      # The frame +id+'s epoch (EventId: "<seq>-<epoch>") differs from the
+      # cursor's: a new worker answers the old cursor (its Bridge sends a
+      # reset next, or this is it). Announced before the frame.
+      def watch_epoch(id)
+        epoch = id.to_s[/-(\w+)\z/, 1]
+        cursor = @last_event_id.to_s[/-(\w+)\z/, 1]
+        return if epoch.nil? || cursor.nil? || epoch == cursor
+
+        @client.worker_key = epoch
+        moved(nil, epoch)
+      end
+
+      # Following another worker now: its key, and the worker_changed event
+      # (with its epoch for a stream through chi web).
+      def moved(port, key)
+        @worker_key = key
+        event = { "type" => "worker_changed", "port" => port }
+        event["epoch"] = key if @epoch_watch
+        @on_event.call(event) unless closed?
+      end
+
+      # A reconnect failed: said once, until a frame comes again.
+      def announce_retry
+        return if !@announce_retries || @retrying || closed?
+
+        @retrying = true
+        @on_event.call({ "type" => "stream_retrying" })
+      end
+
+      def announce_resumed
+        return unless @retrying
+
+        @retrying = false
+        @on_event.call({ "type" => "stream_resumed" })
       end
 
       def finish(reason)
