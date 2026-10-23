@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "../session_access"
 require_relative "../reply_wait"
 require_relative "../bridge_client"
+require_relative "../owner_lock"
 require_relative "../parent_report"
 require_relative "../note_delivery"
 require_relative "../image_store"
@@ -69,7 +70,10 @@ module Samagotchi
 
       # The session's worker for an attach: the live one as is, else
       # resumed and waited for up to +wait+ seconds (chi --attach on this
-      # machine; chi web's POST …/wake for a remote one).
+      # machine; chi web's POST …/wake for a remote one). A worker still
+      # leaving (its Bridge closed, its recap on leave being written) is
+      # waited for first (OwnerLock.await_release: its recap's timeout and
+      # a margin), so the resume finds the session free.
       # @return [Woken] its sidecar nil when the Bridge didn't come in time
       # @raise [ArgumentError] no such session
       # @raise [Refused] code scratch: a leftover chi scratch session
@@ -81,6 +85,7 @@ module Samagotchi
         live = WorkerSidecar.live(session_dir(id), unlink: true)
         return Woken.new(woke: false, sidecar: live) if live
 
+        OwnerLock.await_release(session_dir(id))
         SessionManager.resume_session(id, **dir)
         found = BridgeClient.wait_for(id, session_dir: session_dir(id), timeout: wait)
         Woken.new(woke: true, sidecar: found && WorkerSidecar.read(session_dir(id)))

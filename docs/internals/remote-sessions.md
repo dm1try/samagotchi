@@ -260,9 +260,10 @@ bin/chi ── RunOptions.parse ── a remote, run flags ──> RemoteAttachC
 
 **chi web's routes** (tabled in [architecture.md](../architecture.md)): `POST …/wake` (`Local#wake`: the live worker
 as is, else `SessionManager.resume_session` and `BridgeClient.wait_for`, at most `WAKE_MAX_WAIT` 10 s, the attach's
-`BRIDGE_WAIT` here; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
-in `LaunchMode::BRIDGE_LATE`'s) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner; it never starts
-one; it also names that machine's `default_model`), both answering the worker as `{epoch, started_at, version,
+`BRIDGE_WAIT` here, after waiting for a worker still leaving to let go of its lock, `OwnerLock.await_release`: its
+recap on leave's timeout plus 5 s; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
+in `LaunchMode::BRIDGE_LATE`'s) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner, `leaving` and `leave_seconds` when its worker
+is leaving, `WorkerState#leaving?`; it never starts one; it also names that machine's `default_model`), both answering the worker as `{epoch, started_at, version,
 features}`; `POST …/exit` (the worker's exit, `client_id` passed on only when it is a `tui:` one), `POST …/recap`,
 `GET …/stats` (the stats, else an older worker's state metrics), `GET …/children/counts` (`ChildrenStatus.counts`)
 and `GET …/turns/:turn_id/records` (`SessionMetrics`' saved tool records and turn record), every refusal with
@@ -329,8 +330,9 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
   `--model`/`--llm-context*`/`--thinking` as first commands, as here. `Remote#require_feature!("remote_attach")` comes
   first (without it, `Remote.too_old_message`). Then `AttachLauncher.run(connector: RemoteConnector)` and
   `AttachLauncher.exit_status`.
-- **`RemoteConnector`** (`terminal_ui/remote_connector.rb`): `#connect` is `Remote#attach_wake` (`POST …/wake`,
-  `WakeReply`) and the `RemoteLink`; `#client_id` is `tui:<pid>@<short hostname>` (P4-D6).
+- **`RemoteConnector`** (`terminal_ui/remote_connector.rb`): `#connect` is `Remote#attach_worker` (a worker there
+  still leaving prints `LaunchMode::RECAP_WAIT`, as a local attach does, and the wake's read timeout grows by its
+  `leave_seconds`), then `Remote#attach_wake` (`POST …/wake`, `WakeReply`) and the `RemoteLink`; `#client_id` is `tui:<pid>@<short hostname>` (P4-D6).
 - **`RemoteLink`** (`terminal_ui/remote_link.rb`), the `AttachLink`:
   - `client`: one `WebBridgeClient` for the attach; `switched(event)` keeps it (its key the event's epoch) and reads
     the new worker's features (`GET …/worker`).

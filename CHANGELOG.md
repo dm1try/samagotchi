@@ -31,7 +31,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- `chi --attach ID` (and `--resume ID`) right after `/exit`, while the leaving
+- `chi --attach ID` (and `--resume ID`, and `chi --remote NAME --attach ID`) right after `/exit`, while the leaving
   worker still writes its recap, waits for it with `(waiting for the session to finish its recap…)` (up to
   `recap.timeout` plus 5 s) and then attaches, instead of failing "did not start its Bridge in time".
 - `/queue TEXT` (or `/cut TEXT`) with no turn running says `(nothing is running: sent now)` in the REPL and the

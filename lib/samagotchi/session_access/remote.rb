@@ -463,15 +463,16 @@ module Samagotchi
       end
 
       # POST …/wake: the session's live worker for a remote attach, started
-      # when none runs, waited for up to +wait+ seconds there.
+      # when none runs, waited for up to +wait+ seconds there (a leaving
+      # worker first: +read_timeout+ covers that wait too).
       # @return [WakeReply]
       # @raise [SessionManager::OwnedByTUI] a chi REPL has it there
       # @raise [Refused] a leftover scratch session (code scratch), or its
       #   Bridge didn't come in time (code worker_timeout): chi web's words,
       #   LaunchMode's constants
       # @raise [ArgumentError] no such session
-      def attach_wake(id, wait:)
-        reply = request(:post, "#{session_path(id)}/wake", body: { wait: wait })
+      def attach_wake(id, wait:, read_timeout: nil)
+        reply = request(:post, "#{session_path(id)}/wake", body: { wait: wait }, read_timeout: read_timeout)
         if reply.status != 200 && %w[scratch worker_timeout].include?(reply.error)
           raise Refused.new((reply.json["message"] || reply.json["detail"]).to_s, code: reply.error)
         end
@@ -491,8 +492,10 @@ module Samagotchi
         raise_refusal(reply) unless reply.status == 200
 
         json = reply.json
+        seconds = json["leave_seconds"]
         WorkerReply.new(live: json["live"] == true, stopped: json["stopped"] == true, worker: json["worker"],
-                        strategy: strategy_or_hard(json["parent_strategy"]), default_model: json["default_model"])
+                        strategy: strategy_or_hard(json["parent_strategy"]), default_model: json["default_model"],
+                        leaving: json["leaving"] == true, leave_seconds: (seconds.to_f if seconds.is_a?(Numeric)))
       end
 
       # One request to a route, as the session commands make them (the

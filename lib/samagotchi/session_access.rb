@@ -100,6 +100,10 @@ module Samagotchi
     # its OwnerLock::Owner (a worker, a chi REPL, nil).
     WorkerState = Data.define(:sidecar, :stopped, :owner) do
       def live? = !sidecar.nil?
+
+      # No Bridge, and the owner is a worker leaving (writing its recap on
+      # leave): a wake waits for it (Local#wake).
+      def leaving? = !live? && !!owner&.leaving?
     end
 
     # What a wake for an attach did (Local#wake, chi web's POST …/wake):
@@ -119,8 +123,10 @@ module Samagotchi
     # …/worker): +live+, +stopped+ (its stop marker), +worker+ as in
     # WakeReply (nil: none runs), the parent +strategy+ read now, and that
     # machine's +default_model+ (nil from a chi web before it sent one).
-    WorkerReply = Data.define(:live, :stopped, :worker, :strategy, :default_model) do
-      def initialize(live:, stopped:, worker:, strategy:, default_model: nil) = super
+    # +leaving+: its worker is leaving (WorkerState#leaving?), for up to
+    # +leave_seconds+ more there (nil from a chi web before it sent them).
+    WorkerReply = Data.define(:live, :stopped, :worker, :strategy, :default_model, :leaving, :leave_seconds) do
+      def initialize(live:, stopped:, worker:, strategy:, default_model: nil, leaving: false, leave_seconds: nil) = super
     end
 
     # What chi send --wait and chi answer read before anything is sent, so

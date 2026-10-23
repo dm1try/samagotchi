@@ -73,6 +73,27 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
     expect { remote.attach_wake("feedbeef00", wait: 1) }.to raise_error(ArgumentError)
   end
 
+  it "says a worker there is leaving (its recap on leave), and the wake waits for its lock before resuming" do
+    session = make
+    lock = Samagotchi::OwnerLock.acquire(dir_of(session), kind: "worker")
+    expect(remote.attach_worker(session.id)).to have_attributes(live: false, leaving: false, leave_seconds: nil)
+    lock.mark_leaving(wait: 20)
+    expect(remote.attach_worker(session.id)).to have_attributes(live: false, leaving: true, leave_seconds: be_within(2).of(20))
+
+    calls = []
+    allow(Samagotchi::OwnerLock).to receive(:await_release).and_wrap_original do |original, dir, **options|
+      # The worker lets go at the wait's first look.
+      calls << original.call(dir, **options, sleeper: ->(_) { lock.release })
+    end
+    allow(Samagotchi::SessionManager).to receive(:resume_session) { calls << :resume }
+    allow(Samagotchi::BridgeClient).to receive(:wait_for) { live_worker(session) }
+
+    expect(remote.attach_wake(session.id, wait: 1)).to have_attributes(woke: true)
+    expect(calls).to eq(%i[released resume])
+  ensure
+    lock&.release
+  end
+
   it "reads the worker now: live with its epoch and that machine's default model, or stopped" do
     session = make
     live_worker(session, epoch: "e2e2e2e2")
