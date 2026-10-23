@@ -48,11 +48,15 @@ RSpec.describe Samagotchi::WorkerSignals do
     pid = fork do
       reader.close
       signals = described_class.new
-      signals.on_signal { |name, count| writer.puts("#{name} #{count}") }
+      fired = Queue.new
+      signals.on_signal do |name, count|
+        writer.puts("#{name} #{count}")
+        fired << name
+      end
       signals.install!
       Process.kill("TERM", Process.pid)
       Process.kill("HUP", Process.pid)
-      sleep 0.3
+      2.times { pop!(fired, "a trapped signal's handler") }
       signals.restore!
       writer.puts(Signal.trap("TERM", "DEFAULT").is_a?(Proc) ? "proc" : "restored")
       writer.close
