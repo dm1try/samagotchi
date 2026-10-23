@@ -236,13 +236,14 @@ module Samagotchi
         case type
         when :command_queued
           # A card's action shows as its card, never as a line (the UIs skip it live).
-          @queued_commands << event.slice(:command_id, :client_id, :line) if event[:waits] && !event[:card]
+          @queued_commands << event.slice(:command_id, :client_id, :line, :author) if event[:waits] && !event[:card]
         when :command_ran
           @queued_commands.reject! { |entry| entry[:command_id] == event[:command_id] } if event[:queued]
         when :turn_enqueued
           queued = { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
           queued[:images] = event[:images] if event[:images]
           queued[:delivery] = event[:delivery] if event[:delivery]
+          queued[:author] = event[:author] if event[:author]
           @queued << queued
         # Taken back before it ran (Bridge#handle_dequeue_turn).
         when :turn_dequeued

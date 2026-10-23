@@ -322,11 +322,12 @@ module Samagotchi
     # @param after_file [String, nil] the input file it came in (its
     #   basename): it runs once that file is taken (Worker#on_command)
     # @return [String] its command_id
-    def queue_command(line, client_id: nil, card: false, after_file: nil, enqueued_id: nil)
+    def queue_command(line, client_id: nil, card: false, after_file: nil, enqueued_id: nil, author: nil)
       # A card's action (the step-limit question's answer): the UIs leave
       # its line out. +enqueued_id+: a file-delivered command's input, whose
-      # sender's wait its command_ran settles.
-      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card).with(enqueued_id: enqueued_id)
+      # sender's wait its command_ran settles. +author+: its input's.
+      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card, author: author)
+                             .with(enqueued_id: enqueued_id)
       @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
       command.command_id
     end
@@ -792,10 +793,11 @@ module Samagotchi
 
     # Queues +line+ (a session command) for the worker and announces its
     # :command_queued, unless +deadline+ has passed. Returns [headers,
-    # status, body]: 202 with its command_id, or 408.
-    def queue_command_request(session_id, line, client_id:, deadline: nil, card: false)
+    # status, body]: 202 with its command_id, or 408. +author+: a POST
+    # /turn's (a /word sent as a message).
+    def queue_command_request(session_id, line, client_id:, deadline: nil, card: false, author: nil)
       # A card's action: the UIs leave its line out (the card is the echo).
-      command = QueuedCommand.mint(line, client_id: client_id, card: card)
+      command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author)
       queued = @engine.synchronize_events do
         raise IntakeClosed if stopped?
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command.client_id)
@@ -920,7 +922,7 @@ module Samagotchi
       # TUI; an unknown /word stays a prompt. Not with images: those are
       # for the model.
       if images.empty? && @on_command && command_registry.command?(prompt.to_s)
-        return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline)
+        return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline, author: author)
       end
 
       enqueued_id = SecureRandom.uuid
@@ -945,6 +947,7 @@ module Samagotchi
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
           enqueued_event[:images] = images unless images.empty?
           enqueued_event[:delivery] = Delivery::QUEUE if queued_behind_turn
+          enqueued_event[:author] = author if author
           @engine.announce(enqueued_event)
           @on_input&.call
         end

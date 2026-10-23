@@ -299,9 +299,9 @@ module Samagotchi
                                    context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
-                                   queue_command: lambda { |line, client_id, after_file, enqueued_id|
+                                   queue_command: lambda { |line, client_id, after_file, enqueued_id, author: nil|
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file,
-                                                                 enqueued_id: enqueued_id)
+                                                                 enqueued_id: enqueued_id, author: author)
                                    })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.  nil when there is no default.model.
@@ -1006,7 +1006,8 @@ module Samagotchi
       @reporting_turn = reports_to_parent?(turn_args[:origin])
       restores = @turn_flow.restores
       begin
-        @checkpoint.begin_turn(prompt: prompt, enqueued_id: turn_args[:origin]&.dig(:enqueued_id))
+        @checkpoint.begin_turn(prompt: prompt, enqueued_id: turn_args[:origin]&.dig(:enqueued_id),
+                               author: turn_author_fields(turn_args[:origin]))
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's
@@ -1186,9 +1187,9 @@ module Samagotchi
           @merged_this_turn.concat(merged)
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or
-        # a delegating parent's line is saved and shown to the model as theirs.
-        lines = merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
-                reports.map(&:line)
+        # a delegating parent's line is saved and shown to the model as theirs,
+        # a participant's with its author (Engine#author_fields).
+        lines = merged.map { |prompt, origin| merged_line(prompt, origin) } + reports.map(&:line)
         # A wake turn starts with its first line, whoever sent it.
         lines[0] = lines[0].with(mark: mark) if mark && lines.any?
         # The turn so far, with what this boundary merges (its input files
@@ -1197,6 +1198,17 @@ module Samagotchi
         @engine.checkpoint_metrics if @checkpoint.boundary(@engine.live_conversation, merging: lines, turn_id: @turn_id)
         lines
       end
+    end
+
+    # A participant's author fields (Engine#author_fields), {} for the owner.
+    def turn_author_fields(origin)
+      Steer.participant_author?(origin&.dig(:author)) ? @engine.author_fields(origin[:author], session: @session) : {}
+    end
+
+    def merged_line(prompt, origin)
+      author = turn_author_fields(origin)
+      Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id)),
+                      author: author[:author], author_name: author[:author_name])
     end
 
     # The reports for rings that came in since the turn last looked. A

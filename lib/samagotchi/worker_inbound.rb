@@ -11,6 +11,7 @@ require_relative "context_note"
 require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "steer"
 require_relative "tools/task_record"
 require_relative "worker_wakes"
 
@@ -237,12 +238,14 @@ module Samagotchi
     # A session command sent as a message (chi send -m "/model x", a web
     # page's first message) runs as the command, as the Bridge does for a
     # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
-    # pass runs it.
+    # pass runs it, with its input's author (only a participant's: the
+    # owner's command is queued as it always was).
     # @return [Boolean] whether +text+ was one
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
 
-      @queue_command.call(text, origin&.dig(:client_id), after_file, origin&.dig(:enqueued_id))
+      author = Steer.sender_author(origin&.dig(:author))
+      @queue_command.call(text, origin&.dig(:client_id), after_file, origin&.dig(:enqueued_id), **{ author: author }.compact)
       true
     end
 

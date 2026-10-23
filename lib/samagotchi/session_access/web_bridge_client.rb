@@ -92,9 +92,11 @@ module Samagotchi
       def port = nil
 
       # POST …/turn. history: false (chi web's prompt history is that
-      # machine's page's).
+      # machine's page's). +author+ is never sent: the remote chi web stamps
+      # a turn's author from the token this client holds (Web::Principal),
+      # never from the body.
       # @return [BridgeClient::Response]
-      def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil)
+      def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil)
         body = { prompt: prompt, client_id: client_id, history: false }
         body[:no_interrupt] = true if no_interrupt
         body[:images] = images if images && !images.empty?

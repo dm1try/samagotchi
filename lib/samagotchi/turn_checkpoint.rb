@@ -159,13 +159,16 @@ module Samagotchi
     # Every mark of the turn carries +enqueued_id+ (InterruptedTurn's).
     # @param prompt [String, nil]
     # @param enqueued_id [String, nil] the input the turn runs
-    def begin_turn(prompt: nil, enqueued_id: nil)
+    # @param author [Hash] a participant's prompt's author fields
+    #   (Engine#author_fields), so a kill before the first boundary leaves
+    #   it theirs; {} for the owner's
+    def begin_turn(prompt: nil, enqueued_id: nil, author: {})
       @boundaries = 0
       @enqueued_id = enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
       @written_at = nil
       @started_at = Time.now.iso8601(3)
       messages = Array(@session.messages).dup
-      messages << { role: "user", content: prompt } unless prompt.to_s.empty?
+      messages << { role: "user", content: prompt, **author } unless prompt.to_s.empty?
       @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
                                                                                    enqueued_id: @enqueued_id) }
     end

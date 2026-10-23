@@ -1472,13 +1472,15 @@ module Samagotchi
 
     # The author fields a message +author+ wrote carries (Steer.author_fields:
     # author:, and author_name: from participants.json), {} for the owner.
-    # The worker's drain names a participant's merged lines with it.
+    # The worker's drain names a participant's merged lines with it, and
+    # its running save a participant's prompt.
     # @param origin [Hash, String, nil] a turn's origin, or an author
-    def author_fields(origin)
+    # @param session [Session, nil] the session it is for (the turn's)
+    def author_fields(origin, session: @session)
       author = origin.is_a?(Hash) ? origin[:author] : origin
       return {} unless Steer.participant_author?(author)
 
-      Steer.author_fields(author, @participants.name_for(author))
+      Steer.author_fields(author, @participants.name_for(author, session: session))
     end
 
     # Why a turn stopped, from its end event (LastTurn::STOP_FACTS), for a

@@ -27,10 +27,13 @@ module Samagotchi
 
     # The name +author+ ("p:<id>") had when it was invited, nil for none
     # (the owner, or a participant the sidecar doesn't name). A miss reads
-    # the sidecar again: someone invited after the turn began.
-    def name_for(author)
+    # the sidecar again: someone invited after the turn began. +session+:
+    # the session it is asked for, when that may not be the last refreshed
+    # (the worker's running save, before the Engine's first turn).
+    def name_for(author, session: nil)
       return nil unless Steer.participant_author?(author)
 
+      refresh!(session) if session && session.id != @session_id
       id = author.to_s.delete_prefix("p:")
       entry = @entries.find { |e| e.id == id } || (@entries = read).find { |e| e.id == id }
       entry&.name
