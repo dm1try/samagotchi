@@ -104,6 +104,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating → `docs/sessions.md`
+- Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`

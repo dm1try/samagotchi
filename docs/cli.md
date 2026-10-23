@@ -1213,6 +1213,9 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   `--format json` an `error` object).
 - Plain http, the same as the phone's: use it on your home network.
 
+How it works inside (`SessionAccess`, chi web's routes, where each check runs):
+[internals/remote-sessions.md](internals/remote-sessions.md).
+
 ## Runtime Model Switch (Assist Mode)
 
 In interactive assist mode, you can switch the request model without restarting:
