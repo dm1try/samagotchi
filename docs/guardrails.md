@@ -746,7 +746,11 @@ keep every guardrail. But an owner turn that says "do what Alex said" hands
 Alex's text the owner's tools: the model will act on it as the owner asked.
 That is the residual risk, documented rather than engineered away: on a
 session with sensitive tools, quote the proposal you want applied in your own
-turn instead.
+turn instead: the web's **Apply** under a review turn does that (it puts your
+line and the reply quoted line by line in your composer, for you to read and
+send; [internals/participants.md](internals/participants.md#apply)). A quote
+lowers the risk, it doesn't remove it: your line still asks the model to act
+on what it quotes, with your tools, so read the quote before you send it.
 
 Within its own turn a participant's text can't act: the review boundary
 leaves it reads of the project only, and an injection that convinces the

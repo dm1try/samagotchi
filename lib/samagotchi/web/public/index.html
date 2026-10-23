@@ -120,6 +120,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A participant's prompt: their name in their colour (tokens.css --author-N), and a rule of it on the bubble. */
 .bubble.user .origin-label.author-badge{color:var(--author-color);text-transform:none;letter-spacing:0;font-weight:600}
 .bubble.user.by-participant{border-left:3px solid var(--author-color)}
+/* Apply (review_apply.js) under a participant's review turn's reply. */
+.review-apply{display:flex;align-items:center;gap:10px;margin:6px 0 4px}
+.review-apply-btn{font:inherit;font-size:13px;font-weight:600;padding:5px 16px;border-radius:8px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.review-apply-btn:hover{border-color:var(--accent)}
+.review-apply-btn:disabled{opacity:.6;cursor:default}
+.review-apply-note{font-size:12px;color:var(--text-muted);border-left:3px solid var(--author-color);padding-left:8px}
+@media (max-width:600px){
+  .review-apply{flex-direction:column;align-items:stretch;gap:4px}
+  .review-apply-btn{width:100%;padding:10px 16px;font-size:15px}
+  .review-apply-note{border-left:0;padding-left:0;text-align:center}
+}
 .bubble.user .user-message{flex:1;min-width:0}
 .bubble.user blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-3);margin:2px 0 6px}
 .bubble.user blockquote:last-child{margin-bottom:0}

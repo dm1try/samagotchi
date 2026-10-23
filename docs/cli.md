@@ -1312,6 +1312,11 @@ chi share revoke --all          # every link to every session
   turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
   or `send -m`, which prints the turn id `--wait --turn T` takes. They can't reach anything else: every other route answers them 403, another
   session 404.
+- **Apply.** Under each of a participant's review turns that has a reply, your page shows **Apply** (full width on a
+  phone): it puts an Apply turn in your composer, not sent, `Apply this proposal from Alex's review turn 3f2a1c0d, as
+  far as it fits the plan. It's quoted: …` and the reply quoted line by line. Read it, edit it, send it: the
+  participant's text reaches the model as a quote under your line, never as your instruction. Don't send "do what
+  Alex said" instead: that hands their words your tools.
 - **Your side of it.** In the session bar, the participants chip (`invite` while nobody has a link, then `2
   participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
   spend against their cap, turns and expiry, with **Cap** and **Revoke** (revoking ends their page and stream and
