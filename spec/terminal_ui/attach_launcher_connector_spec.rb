@@ -34,6 +34,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run with a connector" d
             no_interrupt: false, default_input: false, wait_at_eof: false, as_parent: false)
   end
 
+  it "names this TUI with the connector's client id when it has one" do
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
+    allow(connector).to receive(:client_id).and_return("tui:42@mac")
+
+    described_class.run(attach: "s-1", connector: connector)
+
+    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(client_id: "tui:42@mac"))
+  end
+
   it "is an error when the connector answers no session, never an attach on this machine" do
     allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new)
     nothing = double("connector", connect: nil)

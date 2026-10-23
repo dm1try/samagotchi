@@ -66,7 +66,8 @@ module Samagotchi
       # @param connector [#connect, nil] finds or starts the session
       #   elsewhere: its #connect returns the AttachLink the loop runs on
       #   (nil: this machine's, through .connect; a connector never falls
-      #   back to it)
+      #   back to it), and its #client_id, when it has one, names this
+      #   TUI's streams and requests there (#client_id)
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
@@ -90,7 +91,7 @@ module Samagotchi
         commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
         surface = open_surface
-        options = { screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
+        options = { screen: surface, client_id: client_id(connector), first_prompt: prompt,
                     first_command: first_command, no_interrupt: no_interrupt,
                     default_input: default_input && !prompt && !attach && !resume,
                     wait_at_eof: !$stdin.tty?,
@@ -113,6 +114,14 @@ module Samagotchi
         end
         report_ended(ended)
         ended
+      end
+
+      # This TUI's client id: tui:PID, or the connector's own (a remote one
+      # adds the host, for the UIs there).
+      def client_id(connector)
+        return connector.client_id if connector.respond_to?(:client_id)
+
+        "tui:#{Process.pid}"
       end
 
       # A question left waiting (exit 3), in full on stderr as `chi send
