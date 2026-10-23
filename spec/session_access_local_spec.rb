@@ -61,6 +61,17 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       expect(created).to have_attributes(cursor: nil, own_turn: nil, live: false)
       expect(created.baseline).to eq(Samagotchi::ReplyWait.baseline_of(session, question_id: nil))
     end
+
+    # Read after the create (chi web's prepare route for a remote --new), the
+    # first turn may have ended already: its end is the answer, not the
+    # baseline's.
+    it "takes no ended turn into a just-created session's baseline" do
+      session = saved_session
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: "2026-10-23T10:00:00Z")
+      session.save(state_dir: tmpdir)
+
+      expect(access.prepare_wait(session.id, created: true).baseline.last_turn).to be_nil
+    end
   end
 
   it "answers nil when no worker runs the session" do

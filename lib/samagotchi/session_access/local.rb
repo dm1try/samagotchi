@@ -115,14 +115,17 @@ module Samagotchi
       #   :pending, the one pending now
       # @param turn [String, nil] a turn asked for (--turn): known_turn
       #   says whether it can be waited for
-      # @param created [Boolean] +session+ was just created: no reply and
-      #   no question yet, nothing else read
+      # @param created [Boolean] +session+ was just created: no reply, no
+      #   question and no ended turn yet, nothing else read (read later, as
+      #   chi web's prepare route does, its first turn may have ended: that
+      #   end is the answer, not the baseline's)
       # @return [WaitStart]
       def prepare_wait(id, session: nil, question_id: :pending, turn: nil, created: false)
         session ||= show(id)
         if created
-          return WaitStart.new(cursor: nil, baseline: ReplyWait.baseline_of(session, question_id: nil), own_turn: nil,
-                               known_turn: nil, running: false, live: false, settled: false, last_turn_id: nil)
+          return WaitStart.new(cursor: nil, baseline: ReplyWait::Baseline.new(messages: session.messages.size),
+                               own_turn: nil, known_turn: nil, running: false, live: false, settled: false,
+                               last_turn_id: nil)
         end
 
         cursor = ReplyWait.newest_reply(id, state_dir: state_dir!)
