@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
                              pgroup: true)
       Process.detach(worker)
       pids << worker
-      wait_until!("the worker's lock", timeout: 10) do
+      wait_for("the worker's lock", timeout: 10) do
         Samagotchi::OwnerLock.owner(session_dir)&.pid == worker
       end
       # A task the turn started, by its record.
@@ -647,7 +647,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
             sleep 30
           RUBY
           interrupter = Thread.new do
-            wait_until!("the child", timeout: 10) { File.exist?(ready) }
+            wait_for("the child", timeout: 10) { File.exist?(ready) }
             Process.kill("INT", Process.pid)
           end
 
@@ -755,7 +755,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           run = described_class.new(sandbox)
           allow(run).to receive(:wait_for).and_wrap_original do |wait_for, wait, seconds|
             # The turn's wait ends once the task runs, not on the clock.
-            wait_until!("the task", timeout: 10) { File.size?(pid_file) || !wait.alive? } if seconds == 600
+            wait_for("the task", timeout: 10) { File.size?(pid_file) || !wait.alive? } if seconds == 600
             wait_for.call(wait, seconds == 600 ? 0 : seconds)
           end
 

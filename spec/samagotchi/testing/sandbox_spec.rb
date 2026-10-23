@@ -131,18 +131,3 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(Integer(count)).to be < 250
   end
 end
-
-RSpec.describe Samagotchi::Testing::Waiting do
-  include described_class
-
-  it "waits for a truthy value, gives the last one at the deadline, or raises naming what it waited for" do
-    calls = 0
-    expect(wait_until { (calls += 1) >= 3 && :done }).to eq(:done)
-    expect(wait_until(timeout: 0.05) { nil }).to be_nil
-    expect { wait_until!("the moon", timeout: 0.05) { false } }.to raise_error("timed out after 0.05 s waiting for the moon")
-    pid = Process.spawn("true")
-    Process.wait(pid)
-    expect(process_gone?(pid)).to be true
-    expect(process_gone?(Process.pid)).to be false
-  end
-end

@@ -99,7 +99,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
       original.call(*args)
     end
     thread = Thread.new(&)
-    wait_until!("the call to wait for the server") { waiting || !thread.alive? }
+    wait_for("the call to wait for the server") { waiting || !thread.alive? }
     FileUtils.touch(gate)
     join!(thread, "the call", timeout: 15).value
   end

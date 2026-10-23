@@ -35,7 +35,7 @@ RSpec.describe "the pending question on the wire and on disk" do
   def open_in_background(fields)
     thread = Thread.new { desk.open_question(fields) }
     thread.report_on_exception = false
-    wait_until!("the question to be published", timeout: 2) { requested }
+    wait_for("the question to be published", timeout: 2) { requested }
     thread
   end
 

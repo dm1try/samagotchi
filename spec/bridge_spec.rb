@@ -73,7 +73,7 @@ class SSEClient
   # after run_turn has returned.
   # @return [Array<Hash>] a snapshot of the events seen so far.
   def wait_until(timeout: 3)
-    deadline = SpecWaiting.mono + timeout
+    deadline = SpecWaiting.mono + Samagotchi::Testing::Waiting.scaled(timeout)
     @mutex.synchronize do
       @cv.wait(@mutex, [deadline - SpecWaiting.mono, 0].max) until yield(@events) || SpecWaiting.mono > deadline
     end
@@ -482,7 +482,7 @@ RSpec.describe Samagotchi::Bridge do
     it "answers 409 not_running, with its status, for a task that already ended" do
       id = start("true")
       allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: created_by_tool(id) }])
-      wait_until!("task #{id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(id).first.status != "running" }
+      wait_for("task #{id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(id).first.status != "running" }
 
       expect(stop(id).drop(1)).to eq([409, { error: "not_running", status: "completed", task_id: id }])
     end

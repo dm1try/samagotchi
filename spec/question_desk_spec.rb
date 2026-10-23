@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       calls = 0
       started_at = SpecWaiting.mono
       thread, box, id = open_in_background(watch: -> { calls += 1; nil })
-      wait_until!("watch to run twice", timeout: 5) { calls >= 2 }
+      wait_for("watch to run twice", timeout: 5) { calls >= 2 }
       desk.answer(id: id, selected: ["Yes"])
       thread.join(2)
       elapsed = SpecWaiting.mono - started_at
@@ -473,12 +473,12 @@ RSpec.describe Samagotchi::QuestionDesk do
 
     it "refuses Continue on the parent's relay card and on the child, and takes Stop" do
       child_thread = Thread.new { child_desk.open_question(cost_cap) }
-      wait_until!("the child's question", timeout: 2) { child_desk.pending }
+      wait_for("the child's question", timeout: 2) { child_desk.pending }
       card = Samagotchi::Relay.card(child, child_desk.pending, relay_id: "r-1")
       expect(card[:kind]).to eq("hook")
 
       parent_thread = Thread.new { desk.open_question(card) }
-      wait_until!("the relay card", timeout: 2) { desk.pending }
+      wait_for("the relay card", timeout: 2) { desk.pending }
       expect { desk.answer(id: desk.pending.id, selected: ["Continue"], client_id: "cli:answer") }
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:spend) }
       expect { child_desk.answer(id: child_desk.pending.id, selected: ["Continue"], client_id: "relay:x", parent_agent: true) }

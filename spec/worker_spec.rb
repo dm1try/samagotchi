@@ -663,7 +663,7 @@ RSpec.describe Samagotchi::Worker do
             next Samagotchi::LLM::ModelResult.new(text: "ANSWER", conversation: conversation + [{ role: "model", content: "ANSWER" }],
                                                   exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
           else
-            SpecWaiting.wait_until!("the turn to be canceled", timeout: 30) { cancel_controller.cancelled? }
+            SpecWaiting.wait_for("the turn to be canceled", timeout: 30) { cancel_controller.cancelled? }
           end
           Samagotchi::LLM::ModelResult.new(text: "", conversation: conversation, exhausted: false, pending_tool_calls: false,
                                            tool_activity: [], canceled: true, cancellation_reason: cancel_controller.reason)

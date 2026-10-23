@@ -19,6 +19,15 @@ and commands may change between minor versions. How releases are made:
   `/exit --delete`, `/archive`, `/stats` and `/recap` work through a remote as here, the status row counts the
   session's delegates there, and a join shows the steps' durations and a failed turn's line from that machine's
   saved records. See [docs/cli.md](docs/cli.md#remote-sessions).
+- The bundle test kit (experimental) waits with `wait_for(what) { … }`, which raises
+  `Samagotchi::Testing::Waiting::TimedOut` naming what it waited for (and, with `seen:`, what it last saw), plus
+  `join!` and `pop!` with the same message. Every helper deadline is multiplied by `SPEC_TIME_SCALE` (default 1).
+  See [docs/plugins.md](docs/plugins.md#testing-a-bundle-experimental).
+
+### Changed
+
+- The bundle test kit's `wait_until!` is renamed `wait_for`, with no alias: a bundle spec that calls
+  `wait_until!` changes the name (same arguments).
 
 ## [0.103.0] - 2026-10-23
 

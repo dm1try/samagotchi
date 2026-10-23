@@ -654,7 +654,7 @@ RSpec.describe "task tools" do
     it "gives the finished result when the task ended before the Stop was seen" do
       create_result = Samagotchi::Tools::TaskCreate.call("true")
       task_id = extract_field(create_result, "task_id")
-      wait_until!("task #{task_id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status != "running" }
+      wait_for("task #{task_id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status != "running" }
 
       result = described_class.call(task_id, cancelled: -> { true })
 
@@ -683,7 +683,7 @@ RSpec.describe "task tools" do
       live = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
       done = extract_field(Samagotchi::Tools::TaskCreate.call("true"), "task_id")
       other = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
-      wait_until!("task #{done} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(done).first.status != "running" }
+      wait_for("task #{done} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(done).first.status != "running" }
       messages = [
         { role: "user", content: "task_id: #{other}" },
         tool_response("[execute]\nexit: 0", "[task_create]\ntask_id: #{live}\nstatus: running",

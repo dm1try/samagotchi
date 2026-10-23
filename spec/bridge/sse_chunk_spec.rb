@@ -65,7 +65,7 @@ RSpec.describe "Bridge SSE event projection" do
 
   it "carries the chunk's counts live" do
     socket = open_stream
-    SpecWaiting.wait_until! "the stream" do
+    SpecWaiting.wait_for "the stream" do
       @bridge.open_streams == 1
     end
     @engine.run_turn(@session, "hi", on_event: ->(_e) {})
@@ -109,7 +109,7 @@ RSpec.describe "Bridge SSE event projection" do
     end
 
     live_socket = open_stream
-    SpecWaiting.wait_until! "the stream" do
+    SpecWaiting.wait_for "the stream" do
       @bridge.open_streams == 1
     end
     @engine.run_turn(@session, "write", on_event: ->(_e) {})

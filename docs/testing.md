@@ -66,7 +66,7 @@ either router adds its row there; a row where a UI differs on purpose (or a foun
 `repl` override and a `note`. The Ruby side runs each row with every core command (a new one fails its
 `CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
-A spec that waits for something uses `wait_until(timeout:)`, or `wait_until!(what, timeout:)` where no check
+A spec that waits for something uses `wait_until(timeout:)`, or `wait_for(what, timeout:)` where no check
 follows (stubs, helper threads: it raises "timed out after N s waiting for <what>") — never a loop with no deadline.
 Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integration`, `macos_build`, `warmup` and
 `recap` examples are exempt), so a hang fails its example instead of the run. `SPEC_EXAMPLE_TIMEOUT=N` changes the
