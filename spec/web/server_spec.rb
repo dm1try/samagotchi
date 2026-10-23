@@ -56,6 +56,12 @@ RSpec.describe Samagotchi::Web::Server do
   # after.
   let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, subscribe: nil) }
 
+  # Where Web::Running records the port: this example's own folder.
+  let(:start_state) { File.join(start_root, "samagotchi", "sessions") }
+  let(:start_root) { Dir.mktmpdir("server-start") }
+
+  after { FileUtils.rm_rf(start_root) }
+
   it "says so on stderr when it can't open the browser" do
     allow(described_class).to receive(:system).and_raise(Errno::ENOENT, "open")
 
@@ -143,8 +149,24 @@ RSpec.describe Samagotchi::Web::Server do
     callback = nil
     allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts| callback = opts[:StartCallback] }
 
-    expect { described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=%2Fr", hub: hub) }.not_to output.to_stdout
+    expect { described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=%2Fr", hub: hub, state_dir: start_state) }
+      .not_to output.to_stdout
     expect { callback.call }.to output(%r{\AChi Web on http://127.0.0.1:4999/\?dir=%2Fr .*\nPress Ctrl-C}).to_stdout
+  end
+
+  it "records its port once bound (Web::Running, chi share's link) and clears it when it stops" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+    path = Samagotchi::Web::Running.path(state_dir: start_state)
+    seen = nil
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_app, opts|
+      expect(Samagotchi::Web::Running.port(path: path)).to be_nil
+      expect { opts[:StartCallback].call }.to output.to_stdout
+      seen = Samagotchi::Web::Running.port(path: path)
+    end
+
+    described_class.start(port: 4999, hub: hub, state_dir: start_state)
+    expect(seen).to eq(4999)
+    expect(File.exist?(path)).to be(false)
   end
 
   it "says the port is in use instead of a backtrace when the bind fails" do

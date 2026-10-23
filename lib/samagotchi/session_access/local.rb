@@ -17,6 +17,7 @@ require_relative "../participants"
 require_relative "../config"
 require_relative "../web/grants"
 require_relative "../web/info_probe"
+require_relative "../web/running"
 
 module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
@@ -339,8 +340,9 @@ module Samagotchi
         grants.list(session_id: id).map { |grant| ParticipantView.from_h(grant.public_h(grants.now)) }
       end
 
-      # The link names this machine's chi web: its LAN address when one
-      # runs on the LAN (web.port), else 127.0.0.1 (+lan+ false).
+      # The link names this machine's chi web: its LAN address and port
+      # when one runs on the LAN (the port it recorded, else web.port),
+      # else 127.0.0.1 (+lan+ false).
       # @return [Invitation]
       # @raise [ArgumentError] no such session
       # @raise [BadRequest] a bad name, kind or ttl, an archived session
@@ -378,12 +380,18 @@ module Samagotchi
       WEB_PORT = 4567
       LOCAL_PROBE_TIMEOUT = 1.0
 
-      # [LAN ip or nil, port] of this machine's chi web (GET /api/info).
+      # [LAN ip or nil, port] of this machine's chi web (GET /api/info):
+      # the port the running one recorded (Web::Running) when a chi web
+      # answers there, else config's web.port.
       def local_web
-        port = Config.get("web.port").to_s.to_i
-        port = WEB_PORT unless port.positive?
-        info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
-        [info.is_a?(Hash) ? info["lan"] : nil, port]
+        configured = Config.get("web.port").to_s.to_i
+        configured = WEB_PORT unless configured.positive?
+        recorded = Web::Running.port(path: Web::Running.path(state_dir: state_dir!))
+        [recorded, configured].compact.uniq.each do |port|
+          info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
+          return [info["lan"], port] if info.is_a?(Hash)
+        end
+        [nil, configured]
       end
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}

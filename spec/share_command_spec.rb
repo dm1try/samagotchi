@@ -6,6 +6,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/share_command"
 require "samagotchi/participants"
+require "samagotchi/web/running"
 require_relative "support/remote_backend"
 
 # chi share: invite a participant to review a session, list them, revoke
@@ -73,6 +74,25 @@ RSpec.describe Samagotchi::ShareCommand do
         run(session.id, "--name", "Alex")
         expect(out.string.lines[1]).to start_with("http://127.0.0.1:4567/?token=chp_")
         expect(out.string).to include("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only")
+      end
+
+      it "names the port the running chi web recorded, not web.port's", local_only: "the probe is this machine's" do
+        Samagotchi::Web::Running.record(port: 4999, path: Samagotchi::Web::Running.path(state_dir: state_dir))
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4999, timeout: anything)
+                                                           .and_return({ "app" => "chi-web", "lan" => "192.0.2.5" })
+
+        run(session.id, "--name", "Alex")
+        expect(out.string.lines[1]).to start_with("http://192.0.2.5:4999/?token=chp_")
+        expect(out.string).not_to include("isn't on the LAN")
+      end
+
+      it "falls back to web.port when nothing answers on the recorded port", local_only: "the probe is this machine's" do
+        Samagotchi::Web::Running.record(port: 4999, path: Samagotchi::Web::Running.path(state_dir: state_dir))
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4567, timeout: anything)
+                                                           .and_return({ "app" => "chi-web", "lan" => "192.0.2.5" })
+
+        run(session.id, "--name", "Alex")
+        expect(out.string.lines[1]).to start_with("http://192.0.2.5:4567/?token=chp_")
       end
 
       it "takes --agent, and prints a QR code at a terminal" do

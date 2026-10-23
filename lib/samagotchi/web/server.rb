@@ -10,6 +10,7 @@ require_relative "app"
 require_relative "info_probe"
 require_relative "lan"
 require_relative "qr"
+require_relative "running"
 require_relative "session_hub"
 require_relative "token"
 require_relative "../config"
@@ -145,7 +146,9 @@ module Samagotchi
         hub.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
+        running_path = Running.path(state_dir: state_dir)
         started = lambda do
+          record_running(running_path, port)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
           puts "Press Ctrl-C to stop."
@@ -173,12 +176,22 @@ module Samagotchi
         warn "Error: can't listen on #{lan.ip}:#{port} (#{e.message}); did the address change? Run chi web again"
         false
       ensure
+        Running.clear(path: running_path) if running_path
         config_restart_unsubscribe&.call
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end
 
       class LanListenError < StandardError; end
+
+      # Where this chi web listens, for chi share's link (Web::Running); a
+      # write that fails leaves the server running and the readers on
+      # web.port.
+      def self.record_running(path, port)
+        Running.record(port: port, path: path)
+      rescue SystemCallError => e
+        Samagotchi::Log.warn(:web, "running_record_failed", error: e.class.name)
+      end
 
       # The hub's `chi` event: a newer chi installed than this chi web runs
       # is said once in its terminal (the page says it too).
