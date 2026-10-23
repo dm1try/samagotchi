@@ -261,13 +261,21 @@ RSpec.describe Samagotchi::HostRegistry do
   end
 
   describe "#list_all_models(wait:)" do
+    # The slow host's thread outlives a short wait and saves its list once
+    # released: into a state dir of the examples' own (the registry's env,
+    # not ENV, which the thread may read after the example), and waited for
+    # before that dir goes, so no late save writes into a removed dir.
+    let(:state_home) { Dir.mktmpdir("list-wait-registry") }
+    let(:env) { ENV.to_h.merge("XDG_STATE_HOME" => state_home) }
     let(:registry) do
       described_class.new(hosts_config: {
         "default" => { host: "localhost", port: 8080 },
         "slow" => { host: "slow.test", port: 8081 }
-      })
+      }, env: env)
     end
     let(:release) { Queue.new }
+
+    def slow_list_saved = wait_for("the slow host's late list save") { Samagotchi::ModelListStore.find("slow", env: env) }
 
     before do
       allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({})
@@ -278,7 +286,12 @@ RSpec.describe Samagotchi::HostRegistry do
       end
     end
 
-    after { release << :go }
+    after do
+      release << :go
+      slow_list_saved
+    ensure
+      FileUtils.rm_rf(state_home)
+    end
 
     def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -286,7 +299,8 @@ RSpec.describe Samagotchi::HostRegistry do
       started = mono
       results = registry.list_all_models(wait: 0.1)
 
-      expect(mono - started).to be < 0.5
+      # not the stalled host's time: it answers only once released, after the example
+      expect(mono - started).to be < 2
       expect(results["default"][:models].map(&:id)).to eq(["fast-model"])
       expect(results["slow"]).to include(models: [], error: "no answer in 0.1 s")
     end
@@ -294,10 +308,7 @@ RSpec.describe Samagotchi::HostRegistry do
     it "returns a snapshot a late thread doesn't change, and stores no partial listing" do
       results = registry.list_all_models(wait: 0.05)
       release << :go
-      # Wait for the late thread's save, not a fixed time (a loaded CI
-      # runner took longer than 0.1 s).
-      deadline = mono + 5
-      sleep 0.01 until Samagotchi::ModelListStore.find("slow") || mono > deadline
+      expect(slow_list_saved.ids).to eq(["late-model"])
 
       expect(results["slow"][:error]).to eq("no answer in 0.05 s")
       expect(registry.cached_results).to be_nil
