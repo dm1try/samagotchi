@@ -8,6 +8,7 @@ require_relative "delivery"
 require_relative "chi_invocation"
 require_relative "bridge_client/sse_parser"
 require_relative "bridge_client/event_stream"
+require_relative "bridge_client/stream_request"
 
 module Samagotchi
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
@@ -20,7 +21,7 @@ module Samagotchi
   class BridgeClient
     HOST = "127.0.0.1"
     # A reply's status line; its code is group 1.
-    STATUS_LINE = %r{\AHTTP/1\.[01] (\d{3})}
+    STATUS_LINE = StreamRequest::STATUS_LINE
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for the Bridge's response headers, per attempt:
     # a worker that took the connection and froze must not hold the web's
@@ -343,41 +344,11 @@ module Samagotchi
     # @return [Array(TCPSocket, Integer), nil] the socket positioned at the
     #   body and the HTTP status, or nil when the Bridge can't be reached
     def connect_stream(query: "", last_event_id: nil, timeout: nil)
-      sock = TCPSocket.new(@host, @port)
-      lei = last_event_id.to_s.strip
-      last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
-      sock.write("GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
-      deadline = timeout && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout)
-      status = header_line(sock, deadline).to_s[STATUS_LINE, 1].to_i
-      while (line = header_line(sock, deadline))
-        break if line.strip.empty?
-      end
-      [sock, status]
-    rescue SystemCallError, SocketError, IOError
-      sock&.close rescue nil
-      nil
+      StreamRequest.open(host: @host, port: @port, path: "/session/#{@session_id}/stream#{query}",
+                         last_event_id: last_event_id, timeout: timeout)
     end
 
     private
-
-    # One line of the response headers, or nil at EOF; raises
-    # Errno::ETIMEDOUT once +deadline+ (monotonic, nil: none) has passed. A
-    # line read in pieces, so a Bridge that stops mid-line can't hold it.
-    def header_line(sock, deadline)
-      return sock.gets unless deadline
-
-      line = +""
-      loop do
-        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        raise Errno::ETIMEDOUT unless remaining.positive? && sock.wait_readable(remaining)
-
-        char = sock.getc
-        return line.empty? ? nil : line if char.nil?
-
-        line << char
-        return line if char == "\n"
-      end
-    end
 
     # When this client stops waiting for a reply, as epoch seconds (see
     # DEADLINE_SHARE). Wall clock: the worker runs on this machine and reads
