@@ -132,7 +132,10 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   refused" (also: no answer within 5 s, a read timeout, can't find host, host unreachable, TLS, a broken connection).
   `ParentWait#run` catches `RemoteFailed` so that `--format json` still prints its error object. Dispatch catches it for
   the other commands.
-- **Auth.** `Remote.auth_failure`: a 401 → "the token was refused (… chi remote add NAME URL --token-file FILE)". A 403
+- **Auth.** `Remote.access_error`, keyed by chi web's error code on any route: a 401 `unauthorized` → "the token was
+  refused (… chi remote add NAME URL --token-file FILE)"; a participant's token's own conditions (401 `token_revoked`,
+  `token_expired`, 403 `not_permitted`, P3b's 429 `too_many_turns`, `cap_reached`) → one class and message each
+  ([participants.md](participants.md#errors-through---remote)). A 403
   `forbidden` (the Host check) → "chi web answers its LAN IP only: use the LAN IP <ip>, not a hostname", with the IP
   taken from the 403's detail. `chi remote add` uses the same words through `Remote.info_problem`.
 - **A remote attach.** Before the loop runs (resolve, create, wake, the feature check) every failure is
@@ -186,11 +189,13 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   (`Remotes::Entry#token` is nil, and no header is sent).
 - **Every request has a principal.** `App#principal_for` resolves who a request is, as a `Web::Principal`
   (`web/principal.rb`): `Principal::OWNER` for a peer the gate doesn't ask (no LAN mode, or a loopback peer) and for
-  the access token; nil (a 401) for anyone else. `#token_gate` uses it, and `#route` keeps it in the request's env
+  the access token; a participant for a live grant's `chp_` token; nil (a 401) for anyone else (`token_revoked` /
+  `token_expired` for an ended grant's). `#token_gate` uses it, and `#route` keeps it in the request's env
   (`App#principal(req)`), so a handler reads the principal and never trusts the body for it. Each `ROUTES` row names
   who may use it (its permission column, `:owner` or `:participant`; `Principal#permits?`; any other answers 403
-  `not_permitted`). Today the owner is the only principal and every route is `:owner`, so passing the gate still
-  grants everything (`local_viewer?` only hides `editor_url`). A turn's author comes from the principal
+  `not_permitted`). The owner passes every route (`local_viewer?` only hides `editor_url`). A participant, a
+  `Web::Grants` token for one session, reaches only the `:participant` rows, and another session's id is a 404
+  ([participants.md](participants.md)). A turn's author comes from the principal
   (`Principal#author`, nil for the owner) and rides with the turn (`SessionManager.deliver_turn(author:)` →
   `BridgeClient#post_turn` → `Bridge#handle_post_turn` → the input file, the fallback's too → the turn's `origin`);
   an owner's turn carries none, so its input file and session are byte for byte as before.

@@ -513,7 +513,9 @@ calling the `SessionAccess::Local` operation of the same name, so a remote backe
 token-gated like the rest (LAN mode: `Authorization: Bearer`), and one that takes an id is a `:session` route (an id
 that isn't one, or no such session: 404 `not_found`). Every `ROUTES` row also names who may use it, checked against
 the request's `Web::Principal` (`App#principal_for`): `owner`, or `participant` for a route a participant may use too.
-Every route is `owner` today (Permission below); `spec/web/principal_spec.rb` fails on a row without one. How a request flows end to end, which checks run where and the trust
+A participant (a `Web::Grants` token for one session) may use three: `GET /`, `GET /api/info` and `GET /api/sessions/:id`,
+each answered as theirs; every other route is `owner` (Permission below, and the participants routes in
+[internals/participants.md](internals/participants.md)); `spec/web/principal_spec.rb` fails on a row without one. How a request flows end to end, which checks run where and the trust
 model: [internals/remote-sessions.md](internals/remote-sessions.md).
 
 | Route | Permission | Body / params | Answer | Refusals |
@@ -530,7 +532,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | `DELETE /api/sessions/:id/context/:name?own=1` | owner | | 200 `{status: detached}`: the session's own only | 409 `project_source` (chi context rm's words); 404 |
 | `POST /api/sessions/:id/stop` | owner | `wait?` (seconds, capped at `SessionManager::STOP_WAIT`, 10: `chi --remote NAME sessions stop` sends it) | 200 `{status: stopped, session_id, released}`: `released`, whether the worker let go within the wait (without one `STOP_WAIT_SECONDS`, 2 s: the page's Stop) | 409 `owned_by_tui` |
 | `DELETE /api/sessions/:id?force=` | owner | `force=true` stops a live worker first (the page sends it) | as before | 409 `worker_running` without it |
-| `GET /api/sessions/:id?brief=1` | owner | | 200 `{brief, session: {id, status (the file's), title, display_title, project_root, working_directory, model_name, model_typed, parent_answers, owner}, pending_question}` (the file's; no messages): `Remote#show` | 404 |
+| `GET /api/sessions/:id?brief=1` | participant (theirs: title, status, participants) | | 200 `{brief, session: {id, status (the file's), title, display_title, project_root, working_directory, model_name, model_typed, parent_answers, owner}, pending_question}` (the file's; no messages): `Remote#show` | 404 |
 | `POST /api/sessions/:id/turn` (its 202) | owner | | the ack with `via`: `bridge` or `file` (the input file: a remote `chi send --wait` follows that turn) | |
 | `GET /api/sessions/:id/context?full=1`, `…/context/:name?full=1` | owner | | each row with `source` (`Source#to_h`, its command too; the page's rows never carry one), `snapshot` (`Snapshot#to_h`, no text) and `shadowed`, shadowed project sources included | |
 | `POST /api/sessions/:id/wake` | owner | `wait` (seconds, default and most 10: `WAKE_MAX_WAIT`) | 200 `{session_id, woke, worker: {epoch, started_at, version, features}, model_name, default_model, parent_strategy, installed}`: the live worker as is (`woke: false`), else resumed and its Bridge waited for (`Local#wake`); `default_model` and `installed` are this machine's | 409 `owned_by_tui`, `scratch` (`LaunchMode::SCRATCH_LEFTOVER`); 504 `worker_timeout` (`LaunchMode::BRIDGE_LATE`); 400 `invalid_wait`; 404 |
@@ -542,6 +544,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | `GET /api/sessions/:id/turns/:turn_id/records` | owner | | 200 `{tool_records: […], turn_record: {…} \| null}` (`SessionMetrics.saved_tool_records` / `saved_turn_record`, as saved) | 400 `invalid_turn_id`; 404 |
 | `POST /api/sessions/:id/turn` (`no_interrupt`) | owner | `no_interrupt: true`: the turn runs with the raised iteration limit (`SessionManager.deliver_turn(no_interrupt:)`, to the Bridge or the input file) | as before | |
 | `POST /api/sessions/:id/command` (its 501) | owner | | | 501 `not_supported` for a builtin the worker lacks adds `command` (`"/title"`) and `message` |
+| `GET`/`POST`/`DELETE /api/sessions/:id/participants`, `GET`/`DELETE /api/participants` | owner | `chi share`'s (`name`, `kind`, `ttl`; `?id=p_…`) | the grants, never a token but POST's own once ([internals/participants.md](internals/participants.md)) | 400 `invalid_participant`; 404 |
 
 `GET /api/info` names the feature `session_commands` (`SessionAccessRoutes::FEATURE`): `SessionAccess::Remote` asks it
 once before its first request, and a chi web without it (or `serve_static`'s 404 for a path no route takes) is "remote NAME runs chi X, too

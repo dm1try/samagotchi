@@ -10,6 +10,14 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- Participants (identity; the review itself comes later): `chi share ID --name NAME [--agent] [--expires 3d]`
+  invites someone, or an agent, to review a session through chi web on the LAN with a link of their own, printed once
+  with a QR code (chi keeps only a digest of its token). `chi share ls [ID]` lists participants and
+  `chi share revoke ID [P] | --all` ends links; all three work through `--remote`. A link works for 7 days (1 hour
+  to 30 days), until it is revoked, or until the session is archived or deleted. For now it opens a page with the
+  session's title and status; every other route answers it 403, and another session 404. chi web refuses to start
+  when another user can read its grants store. Through `--remote`, a revoked, expired or participant's token gets
+  its own message instead of "the token was refused". See [docs/cli.md](docs/cli.md#participants).
 - Remote attach: `chi --remote NAME --attach ID` (and `--resume ID`, `-p TEXT`, or `--dir DIR` for a new session
   there, that machine's absolute path) runs the attached TUI on another machine's session, through its chi web:
   the same lines and exit codes, every printed command spelled with `--remote NAME`, `@path` images from this

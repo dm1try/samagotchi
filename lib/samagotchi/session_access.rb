@@ -29,7 +29,7 @@ module Samagotchi
     class RemoteTooOld < RemoteFailed; end
 
     # A remote's chi web refused this machine's token (401), or answers its
-    # LAN IP only (403 forbidden): Remote.auth_failure's words.
+    # LAN IP only (403 forbidden): Remote.access_error's words.
     class AuthRefused < RemoteFailed; end
 
     # The errors a participant's token meets (docs/internals/participants.md),
