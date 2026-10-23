@@ -12,6 +12,11 @@ module Samagotchi
     module StreamRequest
       # A reply's status line; its code is group 1 (BridgeClient::STATUS_LINE).
       STATUS_LINE = %r{\AHTTP/1\.[01] (\d{3})}
+      # The connect's bound when no +timeout+ is given (HTTPTransport's
+      # OPEN_TIMEOUT): a dead host (no SYN answer) is given up on, so a
+      # reconnect loop (RemoteLink's minute of tries) isn't held by the
+      # OS's minutes-long SYN timeout on each.
+      CONNECT_TIMEOUT = 5.0
 
       module_function
 
@@ -22,12 +27,13 @@ module Samagotchi
       # @param last_event_id [String, nil] the reconnect cursor
       # @param headers [Hash{String => String}] extra request headers, after
       #   Last-Event-ID
-      # @param timeout [Float, nil] give up when the headers aren't all in by then
+      # @param timeout [Float, nil] give up when the connect (CONNECT_TIMEOUT
+      #   when nil), then the headers, aren't done by then
       # @return [Array(TCPSocket, Integer, Hash), nil] the socket positioned
       #   at the body, the HTTP status and the response headers (names in
       #   lower case), or nil when the server can't be reached
       def open(host:, port:, path:, last_event_id: nil, headers: {}, timeout: nil)
-        sock = TCPSocket.new(host, port)
+        sock = TCPSocket.new(host, port, connect_timeout: timeout || CONNECT_TIMEOUT)
         sock.write(request(host: host, port: port, path: path, last_event_id: last_event_id, headers: headers))
         deadline = timeout && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout)
         status = header_line(sock, deadline).to_s[STATUS_LINE, 1].to_i

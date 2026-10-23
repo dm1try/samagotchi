@@ -76,4 +76,18 @@ RSpec.describe Samagotchi::BridgeClient::StreamRequest do
 
     expect(described_class.open(host: "127.0.0.1", port: port, path: "/x", timeout: 0.2)).to be_nil
   end
+
+  it "bounds the connect (a dead host is given up on, not waited on for minutes): the header timeout, else 5 s" do
+    calls = []
+    allow(TCPSocket).to receive(:new) do |*args, **opts|
+      calls << [args, opts]
+      raise IO::TimeoutError, "Connect timed out!"
+    end
+
+    expect(described_class.open(host: "192.0.2.1", port: 4567, path: "/x", timeout: 2.0)).to be_nil
+    expect(described_class.open(host: "192.0.2.1", port: 4567, path: "/x")).to be_nil
+    expect(calls).to eq([[["192.0.2.1", 4567], { connect_timeout: 2.0 }],
+                         [["192.0.2.1", 4567], { connect_timeout: described_class::CONNECT_TIMEOUT }]])
+    expect(described_class::CONNECT_TIMEOUT).to eq(5.0)
+  end
 end

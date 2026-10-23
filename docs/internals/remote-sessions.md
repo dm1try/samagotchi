@@ -315,6 +315,8 @@ message, so a loop that rescues `IOError` around Bridge calls never crashes on o
 
 **The stream.** `connect_stream` writes `GET /api/sessions/:id/stream…` through `BridgeClient::StreamRequest` (the
 GET a local stream writes, with `Authorization: Bearer` and `Last-Event-ID`; `Host` is the entry's host and port).
+Its connect is bounded by the header timeout (`StreamRequest::CONNECT_TIMEOUT`, 5 s, without one): a dead host's
+SYN isn't waited on for the OS's minutes on every reconnect.
 chi web proxies the Bridge's bytes unchanged (under WEBrick a hijacked body is raw, `Connection: close`). No chunked
 decoding in v1: a `Transfer-Encoding: chunked` reply (a proxy in between) and an https entry are logged
 (`stream_refused`, `chunked_unsupported` / `tls_unsupported`) and read as unreachable; decoding and TLS plug into
@@ -356,7 +358,7 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
   - `live_worker`: `Remote#attach_worker` (`WorkerReply`) with a reason (M5): `stopped` and `unknown_session` (gone),
     `auth_failed` (`AuthRefused`) and `too_old` (`RemoteTooOld`) end at once; `unreachable` (a transport
     `RemoteFailed`) and `worker_gone` (chi web answers, no live worker, not stopped) retry through
-    `RECONNECT_DELAYS` (about a minute, P4-D5). A worker gone for `WAKE_AFTER` (3 s, so a restart's new worker isn't
+    `RECONNECT_DELAYS` (about a minute, P4-D5; up to two with a 5 s connect timeout per try on a dead host). A worker gone for `WAKE_AFTER` (3 s, so a restart's new worker isn't
     raced) is woken once per outage with `POST …/wake` (P4-D9). `failure` keeps the last message for the closing line.
   - `queues?`/`unqueues?`: the worker's `features`. `ingest_images`: `ImageStore.ingest` into a scratch dir here, then
     `Remote#upload_images`; `close` (`AttachLauncher.run`'s `ensure`) removes the dir.
