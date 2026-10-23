@@ -451,13 +451,15 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.subscribe(->(event) { seen << event.type })
       hub.start
       hub.start
+      ticker = hub.instance_variable_get(:@thread)
       a = save_session
 
       expect(seen.pop(timeout: 2)).to eq("session")
       hub.stop
       expect(hub).to be_stopped
+      # The stop joined the tick thread: nothing scans after it.
+      expect(ticker).not_to be_alive
       File.delete(File.join(state_dir, "#{a.id}.json"))
-      sleep 0.05
       expect(seen).to be_empty
     end
 

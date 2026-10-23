@@ -164,7 +164,7 @@ RSpec.describe "ctx.http's default cancel controller" do
       "ok"
     end
     engine.start_init_tasks!
-    Timeout.timeout(5) { sleep(0.01) until inside }
+    wait_for("the init task to start") { inside }
     task = engine.instance_variable_get(:@plugin_tasks).tasks.first
 
     expect(inside).to be(task.cancel)

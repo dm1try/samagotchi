@@ -437,9 +437,8 @@ RSpec.describe "chi bootstrap" do
       probe = instance_double(Samagotchi::Bootstrap::Probe)
       out = StringIO.new
       allow(probe).to receive(:test_turn) do
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
-        sleep(0.01) until out.string.include?("loading the model?") ||
-                          Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        # wait-ok: no hint comes for a remote provider, which runs out the wait
+        wait_until(timeout: wait) { out.string.include?("loading the model?") }
         0.15
       end
       command = Samagotchi::BootstrapCommand.new([], stdout: out, stderr: StringIO.new, probe: probe)

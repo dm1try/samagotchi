@@ -63,7 +63,7 @@ RSpec.describe "ctx.http and the turn's Stop" do
   it "stops a tool's call promptly (not after its 60 s timeout), and the after_turn hook's call still goes through" do
     events = []
     turn = Thread.new { engine.run_turn(session, "go", on_event: ->(e) { events << e }) }
-    Timeout.timeout(10) { sleep(0.02) until server.requests.any? { |request| request.path == "/slow" } }
+    wait_for("the tool's /slow request", timeout: 10) { server.requests.any? { |request| request.path == "/slow" } }
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     expect(engine.cancel_current_turn!(:manual)).to be(true)

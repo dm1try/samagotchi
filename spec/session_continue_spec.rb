@@ -142,7 +142,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
     allow(client).to receive(:request_recap) do
       Thread.new do
-        sleep 0.3
+        sleep 0.3 # sleep-ok: the fresh recap comes a moment after the request
         save_recap(previous.id, "The fresh recap.", at: "2026-10-09T18:00:00Z")
       end
       Samagotchi::BridgeClient::Response.new(status: 200, body: JSON.generate(enabled: true, request: "started"))
@@ -554,19 +554,22 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     slow = make
     other = make
     started = Queue.new
+    release = Queue.new
     allow(described_class).to receive(:recap_before_archive).and_call_original
     allow(described_class).to receive(:recap_before_archive).with(slow.id, tmpdir, wait: 0) do
       started << true
-      sleep 2
+      SpecWaiting.pop!(release, "the other chain's continue", timeout: 30)
     end
     waiting = Thread.new { continue(slow.id) }
     started.pop
 
-    at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    # The slow chain's continue still holds its lock: this one doesn't wait for it.
     link = continue(other.id)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - at).to be < 1.5
     expect(load(link.id).continues).to eq(other.id)
-    waiting.join
+    expect(waiting).to be_alive
+  ensure
+    release << true
+    join!(waiting, "the slow chain's continue") if waiting
   end
 
   it "follows last:<id> to the chain's new end when another continue moved it meanwhile" do

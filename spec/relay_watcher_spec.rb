@@ -20,8 +20,9 @@ RSpec.describe Samagotchi::RelayWatcher do
 
   it "clears the relay mark once the parent's worker is gone, then stops" do
     up = [true]
-    thread = start(-> { up[0] })
-    sleep(0.08)
+    checks = 0
+    thread = start(-> { checks += 1; up[0] })
+    wait_for("three checks of the live parent") { checks >= 3 }
     expect(engine).not_to have_received(:annotate_question)
 
     up[0] = false

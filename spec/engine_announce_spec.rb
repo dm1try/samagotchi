@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Engine, "#announce" do
     end
     expect(inside.pop).to be true
     other = Thread.new { engine.announce(type: :input_merged, origins: []) }
-    sleep 0.05
+    wait_for("the second announce to wait for the lock") { other.status == "sleep" }
     release << true
     [holder, other].each(&:join)
 
