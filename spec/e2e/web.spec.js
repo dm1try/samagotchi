@@ -1618,11 +1618,12 @@ test("a failed later turn whose prompt_restored comes before the /turn ack puts 
   await expect(page.locator("#prompt")).toHaveValue("Say ping");
 });
 
-test("/archive and /exit typed in the composer get a local reply, not a worker error", async ({ page, script }) => {
+test("/archive and /exit typed in the composer get a local reply, not a worker error; /recap off goes to the worker", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
-  for (const [line, reply] of [["/archive", /^\/archive: use the archive button/], ["/exit", /^\/exit: /]]) {
+  for (const [line, reply] of [["/archive", /^\/archive: use the archive button/], ["/exit", /^\/exit: /],
+    ["/recap off", /^recap: off \(this session; /]]) {
     await page.locator("#prompt").fill(line);
     await page.locator("#actionBtn").click();
     const bubble = page.locator("#history .bubble.command").last();

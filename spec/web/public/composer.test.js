@@ -58,6 +58,14 @@ test("a terminal's own command gets the page's reply, never sent", () => {
   assert.deepEqual(routeComposerLine("/exit now", inSession()), { reply: webLocalReply("/exit"), line: "/exit now" });
 });
 
+test("the bare /recap gets the page's reply; /recap with words goes to the worker", () => {
+  const commands = [{ name: "/recap", local: true }, { name: "/recap" }];
+  assert.deepEqual(routeComposerLine("/recap", inSession({ commands })), { reply: webLocalReply("/recap"), line: "/recap" });
+  assert.deepEqual(routeComposerLine("/recap off", inSession({ commands })), { command: "/recap off" });
+  assert.equal(webLocalReply("/recap on"), null);
+  assert.equal(webLocalReply("/stats please"), webLocalReply("/stats"));
+});
+
 test("a typo of a command gets the hint, not a turn", () => {
   const route = routeComposerLine("/modle", inSession());
   assert.equal(route.line, "/modle");
