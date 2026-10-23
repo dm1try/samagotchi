@@ -10,6 +10,7 @@ RSpec.describe AffectedSpecs::Picker do
     def spec_files = files.keys.select { |path| path.end_with?("_spec.rb") }
     def node_tests = files.keys.select { |path| path.end_with?(".test.js") }
     def read(path) = files[path]
+    def added_lines(path) = files.fetch(path, "").lines(chomp: true).each_with_index.map { |line, index| [index + 1, line] }
 
     def mentions(text, paths, word: false)
       pattern = word ? /(?<![\w:])#{Regexp.escape(text)}(?!\w)/ : Regexp.new(Regexp.escape(text))

@@ -4,11 +4,13 @@ require "open3"
 
 module AffectedSpecs
   # The repo as Picker sees it: the working tree (rev nil), or a commit's
-  # tree when a range ends at one. Plain git calls, no Bundler.
+  # tree when a range ends at one; +base+ is what added_lines compares it
+  # with. Plain git calls, no Bundler.
   class GitTree
-    def initialize(root, rev = nil)
+    def initialize(root, rev = nil, base: nil)
       @root = root
       @rev = rev
+      @base = base
     end
 
     # The suite's specs and the shipped bundles' own (lib/samagotchi/bundles/<name>/spec/).
@@ -27,6 +29,17 @@ module AffectedSpecs
         full = File.join(@root, path)
         File.file?(full) ? File.read(full) : nil
       end
+    end
+
+    # The lines +path+ (a spec or spec support file) adds since the base, as
+    # [[line number, text], …]: `git diff -U0`'s + lines, numbered from its
+    # hunk headers, one diff for all the specs. An untracked file adds all
+    # of its lines; with no base, nothing is added.
+    def added_lines(path)
+      return [] unless @base
+      return numbered(read(path).to_s) if untracked.include?(path)
+
+      added.fetch(path, [])
     end
 
     # { path => count } of +paths+ whose text has +text+ (a whole word when
@@ -49,6 +62,39 @@ module AffectedSpecs
     end
 
     private
+
+    def numbered(text) = text.lines(chomp: true).each_with_index.map { |line, index| [index + 1, line] }
+
+    def untracked
+      @untracked ||= @rev ? [] : git("ls-files", "--others", "--exclude-standard", "--", *SPEC_DIRS).lines(chomp: true)
+    end
+
+    SPEC_DIRS = %w[spec lib/samagotchi/bundles].freeze
+
+    # { path => [[line number, text], …] } from one diff of the spec folders.
+    def added
+      @added ||= begin
+        diff = git("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", @base, *@rev, "--", *SPEC_DIRS)
+        parse_added(diff)
+      end
+    end
+
+    def parse_added(diff)
+      path = nil
+      number = nil
+      diff.lines(chomp: true).each_with_object({}) do |line, added|
+        if line.start_with?("diff --git ")
+          path = number = nil
+        elsif number.nil? && line.start_with?("+++ ")
+          path = line.delete_prefix("+++ ").delete_prefix("b/")
+        elsif (hunk = line.match(/\A@@ -\S+ \+(\d+)/))
+          number = hunk[1].to_i
+        elsif number && path && line.start_with?("+")
+          (added[path] ||= []) << [number, line[1..]]
+          number += 1
+        end
+      end
+    end
 
     def files(dir)
       @files ||= {}

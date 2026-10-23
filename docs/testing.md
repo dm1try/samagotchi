@@ -127,7 +127,7 @@ limit, `0` turns it off (a debugger session). The limit is not scaled.
 whose value is dropped, an example's last line included, `expect(wait_until { … }).to be(true)`, or an untagged
 `Timeout.timeout`) live in `rubocop/` and run in `rake lint`, so CI fails on them. RSpec counts `wait_for`,
 `eventually`, `join!` and `pop!` as an example's expectation (`RSpec/NoExpectationExample`), so a wait can be an
-example's last line.
+example's last line. What the cops can't see, `script/affected-specs` hints at (`timing:`, below).
 
 ## Bundle specs: the test kit
 
@@ -197,7 +197,11 @@ words the REPL prints, pick it by a rule), then the other name matches (a spec n
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
 `spec/guardrails/context_spec.rb`), then the specs that name a changed file's class. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
 The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" (with `npm run lint` too when a frontend module changed) and a
-hint for a hub class (named in too many specs to list) go to stderr. Nothing printed means nothing matched.
+hint for a hub class (named in too many specs to list) go to stderr, and so do the `timing:` hints, from the lines a
+changed spec adds (`git diff -U0` against the base; an untracked spec, all its lines): a `Thread.new`, `.start`,
+`spawn` or `fork` with no `join!`, `wait_for`, `with_task_dir` or `Process.wait` added in the same file, and a
+sub-second `be < 0.x` bound ([Waiting and time](#waiting-and-time), rules 3 and 5). Nothing printed means nothing
+matched.
 
 It finds a change's own specs, not the regressions it causes elsewhere. So before committing, run the full suite
 (`bundle exec parallel_rspec -n 8 spec lib/samagotchi/bundles/*/spec`), unless your task says the coordinator runs it; the coordinator runs it at merge

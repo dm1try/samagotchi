@@ -86,7 +86,7 @@ module AffectedSpecs
         diff = git("diff", "--name-only", "--no-renames", from, to, chdir: root)
         return fail_with("bad range #{range}") unless diff
 
-        return [diff.lines(chomp: true), GitTree.new(root, to)]
+        return [diff.lines(chomp: true), GitTree.new(root, to, base: from)]
       end
 
       base = range || main_base(root)
@@ -94,7 +94,7 @@ module AffectedSpecs
       return fail_with("bad revision #{base}") unless diff
 
       untracked = git("ls-files", "--others", "--exclude-standard", chdir: root).to_s
-      [(diff.lines(chomp: true) + untracked.lines(chomp: true)).uniq, GitTree.new(root)]
+      [(diff.lines(chomp: true) + untracked.lines(chomp: true)).uniq, GitTree.new(root, base: base)]
     end
 
     # The merge-base with main, else origin/main (a single-branch clone, CI);

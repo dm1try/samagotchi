@@ -81,6 +81,23 @@ RSpec.describe AffectedSpecs::CLI do
     TEXT
   end
 
+  it "hints from the lines a changed spec adds (git diff -U0), numbered, and from an untracked spec's every line" do
+    write("spec/widget_spec.rb", "Samagotchi::Widget\nworker = Thread.new { 1 }\n")
+    commit("a thread, already there")
+    base = git("rev-parse", "HEAD").strip
+    write("spec/widget_spec.rb", "Samagotchi::Widget\nworker = Thread.new { 1 }\nexpect(took).to be < 0.2\nserver.start\n")
+    write("spec/new_spec.rb", "x\npid = Process.spawn(\"ruby\")\n")
+
+    _, _, stderr = run_cli(base)
+    timing = stderr.lines(chomp: true).grep(/timing:/).map { |line| line[/timing: \S+ \S+( \S+)?/] }
+    expect(timing).to contain_exactly("timing: spec/widget_spec.rb:4 calls .start", "timing: spec/widget_spec.rb:3 adds a",
+                                      "timing: spec/new_spec.rb:2 spawns a")
+
+    commit("more")
+    _, _, ranged = run_cli("#{base}..HEAD")
+    expect(ranged.lines.grep(/timing:/).size).to eq(3)
+  end
+
   it "caps the list and says how many more there are" do
     write("spec/widget_spec.rb", "edited")
     write("spec/gadget_spec.rb", "edited")

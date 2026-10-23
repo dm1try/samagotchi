@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "timing_hints"
+
 module AffectedSpecs
   # One spec file picked for a change: its path and why (the changed file
   # and the kind of match).
@@ -60,7 +62,8 @@ module AffectedSpecs
   # (3) RULES and the goldens of a changed file's layer, (4) weaker name matches (a spec matching more of the changed
   # files first, then one beside the file, see #place), (5) specs naming the
   # changed file's main constant. +tree+ answers spec_files, node_tests,
-  # read(path) and mentions(word, paths, word:) (spec path => count).
+  # read(path), mentions(word, paths, word:) (spec path => count) and
+  # added_lines(path) (TimingHints).
   class Picker
     # The kind of name match a spec in the changed file's mirrored folder is.
     FOLDER = 2
@@ -87,6 +90,7 @@ module AffectedSpecs
       code_files.each { |path| add_mentions(path) }
       @unmatched = code_files.reject { |path| matched?(path) }
       @hints << web_hint if @changed.any? { |path| web?(path) }
+      @hints.concat(TimingHints.new(changed: @changed, tree: @tree).hints)
       Result.new(ruby: @ruby.values, node: @node.values, hints: @hints.uniq, unmatched: @unmatched)
     end
 
