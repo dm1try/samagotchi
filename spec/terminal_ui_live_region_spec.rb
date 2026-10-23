@@ -87,13 +87,9 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     # The first spinner row once +condition+ holds for it: the ticker thread
     # redraws when it next wakes, however slow the runner (up to +within+ s).
     def spinner_row_when(within: 5)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + within
-      loop do
-        row = spinner_rows.first
-        return row if yield(row) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-        sleep 0.01
-      end
+      row = nil
+      wait_for("the spinner row", timeout: within) { yield(row = spinner_rows.first) }
+      row
     end
 
     it "turns with time, then says how long it has waited for the first token" do
@@ -124,8 +120,10 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       ui = build_ui(spinner_tick_interval: 0.02)
       run_repl(ui, prompts: ["hi"], events: generation("PONG"))
       before = term.lines.dup
-      sleep 0.08
 
+      # A ticker left finds the slot gone at its next tick and ends, drawing nothing.
+      ticker = ui.instance_variable_get(:@view).instance_variable_get(:@ticker)
+      join!(ticker, "the ticker") if ticker
       expect(term.lines).to eq(before)
       expect(spinner_rows).to be_empty
     end

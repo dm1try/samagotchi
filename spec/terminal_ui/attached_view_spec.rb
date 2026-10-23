@@ -180,12 +180,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
       real = described_class.new(screen, tick_interval: 0.02)
       real.generation_feedback_started
       ticker = real.instance_variable_get(:@ticker)
-      expect(wait_until { screen.statuses.size > 3 }).to be(true)
+      wait_for("the ticker to tick") { screen.statuses.size > 3 }
 
       real.finish_thinking_spinner
-      expect(wait_until { !ticker.alive? }).to be(true)
+      join!(ticker, "the ticker")
       after = screen.statuses.size
-      sleep 0.08
+      # The ticker has ended: nothing ticks after it.
       expect(screen.statuses.size).to eq(after)
       real.stop
     end
@@ -200,10 +200,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     it "stops its ticker when the loop ends mid-turn" do
       real = described_class.new(screen, tick_interval: 0.02)
       real.generation_feedback_started
+      ticker = real.instance_variable_get(:@ticker)
       real.stop
       after = screen.statuses.size
-      sleep 0.08
 
+      expect(ticker).not_to be_alive
       expect(screen.statuses.size).to eq(after)
     end
   end

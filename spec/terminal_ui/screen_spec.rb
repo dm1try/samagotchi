@@ -307,7 +307,7 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
     started = Queue.new
     allow(out).to receive(:write).and_wrap_original do |original, bytes|
       started << true
-      sleep 0.1
+      sleep 0.1 # sleep-ok: a slow write, so the interrupt lands mid-frame
       original.call(bytes)
     end
     thread = Thread.new do
@@ -330,7 +330,7 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
     started = Queue.new
     allow(out).to receive(:write).and_wrap_original do |original, bytes|
       started << true
-      sleep 0.1
+      sleep 0.1 # sleep-ok: a slow write, so the interrupt lands mid-frame
       original.call(bytes)
     end
     thread = Thread.new { slow.commit("whole") }

@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       allow(engine).to receive(:turn_running?).and_return(true)
       allow(engine).to receive(:run_turn) do
         repl_input << [:line, "/models"]
-        wait_until { surface.lines.include?("\nmodel> no hosts configured") }
+        wait_for("the /models answer mid-turn") { surface.lines.include?("\nmodel> no hosts configured") }
         lines_mid_turn = surface.lines.dup
         repl_input << [:line, "/model other"]
         result

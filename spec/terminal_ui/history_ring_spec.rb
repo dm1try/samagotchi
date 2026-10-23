@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::TerminalUI::InputSupport, "history ring" do
       thread.report_on_exception = false
       entered.pop
       thread.raise(error)
-      sleep 0.05
+      sleep 0.05 # sleep-ok: time for a raise that isn't deferred to land before the release
       release << true
       thread.value
     end

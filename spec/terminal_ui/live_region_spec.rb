@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
       Samagotchi::TerminalUI::RelineSeam.unanswered_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       written_at = nil
       replier = Thread.new do
-        sleep 0.1
+        sleep 0.1 # sleep-ok: the slow terminal's reply comes after the close began
         terminal.write("\e[12;1R")
         terminal.flush
         written_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
