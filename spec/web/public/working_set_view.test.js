@@ -84,9 +84,12 @@ test("the info bar: off, the mem chip and the memories tooltip; on, the set chip
   assert.equal(div.querySelector(".ws-chip").textContent, "set 5");
   assert.ok(div.querySelector(".ws-chip").classList.contains("changed"));
   assert.equal(div.title, "");
-  // An empty set: no chip at all, and no mem chip either.
-  renderInfoBar(div, bar({ workingSet: { chip: null } }));
-  assert.equal(div.querySelectorAll(".ws-chip, .mem-chip").length, 0);
+  // An empty set: "set 0", muted, from the session's start (no mem chip).
+  renderInfoBar(div, bar({ workingSet: { chip: { n: 0, changed: false } } }));
+  assert.equal(div.querySelector(".ws-chip").textContent, "set 0");
+  assert.ok(div.querySelector(".ws-chip").classList.contains("empty"));
+  assert.match(div.querySelector(".ws-chip").title, /^Working set: nothing this session brought into context yet /);
+  assert.equal(div.querySelector(".mem-chip"), null);
   // The status word in its own span (its sizers are CSS's): the text is the word alone.
   assert.equal(div.querySelector(".status").textContent, "idle");
   const frag = document.createElement("div");
@@ -189,6 +192,18 @@ test("the server's snapshot out of order: a GET an event overtook, or one behind
   ws.seed([]);
   await answer(2, aIs("stale", 9, { running: false }));
   assert.equal(stateOfA(), "stale");
+});
+
+test("the chip from the session's start: set 0 on an empty set, its count once a turn read something", () => {
+  const ws = createWorkingSet({
+    historyEl: document.createElement("div"), infoEl: document.createElement("div"), session: () => "s1",
+    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], llmContext: null }),
+    sendLine: () => Promise.resolve(),
+  });
+  ws.seed([]);
+  assert.deepEqual(ws.chip(), { n: 0, changed: false });
+  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }] }] }, 0), prompt: "first" }]);
+  assert.deepEqual(ws.chip(), { n: 1, changed: false }); // a seed (a load) sets no dot
 });
 
 // Steering (P3a): a view whose list is open, the lines it posts recorded.
