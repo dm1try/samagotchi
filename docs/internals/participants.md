@@ -110,9 +110,19 @@ feature (409 `review_unavailable` otherwise: it has no boundary; restart it), an
 that may be older holds the session (504 `worker_timeout`: send again). Before a queued participant turn starts, the
 worker checks their link (`participants.json`: revoked, expired) and their cap again: either way the turn is
 dequeued (`:turn_dequeued`) and audited (`revoked`, `cap_reached`) instead of run, so a revoke also stops what they
-had queued. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin keeps
-their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; it isn't
-continued once their link ended or their cap is reached. The step-limit Continue offer of the owner's turn is the
+had queued; its settled record (`TurnCheckpoint.record_refused`: canceled, `cancel_reason` the reason) ends their
+wait on it at once, which `ParentReport` reads as status `refused`, exit 1.
+**The owner's input during a review turn queues.** While a participant's turn runs, the owner's input never merges
+into it, from any client (the web, an attached TUI, `chi send` without `--queue`): the Bridge's `POST /turn` makes it
+`delivery: queue` whatever it asked, so it never steers or cuts (`TurnAccumulator#participant_turn?`, under the event
+lock), and its ack and `:turn_enqueued` say `queue`; the worker's drain takes no input file during a participant's
+turn (`Worker#pending_input_drain`, for a file the Bridge never saw), so each runs as the owner's own turn after it.
+The web's delivery line says so (`participantTurn`: Enter queues, no cut), the TUI prints its queued note, `chi send`
+says `(queued: runs after the current turn)` and its `--wait` waits for that turn (`WaitTarget.message`). The owner's
+own turns steer as before. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin keeps
+their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; once their link ended or their cap is reached, the owner's Continue
+ends the offer as a Stop instead (`ContinueOffer#refuse_continue`: decision `refused`, a notice, `not_continued`), so
+nothing waits on it. The step-limit Continue offer of the owner's turn is the
 owner's to answer: while one stands, the worker **holds** a participant's input file (`Worker#run_input_files`,
 `SessionInbox.participant_input?`; an unreadable file counts) instead of running it, which would drop the offer. It
 stays in the inbox: still queued on the Bridge (counted against their queue limit, `turn/dequeue` takes it back),
@@ -247,8 +257,9 @@ never sent: the owner reads it, edits it, sends it or not. While the composer ho
 `delivery_line.js`; let go when it is sent, emptied, or Esc'd while a turn runs, and only for the session it was
 filled in), Enter and Send queue it (`delivery: queue`) behind a running turn instead of steering it in, and the
 delivery line says so: the running turn may be a participant's read-only review turn, where the Apply's edits can't
-run and the owner's line would land inside their turn. An armed cut still wins; Esc steers it in; a worker without the
-`delivery` feature refuses it with the Alt+Enter note. The server doesn't refuse an owner's steer into a review turn.
+run. An armed cut still wins and Esc steers it in during the owner's own turn; a worker without the `delivery`
+feature refuses it with the Alt+Enter note. During a participant's turn the worker queues any owner input anyway
+([The owner's input during a review turn queues](#turns)).
 The text (`ReviewApply.compose`, the one place it is worded)
 is one line of the owner's and the review turn's reply quoted line by line:
 
@@ -390,4 +401,6 @@ participant TUI in v1.
   shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary, which denies
   everything but reads of the project.
 - A participant's message is never sent without its review header, and never merged into the owner's message.
+- The owner's input is never merged into a participant's running turn (the Bridge queues it, the drain takes none):
+  it runs as the owner's own turn after it.
 - A participant's turn never answers or drops the owner's Continue offer: it waits until the owner has.

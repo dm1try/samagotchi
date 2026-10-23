@@ -1310,7 +1310,9 @@ chi share revoke --all          # every link to every session
   memories, context notes, plugin and delegate input, cards, command output, the working set, cost, timing or host
   paths; secret-shaped text (API keys, tokens, private keys) is redacted too. An agent participant can wait on its
   turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
-  or `send -m`, which prints the turn id `--wait --turn T` takes. They can't reach anything else: every other route answers them 403, another
+  or `send -m`, which prints the turn id `--wait --turn T` takes; that wait exits 3 with `waiting_for_owner` while
+  their turn waits on you (a question, an approval, your step-limit Continue) and 1 with `refused` (`cancel_reason`
+  `revoked` or `cap_reached`) when their queued turn is refused before it runs. They can't reach anything else: every other route answers them 403, another
   session 404.
 - **Apply.** Under each of a participant's review turns that has a reply, your page shows **Apply** (full width on a
   phone): it puts an Apply turn in your composer, not sent, `Apply this proposal from Alex's review turn 3f2a1c0d, as
