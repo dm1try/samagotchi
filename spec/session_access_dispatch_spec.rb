@@ -188,6 +188,10 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
       _out, err, status = fork_chi("--remote", "studio", "--attach", "ab12", "--verbose", env: env)
       expect([status.exitstatus, err]).to eq([2, "Error: chi --verbose runs on this machine only: run it on studio\n"])
 
+      # An abbreviation is no flag (RunOptions takes whole names): never a --memory dropped on the way there.
+      _out, err, status = fork_chi("--remote", "studio", "--attach", "ab12", "--mem", "m", env: env)
+      expect([status.exitstatus, err]).to eq([1, "Error: invalid option: --mem (see chi --help)\n"])
+
       _out, err, status = fork_chi("--dir", "/x", "-p", "hi", env: env)
       expect([status.exitstatus, err]).to eq([2, "Error: --dir goes with --remote; cd there instead\n"])
     end

@@ -58,6 +58,15 @@ RSpec.describe Samagotchi::RunOptions do
     expect(refusal("--bogus")).to eq(["Error: invalid option: --bogus (see chi --help)\n", 1])
   end
 
+  it "takes a flag's whole name only: an abbreviation is an unknown option (a remote can't read it past its contract)" do
+    { %w[--verb] => "--verb", %w[--mem x] => "--mem", %w[--non-inter] => "--non-inter", %w[--append x] => "--append",
+      %w[--no-share] => "--no-share", %w[--att ab] => "--att" }.each do |argv, flag|
+      expect(refusal(*argv)).to eq(["Error: invalid option: #{flag} (see chi --help)\n", 1]), argv.join(" ")
+    end
+    options, = parse("--verbose", "--memory", "x", "--no-shared", "-v")
+    expect(options).to include(verbose: true, memories: ["x"], shared: false)
+  end
+
   describe ".switches" do
     it "lists every switch the parser takes, long and short, --no-tool too" do
       expect(described_class.switches).to include("-p", "--prompt", "--attach", "--resume", "--shared", "--no-shared",

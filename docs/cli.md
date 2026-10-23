@@ -274,6 +274,8 @@ bundles or the helper can be updated.
 
 Samagotchi exposes one flag that feeds a prompt (`-p`, `--prompt`) and one that
 controls exit behavior (`--non-interactive`); `--resume` composes with both.
+Every flag takes its whole name, as the subcommands' flags do: an abbreviation (`--verb`, `--mem x`) is an
+invalid option (exit 1).
 
 | Flag | Purpose |
 |------|---------|

@@ -135,6 +135,10 @@ module Samagotchi
     # @param cli_overrides [Hash] the config keys the flags set
     def build_parser(options, cli_overrides)
       OptionParser.new do |opts|
+        # A flag's whole name only, as the subcommands' CLI::Flags take
+        # them: an abbreviation (--verb, --mem x) is an unknown option,
+        # never read past chi --remote's Contract::RUN.
+        opts.require_exact = true
         opts.banner = <<~BANNER
           Usage: chi [options]
                  chi bootstrap [HOST[:PORT]|URL]  first setup: find the model server, write config.yml

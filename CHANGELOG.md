@@ -27,6 +27,12 @@ and commands may change between minor versions. How releases are made:
   and the owner's Apply updates the handoff. See [docs/cli.md](docs/cli.md#review-sessions) and
   [docs/sessions.md](docs/sessions.md#review-sessions).
 
+### Changed
+
+- `chi`'s run flags take their whole name only, as the subcommands' flags always have: an abbreviation such as
+  `--verb` or `--mem x` is now an invalid option (exit 1) instead of `--verbose` / `--memory x`. Under `chi --remote`,
+  an abbreviated local-only flag could slip past the "runs on this machine only" check and be dropped silently.
+
 ### Fixed
 
 - The owner's Continue on the step-limit offer of a participant whose turn is refused since (revoked, expired, at
