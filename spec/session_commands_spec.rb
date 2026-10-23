@@ -687,6 +687,8 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(registry.mid_turn("/working-set")).to eq(:anytime)
       expect(registry.mid_turn("/working-set drop README.md")).to eq(:queue)
       expect(registry.mid_turn("/working-set undrop README.md")).to eq(:queue)
+      expect(registry.mid_turn("/working-set pin README.md")).to eq(:queue)
+      expect(registry.mid_turn("/working-set unpin README.md")).to eq(:queue)
     end
 
     it "lists the set, then the change the next turn starts with; the conversation changes and is saved" do
@@ -702,8 +704,34 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(listing).to include("at the next turn's start: dropped README.md")
     end
 
+    it "pins on the session (saved, re-announced) without a note under none; a pinned item can't be dropped" do
+      announced = []
+      allow(engine).to receive(:announce_working_set) { announced << :set }
+
+      result = commands.run("/working-set pin README.md")
+
+      expect(result).to have_attributes(status: :ok, changed: [:working_set_pins])
+      expect(result.output).to eq("pinned README.md (t1): forget_outputs refuses its outputs, its later reads too " \
+                                  "(the strategy has no forget layer now: the pin holds when it has)")
+      expect(session.working_set_pins).to eq([Samagotchi::WorkingSetPin.new(kind: "file", key: path)])
+      expect(saved).not_to be_empty
+      expect(announced).to eq([:set])
+      expect(session.messages.last).not_to include(kind: "working_set")
+      expect(commands.run("/working-set").output).to include("README.md  read · pinned")
+
+      refused = commands.run("/working-set drop README.md")
+      expect(refused).to have_attributes(status: :error, changed: [],
+                                         output: "drop README.md: #{Samagotchi::WorkingSetSteer::Refused.text(:unpin_first)}")
+
+      expect(commands.run("/working-set unpin README.md")).to have_attributes(status: :ok, changed: [:working_set_pins],
+                                                                              output: "unpinned README.md: the model may forget it again")
+      expect(session.working_set_pins).to be_empty
+      expect(commands.run("/working-set unpin README.md").output)
+        .to eq("unpin README.md: #{Samagotchi::WorkingSetSteer::Refused.text(:not_pinned)}")
+    end
+
     it "answers a bad line with its usage" do
-      expect(commands.run("/working-set pin README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
+      expect(commands.run("/working-set pinch README.md")).to have_attributes(status: :error, output: Samagotchi::WorkingSetCommand::USAGE)
     end
   end
 

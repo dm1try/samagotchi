@@ -6,11 +6,14 @@ require_relative "llm_context_view"
 require_relative "llm_context_apply"
 require_relative "token_usage"
 require_relative "working_set"
+require_relative "working_set_pin"
 
 module Samagotchi
   # The user steering the working set (/working-set, the web's popover):
   # drop an item (every content output of it still sent goes out of the
-  # prompt as a stub) and undrop it. Pure, on a conversation the caller
+  # prompt as a stub) and undrop it; pin one (the model's forget_outputs
+  # refuses its outputs, LLMContextForget) and unpin it. Pure, on a
+  # conversation the caller
   # owns (Engine#clone_messages' copies: an op stores new edits Hashes,
   # LLMContextEdit.store) and runs between turns, so the next turn's first
   # request is the first with the change (prompt caching: one break where
@@ -23,6 +26,12 @@ module Samagotchi
   # stale stub) keeps that edit's saved Hash in its +was+, and an undrop
   # puts it back. The outputs are WorkingSet.outputs_of's, the projection's
   # own pairing, so the set and the op never disagree.
+  #
+  # A pin is the session's (Session#working_set_pins, a WorkingSetPin per
+  # item), not an edit: it sends nothing different, so it breaks no cache
+  # and survives a strategy switch. Pin and drop exclude each other: a
+  # drop asks for an unpin first, and a pin takes a pending drop off (one
+  # never sent: free), else asks for an undrop first.
   #
   # Every op since the last turn is listed in one tail system message
   # (kind "working_set", #record!), so the model learns what changed and
@@ -38,7 +47,9 @@ module Samagotchi
     NOTE_OPEN = "[WORKING SET: "
     DROP = "drop"
     UNDROP = "undrop"
-    INVERSE = { DROP => UNDROP, UNDROP => DROP }.freeze
+    PIN = "pin"
+    UNPIN = "unpin"
+    INVERSE = { DROP => UNDROP, UNDROP => DROP, PIN => UNPIN, UNPIN => PIN }.freeze
     MEMORY_PREFIX = "memory:"
     URL = %r{\A[a-z][a-z0-9+.-]*://}i
 
@@ -48,6 +59,10 @@ module Samagotchi
       MESSAGES = {
         dropped: "dropped by the user",
         pinned_by_user: "pinned by the user: it stays in your context",
+        unpin_first: "pinned by the user: unpin it first",
+        undrop_first: "dropped by the user: undrop it first",
+        already_pinned: "already pinned",
+        not_pinned: "not pinned",
         not_in_set: "not in the working set",
         only_edited: "nothing to drop: only edited or written (no read of it is sent)",
         derived: "nothing to drop: an older session's output that chi can't name",
@@ -74,8 +89,12 @@ module Samagotchi
 
     # What an op did: the ids it changed, and the chars it frees (a drop)
     # and the tail the server reads again from its earliest entry on.
-    # +free+: an undrop that took back a drop never sent (nothing changes).
-    Done = Data.define(:target, :op, :ids, :freed_chars, :tail_chars, :free)
+    # +free+: an undrop that took back a drop never sent (nothing changes),
+    # a pin or an unpin (nothing sent changes). +undone+: the pending drop
+    # a pin took off (a Done), else nil.
+    Done = Data.define(:target, :op, :ids, :freed_chars, :tail_chars, :free, :undone) do
+      def initialize(undone: nil, **fields) = super
+    end
 
     module_function
 
@@ -104,9 +123,12 @@ module Samagotchi
     # Drops +target+'s content outputs that are still sent under
     # +strategy+ (the next turn's: LLMContextView's form), saving an applied
     # :drop on each.
+    # +pins+: the session's (a pinned item asks for an unpin first).
     # @return [Done]
     # @raise [Refused]
-    def drop(conversation, target, strategy:, cwd:, now: Time.now.utc.iso8601(3))
+    def drop(conversation, target, strategy:, cwd:, pins: [], now: Time.now.utc.iso8601(3))
+      raise Refused, :unpin_first if pinned?(pins, target)
+
       outputs = WorkingSet.outputs_of(conversation, kind: target.kind, key: target.key, strategy: strategy, cwd: cwd)
       raise Refused, (known?(conversation, target, strategy, cwd) ? :only_edited : :not_in_set) if outputs.empty?
 
@@ -151,6 +173,51 @@ module Samagotchi
       tail = sent ? LLMContextView.chars(view.messages(conversation)[first..]) : 0
       Done.new(target: target, op: UNDROP, ids: dropped.map { |output, _| output.id }, freed_chars: 0, tail_chars: tail,
                free: !sent)
+    end
+
+    # Pins +target+ (an item the set holds; an edit-only one too: its later
+    # reads are covered). A drop of it still pending (made since the last
+    # turn) is taken off first, free, as Done#undone; a sent one asks for
+    # an undrop first. The caller adds the pin (#pinning).
+    # @param pins [Array<WorkingSetPin>] the session's
+    # @return [Done] +ids+: the outputs the pin holds now
+    # @raise [Refused]
+    def pin(conversation, pins, target, strategy:, cwd:)
+      outputs = WorkingSet.outputs_of(conversation, kind: target.kind, key: target.key, strategy: strategy, cwd: cwd)
+      raise Refused, :not_in_set if outputs.empty? && !known?(conversation, target, strategy, cwd)
+      raise Refused, :already_pinned if pinned?(pins, target)
+
+      undone = nil
+      if outputs.any? { |output| drop_of(conversation, output) }
+        raise Refused, :undrop_first unless pending?(conversation, DROP, target)
+
+        undone = undrop(conversation, target, strategy: strategy, cwd: cwd, sent: false)
+      end
+      Done.new(target: target, op: PIN, ids: outputs.reject(&:derived).map(&:id), freed_chars: 0, tail_chars: 0,
+               free: true, undone: undone)
+    end
+
+    # Unpins +target+: the model may forget it again. Only the pins are
+    # asked (a rollback may have taken the item out of the set).
+    # @return [Done]
+    # @raise [Refused]
+    def unpin(pins, target)
+      raise Refused, :not_pinned unless pinned?(pins, target)
+
+      Done.new(target: target, op: UNPIN, ids: [], freed_chars: 0, tail_chars: 0, free: true)
+    end
+
+    # +pins+ after +done+ (a pin or an unpin). A new frozen Array.
+    # @return [Array<WorkingSetPin>]
+    def pinning(pins, done)
+      pin = WorkingSetPin.new(kind: done.target.kind, key: done.target.key)
+      rest = Array(pins).reject { |held| held == pin }
+      (done.op == PIN ? rest + [pin] : rest).freeze
+    end
+
+    # Whether +pins+ hold +target+.
+    def pinned?(pins, target)
+      Array(pins).any? { |pin| pin.kind == target.kind && pin.key == target.key }
     end
 
     # +output+'s drop (an LLMContextEdit), or nil.
@@ -225,8 +292,8 @@ module Samagotchi
     # The note listing +ops+: a tail system message, escaped like a context
     # note (Prompt::ESCAPED_KINDS: it carries paths and URLs).
     def note(ops)
-      drops = ops.select { |entry| entry["op"] == DROP }.map { |entry| entry["label"] }
-      undrops = ops.select { |entry| entry["op"] == UNDROP }.map { |entry| entry["label"] }
+      drops = labels(ops, DROP)
+      undrops = labels(ops, UNDROP)
       parts = []
       unless drops.empty?
         parts << "the user dropped #{drops.join(", ")} from your context: you are sent a stub instead of " \
@@ -237,8 +304,14 @@ module Samagotchi
         parts << "the user brought back #{undrops.join(", ")}: #{undrops.size == 1 ? "its outputs are" : "their outputs are"} " \
                  "sent whole again"
       end
+      pins = labels(ops, PIN)
+      parts << "the user pinned #{pins.join(", ")}: forget_outputs won't forget #{pins.size == 1 ? "it" : "them"}" unless pins.empty?
+      unpins = labels(ops, UNPIN)
+      parts << "the user unpinned #{unpins.join(", ")}: you may forget #{unpins.size == 1 ? "it" : "them"} again" unless unpins.empty?
       { role: "system", kind: NOTE_KIND, content: "#{NOTE_OPEN}since your last turn #{parts.join("; ")}.]", OPS => ops }
     end
+
+    def labels(ops, op) = ops.select { |entry| entry["op"] == op }.map { |entry| entry["label"] }
 
     # "12.4k tokens", chars/4.
     def k(chars)
@@ -246,6 +319,6 @@ module Samagotchi
       tokens >= 1000 ? format("%.1fk tokens", tokens / 1000.0) : "#{tokens} tokens"
     end
 
-    private_class_method :relative, :drop_of, :known?, :layers, :same?
+    private_class_method :relative, :drop_of, :known?, :layers, :same?, :labels
   end
 end

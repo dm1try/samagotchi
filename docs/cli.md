@@ -619,8 +619,17 @@ history, so the prompt cache breaks there once). An undrop before that request
 undoes the drop for free. Refused, with why: an item only edited or written
 (nothing of it to drop), one not in the set, an older session's output chi
 can't name. The model can't undo a drop (`forget_outputs` refuses it).
-`/working-set` alone answers mid-turn too; `drop`/`undrop` sent while a turn
-runs wait for the turn's end.
+`/working-set pin KEY…` keeps an item from the model's `forget_outputs` (the
+[forget layer](configuration.md#llm-context-the-forget-layer)): it refuses every
+read of it, those to come too, until `/working-set unpin KEY…`. A pin sends
+nothing different (no cache break) and is saved with the session, so a respawn,
+a continue and a fork keep it, across a strategy switch too; under a strategy
+without forget it waits until one has it (the reply says so). The listing marks
+it `pinned`, and under forget the next turn's line tells the model. A pinned
+item can't be dropped until you unpin it; a pin takes back a drop not yet sent
+(free), and asks you to undrop one already sent first.
+`/working-set` alone answers mid-turn too; `drop`/`undrop`/`pin`/`unpin` sent
+while a turn runs wait for the turn's end.
 
 `/thinking` shows the thinking level the next turn runs at and where it came
 from (`session`, `--thinking` / `SAMAGOTCHI_THINKING_LEVEL`, `models: <key>`,
@@ -1031,6 +1040,8 @@ the same live, after a reload and in every tab:
 - **dropped** (struck): you dropped it (`/working-set drop`, the list's
   `drop`); its reads are sent as stubs under every strategy until you undrop
   it.
+- **pinned** (`📌`, under a strategy with forget only): you pinned it
+  (`/working-set pin`, the list's `pin`); `forget_outputs` refuses it.
 - **forgotten** (struck): nothing of the item's content is still sent to the
   model under the session's current LLM context strategy (`forget_outputs`
   forgot every read of it; see

@@ -121,6 +121,61 @@ RSpec.describe Samagotchi::WorkingSetSteer do
     end
   end
 
+  describe ".pin and .unpin" do
+    let(:pins) { [Samagotchi::WorkingSetPin.new(kind: "file", key: cart)] }
+
+    def pin(conversation, word, pins: []) = described_class.pin(conversation, pins, target(word), strategy: :none, cwd: root)
+
+    it "pins an item of the set (its outputs' ids), changing nothing sent; unpin takes it off" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1"), *read_turn(cart, "c2", "t2")]
+      before = conversation.map(&:dup)
+
+      done = pin(conversation, "lib/cart.rb")
+
+      expect(done).to have_attributes(op: "pin", ids: %w[t1 t2], free: true, undone: nil)
+      expect(conversation).to eq(before)
+      expect(described_class.pinning([], done)).to eq(pins)
+      expect(described_class.pinning(pins, described_class.unpin(pins, target("lib/cart.rb")))).to eq([])
+    end
+
+    it "refuses with WorkingSetSteer::Refused's words: not in the set, already pinned, not pinned, a sent drop" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1")]
+
+      expect { pin(conversation, "lib/x.rb") }.to raise_error(described_class::Refused, "not in the working set")
+      expect { pin(conversation, "lib/cart.rb", pins: pins) }.to raise_error(described_class::Refused, "already pinned")
+      expect { described_class.unpin([], target("lib/cart.rb")) }.to raise_error(described_class::Refused, "not pinned")
+      # A drop sent (no pending note): undrop it first.
+      drop(conversation, "lib/cart.rb")
+      expect { pin(conversation, "lib/cart.rb") }
+        .to raise_error(described_class::Refused, described_class::Refused.text(:undrop_first))
+    end
+
+    it "takes a pending drop off first (free), and a drop of a pinned item asks for an unpin first" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1")]
+      messages = described_class.record!(conversation, drop(conversation, "lib/cart.rb"))
+
+      done = pin(messages, "lib/cart.rb")
+
+      expect(done.undone).to have_attributes(op: "undrop", ids: %w[t1], free: true)
+      expect(states(messages)).to eq(cart => "live")
+      expect(described_class.pending_ops(described_class.record!(messages, done.undone))).to eq([])
+      expect { described_class.drop(messages, target("lib/cart.rb"), strategy: :none, cwd: root, pins: pins) }
+        .to raise_error(described_class::Refused, "pinned by the user: unpin it first")
+    end
+
+    it "notes a pin and an unpin; an unpin of a pending pin cancels both" do
+      conversation = [head, *read_turn("lib/cart.rb", "c1", "t1"), *read_turn("lib/tax.rb", "c2", "t2")]
+      messages = described_class.record!(conversation, pin(conversation, "lib/cart.rb"))
+      messages = described_class.record!(messages, described_class.unpin([Samagotchi::WorkingSetPin.new(kind: "file", key: "/work/shop/lib/tax.rb")],
+                                                                         target("lib/tax.rb")))
+
+      expect(messages.last[:content]).to eq("[WORKING SET: since your last turn the user pinned lib/cart.rb: forget_outputs " \
+                                            "won't forget it; the user unpinned lib/tax.rb: you may forget it again.]")
+      messages = described_class.record!(messages, described_class.unpin(pins, target("lib/cart.rb")))
+      expect(described_class.pending_ops(messages).map { |op| op["op"] }).to eq(%w[unpin])
+    end
+  end
+
   describe "the tail note" do
     let(:conversation) { [head, { role: "user", content: "go" }, *read_turn("lib/cart.rb", "c1", "t1"), { role: "model", content: "done" }] }
 

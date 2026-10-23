@@ -235,6 +235,36 @@ RSpec.describe Samagotchi::Engine, "working set event" do
       expect(session.messages).to eq(before)
     end
 
+    it "pins under forget: announced pinned, noted once, and the model's forget_outputs is refused" do
+      session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:forget])
+
+      result = commands.run("/working-set pin notes.txt")
+
+      expect(result).to have_attributes(status: :ok, changed: %i[messages working_set_pins])
+      expect(announced.last[:items]).to match([include(key: path, pinned: true)])
+      id = result.output[/\(t\d+\)/][1..-2]
+      stream(%(<|tool_call>call:forget_outputs{ids:<|"|>["#{id}"]<|"|>,note:<|"|>notes holds one line<|"|>}<tool_call|>))
+      stream("Kept.")
+      run_turn("tidy up")
+
+      first = prompt_of(server.requests[-2])
+      expect(first.scan("the user pinned notes.txt: forget_outputs won't forget it").size).to eq(1)
+      last = prompt_of(server.requests.last)
+      expect(last).to include("the original text")
+      expect(last).to include("- #{id}: #{Samagotchi::WorkingSetSteer::Refused.text(:pinned_by_user)}")
+    end
+
+    it "a pin takes a pending drop off, free: no note, the output whole" do
+      before = session.messages.map(&:dup)
+      commands.run("/working-set drop notes.txt")
+
+      result = commands.run("/working-set pin notes.txt")
+
+      expect(result.output.lines.first).to end_with("its drop was never sent; nothing changes\n")
+      expect(session.messages).to eq(before)
+      expect(session.working_set_pins.map(&:key)).to eq([path])
+    end
+
     it "refuses a key not in the set in the exception's words, changing nothing" do
       result = commands.run("/working-set drop other.txt")
 

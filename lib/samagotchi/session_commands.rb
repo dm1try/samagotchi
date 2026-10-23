@@ -113,9 +113,9 @@ module Samagotchi
       registry.register(TOOLKIT_COMMAND, "show or change the tools this session declares (NAME, add TOOL, remove TOOL)",
                         id: :toolkit, mid_turn: show_mid_turn(TOOLKIT_COMMAND),
                         match: ->(text) { text.match?(%r{\A/toolkit(?:\s+.*)?\z}) }) { |text| toolkit(text) }
-      # The list reads only: mid-turn too; a drop waits for the turn's end
+      # The list reads only: mid-turn too; an op waits for the turn's end
       # (the next turn's first request is the first with it).
-      registry.register(WORKING_SET_COMMAND, "list the working set; drop or undrop an item (drop KEY, undrop KEY)",
+      registry.register(WORKING_SET_COMMAND, "list the working set; drop, undrop, pin or unpin an item (drop KEY…)",
                         id: :working_set, mid_turn: show_mid_turn(WORKING_SET_COMMAND),
                         match: ->(text) { text.match?(%r{\A/working-set(?:\s+.*)?\z}) }) { |text| working_set(text) }
       # Tighten-only from anyone; loosening is a user's at a UI (#run's user_ui:).
@@ -545,18 +545,18 @@ module Samagotchi
       reply(output, status: status, changed: changed ? [:parent_answers] : [])
     end
 
-    # /working-set (WorkingSetCommand): an op changes the conversation
-    # (changed :messages: the worker saves it, the web reads it again), so
-    # a rollback past it would drop it silently (as !cmd), and the working
-    # set goes out again (held after the command's command_ran).
+    # /working-set (WorkingSetCommand): an op that changes the conversation
+    # (changed :messages: the worker saves it, the web reads it again)
+    # closes the rollback window (a rollback past it would drop it
+    # silently, as !cmd); a pin changes the session's working_set_pins.
+    # Either way the working set goes out again (held after the command's
+    # command_ran).
     def working_set(text)
       output, changed, status = WorkingSetCommand.new(engine: @engine, save: ->(_session) { save_session })
                                                  .run(text.delete_prefix(WORKING_SET_COMMAND))
-      if changed
-        @turn_flow.note_conversation_changed
-        @engine.announce_working_set
-      end
-      reply(output, status: status, changed: changed ? [:messages] : [])
+      @turn_flow.note_conversation_changed if changed.include?(:messages)
+      @engine.announce_working_set unless changed.empty?
+      reply(output, status: status, changed: changed)
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end

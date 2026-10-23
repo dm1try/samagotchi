@@ -157,6 +157,28 @@ conversation again) and `Engine#announce_working_set` re-emits the set, held beh
 
 The projection shows a dropped item as `dropped` (below), the GET and the event alike.
 
+## Steering: pin and unpin
+
+`/working-set pin KEY…` and `unpin KEY…` run the same way (`mid_turn: :queue`, `WorkingSetCommand`), but a pin is
+the session's, not an edit: `Session#working_set_pins` (a `WorkingSetPin` per item, `{kind, key}` as the projection
+names it), a `SessionSetup` field, so a respawn (the file), a continue (`SessionSetup.of`) and a plugin's fork
+(`host.setup`) keep it; a delegate child starts without. It changes nothing sent, so no cache break.
+
+- **What it guards**: the model's `forget_outputs` (`LLMContextForget`, the `pinned:` callable `KernelLoop` hands it:
+  `WorkingSet.pinned_ids` of the pins, the projection's pairing, so later reads of the item are covered). See
+  [llm-context-forget.md](llm-context-forget.md). Not stale's stubs: a superseded read's newer read is sent.
+- **`WorkingSetSteer.pin`** refuses an item not in the set and one already pinned (an edit-only item may be pinned:
+  its later reads are covered). Pin and drop exclude each other: `drop` (given the pins) refuses a pinned item
+  (`unpin_first`); `pin` takes a pending drop off first (an `undrop`, free, in `Done#undone`) and refuses a sent one
+  (`undrop_first`). **`unpin`** asks only the pins (a rollback may have taken the item out of the set). The command
+  puts the new list in place (`WorkingSetSteer.pinning`) and saves the session.
+- **The note**: a pin or an unpin joins the turn-start note only when the strategy the set is built under has the
+  forget layer (the model has no `forget_outputs` otherwise), or to cancel the inverse op the note lists. The reply's
+  `changed` is `[:working_set_pins]`, plus `:messages` when the note (or a pending drop) changed; the rollback window
+  closes only for `:messages`. Either way `Engine#announce_working_set` re-emits the set.
+- **The projection**: `WorkingSet.build(…, pins:)` sets each item's `pinned`, whatever the strategy; the page shows it
+  only under forget (below).
+
 ## The page's overlay
 
 The page keeps its row-derived items and their `at` ordinals (the step tags' jump path), and overlays the server's

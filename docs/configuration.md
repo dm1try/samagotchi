@@ -1485,7 +1485,13 @@ models:
   forget keeps lines of it; a keep outside the output's lines, of a big file's head/tail preview, or holding all of
   it; an output too small for a stub to free anything; one already stubbed or forgotten; an unknown id, or one whose
   output chi can't pair with its call for sure (it shows no id). The system prompt, user messages, steers and context
-  notes have no ids.
+  notes have no ids. An output you dropped, or one of an item you pinned, is refused too (`dropped by the user`,
+  `pinned by the user: it stays in your context`).
+- **Pins.** `/working-set pin KEY…` (or the web list's `pin`, shown under forget only) keeps an item from the model's
+  forget: every read of it, those to come too, until `/working-set unpin KEY…` (see [cli.md](cli.md#the-working-set)).
+  It sends nothing different, so the prompt cache holds. The pins are the session's own (`working_set_pins` in the
+  session file): a respawned worker, a continue and a fork keep them, across a strategy switch too; a delegate child
+  starts without. Stale stubs still apply to a pinned file's superseded reads (its newer read is sent).
 - **When stubs reach the prompt** follows `llm_context.apply`, as `stale`'s do: the result says
   `applied, the next request sends the stubs (frees …)` or `staged until the turn ends`.
 - **Restore.** `forget_outputs(restore: ["t45"])` brings a forgotten output back with the next request, whatever
