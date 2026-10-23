@@ -84,6 +84,8 @@ and commands may change between minor versions. How releases are made:
 - The participant page shows chi web's own words for a refused comment or take-back ("A participant can't do that:
   only the session's owner can.", too many turns, the spending cap) and for an ended link (revoked or expired),
   instead of its own second wording.
+- The participant page keeps a tool list the reader opened or closed as they left it when the thread is read again or
+  the reply streams, and no longer redraws the messages it already shows (a text selection in them stays).
 
 ## [0.106.0] - 2026-10-23
 

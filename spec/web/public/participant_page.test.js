@@ -253,3 +253,28 @@ test("participant page: the reply's events that arrive while the review is re-re
   sources[1].emit("generation_chunk", { text: " world" });
   assert.equal($("liveReply").textContent, "Hello world");
 });
+
+test("participant page: a re-read keeps the tool lists as the reader left them, and the messages drawn already", async (t) => {
+  const tools = [{ tool: "read", path: "a.md", status: "ok" }, { tool: "read", path: "b.md", status: "ok" }];
+  const messages = [{ role: "user", content: "Look" }, { role: "assistant", content: "Read both.", tools }];
+  const running = { ...REVIEW, messages, current_turn: { prompt: "Again", text: "", tools }, last_event_id: "3-ab" };
+  let gets = 0;
+  const { $, tick, sources } = await openPage(t, {
+    respond: (call) => call.answer(200, ++gets === 1 ? running : { ...running, last_event_id: "4-ab", queued: { mine: [], others: 1 } }),
+  });
+  const [done, current] = $("thread").querySelectorAll("details");
+  assert.equal(done.open, true, "a short list opens by default on a wide screen");
+  done.open = false;
+  current.open = false;
+  const bubble = $("thread").querySelector(".p-msg.reply .p-bubble");
+
+  sources[0].emit("generation_chunk", { text: "Hm" });
+  assert.equal($("liveReply").querySelector("details").open, false, "the live reply's list stays closed as it streams");
+  sources[0].emit("turn_enqueued");
+  await tick(120);
+  assert.equal(gets, 2);
+  const [doneAfter, currentAfter] = $("thread").querySelectorAll("details");
+  assert.equal(doneAfter.open, false);
+  assert.equal(currentAfter.open, false);
+  assert.equal($("thread").querySelector(".p-msg.reply .p-bubble"), bubble, "a message drawn already is kept, not drawn again");
+});
