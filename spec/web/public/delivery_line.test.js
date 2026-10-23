@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
-import { charsText, clockText, createDeliveryControl, CUT_LABEL, deliveryLine, deliveryLineTemplate, genAge, IDLE_HINT, QUEUE_LABEL, QUEUE_NEEDS_WORKER } from "../../../lib/samagotchi/web/public/delivery_line.js";
+import { APPLY_CANT_QUEUE, APPLY_QUEUES, APPLY_QUEUES_SHORT, charsText, clockText, createDeliveryControl, CUT_LABEL, deliveryLine, deliveryLineTemplate, genAge, IDLE_HINT, QUEUE_LABEL, QUEUE_NEEDS_WORKER } from "../../../lib/samagotchi/web/public/delivery_line.js";
 
 const NOW = 1_000_000;
 const thinkingGen = (seconds, extra = {}) => ({ thinking: "x".repeat(31_200), text: "", tools: [], startedAt: NOW - seconds * 1000, ...extra });
@@ -127,14 +127,14 @@ test("the view: the where text, then the links; a disabled cut keeps its reason 
   assert.equal(div.querySelectorAll(".delivery-link").length, 0);
 });
 
-function control({ empty = true, inputs = {} } = {}) {
+function control({ empty = true, inputs = {}, session = () => "s1" } = {}) {
   const el = document.createElement("div");
   el.hidden = true;
   const sent = [];
   let tick = null;
   const state = { phase: "thinking", gen: thinkingGen(60), cutAfter: 25, canQueue: true, ...inputs };
   const ctl = createDeliveryControl({
-    el, read: () => state, composerEmpty: () => empty, send: (d) => sent.push(d), now: () => NOW,
+    el, read: () => state, composerEmpty: () => empty, send: (d) => sent.push(d), session, now: () => NOW,
     setTimer: (fn) => { tick = fn; return 1; }, clearTimer: () => { tick = null; },
   });
   return { ctl, el, sent, state, tick: () => tick?.() , ticking: () => !!tick };
@@ -203,6 +203,58 @@ test("the control: a session's row is always there: the key hint while idle (no 
   assert.equal(ctl.armed(), null);
   ctl.show("off");
   assert.equal(el.hidden, true);
+});
+
+test("an Apply turn held: Enter queues it (the line says so, queue ticked); an armed cut still wins; no queue on an old worker", () => {
+  const writing = { phase: "writing", gen: thinkingGen(5, { text: "Here" }), cutAfter: 25, now: NOW };
+  assert.equal(deliveryLine(writing).enter, null);
+  const held = deliveryLine({ ...writing, held: true });
+  assert.equal(held.text, `\u21B3 ${APPLY_QUEUES}`);
+  assert.equal(held.short, `\u21B3 ${APPLY_QUEUES_SHORT}`);
+  assert.equal(held.enter, "queue");
+  assert.equal(held.armed, null);
+  assert.equal(held.queue.label, `${QUEUE_LABEL} \u2713`);
+  const cut = deliveryLine({ phase: "thinking", gen: thinkingGen(60), cutAfter: 25, now: NOW, armed: "cut", held: true });
+  assert.equal(cut.enter, "cut");
+  assert.match(cut.text, /Enter sends$/);
+  const old = deliveryLine({ ...writing, held: true, canQueue: false });
+  assert.equal(old.enter, null);
+  assert.equal(old.text, `\u21B3 ${APPLY_CANT_QUEUE}`);
+});
+
+test("the control: an Apply hold makes take() queue while the turn runs, once; Esc lets go (a steer); release() and another session drop it", () => {
+  let open = "s1";
+  const { ctl, el } = control({ empty: false, session: () => open });
+  ctl.show("running");
+  ctl.hold();
+  assert.equal(ctl.held(), true);
+  assert.match(el.querySelector(".delivery-where .long").textContent, /Apply turn queues/);
+  assert.equal(el.querySelector(".delivery-link.queue").getAttribute("aria-pressed"), "true");
+  assert.equal(ctl.take(), "queue");
+  assert.equal(ctl.held(), false);
+  assert.equal(ctl.take(), null);
+  ctl.hold();
+  assert.equal(ctl.disarm(), true);
+  assert.equal(ctl.take(), null);
+  ctl.hold();
+  ctl.release();
+  assert.equal(ctl.take(), null);
+  // Held in s1: in s2 Enter steers as ever; back in s1 it queues.
+  ctl.hold();
+  open = "s2";
+  ctl.refresh();
+  assert.equal(ctl.held(), false);
+  assert.equal(ctl.disarm(), false);
+  open = "s1";
+  ctl.refresh();
+  // Idle: a plain turn (nothing to queue behind); the hold survives the
+  // turn's start and end, so a turn starting later still queues it.
+  ctl.show("idle");
+  ctl.show("running");
+  assert.equal(ctl.take(), "queue");
+  ctl.hold();
+  ctl.show("idle");
+  assert.equal(ctl.take(), null);
 });
 
 test("the phone's short text and chips: the same line in a few words", () => {

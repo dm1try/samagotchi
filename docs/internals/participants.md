@@ -243,7 +243,13 @@ A review turn proposes; the owner applies (D4, §3 Apply-as-quote). Under each p
 reply, the owner's page shows **Apply** (`review_apply.js`; drawn by the history render, `turn_view.js`, and at a live
 turn's end from its `turn_started`'s turn id and author, in the stage while the stage holds the turn; a full-width
 button on a phone). It reads `GET …/apply?turn=T` and puts the answer in the composer, after whatever is typed there,
-never sent: the owner reads it, edits it, sends it or not. The text (`ReviewApply.compose`, the one place it is worded)
+never sent: the owner reads it, edits it, sends it or not. While the composer holds it (`deliveryControl.hold()`,
+`delivery_line.js`; let go when it is sent, emptied, or Esc'd while a turn runs, and only for the session it was
+filled in), Enter and Send queue it (`delivery: queue`) behind a running turn instead of steering it in, and the
+delivery line says so: the running turn may be a participant's read-only review turn, where the Apply's edits can't
+run and the owner's line would land inside their turn. An armed cut still wins; Esc steers it in; a worker without the
+`delivery` feature refuses it with the Alt+Enter note. The server doesn't refuse an owner's steer into a review turn.
+The text (`ReviewApply.compose`, the one place it is worded)
 is one line of the owner's and the review turn's reply quoted line by line:
 
 ```
