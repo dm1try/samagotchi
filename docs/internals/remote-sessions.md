@@ -213,8 +213,6 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 
 ## Known gaps
 
-- Remote `sessions stop` always prints "Stopped session …": `Remote#stop` returns true because chi web's stop doesn't
-  say whether the worker released the session.
 - `send -m /stats` is refused (UI-only) with "use chi sessions stats ID", which is local-only under a remote.
 - Through a remote the pair scripts (`bundles/{claude,codex}-peer/scripts/pair`) detect `CHI_REMOTE` or `--remote` in
   `CHI` the way Dispatch does, and attach only `*-outbox`: chi there can't reach this machine's Claude socket or Codex

@@ -2967,11 +2967,21 @@ RSpec.describe Samagotchi::Web::App do
     it "waits (bounded) for the worker to let go on POST /stop, so a resume after it spawns a fresh one" do
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
 
-      status, _headers, _body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
 
       expect(status).to eq(200)
+      expect(JSON.parse(body.first)).to eq("status" => "stopped", "session_id" => session.id, "released" => true)
       expect(Samagotchi::SessionManager).to have_received(:stop_session)
         .with(session.id, state_dir: state_dir, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
+    end
+
+    it "says on POST /stop when the worker had not let go within its wait (released: false)" do
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.first)).to eq("status" => "stopped", "session_id" => session.id, "released" => false)
     end
 
     it "answers POST /stop with 409 and signals nothing" do

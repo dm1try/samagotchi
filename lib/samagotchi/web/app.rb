@@ -1621,12 +1621,16 @@ module Samagotchi
         end
       end
 
+      # POST /api/sessions/:id/stop: 200 {status: "stopped", session_id,
+      # released}: released, whether the worker let go of the session
+      # within STOP_WAIT_SECONDS (chi sessions stop's two wordings); 409
+      # owned_by_tui.
       def handle_stop(_req, id)
         # Bounded, so a Rack thread isn't held long; a worker still exiting
         # after it just means an immediate resume finds it (rare).
-        @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
+        released = @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
         @hub&.touch(id)
-        json_response(200, { status: "stopped", session_id: id })
+        json_response(200, { status: "stopped", session_id: id, released: released == true })
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end

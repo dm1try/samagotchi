@@ -1,10 +1,14 @@
 # frozen_string_literal: true
 
 require "open3"
+require "stringio"
 require "rbconfig"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/session"
+require "samagotchi/sessions_command"
+require "samagotchi/session_access/local"
+require_relative "support/remote_backend"
 
 # The run that reads stdout and stderr interleaved (2>&1) is a real bin/chi;
 # the rest fork it (ChiCli#fork_chi).
@@ -70,5 +74,33 @@ RSpec.describe "chi sessions stop" do
     out, _err, _status = chi_sessions("--help")
 
     expect(out).to include("stop ID")
+  end
+
+  describe "what it says of the worker, on either backend" do
+    let(:out) { StringIO.new }
+    let(:err) { StringIO.new }
+
+    def stop(*ids)
+      access = backend_access(state_dir) || Samagotchi::SessionAccess::Local.new(state_dir: state_dir)
+      Samagotchi::SessionsCommand.new(["stop", *ids], stdout: out, stderr: err, access: access).run
+    end
+
+    RemoteBackend.both(self) do
+      let(:session) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| s.save(state_dir: state_dir) }
+      end
+
+      it "says the worker let go, or that it is still shutting down, in the same words (no chi --resume remotely)" do
+        allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
+        expect(stop(session.id)).to eq(0)
+        resume = " chi --resume #{session.id} starts a fresh worker." unless backend == :remote
+        expect(out.string).to eq("Stopped session #{session.id}.#{resume}\n")
+
+        allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
+        expect(stop(session.id)).to eq(0)
+        try = "; try chi --resume #{session.id} in a moment" unless backend == :remote
+        expect(err.string).to eq("Stopped session #{session.id}, but its worker is still shutting down#{try}.\n")
+      end
+    end
   end
 end

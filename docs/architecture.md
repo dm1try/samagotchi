@@ -525,6 +525,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | `POST /api/sessions/:id/context` (more bodies) | `{name, push: true, why, hint}` or `{name, cmd, every, why, hint}` beside the page's `{url, why, hint}`; `added_by` `cli`/`agent` (else `web`) | 201 `{status: attached, name}` | 400 `invalid_source`; 409 `exists` |
 | `POST /api/sessions/:id/context/:name/push` | `text`, `summary`, `wake`, `hint` (a source's JSON output, checked the same way) | 200 `{status: pushed, name, before, revision, changed}` | 404 `not_found`; 409 `not_push`; 400 `invalid_text` |
 | `DELETE /api/sessions/:id/context/:name?own=1` | | 200 `{status: detached}`: the session's own only | 409 `project_source` (chi context rm's words); 404 |
+| `POST /api/sessions/:id/stop` | | 200 `{status: stopped, session_id, released}`: `released`, whether the worker let go within `STOP_WAIT_SECONDS` (2 s) | 409 `owned_by_tui` |
 | `DELETE /api/sessions/:id?force=` | `force=true` stops a live worker first (the page sends it) | as before | 409 `worker_running` without it |
 | `GET /api/sessions/:id?brief=1` | | 200 `{brief, session: {id, status (the file's), title, display_title, project_root, working_directory, model_name, model_typed, parent_answers, owner}, pending_question}` (the file's; no messages): `Remote#show` | 404 |
 | `POST /api/sessions/:id/turn` (its 202) | | the ack with `via`: `bridge` or `file` (the input file: a remote `chi send --wait` follows that turn) | |
