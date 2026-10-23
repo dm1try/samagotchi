@@ -504,6 +504,40 @@ names its `chi_version` too.
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
 a hub; an `App.new` without one answers both routes `503 no_hub`.
 
+**chi web's routes for the session commands.** chi's session commands (`chi send`, `answer`, `note`, a session's
+`context`, `sessions list/stop/restart/archive/unarchive/delete`) run against another machine's sessions through its
+chi web (the remote-sessions plan; `SessionAccess::Contract` says which commands and flags may). The page's routes
+cover most of it; `Web::SessionAccessRoutes` (`web/session_access_routes.rb`, in `App`'s `ROUTES`) adds the rest, each
+calling the `SessionAccess::Local` operation of the same name, so a remote backend maps 1:1 onto them. Every one is
+token-gated like the rest (LAN mode: `Authorization: Bearer`), and one that takes an id is a `:session` route (an id
+that isn't one, or no such session: 404 `not_found`).
+
+| Route | Body / params | Answer | Refusals |
+|---|---|---|---|
+| `GET /api/sessions/resolve?id=` | an id or a unique prefix | 200 `{id}` | 404 `not_found`; 400 `ambiguous_id` with `ids` |
+| `GET /api/sessions/summaries` | `dir` (a folder: its project; none: every project), `cwd`, `live=1`, `archived=1`, `tests=0`, `sort`, `order`, `limit` | 200: the rows `chi sessions list` prints (`SessionManager.session_summaries`: `status`, `live`, `busy`, `owner`, `recap`, `ctx_pct`, `waiting`, `waiting_id`, `title`, `preview`, …) | 400 `invalid_dir`, `invalid_cwd` |
+| `POST /api/sessions` (more fields) | `toolkit`, `tools`, `no_tools`, `parent_answers`; `client_id` (`cli:send`/`cli:answer`: the first line is checked as chi send checks it); `check_vision: true` (images follow) | 201 adds `model_warning` and `parent_answers_warning` (a level looser than config.yml's, capped) | 400 `invalid_toolkit`, `invalid_parent_answers`, `invalid_continues` (beside `continues`); 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
+| `POST /api/sessions/:id/turn` (more fields) | `client_id` as above; `check_vision: true` with `images` | as before | 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
+| `POST /api/sessions/:id/wait/prepare` | `question_id` (absent: the pending one; `null`: none), `turn`, `created`, `busy` (+ `queue`) | 200 `{session_id, cursor, baseline: {messages, question_id, last_turn}, own_turn, known_turn, running, live, settled, last_turn_id}` (`WaitStart`) | 409 `busy`, `waiting` (`SendCommand::Busy`'s words) |
+| `POST /api/sessions/:id/wait` | `cursor`, `baseline`, `turn`, `queued`, `ended_before`, `owner_grace`, `timeout` (capped at 30 s) | 200: `ReplyWait::Result`'s fields (`status`: `done`, `waiting_for_answer`, `no_reply`, `error`, `stopped`, `worker_gone`, or `timeout`: ask again; `text`, `file`, `question` as `PendingQuestion#to_file`, `outcome`, `limit`, `error_kind`, `retryable`, `cancel_reason`, `stopped_by`, `kept_steps`, `turn_id`, `origin`; never the session) and `parent_strategy` `{name, allowed, origin}` (`ParentReport.strategy_for`, this server's config.yml) | 400 `invalid_wait`; 503 `server_stopping` |
+| `POST /api/sessions/:id/notes` | `text`, `source` (default `cli`, never `broadcast`) | 200 `{status: queued \| waits, session_id, queued}` (`NoteDelivery`) | 409 `owned_by_tui` (`status: refused`); 400 `note_rejected`, `missing_fields`, `invalid_source` |
+| `POST /api/sessions/:id/context` (more bodies) | `{name, push: true, why, hint}` or `{name, cmd, every, why, hint}` beside the page's `{url, why, hint}`; `added_by` `cli`/`agent` (else `web`) | 201 `{status: attached, name}` | 400 `invalid_source`; 409 `exists` |
+| `POST /api/sessions/:id/context/:name/push` | `text`, `summary`, `wake`, `hint` (a source's JSON output, checked the same way) | 200 `{status: pushed, name, before, revision, changed}` | 404 `not_found`; 409 `not_push`; 400 `invalid_text` |
+| `DELETE /api/sessions/:id/context/:name?own=1` | | 200 `{status: detached}`: the session's own only | 409 `project_source` (chi context rm's words); 404 |
+| `DELETE /api/sessions/:id?force=` | `force=true` stops a live worker first (the page sends it) | as before | 409 `worker_running` without it |
+
+`POST …/answer` passes on `client_id` only when it is chi answer's (`cli:answer`), so the worker holds the answer to
+its `guardrails.parent_answers`; any other is dropped, so a forwarded id can only tighten. The worker's 403
+`parent_answer_refused` (with `reason`) and a dismissal's 409 `not_dismissable` pass through; a 408 (the worker read it
+past its deadline) is sent once more, as `SessionAccess::Local#answer` does, and a second is `504 worker_timeout`.
+
+A refusal an exception raises carries, next to `error` and `detail` (the page's words), `message` (the exception's own,
+verbatim) and the fields its class is built from, so a remote client raises the same class with the same text:
+`owned_by_tui` (`session_id`), `worker_running`/`still_stopping` (`DeleteRefused`: `session_id`, `reason`), `busy`/
+`scratch` (`ArchiveRefused`: `session_id`, `reason`, `busy_id`), a restart's `held`/`not_running`/`unsupported`/
+`failed` (`RestartRefused`: `session_id`, `reason`, `version`), a continue's `continued`/`open_children`/`folder_gone`
+(`SessionContinue::Refused`: `session_id`, `reason`, `ids`) and `ambiguous_id` (`Session::AmbiguousId`: `ids`).
+
 ## Model loops and adapters
 
 A model ref (`--model`, `/model`, `default.model`, an alias's target) is parsed
@@ -624,7 +658,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Guardrails | `guardrails.rb`, `guardrails/shell_lex.rb`, `guardrails/data_readers.rb`, `guardrails/rules.rb`, `guardrails/protected_paths.rb`, `guardrails/parent_policy.rb` + `guardrails/parent_approvals.rb`, `guardrail_wiring.rb` | The gate before every tool call: shell lexing (and the commands that only read a heredoc as data), YAML rules, the core checks on chi's own files, approvals, what a parent agent may answer (`guardrails.parent_answers`) ([guardrails.md](guardrails.md)). |
 | Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `tools/delegate_relay.rb`, `relay_desk.rb`, `relay_verifier.rb`, `relay_watcher.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
 | send / broadcast | `send_command.rb` (`SendCommand`), `broadcast_command.rb` (`BroadcastCommand`), `broadcast/` | `chi send` and `chi broadcast` ([broadcast.md](broadcast.md), [sub-agent.md](sub-agent.md)). |
-| Session access | `session_access.rb` (`SessionAccess`: `NewSession`, `WaitStart`, `ContextEntry`, `ContextPush`), `session_access/local.rb` (`SessionAccess::Local`), `session_access/contract.rb` (`SessionAccess::Contract`) | The seam between the session commands and where the sessions live: `Local` is this machine's (the `SessionManager`, `ReplyWait`, `NoteDelivery`, `ContextSources` and Bridge calls the commands made); the contract table says which commands and flags may run against a remote (`supported`) or on this machine only (`local_only`). Checks that read this machine's config or files (vision, parent answers, the cwd's project, `SAMAGOTCHI_PARENT_SESSION`) stay in the commands, each marked with where it goes remotely. |
+| Session access | `session_access.rb` (`SessionAccess`: `NewSession`, `WaitStart`, `ContextEntry`, `ContextPush`), `session_access/local.rb` (`SessionAccess::Local`), `session_access/contract.rb` (`SessionAccess::Contract`), `web/session_access_routes.rb` (`Web::SessionAccessRoutes`) | The seam between the session commands and where the sessions live: `Local` is this machine's (the `SessionManager`, `ReplyWait`, `NoteDelivery`, `ContextSources` and Bridge calls the commands made); the contract table says which commands and flags may run against a remote (`supported`) or on this machine only (`local_only`); chi web's routes for them answer from `Local` (*chi web's routes for the session commands* above). Checks that read this machine's config or files (vision, parent answers, the cwd's project, `SAMAGOTCHI_PARENT_SESSION`) stay in the commands, each marked with where it goes remotely; chi web's create, turn and wait routes run the vision, parent-answers and busy checks with the server's. |
 | Idle work | `idle_scheduler.rb` (`IdleScheduler`), `idle_recap.rb` (`IdleRecap`), `idle_reminders.rb` | One poller for an idle session's recap and reminders. |
 | Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
 | LLM context strategies | `llm_context_strategy.rb`, `llm_context_view.rb`, `llm_context_stale.rb`, `llm_context_forget.rb` | What a request sends of the history (none, stale, forget) ([internals/llm-context-forget.md](internals/llm-context-forget.md)). |

@@ -164,6 +164,14 @@ An answer typed into `chi --attach` or the REPL counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
 `CODEX_THREAD_ID`, `SAMAGOTCHI_PARENT_SESSION`) is set.
 
+Through `chi web` (`POST /api/sessions/:id/answer`, what chi answer uses against
+another machine's sessions) the answer keeps chi answer's mark: the route passes
+on `client_id: "cli:answer"` and drops any other id, so a forwarded answer can
+only be held to the parent rules, never pass for the user's own. The worker's
+refusal (403 `parent_answer_refused`) comes back as it said it. A parent's
+`/continue yes` and a loosening `/parent-answers` sent through `chi web`'s create
+and turn routes are refused there too, held to that machine's config.yml.
+
 The worker checks it again with its own config.yml. The guardrails settings
 have no environment variables, and a worker drops any `SAMAGOTCHI_GUARDRAILS_*`
 it inherits; but a parent that sets `XDG_CONFIG_HOME` picks which config.yml a
