@@ -87,6 +87,8 @@ run, CI) and too long on a fast one. The contract a new spec follows:
    files that must sort apart get distinct times, not a pause: `Session.new_session(now:)`, `Session#save(now:)` and
    `SessionInbox.write_input` / `write_note` / `write_output(now:)` take `now: next_stamp` (spec/support/stamps.rb:
    a millisecond later on each call, starting a second in the past).
+   An example at a threshold's edge (a TTL, a grace) passes one `now:` to both sides and never reads `Time.now`
+   twice for it: a second boundary crossed between the reads moves the edge (`ModelProfile.model_warning(now:)`).
 3. **What a spec starts, it stops and waits for** before teardown: `join!(thread, what)`, `with_task_dir { … }`
    (spec/support/task_dirs.rb: a tasks' folder of its own, its tasks stopped and their exit-status recorders joined
    with `TaskRuntime.quiesce!`), a `stop` that joins (`IdleScheduler#stop`). Never only `Thread#kill`.

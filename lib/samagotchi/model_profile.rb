@@ -228,8 +228,10 @@ module Samagotchi
     # @param lists [#read] ModelListStore by default
     # @param relist [#call, nil] how a miss re-lists the host:
     #   (host_name, env) -> ids or nil. HostRegistry#list_models by default.
+    # @param now [Integer] epoch seconds the saved list's age is judged at
+    #   (one clock read for both the TTL and the re-list age)
     # @return [String, nil]
-    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil, relist: nil)
+    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil, relist: nil, now: Time.now.to_i)
       require_relative "config"
       require_relative "model_list_store"
       hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
@@ -241,13 +243,13 @@ module Samagotchi
       return nil if hosts[host.to_s.strip.downcase]&.models&.key?(parsed.id.to_s.strip.downcase)
 
       list = lists.read(env: env)[host.to_s.strip.downcase]
-      return nil if list.nil? || list.stale? || list.known?(parsed.id)
+      return nil if list.nil? || list.stale?(now: now) || list.known?(parsed.id)
       # A saved list this recent is taken at its word. Re-listing every miss
       # would make each launch of an id a host serves but never lists (a
       # gateway's round-robin aliases) pay the re-list's cap and warn
       # anyway; a list that old is the case worth catching (a one-model
       # server reloaded with another model).
-      return unknown_model_message(parsed.id, host, list.ids) if list.age < RELIST_AFTER_SECONDS
+      return unknown_model_message(parsed.id, host, list.ids) if list.age(now: now) < RELIST_AFTER_SECONDS
 
       fresh_ids = relist_or_nil(relist || default_relist(hosts), host, env)
       # A re-list that answered: the saved list catches up. The default

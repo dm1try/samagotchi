@@ -161,10 +161,29 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
     expect(check("box:nosuch")).to be_nil
   end
 
-  it "checks a list saved exactly at the TTL (not stale yet)" do
-    save("box", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS)
+  # The edge on both sides, on one clock: model_warning judges the list at
+  # its now: and reads no clock of its own, so a clock that moves on every
+  # read (a second boundary crossed between the save and the check) changes
+  # nothing.
+  describe "the TTL boundary" do
+    let(:now) { 1_700_000_000 }
 
-    expect(check("box:nosuch")).to include("doesn't list")
+    before do
+      tick = now
+      allow(Time).to receive(:now) { Time.at(tick += 1) }
+    end
+
+    it "checks a list saved exactly at the TTL (not stale yet)" do
+      save("box", %w[gemma-small], at: now - Samagotchi::ModelListStore::TTL_SECONDS)
+
+      expect(check("box:nosuch", now: now)).to include("doesn't list")
+    end
+
+    it "passes every id of a list saved one second past the TTL (stale)" do
+      save("box", %w[gemma-small], at: now - Samagotchi::ModelListStore::TTL_SECONDS - 1)
+
+      expect(check("box:nosuch", now: now)).to be_nil
+    end
   end
 
   it "never re-lists a host it already knows (a hit in the saved list, no network on this path)" do
