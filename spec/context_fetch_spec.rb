@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(outcome.error).to eq("timed out after 1 s")
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     child = File.read(pid_file).to_i
-    expect(wait_until { !alive?(child) }).to be(true)
+    wait_for("the orphan to be stopped") { !alive?(child) }
   end
 
   # Review 2026-10-06: Ctrl-C in chi context refresh (or a worker thread
@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::ContextFetch do
 
     # kill(0) still finds a zombie: sh gone means it was reaped too.
     expect(alive?(File.read(sh_file).to_i)).to be(false)
-    expect(wait_until { !alive?(File.read(child_file).to_i) }).to be(true)
+    wait_for("the child to be stopped") { !alive?(File.read(child_file).to_i) }
   end
 
   it "stops the group when the fetching thread is killed (a poller left behind at exit)" do
@@ -94,12 +94,12 @@ RSpec.describe Samagotchi::ContextFetch do
     child_file = File.join(work, "child.pid")
     attached = source("echo $$ > sh.pid; sleep 30 & echo $! > child.pid; wait")
     thread = Thread.new { fetch(attached) }
-    expect(wait_until { File.size?(child_file) }).to be_truthy
+    wait_for("the child's pid file") { File.size?(child_file) }
 
     thread.kill.join(5)
 
     expect(alive?(File.read(sh_file).to_i)).to be(false)
-    expect(wait_until { !alive?(File.read(child_file).to_i) }).to be(true)
+    wait_for("the child to be stopped") { !alive?(File.read(child_file).to_i) }
   end
 
   # Smoke 2026-10-06: a worker's idle exit cut a project source's fetch,
@@ -125,7 +125,7 @@ RSpec.describe Samagotchi::ContextFetch do
 
     expect(outcome.error).to eq("timed out after 0 s")
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
-    expect(wait_until { !alive?(File.read(pid_file).to_i) }).to be(true)
+    wait_for("the TERM-ignoring child to be killed") { !alive?(File.read(pid_file).to_i) }
   end
 
   it "keeps only stderr's last 4 KiB" do
@@ -181,7 +181,7 @@ RSpec.describe Samagotchi::ContextFetch do
       attached = source("while [ ! -e #{gate} ]; do sleep 0.05; done; echo old text")
       outcome = nil
       thread = Thread.new { outcome = fetch(attached) }
-      expect(wait_until { File.exist?(loc.lock_path("src")) }).to be(true)
+      wait_for("the source's fetch lock") { File.exist?(loc.lock_path("src")) }
       loc.remove("src")
       source(readd) if readd
       yield if block_given?

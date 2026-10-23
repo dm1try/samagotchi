@@ -39,17 +39,17 @@ RSpec.describe Samagotchi::ProcessGroup do
   describe ".stop" do
     it "TERMs the whole group, a grandchild too, and says it stopped within the grace" do
       pid = spawn_group("sleep 31.91 & wait")
-      expect(wait_until { system("pgrep", "-g", pid.to_s, "-f", "sleep 31.91", out: File::NULL) }).to be(true)
+      wait_for("the grandchild sleep") { system("pgrep", "-g", pid.to_s, "-f", "sleep 31.91", out: File::NULL) }
 
       expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid))).to be(true)
-      expect(wait_until { !system("pgrep", "-f", "sleep 31.91", out: File::NULL) }).to be(true)
+      wait_for("the grandchild to be stopped") { !system("pgrep", "-f", "sleep 31.91", out: File::NULL) }
     ensure
       reap(pid)
     end
 
     it "KILLs a group that ignores TERM once the grace is over, and waits until it has stopped" do
       pid = spawn_group("trap '' TERM; sleep 31.92")
-      expect(wait_until { system("pgrep", "-f", "sleep 31.92", out: File::NULL) }).to be(true)
+      wait_for("the TERM-ignoring sleep") { system("pgrep", "-f", "sleep 31.92", out: File::NULL) }
       started = described_class.monotonic
       status = nil
       gone = -> { status ||= Process.wait2(pid, Process::WNOHANG)&.last }
@@ -80,17 +80,17 @@ RSpec.describe Samagotchi::ProcessGroup do
 
       it "is stopped with the group (its group found while the shell runs)" do
         pid = spawn_leaver(31.93)
-        expect(wait_until { leaver_pids(31.93, pid).any? }).to be(true)
+        wait_for("the leaver") { leaver_pids(31.93, pid).any? }
 
         expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid))).to be(true)
-        expect(wait_until { leaver_pids(31.93, pid).empty? }).to be(true)
+        wait_for("the leaver to be stopped") { leaver_pids(31.93, pid).empty? }
       ensure
         reap(pid)
       end
 
       it "survives a stop without the walk" do
         pid = spawn_leaver(31.94)
-        expect(wait_until { leaver_pids(31.94, pid).any? }).to be(true)
+        wait_for("the leaver") { leaver_pids(31.94, pid).any? }
         leavers = leaver_pids(31.94, pid)
 
         described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid), walk: false)
@@ -254,7 +254,7 @@ RSpec.describe Samagotchi::ProcessGroup do
       reader = described_class.new(r)
       w.write("so far")
       w.flush
-      sleep 0.05
+      wait_for("the reader to read it") { reader.text == "so far" }
 
       reader.finish(poll: 0.01, grace: 1)
 

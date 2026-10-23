@@ -194,7 +194,8 @@ RSpec.describe Samagotchi::ContextCommand do
         File.open(own(a).lock_path("notes"), File::RDWR | File::CREAT) do |lock|
           lock.flock(File::LOCK_EX)
           thread = Thread.new { pushed = run("push", "notes", "-m", "hello", a.id) }
-          sleep(0.3)
+          # Blocked on the source's lock (a push that didn't wait would end).
+          wait_for("the push to wait for the lock") { thread.status == "sleep" }
           expect(own(a).snapshot("notes").text).to be_nil
           lock.flock(File::LOCK_UN)
           thread.join(5)

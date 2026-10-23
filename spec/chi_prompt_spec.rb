@@ -101,7 +101,7 @@ RSpec.describe "chi -p --non-interactive" do
                           in: File::NULL, out: out_w, err: err_w, chdir: dir)
       out_w.close
       err_w.close
-      expect(wait_until(timeout: 15) { server.requests.any? { |r| r.path == "/completion" } }).to be_truthy
+      wait_for("the turn's /completion request", timeout: 15) { server.requests.any? { |r| r.path == "/completion" } }
       Process.kill("INT", pid)
       _, status = Process.wait2(pid)
       out = out_r.read

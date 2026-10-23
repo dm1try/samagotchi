@@ -149,13 +149,7 @@ RSpec.describe Samagotchi::HostKeys::Keychain do
     File.open(fifo, "w", &:close) # the spawn returns now, past the deadline
     pid = pids.pop(timeout: 10)
     expect(pid).to be_a(Integer)
-    gone = 50.times.any? do
-      Process.kill(0, pid)
-      sleep 0.1
-      false
-    rescue Errno::ESRCH
-      true
-    end
-    expect(gone).to be(true) # killed and reaped, not left sleeping
+    # Killed and reaped, not left sleeping (a zombie still answers kill 0).
+    wait_for("the timed-out spawn to be killed and reaped") { process_gone?(pid) }
   end
 end

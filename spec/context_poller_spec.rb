@@ -114,7 +114,7 @@ RSpec.describe Samagotchi::ContextPoller do
   it "polls in its own thread, and stop kills the command it runs" do
     add(own, "hang", "sleep 30; echo late")
     poller.start
-    expect(wait_until { Dir.glob(File.join(own.dir, "hang.lock")).any? }).to be(true)
+    wait_for("the hang source's fetch lock") { Dir.glob(File.join(own.dir, "hang.lock")).any? }
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     poller.stop
@@ -129,12 +129,12 @@ RSpec.describe Samagotchi::ContextPoller do
     pids = File.join(tmpdir, "pids")
     add(own, "hang", "sleep 30 & echo $$ $! > #{pids}; wait")
     poller.start
-    expect(wait_until { File.size?(pids) }).to be_truthy
+    wait_for("the fetch's pids") { File.size?(pids) }
 
     poller.stop
 
-    File.read(pids).split.map(&:to_i).each do |pid|
-      expect(wait_until { process_gone?(pid) }).to be(true)
-    end
+    group = File.read(pids).split.map(&:to_i)
+    expect(group.size).to eq(2) # the shell and its sleep
+    group.each { |pid| wait_for("pid #{pid} to be gone") { process_gone?(pid) } }
   end
 end

@@ -202,7 +202,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
 
       sandbox.stop_leftovers
 
-      expect(wait_until(timeout: 5) { pids.all? { |pid| process_gone?(pid) } }).to be(true)
+      wait_for("the run's processes to be gone", timeout: 5) { pids.all? { |pid| process_gone?(pid) } }
       expect(Process).not_to have_received(:kill).with(anything, Process.pid)
       expect(Process).not_to have_received(:kill).with(anything, -Process.pid)
       sandbox.cleanup
@@ -406,10 +406,9 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         make.call(*args).tap do |run|
           allow(run).to receive(:wait_for).and_wrap_original do |wait_for, wait, seconds|
             if seconds == 600
-              deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
-              sleep 0.05 until server.requests.count { |request| request.path == "/v1/chat/completions" } >= 2 ||
-                               !wait.alive? ||
-                               Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+              wait_for("the held second request", timeout: 30, interval: 0.05) do
+                server.requests.count { |request| request.path == "/v1/chat/completions" } >= 2 || !wait.alive?
+              end
               seconds = 0
             end
             wait_for.call(wait, seconds)
@@ -715,7 +714,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           expect(result.exit_status).to eq(0)
           expect(result.stdout).to include("child started")
           expect(elapsed).to be < 4
-          expect(wait_until(timeout: 2) { process_gone?(descendant_pid) }).to be(true)
+          wait_for("the descendant to be gone", timeout: 2) { process_gone?(descendant_pid) }
         end
       end
 
@@ -763,7 +762,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
 
           task_pid = Integer(File.read(pid_file))
           expect(result.timed_out).to be(true)
-          expect(wait_until(timeout: 3) { process_gone?(task_pid) }).to be(true)
+          wait_for("the task's process to be gone", timeout: 3) { process_gone?(task_pid) }
         end
       ensure
         Process.kill("KILL", task_pid) if task_pid && !process_gone?(task_pid)
