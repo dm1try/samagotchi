@@ -181,10 +181,16 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 ## Trust model
 
 - **The token is the owner.** In LAN mode (`web.host: lan`) every non-loopback request needs the `Web::Token` access
-  token, as the `chi_token` cookie or `Authorization: Bearer` (`App#token_gate`). Passing the gate grants everything,
-  because no route checks roles (`local_viewer?` only hides `editor_url`). This runs over plain http, which is fine on
-  a home LAN, the same as the phone page. A loopback chi web without LAN mode needs no token
+  token, as the `chi_token` cookie or `Authorization: Bearer` (`App#token_gate`). This runs over plain http, which is
+  fine on a home LAN, the same as the phone page. A loopback chi web without LAN mode needs no token
   (`Remotes::Entry#token` is nil, and no header is sent).
+- **Every request has a principal.** `App#principal_for` resolves who a request is, as a `Web::Principal`
+  (`web/principal.rb`): `Principal::OWNER` for a peer the gate doesn't ask (no LAN mode, or a loopback peer) and for
+  the access token; nil (a 401) for anyone else. `#token_gate` uses it, and `#route` keeps it in the request's env
+  (`App#principal(req)`), so a handler reads the principal and never trusts the body for it. Each `ROUTES` row names
+  who may use it (its permission column, `:owner` or `:participant`; `Principal#permits?`; any other answers 403
+  `not_permitted`). Today the owner is the only principal and every route is `:owner`, so passing the gate still
+  grants everything (`local_viewer?` only hides `editor_url`).
 - **The token at rest.** `remotes.yml` is written through `AtomicFile.write(perm: 0o600)`. `Entry#inspect` / `#to_s`
   redact the token. `chi remote ls` never prints it (JSON shows `token: true|false`). `HTTPTransport#inspect` and
   `Remote#inspect` show only the label.

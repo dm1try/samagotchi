@@ -53,6 +53,7 @@ require_relative "editor"
 require_relative "../message_parts"
 require_relative "session_summary"
 require_relative "session_access_routes"
+require_relative "principal"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
@@ -172,52 +173,56 @@ module Samagotchi
       private
 
       # The routes, first match wins: a handler takes the request and the
-      # path's captures (the session id, an image's name). A :session route
-      # runs in #session_route: an ArgumentError is its unknown session.
+      # path's captures (the session id, an image's name). The fourth column
+      # is who may use the route (ROUTE_PERMISSIONS, checked against the
+      # request's Principal): :owner, or :participant for one a participant
+      # may use too (none yet). A :session route runs in #session_route: an
+      # ArgumentError is its unknown session.
+      ROUTE_PERMISSIONS = %i[owner participant].freeze
       ROUTES = [
-        ["GET", %r{\A/(?:index\.html)?\z}, :serve_index],
-        ["GET", %r{\A/api/sessions\z}, :handle_list],
-        ["POST", %r{\A/api/sessions\z}, :handle_create],
-        ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve],
-        ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries],
-        ["GET", %r{\A/api/info\z}, :handle_info],
-        ["GET", %r{\A/api/models\z}, :handle_models],
-        ["GET", %r{\A/api/history\z}, :handle_history],
-        ["GET", %r{\A/api/events\z}, :handle_events],
-        ["POST", %r{\A/api/render\z}, :handle_render],
-        ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
-        ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/exit\z}, :handle_exit, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/recap\z}, :handle_recap, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/stats\z}, :handle_stats, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/children/counts\z}, :handle_children_counts, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/turns/([^/]+)/records\z}, :handle_turn_records, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer],
-        ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss],
-        ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload],
-        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image],
-        ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :session],
-        ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :session],
-        ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :session]
+        ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :owner],
+        ["GET", %r{\A/api/sessions\z}, :handle_list, :owner],
+        ["POST", %r{\A/api/sessions\z}, :handle_create, :owner],
+        ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :owner],
+        ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
+        ["GET", %r{\A/api/info\z}, :handle_info, :owner],
+        ["GET", %r{\A/api/models\z}, :handle_models, :owner],
+        ["GET", %r{\A/api/history\z}, :handle_history, :owner],
+        ["GET", %r{\A/api/events\z}, :handle_events, :owner],
+        ["POST", %r{\A/api/render\z}, :handle_render, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/exit\z}, :handle_exit, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/recap\z}, :handle_recap, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/stats\z}, :handle_stats, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/children/counts\z}, :handle_children_counts, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/turns/([^/]+)/records\z}, :handle_turn_records, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer, :owner],
+        ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss, :owner],
+        ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
+        ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :owner, :session],
+        ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
 
       def route(env)
@@ -225,13 +230,15 @@ module Samagotchi
         return forbidden unless local_host_header?(env)
         return cross_origin if cross_site?(env)
 
-        if @lan && !LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s)
-          denied = token_gate(req)
-          return denied if denied
-        end
+        principal, denied = token_gate(req)
+        return denied if denied
 
-        ROUTES.each do |verb, pattern, handler, kind|
+        # The principal the handlers read (#principal): never the body's.
+        env[PRINCIPAL_ENV] = principal
+        ROUTES.each do |verb, pattern, handler, permission, kind|
           next unless req.request_method == verb && (m = pattern.match(req.path_info))
+          return not_permitted unless principal.permits?(permission)
+
           # Every /api/sessions/:id route: an id that isn't one (Session.valid_id?,
           # "..", a %2F) is an unknown session before any handler makes a path.
           # (/api/sessions/resolve and /summaries take no id.)
@@ -321,24 +328,51 @@ module Samagotchi
       TOKEN_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000"
       REFUSED_LOG_INTERVAL = 60.0
 
+      # Where #route keeps the request's Principal for its handlers.
+      PRINCIPAL_ENV = "samagotchi.principal"
+      PAGE_PATHS = ["/", "/index.html"].freeze
+
+      # The request's Principal, as #route resolved it.
+      def principal(req) = req.env.fetch(PRINCIPAL_ENV)
+
       # LAN mode, a peer that isn't this machine (the peer is the socket's
       # address, REMOTE_ADDR: never X-Forwarded-For or req.ip, which trust
       # headers a phone could send): every route needs the access token, as
       # the chi_token cookie or an Authorization: Bearer header. The page
       # with ?token= trades it for the cookie and a 303 to itself without
       # it, so the token doesn't stay in the phone's history.
-      # @return [Array, nil] the response that refuses it, or nil to go on
+      # @return [Array(Principal, nil), Array(nil, Array)] the request's
+      #   principal (#principal_for), or the response that refuses it
       def token_gate(req)
-        token = current_token
-        if req.get? && ["/", "/index.html"].include?(req.path_info) && req.params.key?("token")
-          return token_redirect(req, token) if token_match?(req.params["token"], token)
-        else
-          auth = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]
-          return nil if token_match?(auth, token) || token_match?(req.cookies[TOKEN_COOKIE], token)
-        end
+        principal = principal_for(req)
+        return [nil, unauthorized(req)] if principal.nil?
+        return [nil, token_redirect(req, current_token)] if token_trade?(req)
 
-        unauthorized(req)
+        [principal, nil]
       end
+
+      # Who the request is: the owner for a peer the gate doesn't ask (no
+      # LAN mode, or this machine's loopback) and for the access token (the
+      # page's ?token= on a trade, else the Bearer header or the cookie);
+      # nil for anyone else.
+      # @return [Principal, nil]
+      def principal_for(req)
+        return Principal::OWNER unless token_required?(req)
+
+        token = current_token
+        given = token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[TOKEN_COOKIE]]
+        given.any? { |value| token_match?(value, token) } ? Principal::OWNER : nil
+      end
+
+      def token_required?(req) = @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+
+      # The page opened with ?token= (a gated request): its token is traded
+      # for the cookie, whatever else the request carries.
+      def token_trade?(req)
+        token_required?(req) && req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+      end
+
+      def bearer_token(req) = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]
 
       def current_token
         token = @lan[:token]
@@ -424,6 +458,11 @@ module Samagotchi
 
       def cross_origin
         error_response(403, "cross_origin", "requests from other websites are refused")
+      end
+
+      # A route the request's principal may not use (Principal#permits?).
+      def not_permitted
+        error_response(403, "not_permitted", "only the session's owner can do that")
       end
 
       def forbidden
