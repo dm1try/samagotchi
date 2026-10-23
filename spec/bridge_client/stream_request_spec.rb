@@ -53,6 +53,22 @@ RSpec.describe Samagotchi::BridgeClient::StreamRequest do
     sock&.close
   end
 
+  it "hands back the response headers, names in lower case" do
+    port, = serve("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
+    sock, status, headers = described_class.open(host: "127.0.0.1", port: port, path: "/x", timeout: 2)
+
+    expect(status).to eq(200)
+    expect(headers).to eq("content-type" => "text/event-stream", "transfer-encoding" => "chunked")
+  ensure
+    sock&.close
+  end
+
+  it "gives up on headers that don't all come within the timeout" do
+    port, = serve("HTTP/1.1 200 OK\r\nContent-Type: text/eve")
+
+    expect(described_class.open(host: "127.0.0.1", port: port, path: "/x", timeout: 0.2)).to be_nil
+  end
+
   it "answers nil when nothing listens" do
     server = TCPServer.new("127.0.0.1", 0)
     port = server.local_address.ip_port

@@ -345,8 +345,9 @@ module Samagotchi
 
     # Open GET /session/:id/stream and read past the response headers.
     # @param timeout [Float, nil] give up when the headers aren't all in by then
-    # @return [Array(TCPSocket, Integer), nil] the socket positioned at the
-    #   body and the HTTP status, or nil when the Bridge can't be reached
+    # @return [Array(TCPSocket, Integer, Hash), nil] the socket positioned
+    #   at the body, the HTTP status and the headers (StreamRequest.open), or
+    #   nil when the Bridge can't be reached
     def connect_stream(query: "", last_event_id: nil, timeout: nil)
       StreamRequest.open(host: @host, port: @port, path: "/session/#{@session_id}/stream#{query}",
                          last_event_id: last_event_id, timeout: timeout)

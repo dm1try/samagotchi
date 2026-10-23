@@ -23,17 +23,22 @@ module Samagotchi
       # @param headers [Hash{String => String}] extra request headers, after
       #   Last-Event-ID
       # @param timeout [Float, nil] give up when the headers aren't all in by then
-      # @return [Array(TCPSocket, Integer), nil] the socket positioned at the
-      #   body and the HTTP status, or nil when the server can't be reached
+      # @return [Array(TCPSocket, Integer, Hash), nil] the socket positioned
+      #   at the body, the HTTP status and the response headers (names in
+      #   lower case), or nil when the server can't be reached
       def open(host:, port:, path:, last_event_id: nil, headers: {}, timeout: nil)
         sock = TCPSocket.new(host, port)
         sock.write(request(host: host, port: port, path: path, last_event_id: last_event_id, headers: headers))
         deadline = timeout && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout)
         status = header_line(sock, deadline).to_s[STATUS_LINE, 1].to_i
+        received = {}
         while (line = header_line(sock, deadline))
           break if line.strip.empty?
+
+          name, value = line.split(":", 2)
+          received[name.strip.downcase] = value.to_s.strip if value
         end
-        [sock, status]
+        [sock, status, received]
       rescue SystemCallError, SocketError, IOError
         sock&.close rescue nil
         nil
