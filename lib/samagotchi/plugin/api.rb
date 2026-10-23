@@ -41,7 +41,9 @@ module Samagotchi
         "ctx.use_toolkit" => "0.66.0", "ctx.toolkit" => "0.66.0", "ctx.declared_tools" => "0.66.0",
         "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
         "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0",
-        "ctx.usage" => "0.100.0"
+        "ctx.usage" => "0.100.0", "ctx.sessions.stop" => "0.34.0", "ctx.turn_author" => "0.106.0"
+        # ctx.sessions.review: unreleased; its release adds it here (the
+        # coordinator bundle marks it requires_chi_next until then).
       }.freeze
 
       # @param bundle [String]

@@ -137,6 +137,23 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "(fix: requires_chi: \">= 0.34.0\")"])
   end
 
+  it "requires-chi-floor: ctx.turn_author (0.106.0) and ctx.sessions.stop (0.34.0) have floors" do
+    edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", "ctx.notify(ctx.turn_author.to_s)") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.80.0\" admits chi 0.80.0, " \
+                                   "but plugin.rb uses ctx.turn_author, which needs chi 0.106.0 " \
+                                   "(fix: requires_chi: \">= 0.106.0\")"])
+
+    out.truncate(0)
+    out.rewind
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.30.0"') }
+    edit("plugin.rb") { |text| text.sub("ctx.notify(ctx.turn_author.to_s)", "ctx.sessions.stop(@word)") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.30.0\" admits chi 0.30.0, " \
+                                   "but plugin.rb uses ctx.sessions.stop, which needs chi 0.34.0 " \
+                                   "(fix: requires_chi: \">= 0.34.0\")"])
+  end
+
   it "install: a plugin that raises at load names plugin.rb:line" do
     edit("plugin.rb") { |text| text.sub("chi.command(", "raise ArgumentError, \"no word\"\n    chi.command(") }
     refresh!

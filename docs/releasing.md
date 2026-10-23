@@ -26,6 +26,8 @@ can run the whole release; the user approves the notes before the tag and the
     `release:check` fails while a marker is left. chi itself ignores the key,
     and `bundles:check` notes it (and fails a marker that isn't `true` or a
     one-line string). `release:bump` touches no other `requires_chi`;
+  - a new `ctx.*` / `chi.*` call a plugin may make gets its release's version in `Plugin::Api::SINCE` once
+    released (`chi bundle check`'s `requires-chi-floor` reads it); an unreleased one waits there as a comment;
   - a new shipped bundle joins a profile (`includes:` in `core` or `dev`; a
     spec checks every bundle is in exactly one), and that profile's version
     goes up: `chi update` then installs only the new bundle for those who
