@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
-import { APPLY_CANT_QUEUE, APPLY_QUEUES, APPLY_QUEUES_SHORT, charsText, clockText, createDeliveryControl, CUT_LABEL, deliveryLine, deliveryLineTemplate, genAge, IDLE_HINT, QUEUE_LABEL, QUEUE_NEEDS_WORKER } from "../../../lib/samagotchi/web/public/delivery_line.js";
+import { APPLY_CANT_QUEUE, APPLY_QUEUES, APPLY_QUEUES_SHORT, PARTICIPANT_TURN_QUEUES, PARTICIPANT_TURN_QUEUES_SHORT, charsText, clockText, createDeliveryControl, CUT_LABEL, deliveryLine, deliveryLineTemplate, genAge, IDLE_HINT, QUEUE_LABEL, QUEUE_NEEDS_WORKER } from "../../../lib/samagotchi/web/public/delivery_line.js";
 
 const NOW = 1_000_000;
 const thinkingGen = (seconds, extra = {}) => ({ thinking: "x".repeat(31_200), text: "", tools: [], startedAt: NOW - seconds * 1000, ...extra });
@@ -220,6 +220,23 @@ test("an Apply turn held: Enter queues it (the line says so, queue ticked); an a
   const old = deliveryLine({ ...writing, held: true, canQueue: false });
   assert.equal(old.enter, null);
   assert.equal(old.text, `\u21B3 ${APPLY_CANT_QUEUE}`);
+});
+
+// W3: the worker queues the owner's input behind a participant's review
+// turn, whatever it asks: the line says so, Enter queues, no cut is offered.
+test("a participant's review turn running: Enter queues (the line says so), no cut, an Apply hold too", () => {
+  const thinking = { phase: "thinking", gen: thinkingGen(60), cutAfter: 25, now: NOW, participantTurn: true };
+  const line = deliveryLine(thinking);
+  assert.equal(line.text, `\u21B3 ${PARTICIPANT_TURN_QUEUES}`);
+  assert.equal(line.short, `\u21B3 ${PARTICIPANT_TURN_QUEUES_SHORT}`);
+  assert.equal(line.enter, "queue");
+  assert.equal(line.cut.shown, false);
+  assert.equal(line.cut.enabled, false);
+  assert.equal(line.queue.label, `${QUEUE_LABEL} \u2713`);
+  assert.equal(deliveryLine({ ...thinking, armed: "cut" }).enter, "queue");
+  const held = deliveryLine({ ...thinking, held: true });
+  assert.equal(held.text, `\u21B3 ${PARTICIPANT_TURN_QUEUES}`);
+  assert.equal(held.enter, "queue");
 });
 
 test("the control: an Apply hold makes take() queue while the turn runs, once; Esc lets go (a steer); release() and another session drop it", () => {

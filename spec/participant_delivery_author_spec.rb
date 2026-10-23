@@ -101,6 +101,33 @@ RSpec.describe "a participant's author on delivery" do
       expect(pop!(prompts, "the participant's own turn")).to eq(["is step 3 safe?", author])
     end
 
+    # W3: the owner's input never goes into a participant's read-only
+    # review turn, whatever its delivery: it runs as the owner's own turn
+    # after it (an owner's turn still takes the owner's steer).
+    it "never merges the owner's line into a participant's running turn: it runs as the owner's own turn after it" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      prompts = Queue.new
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        prompts << [prompt, kwargs[:origin]&.dig(:author)]
+        if prompt == "is step 3 safe?"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o", delivery: "cut")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner next", client_id: "tui:o")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p", author: author,
+                                                        enqueued_id: "p1")
+
+      expect(pop!(drained, "the participant turn's drain")).to eq([])
+      expect(pop!(prompts, "the participant's turn")).to eq(["is step 3 safe?", author])
+      expect(pop!(prompts, "the owner's first queued turn")).to eq(["owner steer", nil])
+      expect(pop!(prompts, "the owner's second queued turn")).to eq(["owner next", nil])
+    end
+
     it "doesn't start a participant's queued turn past their cap: dropped from the queue, audited, the owner told once" do
       author = grant.author
       notices = Queue.new
@@ -360,6 +387,28 @@ RSpec.describe "a participant's author on delivery" do
       expect(reply.json).not_to have_key("cut")
       file = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")].first
       expect(read_file(file)).to include("delivery" => "queue", "author" => "p:p_1")
+    end
+
+    # W3: the owner's input while a participant's review turn runs queues
+    # behind it, whatever it asked (a steer, a cut), and the sender is told;
+    # during the owner's own turn it steers as before.
+    it "queues the owner's message behind a participant's running turn, never steering or cutting it" do
+      accumulator = @bridge.instance_variable_get(:@accumulator)
+      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "review:p_1", author: "p:p_1" },
+                         author: "p:p_1" })
+      %w[next_step cut].each do |delivery|
+        reply = @client.post_turn(prompt: "owner #{delivery}", client_id: "web:o", delivery: delivery)
+        expect(reply.status).to eq(202)
+        expect(reply.json).to include("delivery" => "queue")
+        expect(reply.json).not_to have_key("cut")
+      end
+      expect(of_type(:turn_enqueued).map { |event| event[:delivery] }).to eq(%w[queue queue])
+      files = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*.json")]
+      expect(files.map { |file| read_file(file)["delivery"] }).to eq(%w[queue queue])
+
+      accumulator.call({ type: :turn_completed })
+      accumulator.call({ type: :turn_started, prompt: "mine", origin: { client_id: "web:o" } })
+      expect(@client.post_turn(prompt: "owner steer", client_id: "web:o").json).to include("delivery" => "next_step")
     end
   end
 

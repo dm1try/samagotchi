@@ -815,6 +815,8 @@ module Samagotchi
       return " (started its worker)" if owner.nil?
       return queue_note(result, running: running) if Delivery.queue?(delivery)
       return "" unless running
+      # A participant's review turn was running: the worker queued it.
+      return queue_note(result, running: running) if result.delivery == Delivery::QUEUE
 
       # A busy worker runs a message with images as its own next turn
       # rather than merging it into the running one.

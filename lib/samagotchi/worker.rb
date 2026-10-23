@@ -1108,6 +1108,8 @@ module Samagotchi
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
       @reporting_turn = reports_to_parent?(turn_args[:origin])
+      # A participant's review turn merges no input (#pending_input_drain).
+      @participant_turn = Steer.participant_author?(turn_args[:origin]&.dig(:author))
       restores = @turn_flow.restores
       begin
         @checkpoint.begin_turn(prompt: prompt, enqueued_id: turn_args[:origin]&.dig(:enqueued_id),
@@ -1267,8 +1269,15 @@ module Samagotchi
         # one (steering merges text only): skipped here, not a barrier, so a
         # line sent after it still goes in at this boundary. Only the files
         # claimed below reach @merged_this_turn and the checkpoint.
-        files = SessionInbox.find_new_input_files(@session_dir).sort
-                            .reject { |input_file| SessionInbox.waits_for_turn_end?(input_file) }
+        # A participant's review turn takes none: the owner's lines (the
+        # Bridge queues them, this covers a file it didn't see) run as the
+        # owner's own turns after it, never inside its review boundary.
+        files = if @participant_turn
+                  []
+                else
+                  SessionInbox.find_new_input_files(@session_dir).sort
+                              .reject { |input_file| SessionInbox.waits_for_turn_end?(input_file) }
+                end
         merged = files.filter_map do |input_file|
           claimed_file = SessionInbox.claim_input_file(input_file)
           next unless claimed_file

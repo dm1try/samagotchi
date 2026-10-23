@@ -67,6 +67,12 @@ module Samagotchi
         end
       end
 
+      # Whether the turn in progress is a participant's review turn (its
+      # author): the owner's input queues behind it then (Bridge's POST /turn).
+      def participant_turn?
+        @mutex.synchronize { !@turn.nil? && Steer.participant_author?(@turn[:author] || @turn.dig(:origin, :author)) }
+      end
+
       # The turn in progress as conversation messages, for a plugin's
       # ctx.messages mid-turn (plan O1): its prompt (with its images), the
       # model's text so far, and the lines merged into it, in order. Tool

@@ -957,6 +957,10 @@ module Samagotchi
         next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
         next :too_many if pending_limit && pending_turns(author) >= pending_limit
 
+        # The owner's input never goes into a participant's read-only
+        # review turn (a steer, a cut): it queues behind it as the owner's
+        # own turn, and the ack and :turn_enqueued say so.
+        delivery = Delivery::QUEUE if @accumulator.participant_turn?
         queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                      no_interrupt: no_interrupt, images: images, delivery: delivery, author: author).tap do |ok|

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../delivery"
 require_relative "../reply_wait"
 require_relative "../session"
 
@@ -29,8 +30,12 @@ module Samagotchi
       # that turn). A file fallback's id names its turn too. Otherwise the
       # next reply, reported as the turn that was running when it went in
       # (+running_turn+, ReplyWait.own_turn), or as its own on an idle one.
+      # A plain message the worker queued (its ack says queue: a
+      # participant's review turn was running, which takes no steer) is a
+      # --queue's.
       # @param running [Boolean] the session was running when it went in
       def self.message(delivered, queue:, running:, running_turn:)
+        queue ||= delivered.delivery == Delivery::QUEUE
         turn = delivered.enqueued_id if queue || delivered.file?
         report = if queue then turn
                  elsif running then running_turn

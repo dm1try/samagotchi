@@ -24,6 +24,16 @@ RSpec.describe Samagotchi::SendCommand::WaitTarget do
       expect(target.to_h).to eq(turn: "e1", report_turn_id: "e1", queued: true, ended_before: false)
     end
 
+    # The worker queues the owner's plain message behind a participant's
+    # review turn (its ack says queue): the wait is for its own turn, never
+    # the participant's reply.
+    it "waits for a plain message's own turn when the worker queued it" do
+      queued = Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge,
+                                                             ack: { "enqueued_id" => "e1", "delivery" => "queue" })
+      expect(described_class.message(queued, queue: false, running: true, running_turn: "r0").to_h)
+        .to eq(turn: "e1", report_turn_id: "e1", queued: true, ended_before: false)
+    end
+
     it "takes the next reply for a plain message, reported as the running turn's, or its own when idle" do
       expect(described_class.message(delivered(:bridge), queue: false, running: true, running_turn: "r0").to_h)
         .to include(turn: nil, report_turn_id: "r0", queued: false)

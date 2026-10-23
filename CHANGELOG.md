@@ -21,7 +21,7 @@ and commands may change between minor versions. How releases are made:
   Thread toggle on a phone, checked again on every read and redacted. Under each participant's review turn the owner
   gets **Apply**: it puts an owner's turn in the composer, not sent, that quotes the proposal line by line, so the
   participant's words never reach the model as the owner's instruction; sent while a turn runs, it queues as the
-  owner's own turn (the delivery line says so; Esc steers it in instead), never merged into the running one. Plugins get `ctx.sessions.review(subjects:,
+  owner's own turn (the delivery line says so; during the owner's own turn Esc steers it in instead), never merged into the running one. Plugins get `ctx.sessions.review(subjects:,
   seed:)`. The coordinator bundle (0.6.0) adds an experimental sprint review: `/coordinate review [handoff]` opens a
   review of the coordinator session seeded with its handoff, where a participant's new context gets a hand-off diff
   and the owner's Apply updates the handoff. See [docs/cli.md](docs/cli.md#review-sessions) and
@@ -35,6 +35,10 @@ and commands may change between minor versions. How releases are made:
 - A participant's queued turn the worker refuses (revoked, expired, at their cap) ends their `chi send --wait` (and
   chi web's participant wait) at once: status `refused`, exit 1, `cancel_reason` `revoked` or `cap_reached`, instead
   of waiting to the timeout (none by default).
+- The owner's input while a participant's review turn runs queues as the owner's own turn after it, from every
+  client (the web, the attached TUI, `chi send` without `--queue`), never steered or cut into their read-only turn;
+  each says it was queued (the web's delivery line, the TUI's note, `chi send`'s line), and `chi send --wait` waits
+  for that turn's own answer.
 
 ## [0.106.0] - 2026-10-23
 

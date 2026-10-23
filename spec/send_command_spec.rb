@@ -304,6 +304,20 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(a).first["prompt"]).to eq("what does this do?")
     end
 
+    # The worker queues the owner's message behind a participant's review
+    # turn (never a steer into it): the line says it was queued.
+    it "says a plain message was queued when a participant's review turn runs" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      events = serve(a)
+      bridges.last.instance_variable_get(:@accumulator)
+             .call(type: :turn_started, prompt: "is step 3 safe?", origin: { author: "p:p_1" }, author: "p:p_1")
+
+      expect(run("-m", "also check the tests", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+      expect(events.last).to include(type: :turn_enqueued, delivery: "queue")
+    end
+
     it "says a running turn picks the message up" do
       a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
       serve(a)
