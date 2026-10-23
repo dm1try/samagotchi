@@ -190,9 +190,73 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   `spec/session_access_remote_spec.rb`, `spec/session_access/http_transport_spec.rb`, `spec/remotes_spec.rb`,
   `spec/remote_command_spec.rb`, `spec/web/session_access_routes_spec.rb`, and the pair-script specs in
   `spec/samagotchi/bundles/{claude,codex}_peer_pair_spec.rb`.
+- A remote attach: `spec/session_access/web_bridge_client_spec.rb` (the mapper's rows and `Unreachable`, through
+  `RackTransport`; the stream's request bytes, a chunked reply), `spec/bridge_client/event_stream_options_spec.rb`
+  (the idle timeout, which a local follow never sets; epoch_watch; retries; reasons), and one end-to-end spec,
+  `spec/remote_attach_stream_spec.rb`: a real `Bridge` behind `Web::App` on WEBrick at 127.0.0.1:0
+  (`spec/support/web_server.rb`) followed through a `WebBridgeClient` (join, a turn, a restart, a stop). It runs
+  over loopback, so chi web's token gate is skipped there; `spec/web/lan_auth_spec.rb` covers the gate on the
+  stream, wake and worker routes.
 - By hand: the smoke-run skill (`.claude/skills/smoke-run`, kept in the checkout, not in git) covers chi web.
   It has no remote recipe yet. The real lane is laptop → Studio over the LAN: `chi remote add`, `send --new --wait`,
   an exit-3 `answer`, `context push`, `note`, then `CHI_REMOTE=studio sh scripts/pair <id>` from the laptop's Claude.
+
+## Remote attach (the plumbing)
+
+What a remote attached TUI (`chi --remote NAME --attach ID`, not wired yet) will run on. The TUI still talks to a
+worker's Bridge interface; chi web relays each request to that Bridge on loopback.
+
+**chi web's routes** (tabled in [architecture.md](../architecture.md)): `POST …/wake` (`Local#wake`: the live worker
+as is, else `SessionManager.resume_session` and `BridgeClient.wait_for`, at most `WAKE_MAX_WAIT` 10 s, the attach's
+`BRIDGE_WAIT` here; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
+in `LaunchMode::BRIDGE_LATE`'s) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner; it never starts
+one), both answering the worker as `{epoch, started_at, version, features}`; `POST …/turn` takes `no_interrupt`
+(`SessionManager.deliver_turn(no_interrupt:)`, to the Bridge or into the input file); `POST …/command`'s 501 for a
+builtin the worker lacks names it (`command`). `/api/info`'s feature `remote_attach`
+(`SessionAccessRoutes::ATTACH_FEATURE`, mirrored as `Remote::ATTACH_FEATURE`) says a chi web has them.
+
+**One worker identity.** The Bridge's epoch (`Bridge#epoch`, the `<seq>-<epoch>` in every event id) is in its sidecar
+(`WorkerSidecar#epoch`; an older worker's reads nil, and the client keys it by `started_at` instead). A local
+`BridgeClient` is keyed by its port; a remote one stays one object and its `worker_key` changes.
+
+**`SessionAccess::WebBridgeClient`** (`session_access/web_bridge_client.rb`, built by `Remote#attach_client(id,
+worker:)` from a wake's or worker read's `worker`): `post_turn` (`no_interrupt`, `history: false`), `post_command`,
+`answer`, `dismiss_question`, `dequeue`, `cancel`, `follow`, `connect_stream`, `session_id`, `worker_key`, `port`
+(nil). One-shots go through `Remote#route_request` (the server check, the auth and missing-route mapping), a new
+connection each, with a 45 s read timeout (chi web's 30 s Bridge read plus its wait for a waking Bridge; 75 s for
+answer and dismiss, which chi web sends twice on a 408). Every reply goes through **one status mapper**,
+`WebBridgeClient::Mapping.response(route, reply, …)`:
+
+| chi web's answer | What the loop gets |
+|---|---|
+| 503 `not_live`, 404 `not_found` | raises `Unreachable` (< `IOError`): "no live worker for session ID on NAME" (`NO_WORKER`) |
+| 504 (any) | `Response(408, {error: deadline_passed})`: the loop's late line |
+| 501 with `command` (`/command`) | `Response(400, {error: unknown_command, command})`: the loop names the command |
+| any other 501 | `Response(404, {error: not_found})`: the stale-worker line |
+| anything else | unchanged: 202 acks, 409s, a route's own 404 (`unknown_enqueued_id`), 403 `parent_answer_refused`, 502 |
+
+Every `RemoteFailed` (a transport failure, `RemoteTooOld`, a 401 or a 403 `forbidden`) becomes `Unreachable` with its
+message, so a loop that rescues `IOError` around Bridge calls never crashes on one mid-session.
+
+**The stream.** `connect_stream` writes `GET /api/sessions/:id/stream…` through `BridgeClient::StreamRequest` (the
+GET a local stream writes, with `Authorization: Bearer` and `Last-Event-ID`; `Host` is the entry's host and port).
+chi web proxies the Bridge's bytes unchanged (under WEBrick a hijacked body is raw, `Connection: close`). No chunked
+decoding in v1: a `Transfer-Encoding: chunked` reply (a proxy in between) and an https entry are logged
+(`stream_refused`, `chunked_unsupported` / `tls_unsupported`) and read as unreachable; decoding and TLS plug into
+`StreamRequest`. `follow` starts `EventStream` with three options a local stream never sets (`BridgeClient#follow`
+passes none):
+- `idle_timeout:` 40 s (`STREAM_IDLE_TIMEOUT`: two of the Bridge's 15 s pings plus margin): no byte for that long is a
+  half-open connection (Wi-Fi gone, a sleeping laptop), reconnected with the cursor.
+- `epoch_watch:` a frame whose id carries another epoch than the cursor's is a new worker answering the old cursor:
+  `worker_changed {"port" => nil, "epoch" => new}` comes before it (the `reset` the new Bridge sends), and the
+  client's `worker_key` is updated in place.
+- `announce_retries:` `stream_retrying` once a reconnect fails, `stream_resumed` at the next frame.
+
+`EventStream` compares a rediscovered client's key with the key it last followed, not with the client object's, so a
+rediscovery that updates the same client in place is a move. Rediscovery may give a reason with its answer
+(`[nil, reason]` while it retries, `[:gone, reason]` to stop, `AttachLink#live_worker`'s shape), and `stream_closed`
+carries the last one (`unreachable` without). `LocalLink#live_worker` gives `stopped` for a stopped session, but
+`AttachedLoop#live_worker` passes only the client on, so the local closing line is unchanged.
 
 ## Extension points (not built yet)
 
@@ -206,8 +270,9 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
     `ChiInvocation` every printed command is spelled with. `LocalLink` is this machine's; `AttachedLoop.new` makes
     one of `client:` and its keywords, and takes `link:` instead.
   - The connector: `AttachLauncher.run(connector:)` asks its `#connect` for the `AttachLink` instead of `.connect`
-    (which a local run still calls, returning a `BridgeClient`); `report_unanswered` takes the link's
-    `strategy:` and `via:`.
+    (which a local run still calls, returning a `BridgeClient`); a connector whose `#connect` answers nil is
+    `AttachLauncher::Error` (`NOTHING_CONNECTED`), never an attach here. Its `#client_id`, when it has one, names the
+    TUI (`tui:PID` otherwise). `report_unanswered` takes the link's `strategy:` and `via:`.
   - The client the loop and `BridgeClient::EventStream` use: `follow`, `post_turn`, `post_command`, `answer`,
     `dismiss_question`, `dequeue`, `cancel`, `request_exit`, `request_recap`, `session_id`, and for the stream
     `connect_stream(query:, last_event_id:, timeout:)` and `worker_key` (a new worker is a client with another key;
@@ -217,9 +282,8 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
     branch can take the parsed options before bin/chi's local checks; `LaunchMode.attached_conflict` and
     `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE` are the words both would print.
 
-  chi web has no route for exit, recap, stats or state, and none that wakes an idle session for a stream:
-  `handle_stream` waits at most 2 s for a Bridge, then answers 503 `not_live`. `POST …/turn` does not forward
-  `no_interrupt`.
+  The plumbing below (*Remote attach*) is built; `RemoteLink`, the connector and bin/chi's branch are not. chi web
+  still has no route for exit, recap, stats or a turn's saved records.
 - **Shared sessions (guests, roles).** The only access point is `App#token_gate`: one token, the owner's. Roles would
   attach there and to the routes. The claude-peer / codex-peer inbox leg (chi → this machine's Claude or Codex) would
   need a relay through chi web.
