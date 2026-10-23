@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/worker_loop_rounds"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -13,6 +14,8 @@ require "samagotchi/worker"
 # worker for a short turn (session.task_wakes: wake), or leaves a plain note
 # for the next turn (docs/internals/background-tasks.md, Finish wake).
 RSpec.describe Samagotchi::Worker, "task finish wakes" do
+  include WorkerLoopRounds
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
@@ -85,9 +88,10 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   def start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
     worker = described_class.new(session_id: session.id, state_dir: state_dir, session_dir: session_dir,
                                  idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+    count_loop_rounds(worker)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
+    wait_for("the worker's sidecar") { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }
     worker
   end
 
@@ -97,7 +101,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   # change a task's record with no pass racing it.
   def parks(worker)
     Queue.new.tap do |parked|
+      # In place of count_loop_rounds' wrap, so it counts the rounds too.
       allow(worker.instance_variable_get(:@waker)).to receive(:wait).and_wrap_original do |original, *args|
+        @rounds[0] += 1
         parked << @finished_turns
         original.call(*args)
       end
@@ -185,8 +191,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(last[:content]).to start_with("[TASK FINISHED from task t1, ").and include("Background task t1 finished: exit 0")
     expect(last[:content]).to include("command: sleep 20; echo done", "output_tail:\nbuilding\ndone",
                                       Samagotchi::TaskFinishNote::WAKE_TEXT)
-    expect(wait_until { saved_task_notes.size == 1 }).to be(true)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    wait_for("the task's note to be saved") { saved_task_notes.size == 1 }
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "builds the Engine with the tool descriptions' finish line, but not with session.task_wakes: off" do
@@ -211,7 +218,8 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     start_worker
     run_prompt("build")
 
-    expect(turns.pop(timeout: 0.5)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
     expect(saved_task_notes).to be_empty
   end
 
@@ -221,10 +229,11 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    expect(wait_until { saved_task_notes.size == 1 }).to be(true)
+    wait_for("the stopped turn's task note to be saved") { saved_task_notes.size == 1 }
     expect(saved_task_notes.first).not_to include(:turn_start)
     expect(saved_task_notes.first[:content]).not_to include("chi started this turn")
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "drops a task the user stopped with the stop-task button" do
@@ -233,9 +242,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     records["t1"] = record("t1", status: "stopped").with(stop_reason: "stopped_by_user")
-    sleep(0.3)
+    loop_rounds
     expect(saved_task_notes).to be_empty
-    expect(turns.pop(timeout: 0.2)).to be_nil
+    expect(turns).to be_empty
   end
 
   it "forgets a task whose result left the conversation (a !rollback, a restored turn)" do
@@ -244,9 +253,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    sleep(0.3)
+    loop_rounds
     expect(saved_task_notes).to be_empty
-    expect(turns.pop(timeout: 0.2)).to be_nil
+    expect(turns).to be_empty
   end
 
   it "writes a plain note for the next turn with session.task_wakes: queue" do
@@ -256,9 +265,10 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    expect(wait_until { saved_task_notes.size == 1 }).to be(true)
+    wait_for("the queued task note to be saved") { saved_task_notes.size == 1 }
     expect(saved_task_notes.first).not_to include(:turn_start)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "watches nothing with session.task_wakes: off" do
@@ -269,9 +279,9 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    sleep(0.3)
+    loop_rounds
     expect(saved_task_notes).to be_empty
-    expect(turns.pop(timeout: 0.2)).to be_nil
+    expect(turns).to be_empty
   end
 
   it "shares session.max_wakes: past it a finish is a plain note, and the UIs hear it once" do
@@ -283,11 +293,12 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     finish("t1")
     expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
     finish("t2")
-    expect(wait_until { saved_task_notes.size == 2 }).to be(true)
+    wait_for("t2's note to be saved") { saved_task_notes.size == 2 }
     finish("t3")
-    expect(wait_until { saved_task_notes.size == 3 }).to be(true)
+    wait_for("t3's note to be saved") { saved_task_notes.size == 3 }
     expect(saved_task_notes.last(2)).to all(satisfy { |m| !m.key?(:turn_start) })
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
     expect(task_notices.map { |e| e[:text] })
       .to eq(["1 finished background task noted; the model reads it with your next message " \
               "(1 wake turn in a row, session.max_wakes)"])
@@ -301,16 +312,16 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     @fail_next = true
     finish("t1")
     expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
-    expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
-      .to be(true)
+    wait_for("the failed wake turn's turn note") { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" }
     expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
       .to include("The wake turn for a finished background task (t1) was not answered")
     expect(saved_task_notes.first).not_to include(:turn_start, :turn_id)
     expect(saved_task_notes.first[:content]).not_to include("chi started this turn")
 
     finish("t2")
-    expect(wait_until { saved_task_notes.size == 2 }).to be(true)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    wait_for("t2's plain note to be saved") { saved_task_notes.size == 2 }
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "writes a plain note while a continue offer waits, and the offer's /continue still resumes" do
@@ -321,12 +332,13 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     scripts["build"] = [task_create("t1")]
     start_worker
     run_prompt("build")
-    expect(wait_until { events.any? { |e| e[:type] == :continue_offered } }).to be(true)
+    wait_for("the continue offer") { events.any? { |e| e[:type] == :continue_offered } }
 
     finish("t1")
-    expect(wait_until { saved_task_notes.size == 1 }).to be(true)
+    wait_for("the task note to be saved while the offer waits") { saved_task_notes.size == 1 }
     expect(saved_task_notes.first).not_to include(:turn_start)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
 
     send_turn("/continue")
     prompt, kwargs, = pop!(turns, "the /continue turn", timeout: 15)
@@ -343,10 +355,10 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     finish("t1")
     expect(worker.send(:exit_request, "web:tab")).to be_nil
-    expect(@thread.join(5)&.value).to eq(:exit_requested)
+    expect(join!(@thread, "the worker").value).to eq(:exit_requested)
     expect(saved_task_notes.size).to eq(1)
     expect(saved_task_notes.first).not_to include(:turn_start)
-    expect(turns.pop(timeout: 0.2)).to be_nil
+    expect(turns).to be_empty
   end
 
   it "puts a task back when its note can't be written, and notes it on a later pass" do
@@ -379,18 +391,24 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(prompt).to eq("next")
     expect(last).to include(note_id: "task-t1")
     expect(last).not_to include(:turn_start)
-    expect(turns.pop(timeout: 0.3)).to be_nil
+    loop_rounds
+    expect(turns).to be_empty
   end
 
   it "keeps an idle worker up while a task it watches runs, and lets it go after the task's wake turn" do
     scripts["build"] = [task_create("t1")]
-    start_worker(idle_exit_minutes: 0.002)
+    worker = start_worker(idle_exit_minutes: 0.002)
     run_prompt("build")
 
-    expect(@thread.join(0.5)).to be_nil
+    idle_exit = worker.instance_variable_get(:@idle_exit)
+    # Past the idle timeout (0.12 s), the task holds the exit.
+    wait_for("the idle timeout to pass") { idle_exit.idle_seconds > 0.2 }
+    loop_rounds
+    expect(@thread).to be_alive
+    expect(idle_exit.hold).to eq(:background_tasks)
     finish("t1")
     expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 
   # The pass's look found it running and it ended right after, before the
@@ -411,7 +429,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 
   it "lets the idle exit go once the look for finished tasks kept failing (the hold has a bound)" do
@@ -422,10 +440,10 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     allow(Samagotchi::Tools::TaskRuntime).to receive(:created_ids_in).and_raise(IOError, "unreadable")
     finish("t1")
 
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
     expect(Samagotchi::Log).to have_received(:warn).with(:worker, "task_watch_failed", error: "IOError", msg: "unreadable")
       .at_least(Samagotchi::TaskWatch::MAX_FAILURES).times
-    expect(turns.pop(timeout: 0.2)).to be_nil
+    expect(turns).to be_empty
   end
 
   context "with a note-only task (its turn stopped by the user)" do
@@ -435,7 +453,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
       start_worker(idle_exit_minutes: 0.002)
       run_prompt("build")
 
-      expect(@thread.join(5)&.value).to eq(:idle_exit)
+      expect(join!(@thread, "the worker").value).to eq(:idle_exit)
     end
 
     it "doesn't hold /exit" do
@@ -443,7 +461,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
       run_prompt("build")
 
       expect(worker.send(:exit_request, "web:tab")).to be_nil
-      expect(@thread.join(5)&.value).to eq(:exit_requested)
+      expect(join!(@thread, "the worker").value).to eq(:exit_requested)
     end
   end
 
@@ -462,7 +480,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     end
     run_prompt("build")
 
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
     expect(saved_task_notes.size).to eq(1)
     expect(saved_task_notes.first).not_to include(:turn_start)
   end
@@ -481,7 +499,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     end
 
     expect(worker.send(:exit_request, "tui:1", delete: true)).to be_nil
-    expect(@thread.join(5)&.value).to eq(:exit_requested)
+    expect(join!(@thread, "the worker").value).to eq(:exit_requested)
     expect(saved_task_notes).to be_empty
   end
 
@@ -491,7 +509,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     start_worker(idle_exit_minutes: 0.002)
     run_prompt("build")
 
-    expect(@thread.join(5)&.value).to eq(:idle_exit)
+    expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 
   it "holds /exit while a watched task runs, saying how to stop it; not with session.task_wakes: queue" do
