@@ -4,11 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The web UI's colours live in two token blocks in index.html's inline
-// <style>: the dark :root (the default) and the light set under
+// The web UI's colours live in two token blocks in tokens.css, which the
+// owner's page (index.html) and the participant page (participant.html)
+// link: the dark :root (the default) and the light set under
 // prefers-color-scheme: light. Everything else reads them through var().
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../lib/samagotchi/web/public");
-const HTML = fs.readFileSync(path.join(PUBLIC, "index.html"), "utf8");
+const TOKENS = fs.readFileSync(path.join(PUBLIC, "tokens.css"), "utf8");
+const PAGES = ["index.html", "participant.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
+const HTML = PAGES[0][1];
 const LIGHT_OPEN = '@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){';
 
 // The text from `start` (an index just past an opening brace) to its
@@ -32,10 +35,10 @@ function tokens(body) {
   return out;
 }
 
-const darkStart = HTML.indexOf(":root{") + ":root{".length;
-const darkBody = blockBody(HTML, darkStart);
-const lightAt = HTML.indexOf(LIGHT_OPEN);
-const lightBody = lightAt < 0 ? "" : blockBody(HTML, lightAt + LIGHT_OPEN.length);
+const darkStart = TOKENS.indexOf(":root{") + ":root{".length;
+const darkBody = blockBody(TOKENS, darkStart);
+const lightAt = TOKENS.indexOf(LIGHT_OPEN);
+const lightBody = lightAt < 0 ? "" : blockBody(TOKENS, lightAt + LIGHT_OPEN.length);
 const DARK = tokens(darkBody);
 const LIGHT = tokens(lightBody);
 
@@ -71,12 +74,18 @@ function outsideTokens(text) {
     .replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, ""));
 }
 
-test("theme: index.html has no raw colour outside the token blocks", () => {
+test("theme: tokens.css and the pages have no raw colour outside the token blocks", () => {
   const hits = [];
-  outsideTokens(HTML).split("\n").forEach((line, i) => {
-    for (const m of line.matchAll(COLOUR)) hits.push(`line ~${i + 1}: ${m[0]} in ${line.trim().slice(0, 120)}`);
-  });
+  for (const [name, text] of [["tokens.css", TOKENS], ...PAGES]) {
+    outsideTokens(text).split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(COLOUR)) hits.push(`${name} line ~${i + 1}: ${m[0]} in ${line.trim().slice(0, 120)}`);
+    });
+  }
   assert.deepEqual(hits, []);
+});
+
+test("theme: both pages link tokens.css", () => {
+  for (const [name, text] of PAGES) assert.match(text, /<link rel="stylesheet" href="\/assets\/tokens\.css">/, name);
 });
 
 test("theme: no web JS module sets a raw colour", () => {
