@@ -132,6 +132,27 @@ whose value is dropped, an example's last line included, `expect(wait_until { â€
 `eventually`, `join!` and `pop!` as an example's expectation (`RSpec/NoExpectationExample`), so a wait can be an
 example's last line. What the cops can't see, `script/affected-specs` hints at (`timing:`, below).
 
+### Flakes
+
+When `parallel_rspec` fails in CI's `rspec` or `rspec-macos` job, the next step (`script/rerun_failures.rb`) reruns
+only the failed examples, once, with plain `rspec`. It reads their ids from `tmp/parallel_failures.log`
+(`.rspec_parallel`'s `FailuresLogger`) and writes the job summary: **Flaky: passed on rerun** or **Failed twice**,
+with the example ids, the Ruby version and the job. It skips the rerun when no ids were logged (a load error) or more
+than 20 failed (a real breakage). The job fails either way: a flake is a bug to fix, not a pass.
+
+Every flake is classified into one of the four patterns, each with its own fix:
+
+1. **A settle sleep**: the spec paused for "long enough". Wait for the condition (`wait_for`, `eventually`).
+2. **A live loop racing the spec's own drive of it** (a worker loop, a scheduler tick the spec also calls). Count
+   passes, or stop the loop before driving it by hand.
+3. **Teardown before background work stops**: a thread, task or process still running when the example's `after`
+   removes its folder. Stop it and wait for it (`join!`, `with_task_dir`, a joining `stop`).
+4. **A lib deadline on the real clock** (`wait: 0.05`, `grace: 0.1`) too short on a loaded runner. Give the class a
+   `clock:` / `sleeper:` seam and move the clock in the spec.
+
+A second flake of the same pattern at a new site means that pattern needs a seam in lib there (for example an `on_*:`
+callback the spec can wait on), not another local fix in the spec.
+
 ## Bundle specs: the test kit
 
 A shipped bundle's plugin and hook files are tested through the bundle test kit (`samagotchi/testing`,
