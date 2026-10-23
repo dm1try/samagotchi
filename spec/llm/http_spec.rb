@@ -106,10 +106,12 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
 
     context "with a first-token limit" do
-      let(:limited) do
+      def limited_to(seconds)
         described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
-                            sleeper: ->(seconds) { sleeps << seconds }, first_token_timeout: 0.3)
+                            sleeper: ->(seconds_slept) { sleeps << seconds_slept }, first_token_timeout: seconds)
       end
+      # A limit the examples where it fires pass: the stream never shows anything.
+      let(:limited) { limited_to(0.3) }
       let(:keep_alives) { Array.new(40) { ": OPENROUTER PROCESSING\n\n" } }
 
       # OpenRouter keeps a queued request alive with SSE comments, which
@@ -125,16 +127,19 @@ RSpec.describe Samagotchi::LLM::HTTP do
             expect(error.summary).to eq("no answer from host fake within 0.3s (first_token_timeout); " \
                                         "try again later or pick another model (/model)")
           }
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
+        # not the keep-alives' 2 s and the 5 s read timeout after them: the limit ended it
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
         expect(server.requests.size).to eq(1)
         expect(sleeps).to be_empty
       end
 
+      # The first line comes at once and the limit has headroom over its
+      # latency on a loaded runner; the lines after it pass the limit.
       it "stops watching once the caller showed something" do
-        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n", "data: 2\n\n", "data: 3\n\n"], delay: 0.25)
+        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n", "data: 2\n\n", "data: 3\n\n"], delay: 0.4)
         lines = []
 
-        limited.stream_lines(uri, post_request) do |line, shown|
+        limited_to(0.6).stream_lines(uri, post_request) do |line, shown|
           lines << line
           shown.call if line == "data: 1"
         end
@@ -156,7 +161,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
         server.enqueue("/v1/chat/completions", sse: keep_alives, delay: 0.05, hold: true)
 
         expect do
-          limited.stream_lines(uri, post_request, cancel_controller: controller) do |_line|
+          # A limit with headroom over the first keep-alive's latency: the cancel comes first.
+          limited_to(2).stream_lines(uri, post_request, cancel_controller: controller) do |_line|
             controller.cancel!(:ctrl_c)
           end
         end.to raise_error(Samagotchi::LLM::RequestCancelled)
@@ -213,7 +219,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
         http.stream_lines(uri, post_request, cancel_controller: controller) { nil }
 
-        expect { controller.cancel!(:manual); sleep 0.05 }.not_to raise_error
+        # The listener is gone: a cancel now calls nothing (it runs the listeners on this thread).
+        expect { controller.cancel!(:manual) }.not_to raise_error
       end
     end
   end
@@ -639,16 +646,21 @@ RSpec.describe Samagotchi::LLM::HTTP do
       end
 
       it "closes the socket of a request waiting for its answer" do
-        Thread.new do
+        requester = Thread.current
+        canceller = Thread.new do
           SpecWaiting.pop!(accepted, "the request's connection").tap { |socket| accepted << socket }
-          sleep 0.05
+          # Blocked on its read: the request is waiting for its answer.
+          SpecWaiting.wait_for("the request to wait for its answer") { requester.status == "sleep" }
+        ensure
           controller.cancel!(:user)
         end
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         expect { http.fetch(hung_uri, Net::HTTP::Get.new(hung_uri), retries: false, cancel_controller: controller) }
           .to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:user) }
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+        join!(canceller, "the cancelling thread")
+        # not the 5 s read timeout: the cancel closed the socket
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
       end
 
       it "does not send a request that is already cancelled" do
@@ -656,8 +668,15 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
         expect { http.fetch(hung_uri, Net::HTTP::Get.new(hung_uri), retries: false, cancel_controller: controller) }
           .to raise_error(Samagotchi::LLM::RequestCancelled)
-        sleep 0.05
+        # A probe connects after it: the first connection the server accepts
+        # is the probe's (the accept queue is in order), so the request made none.
+        probe = TCPSocket.new("127.0.0.1", hung.addr[1])
+        first = pop!(accepted, "the probe's connection")
+        expect(first.remote_address.ip_port).to eq(probe.local_address.ip_port)
         expect(accepted).to be_empty
+      ensure
+        probe&.close
+        first&.close
       end
 
       it "never raises into the caller after the request is over" do
@@ -666,7 +685,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
         http.fetch(models, Net::HTTP::Get.new(models), retries: false, cancel_controller: controller)
 
-        expect { controller.cancel!(:user); sleep 0.05 }.not_to raise_error
+        # The listener is gone: a cancel now calls nothing (it runs the listeners on this thread).
+        expect { controller.cancel!(:user) }.not_to raise_error
       end
     end
   end
