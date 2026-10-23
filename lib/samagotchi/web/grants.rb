@@ -210,11 +210,17 @@ module Samagotchi
       #   left as they were)
       def revoke(session_id: nil, id: nil, by: "owner")
         at = now
+        matches = lambda do |grant|
+          grant.active?(at) && (session_id.nil? || grant.session_id == session_id) && (id.nil? || grant.id == id)
+        end
+        # Nothing to revoke (an archive of a session nobody was invited to):
+        # no write, no store made.
+        return [] unless current.any?(&matches)
+
         update do |grants|
           revoked = []
           grants = grants.map do |grant|
-            next grant unless grant.active?(at) && (session_id.nil? || grant.session_id == session_id) &&
-                              (id.nil? || grant.id == id)
+            next grant unless matches.call(grant)
 
             grant.with(revoked_at: stamp(at), revoked_by: by).tap { |ended| revoked << ended }
           end

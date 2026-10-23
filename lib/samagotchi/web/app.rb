@@ -229,6 +229,11 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_list, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],
+        ["DELETE", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_revoke, :owner, :session],
+        ["GET", %r{\A/api/participants\z}, :handle_participants_list, :owner],
+        ["DELETE", %r{\A/api/participants\z}, :handle_participants_revoke, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze

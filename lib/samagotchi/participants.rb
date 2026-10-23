@@ -110,5 +110,13 @@ module Samagotchi
       end
       revoked
     end
+
+    # Ends the grants of sessions that were archived or deleted
+    # (SessionManager): +by+ "archive" or "delete". Nothing is written for a
+    # session nobody was invited to.
+    def end_sessions(session_ids, by:, state_dir: Session.default_state_dir)
+      grants = Web::Grants.new(Web::Grants.path(state_dir: state_dir))
+      session_ids.each { |sid| revoke(grants, session_id: sid, by: by, state_dir: state_dir) }
+    end
   end
 end

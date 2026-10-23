@@ -69,6 +69,8 @@ module Samagotchi
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
   # session_continue requires this file.
   autoload :SessionContinue, File.expand_path("session_continue", __dir__)
+  # Needed only on an archive or a delete (it loads Web::Grants).
+  autoload :Participants, File.expand_path("participants", __dir__)
 
   class SessionManager
     # Raised when the interactive TUI owns the session: it runs its own Engine
@@ -384,6 +386,8 @@ module Samagotchi
       stopped = tree.select { |sid| owners[sid] }
       stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
       archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
+      # D8: an archive ends the review (unarchiving doesn't restore it).
+      Participants.end_sessions(archived, by: "archive", state_dir: sd)
       { id: id, archived: archived, stopped: stopped, discarded: discarded }
     end
 
@@ -901,6 +905,7 @@ module Samagotchi
       end
       PluginSessionState.remove(id)
       removed.concat(ContextSources.remove_session(id, state_dir: sd))
+      Participants.end_sessions([id], by: "delete", state_dir: sd)
       { id: id, removed: removed, stopped: !owner.nil? }
     end
 

@@ -186,6 +186,56 @@ module Samagotchi
         -> { @server_running.call && @grants.active?(id) }
       end
 
+      # ── The owner's routes ─────────────────────────────────────────────
+
+      # GET /api/sessions/:id/participants, GET /api/participants: the
+      # grants (one session's, or every one), in every state, never a token
+      # or digest.
+      def handle_participants_list(_req, id = nil)
+        now = @grants.now
+        json_response(200, { participants: @grants.list(session_id: id).map { |grant| grant.public_h(now) } })
+      end
+
+      # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds)}:
+      # a new grant. The answer carries the token and the link once; chi
+      # keeps only its digest.
+      def handle_participants_invite(req, id)
+        body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        ttl = body["ttl"]
+        return error_response(400, "invalid_participant", "ttl is a number of seconds") unless ttl.nil? || ttl.is_a?(Integer)
+
+        issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
+                                              ttl: ttl, state_dir: default_state_dir)
+        json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
+                             link: participant_link(req, id, issued.token), lan: !@lan.nil? })
+      rescue Grants::Invalid => e
+        error_response(400, "invalid_participant", e.message)
+      end
+
+      # DELETE /api/sessions/:id/participants[?id=p_…], DELETE
+      # /api/participants: revokes one participant, a session's or every
+      # one's; their open streams end within a poll.
+      def handle_participants_revoke(req, id = nil)
+        grant_id = req.params["id"]
+        if grant_id && !Grants::ID_RE.match?(grant_id.to_s)
+          return error_response(400, "invalid_participant", "not a participant id: #{grant_id.to_s[0, 40]}")
+        end
+
+        revoked = Participants.revoke(@grants, session_id: id, id: grant_id, by: "owner", state_dir: default_state_dir)
+        now = @grants.now
+        json_response(200, { revoked: revoked.map { |grant| grant.public_h(now) } })
+      end
+
+      # The link a participant opens: this chi web's LAN address when it has
+      # one (the owner may be asking on loopback), else the Host asked; the
+      # token traded for the cookie, the session in the fragment.
+      def participant_link(req, id, token)
+        host = req.get_header("HTTP_HOST").to_s
+        port = host[/:(\d+)\z/, 1] || req.port.to_s
+        name = @lan ? @lan[:ip] : host.sub(/:\d*\z/, "")
+        "http://#{name}:#{port}/?token=#{token}#s=#{id}"
+      end
+
       def html_response(status, body)
         [status, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s,
                    "Cache-Control" => "no-store" }, [body]]
