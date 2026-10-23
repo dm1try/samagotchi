@@ -19,8 +19,15 @@ and commands may change between minor versions. How releases are made:
   `chi share --cap DOLLARS` (default $2, `web.participants.cap`); at the cap their next comment is refused and the
   owner gets a notice, and `chi share cap ID P DOLLARS` raises it. `/stats` shows each participant's spend, their
   turns and the side requests they caused. Hooks see `author:` on a participant's turn and plugins
-  `ctx.turn_author`; a hook still runs with the owner's power. The participant's page still shows only the session's
-  title and status (an agent participant can wait on its turns' replies through chi web's API). The `review`
+  `ctx.turn_author`; a hook still runs with the owner's power. A participant now sees the conversation and comments
+  from their page (desktop and phone): prompts and replies with who wrote each, one-line tool rows (the tool and a
+  project file's path, never its arguments or output), the reply streaming in, their own queued comments (Take back),
+  "waiting for the owner" while you answer a question, and every refusal in words. They never see tool output,
+  thinking, approvals, questions, memories, notes, the working set, cost or host paths: one server-side filter covers
+  their stream and reads, and redacts secret-shaped text as well. On your page, a participant's prompts carry their
+  name, and the info bar's participants chip opens a panel to invite (a link to copy, share or scan), see each one's
+  spend, turns and last visit, change a cap, revoke, and open the participant view: their page for this session, as
+  they see it (an agent participant can wait on its turns' replies through chi web's API). The `review`
   toolkit is new and reserved: config's `toolkit.kits.review` is refused. A session whose worker predates this
   release takes no participant's turn until it is restarted. In the attached terminal a participant's message reads
   `Alex ▸ review> …`, a line says when someone is invited, revoked or expires, the status row counts them, and

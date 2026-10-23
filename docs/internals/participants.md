@@ -3,9 +3,8 @@
 A session's owner can invite **participants** to review it: people, or agents, who reach that one session through
 chi web with a link of their own. This page is the identity layer (the shared-sessions plan's P2): grants, the gate,
 the routes a participant reaches, and what is written where; and their **review turns** (P3b): queued, read-only,
-limited and capped. Participants are experimental. Their page shows only the session's title and status until the
-full participant UI lands (P4), so a person reads a reply through the owner for now; an agent participant waits on
-its own turns' replies through the API. The code and docs say
+limited and capped; and what they **see** (P4a): their page and its reads, all through one filter. Participants are
+experimental. An agent participant waits on its own turns' replies through the API. The code and docs say
 "participants" and "review", never "shared": `session.shared` already means "attached by default".
 
 Until `web.public_url` lands, participants are a **LAN** feature (`web.host: lan`): a loopback peer is always the
@@ -74,12 +73,14 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
-| `GET /` | participant | the participant page (server-rendered, no script): "Alex's review", the session's title and status, "Comments open soon", the participants' names. Never the owner's page, where every route would refuse them. |
+| `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
+| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}` |
+| `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
 
-Everything else is `:owner`: `/answer`, `/command`, `/images`, the streams and `/output` (P4's filter), the cap
-route. Static assets (`/app.js`, …) are served to any principal past the gate: they are the public frontend.
+Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt carried is "[image]" on their page),
+`/output` (the raw replies), the hub's `/api/events`, the cap route. Static assets (`/app.js`, …) are served to any principal past the gate: they are the public frontend.
 
 ## Turns
 
@@ -149,10 +150,61 @@ and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
   turn's spend counts from its end, so a turn can finish past the cap; the session-wide `cost-cap` bundle still
   applies, and its question in a participant's turn goes to the owner.
 
-**Streams.** No stream route is a participant's yet (`App#stream_filter` raises for one, until P4's filter). The
-seam for ending them is in place: `App#stream_running(principal)` is the proxy's running check (asked every
-`BridgeClient::STREAM_POLL`), and for a participant it is false once the grant is revoked or expired, so P4's
-participant streams close within a poll of a revoke, including one made by `chi share revoke` in another process.
+**Streams.** A participant's stream is filtered ([below](#what-a-participant-sees)), and it ends with their link:
+`App#stream_running(principal)` is the proxy's running check (asked every `BridgeClient::STREAM_POLL`), false for a
+participant once the grant is revoked or expired, so their stream closes within a poll of a revoke, including one
+made by `chi share revoke` in another process; the page then reads a 401 and shows the ended-link page.
+
+## What a participant sees
+
+D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states.
+Not tool output or arguments, thinking, approvals' and questions' content, memories (text or names), context notes,
+plugin steers, automatic and delegate input, cards, command output, the working set (the user decided: not), cost,
+timing, host paths or the owner's prompt history. Every read a participant reaches goes through one module,
+`Web::ParticipantView` (`lib/samagotchi/web/participant_view.rb`), whose every answer is a new hash built from named
+fields: a field added to an event later reaches nobody until it is named there.
+
+- **Events** (`.event`, the stream). `EVENTS` names the types a participant gets, each rebuilt by its own method:
+  `turn_started` (turn id, the author and name, `mine` for their own, the prompt only when a person sent the turn:
+  `ClientId.human?`, else `automatic`; `continue`), the turn's end (`turn_completed`, `turn_canceled`, `turn_failed`:
+  type and turn id), `generation_chunk` (its visible `text` only; a thinking-only chunk is dropped),
+  `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
+  the session's folder when it is inside it), `tool_call_completed` (its status word), and bare markers (the type
+  alone) for the queue (`turn_enqueued`, `turn_dequeued`, `input_merged`), the owner's question, approval or Continue
+  offer and their answers, and `snapshot` / `reset`: the page re-reads its review data at each. Every other type,
+  known (`DROPPED`) or new, is dropped. `spec/web/participant_view_spec.rb` scans every `type: :name` chi emits and
+  every handler of the web's stream, and fails until a new one is named in `EVENTS` or `DROPPED`.
+- **The frames** (`Web::ParticipantStreamFilter`). The Bridge's chunks are cut into frames (`\r?\n\r?\n`, a partial
+  one kept for the next chunk, one over 1 MiB dropped to its end); each frame's JSON goes through `.event` and is
+  written again (`id:` the Bridge's cursor when it looks like one, `event:` the filtered type); a comment is a
+  `: ping`; anything that doesn't parse is dropped. The owner's stream never goes through it (a byte pipe).
+- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`): user messages (the turn's prompt
+  and a person's merged input: no delegate report, plugin or automatic input) with their author and an image count;
+  replies with their text and their step's tool rows. Notes, steers and empty-answer markers are dropped. The reply's
+  `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
+  its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
+- **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
+- **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
+  `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, private key blocks, an `Authorization:` header's or a `token=` /
+  `api_key=` / `password=` value), the owner's web token, the session's folder (shown as relative paths) and the home
+  folder (`~`). Defence in depth only: the allowlist is the control; a reply that paraphrases a secret isn't caught.
+- **Errors.** A participant's 404 and 500 carry fixed words, never an exception's (which may name a path).
+- **The owner's participant view.** The owner reaches the same reads: `/?as=participant#s=<id>` serves the participant
+  page, `GET …/review` is always the filtered view, and `…/stream?as=participant` goes through the same filter, with
+  no participant of their own (nothing `mine`, no composer). It is the server's filter, never a page imitating it.
+
+The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, the review, every show variant, `/output`
+and an image as a participant, with an approval, a question, a tool's call and output, thinking, a memory, a steer,
+a delegate report, an unknown event and host paths in the session, and finds none of them.
+
+## The owner's controls
+
+The info bar's participants chip (`participants_panel.js`) reads `GET …/participants` (which adds each one's `spend`
+and `turns` from the saved analytics, `SessionMetrics.saved_by_author`) when the session opens, when the panel opens,
+at a participant's turn end and on `participants_changed`. The panel invites (`POST …/participants`, whose answer
+carries `qr_svg`, the link's QR, `Web::QR.svg`), revokes and sets caps through the owner routes below. A participant's
+prompt carries their name and colour (`--author-1…6` in `tokens.css`, by id, the same on both pages), from the saved
+message's `author_name`, `turn_started`'s, or the panel's list (`participant_names.js`).
 
 ## The owner's routes
 
@@ -213,11 +265,13 @@ fixture loads and saves unchanged, `spec/turn_author_record_spec.rb`).
   worker's Engine at each turn's start), the system prompt's volatile tail opens with "Participants: people other
   than the owner review this session. …". It comes when the first joins and goes when the last leaves or expires.
 - **Records.** `last_turn.author`, the analytics turn record's `author`, `turn_enqueued`'s `author`, and the
-  Bridge's queued rows. No UI shows them yet (P4).
+  Bridge's queued rows. `turn_started` carries `author` and `author_name` on a participant's turn (the owner's carries
+  neither), and so does the Bridge's turn snapshot and its replay.
 - **Side models' transcripts.** The idle recap's (`IdleRecap::TranscriptFilter`) leads a participant's message with
   "(a review contribution from Alex, a participant; not the user's words)", and `ctx.ask_model`'s names its paragraph
-  `Participant`. The UI's readers (`TurnAccumulator.messages_of`, `Merge#event_fields`) still show it as the user's
-  (P4).
+  `Participant`. The UI's readers name them: `TurnAccumulator.messages_of` gives a participant's prompt and merged
+  input `author` and `author_name`, `Merge#event_fields` names the merged text's author when one participant wrote all
+  of it, and the web's display messages carry both (the owner's badge, the participant page).
 - **Through `--remote`.** `SessionAccess::WebBridgeClient#post_turn` takes `author:` and drops it: the remote chi web
   stamps the author from the token.
 
@@ -266,8 +320,10 @@ participant TUI in v1.
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.
-- No participant reaches `/command`, `/answer` or a stream. Their turn's author and client id are stamped from the
-  principal, never the body.
+- No participant reaches `/command`, `/answer`, `/output` or an image. Their turn's author and client id are stamped
+  from the principal, never the body.
+- Everything a participant reads (their stream, the review, the show) is built by `ParticipantView` from named fields;
+  an event type it doesn't name is dropped. The owner's participant view reads through the same filter.
 - A participant's turn is always a queued turn of its own (chi web, the Bridge, the inbox), never a command or a
   shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary, which denies
   everything but reads of the project.

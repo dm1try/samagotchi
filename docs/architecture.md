@@ -470,7 +470,10 @@ The per-session port is OS-assigned (bound to `0`) and published to a `bridge.js
 for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
 `GET /api/sessions/:id/output`), as a byte pipe for the owner: `App#proxy_stream_body` gives `ProxyStreamBody` the
-request principal's frame filter (`App#stream_filter`, nil for the owner, the only principal today). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
+request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
+`?as=participant`, a `Web::ParticipantStreamFilter`, which cuts the Bridge's chunks into frames and writes each again
+from `Web::ParticipantView.event`'s allowlist, dropping every other event; only `from_seq` and `snapshot` reach the
+Bridge; [internals/participants.md](internals/participants.md#what-a-participant-sees)). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
 an earlier worker gets the `reset` snapshot, not a replay.
 
 **Session hub.** The cross-session layer (which sessions exist, who owns them, what changed)
@@ -513,8 +516,8 @@ calling the `SessionAccess::Local` operation of the same name, so a remote backe
 token-gated like the rest (LAN mode: `Authorization: Bearer`), and one that takes an id is a `:session` route (an id
 that isn't one, or no such session: 404 `not_found`). Every `ROUTES` row also names who may use it, checked against
 the request's `Web::Principal` (`App#principal_for`): `owner`, or `participant` for a route a participant may use too.
-A participant (a `Web::Grants` token for one session) may use three: `GET /`, `GET /api/info` and `GET /api/sessions/:id`,
-each answered as theirs; every other route is `owner` (Permission below, and the participants routes in
+A participant (a `Web::Grants` token for one session) may use the page (`GET /`), `GET /api/info`, their session's
+show, review and filtered stream, and their turns and waits, each answered as theirs; every other route is `owner` (Permission below, and the participants routes in
 [internals/participants.md](internals/participants.md)); `spec/web/principal_spec.rb` fails on a row without one. How a request flows end to end, which checks run where and the trust
 model: [internals/remote-sessions.md](internals/remote-sessions.md).
 

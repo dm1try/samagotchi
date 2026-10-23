@@ -1299,9 +1299,24 @@ chi share revoke --all          # every link to every session
   share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review
   boundary: restart an older one. While your turn waits at the step limit (Continue or Stop), their turns wait too
   (still queued, still counted): they run, in order, once you continue, stop or send a turn of your own.
-- For now a participant's page shows the session's title and status; the thread and the comment box come in a later
-  chi (an agent participant can wait on its turns' replies through the API). They can't reach anything else: every
-  other route answers them 403, another session 404.
+- **The participant page.** Their link opens a page of its own (never yours): the session's title and status, who
+  else takes part, and the conversation as a participant sees it: every prompt and reply with who wrote it, each
+  step's tools as one line (`read docs/plan.md`: the tool and a project file's path, never arguments or output), and
+  the reply streaming in while a turn runs. A "Comment or ask" box sends their comment; their queued comments show
+  with **Take back**; "waiting for the owner" shows while you answer a question or an approval of the turn; a refused
+  comment (a `!` or `/` line, too many waiting, their cap reached) says why. On a phone it is the thread first with
+  the box pinned, tool lines folded. They never see tool output or arguments, thinking, approvals or questions,
+  memories, context notes, plugin and delegate input, cards, command output, the working set, cost, timing or host
+  paths; secret-shaped text (API keys, tokens, private keys) is redacted too. An agent participant can wait on its
+  turns' replies through the API. They can't reach anything else: every other route answers them 403, another
+  session 404.
+- **Your side of it.** In the session bar, the participants chip (`invite` while nobody has a link, then `2
+  participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
+  spend against their cap, turns and expiry, with **Cap** and **Revoke** (revoking ends their page and stream and
+  drops their queued comments). **Invite** takes a name, person or agent, the expiry and a cap, and shows the link
+  once, with Copy, Share (a phone's share sheet) and its QR code. **Participant view ↗** opens their page for this
+  session in a new tab, read-only, through the same server filter: exactly what they see. A participant's prompt
+  shows their name in their colour, live and after a reload.
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
   this machine's chi web; without one on the LAN, chi says the link opens on this machine only.
 - The owner's own token and the `chi web --new-token` rotation are separate: rotating it ends no participant's link.
