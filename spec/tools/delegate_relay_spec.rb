@@ -253,7 +253,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     relay.answer = lambda do |_f, _w|
       # The card is open longer than the whole timeout (the time passing is
       # the point, not a wait for something); the child replies at once.
-      sleep(1.3)
+      sleep(1.3) # sleep-ok: the card's open time is the behaviour
       Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0])
     end
     client.on_answered = -> { finish_child }
@@ -270,13 +270,13 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     allow(Samagotchi::ReplyWait).to receive(:call).and_wrap_original do |original, *args, **opts|
       started = clock.call
       if legs.empty?
-        sleep(0.4)
+        sleep(0.4) # sleep-ok: the child asks 0.4 s into the wait, timed by the legs
         update(child, pending_question: approval)
       end
       original.call(*args, **opts).tap { legs << { timeout: opts[:timeout], took: clock.call - started } }
     end
     relay.answer = lambda do |_f, _w|
-      sleep(0.5)
+      sleep(0.5) # sleep-ok: the card's open time, which the timeout must not count
       Samagotchi::QuestionAnswer.new(id: "pq", selected: ["Allow once"], selected_indices: [0])
     end
     client.on_answered = -> { update(child, pending_question: nil) }

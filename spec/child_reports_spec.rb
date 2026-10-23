@@ -129,7 +129,7 @@ RSpec.describe "delegate reports" do
 
       it "waits for the wake threads its rings started, once" do
         allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
-          sleep(0.1)
+          sleep(0.1) # sleep-ok: a slow wake, still running when await_wakes joins it
           (@wakes ||= []) << id
         end
         ring_on_thread
