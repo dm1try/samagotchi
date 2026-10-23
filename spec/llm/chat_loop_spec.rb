@@ -1423,7 +1423,12 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         events_of_text = FakeProviderServer.sse_events(FakeProviderServer.fixture("text_stream.sse"))
         server.enqueue("/v1/chat/completions", sse: events_of_text.first(3), hold: true)
         backend.adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box")
-        canceller = Thread.new { sleep 0.3; controller.cancel!(:ctrl_c) }
+        # Mid-stream: the server sent its chunks and holds the stream open.
+        canceller = Thread.new do
+          SpecWaiting.wait_for("the server to hold the stream") { server.holding == 1 }
+        ensure
+          controller.cancel!(:ctrl_c)
+        end
 
         result = run(cancel_controller: controller)
 

@@ -957,15 +957,19 @@ RSpec.describe Samagotchi::Client do
       stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 5)
       controller = Samagotchi::CancellationController.new
       previous = described_class.swap_probe_cancel(controller)
-      Thread.new do
+      requester = Thread.current
+      canceller = Thread.new do
         accepted.pop.tap { |socket| accepted << socket }
-        sleep 0.05
+        # Blocked on its read: the probe waits for the answer.
+        SpecWaiting.wait_for("the probe to wait for its answer") { requester.status == "sleep" }
+      ensure
         controller.cancel!(:user)
       end
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       expect(client.server_props(model: "m").status).to eq(:cancelled)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      join!(canceller, "the cancelling thread")
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3 # not the 5 s read timeout
 
       described_class.swap_probe_cancel(previous)
       stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 0.2)

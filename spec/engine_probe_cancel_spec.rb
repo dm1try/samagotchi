@@ -59,9 +59,12 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
       events << event
       next unless event[:type] == :turn_started
 
+      turn = Thread.current
       Thread.new do
         accepted.pop.tap { |socket| accepted << socket } # the probe is waiting
-        sleep 0.1
+        # Blocked on its read: the probe waits for the answer.
+        SpecWaiting.wait_for("the probe to wait for its answer") { turn.status == "sleep" }
+      ensure
         stopped_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         controller.cancel!(:user)
       end
@@ -70,7 +73,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
     engine.run_turn(session, "hi", on_event: on_event, cancel_controller: controller)
 
     expect(events.map { |e| e[:type] }).to include(:turn_canceled)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - stopped_at).to be < 0.5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - stopped_at).to be < 3 # not the probe's 5 s read timeout
     expect(Samagotchi::Client.probe_cancel).to be_nil
   end
 end

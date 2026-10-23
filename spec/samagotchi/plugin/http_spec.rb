@@ -241,8 +241,12 @@ RSpec.describe Samagotchi::Plugin::Http do
     it "stops a call mid-read when the controller is cancelled, long before its timeout" do
       server.enqueue("/x", sse: [], hold: true)
       cancel = Samagotchi::CancellationController.new
+      requester = Thread.current
       canceller = Thread.new do
-        sleep 0.3
+        # Mid-read: the server has the request and the call is blocked on its answer.
+        SpecWaiting.wait_for("the held request") { server.requests.any? { |request| request.path == "/x" } }
+        SpecWaiting.wait_for("the call to wait for its answer") { requester.status == "sleep" }
+      ensure
         cancel.cancel!(:manual)
       end
 

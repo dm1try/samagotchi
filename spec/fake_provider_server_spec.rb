@@ -91,7 +91,7 @@ RSpec.describe FakeProviderServer do
 
     first = received.pop(timeout: 3)
     expect(first).to eq(events.first)
-    sleep 0.2
+    wait_for("the server to hold the stream") { server.holding == 1 }
     expect(reader).to be_alive
     server.release
     expect(reader.join(3)).to be_truthy

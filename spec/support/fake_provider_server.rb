@@ -124,9 +124,11 @@ class FakeProviderServer
     self
   end
 
+  # How many streams are held now (sent their chunks, waiting for #release).
+  def holding = @mutex.synchronize { @holding }
+
   # Let held streams finish.
   def release
-    holding = @mutex.synchronize { @holding }
     holding.times { @released << true }
   end
 
@@ -166,7 +168,7 @@ class FakeProviderServer
 
   def stream(out, response)
     response.chunks.each_with_index do |chunk, index|
-      sleep(response.delay) if response.delay && index.positive?
+      sleep(response.delay) if response.delay && index.positive? # sleep-ok: the stream's delay between chunks
       out.write(chunk)
     end
     raise IOError, "dropped by the fake server" if response.drop
