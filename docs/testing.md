@@ -66,11 +66,64 @@ either router adds its row there; a row where a UI differs on purpose (or a foun
 `repl` override and a `note`. The Ruby side runs each row with every core command (a new one fails its
 `CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
-A spec that waits for something uses `wait_until(timeout:)`, or `wait_for(what, timeout:)` where no check
-follows (stubs, helper threads: it raises "timed out after N s waiting for <what>") — never a loop with no deadline.
+## Waiting and time
+
+A spec waits *for* something and never sleeps to wait: a fixed pause is too short on a loaded runner (a parallel
+run, CI) and too long on a fast one. The contract a new spec follows:
+
+1. **Never `sleep` to wait.** Wait for the condition: `wait_for("what") { condition }`, or
+   `eventually { expect(…) }` for a value. A `sleep` that *is* the behaviour (slowness, holding a connection,
+   separating mtimes) carries `# sleep-ok: why` on its line or the line above (for a call over several lines, its
+   first line). A bounded best-effort `wait_until`
+   whose timeout is fine ("at most 0.5 s, fine to cut short") carries `# wait-ok: why`; it must not become
+   `wait_for`, which would raise where the code moves on.
+2. **Time logic takes seams.** Intervals, graces and deadlines in lib take `clock:` / `sleeper:` / `interval:`
+   constructor arguments, and the unit spec moves the clock itself (`SessionAccess::Remote` is the model;
+   `IdleScheduler.new(interval:)`). Real time is used only in one smoke example per class.
+3. **What a spec starts, it stops and waits for** before teardown: `join!(thread, what)`, `with_task_dir { … }`
+   (spec/support/task_dirs.rb: a tasks' folder of its own, its tasks stopped and their exit-status recorders joined
+   with `TaskRuntime.quiesce!`), a `stop` that joins (`IdleScheduler#stop`). Never only `Thread#kill`.
+4. **"Nothing happens" is shown by counting passes** (the worker's loop rounds, spec/support/worker_loop_rounds.rb;
+   a class's ticks), not by a pause.
+5. **A wall-clock bound** only as "not the full N s", with at least 5× headroom measured on the slow (x86) laptop.
+
+The helpers are the bundle test kit's (`Samagotchi::Testing::Waiting`, [plugins.md](plugins.md#testing-a-bundle-experimental)),
+so core and bundle specs share one copy; `SpecWaiting` (spec/support/waiting.rb) includes them in every example
+group and also answers them as module calls (`SpecWaiting.pop!`, for a stubbed lib thread):
+
+- `wait_for(what, timeout: 5, interval: 0.01, seen: nil) { … }` returns the block's first truthy value, or raises
+  `Waiting::TimedOut`. `seen:` (a callable) shows what the condition last saw, since a falsy block value tells
+  nothing.
+- `join!(thread, what, timeout: 5)` and `pop!(queue, what, timeout: 5)`: `Thread#join` and `Queue#pop` with the
+  same deadline and message. A gate a stubbed lib thread waits on takes `timeout: 30`: it only ends a hang.
+- `wait_until(timeout:) { … }` returns the block's last value (falsy at the deadline): for a value the example
+  checks after, or a `wait-ok` wait.
+- `eventually(timeout: 5) { expect(…) }` (spec only) retries until the expectations hold, then re-raises the last
+  failure prefixed `still failing after 5 s:`, so the matcher's own expected/got is in the message.
+
+One formatter builds the failure text of `wait_for`, `join!` (which adds "to finish") and `pop!`:
+
+```
+timed out after 5 s waiting for task 20261023-0a1b to end
+timed out after 10.0 s (5 s × SPEC_TIME_SCALE 2) waiting for task 20261023-0a1b to end; last saw: "running"
+```
+
+**`SPEC_TIME_SCALE`** (default 1, at least 1; CI's `rspec`, `rspec-macos` and `bundles` jobs set 2) multiplies
+every helper deadline, explicit `timeout:` values included: a positive wait only gets more headroom, and a passing
+run is no slower. Set it locally to reproduce a CI timing (`SPEC_TIME_SCALE=2 bundle exec rspec FILE`). It does not
+scale the lib's own timeouts a spec passes in (`wait: 0.05`, `grace: 0.1`): those are the code's deadlines, and a
+flaky one gets a `clock:` seam instead. A helper's own spec pins the scale (stub `Waiting.time_scale`). Keep
+explicit helper timeouts at 30 or below: 60 s on CI, under the per-example limit.
+
 Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integration`, `macos_build`, `warmup` and
 `recap` examples are exempt), so a hang fails its example instead of the run. `SPEC_EXAMPLE_TIMEOUT=N` changes the
-limit, `0` turns it off (a debugger session).
+limit, `0` turns it off (a debugger session). The limit is not scaled.
+
+**The cops.** `Samagotchi/SpecSleep` (an untagged `sleep` in a spec) and `Samagotchi/SilentWait` (a `wait_until`
+whose value is dropped, an example's last line included, or `expect(wait_until { … }).to be(true)`) live in
+`rubocop/` and are off in `rake lint` while the suite still carries what they flag. `bundle exec rake
+"lint:timing[FILES]"` runs only them over your files and fails on any offense: run it on the specs you change.
+With no files it counts them over the repo. They turn on in `rake lint` once that count is zero.
 
 ## Bundle specs: the test kit
 
