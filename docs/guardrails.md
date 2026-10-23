@@ -304,7 +304,9 @@ Built in, for a [participant's](internals/participants.md#turns) turns only (a
 turn whose author is `p:<id>`), in every mode (also with
 `guardrails.enabled: false`) and without the guardrails bundle:
 `Guardrails::ReviewBoundary`, rule `review-boundary`, source `core`. It comes
-first among the core checks, before the hooks' asks and the rules, and it
+right after the load-failure check (rules that don't load deny every call) and before the hooks' asks, the
+protected paths and the rules (`GuardrailWiring#checks`; a deny is sticky, so no later vote turns it into a
+question), and it
 **denies, never asks**: nobody on the participant's side may approve, and the
 owner's approval would give the participant's text the owner's tools. A
 participant's turn may call only the `review` kit's tools:
