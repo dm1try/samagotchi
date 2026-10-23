@@ -59,9 +59,8 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   def session_in(dir)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir).tap do |s|
-      s.save(state_dir: state_dir)
-      sleep 0.005 # sleep-ok: distinct updated_at (ms timestamps)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir, now: next_stamp).tap do |s|
+      s.save(state_dir: state_dir, now: next_stamp)
     end
   end
 

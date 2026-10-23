@@ -476,11 +476,9 @@ RSpec.describe Samagotchi::Worker do
         merged = Queue.new
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
           if prompt == "task"
-            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later one", client_id: "web:x", delivery: "queue")
-            sleep(0.002) # sleep-ok: input files are named by the clock: distinct names, in order
-            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later two", client_id: "cli:send", delivery: "queue")
-            sleep(0.002) # sleep-ok: input files are named by the clock: distinct names, in order
-            Samagotchi::SessionInbox.write_input(session_dir, prompt: "now please", client_id: "web:x")
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later one", client_id: "web:x", delivery: "queue", now: next_stamp)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later two", client_id: "cli:send", delivery: "queue", now: next_stamp)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "now please", client_id: "web:x", now: next_stamp)
             merged << kwargs[:pending_input].call
           end
           turns << [prompt, mono]
@@ -502,9 +500,8 @@ RSpec.describe Samagotchi::Worker do
         merged = Queue.new
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
           if prompt == "task"
-            Samagotchi::SessionInbox.write_input(session_dir, prompt: "queued", delivery: "queue")
-            sleep(0.002) # sleep-ok: input files are named by the clock: distinct names, in order
-            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer")
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "queued", delivery: "queue", now: next_stamp)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", now: next_stamp)
             merged << kwargs[:pending_input].call
           end
           turns << [prompt, mono]
@@ -1755,8 +1752,7 @@ RSpec.describe Samagotchi::Worker do
 
       it "runs a command an input file carries before the next file's turn, not busy" do
         ["one", "/model Qwen3-14B", "two"].each do |prompt|
-          Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, client_id: "cli:send", state_dir: tmpdir)
-          sleep 0.001 # sleep-ok: input files are named by the clock: distinct names, in order
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, client_id: "cli:send", now: next_stamp)
         end
         start_worker(poll_interval: 5)
 

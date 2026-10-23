@@ -182,10 +182,9 @@ RSpec.describe Samagotchi::Plugin::Sessions do
   describe "#children" do
     def child_of(parent_id, delegate: false, prompt: "work")
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
-                                      parent_id: parent_id, delegate: delegate).tap do |s|
+                                      parent_id: parent_id, delegate: delegate, now: next_stamp).tap do |s|
         s.last_prompt = prompt
-        s.save(state_dir: tmpdir)
-        sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
+        s.save(state_dir: tmpdir, now: next_stamp)
       end
     end
 

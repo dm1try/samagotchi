@@ -65,12 +65,12 @@ RSpec.describe "chi sessions (CLI)" do
   end
 
   def make(prompt, days_old: 0, test_run: false, status: "idle")
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app", test_run: test_run).tap do |s|
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app", test_run: test_run,
+                                    now: next_stamp).tap do |s|
       s.messages = [{ role: "user", content: prompt }, { role: "model", content: "ok" }]
       s.last_prompt = prompt
       s.status = status
-      s.save(state_dir: state_dir)
-      sleep(0.01) # sleep-ok: distinct created_at / updated_at (ms timestamps)
+      s.save(state_dir: state_dir, now: next_stamp)
       next if days_old.zero?
 
       path = File.join(state_dir, "#{s.id}.json")

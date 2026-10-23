@@ -141,10 +141,16 @@ RSpec.describe Samagotchi::Session do
 
     it "updates updated_at on save" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      original_updated_at = session.updated_at
-      sleep(0.01) # sleep-ok: a later updated_at (ms timestamps)
+      later = Time.iso8601(session.updated_at) + 1
+      session.save(state_dir: tmpdir, now: later)
+      expect(session.updated_at).to eq(later.iso8601(3))
+    end
+
+    it "stamps updated_at with the real clock when no now: is given" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", now: Time.now - 60)
+      before = Time.now.floor(3)
       session.save(state_dir: tmpdir)
-      expect(session.updated_at).not_to eq(original_updated_at)
+      expect(Time.iso8601(session.updated_at)).to be_between(before, Time.now)
     end
 
     it "round-trips the preloaded and muted memory names, normalized" do
@@ -722,19 +728,17 @@ RSpec.describe Samagotchi::Session do
 
     it "returns sessions sorted by updated_at desc by default (newest first)" do
       s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      s1.save(state_dir: tmpdir)
-      sleep(0.02) # sleep-ok: distinct updated_at (ms timestamps)
+      s1.save(state_dir: tmpdir, now: next_stamp)
       s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
-      s2.save(state_dir: tmpdir)
+      s2.save(state_dir: tmpdir, now: next_stamp)
 
       sessions = described_class.list(state_dir: tmpdir)
       expect(sessions.map(&:id)).to eq([s2.id, s1.id])
     end
 
     it "supports explicit sort by created_at asc (oldest first)" do
-      s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      sleep(0.01) # sleep-ok: distinct created_at (ms timestamps)
-      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
+      s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", now: next_stamp)
+      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp", now: next_stamp)
       s1.save(state_dir: tmpdir)
       s2.save(state_dir: tmpdir)
 
@@ -743,7 +747,7 @@ RSpec.describe Samagotchi::Session do
     end
 
     it "supports limit and offset" do
-      sessions = Array.new(3) { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| sleep(0.01); s.save(state_dir: tmpdir) } } # sleep-ok: distinct updated_at (ms timestamps)
+      sessions = Array.new(3) { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", now: next_stamp).tap { |s| s.save(state_dir: tmpdir) } }
       listed = described_class.list(state_dir: tmpdir, sort: "created_at", order: "asc", limit: 2, offset: 1)
       expect(listed.map(&:id)).to eq(sessions[1..2].map(&:id))
     end

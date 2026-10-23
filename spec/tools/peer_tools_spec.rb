@@ -22,12 +22,11 @@ RSpec.describe "peer tools" do
   end
 
   def make(cwd: "/work/app", prompt: "hello", owner: nil, test_run: false)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd).tap do |s|
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, now: next_stamp).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
-      s.save(state_dir: tmpdir)
+      s.save(state_dir: tmpdir, now: next_stamp)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: tmpdir), kind: owner) if owner
-      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 

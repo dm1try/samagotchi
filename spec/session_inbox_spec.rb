@@ -28,6 +28,18 @@ RSpec.describe Samagotchi::SessionInbox do
     let(:session_dir) { Samagotchi::Session.session_dir("abc", state_dir: tmpdir) }
     let(:input_dir) { File.join(session_dir, described_class::INPUT_DIR) }
 
+    it "names an input, a note and a reply file by the now: given, the real clock by default" do
+      at = Time.utc(2026, 10, 23, 12, 0, 0) + Rational(123_456_789, 1_000_000_000)
+      expect(File.basename(described_class.write_input(session_dir, prompt: "hi", now: at))).to eq("20261023120000123456789.json")
+      note = described_class.write_note("abc", text: "fyi", state_dir: tmpdir, now: at)
+      expect(File.basename(note)).to match(/\A20261023120000123456789-\h{6}\.json\z/)
+      expect(JSON.parse(File.read(note))["created_at"]).to eq(at.iso8601)
+      described_class.write_output(session_dir, "done", now: at)
+      expect(Dir.children(File.join(session_dir, described_class::OUTPUT_DIR))).to eq(["20261023120000123456789.txt"])
+      before = Time.now.strftime("%Y%m%d%H%M%S%9N")
+      expect(File.basename(described_class.write_input(session_dir, prompt: "now"), ".json")).to be >= before
+    end
+
     it "does not read a plain-text input file" do
       FileUtils.mkdir_p(input_dir)
       File.write(File.join(input_dir, "1.txt"), "hi")

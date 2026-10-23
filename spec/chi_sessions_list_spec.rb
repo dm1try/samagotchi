@@ -52,14 +52,14 @@ RSpec.describe "chi sessions list" do
   end
 
   def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false, last_turn: nil)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id).tap do |s|
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id,
+                                    now: next_stamp).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
       s.scratch = scratch
       s.last_turn = last_turn
-      s.save(state_dir: state_dir)
+      s.save(state_dir: state_dir, now: next_stamp)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
-      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 

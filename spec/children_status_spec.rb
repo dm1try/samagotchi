@@ -22,14 +22,13 @@ RSpec.describe Samagotchi::ChildrenStatus do
   def make(prompt: "hello", parent_id: nil, delegate: false, status: nil, last_turn: nil, cwd: "/work/app",
            pending: nil, updated_at: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id,
-                                    delegate: delegate).tap do |s|
+                                    delegate: delegate, now: next_stamp).tap do |s|
       s.last_prompt = prompt
       s.status = status if status
       s.last_turn = last_turn
       s.pending_question = pending
-      s.save(state_dir: tmpdir)
+      s.save(state_dir: tmpdir, now: next_stamp)
       rewrite(s, "updated_at" => updated_at) if updated_at
-      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 
@@ -49,8 +48,7 @@ RSpec.describe Samagotchi::ChildrenStatus do
   end
 
   def reply(child, text)
-    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), text)
-    sleep(0.002) # sleep-ok: distinct reply names (timestamps)
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), text, now: next_stamp)
     Samagotchi::ReplyWait.newest_reply(child.id, state_dir: tmpdir)
   end
 

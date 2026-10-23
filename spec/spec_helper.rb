@@ -22,6 +22,7 @@ WebMock.disable_net_connect!
 # surface), and a spec that needs one requires it, so loading one spec file
 # alone still finds its missing requires.
 require_relative "support/waiting"
+require_relative "support/stamps"
 require_relative "support/env"
 require_relative "support/git_repo"
 require_relative "support/chi_cli"
@@ -133,6 +134,7 @@ RSpec.configure do |config|
   config.filter_run_excluding macos_build: true unless ENV["SAMAGOTCHI_MACOS_BUILD"] == "1"
   config.disable_monkey_patching!
   config.include SpecWaiting
+  config.include SpecStamps
   config.include SpecEnv
   config.include ChiCli
   config.include SpecGitRepo

@@ -132,8 +132,7 @@ RSpec.describe "Images in transport" do
     end
 
     def queue_input(prompt, images: [])
-      Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, images: images, state_dir: tmpdir)
-      sleep(0.002) # sleep-ok: distinct name timestamps keep the files in order
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, images: images, now: next_stamp)
     end
 
     # D11: an image line is skipped like a queued one, not a barrier, so a

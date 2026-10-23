@@ -68,9 +68,9 @@ RSpec.describe Samagotchi::ProjectScope do
 
   describe "the session's project" do
     def session_in(dir, preview: "")
-      Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir).tap do |s|
+      Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir, now: next_stamp).tap do |s|
         s.first_preview = preview
-        s.save(state_dir: state_dir)
+        s.save(state_dir: state_dir, now: next_stamp)
       end
     end
 
@@ -103,10 +103,8 @@ RSpec.describe Samagotchi::ProjectScope do
     end
 
     it "filters Session.list before offset and limit" do
-      # updated_at has millisecond precision: keep the order unambiguous.
-      ids = %w[a b c].map { |p| session_in(repo, preview: p).id.tap { sleep 0.005 } } # sleep-ok: distinct updated_at (ms timestamps)
+      ids = %w[a b c].map { |p| session_in(repo, preview: p).id }
       session_in(plain)
-      sleep 0.005 # sleep-ok: distinct updated_at (ms timestamps)
       ids << session_in(repo, preview: "d").id
       newest_first = ids.reverse
 

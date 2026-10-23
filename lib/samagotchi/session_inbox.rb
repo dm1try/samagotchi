@@ -48,14 +48,15 @@ module Samagotchi
     # @param author [String, nil] who wrote the message when it isn't the
     #   session's owner (Web::Principal#author); nil, the owner's, is never
     #   written, so an owner's file is as it always was
+    # @param now [Time] the time the file is named by (a spec's clock)
     # @return [String, false] the input file's path, or false
     def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [],
-                         delivery: nil, author: nil)
+                         delivery: nil, author: nil, now: Time.now)
       images = Array(images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
 
-      path = File.join(input_dir, "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}.json")
+      path = File.join(input_dir, "#{now.strftime("%Y%m%d%H%M%S%9N")}.json")
       record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
                  "no_interrupt" => (no_interrupt ? true : nil),
                  "delivery" => (Delivery.queue?(delivery) ? Delivery::QUEUE : nil),
@@ -71,9 +72,11 @@ module Samagotchi
     # to the conversation between turns. It never starts a turn.
     # @param source [String] where it came from ("cli", "slack", "session")
     # @param from_session [String, nil] the sending session, for a peer's note
+    # @param now [Time] the time the file is named and stamped by (a spec's clock)
     # @return [String] the note file's path
     # @raise [NoteRejected] for an empty note or one over 16 KiB (never cut)
-    def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil)
+    def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil,
+                        now: Time.now)
       body = checked_text(text)
       sd = state_dir || Session.default_state_dir
       notes_dir = File.join(Session.session_dir(session_id, state_dir: sd), NOTES_DIR)
@@ -81,10 +84,10 @@ module Samagotchi
 
       # The random part keeps two writers in one nanosecond apart; the
       # timestamp keeps the names in arrival order.
-      name = "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}-#{SecureRandom.hex(3)}.json"
+      name = "#{now.strftime("%Y%m%d%H%M%S%9N")}-#{SecureRandom.hex(3)}.json"
       path = File.join(notes_dir, name)
       record = { "text" => body, "source" => source.to_s, "from_session" => from_session,
-                 "from_cwd" => from_cwd, "created_at" => Time.now.iso8601 }.compact
+                 "from_cwd" => from_cwd, "created_at" => now.iso8601 }.compact
       AtomicFile.write(path, JSON.generate(record))
       path
     end
@@ -170,10 +173,11 @@ module Samagotchi
     # so an id'd name and a bare one of the same timestamp keep order);
     # every reader globs *.txt.
     # @param enqueued_id [String, nil] the turn's input id (LastTurn#enqueued_id)
-    def self.write_output(session_dir, response, enqueued_id: nil)
+    # @param now [Time] the time the file is named by (a spec's clock)
+    def self.write_output(session_dir, response, enqueued_id: nil, now: Time.now)
       output_dir = File.join(session_dir, OUTPUT_DIR)
       FileUtils.mkdir_p(output_dir)
-      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
+      timestamp = now.strftime("%Y%m%d%H%M%S%9N")
       AtomicFile.write(File.join(output_dir, "#{output_name(timestamp, enqueued_id)}.txt"), response.to_s)
     end
 

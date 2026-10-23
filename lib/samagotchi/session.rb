@@ -395,10 +395,12 @@ module Samagotchi
     # @param messages [Array<Hash>] a conversation to start from (a fork's
     #   seed); [] by default
     # @param setup [SessionSetup] the session's own settings (none by default)
+    # @param now [Time] its created_at and updated_at (a spec's clock)
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil)
-      now = Time.now.iso8601(3)
+                         scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil,
+                         now: Time.now)
+      now = now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
                       else
@@ -614,9 +616,11 @@ module Samagotchi
     # Never call it from a trap handler (Mutex#lock raises ThreadError
     # there; WorkerSignals saves on a thread of its own) or from inside a
     # save (the lock isn't re-entrant).
-    def save(state_dir: self.class.default_state_dir)
+    # @param now [Time, nil] the updated_at to stamp (a spec's clock); nil,
+    #   the time the lock is taken
+    def save(state_dir: self.class.default_state_dir, now: nil)
       @save_lock.synchronize do
-        @updated_at = Time.now.iso8601(3)
+        @updated_at = (now || Time.now).iso8601(3)
         # Persist with current metadata version so new flag is written
         @metadata_version = METADATA_VERSION
         FileUtils.mkdir_p(state_dir)

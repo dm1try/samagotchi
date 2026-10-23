@@ -59,13 +59,12 @@ RSpec.describe "delegate tools" do
   end
 
   def make(cwd: "/work/app", prompt: "hello", model: "gemma4", parent_id: nil, status: nil, owner: nil)
-    Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: cwd, parent_id: parent_id).tap do |s|
+    Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: cwd, parent_id: parent_id,
+                                    now: next_stamp).tap do |s|
       s.last_prompt = prompt
       s.status = status if status
-      s.save(state_dir: tmpdir)
+      s.save(state_dir: tmpdir, now: next_stamp)
       own(s, kind: owner) if owner
-      # sleep-ok: the next session's updated_at (ms) sorts after this one's (newest child first); Session#save takes no clock
-      sleep(0.002)
     end
   end
 

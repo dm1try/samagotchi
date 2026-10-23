@@ -24,12 +24,11 @@ RSpec.describe "chi sessions archive" do
   # Not test runs, so the list lines don't gain [test] when CI is set.
   def make(prompt, id: nil, owner: nil, parent: nil, scratch: false)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
-                                    parent_id: parent&.id, scratch: scratch, test_run: false).tap do |s|
+                                    parent_id: parent&.id, scratch: scratch, test_run: false, now: next_stamp).tap do |s|
       s.id = id if id
       s.last_prompt = prompt
-      s.save(state_dir: state_dir)
+      s.save(state_dir: state_dir, now: next_stamp)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
-      sleep(0.01) # sleep-ok: distinct updated_at (ms timestamps)
     end
   end
 
