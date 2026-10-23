@@ -261,7 +261,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // Their classes without the arrival animation's (gone when it ends).
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
-  expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
+  expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
   // The asking step's text in the history keeps the ref (live, at the turn's end).
   await expect(page.locator('#history .gen > .gen-text [data-ref-kind="issue"]')).toHaveText("JIRA-7");
 });
@@ -328,7 +328,7 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await handedOff(page, 1);
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
-  expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
+  expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
 });
 
 test("the stage folds to its status row, and stays folded across a reload", async ({ page, script }) => {
@@ -457,14 +457,12 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
   await expect(line.locator(".delivery-where.idle")).toBeVisible();
 });
 
-// The working set (web.working_set, here ?working_set=1): the rail in the
+// The working set (web.working_set, on by default): the rail in the
 // stage holds what the turn read (a file, a memory) without changing the
 // stage's height, the session bar's set chip stands in the mem chip's
 // place, a step tag jumps to its call live and after a reload, and the
 // footprint line lands under the handed-off block.
 test.describe("the working set", () => {
-  test.use({ workingSet: true });
-
   test("the rail fills without a height change; set chip for the mem chip; step tags jump live and after a reload; the footprint", async ({ page, script, chi }) => {
     test.setTimeout(60_000);
     const memories = path.join(chi.dirs.config, "samagotchi", "memories");
@@ -587,5 +585,32 @@ test.describe("the working set", () => {
     } finally {
       fs.writeFileSync(readme, readmeText);
     }
+  });
+
+  // Off (web.working_set: false, here ?working_set=0): no rail, no
+  // footprint, and the session bar's mem chip is back.
+  test.describe("turned off", () => {
+    test.use({ workingSet: false });
+
+    test("no rail and no footprint; the mem chip names the memory the turn read", async ({ page, script, chi }) => {
+      test.setTimeout(60_000);
+      const memories = path.join(chi.dirs.config, "samagotchi", "memories");
+      fs.mkdirSync(memories, { recursive: true });
+      const note = path.join(memories, "e2e-style.md");
+      fs.writeFileSync(note, "Keep it short.\n");
+      try {
+        script("working_set");
+        await send(page, "Read the README and the style note.");
+        await expect(stageEl(page)).toBeVisible();
+        await page.mouse.move(0, 0);
+        await handedOff(page, 1);
+        await expect(page.locator("#infoText .mem-chip")).toBeVisible();
+        await expect(page.locator("#infoText .mem-chip")).toHaveAttribute("title", /e2e-style/);
+        await expect(page.locator("#infoText .ws-chip")).toHaveCount(0);
+        await expect(page.locator(".ts-ws, .ws-foot")).toHaveCount(0);
+      } finally {
+        fs.rmSync(note, { force: true });
+      }
+    });
   });
 });

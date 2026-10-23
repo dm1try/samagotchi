@@ -58,12 +58,12 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.find_by_key("web.turn_view")).to be_nil
       end
 
-      it "defaults the web working set to off; on from the file, env or cli (--[no-]web-working-set)" do
+      it "defaults the web working set to on; off from the file, env or cli (--[no-]web-working-set)" do
         key = "web.working_set"
-        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(false)
-        expect(described_class.resolve(key, file_data: { "web" => { "working_set" => true } }, env: {})).to be(true)
-        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_WORKING_SET" => "true" })).to be(true)
-        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => true })).to be(true)
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(true)
+        expect(described_class.resolve(key, file_data: { "web" => { "working_set" => false } }, env: {})).to be(false)
+        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_WORKING_SET" => "false" })).to be(false)
+        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => false })).to be(false)
         entry = described_class.find_by_key(key)
         expect(entry.cli_flag).to eq("--web-working-set")
         expect(entry.lifecycle).to eq(:web_start)

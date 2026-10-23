@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: the stage view's **working set** is on by default (no longer experimental). Beside the running turn a rail
+  shows the files, memories and URLs it brought into the model's context; each finished turn gets a footprint line;
+  the session bar's `● set N` chip (in place of the mem chip) opens the session's list, where rows say whether the
+  model still has them (stale, forgotten, dropped) and offer drop, pin, add and refresh. Turn it off with
+  `web.working_set: false`, `chi web --no-web-working-set` or `?working_set=0` (the mem chip comes back). See
+  [docs/cli.md](docs/cli.md#the-working-set).
+
 ### Fixed
 
 - `chi --remote NAME sessions list` shows test sessions, marked `[test]`, as the local list does.

@@ -174,7 +174,7 @@ RSpec.describe Samagotchi::Web::Server do
         expect(Rackup::Handler::WEBrick).to have_received(:run).with(anything, hash_including(Host: "127.0.0.1", Port: 4999))
         expect(webrick).to have_received(:listen).with("192.168.1.55", 4999)
         expect(app[:lan][:ip]).to eq("192.168.1.55")
-        expect(app[:working_set]).to be(false)
+        expect(app[:working_set]).to be(true)
         expect(app[:lan][:token].current).to eq(Samagotchi::Web::Token.read(token_path)).and match(/\A.{43}\z/)
       end
     end

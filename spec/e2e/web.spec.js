@@ -152,7 +152,7 @@ test("a turn with no answer shows one notice, live and after a reload, with its 
 // A turn's own rows come back where they were, on a mid-turn join and after
 // the turn: the empty answer's retry row, the answered question card, and
 // a line sent while the turn ran (the steered bubble, not a turn of its own).
-test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", { tag: "@turn" }, async ({ page, script }) => {
+test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", { tag: "@turn" }, async ({ page, script, view }) => {
   script("reload_rows");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
@@ -188,12 +188,14 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await page.reload();
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
-  // In the turn's order: the steered line and the card after its steps,
-  // before its answer and its one timing line.
+  // In the turn's order: the steered line and the card after its steps
+  // (the stage view's working set footprint right under them), before its
+  // answer and its one timing line.
   const order = await page.locator("#history > *").evaluateAll((els) => els.map((e) =>
     e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
       : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
-  expect(order).toEqual(["user", "block", "card", "steered", "answer", "timing"]);
+  const foot = view === "stage" ? ["ws-foot"] : [];
+  expect(order).toEqual(["user", "block", ...foot, "card", "steered", "answer", "timing"]);
 });
 
 // LLM context edits (llm_context.strategy stale, apply next_request): the

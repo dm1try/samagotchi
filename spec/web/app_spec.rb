@@ -2466,18 +2466,18 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call("/")).not_to include("data-turn-view")
     end
 
-    # web.working_set turns the stage's working set on; ?working_set=1|0
-    # overrides it for one page load, anything else is ignored. Off, the
-    # page carries no attribute at all.
-    it "tells the page the working set is on: from the config, or ?working_set=1|0 for one page load" do
+    # web.working_set (on by default) turns the stage's working set on;
+    # ?working_set=1|0 overrides it for one page load, anything else is
+    # ignored. Off, the page carries no attribute at all.
+    it "tells the page the working set is on: by default, from the config, or ?working_set=1|0 for one page load" do
       page = ->(path, **opts) { build_app(**opts).call(env_for(path))[2].first }
 
-      expect(page.call("/")).not_to include("data-working-set")
-      expect(page.call("/", working_set: true)).to include(' data-working-set="1"')
-      expect(page.call("/?working_set=1")).to include(' data-working-set="1"')
-      expect(page.call("/?working_set=0", working_set: true)).not_to include("data-working-set")
-      expect(page.call("/?working_set=yes")).not_to include("data-working-set")
-      expect(page.call("/?working_set=yes", working_set: true)).to include(' data-working-set="1"')
+      expect(page.call("/")).to include(' data-working-set="1"')
+      expect(page.call("/", working_set: false)).not_to include("data-working-set")
+      expect(page.call("/?working_set=1", working_set: false)).to include(' data-working-set="1"')
+      expect(page.call("/?working_set=0")).not_to include("data-working-set")
+      expect(page.call("/?working_set=yes", working_set: false)).not_to include("data-working-set")
+      expect(page.call("/?working_set=yes")).to include(' data-working-set="1"')
     end
 
     # The page parses them (annotate_presets.js); an empty one is kept so

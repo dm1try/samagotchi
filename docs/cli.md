@@ -15,7 +15,7 @@
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply
 - `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
-- `chi web --web-working-set` — the stage view's working set (experimental, off by default; `--no-web-working-set` turns a config's `web.working_set: true` off): what each turn brought into the model's context, in the stage and under each finished turn; `?working_set=1|0` on the page URL overrides it (see [The working set](#the-working-set))
+- `chi web --no-web-working-set` — turns the stage view's working set off (on by default; `--web-working-set` turns a config's `web.working_set: false` back on): what each turn brought into the model's context, in the stage and under each finished turn; `?working_set=1|0` on the page URL overrides it (see [The working set](#the-working-set))
 - `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). `stats ID` prints a session's cost, tokens and progress, and its own settings (`--set`; a `settings:` line), from a live worker's `GET stats`, else its saved `analytics.json` (`--format json` one object, with `settings`), without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`, a `--days`, `--keep` or `--limit` that isn't a whole number) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi context <add|push|ls|show|refresh|rm|mute|unmute> …` — attach live external text to sessions (a command chi runs every so often, or text pushed in); the model gets a short note when it changes and reads it with `context_read`; `chi context add <URL>` attaches a GitHub PR with the github-pr bundle (see [Attached context](context.md))
@@ -1010,12 +1010,12 @@ made (up to 120 lines or 8 KB), live and after a reload (see
 
 ### The working set
 
-`web.working_set: true` (or `chi web --web-working-set`,
-`SAMAGOTCHI_WEB_WORKING_SET=true`; `?working_set=1` or `?working_set=0` on the
-page URL for one page load) shows, in the stage view, what a turn brought into
-the model's context: the files it read, edited or wrote, the memories it read
-or wrote and the URLs it fetched. Off by default while it is tried out; the
-turn view ignores it.
+The stage view shows what a turn brought into the model's context: the files
+it read, edited or wrote, the memories it read or wrote and the URLs it
+fetched. It is on by default; `web.working_set: false` (or `chi web
+--no-web-working-set`, `SAMAGOTCHI_WEB_WORKING_SET=false`; `?working_set=0` on
+the page URL for one page load, `?working_set=1` back on) turns it off, and the
+session bar shows the `mem N` chip again. The turn view ignores it.
 
 - **The rail**, on the right of the stage's live slots: the running turn's set
   in four lines, folded as it grows (files under one folder become
