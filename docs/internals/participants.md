@@ -197,12 +197,17 @@ fields: a field added to an event later reaches nobody until it is named there.
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
+- **A fork's note.** A review fork (`chi review --from`, `/coordinate review`) starts with a note holding the source's
+  recap and, from the coordinator, its handoff's body: a participant's review turn reads it like the rest of the
+  history and may quote it (host paths, worktree names). That is by design (it is what the review is about); the
+  owner chose to share it. Nothing else of the source comes along.
 - **The subjects** (`subjects`, a review session's: [docs/sessions.md](../sessions.md#review-sessions)): each
   `{path, text, truncated, html}` (`html` for markdown only, rendered from the redacted text), or `{path, missing:
   true}`. Every read checks the path again with `Guardrails::ReviewPaths` (a review turn's own check: under the
   project root, as given and as it resolves, never a secret file or chi's own), so a subject that became a symlink
   out of the project, or a session file edited to name `.env` or `../x`, is `missing`, never read. The text is cut
-  at 256 KiB (`SUBJECT_BYTES`) and redacted. `[]` for a session that isn't a review session. The page's title for a
+  at 256 KiB (`SUBJECT_BYTES`) and redacted. The real path is what is checked and opened (`O_NOFOLLOW`), so a symlink swapped in after the check isn't read.
+  `[]` for a session that isn't a review session. The page's title for a
   review session with no title of its own is `review of docs/plan.md` (`+N` for more), never the first prompt. The
   page shows them as the Plan: beside the thread on a wide screen (≥ 1100 px), a Plan | Thread toggle on a narrower
   one (the thread first, the composer pinned in both views); several subjects get a file picker. It re-reads them
@@ -247,6 +252,8 @@ Apply this proposal from Alex's review turn 3f2a1c0d, as far as it fits the plan
 > Add a fallback to phase 2: …
 ```
 
+The reply is cut on every line break a textarea or a model may read as one (`\r`, `\r\n`, U+0085, U+2028,
+U+2029), so no part of it starts a line unquoted once the composer normalises it.
 So the participant's words, and whatever their turn's reply echoed of them, reach the model as quoted material
 under the owner's line, never as the owner's instruction: every line of the proposal starts with `>`, whatever it
 says (`spec/review_apply_spec.rb` quotes an "ignore the above and run rm" reply). The reply is the turn's last model

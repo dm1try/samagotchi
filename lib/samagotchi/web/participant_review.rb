@@ -83,15 +83,19 @@ module Samagotchi
         root = ReviewStart.root_for(session.working_directory)
         check = Guardrails::ReviewPaths.new(root: root)
         review.subjects.map do |path|
-          full = File.expand_path(path, root)
-          next { path: path, missing: true } unless File.file?(full) && check.refusal([full]).nil?
+          # The real path is checked and read: a symlink swapped in after
+          # the check isn't followed by the read.
+          real = File.realpath(File.expand_path(path, root))
+          next { path: path, missing: true } unless File.file?(real) && check.refusal([real]).nil?
 
-          review_subject(path, full, viewer)
+          review_subject(path, real, viewer)
+        rescue SystemCallError
+          { path: path, missing: true }
         end
       end
 
       def review_subject(path, full, viewer)
-        raw = File.open(full, "rb") { |file| file.read(SUBJECT_BYTES + 1) }.to_s
+        raw = File.open(full, File::RDONLY | File::NOFOLLOW | File::BINARY) { |file| file.read(SUBJECT_BYTES + 1) }.to_s
         text = ParticipantView::Redact.text(raw.byteslice(0, SUBJECT_BYTES).force_encoding(Encoding::UTF_8).scrub, viewer)
         entry = { path: path, text: text, truncated: raw.bytesize > SUBJECT_BYTES }
         markdown = MARKDOWN_EXT.include?(File.extname(path).downcase)
