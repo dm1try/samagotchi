@@ -206,7 +206,7 @@ module Samagotchi
       CLIENT_LABELS = { ClientId::WEB_PREFIX => "web", ClientId::TUI_PREFIX => "tui", ClientId::SYSTEM_PREFIX => "reminder",
                         ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report",
                         ClientId::CLI_SEND => "chi send", ClientId::CLI_ANSWER => "chi answer",
-                        ClientId::PLUGIN => "plugin" }.freeze
+                        ClientId::PLUGIN => "plugin", ClientId::REVIEW_PREFIX => "review" }.freeze
       # A client id chi doesn't know: not the user (ClientId.human?).
       AUTOMATIC_LABEL = "automatic"
 

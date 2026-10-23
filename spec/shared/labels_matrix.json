@@ -37,6 +37,7 @@
       { "client_id": "cli:send", "expected": "chi send" },
       { "client_id": "cli:answer", "expected": "chi answer" },
       { "client_id": "plugin", "expected": "plugin" },
+      { "client_id": "review:p_0123abcd", "expected": "review" },
       { "client_id": "other:1", "expected": "automatic" },
       { "client_id": "plugin:x", "expected": "automatic" },
       { "client_id": "web", "expected": "automatic" },

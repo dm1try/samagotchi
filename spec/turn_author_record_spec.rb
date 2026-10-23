@@ -74,7 +74,7 @@ RSpec.describe "a turn's author on the record" do
 
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(content: "Is step 3 safe?", author: grant.author, author_name: "Alex")
-      expect(session.last_turn).to have_attributes(author: grant.author, origin: "client")
+      expect(session.last_turn).to have_attributes(author: grant.author, origin: "review")
       expect(session.to_h["last_turn"]).to include("author" => grant.author)
       expect(analytics["turn_records"].last).to include("author" => grant.author)
       expect(sent.last.last).to include(author: grant.author, author_name: "Alex")

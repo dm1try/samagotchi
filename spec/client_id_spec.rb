@@ -19,7 +19,8 @@ RSpec.describe Samagotchi::ClientId do
       "task:3f9a2c1d" => false,
       "system:reminder" => false,
       "plugin" => false,
-      "relay:1234abcd" => false
+      "relay:1234abcd" => false,
+      "review:p_0123abcd" => true
     }
   end
 
@@ -28,9 +29,9 @@ RSpec.describe Samagotchi::ClientId do
             described_class::CLI_SEND, described_class::CLI_ANSWER, described_class::CLI_RESTART,
             described_class::DELEGATE_PREFIX, described_class::CHILD_PREFIX, described_class::CONTEXT_PREFIX,
             described_class::TASK_PREFIX, described_class::SYSTEM_PREFIX, described_class::REMINDER, described_class::PLUGIN,
-            described_class::RELAY_PREFIX])
+            described_class::RELAY_PREFIX, described_class::REVIEW_PREFIX])
       .to eq(%w[web: web:restart tui: cli:send cli:answer cli:restart delegate: child: context: task: system:
-                system:reminder plugin relay:])
+                system:reminder plugin relay: review:])
   end
 
   describe ".interactive?" do
@@ -51,11 +52,20 @@ RSpec.describe Samagotchi::ClientId do
     end
   end
 
+  describe ".review" do
+    it "makes and tells a participant's id; a participant's is no interactive owner's" do
+      expect(described_class.review("p_0123abcd")).to eq("review:p_0123abcd")
+      expect(described_class.review?("review:p_0123abcd")).to be(true)
+      expect([nil, "web:x", "reviewer", "cli:send"].map { |id| described_class.review?(id) }).to all(be(false))
+      expect(described_class.interactive?("review:p_0123abcd")).to be(false)
+    end
+  end
+
   describe ".origin" do
     it "names the turns chi runs on its own by their sender, and every other sender client" do
       origins = { "delegate:ab12cd34" => "delegate", "child:ab12cd34" => "delegate_report", "context:gh" => "context",
                   "task:t1" => "task", "system:reminder" => "reminder", "system:other" => "client", "web:x" => "client",
-                  "cli:send" => "client", "plugin" => "client", nil => "client" }
+                  "cli:send" => "client", "plugin" => "client", nil => "client", "review:p_0123abcd" => "review" }
       expect(origins.keys.to_h { |id| [id, described_class.origin(id)] }).to eq(origins)
     end
   end

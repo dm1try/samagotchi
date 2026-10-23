@@ -1393,11 +1393,12 @@ module Samagotchi
     end
 
     # A human's input (ClientId.human?) un-archives the session;
-    # a delegate's, a plugin's or a reminder's doesn't.
+    # a delegate's, a plugin's or a reminder's doesn't, and a participant's
+    # doesn't either: it is no owner's input.
     # It also resets the wakes (budget and pause); input typed in the web or
     # a TUI the peer wakes too (chi send doesn't: a peer can run it).
     def user_input(client_id)
-      return unless ClientId.human?(client_id)
+      return unless ClientId.human?(client_id) && !ClientId.review?(client_id)
 
       ArchiveStore.user_input(@session_id, state_dir: @state_dir)
       @wakes.human_input!(interactive: ClientId.interactive?(client_id))
