@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/version"
+require "samagotchi/session_access/contract"
 
 # `chi --help` runs a real bin/chi once, for the examples that read it, and
 # `chi broadcast --help` another (a subcommand's file loads in a fresh ruby);
@@ -8,12 +9,12 @@ require "samagotchi/version"
 RSpec.describe "chi --help" do
   before(:context) { @help = run_chi("--help") }
 
-  it "says -p runs the prompt and stays in the REPL, and --non-interactive exits" do
+  it "says -p runs the prompt and stays in the session (attached by default), and --non-interactive exits" do
     out, _err, status = @help
 
     expect(status.exitstatus).to eq(0)
     prompt_line = out.lines.find { |l| l.include?("--prompt") }
-    expect(prompt_line).to include("then stay in the REPL")
+    expect(prompt_line).to include("then stay in the session (attached; the REPL with --no-shared)")
     expect(prompt_line).not_to include("exit")
     expect(out.lines.find { |l| l.include?("--non-interactive ") }).to include("exit")
   end
@@ -40,6 +41,15 @@ RSpec.describe "chi --help" do
 
     %w[web sessions note broadcast context send answer bundle self].each { |sub| expect(out).to include("chi #{sub} ") }
     expect(out).not_to include("bin/chi") # what an installed gem's user types
+  end
+
+  it "lists every command SessionAccess::Contract runs under --remote, and only those" do
+    out, = @help
+    contract = Samagotchi::SessionAccess::Contract
+    remote = contract::TABLE.select { |words, status| !words.include?(" ") && status == contract::SUPPORTED }.keys
+
+    remote_line = out.lines.find { |l| l.include?("chi --remote NAME <") }
+    expect(remote_line[/<([^>]+)>/, 1].split("|")).to match_array(remote)
   end
 
   it "dispatches chi context with its own help" do

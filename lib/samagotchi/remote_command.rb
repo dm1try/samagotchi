@@ -27,7 +27,7 @@ module Samagotchi
               in #{Paths.tilde(Remotes.path)} (0600); an existing NAME is replaced.
         ls [--format json]    the remotes (never their tokens)
         rm NAME               forget one
-      Then: chi --remote NAME send|answer|note|context|sessions …, or CHI_REMOTE=NAME.
+      Then: chi --remote NAME send|answer|note|context|sessions|share|review …, or CHI_REMOTE=NAME.
     TEXT
 
     SUBCOMMANDS = %w[add ls rm].freeze

@@ -71,6 +71,8 @@ and commands may change between minor versions. How releases are made:
 - A remote at an IPv6 address (`chi remote add box http://[::1]:4567`) connects: its commands and its attached
   TUI's stream used the bracketed host as a name to look up ("can't find host").
 - Two `chi remote add` / `chi remote rm` at once keep each other's change: `remotes.yml` is rewritten under a lock.
+- `chi --help` and `chi remote --help` list `review` (and `share`) among the commands `chi --remote NAME` runs, and
+  `-p` says it stays in the session (the attached TUI by default, the REPL with `--no-shared`), not "in the REPL".
 
 ## [0.106.0] - 2026-10-23
 

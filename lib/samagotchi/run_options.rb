@@ -157,14 +157,14 @@ module Samagotchi
                  chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
                  chi models [--format json] [TEXT]   the models --model takes, from every host
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
-                 chi --remote NAME <send|answer|note|context|sessions|share> …   those commands on that machine (or CHI_REMOTE=NAME)
+                 chi --remote NAME <send|answer|note|context|sessions|share|review> …   those commands on that machine (or CHI_REMOTE=NAME)
                  chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
                  chi self                         version, paths, model and bundles
                  chi update [--dry-run]           update this chi, its bundles and the desktop helper
           (each subcommand takes --help)
 
         BANNER
-        opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
+        opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the session (attached; the REPL with --no-shared)") { |p| options[:prompt] = p }
         opts.on("--resume SESSION_ID", "Resume a previous session by its ID (or a unique prefix of it)") { |s| options[:resume] = s }
         opts.on("--attach SESSION_ID", "Attach to a session's worker, waking one if it has exited; ID or a unique prefix") { |s| options[:attach] = s }
         opts.on("--dir DIR", "With --remote: a new session's folder on that machine, its absolute path (required there; " \
