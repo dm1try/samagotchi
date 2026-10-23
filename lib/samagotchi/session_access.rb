@@ -28,6 +28,10 @@ module Samagotchi
     # --remote: update chi there (chi update)").
     class RemoteTooOld < RemoteFailed; end
 
+    # A remote's chi web refused this machine's token (401), or answers its
+    # LAN IP only (403 forbidden): Remote.auth_failure's words.
+    class AuthRefused < RemoteFailed; end
+
     # A remote's chi web refused a request for a reason this machine checks
     # itself before sending (a parent's /continue yes, a loosening
     # /parent-answers, images to a model that can't see them): +message+
@@ -51,7 +55,9 @@ module Samagotchi
     # the next link of that session's chain (which brings its own folder,
     # LLM context, thinking, toolkit and settings: the rest is nil then).
     # +preview+ set: the session starts idle with it as its preview, and
-    # +prompt+ (nil) goes in later as a turn (images, a session command).
+    # +prompt+ (nil) goes in later as a turn (images, a session command);
+    # +idle+ alone: it starts idle with no preview (a remote attach's new
+    # session, whose -p goes in once attached).
     # +setup+ is a SessionSetup for Local, a SetupWords for Remote (the
     # flags as typed: the server checks them against its own config and
     # bundles). +client_id+ (chi send's, or chi answer's for a parent's
@@ -59,9 +65,9 @@ module Samagotchi
     # which checks the first line and the model as chi send checks them
     # here (Local checks before it creates).
     NewSession = Data.define(:prompt, :preview, :continues, :working_directory, :model_name, :setup, :client_id,
-                             :images) do
+                             :images, :idle) do
       def initialize(prompt:, preview: nil, continues: nil, working_directory: nil, model_name: nil, setup: nil,
-                     client_id: nil, images: false) = super
+                     client_id: nil, images: false, idle: false) = super
     end
 
     # chi send --new's setup flags as typed, for a Remote: +llm_context+
@@ -100,6 +106,19 @@ module Samagotchi
     # +woke+ it started the worker (false: one ran), +sidecar+ the live
     # worker's (nil: its Bridge didn't come within the wait).
     Woken = Data.define(:woke, :sidecar)
+
+    # A remote attach's wake (Remote#attach_wake, chi web's POST …/wake):
+    # +worker+ the live worker as chi web names it ({"epoch", "started_at",
+    # "version", "features"}, string keys: Remote#attach_client's), and
+    # what the TUI reads of that machine: its config's +default_model+,
+    # the session's parent +strategy+ (Guardrails::ParentPolicy::Strategy),
+    # the newest chi +installed+ there.
+    WakeReply = Data.define(:woke, :worker, :default_model, :strategy, :installed)
+
+    # A remote session's worker now (Remote#attach_worker, chi web's GET
+    # …/worker): +live+, +stopped+ (its stop marker), +worker+ as in
+    # WakeReply (nil: none runs), the parent +strategy+ read now.
+    WorkerReply = Data.define(:live, :stopped, :worker, :strategy)
 
     # What chi send --wait and chi answer read before anything is sent, so
     # neither an older reply nor a turn that ends before the first look is

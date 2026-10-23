@@ -75,7 +75,7 @@ module Samagotchi
       # @return [RemoteFailed, nil]
       def self.info_problem(entry, reply)
         failure = auth_failure(entry, reply)
-        return RemoteFailed.new(failure) if failure
+        return AuthRefused.new(failure) if failure
         unless reply.status == 200 && reply.json.is_a?(Hash) && reply.json["app"] == "chi-web"
           return RemoteFailed.new("#{entry.label}: not chi web (GET /api/info answered #{reply.status})")
         end
@@ -454,6 +454,47 @@ module Samagotchi
         WebBridgeClient.new(remote: self, session_id: id, worker_key: worker["epoch"] || worker["started_at"])
       end
 
+      # This chi web has +feature+ (GET /api/info's), else RemoteTooOld in
+      # Remote.too_old_message's words.
+      # @raise [RemoteFailed]
+      def require_feature!(feature)
+        check_server!
+        raise RemoteTooOld, too_old(@version) unless Array(@features).include?(feature)
+      end
+
+      # POST …/wake: the session's live worker for a remote attach, started
+      # when none runs, waited for up to +wait+ seconds there.
+      # @return [WakeReply]
+      # @raise [SessionManager::OwnedByTUI] a chi REPL has it there
+      # @raise [Refused] a leftover scratch session (code scratch), or its
+      #   Bridge didn't come in time (code worker_timeout): chi web's words,
+      #   LaunchMode's constants
+      # @raise [ArgumentError] no such session
+      def attach_wake(id, wait:)
+        reply = request(:post, "#{session_path(id)}/wake", body: { wait: wait })
+        if reply.status != 200 && %w[scratch worker_timeout].include?(reply.error)
+          raise Refused.new((reply.json["message"] || reply.json["detail"]).to_s, code: reply.error)
+        end
+
+        raise_refusal(reply) unless reply.status == 200
+
+        json = reply.json
+        WakeReply.new(woke: json["woke"] == true, worker: json["worker"], default_model: json["default_model"],
+                      strategy: strategy_or_hard(json["parent_strategy"]), installed: json["installed"])
+      end
+
+      # GET …/worker: the session's worker now (never started).
+      # @return [WorkerReply]
+      # @raise [ArgumentError] no such session
+      def attach_worker(id)
+        reply = request(:get, "#{session_path(id)}/worker")
+        raise_refusal(reply) unless reply.status == 200
+
+        json = reply.json
+        WorkerReply.new(live: json["live"] == true, stopped: json["stopped"] == true, worker: json["worker"],
+                        strategy: strategy_or_hard(json["parent_strategy"]))
+      end
+
       # One request to a route, as the session commands make them (the
       # server check first; a refused token or a missing route raise
       # RemoteFailed): WebBridgeClient's, which maps the reply itself.
@@ -476,7 +517,7 @@ module Samagotchi
       def request(method, path, **)
         check_server!
         reply = @transport.call(method, path, **)
-        raise RemoteFailed, Remote.auth_failure(@entry, reply) if Remote.auth_failure(@entry, reply)
+        raise AuthRefused, Remote.auth_failure(@entry, reply) if Remote.auth_failure(@entry, reply)
         raise RemoteTooOld, too_old(@version) if missing_route?(reply)
 
         reply
@@ -486,7 +527,10 @@ module Samagotchi
         return if @checked
 
         reply = @transport.call(:get, "/api/info")
-        @version = reply.json["version"] if reply.json.is_a?(Hash)
+        if reply.json.is_a?(Hash)
+          @version = reply.json["version"]
+          @features = Array(reply.json["features"])
+        end
         problem = Remote.info_problem(@entry, reply)
         raise problem if problem
 
@@ -494,6 +538,8 @@ module Samagotchi
       end
 
       def too_old(version) = Remote.too_old_message(@entry, version)
+
+      def strategy_or_hard(json) = strategy_of(json) || Guardrails::ParentPolicy.strategy(Guardrails::ParentPolicy::HARD)
 
       # chi web's 404 for a path no route takes (#serve_static's), not a
       # route's own "no such session".
@@ -535,7 +581,7 @@ module Samagotchi
 
       def create_body(spec)
         body = { model: spec.model_name, client_id: spec.client_id, history: false }
-        if spec.preview
+        if spec.preview || spec.idle
           body.merge!(idle: true, preview: spec.preview)
         else
           body[:prompt] = spec.prompt
