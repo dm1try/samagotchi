@@ -5,6 +5,7 @@ require_relative "../served_model"
 require_relative "../image_store"
 require_relative "../turn_note"
 require_relative "../steer"
+require_relative "../participant_name"
 require_relative "../steer_cut"
 require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
@@ -232,10 +233,51 @@ module Samagotchi
         CLIENT_LABELS[id] || (prefix && CLIENT_LABELS[prefix]) || AUTOMATIC_LABEL
       end
 
-      # "web> <prompt>": a prompt, labelled by who sent it; nil: the label alone.
-      def prompt_line(client_id, prompt)
-        "#{paint("#{client_label(client_id)}>", 35)}#{" #{prompt}" unless prompt.nil?}"
+      # "web> <prompt>": a prompt, labelled by who sent it; nil: the label
+      # alone. A participant's (+author+ "p:<id>") is led by their name in
+      # their colour: "Alex ▸ review> <prompt>" (#participant_prefix).
+      def prompt_line(client_id, prompt, author: nil, author_name: nil)
+        prefix = participant_prefix(author, author_name)
+        "#{prefix}#{paint("#{client_label(client_id)}>", 35)}#{" #{prompt}" unless prompt.nil?}"
       end
+
+      # A participant's own colour: one of these, the same for their id
+      # wherever it is drawn.
+      PARTICIPANT_COLOURS = [36, 33, 32, 34, 96, 93].freeze
+
+      # "Alex ▸ ", painted in +author+'s colour; "" for the owner (no
+      # author). The name cleaned as everywhere (ParticipantName: one line,
+      # no control characters), the id when it has none.
+      def participant_prefix(author, name)
+        return "" unless Steer.participant_author?(author)
+
+        id = author.to_s.delete_prefix("p:")
+        "#{paint("#{participant_display_name(id, name)} ▸", participant_colour(id))} "
+      end
+
+      # +name+ cleaned (ParticipantName), or +id+ when nothing is left.
+      def participant_display_name(id, name)
+        clean = ParticipantName.clean(name)
+        clean.empty? ? ParticipantName.clean(id) : clean
+      end
+
+      def participant_colour(id) = PARTICIPANT_COLOURS[id.to_s.sum % PARTICIPANT_COLOURS.size]
+
+      # "participants> Alex joined (p_1a2b3c4d)" and "participants> Bo left:
+      # their link was revoked" (or expired): a :participants_changed
+      # event's lines, one per participant.
+      def participants_change_lines(joined, left)
+        label = paint("participants>", 35)
+        lines = Array(joined).map do |row|
+          "#{label} #{participant_name_text(row)} joined (#{ParticipantName.clean(row[:id])}#{", an agent" if row[:kind] == "agent"})"
+        end
+        lines + Array(left).map do |row|
+          "#{label} #{participant_name_text(row)} left: their link #{row[:reason] == "revoked" ? "was revoked" : "expired"}"
+        end
+      end
+
+      # A participant row's name ({id:, name:}) in their colour.
+      def participant_name_text(row) = paint(participant_display_name(row[:id], row[:name]), participant_colour(row[:id]))
 
       # "delegate report> 3f2a1c9e answered: <the reply's first line>": a
       # delegate child's report (ChildReports) merged into the turn.
@@ -248,10 +290,13 @@ module Samagotchi
       end
 
       # The last prompt as a join shows it: a delegate report (a wake
-      # turn's) as the child's lines, anything else as the user's.
+      # turn's) as the child's lines, a participant's with their name (the
+      # one saved with it), anything else as the user's.
       def join_prompt_line(message)
         source = (message[:source] || message["source"]).to_s
         content = (message[:content] || message["content"]).to_s
+        author = Steer.sender_author(message[:author] || message["author"])
+        return prompt_line(ClientId::REVIEW_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
         return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
 
         content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")

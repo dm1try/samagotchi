@@ -171,6 +171,10 @@ module Samagotchi
         @continue_offer = nil
         # The status row: the worker's model, ctx, the session's memories.
         @status = StatusRow.new(screen)
+        # Participants' names by author ("p:<id>"), from the join's state
+        # and :participants_changed: their lines' prefix. One who left
+        # keeps theirs.
+        @participant_names = {}
       end
 
       def running? = @running
@@ -291,6 +295,7 @@ module Samagotchi
         # The after_turn hooks are done (their notices came before it).
         when :answer_display then @display_pending = false
         when :context_status, :used_memories_updated then @status.take_event(event)
+        when :participants_changed then participants_changed(event)
         # Another client's anytime command: its line now, before the cards
         # it shows (its command_ran comes when it's done). One queued for
         # after the turn says so now.
@@ -1325,7 +1330,7 @@ module Samagotchi
           next if own?(entry[:client_id])
 
           @shown_enqueued << entry[:enqueued_id]
-          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
+          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt], **author_of(entry))}")
         end
         # Commands waiting for the turn's end (their command_ran prints no
         # line); a resync prints only the ones it hadn't shown.
@@ -1590,7 +1595,8 @@ module Samagotchi
 
         continues = turn[:prompt].nil?
         unless continues && reminder_origin?(turn[:origin] || {})
-          @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || continuing_text(turn[:origin] || {})))
+          origin = turn[:origin] || {}
+          @screen.commit(prompt_line(origin[:client_id], turn[:prompt] || continuing_text(origin), **author_of(origin)))
         end
         tail = nil
         lane = :writing
@@ -1639,7 +1645,7 @@ module Samagotchi
         return if own?(event[:client_id])
 
         @shown_enqueued << event[:enqueued_id]
-        line = prompt_line(event[:client_id], event[:prompt])
+        line = prompt_line(event[:client_id], event[:prompt], **author_of(event))
         @screen.commit(event[:delivery] == Delivery::QUEUE ? "#{line} #{QUEUED_NOTE}" : line)
       end
 
@@ -1673,9 +1679,11 @@ module Samagotchi
           # reminder turn shows its reminders (:reminder_injected).
           # A turn run for delegate reports shows them as they merge; one
           # an attached context change started, its label (the note is above).
-          @screen.commit(prompt_line(origin[:client_id], continuing_text(origin))) unless reminder_origin?(origin) || report_origin?(origin)
+          unless reminder_origin?(origin) || report_origin?(origin)
+            @screen.commit(prompt_line(origin[:client_id], continuing_text(origin), **author_of(origin)))
+          end
         elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
-          @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
+          @screen.commit(prompt_line(origin[:client_id], event[:prompt], **author_of(origin)))
         end
         # The own-send echo already names an image-only prompt; another
         # client's prompt line does too, here or at its enqueue.
@@ -1710,11 +1718,34 @@ module Samagotchi
 
       def own?(client_id) = !client_id.nil? && client_id == @client_id
 
-      # The joining snapshot's session state: the worker's model and the
-      # memories the session used.
+      # The joining snapshot's session state: the worker's model, the
+      # memories the session used, who is in the review.
       def take_session_state(state)
         @status.take_state(state, default_model: (default_model_name if state[:model_name]))
+        learn_participants(state[:participants])
         refresh_children
+      end
+
+      # A participant was invited, revoked or expired: a line each, and the
+      # status row's count.
+      def participants_changed(event)
+        learn_participants(event[:participants])
+        learn_participants(event[:joined])
+        participants_change_lines(event[:joined], event[:left]).each { |line| @screen.commit(line) }
+        @status.update(participants: Array(event[:participants]).size)
+      end
+
+      def learn_participants(rows)
+        Array(rows).each { |row| @participant_names["p:#{row[:id]}"] = row[:name] if row.is_a?(Hash) && row[:id] }
+      end
+
+      # The prompt line's author keywords for an event, an origin or a
+      # queued row ({author: "p:<id>"}): their name as the worker named
+      # them; {} for the owner's.
+      def author_of(row)
+        author = Steer.sender_author(row[:author]) or return {}
+
+        { author: author, author_name: @participant_names[author] }
       end
 
       # The status row's children segment: the delegates' counts, read from

@@ -5,7 +5,7 @@ require_relative "formatting"
 module Samagotchi
   class TerminalUI
     # The status row under the prompt, the same for both TUIs:
-    # `status> Title | model=… | ↳ parent | ⑂ 2 running · 1 waiting | ctx=12.3% (under20) | mem: … | muted: …`.
+    # `status> Title | model=… | ↳ parent | ⑂ 2 running · 1 waiting | 2 participants | ctx=12.3% (under20) | mem: … | muted: …`.
     # A UI feeds it what it learns (attached mode from the Bridge's events,
     # the REPL from its Engine's) through #update, and the row is redrawn in
     # the surface's status slot only when its text changes.
@@ -25,13 +25,15 @@ module Samagotchi
       #   parent_id             the session that delegated this one
       #   children              its delegates' ChildrenStatus::Counts, or
       #                         nil (the segment shows running and waiting)
+      #   participants          how many are in the review now (shown from 1)
       #   context               the kernel's estimate {est_pct:, bucket:}
       #   used_memories         the memories the session read
       #   preloaded             its --memory list (shown until a turn
       #                         records them as used)
       #   muted                 its --mute list
       #   running               a turn runs: the row trails STEER_HINT
-      FIELDS = %i[title model default_model served parent_id children context used_memories preloaded muted running].freeze
+      FIELDS = %i[title model default_model served parent_id children participants context used_memories preloaded muted
+                  running].freeze
 
       # The tail while a turn runs: where a typed line goes (the next step)
       # and the two other choices. Dropped whole first when the row is cut.
@@ -82,6 +84,7 @@ module Samagotchi
         STATE_LISTS.each { |field, key| fields[field] = Array(state[key]) if state.key?(key) }
         fields[:parent_id] = state[:parent_id] if state.key?(:parent_id)
         fields[:title] = state[:title] if state.key?(:title)
+        fields[:participants] = Array(state[:participants]).size if state.key?(:participants)
         # The last turn's ctx, so it shows before the next turn's.
         fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
         update(**fields)
@@ -138,6 +141,7 @@ module Samagotchi
                     model_text,
                     parent ? "↳ #{parent.to_s[0, 8]}" : "",
                     children_text(@values[:children]),
+                    participants_text(@values[:participants]),
                     status_context_text(estimate: @values[:context]),
                     status_memory_text(Array(@values[:used_memories]) | Array(@values[:preloaded]), MEMORY_LIMIT),
                     status_memory_text(@values[:muted], MEMORY_LIMIT, label: "muted")].reject(&:empty?)
@@ -166,6 +170,11 @@ module Samagotchi
         return title if title.length <= max
 
         max > 1 ? "#{title[0, max - 1]}…" : ""
+      end
+
+      # "2 participants": who is in the review; "" for nobody.
+      def participants_text(count)
+        count.to_i.positive? ? "#{count} participant#{"s" unless count == 1}" : ""
       end
 
       # `⑂ 2 running · 1 waiting`, the counts there are; "" with neither (no
