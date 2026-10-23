@@ -10,6 +10,7 @@ require "samagotchi/context_command"
 require "samagotchi/sessions_command"
 require "samagotchi/session_delete_command"
 require "samagotchi/share_command"
+require "samagotchi/review_command"
 require "samagotchi/run_options"
 
 # Every session command, subcommand and flag says whether it runs against a
@@ -32,7 +33,8 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
     **Samagotchi::SessionsCommand::SUBCOMMANDS.to_h { |sub| ["sessions #{sub}", Samagotchi::SessionsCommand::FLAGS[sub]] },
     "sessions delete" => Samagotchi::SessionDeleteCommand::FLAGS,
     "share" => Samagotchi::ShareCommand::FLAGS,
-    **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] }
+    **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] },
+    "review" => Samagotchi::ReviewCommand::FLAGS
   }
   subcommands_of = { "context" => Samagotchi::ContextCommand::SUBCOMMANDS,
                      "sessions" => Samagotchi::SessionsCommand::SUBCOMMANDS,

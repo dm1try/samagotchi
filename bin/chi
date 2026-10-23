@@ -54,6 +54,8 @@ SUBCOMMANDS = {
   "answer" => ["samagotchi/answer_command", "AnswerCommand"],
   # invite participants to review a session, list them, revoke them
   "share" => ["samagotchi/share_command", "ShareCommand"],
+  # a review session for files, or of a session (--from, --dir, --model)
+  "review" => ["samagotchi/review_command", "ReviewCommand"],
   # find a model server and write config.yml (--model, --name)
   "bootstrap" => ["samagotchi/bootstrap_command", "BootstrapCommand"],
   # bring an installed chi up to date

@@ -54,7 +54,7 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.metadata_version).to eq(described_class::METADATA_VERSION)
     end
 
-    it "writes every FIELDS key, in that order, and reads the same session back from it" do
+    it "writes every FIELDS key, in that order (an OPTIONAL_FIELDS one only when set), and reads the same session back from it" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
                                             preloaded_memory_names: %w[notes], parent_id: "p1")
       session.messages << { role: "user", content: "hi" }
@@ -62,7 +62,14 @@ RSpec.describe Samagotchi::Session do
       session.save(state_dir: tmpdir)
 
       data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
+      expect(data.keys).to eq(described_class::FIELDS.keys - described_class::OPTIONAL_FIELDS)
+      expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
+
+      session.review = { "subjects" => ["docs/plan.md"], "from" => "abc" }
+      session.save(state_dir: tmpdir)
+      data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
       expect(data.keys).to eq(described_class::FIELDS.keys)
+      expect(data["review"]).to eq("subjects" => ["docs/plan.md"], "from" => "abc")
       expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
     end
 

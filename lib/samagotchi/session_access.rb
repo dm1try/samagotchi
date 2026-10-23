@@ -120,11 +120,21 @@ module Samagotchi
     # bundles). +client_id+ (chi send's, or chi answer's for a parent's
     # /continue yes) and +images+ (images follow) are for a Remote's server,
     # which checks the first line and the model as chi send checks them
-    # here (Local checks before it creates).
+    # here (Local checks before it creates). +review+ (a Review) makes it a
+    # review session (chi review): idle, no prompt, and with +review.from+
+    # a review fork of that session (its folder and setup: the rest is nil).
     NewSession = Data.define(:prompt, :preview, :continues, :working_directory, :model_name, :setup, :client_id,
-                             :images, :idle) do
+                             :images, :idle, :review) do
       def initialize(prompt:, preview: nil, continues: nil, working_directory: nil, model_name: nil, setup: nil,
-                     client_id: nil, images: false, idle: false) = super
+                     client_id: nil, images: false, idle: false, review: nil) = super
+    end
+
+    # A review session to create (NewSession#review): +subjects+ as typed
+    # (relative to the session's folder; the side that has the files checks
+    # them, ReviewStart.check_subjects), +from+ the session a review fork
+    # starts from (an id, a prefix or last:<id>), or nil.
+    Review = Data.define(:subjects, :from) do
+      def initialize(subjects: [], from: nil) = super(subjects: Array(subjects).map(&:to_s), from: from)
     end
 
     # chi send --new's setup flags as typed, for a Remote: +llm_context+

@@ -45,6 +45,8 @@ require_relative "../recap_store"
 require_relative "../toolkit"
 require_relative "../turn_flow"
 require_relative "../session_chain"
+require_relative "../session_access"
+require_relative "../review_start"
 require_relative "../parent_answers_command"
 require_relative "../guardrails/parent_policy"
 require_relative "markdown_renderer"
@@ -757,7 +759,11 @@ module Samagotchi
         # idle: a session with no first turn, for a first message with
         # images (the page uploads them into it, then sends the turn).
         idle = body["idle"] == true
-        if prompt.to_s.strip.empty? && !idle
+        review, error = request_review(body)
+        return error if error
+        return handle_review_fork(body, review) if review&.from
+
+        if prompt.to_s.strip.empty? && !idle && !review
           return error_response(400, "missing_fields", "prompt is required")
         end
         return handle_continue(body, prompt, idle) if body.key?("continues")
@@ -815,10 +821,17 @@ module Samagotchi
                                  parent_answers: parent_answers)
         folder[:setup] = setup unless setup.empty?
         begin
-          session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
+          session = if review
+                      ReviewStart.start(subjects: review.subjects, dir: dir || Dir.pwd, model: folder[:model_name],
+                                        setup: setup, state_dir: @state_dir)
+                    else
+                      @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
+                    end
         rescue ModelProfile::MissingModel => e
           # No model configured, or one qualified with an unknown host.
           return error_response(400, "invalid_model", e.message)
+        rescue ReviewStart::Refused => e
+          return error_response(400, "invalid_review", e.message)
         end
         # The worker's Bridge is the single live transport: wait (bounded) for
         # it so the client can attach without client-side polling.
@@ -871,6 +884,59 @@ module Samagotchi
         json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
                                                           model_warning: session.model_warning,
                                                           opener: session.opener))
+      end
+
+      # The create's review: {subjects: [paths], from: id} (chi review, the
+      # page's Start review) as a SessionAccess::Review: [review, nil] (nil
+      # when absent), or [nil, a 400 invalid_review]. A review session
+      # starts idle: prompt, preview, idle and continues are refused beside
+      # it. Its subjects are checked where it starts (ReviewStart).
+      def request_review(body)
+        return [nil, nil] unless body.key?("review")
+
+        raw = body["review"]
+        subjects = raw.is_a?(Hash) ? raw.fetch("subjects", []) : nil
+        from = raw.is_a?(Hash) ? raw["from"] : nil
+        unless subjects.is_a?(Array) && subjects.all?(String) && (from.nil? || (from.is_a?(String) && !from.strip.empty?))
+          return [nil, error_response(400, "invalid_review", "review is {subjects: [project files], from: a session id}")]
+        end
+        if (fields = REVIEW_REFUSES.select { |key| body.key?(key) }).any?
+          return [nil, error_response(400, "invalid_review", "a review session starts idle; leave out #{fields.join(", ")}")]
+        end
+
+        [SessionAccess::Review.new(subjects: subjects, from: from&.strip), nil]
+      end
+
+      # What a review session's create refuses beside review.
+      REVIEW_REFUSES = %w[prompt preview idle continues].freeze
+
+      # POST /api/sessions with review.from: a review fork of that session
+      # (ReviewStart.fork), in its folder and with its setup (dir and the
+      # setup fields refused beside it, as for a continue), on model when
+      # given. 201 as a create's; 400 invalid_review (a subject, its folder
+      # gone), invalid_model, ambiguous_id; 404 not_found.
+      def handle_review_fork(body, review)
+        if (fields = CONTINUE_TAKES.select { |key| body.key?(key) }).any?
+          return error_response(400, "invalid_review",
+                                "a review of a session takes its folder and setup; leave out #{fields.join(", ")}")
+        end
+
+        model = (body["model"] || body["model_name"]).to_s.strip
+        begin
+          session = ReviewStart.fork(from: review.from, subjects: review.subjects, model: model.empty? ? nil : model,
+                                     state_dir: @state_dir)
+        rescue ReviewStart::Refused => e
+          return error_response(400, "invalid_review", e.message)
+        rescue ModelProfile::MissingModel => e
+          return error_response(400, "invalid_model", e.message)
+        rescue Session::AmbiguousId => e
+          return refusal_response(400, "ambiguous_id", e, ids: e.ids)
+        rescue ArgumentError => e
+          return error_response(404, "not_found", e.message)
+        end
+        port = await_bridge_port(session.id)
+        @hub&.touch(session.id)
+        json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning))
       end
 
       # chi send's client ids: its lines are checked as chi send checks them

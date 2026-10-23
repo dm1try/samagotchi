@@ -647,6 +647,8 @@ module Samagotchi
       end
 
       def create_body(spec)
+        return review_body(spec) if spec.review
+
         body = { model: spec.model_name, client_id: spec.client_id, history: false }
         if spec.preview || spec.idle
           body.merge!(idle: true, preview: spec.preview)
@@ -660,6 +662,17 @@ module Samagotchi
           body[:dir] = spec.working_directory
           body.merge!(setup_body(spec.setup)) if spec.setup
         end
+        body.compact
+      end
+
+      # A review session's create (chi review): its subjects as typed,
+      # checked by the server against its own files; a fork names its
+      # source and takes its folder.
+      def review_body(spec)
+        review = { subjects: spec.review.subjects, from: spec.review.from }.compact
+        body = { review: review, model: spec.model_name }
+        body[:dir] = spec.working_directory unless spec.review.from
+        body.merge!(setup_body(spec.setup)) if spec.setup && !spec.review.from
         body.compact
       end
 

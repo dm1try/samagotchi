@@ -13,6 +13,7 @@ require_relative "llm_context_override"
 require_relative "session_setup"
 require_relative "prompt_note"
 require_relative "working_set_pin"
+require_relative "session_review"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -250,6 +251,18 @@ module Samagotchi
                         end
     end
 
+    # A review session's subjects and source (SessionReview), nil for any
+    # other session.
+    attr_reader :review
+
+    # @param value [SessionReview, Hash, nil] the session file's form too
+    def review=(value)
+      @review = SessionReview.of(value)
+    end
+
+    # Whether this is a review session (chi review, the web's Start review).
+    def review? = !@review.nil?
+
     # The working set's items the user pinned (/working-set pin;
     # WorkingSetPin), [] with none: the model's forget_outputs refuses
     # their outputs. A respawn, a continue and a fork keep them
@@ -296,7 +309,7 @@ module Samagotchi
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
                    toolkit: nil, settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
-                   working_set_pins: [])
+                   working_set_pins: [], review: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -330,6 +343,7 @@ module Samagotchi
       self.settings = settings
       self.parent_answers = parent_answers
       self.working_set_pins = working_set_pins
+      self.review = review
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -399,7 +413,7 @@ module Samagotchi
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
                          scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil,
-                         now: Time.now)
+                         review: nil, now: Time.now)
       now = now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -432,7 +446,8 @@ module Samagotchi
         settings: setup.settings,
         parent_answers: setup.parent_answers,
         working_set_pins: setup.working_set_pins,
-        continues: continues
+        continues: continues,
+        review: review
       )
     end
 
@@ -502,8 +517,13 @@ module Samagotchi
       "config_settings" => {},
       "interrupted_turn" => nil,
       "parent_answers" => nil,
-      "working_set_pins" => []
+      "working_set_pins" => [],
+      "review" => nil
     }.freeze
+
+    # FIELDS a session file has only when set: a session without them saves
+    # as it did before they existed.
+    OPTIONAL_FIELDS = %w[review].freeze
 
     # A session from a parsed session file. +messages+ false leaves the
     # conversation out (the lists' lightweight summaries).
@@ -656,12 +676,13 @@ module Samagotchi
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "working_set_pins" then @working_set_pins.map(&:to_file)
+                when "review" then @review&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")
                 end
         [key, value]
-      end
+      end.reject { |key, value| value.nil? && OPTIONAL_FIELDS.include?(key) }
     end
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).

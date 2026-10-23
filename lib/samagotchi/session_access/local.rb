@@ -12,6 +12,7 @@ require_relative "../context_sources"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
+require_relative "../review_start"
 require_relative "../launch_mode"
 require_relative "../participants"
 require_relative "../config"
@@ -114,8 +115,11 @@ module Samagotchi
       # @return [Session] the session created (its id, model_warning,
       #   continues, moved_children)
       # @raise [SessionContinue::Refused, SessionManager::ArchiveRefused,
-      #   SessionManager::OwnedByTUI] refused; StandardError: could not start
+      #   SessionManager::OwnedByTUI, ReviewStart::Refused] refused;
+      #   StandardError: could not start
       def create(spec)
+        return create_review(spec) if spec.review
+
         start = spec.preview ? { prompt: spec.prompt, preview: spec.preview } : { prompt: spec.prompt }
         if spec.continues
           return SessionManager.continue_session(spec.continues, **start, model: spec.model_name, **dir)
@@ -123,6 +127,18 @@ module Samagotchi
 
         SessionManager.spawn_session(**start, working_directory: spec.working_directory, model_name: spec.model_name,
                                               setup: spec.setup, **dir)
+      end
+
+      # A review session (ReviewStart): a fork of review.from, or a fresh
+      # one in the spec's folder.
+      def create_review(spec)
+        review = spec.review
+        if review.from
+          return ReviewStart.fork(from: review.from, subjects: review.subjects, model: spec.model_name, state_dir: state_dir!)
+        end
+
+        ReviewStart.start(subjects: review.subjects, dir: spec.working_directory || Dir.pwd, model: spec.model_name,
+                          setup: spec.setup || SessionSetup.new, state_dir: state_dir!)
       end
 
       # Whether a just-created session's worker came up (its Bridge

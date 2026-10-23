@@ -257,6 +257,33 @@ A session can **continue** an earlier one: "the next run of the same routine" (a
 - **CLI:** `chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT]` (see *Starting a session*).
 - **Which link:** an id, a unique prefix, or `last:<id or prefix>`, the latest link of the chain that session is in. It walks the links that still exist: a deleted link in the middle (`chi sessions delete`, the retention sweep of an unarchived one) ends the walk before it, so `last:` of an earlier link then names that earlier link, and continuing it starts a second line beside the links after the gap; name a link after the gap instead. A trigger names the chain this way: `chi send` to an archived link would bring it back (a human's input), not continue the chain.
 
+## Review sessions
+
+A **review session** is one made to be shared with participants (the shared-sessions plan's D2: a review is its own
+session, so a participant's review turn can't quote a working session's tool outputs). `chi review FILE…` starts one
+in a project, `chi review --from ID` as a review fork of a working session (see [CLI: Review
+sessions](cli.md#review-sessions)); both start idle and print the `chi share` line to invite someone.
+
+- **The field:** `review: {subjects: ["docs/plan.md", …], from: "<id>"}` in the session JSON: the subjects relative
+  to the project root (the work tree top of its folder, its folder outside git), and for a fork the session it
+  started from. A session without one has no `review` key at all, so other session files save as they were. A
+  continue keeps it; a fork (`ctx.sessions.fork`) and a delegate child don't.
+- **The subjects** are checked where the session starts (`ReviewStart.check_subjects`), by the same check a review
+  turn's `read` goes through (`Guardrails::ReviewPaths`): an existing file under the project root, as given and as it
+  resolves, never a secret file or chi's own. They are what participants read beside the thread.
+- **The note:** it starts with a context note from `review` naming the subjects and what a review turn does; a fork's
+  starts with `This review session starts from 3f9a1c2e (2026-10-23 09:12), a working session: it brings that
+  session's recap, not its transcript.` and the recap (as a continue's carry note), so nothing of the source's
+  history comes along. Its preview is `review: docs/plan.md`, or a fork's `review of <the source's title>`.
+- **A fork isn't a continue:** the source is neither archived nor continued (no `continues`), and its delegates stay
+  its own; a coordinator can open a review of its own session and keep working (`/coordinate review`).
+- **Web:** `POST /api/sessions` takes `review: {subjects: [...], from: "<id>"}` instead of a `prompt` (a review
+  session starts idle: `prompt`, `preview`, `idle` and `continues` beside it are 400 `invalid_review`). Without
+  `from`, the subjects are relative to `dir` and the setup fields work as for any create; with `from`, the source's
+  folder and setup are taken (`dir` and the setup fields beside it are 400 `invalid_review`) and `model` is the
+  only choice. A subject refused, or the source's folder gone, is 400 `invalid_review` with the one message; an
+  unknown source 404 `not_found`.
+
 ## Toolkits
 
 A session file's `toolkit` (`{"name", "add", "remove"}`) is the toolkit it was created on, as named: config's

@@ -157,6 +157,8 @@ module Samagotchi
     # @param note [String, nil] a context note the session starts with,
     #   from +note_source+: queued before its worker spawns, so its first
     #   turn sees it
+    # @param review [SessionReview, nil] a review session's (ReviewStart; a
+    #   continue keeps its previous link's)
     # @param before_spawn [#call, nil] (session) runs once the session and
     #   its note are saved, before its worker spawns
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
@@ -164,7 +166,7 @@ module Samagotchi
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                           note_source: "chi", before_spawn: nil)
+                           note_source: "chi", before_spawn: nil, review: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -186,7 +188,8 @@ module Samagotchi
         messages: messages,
         delegate: delegate,
         setup: setup,
-        continues: continues
+        continues: continues,
+        review: review
       )
       session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
       session.model_warning = model_warning

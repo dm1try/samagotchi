@@ -22,6 +22,7 @@
 - `chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one takes it at its next step; `--cut` asks it to cut long thinking for it; `--queue` runs it as a turn of its own after the running one, and `--queue --wait` waits for that turn's own answer); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending — to an idle session whose last turn already ended, that ended turn's reply or end comes back; `--wait --turn T ID` with no message waits for exactly turn T, whether running, queued or last ended; `--format json` includes its `turn_id` when known, for waiting again after exit 3 or 4; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). What a parent may pick follows `guardrails.parent_answers`, or the session's own `parent_answers` when stricter (`soft`, the default: a deny, a plain answer, Continue and "Allow once"; `standard`: no allow; `hard`: no Continue either), never a wider scope or an allow on chi's own config; a refused pick exits 1 with what to answer instead (a convention, not a security boundary; see [Guardrails](guardrails.md#answers-from-a-parent-agent))
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
+- `chi review FILE… [--dir DIR] [--model M]`, `chi review --from ID [FILE…]` — start a review session to invite participants to: for files of a project, or as a review of a working session that starts from its recap, not its transcript (see [Review sessions](#review-sessions))
 - `chi share ID --name NAME [--agent] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant to review a session through chi web on the LAN (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
 - `chi --remote NAME send|answer|note|context|sessions|share …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
 - `chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR [-p TEXT]`) — the attached TUI on a session of that machine (see [Remote sessions](#remote-sessions))
@@ -1332,6 +1333,29 @@ chi share revoke --all          # every link to every session
   own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does; an invite or
   a revoke made with them isn't announced again by the `participants>` line. The REPL
   (`--no-shared`) answers them with a note: a participant's turns run on the session's worker.
+
+#### Review sessions
+
+Share a **review session**, not a working one: a working session's history holds its tool outputs, and a review
+turn's model may quote them. `chi review` starts one, idle:
+
+```sh
+chi review docs/plan.md docs/spec.md          # a fresh session in this project for those files
+# 4b7e9a01-…  review · docs/plan.md, docs/spec.md · idle
+# open it: chi --attach 4b7e9a01 or the web
+# invite someone: chi share 4b7e9a01 --name NAME
+chi review --from 3f9a1c2e docs/plan.md       # a review of a working session: its recap, not its transcript
+```
+
+- Each FILE is a **subject**: a file in the session's project (the git work tree of its folder, `--dir`, else
+  here), relative to that folder or absolute. A missing file, a folder, a file outside the project, a secret
+  (`.env*`, keys and certificates, credentials files, a git config) or chi's own refuses the review with one line:
+  `chi review: .env can't be a review subject: …`. At most 20.
+- `--from ID` (an id, a prefix, `last:ID`) starts a **review fork**: a new session in ID's folder, on its model
+  (`--model` to change it) and setup, seeded with a fresh recap of ID (its live worker is asked first, as a continue
+  asks), never its transcript. ID keeps running, unarchived, its delegates its own. Its FILEs are relative to ID's
+  folder.
+- `chi --remote NAME review … --dir /path/there` starts it on that machine; its chi web checks the files there.
 
 How it works inside (grants, the gate, the routes, the audit trail):
 [internals/participants.md](internals/participants.md).
