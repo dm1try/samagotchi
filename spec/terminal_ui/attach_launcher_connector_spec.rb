@@ -34,6 +34,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run with a connector" d
             no_interrupt: false, default_input: false, wait_at_eof: false, as_parent: false)
   end
 
+  it "is an error when the connector answers no session, never an attach on this machine" do
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new)
+    nothing = double("connector", connect: nil)
+
+    expect { described_class.run(attach: "s-1", connector: nothing) }
+      .to raise_error(described_class::Error, described_class::NOTHING_CONNECTED)
+    expect(described_class).not_to have_received(:connect)
+    expect(Samagotchi::TerminalUI::AttachedLoop).not_to have_received(:new)
+  end
+
   it "reports a question left waiting with the link's parent strategy and its spelling" do
     pending_question = { id: "q1", question: "Which file?", options: %w[A B] }
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :unanswered, unanswered: pending_question)

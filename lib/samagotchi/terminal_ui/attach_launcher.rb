@@ -24,6 +24,9 @@ module Samagotchi
       class Error < StandardError; end
 
       BRIDGE_WAIT = 10.0
+      # A connector that answered no session (its own failures raise Error
+      # with their words).
+      NOTHING_CONNECTED = "could not attach: no session was found or started"
 
       module_function
 
@@ -62,7 +65,8 @@ module Samagotchi
       #   state dir by default): the worker's, for the attached loop too
       # @param connector [#connect, nil] finds or starts the session
       #   elsewhere: its #connect returns the AttachLink the loop runs on
-      #   (nil: this machine's, through .connect)
+      #   (nil: this machine's, through .connect; a connector never falls
+      #   back to it)
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
@@ -70,8 +74,8 @@ module Samagotchi
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
               toolkit_flags: [], settings: nil, parent_answers: nil, state_dir: nil, connector: nil)
         state_dir ||= Session.default_state_dir
-        link = connector&.connect
-        client = if link
+        link = connector && (connector.connect || raise(Error, NOTHING_CONNECTED))
+        client = if connector
                    link.client
                  else
                    connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
@@ -91,7 +95,7 @@ module Samagotchi
                     default_input: default_input && !prompt && !attach && !resume,
                     wait_at_eof: !$stdin.tty?,
                     as_parent: Guardrails::ParentApprovals.parent_process? }
-        attached = if link
+        attached = if connector
                      AttachedLoop.new(link: link, **options)
                    else
                      AttachedLoop.new(client: client, **options, state_dir: state_dir)
@@ -104,7 +108,7 @@ module Samagotchi
         if ended == :unanswered && attached.unanswered
           # A link's strategy is read where the session is, its commands
           # spelled its way.
-          where = link ? { strategy: link.parent_strategy, via: link.via } : {}
+          where = connector ? { strategy: link.parent_strategy, via: link.via } : {}
           report_unanswered(attached.unanswered, session_id: client.session_id, state_dir: state_dir, **where)
         end
         report_ended(ended)
