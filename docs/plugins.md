@@ -2096,6 +2096,21 @@ by themselves there.
   report ending with the `/coordinate resume <slug>` to pick it up next
   time. It starts, merges and stops nothing: running children stay running
   and are named in the report.
+- **Sprint review (experimental, 0.6.0).** **`/coordinate review [name]`**
+  starts a review session of this coordinator session (`ctx.sessions.review`:
+  its recap, never its transcript; this session keeps running) seeded with the
+  open handoff's body (the one named, the only one, or a card with a Review
+  action each when several are open; with none, the recap alone), and prints
+  the `chi share <id> --name NAME` line. A participant (a manager, a teammate)
+  brings new context there; the skill's Sprint review section (copied into
+  the seed: a participant's turn reads project memories only, and the skill
+  is a system one) has the review's model answer it with a **hand-off diff** (the handoff's lines as
+  they would change, in a `diff` block, and what it means per branch), in a
+  turn that may only read. Your **Apply** under it (the web's) quotes the
+  diff in your turn there: the model brings the handoff up to date and
+  re-plans in words, and starts, stops or merges nothing from the review
+  session: the coordinator session picks the change up from the handoff,
+  merges still asked. Experimental: it may go if it doesn't earn its place.
 - **The coordinator toolkit.** The bundle declares `coordinator`: `lean`
   plus `delegate`, `delegate_result` and `list_sessions`
   ([Toolkits](configuration.md#toolkits)). `/coordinate` puts a fresh session

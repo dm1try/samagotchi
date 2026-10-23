@@ -225,6 +225,70 @@ RSpec.describe "The coordinator plugin", :bundle do
     end
   end
 
+  describe "/coordinate review (experimental)" do
+    before { bundle.set(cwd: sandbox.work_dir) }
+
+    def handoff(name, description, body: "# #{name}\n")
+      sandbox.write_memory(name, body, scope: "project", description: description, cwd: sandbox.work_dir)
+    end
+
+    def reviews = bundle.sessions.calls_to(:review).map(&:options)
+
+    it "starts a review of this session seeded with the one open handoff's body, and prints the chi share line" do
+      handoff("handoff_calc-v2", "OPEN coordinator handoff calc-v2", body: "Goal: calc v2\n- add: merged\n")
+
+      expect(run("/coordinate", "review")).to eq(
+        "sprint review review-1 started from this session (experimental), seeded with handoff_calc-v2; this session " \
+        "keeps running.\ninvite someone: chi share review-1 --name NAME (or the participants chip on its page); their " \
+        "new context comes back as a hand-off diff; Apply under it (on its page) puts the change in your composer there."
+      )
+      seed = reviews.last[:seed]
+      expect(seed).to start_with("This is a sprint review of the coordinator session aaaabbbb (experimental). The " \
+                                 "skill_coordinator memory's Sprint review section, which you follow here:\n\n")
+      # No skill installed in the sandbox: the section's gist.
+      expect(seed).to include("Answer new context with a hand-off diff")
+      expect(seed).to include("handoff handoff_calc-v2 as of now").and include("Goal: calc v2\n- add: merged")
+      expect(sent).to be_empty
+    end
+
+    it "copies the installed skill's Sprint review section into the seed: a participant's turn can't read a system memory" do
+      skill = File.read(File.join(dir, "skill_coordinator.md"))
+      sandbox.write_memory("skill_coordinator", skill, scope: "system")
+      run("/coordinate", "review")
+      seed = reviews.last[:seed]
+      expect(seed).to include("## Sprint review (experimental)").and include("hand-off diff")
+      expect(seed).not_to include("## Gotchas")
+    end
+
+    it "shows a card with one Review per open handoff when there are several, and reviews the one picked" do
+      handoff("handoff_a", "OPEN a")
+      handoff("handoff_b", "OPEN b")
+
+      expect(run("/coordinate", "review")).to be_nil
+      expect(cards.last).to include(id: "coordinate-review", title: "open handoffs (2)")
+      expect(cards.last[:actions]).to eq([{ label: "Review a", command: "/coordinate review handoff_a" },
+                                          { label: "Review b", command: "/coordinate review handoff_b" }])
+      expect(reviews).to be_empty
+
+      run("/coordinate", "review b")
+      expect(reviews.last[:seed]).to include("handoff handoff_b as of now")
+    end
+
+    it "starts from the recap alone with none open, refuses a name that isn't open, and says why a review failed" do
+      expect(run("/coordinate", "review")).to include("from its recap alone: no open handoff")
+      expect(reviews.last[:seed]).not_to include("as of now")
+      expect(run("/coordinate", "review nope")).to eq("/coordinate review: no open handoff handoff_nope in this project (none is open)")
+      bundle.sessions.on(:review) { |**| raise Samagotchi::Plugin::Sessions::Error, "a scratch session starts no other sessions" }
+      expect(run("/coordinate", "review")).to eq("/coordinate review: a scratch session starts no other sessions")
+    end
+
+    it "takes \"review\" with more words as a goal" do
+      run("/coordinate", "review the payment specs")
+      expect(sent.last.last).to end_with("review the payment specs")
+      expect(reviews).to be_empty
+    end
+  end
+
   describe "/coordinate end" do
     it "asks the model in this session to follow the skill's End of day, reading no memories itself" do
       expect(Samagotchi::MemoryPaths).not_to receive(:scope_dir)

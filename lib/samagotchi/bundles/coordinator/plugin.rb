@@ -25,6 +25,14 @@
 # (/coordinate resume <name>); none: says so. It reads the project's
 # memories folder, nothing else.
 #
+# /coordinate review [handoff] (experimental) opens a sprint review: a review
+# session of this one (ctx.sessions.review: its recap, never its transcript;
+# this session keeps running), seeded with the open handoff's body (the one
+# named, the only one open, or a card with a Review action each when several
+# are), for participants (chi share): its model answers their new context
+# with a hand-off diff and the owner applies it (the skill's Sprint review).
+# With none open it starts from the recap alone and says so.
+#
 # /coordinate end ends the day: the model is asked to follow the skill's End
 # of day (bring its handoff up to date, keep it OPEN unless all is done, give
 # a short report). It reads nothing itself; "end" with more words is a goal.
@@ -53,8 +61,21 @@ class Plugin
   TEXT_CHARS = 80
   USAGE = "usage: /children [all] | /children stop <id>"
   COORDINATE_USAGE = "usage: /coordinate <goal> — chi splits it into tasks, one child session and worktree each; " \
-                     "/coordinate resume [name] — pick up an open handoff; /coordinate end — save the handoff, end-of-day report"
+                     "/coordinate resume [name] — pick up an open handoff; /coordinate end — save the handoff, end-of-day report; " \
+                     "/coordinate review [name] — a sprint review session to share (experimental)"
   RESUME_CARD_ID = "coordinate-resume"
+  REVIEW_CARD_ID = "coordinate-review"
+  # The seed's note: what to do (the skill's Sprint review section, copied:
+  # a participant's turn may read project memories only, and the skill is
+  # where its bundle was installed, usually system) and the handoff's body.
+  REVIEW_SEED = "This is a sprint review of the coordinator session %<source>s (experimental). The " \
+                "skill_coordinator memory's Sprint review section, which you follow here:"
+  SKILL = "skill_coordinator"
+  SPRINT_REVIEW_HEADING = /^## Sprint review\b.*$/
+  # The section's gist when the skill's file can't be read.
+  SPRINT_REVIEW_FALLBACK = "A participant's turn may only read. Answer new context with a hand-off diff (the " \
+                           "handoff's lines as they would change, in a diff block) and what it means per branch. When " \
+                           "the owner applies it, update the handoff and re-plan in words; start, stop or merge nothing here."
   # A card takes 6 actions.
   MAX_RESUMES = 6
   HANDOFF_LINE = /^- \*\*(handoff_[^*\s]+)\*\*(.*)$/
@@ -74,7 +95,8 @@ class Plugin
       children_command(args.to_s.strip, ctx)
     end
     chi.command "/coordinate", "run work in parallel: chi splits <goal> into tasks, each in a child session and worktree; " \
-                               "resume: pick up an open handoff; end: save the handoff, end-of-day report",
+                               "resume: pick up an open handoff; end: save the handoff, end-of-day report; " \
+                               "review: a sprint review session to share (experimental)",
                 anytime: true do |args, ctx|
       coordinate(args.to_s.strip, ctx)
     end
@@ -138,6 +160,8 @@ class Plugin
     verb, rest = goal.split(/\s+/, 2)
     # "resume" and at most a name; "resume the old work" is a goal.
     return resume(rest.to_s.strip, ctx) if verb == "resume" && !rest.to_s.strip.match?(/\s/)
+    # "review" and at most a name; "review the specs" is a goal.
+    return review(rest.to_s.strip, ctx) if verb == "review" && !rest.to_s.strip.match?(/\s/)
     # A bare "end" only; "end the flaky specs" is a goal.
     return end_of_day(ctx) if verb == "end" && rest.to_s.strip.empty?
 
@@ -171,12 +195,68 @@ class Plugin
         "asked chi to end the day; a running turn gets it at its next step")
   end
 
-  def resume_card(open, ctx)
+  # /coordinate review [name]
+  def review(name, ctx)
+    open = open_handoffs(ctx)
+    if name.empty?
+      return handoff_card(open, ctx, verb: "review", id: REVIEW_CARD_ID) if open.size > 1
+
+      name = open.first&.dig(:name)
+    else
+      name = "handoff_#{name}" unless name.start_with?("handoff_")
+      unless open.any? { |handoff| handoff[:name] == name }
+        return "/coordinate review: no open handoff #{name} in this project (#{open.empty? ? "none is open" : "open: #{open.map { |h| h[:name] }.join(", ")}"})"
+      end
+    end
+    start_review(name, ctx)
+  end
+
+  def start_review(name, ctx)
+    seed = "#{format(REVIEW_SEED, source: ctx.session_id.to_s[0, 8])}\n\n#{sprint_review_section(ctx)}"
+    seed += "\n\nThe coordinator's handoff #{name} as of now (memory_read it, scope: project, for the latest):\n\n#{handoff_body(name, ctx)}" if name
+    id = ctx.sessions.review(seed: seed)
+    short = id.to_s[0, 8]
+    ["sprint review #{short} started from this session (experimental), #{name ? "seeded with #{name}" : "from its recap alone: no open handoff"}; " \
+     "this session keeps running.",
+     "invite someone: chi share #{short} --name NAME (or the participants chip on its page); their new context comes " \
+     "back as a hand-off diff; Apply under it (on its page) puts the change in your composer there."].join("\n")
+  rescue Samagotchi::Plugin::Sessions::Error => e
+    "/coordinate review: #{e.message}"
+  end
+
+  # The skill's Sprint review section as installed (system scope, else the
+  # project's), heading to the next heading; the fallback without one.
+  def sprint_review_section(ctx)
+    %w[system project].each do |scope|
+      file = File.join(Samagotchi::MemoryPaths.scope_dir(scope, cwd: ctx.cwd).to_s, "#{SKILL}.md")
+      next unless File.file?(file)
+
+      text = File.read(file, encoding: "UTF-8")
+      start = text.index(SPRINT_REVIEW_HEADING) or next
+      rest = text[start..]
+      stop = rest.index(/^## /, 1)
+      return (stop ? rest[0...stop] : rest).strip
+    end
+    SPRINT_REVIEW_FALLBACK
+  rescue SystemCallError
+    SPRINT_REVIEW_FALLBACK
+  end
+
+  def handoff_body(name, ctx)
+    File.read(File.join(Samagotchi::MemoryPaths.scope_dir("project", cwd: ctx.cwd).to_s, "#{name}.md"), encoding: "UTF-8").strip
+  rescue SystemCallError
+    "(its file couldn't be read)"
+  end
+
+  def resume_card(open, ctx) = handoff_card(open, ctx, verb: "resume", id: RESUME_CARD_ID)
+
+  # A card of the open handoffs, one action each (/coordinate VERB name).
+  def handoff_card(open, ctx, verb:, id:)
     body = open.map { |handoff| "- #{handoff[:name]}#{" — #{handoff[:description]}" unless handoff[:description].empty?}" }
     actions = open.first(MAX_RESUMES).map do |handoff|
-      { label: "Resume #{handoff[:name].delete_prefix("handoff_")}", command: "/coordinate resume #{handoff[:name]}" }
+      { label: "#{verb.capitalize} #{handoff[:name].delete_prefix("handoff_")}", command: "/coordinate #{verb} #{handoff[:name]}" }
     end
-    ctx.card(id: RESUME_CARD_ID, title: "open handoffs (#{open.size})", body: body.join("\n"), actions: actions)
+    ctx.card(id: id, title: "open handoffs (#{open.size})", body: body.join("\n"), actions: actions)
     nil
   end
 
