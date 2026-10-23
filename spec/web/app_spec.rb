@@ -3076,7 +3076,7 @@ RSpec.describe Samagotchi::Web::App do
           true
         end
 
-        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}?force=true", method: "DELETE"))
 
         expect(status).to eq(200)
         expect(JSON.parse(body.first)).to include("stopped" => true)
@@ -3089,10 +3089,14 @@ RSpec.describe Samagotchi::Web::App do
         @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
         allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
 
-        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}?force=1", method: "DELETE"))
 
         expect(status).to eq(409)
-        expect(JSON.parse(body.first)).to include("error" => "still_stopping")
+        expect(JSON.parse(body.first)).to include("error" => "still_stopping", "reason" => "still_stopping",
+                                                  "session_id" => session.id,
+                                                  "message" => "session #{session.id}'s worker is still shutting down",
+                                                  "detail" => "session #{session.id}'s worker is still shutting down; " \
+                                                              "try again in a moment")
         expect(File.exist?(session_file)).to be true
       end
 

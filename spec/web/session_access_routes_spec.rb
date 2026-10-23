@@ -353,6 +353,26 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
   end
 
+  describe "DELETE /api/sessions/:id: force" do
+    it "refuses a live worker's session without force: 409 worker_running with DeleteRefused's message" do
+      session = make
+      own(session)
+
+      status, body = call("/api/sessions/#{session.id}", method: "DELETE")
+
+      expect([status, body]).to eq([409, { "error" => "worker_running", "detail" => "session #{session.id}'s worker is running",
+                                           "message" => "session #{session.id}'s worker is running",
+                                           "session_id" => session.id, "reason" => "worker_running" }])
+      expect(Samagotchi::Session.exist?(session.id, state_dir: state_dir)).to be(true)
+    end
+
+    it "deletes a session with no worker without force" do
+      session = make
+
+      expect(call("/api/sessions/#{session.id}", method: "DELETE")).to match([200, include("status" => "deleted")])
+    end
+  end
+
   describe "the refusals' fields: a remote client raises the same exception" do
     it "names an archive's reason and the delegate that holds it" do
       session = make(status: "running")

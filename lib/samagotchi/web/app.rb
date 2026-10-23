@@ -1496,17 +1496,21 @@ module Samagotchi
         json_response(200, { status: "unarchived", session_id: result[:id], unarchived: result[:unarchived] })
       end
 
-      # DELETE /api/sessions/:id: the session for good. A live worker is
-      # stopped first (the page's confirm says so); a chi REPL's session is
-      # refused.
-      def handle_delete(_req, id)
-        result = @manager.delete_session(id, state_dir: @state_dir, stop: true, wait: STOP_WAIT_SECONDS)
+      # DELETE /api/sessions/:id?force=true: the session for good. With
+      # force a live worker is stopped first (the page sends it: its confirm
+      # says so); without it a live worker's session is refused, 409
+      # worker_running, as chi sessions delete without --force. A chi REPL's
+      # session is always refused.
+      def handle_delete(req, id)
+        result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.params["force"]),
+                                             wait: STOP_WAIT_SECONDS)
         @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
-      rescue SessionManager::OwnedByTUI
-        owned_by_repl(id)
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_repl(id, e)
       rescue SessionManager::DeleteRefused => e
-        error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
+        detail = e.reason == :still_stopping ? "#{e.message}; try again in a moment" : e.message
+        refusal_response(409, e.reason.to_s, e, detail: detail, session_id: e.session_id, reason: e.reason.to_s)
       end
 
       # ── The working set (web.working_set) ───────────────────────────────

@@ -393,7 +393,7 @@ test("sendCommand posts a session command line with this tab's id", async () => 
   assert.deepEqual(calls[0], ["/api/sessions/abc/command", "POST", JSON.stringify({ line: "/model x", client_id: "web:me" })]);
 });
 
-test("deleteSession sends DELETE to the session's URL", async () => {
+test("deleteSession sends DELETE to the session's URL, forced (a live worker is stopped first)", async () => {
   const calls = [];
   const result = await deleteSession("3fa2 b", {
     fetchImpl: (path, opts) => {
@@ -401,7 +401,7 @@ test("deleteSession sends DELETE to the session's URL", async () => {
       return Promise.resolve(okResponse({ status: "deleted", session_id: "3fa2 b", stopped: false }));
     },
   });
-  assert.deepEqual(calls, [["/api/sessions/3fa2%20b", "DELETE"]]);
+  assert.deepEqual(calls, [["/api/sessions/3fa2%20b?force=true", "DELETE"]]);
   assert.equal(result.status, "deleted");
 });
 
