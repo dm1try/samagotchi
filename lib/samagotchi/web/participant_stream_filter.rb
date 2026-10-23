@@ -13,8 +13,15 @@ module Samagotchi
     # written again from the filtered event (its `id:` the Bridge's cursor,
     # `event:` the filtered type), never passed through as bytes.
     #
-    # One per stream (it keeps the partial frame between chunks), called
-    # from the stream's one thread.
+    # The reply's text is sent by whole lines: a secret the model streams
+    # over two chunks is redacted as one (Redact sees the line), and a
+    # private key block is withheld from its BEGIN line to its END line.
+    # The rest of a line waits for its end, a boundary (a tool call, the
+    # turn's end, the owner's question) or MAX_HELD characters (then up to
+    # its last space).
+    #
+    # One per stream (it keeps the partial frame and line between chunks),
+    # called from the stream's one thread.
     class ParticipantStreamFilter
       # A partial frame longer than this is dropped (and the rest of it, up
       # to its end): a participant's stream never buffers without bound.
@@ -23,11 +30,20 @@ module Samagotchi
       PING = ": ping\r\n\r\n"
       # An SSE id is the Bridge's `<seq>-<epoch>` (EventId) or a plain seq.
       EVENT_ID = /\A[0-9A-Za-z.-]{1,64}\z/
+      MAX_HELD = 400
+      # The events before which the held text goes out.
+      FLUSH_BEFORE = %w[tool_call_started turn_completed turn_canceled turn_failed question_requested continue_offered
+                        snapshot reset].freeze
+      PEM_BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/
+      PEM_END = /-----END [A-Z0-9 ]*PRIVATE KEY-----/
 
       def initialize(viewer)
         @viewer = viewer
         @buffer = +""
         @skipping = false
+        @held = +""
+        @held_iteration = nil
+        @in_key = false
       end
 
       # @param chunk [String] the Bridge's next read
@@ -69,9 +85,62 @@ module Samagotchi
         end
         event = parse(data.join("\n")) or return ""
         shown = ParticipantView.event(event, @viewer) or return ""
+        id = nil unless id && EVENT_ID.match?(id)
+        return chunk(event, shown, id) if shown["type"] == "generation_chunk"
 
+        if shown["type"] == "generation_retrying" && shown["restarted"]
+          @held = +""
+          return frame(id, shown)
+        end
+        return flush + frame(id, shown) if FLUSH_BEFORE.include?(shown["type"])
+
+        frame(id, shown)
+      end
+
+      # A reply chunk: its text joins the held line; the whole lines go out.
+      def chunk(event, shown, id)
+        @held_iteration = shown["iteration"]
+        @held << event["text"].to_s
+        cut = @held.rindex("\n")
+        cut ||= @held.rindex(/\s/) if @held.size > MAX_HELD
+        cut ||= @held.size - 1 if @held.size > MAX_HELD * 4
+        return "" unless cut
+
+        text = @held[0..cut]
+        @held = @held[(cut + 1)..]
+        out = lines_of(text)
+        out.empty? ? "" : frame(id, shown.merge("text" => out))
+      end
+
+      # The held text as a chunk of its own (no cursor), before a boundary.
+      def flush
+        return "" if @held.empty?
+
+        text = lines_of(@held)
+        @held = +""
+        return "" if text.empty?
+
+        frame(nil, { "type" => "generation_chunk", "text" => text, **(@held_iteration ? { "iteration" => @held_iteration } : {}) })
+      end
+
+      # +text+'s lines redacted, a private key block's withheld whole.
+      def lines_of(text)
+        text.each_line.map do |line|
+          if @in_key
+            @in_key = false if PEM_END.match?(line)
+            next ""
+          end
+          if PEM_BEGIN.match?(line) && !PEM_END.match?(line)
+            @in_key = true
+            next "#{ParticipantView::Redact::MARK}#{"\n" if line.end_with?("\n")}"
+          end
+          ParticipantView::Redact.text(line, @viewer)
+        end.join
+      end
+
+      def frame(id, shown)
         lines = []
-        lines << "id: #{id}" if id && EVENT_ID.match?(id)
+        lines << "id: #{id}" if id
         lines << "event: #{shown["type"]}"
         lines << "data: #{JSON.generate(shown)}"
         "#{lines.join("\r\n")}\r\n\r\n"

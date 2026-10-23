@@ -86,6 +86,9 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/docs/plan.md" },
                      title: "docs/plan.md", params: "docs/plan.md", view: { command: "x" }, iteration: 1, call_index: 0 }))
         .to eq("type" => "tool_call_started", "tool" => "read", "path" => "docs/plan.md", "iteration" => 1, "call_index" => 0)
+      home = described_class::Viewer.new(cwd: "/home/o", home: "/home/o")
+      expect(described_class.event({ "type" => "tool_call_started", "tool" => "read", "ref" => { "path" => "/home/o/.config/x.md" } }, home))
+        .to eq("type" => "tool_call_started", "tool" => "read")
       expect(shown({ type: :tool_call_started, tool: "read", ref: { path: "/home/o/.ssh/id_rsa" } }))
         .to eq("type" => "tool_call_started", "tool" => "read")
       expect(shown({ type: :tool_call_started, tool: "execute", title: "curl -H 'Authorization: x'", params: "env" }))
@@ -148,7 +151,29 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
   end
 
+  describe ".visible_raw" do
+    it "drops a cut-off thought or tool call and what came before a bare close; closed blocks stay for the rows" do
+      vr = ->(text) { described_class.visible_raw(text) }
+      expect(vr.call("Let me look.\n<tool_call>\n{\"name\":\"execute\",\"arguments\":{\"command\":\"cat SECRET\"}}")).to eq("Let me look.\n")
+      expect(vr.call("ok <|tool_call>call:execute{command:cat SECRET}")).to eq("ok ")
+      expect(vr.call("<think>SECRET plan")).to eq("")
+      expect(vr.call("SECRET plan</think>\n\nThe answer.")).to eq("\n\nThe answer.")
+      # Gemma's open thought channel runs to the end as one block (GEMMA_THOUGHT_RE): the display strips it.
+      expect(Samagotchi::OutputFormatter.strip_markup(vr.call("ok <|channel>thought SECRET"))).to eq("ok")
+      closed = "<think>a</think>Reading.<tool_call>{\"name\":\"read\"}</tool_call>"
+      expect(vr.call(closed)).to eq(closed)
+    end
+  end
+
   describe "Redact" do
+    it "takes the likeliest quoted secret shapes: env names, JSON keys, URL passwords, JWTs, Google and Stripe keys" do
+      text = "OPENAI_API_KEY=abc123 DATABASE_PASSWORD=hunter2 AWS_SECRET_ACCESS_KEY=xyz {\"api_key\": \"k1\"} ?access_token=t1&x=1 " \
+             "postgres://app:pa55@db/x eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT AIzaSyA1234567890abcdefghijklmnopqrstu rk_live_abcdefghijklmnop1234"
+      out = described_class::Redact.text(text, viewer)
+      %w[abc123 hunter2 xyz k1 t1 pa55 eyJzdWIi AIzaSy rk_live].each { |leak| expect(out).not_to include(leak), leak }
+      expect(out).to include("postgres://app:[redacted]@db/x", "&x=1")
+    end
+
     it "takes secret shapes, the owner's token, the session's folder and home out of every string" do
       text = "key sk-ant-abcdefghijklmnopqrstu ghp_abcdefghijklmnopqrstuvwxyz0123 AKIAABCDEFGHIJKLMNOP xoxb-1234567890-abc " \
              "chp_abcdefghijklmnopqrstuvwxyz Authorization: Bearer abc.def token=zzz OWNERTOKEN123 at /home/o/proj/a.rb in /home/o/proj, /home/o/notes " \
@@ -169,14 +194,14 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
   def frame(id, data) = "id: #{id}\r\nevent: #{data[:type]}\r\ndata: #{JSON.generate(data)}\r\n\r\n"
 
   it "rebuilds shown frames from the filtered event, drops the rest, passes pings, across any chunk split" do
-    bytes = frame("1-ep", { type: "generation_chunk", text: "Hi", thinking: "secret" }) +
+    bytes = frame("1-ep", { type: "generation_chunk", text: "Hi\n", thinking: "secret" }) +
             frame("2-ep", { type: "tool_call_completed", output: "SECRET OUTPUT", iteration: 1, call_index: 0 }) +
             frame("3-ep", { type: "working_set_updated", items: [{ path: "/p/.env" }] }) +
             ": ping\r\n\r\n" +
             frame("4-ep", { type: "brand_new", text: "leak" })
     [1, 7, 4096].each do |size|
       out = bytes.chars.each_slice(size).map { |chars| filter.call(chars.join) }.join
-      expect(out).to eq("id: 1-ep\r\nevent: generation_chunk\r\ndata: {\"type\":\"generation_chunk\",\"text\":\"Hi\"}\r\n\r\n" \
+      expect(out).to eq("id: 1-ep\r\nevent: generation_chunk\r\ndata: {\"type\":\"generation_chunk\",\"text\":\"Hi\\n\"}\r\n\r\n" \
                         "id: 2-ep\r\nevent: tool_call_completed\r\ndata: {\"type\":\"tool_call_completed\",\"iteration\":1,\"call_index\":0}\r\n\r\n" \
                         ": ping\r\n\r\n")
     end
@@ -189,5 +214,31 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
     big = "data: {\"type\":\"generation_chunk\",\"text\":\"#{"x" * (described_class::MAX_FRAME_BYTES + 10)}"
     expect(filter.call(big)).to eq("")
     expect(filter.call("\"}\r\n\r\n#{frame("9", { type: "turn_completed" })}")).to eq(frame("9", { type: "turn_completed" }))
+  end
+
+  def texts(out) = out.scan(/^data: (.*)\r$/).flatten.map { |json| JSON.parse(json) }.select { |e| e["type"] == "generation_chunk" }.map { |e| e["text"] }.join
+
+  it "sends the reply by whole lines, so a secret split over chunks is redacted as one" do
+    out = ["token ghp_ABCDEFGHIJ", "KLMNOPQRSTUVWXYZ0123 done\n"].each_with_index
+                                                                .map { |text, i| filter.call(frame(i.to_s, { type: "generation_chunk", text: text })) }.join
+    expect(texts(out)).to eq("token [redacted] done\n")
+  end
+
+  it "withholds a private key block streamed over several chunks, from its BEGIN line to its END line" do
+    parts = ["Here:\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blb", "nNzaC1rZXk\nAAAA\n-----END OPENSSH PRIVATE KEY-----\nafter\n"]
+    out = parts.each_with_index.map { |text, i| filter.call(frame(i.to_s, { type: "generation_chunk", text: text })) }.join
+    expect(texts(out)).to eq("Here:\n[redacted]\nafter\n")
+  end
+
+  it "sends the held rest of a line before a tool row or the turn's end, and drops it at a restarted step" do
+    out = filter.call(frame("1", { type: "generation_chunk", text: "Let me look", iteration: 1 })) +
+          filter.call(frame("2", { type: "tool_call_started", tool: "read", iteration: 1, call_index: 0 }))
+    expect(out.index("Let me look")).to be < out.index("tool_call_started")
+    out = filter.call(frame("3", { type: "generation_chunk", text: "void", iteration: 2 })) +
+          filter.call(frame("4", { type: "generation_retrying", restarted: true, iteration: 2 })) +
+          filter.call(frame("5", { type: "generation_chunk", text: "Done", iteration: 2 })) +
+          filter.call(frame("6", { type: "turn_completed" }))
+    expect(texts(out)).to eq("Done")
+    expect(out.index("Done")).to be < out.index("turn_completed")
   end
 end

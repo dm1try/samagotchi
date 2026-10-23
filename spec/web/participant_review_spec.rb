@@ -75,6 +75,13 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(JSON.generate(body)).not_to include("env?", "CARD", "owner's next", "metrics")
   end
 
+  it "hides an automatic turn's prompt by the live worker's record, before analytics.json has it" do
+    snapshot["snapshot"]["current_turn"] = nil
+    snapshot["session_state_snapshot"]["metrics"] = { "turn_records" => [{ "id" => "t0", "automatic" => true }] }
+    body = review(issued.token).last
+    expect(body["messages"].first).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "t0")
+  end
+
   it "is waiting for the owner while a Continue offer stands between turns" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["snapshot"]["continue_offer"] = { "context" => "step limit" }

@@ -169,7 +169,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   `ClientId.human?`, else `automatic`; `continue`), the turn's end (`turn_completed`, `turn_canceled`, `turn_failed`:
   type and turn id), `generation_chunk` (its visible `text` only; a thinking-only chunk is dropped),
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
-  the session's folder when it is inside it), `tool_call_completed` (its status word), and bare markers (the type
+  the session's folder when it is inside it; never when that folder is home or `/`), `tool_call_completed` (its status word), and bare markers (the type
   alone) for the queue (`turn_enqueued`, `turn_dequeued`, `input_merged`), the owner's question, approval or Continue
   offer and their answers, and `snapshot` / `reset`: the page re-reads its review data at each. Every other type,
   known (`DROPPED`) or new, is dropped. `spec/web/participant_view_spec.rb` scans every `type: :name` chi emits and
@@ -177,20 +177,27 @@ fields: a field added to an event later reaches nobody until it is named there.
 - **The frames** (`Web::ParticipantStreamFilter`). The Bridge's chunks are cut into frames (`\r?\n\r?\n`, a partial
   one kept for the next chunk, one over 1 MiB dropped to its end); each frame's JSON goes through `.event` and is
   written again (`id:` the Bridge's cursor when it looks like one, `event:` the filtered type); a comment is a
-  `: ping`; anything that doesn't parse is dropped. The owner's stream never goes through it (a byte pipe).
+  `: ping`; anything that doesn't parse is dropped. The reply's text goes out by whole lines, so a secret the model
+  streams over two chunks is redacted as one, and a private key block is withheld from its BEGIN line to its END
+  line; the rest of a line waits for its end, a tool call, the turn's end or the owner's question (or 400
+  characters). The owner's stream never goes through it (a byte pipe).
 - **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`): a user message only when it is a
   turn's prompt (it has the turn's id) or a person's merged line, and never one from a source that isn't a person's;
   so the owner's `!` line and its output, a delegate's report (a wake turn's too), and the notes chi adds (a declined
-  Continue) never show. A turn no person sent (its analytics record's `automatic`, `SessionMetrics`: a task's or a
-  plugin's; the running turn's by its start) shows as an automatic turn without its prompt, as the stream does. Each
+  Continue) never show. A turn no person sent (its record's `automatic`, `SessionMetrics`: a task's or a plugin's,
+  read from analytics.json and the live worker's records; the running turn's by its start; a delegate child's first
+  turn, its parent's task) shows as an automatic turn without its prompt, as the stream does. A raw loop's saved
+  reply is cut before the display reads it (`.visible_raw`): what came before a bare `</think>` and everything from
+  an unclosed thought or tool call on, which the display would only untag. Each
   prompt carries its author and an image count; replies their text and their step's tool rows. Notes, steers and
   empty-answer markers are dropped. The reply's
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
 - **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
-  `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, private key blocks, an `Authorization:` header's or a `token=` /
-  `api_key=` / `password=` value), the owner's web token, the session's folder (shown as relative paths) and the home
+  `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
+  `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
+  not, and a URL's password), the owner's web token, the session's folder (shown as relative paths) and the home
   folder (`~`). Defence in depth only: the allowlist is the control; a reply that paraphrases a secret isn't caught.
 - **Errors.** A participant's 404 and 500 carry fixed words, never an exception's (which may name a path).
 - **The owner's participant view.** The owner reaches the same reads: `/?as=participant#s=<id>` serves the participant

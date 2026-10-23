@@ -47,9 +47,9 @@ module Samagotchi
         turn_snapshot = live && live["snapshot"]
         state = live && live["session_state_snapshot"]
         raw = live_or_saved(turn_snapshot, "messages") { session.messages }
-        shown = messages_for_display(raw, parts: true, cwd: session.working_directory)
+        shown = messages_for_display(visible_replies(raw), parts: true, cwd: session.working_directory)
         current = turn_snapshot && ParticipantView.current_turn(turn_snapshot["current_turn"], viewer)
-        automatic = automatic_turn_ids(id, shown, current)
+        automatic = automatic_turn_ids(id, session, shown, current, state)
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
                      (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
         json_response(200, {
@@ -64,19 +64,37 @@ module Samagotchi
         })
       end
 
-      # The ids of the turns no person sent, whose prompt a participant
-      # doesn't read: the saved analytics' records marked automatic, and the
-      # running turn's (its record isn't saved yet: the last prompt's id)
-      # when its start says so.
-      def automatic_turn_ids(id, shown, current)
-        records = Array(read_analytics(id)&.fetch("turn_records", nil))
-        ids = records.filter_map { |record| record["id"].to_s if record.is_a?(Hash) && record["automatic"] }
-        if current&.dig("automatic")
-          last = shown.reverse.find { |message| message[:role] == "user" && message[:turn_id] }
-          ids << last[:turn_id].to_s if last
+      # The saved messages with each model message's content as a
+      # participant may read it (ParticipantView.visible_raw: no cut-off
+      # thought or tool call left as text).
+      def visible_replies(raw)
+        Array(raw).map do |message|
+          next message unless message.is_a?(Hash) && %w[model assistant].include?((message[:role] || message["role"]).to_s)
+
+          key = message.key?(:content) ? :content : "content"
+          content = message[key]
+          content.is_a?(String) ? message.merge(key => ParticipantView.visible_raw(content)) : message
         end
+      end
+
+      # The ids of the turns no person sent, whose prompt a participant
+      # doesn't read: the turn records marked automatic (the saved ones and
+      # the live worker's, which has a finished turn's before it is saved),
+      # the running turn's when its start says so (its prompt is the last),
+      # and a delegate child's first turn (its task, the parent's text,
+      # came with no client).
+      def automatic_turn_ids(id, session, shown, current, state)
+        live = state.is_a?(Hash) && state["metrics"].is_a?(Hash) ? Array(state["metrics"]["turn_records"]) : []
+        records = Array(read_analytics(id)&.fetch("turn_records", nil)) + live
+        ids = records.filter_map { |record| record["id"].to_s if record.is_a?(Hash) && record["automatic"] }
+        prompts = shown.select { |message| message[:role] == "user" && message[:turn_id] }
+        ids << prompts.last[:turn_id].to_s if current&.dig("automatic") && prompts.last
+        ids << prompts.first[:turn_id].to_s if delegate_child?(session) && prompts.first
         ids
       end
+
+      # Session.load reads the parent sidecar over the file's field.
+      def delegate_child?(session) = !session.parent_id.to_s.empty?
 
       # Who is reading: a participant (their id, name, whether they may
       # comment: not once their cap is reached), or the owner looking

@@ -357,6 +357,20 @@ RSpec.describe "a participant red-teaming a session" do
       expect(body).not_to include(root)
     end
 
+    it "reads no cut-off thought or tool call in a raw loop's reply, and no delegate child's first prompt" do
+      session.messages.clear
+      session.messages.push({ role: "user", content: "the parent's TASK-TEXT", turn_id: "c1" },
+                            { role: "model", content: "Let me look.\n<tool_call>\n{\"name\":\"execute\",\"arguments\":{\"command\":\"cat TOOL-ARG\"}}" },
+                            { role: "user", content: "q", turn_id: "c2" },
+                            { role: "model", content: "THINKING-TAIL</think>\n\nAnswer." })
+      session.parent_id = "0badc0de-0000-4000-8000-000000000000"
+      session.save(state_dir: state_dir)
+      body = get("/api/sessions/#{session.id}/review").last
+      expect(JSON.parse(body)["messages"].map { |m| [m["role"], m["content"], m["automatic"]] })
+        .to eq([["user", "", true], ["assistant", "Let me look.", nil], ["user", "q", nil], ["assistant", "Answer.", nil]])
+      %w[TASK-TEXT TOOL-ARG THINKING-TAIL].each { |leak| expect(body).not_to include(leak), leak }
+    end
+
     it "reads only the session's title, status and participants through show, whatever the query" do
       %w[? ?brief=1 ?cards=1 ?tail=1 ?timing=1 ?parts=1].each do |query|
         status, body = get("/api/sessions/#{session.id}#{query}")

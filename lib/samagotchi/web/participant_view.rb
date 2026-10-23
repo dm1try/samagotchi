@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../client_id"
+require_relative "../output_formatter"
 require_relative "../steer"
 
 module Samagotchi
@@ -252,16 +253,20 @@ module Samagotchi
       def tool_row(tool, ref, viewer)
         row = { "tool" => tool.to_s }
         path = ref.is_a?(Hash) ? field(ref, :path) : nil
-        relative = project_path(path, viewer.cwd)
+        relative = project_path(path, viewer.cwd, home: viewer.home)
         row["path"] = relative if relative
         row
       end
 
-      # +path+ relative to +cwd+ when it is inside it, else nil.
-      def project_path(path, cwd)
+      # +path+ relative to +cwd+ when it is inside it, else nil. None when
+      # the session's folder is the home folder or / (everything would be
+      # "inside": chi's own state and config, other projects).
+      def project_path(path, cwd, home: nil)
         return nil unless path.is_a?(String) && cwd.is_a?(String) && !cwd.empty?
 
         root = File.expand_path(cwd)
+        return nil if root == "/" || (home && root == File.expand_path(home.to_s))
+
         full = File.expand_path(path, root)
         return nil unless full.start_with?("#{root}/")
 
@@ -312,6 +317,35 @@ module Samagotchi
         out
       end
 
+      # Markup a reply may hold whole (closed): kept for the tool rows read
+      # from it (MessageParts) and stripped by the display.
+      CLOSED_BLOCKS = Regexp.union(OutputFormatter::QWEN_THINK_RE, OutputFormatter::QWEN_TOOL_CALL_RE,
+                                   OutputFormatter::GEMMA_TOOL_CALL_RE, OutputFormatter::GEMMA_THOUGHT_RE)
+      # A close with no open before it: what came before was thinking (the
+      # raw loop saves prefill + response).
+      BARE_CLOSES = ["</think>", "<channel|>"].freeze
+      # An open with no close after it (a cut-off thought, a tool call the
+      # loop recovered): everything from it on is the model's own.
+      OPENS = ["<think>", "<tool_call>", "<|tool_call>", "<|channel>", "<|tool_response>", "<tool_response>", "<|think|>"].freeze
+
+      # A saved model message's raw content as a participant may read it:
+      # closed blocks kept (the display strips them, its tool rows come from
+      # them), anything before a bare close and from an unclosed open on
+      # dropped, which the display's strip would only untag (leaving the
+      # thinking or the tool call's arguments as text).
+      def visible_raw(text)
+        held = []
+        out = text.to_s.gsub(CLOSED_BLOCKS) do |block|
+          held << block
+          "\u0000#{held.size - 1}\u0000"
+        end
+        close = BARE_CLOSES.filter_map { |marker| (at = out.rindex(marker)) && (at + marker.size) }.max
+        out = out[close..] if close
+        cut = OPENS.filter_map { |marker| out.index(marker) }.min
+        out = out[0, cut] if cut
+        out.gsub(/\u0000(\d+)\u0000/) { held[Regexp.last_match(1).to_i] }
+      end
+
       def field(hash, key)
         return nil unless hash.is_a?(Hash)
 
@@ -331,12 +365,18 @@ module Samagotchi
           /\bgithub_pat_[A-Za-z0-9_]{20,}/,
           /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
           /\bxox[abprs]-[A-Za-z0-9-]{10,}/,
-          /\bchp_[A-Za-z0-9_-]{20,}/
+          /\bchp_[A-Za-z0-9_-]{20,}/,
+          /\bAIza[0-9A-Za-z_-]{30,}/,
+          /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/,
+          /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
+          %r{https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+}
         ].freeze
         # The value after an Authorization header or a token=/key= pair.
         VALUES = [
           /(\bAuthorization:\s*(?:Bearer\s+|Basic\s+|Token\s+)?)[^\s"'`]+/i,
-          /(\b(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)\s*[=:]\s*["']?)[^\s"'&`]+/i
+          /((?<![A-Za-z0-9])[A-Za-z0-9_-]*?(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)["']?\s*[=:]\s*["']?)[^\s"'&`,;}]+/i,
+          # A URL's password: scheme://user:PASSWORD@host.
+          %r{(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)[^@\s/]+(?=@)}i
         ].freeze
 
         module_function
