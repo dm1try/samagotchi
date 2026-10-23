@@ -24,6 +24,16 @@ module Samagotchi
         @access = access
         @session_id = session_id
         @tty = tty
+        @own_changes = []
+      end
+
+      # Whether the worker's announcement of participant +id+ joining
+      # (+kind+ :joined) or leaving (:left) is of a change made here, which
+      # this terminal already showed: true once per change.
+      def own_change?(kind, id)
+        index = @own_changes.index([kind, id]) or return false
+        @own_changes.delete_at(index)
+        true
       end
 
       # @param line [String] "/share …" or "/participants …"
@@ -55,7 +65,9 @@ module Samagotchi
       def share_command(argv, name)
         require_relative "../share_command"
         out = StringIO.new
-        ShareCommand.new(argv, stdin: StringIO.new, stdout: out, stderr: out, access: @access, tty: @tty, name: name).run
+        command = ShareCommand.new(argv, stdin: StringIO.new, stdout: out, stderr: out, access: @access, tty: @tty, name: name)
+        command.run
+        @own_changes.concat(command.changes)
         out.string.chomp
       rescue SessionAccess::RemoteFailed => e
         "#{name}: #{e.message}"

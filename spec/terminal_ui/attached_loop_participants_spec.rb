@@ -95,6 +95,52 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/share and /participants" 
   end
 end
 
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "its own /share and /participants revoke" do
+  let(:screen) { RecordingSurface.new(columns: 100) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: "/state") }
+  let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
+  let(:alex) { { id: "p_aaaa1111", name: "Alex", kind: "human" } }
+  let(:grant) do
+    Samagotchi::SessionAccess::ParticipantView.new(
+      id: "p_aaaa1111", session_id: "s-1234", kind: "human", name: "Alex", role: "reviewer",
+      created_at: "2026-10-23T10:00:00Z", expires_at: "2026-10-30T10:00:00Z", revoked_at: nil, revoked_by: nil,
+      last_used_at: nil, state: "active", cap: 2.0, queue: 3
+    )
+  end
+
+  before do
+    allow(Samagotchi::ChildrenStatus).to receive(:counts).and_return(nil)
+    allow(Samagotchi::TerminalUI::ParticipantCommands).to(receive(:new)
+      .and_wrap_original { |original, **kwargs| original.call(**kwargs, access: access) })
+    allow(access).to receive(:resolve) { |id| id }
+    allow(access).to receive_messages(
+      invite: Samagotchi::SessionAccess::Invitation.new(participant: grant, token: "chp_x", link: "http://10.0.0.2:4567/?token=chp_x#s=s-1234", lan: true),
+      revoke_participants: [grant]
+    )
+  end
+
+  def changed(joined: [], left: [])
+    attached.handle_event(JSON.parse(JSON.generate({ type: :participants_changed, participants: joined, joined: joined, left: left })))
+  end
+
+  it "isn't announced again when the worker says it, once; another's change still is" do
+    attached.send(:submit_line, "/share Alex")
+    shown = screen.lines.size
+    changed(joined: [alex])
+    expect(screen.lines.size).to eq(shown)
+
+    attached.send(:submit_line, "/participants revoke p_aaaa1111")
+    shown = screen.lines.size
+    changed(left: [alex.merge(reason: "revoked")])
+    expect(screen.lines.size).to eq(shown)
+
+    # Invited again elsewhere (the web, chi share): said.
+    changed(joined: [alex])
+    expect(screen.lines.last).to eq("participants> Alex joined (p_aaaa1111)")
+  end
+end
+
 RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
   let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
   let(:commands) { described_class.new(access: access, session_id: "abcdef12-0000", tty: false) }

@@ -41,6 +41,12 @@ module Samagotchi
 
     SUBCOMMANDS = %w[ls cap revoke].freeze
 
+    # What the run changed, for the attached TUI's /share and /participants
+    # revoke (whose worker announces the same change a few seconds later):
+    # [[:joined, participant id]] for an invite, [[:left, id], …] for a
+    # revoke; [] otherwise.
+    attr_reader :changes
+
     # The invite's flags (chi share ID …), and ls's and revoke's.
     FLAGS = CLI::Flags.new(help: HELP_WORDS) do |f|
       f.value "--name"
@@ -69,6 +75,7 @@ module Samagotchi
       @access = access || SessionAccess::Local.new(state_dir: state_dir)
       @tty = tty.nil? ? @stdout.respond_to?(:tty?) && @stdout.tty? : tty
       @name = name
+      @changes = []
     end
 
     # @return [Integer] exit status: 0 done, 1 refused or failed, 2 usage
@@ -109,6 +116,7 @@ module Samagotchi
       id = @access.resolve(args.first)
       invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap)
       print_invitation(id, invitation)
+      @changes = [[:joined, invitation.participant.id]]
       0
     end
 
@@ -170,6 +178,7 @@ module Samagotchi
       id = args.first && @access.resolve(args.first)
       revoked = @access.revoke_participants(id, participant: participant)
       revoked.each { |row| @stdout.puts("#{row.id}  #{row.name}  revoked") }
+      @changes = revoked.map { |row| [:left, row.id] }
       @stdout.puts("nothing to revoke") if revoked.empty?
       0
     end

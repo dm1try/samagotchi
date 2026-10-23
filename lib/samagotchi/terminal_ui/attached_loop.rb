@@ -1736,12 +1736,19 @@ module Samagotchi
       end
 
       # A participant was invited, revoked or expired: a line each, and the
-      # status row's count.
+      # status row's count. An invite or a revoke made here by /share or
+      # /participants revoke was shown as it ran: not again.
       def participants_changed(event)
         learn_participants(event[:participants])
         learn_participants(event[:joined])
-        participants_change_lines(event[:joined], event[:left]).each { |line| @screen.commit(line) }
+        joined = Array(event[:joined]).reject { |row| own_participant_change?(:joined, row) }
+        left = Array(event[:left]).reject { |row| own_participant_change?(:left, row) }
+        participants_change_lines(joined, left).each { |line| @screen.commit(line) }
         @status.update(participants: Array(event[:participants]).size)
+      end
+
+      def own_participant_change?(kind, row)
+        !@participant_commands.nil? && row.is_a?(Hash) && @participant_commands.own_change?(kind, row[:id])
       end
 
       def learn_participants(rows)

@@ -1329,7 +1329,8 @@ chi share revoke --all          # every link to every session
   counts who is in the review (`2 participants`). The same commands work from there, on the attached session:
   `/share NAME [--agent] [--expires 3d] [--cap 2]` (the link and its QR code, once), `/participants` (the list),
   `/participants revoke [P]` (one participant, or everyone) and `/participants cap P DOLLARS`. They are `chi share`'s
-  own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does. The REPL
+  own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does; an invite or
+  a revoke made with them isn't announced again by the `participants>` line. The REPL
   (`--no-shared`) answers them with a note: a participant's turns run on the session's worker.
 
 How it works inside (grants, the gate, the routes, the audit trail):
