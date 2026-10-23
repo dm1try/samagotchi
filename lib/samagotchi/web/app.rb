@@ -55,6 +55,7 @@ require_relative "session_summary"
 require_relative "session_access_routes"
 require_relative "principal"
 require_relative "participant_access"
+require_relative "participant_review"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
@@ -73,6 +74,7 @@ module Samagotchi
       include RedactedInspect
       include SessionAccessRoutes
       include ParticipantAccess
+      include ParticipantReview
 
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
@@ -198,7 +200,8 @@ module Samagotchi
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
-        ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
+        ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
@@ -263,7 +266,7 @@ module Samagotchi
             return error_response(404, "not_found", "Session not found: #{m.captures.first.to_s[0, 80]}")
           end
 
-          return session_route { send(handler, req, *m.captures) } if kind == :session
+          return session_route(principal) { send(handler, req, *m.captures) } if kind == :session
 
           return send(handler, req, *m.captures)
         end
@@ -272,17 +275,24 @@ module Samagotchi
         serve_static(req)
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
-        error_response(500, "internal_error", e.message)
+        # A participant never reads an exception's words (they may name a
+        # host path): the log has them.
+        error_response(500, "internal_error", owner_env?(env) ? e.message : "chi web failed on this request")
       end
+
+      # Whether the request's principal is the owner (none yet: the gate
+      # didn't pass, so not a participant either).
+      def owner_env?(env) = env[PRINCIPAL_ENV].nil? || env[PRINCIPAL_ENV].owner?
 
       # A :session route's handler: the ArgumentError its session lookup
       # raises (Session.load, the manager's find) is a 404 not_found with
       # its message. Only these routes: elsewhere an ArgumentError is a bug,
       # #route's 500. A handler's own rescues run first.
-      def session_route
+      def session_route(principal = nil)
         yield
       rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
+        # A participant's 404 never carries the lookup's words (a path).
+        error_response(404, "not_found", principal.nil? || principal.owner? ? e.message : "Session not found")
       end
 
       # API requests at debug level (not the page and its assets): method,
@@ -2048,18 +2058,20 @@ module Samagotchi
       # the session's Bridge stream, through the request principal's frame
       # filter (#stream_filter).
       def proxy_stream_body(id, req, port)
-        ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: stream_query(req), headers: req.env,
-                            server_running: stream_running(principal(req)), filter: stream_filter(principal(req)))
+        query = participant_view?(req) ? participant_stream_query(req) : stream_query(req)
+        ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
+                            server_running: stream_running(principal(req)), filter: stream_filter(req, id))
       end
 
-      # What a principal's stream goes through on its way from the Bridge:
-      # nil, the raw bytes unchanged, for the owner (the only principal
-      # today). A filter is anything with #call(chunk) -> String (nil or
-      # "" sends nothing); see ProxyStreamBody.
-      def stream_filter(principal)
-        return nil if principal.owner?
+      # What a request's stream goes through on its way from the Bridge:
+      # nil, the raw bytes unchanged, for the owner; a participant's (and
+      # the owner's ?as=participant, the participant view) goes through
+      # ParticipantStreamFilter. A filter is anything with #call(chunk) ->
+      # String (nil or "" sends nothing); see ProxyStreamBody.
+      def stream_filter(req, id)
+        return nil unless participant_view?(req)
 
-        raise ArgumentError, "no stream filter for a #{principal.kind} principal"
+        participant_stream_filter(req, id)
       end
 
       # GET /api/events: the session list as one SSE stream per tab. The
@@ -2180,7 +2192,7 @@ module Samagotchi
       end
 
       def serve_index(req)
-        return participant_page(principal(req)) unless principal(req).owner?
+        return participant_shell(req) if participant_view?(req)
 
         path = File.join(@public_dir, "index.html")
         if File.file?(path)

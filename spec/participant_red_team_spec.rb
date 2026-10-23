@@ -228,10 +228,145 @@ RSpec.describe "a participant red-teaming a session" do
                                                          "detail" => Samagotchi::ParticipantMessages::CAP_REACHED }])
     end
 
+    # The participant's stream through chi web, replayed from the start,
+    # up to +marker+; then their link is revoked, which ends the stream
+    # within a poll (App#stream_running).
+    def participant_stream(marker)
+      env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/stream?from_seq=0&raw=1&client_id=tui:1")
+      env["HTTP_HOST"] = "#{lan_ip}:4567"
+      env["REMOTE_ADDR"] = "192.168.1.20"
+      env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+      status, _headers, body = app.call(env)
+      expect(status).to eq(200)
+      out = +""
+      lock = Mutex.new
+      reader = Thread.new { body.each { |chunk| lock.synchronize { out << chunk } } }
+      wait_for("#{marker} in the participant's stream", seen: -> { lock.synchronize { out.dup } }) do
+        lock.synchronize { out.include?(marker) }
+      end
+      Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, by: "owner", state_dir: state_dir)
+      join!(reader, "the participant's stream after the revoke")
+      out
+    end
+
+    it "can't read an approval, a question, a tool's output or call, thinking, memories, the working set or a host path off the stream" do
+      observer = engine.instance_variable_get(:@session_observer)
+      [
+        { type: :turn_started, prompt: "deploy with sk-ant-abcdefghijklmnopqrstuvwx", turn_id: "t1",
+          origin: { client_id: "web:tab", enqueued_id: "e1" }, images: [{ file: "#{project}/shot.png" }] },
+        { type: :generation_chunk, text: "Checking.", thinking: "THINKING-SECRET", iteration: 1 },
+        { type: :tool_call_started, tool: "execute", params: "cat ~/.ssh/id_rsa", title: "cat ~/.ssh/id_rsa",
+          view: { command: "cat ~/.ssh/id_rsa" }, iteration: 1, call_index: 0 },
+        { type: :question_requested, pending_question: { id: "q1", question: "Allow execute: cat ~/.ssh/id_rsa?",
+                                                         options: %w[Yes No] } },
+        { type: :tool_call_completed, output: "-----BEGIN OPENSSH PRIVATE KEY-----\nKEYBYTES", iteration: 1, call_index: 0,
+          activity: { status: "ok", action: "Ran", params: "cat ~/.ssh/id_rsa" }, output_file: "#{project}/out.txt" },
+        { type: :tool_call_started, tool: "memory_read", params: "launch-secrets", title: "launch-secrets", iteration: 1, call_index: 1 },
+        { type: :used_memories_updated, names: ["launch-secrets"] },
+        { type: :working_set_updated, items: [{ path: "#{project}/.env" }] },
+        { type: :card, title: "MEMORY-CARD", body: "the launch date" },
+        { type: :command_ran, line: "/stats", output: "COMMAND-OUTPUT" },
+        { type: :context_status, used_tokens: 1, window_tokens: 2 },
+        { type: :hook_notice, message: "HOOK-NOTICE" },
+        { type: :brand_new_event, text: "NEW-EVENT-TEXT" },
+        { type: :tool_call_started, tool: "read", ref: { kind: "file", path: "#{project}/docs/plan.md" }, iteration: 2, call_index: 0,
+          nested: { output: "NESTED-SECRET" } },
+        { type: :generation_chunk, text: "Done: see #{project}/docs/plan.md", iteration: 2 },
+        { type: :turn_completed, turn_id: "t1", turn_summary: { output: "SUMMARY", cost: 9.99 }, file: "#{project}/reply.md" }
+      ].each { |event| observer.notify(event) }
+
+      out = participant_stream("turn_completed")
+      expect(out).to include("Checking.", %("tool":"execute"), %("tool":"read","path":"docs/plan.md"), "question_requested",
+                             "Done: see docs/plan.md")
+      expect(out).to include("deploy with [redacted]")
+      %w[sk-ant THINKING-SECRET id_rsa .ssh Allow KEYBYTES PRIVATE launch-secrets .env MEMORY-CARD COMMAND-OUTPUT HOOK-NOTICE
+         NEW-EVENT-TEXT NESTED-SECRET SUMMARY 9.99 shot.png out.txt reply.md context_status used_memories working_set].each do |leak|
+        expect(out).not_to include(leak), leak
+      end
+      expect(out).not_to include(root)
+    end
+
     it "can't take back the owner's queued turn" do
       Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
                                            prompt: "owner's", client_id: "web:o", enqueued_id: "owner-eid", delivery: "queue")
       expect(post("/api/sessions/#{session.id}/turn/owner-eid/dequeue", { client_id: "web:o" })).to eq(not_permitted)
+    end
+  end
+
+  describe "the participant reading the session (show, review, output, images)" do
+    let(:lan_ip) { "192.168.1.55" }
+    let(:app) do
+      Samagotchi::Web::App.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants,
+                               lan: { ip: lan_ip, token: "owner-token-owner-token-owner-token-owner" })
+    end
+
+    def get(path)
+      env = Rack::MockRequest.env_for(path)
+      env["HTTP_HOST"] = "#{lan_ip}:4567"
+      env["REMOTE_ADDR"] = "192.168.1.20"
+      env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+      status, _headers, chunks = app.call(env)
+      [status, chunks.join]
+    end
+
+    before do
+      calls = [{ "id" => "c1", "name" => "execute", "arguments" => { "command" => "cat ~/.ssh/id_rsa" } },
+               { "id" => "c2", "name" => "read", "arguments" => { "path" => ".env" } },
+               { "id" => "c3", "name" => "memory_read", "arguments" => { "name" => "launch-secrets" } }]
+      session.messages.push(
+        { role: "user", content: "deploy it, key sk-ant-abcdefghijklmnopqrstuvwx", turn_id: "t1",
+          images: [{ file: "#{project}/shot.png", name: "shot" }] },
+        { role: "model", content: "<think>THINKING-SECRET</think>", tool_calls: calls },
+        { role: "tool_response", content: "[execute]\n-----BEGIN OPENSSH PRIVATE KEY-----\nKEYBYTES", tool_call_id: "c1" },
+        { role: "tool_response", content: "[read]\nAPI_KEY=ENV-SECRET", tool_call_id: "c2" },
+        { role: "tool_response", content: "[memory_read]\nMEMORY-TEXT the launch date", tool_call_id: "c3" },
+        Samagotchi::Steer.message(text: "PLUGIN-STEER", source: "check-in"),
+        { role: "user", kind: "input", source: "delegate_report", content: "DELEGATE-REPORT" },
+        { role: "model", content: "Deployed; notes in #{project}/docs/notes.md" },
+        { role: "user", content: "is step 3 safe?", turn_id: "t2", author: grant.author, author_name: "Mallory" },
+        { role: "model", content: "Yes." }
+      )
+      session.save(state_dir: state_dir)
+    end
+
+    it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report or a host path" do
+      status, body = get("/api/sessions/#{session.id}/review")
+      expect(status).to eq(200)
+      review = JSON.parse(body)
+      expect(review["messages"].map { |m| [m["role"], m["content"]] }).to eq([
+        ["user", "deploy it, key [redacted]"], ["assistant", ""], ["assistant", "Deployed; notes in docs/notes.md"],
+        ["user", "is step 3 safe?"], ["assistant", "Yes."]
+      ])
+      expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" }, { "tool" => "read", "path" => ".env" },
+                                                    { "tool" => "memory_read" }])
+      expect(review["messages"][3]).to include("author_name" => "Mallory", "mine" => true)
+      %w[sk-ant id_rsa .ssh KEYBYTES ENV-SECRET MEMORY-TEXT launch THINKING PLUGIN-STEER DELEGATE-REPORT shot.png].each do |leak|
+        expect(body).not_to include(leak), leak
+      end
+      expect(body).not_to include(root)
+    end
+
+    it "reads only the session's title, status and participants through show, whatever the query" do
+      %w[? ?brief=1 ?cards=1 ?tail=1 ?timing=1 ?parts=1].each do |query|
+        status, body = get("/api/sessions/#{session.id}#{query}")
+        expect([status, JSON.parse(body)["session"].keys]).to eq([200, %w[id title status participants]]), query
+        expect(body).not_to include("deploy", "Yes.")
+      end
+    end
+
+    it "can't read the raw output or an image" do
+      [get("/api/sessions/#{session.id}/output"), get("/api/sessions/#{session.id}/images/0"),
+       get("/api/sessions/#{session.id}/images/shot.png")].each do |status, body|
+        expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"])
+        expect(body).not_to include("deploy", "KEYBYTES")
+      end
+    end
+
+    it "reads no host path in a refusal or an error" do
+      allow(Samagotchi::Session).to receive(:load).and_raise(ArgumentError, "bad session file #{root}/x.json")
+      status, body = get("/api/sessions/#{session.id}/review")
+      expect(status).to eq(404)
+      expect(body).not_to include(root)
     end
   end
 

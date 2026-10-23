@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "cgi/escape"
 require "json"
 require_relative "grants"
 require_relative "principal"
@@ -20,9 +19,10 @@ module Samagotchi
     # What a participant (a Web::Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
     # (token_revoked, token_expired, another session's 404, not_permitted
-    # by role), the trimmed and filtered answers of the :participant routes,
-    # the minimal participant page, and the running check that ends their
-    # streams when the grant does. See docs/internals/participants.md.
+    # by role), the trimmed answers of the :participant routes, their turns,
+    # and the running check that ends their streams when the grant does
+    # (what they read is ParticipantReview's). See
+    # docs/internals/participants.md.
     module ParticipantAccess
       # A participant's refused routes are audited at most this often per
       # route (a page retrying would fill the log).
@@ -181,18 +181,6 @@ module Samagotchi
         now = @grants.now
         Participants.read(id, state_dir: default_state_dir).select { |entry| entry.active?(now) }
                     .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
-      end
-
-      # The page a participant's link opens (P2: before comments exist).
-      # Never the owner's page, whose every route would refuse them.
-      def participant_page(principal)
-        grant = principal.grant
-        session = @session_class.load(grant.session_id, state_dir: default_state_dir)
-        name = CGI.escapeHTML(grant.name)
-        others = participant_names(grant.session_id).map { |entry| CGI.escapeHTML(entry[:name]) }
-        html_response(200, format(PARTICIPANT_PAGE, name: name, title: CGI.escapeHTML(participant_title(session)),
-                                                    status: CGI.escapeHTML(session.status.to_s),
-                                                    participants: others.join(", ")))
       end
 
       # ── A participant's turn ──────────────────────────────────────────
@@ -438,20 +426,6 @@ module Samagotchi
         body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 30rem; margin: 3rem auto; padding: 0 1rem; }
         .meta { opacity: .75; }
       CSS
-
-      PARTICIPANT_PAGE = <<~HTML
-        <!doctype html>
-        <html lang="en"><head><meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>chi · %<name>s's review</title>
-        <style>#{PAGE_STYLE}</style></head>
-        <body>
-        <h1>%<name>s's review</h1>
-        <p class="meta">%<title>s · %<status>s</p>
-        <p>Comments open soon: the owner will see what you write here.</p>
-        <p class="meta">Participants: %<participants>s</p>
-        </body></html>
-      HTML
 
       ENDED_PAGE = <<~HTML
         <!doctype html>

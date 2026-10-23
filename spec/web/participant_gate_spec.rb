@@ -19,7 +19,10 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
   let(:root) { Dir.mktmpdir("web-participant") }
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
   let(:public_dir) do
-    Dir.mktmpdir("web-participant-public").tap { |dir| File.write(File.join(dir, "index.html"), "<html><body>owner page</body></html>") }
+    Dir.mktmpdir("web-participant-public").tap do |dir|
+      File.write(File.join(dir, "index.html"), "<html><body>owner page</body></html>")
+      File.write(File.join(dir, "participant.html"), "<html><body>participant page</body></html>")
+    end
   end
   let(:now) { [Time.now] }
   let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir), clock: -> { now.first }) }
@@ -96,13 +99,13 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(body["features"]).to include(Samagotchi::Web::SessionAccessRoutes::FEATURE)
     end
 
-    it "GET /: the participant page, never the owner's" do
+    it "GET /: the participant page's shell, naming their session and name, never the owner's page" do
       status, headers, body = call("/")
       expect(status).to eq(200)
       expect(headers["Content-Type"]).to start_with("text/html")
-      expect(body).to include("<title>chi · Alex's review</title>", "plan review", "Comments open soon",
-                              "Participants: Alex")
+      expect(body).to include("participant page", %(data-viewer="participant"), %(data-session="#{session.id}"), %(data-name="Alex"))
       expect(body).not_to include("owner page")
+      expect(call("/?as=owner")[2]).to include("participant page")
     end
 
     it "never shows an untitled session's first prompt as its title (Session#display_title's fallback)" do
@@ -113,15 +116,14 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(session.display_title).to include("secret plan")
 
       expect(json("/api/sessions/#{session.id}").last.dig("session", "title")).to eq("an untitled session")
-      page = call("/")[2]
-      expect(page).to include("an untitled session")
-      expect(page).not_to include("secret plan")
+      expect(json("/api/sessions/#{session.id}/review").last.dig("session", "title")).to eq("an untitled session")
+      expect(call("/")[2]).not_to include("secret plan")
     end
 
     it "escapes what the page shows" do
       named = Samagotchi::Participants.invite(grants, session_id: session.id, name: "<b>Kim</b>", state_dir: state_dir)
       body = call("/", bearer: named.token)[2]
-      expect(body).to include("&lt;b&gt;Kim&lt;/b&gt;'s review")
+      expect(body).to include(%(data-name="&lt;b&gt;Kim&lt;/b&gt;"))
       expect(body).not_to include("<b>Kim</b>")
     end
 
@@ -130,7 +132,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(status).to eq(303)
       expect(headers["Location"]).to eq("/?x=1")
       expect(headers["Set-Cookie"]).to start_with("chi_token=#{token};")
-      expect(call("/", bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })[2]).to include("Alex's review")
+      expect(call("/", bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })[2]).to include(%(data-name="Alex"))
     end
   end
 
