@@ -1,0 +1,181 @@
+# frozen_string_literal: true
+
+require "json"
+require "uri"
+require_relative "../session_access"
+require_relative "../bridge_client"
+require_relative "../delivery"
+require_relative "../log"
+require_relative "http_transport"
+
+module Samagotchi
+  module SessionAccess
+    # A session's worker reached through another machine's chi web, with the
+    # interface the attached TUI (TerminalUI::AttachedLoop) and its
+    # EventStream use on a BridgeClient: chi web relays each request to the
+    # worker's Bridge, on loopback there. One object per remote attach, for
+    # its whole life: a new worker changes its #worker_key (the worker's
+    # Bridge epoch), never the object. Built by Remote#attach_client.
+    #
+    # Every reply goes through one status mapper (Mapping), so the loop
+    # reads each condition as it reads it from a Bridge here. Every
+    # RemoteFailed (a refused connection, a timeout, a chi web too old, a
+    # refused token) becomes Unreachable with its message: the loop catches
+    # IOError wherever a Bridge call can fail, so it never crashes on one.
+    class WebBridgeClient
+      # The worker can't be reached through chi web: no live worker there,
+      # the session is gone, or chi web itself can't be asked (the message
+      # says which).
+      class Unreachable < IOError; end
+
+      # A one-shot's read timeout: above chi web's own 30 s read of the
+      # Bridge plus its <= 5 s wait for a waking worker's Bridge.
+      READ_TIMEOUT = 45
+      # An answer or a dismissal: chi web sends it once more after a 408.
+      ANSWER_READ_TIMEOUT = HTTPTransport::READ_TIMEOUT
+      # No byte for this long on the stream (the Bridge pings every 15 s): a
+      # half-open connection (Wi-Fi gone, the laptop asleep), reconnected.
+      STREAM_IDLE_TIMEOUT = 40.0
+      # chi web answers no live worker for the session (Mapping).
+      NO_WORKER = "no live worker for session %s on %s"
+
+      # chi web's answers as the session's Bridge would have given them.
+      module Mapping
+        module_function
+
+        # @param route [Symbol] :turn, :command, :answer, :dismiss,
+        #   :dequeue, :cancel
+        # @param reply [HTTPTransport::Reply]
+        # @param session_id [String]
+        # @param remote [String] the remote's name
+        # @return [BridgeClient::Response] 504 as the Bridge's 408
+        #   deadline_passed; 501 as its 404 not_found (an older worker),
+        #   and /command's for one builtin as its 400 unknown_command;
+        #   the rest unchanged (202 acks, 409s, the route's own 404s,
+        #   403 parent_answer_refused, 502 bridge_error)
+        # @raise [Unreachable] 503 not_live, or 404 not_found (the session)
+        def response(route, reply, session_id:, remote:)
+          json = reply.json.is_a?(Hash) ? reply.json : {}
+          case [reply.status, json["error"]]
+          in [503, "not_live"] | [404, "not_found"] then raise Unreachable, format(NO_WORKER, session_id, remote)
+          in [504, _] then bridge(408, error: "deadline_passed", detail: json["detail"])
+          in [501, _] if route == :command && json["command"]
+            bridge(400, error: "unknown_command", detail: json["detail"], command: json["command"])
+          in [501, _] then bridge(404, error: "not_found", detail: json["detail"])
+          else BridgeClient::Response.new(status: reply.status, body: reply.body)
+          end
+        end
+
+        def bridge(status, **body) = BridgeClient::Response.new(status: status, body: JSON.generate(body.compact))
+      end
+
+      attr_reader :session_id
+      # @return [String, nil] the worker followed: its Bridge's epoch (its
+      #   start time for a worker from before the epoch in its sidecar)
+      attr_accessor :worker_key
+
+      # @param remote [Remote] the remote's chi web
+      # @param session_id [String]
+      # @param worker_key [String, nil] the live worker's epoch, from the wake
+      def initialize(remote:, session_id:, worker_key:)
+        @remote = remote
+        @session_id = session_id
+        @worker_key = worker_key
+      end
+
+      def inspect = "#<#{self.class.name} #{@remote.entry.label} #{@session_id}>"
+
+      # No Bridge port here: the worker is reached through chi web.
+      def port = nil
+
+      # POST …/turn. history: false (chi web's prompt history is that
+      # machine's page's).
+      # @return [BridgeClient::Response]
+      def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil)
+        body = { prompt: prompt, client_id: client_id, history: false }
+        body[:no_interrupt] = true if no_interrupt
+        body[:images] = images if images && !images.empty?
+        body[:delivery] = delivery unless delivery.nil? || Delivery.next_step?(delivery)
+        post(:turn, "turn", body)
+      end
+
+      # POST …/command.
+      # @return [BridgeClient::Response]
+      def post_command(line:, client_id: nil, card: false)
+        body = { line: line, client_id: client_id, history: false }
+        body[:card] = true if card
+        post(:command, "command", body)
+      end
+
+      # POST …/answer (chi web passes client_id on only when it is chi
+      # answer's).
+      # @return [BridgeClient::Response]
+      def answer(id:, selected:, freeform: nil, client_id: nil)
+        post(:answer, "answer", { id: id, selected: selected, freeform: freeform, client_id: client_id }.compact,
+             read_timeout: ANSWER_READ_TIMEOUT)
+      end
+
+      # POST …/question/dismiss.
+      # @return [BridgeClient::Response]
+      def dismiss_question(id:)
+        post(:dismiss, "question/dismiss", { id: id }, read_timeout: ANSWER_READ_TIMEOUT)
+      end
+
+      # POST …/turn/:enqueued_id/dequeue.
+      # @return [BridgeClient::Response]
+      def dequeue(enqueued_id:, client_id: nil)
+        post(:dequeue, "turn/#{URI.encode_www_form_component(enqueued_id.to_s)}/dequeue", { client_id: client_id }.compact)
+      end
+
+      # POST …/cancel.
+      # @return [BridgeClient::Response]
+      def cancel(reason:)
+        post(:cancel, "cancel", { reason: reason })
+      end
+
+      # Follow the session's events through chi web (see EventStream): with
+      # epoch_watch, announce_retries and STREAM_IDLE_TIMEOUT.
+      # @return [BridgeClient::EventStream] started
+      def follow(snapshot: true, client_id: nil, reconnect_delays: BridgeClient::EventStream::DEFAULT_RECONNECT_DELAYS,
+                 rediscover: nil, &on_event)
+        BridgeClient::EventStream.new(self, snapshot: snapshot, client_id: client_id, reconnect_delays: reconnect_delays,
+                                            rediscover: rediscover, epoch_watch: true, announce_retries: true,
+                                            idle_timeout: STREAM_IDLE_TIMEOUT, &on_event).start
+      end
+
+      # GET /api/sessions/:id/stream through StreamRequest, with the token
+      # as Bearer. A chunked response (a proxy in between: no decoding in
+      # v1) and an https chi web (no TLS on the stream yet) are logged and
+      # read as unreachable.
+      # @return [Array(TCPSocket, Integer, Hash), nil] see StreamRequest.open
+      def connect_stream(query: "", last_event_id: nil, timeout: nil)
+        uri = URI(@remote.entry.url)
+        return refused("tls_unsupported") if uri.scheme == "https"
+
+        token = @remote.entry.token
+        opened = BridgeClient::StreamRequest.open(host: uri.host, port: uri.port,
+                                                  path: "/api/sessions/#{@session_id}/stream#{query}",
+                                                  last_event_id: last_event_id, timeout: timeout,
+                                                  headers: token ? { "Authorization" => "Bearer #{token}" } : {})
+        return opened unless opened && opened[2]["transfer-encoding"].to_s.downcase.include?("chunked")
+
+        opened[0].close rescue nil
+        refused("chunked_unsupported")
+      end
+
+      private
+
+      def post(route, path, body, read_timeout: READ_TIMEOUT)
+        reply = @remote.route_request(:post, "/api/sessions/#{@session_id}/#{path}", body: body, read_timeout: read_timeout)
+        Mapping.response(route, reply, session_id: @session_id, remote: @remote.name)
+      rescue RemoteFailed => e
+        raise Unreachable, e.message
+      end
+
+      def refused(reason)
+        Log.warn(:attached, "stream_refused", reason: reason, remote: @remote.name)
+        nil
+      end
+    end
+  end
+end

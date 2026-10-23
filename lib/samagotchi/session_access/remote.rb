@@ -65,6 +65,9 @@ module Samagotchi
       # Web::SessionAccessRoutes::FEATURE (GET /api/info's), without
       # loading chi web here.
       FEATURE = "session_commands"
+      # Web::SessionAccessRoutes::ATTACH_FEATURE: the routes a remote
+      # attached TUI needs (wake, worker).
+      ATTACH_FEATURE = "remote_attach"
 
       # What GET /api/info's +reply+ says is wrong with +entry+'s chi web for
       # chi --remote, as the error to raise; nil when it will do (chi remote
@@ -437,6 +440,26 @@ module Samagotchi
         else raise_refusal(reply)
         end
       end
+
+      # --- a remote attach
+
+      # The client a remote attached TUI talks to the session's worker
+      # with, through this chi web.
+      # @param worker [Hash] the live worker as POST …/wake or GET …/worker
+      #   gave it: its epoch is its key (started_at for a worker from before
+      #   the epoch in its sidecar)
+      # @return [WebBridgeClient]
+      def attach_client(id, worker:)
+        require_relative "web_bridge_client"
+        WebBridgeClient.new(remote: self, session_id: id, worker_key: worker["epoch"] || worker["started_at"])
+      end
+
+      # One request to a route, as the session commands make them (the
+      # server check first; a refused token or a missing route raise
+      # RemoteFailed): WebBridgeClient's, which maps the reply itself.
+      # @return [HTTPTransport::Reply]
+      # @raise [RemoteFailed]
+      def route_request(method, path, **) = request(method, path, **)
 
       private
 
