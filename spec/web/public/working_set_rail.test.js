@@ -80,3 +80,16 @@ test("the rail marks a line with a pending op (dashed, its title says it), in pl
   assert.equal(a.classList.contains("pending"), false);
   s.done();
 });
+
+test("the rail shows an added item the turn's set doesn't hold as its own dashed `+ name · next turn` line", () => {
+  const s = rail();
+  s.r.draw(items("a.rb"), { now: 0, pending: new Map([["file:/p/lib/new.rb", "add"], ["file:a.rb", "add"]]) });
+  const lines = [...s.r.el.querySelectorAll(".ws-item")].sort((a, b) => Number(a.style.order) - Number(b.style.order));
+  assert.deepEqual(lines.map((n) => n.querySelector(".t").textContent), ["a.rb", "new.rb · next turn"]);
+  assert.equal(lines[1].querySelector(".k").textContent, "+");
+  assert.ok(lines[1].classList.contains("pending"));
+  assert.match(lines[0].title, /read again next turn$/);
+  s.r.draw(items("a.rb"), { now: 0, pending: new Map() });
+  assert.equal(s.r.el.querySelectorAll(".ws-item:not(.leave)").length, 1);
+  s.done();
+});

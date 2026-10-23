@@ -270,6 +270,18 @@ The rail stays read-only but marks a line with a pending op: dashed, its title a
 next turn`…; `working_set_rail.js pendingText`, a group's from its members). The view runs its `onServer` listeners
 on a change of the pending ops too, so the stage redraws the rail with `pending()`.
 
+**+ add from the page.** The list's foot is a form (`.ws-add`, the sheet's last row on a phone): one KEY as typed,
+posted as `working_set.js addLine` (quoted when it has spaces). A stale row, or a forgotten one without the user's
+drop (`refreshable`; undrop brings that back without a step), offers `refresh`: `/working-set add` of it. An add is
+pending from two sources: the server's snapshot `adds` (an add made between turns runs at once, so no line is
+queued; `serverAddIds`, passed to `pendingSteers` as the ops before any queued line) and a queued line mid-turn. An
+`unadd` nets either; one with no add pending is never pending (the worker refuses it). An added item the session's
+set doesn't hold is a row of its own under `adding · N` (`addedItems`: `+` glyph, `.added`, the server's label, the
+same pill/undo and phone strip as any pending row); one it holds (a refresh) gets the `reads next turn` pill on its
+row. The next turn's first request emits a set without `adds`, which clears them; a model that skips the read
+leaves nothing behind. The rail adds a dashed `+ name · next turn` line per pending add its turn's set doesn't hold
+(`working_set_rail.js addLabels`, inside the rail's budget), and `read again next turn` on a held line's title.
+
 **Looks** (design spec §3, §5): a stale line is faded (`opacity: .55`); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are
 forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`

@@ -371,3 +371,56 @@ test("a phone's sheet: a tap on a row opens its action strip under it, one at a 
     delete window.innerWidth;
   }
 });
+
+test("+ add: the list's foot posts what was typed; the added item is a pending + row until the next turn sends its note", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView({ dir: "/p" });
+  try {
+    const input = pop.querySelector(".ws-add .ws-add-in");
+    assert.ok(input, "the foot's input");
+    input.value = "lib/new file.rb";
+    pop.querySelector(".ws-add").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    assert.deepEqual(sent, ['/working-set add "lib/new file.rb"']);
+    assert.equal(pop.querySelector(".ws-add-in").value, "");
+    // Between turns it ran at once: the re-announced set carries it in adds.
+    ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }],
+      at: 5, adds: [{ kind: "file", key: "/p/lib/new file.rb", label: "lib/new file.rb" }] });
+    const added = row("lib/new file.rb");
+    assert.ok(added.classList.contains("added") && added.classList.contains("pending"));
+    assert.equal(added.querySelector(".k").textContent, "+");
+    assert.equal(added.querySelector(".ws-pend").textContent, "reads next turn");
+    assert.match(pop.querySelector(".ws-pending").textContent, /^1 change pending/);
+    added.querySelector('[data-ws="steer"]').click();
+    assert.equal(sent.at(-1), '/working-set unadd "lib/new file.rb"', "undo: unadd");
+    // Mid-turn a queued add is pending from its line; its unadd nets it.
+    ws.commandQueued({ command_id: "c1", line: "/working-set add memory:style", waits: "turn_end" });
+    assert.ok(row("style").classList.contains("pending"));
+    // The next turn's first request sent the note: no adds, nothing pending.
+    ws.commandRan({ command_id: "c1" });
+    ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40 }], at: 7 });
+    assert.equal(row("lib/new file.rb"), undefined);
+    assert.equal(pop.querySelector(".ws-pending"), null);
+  } finally {
+    ws.popover.close();
+    infoEl.remove();
+    pop.remove();
+  }
+});
+
+test("a stale or forgotten row offers refresh (an add of it); pending, it reads `reads next turn`", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView();
+  try {
+    ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "stale", tokens: 40 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 5 });
+    assert.equal(row("b.rb").querySelector('[data-op="add"]'), null);
+    const refresh = row("a.rb").querySelector('[data-op="add"]');
+    assert.equal(refresh.textContent, "refresh");
+    refresh.click();
+    assert.equal(sent.at(-1), "/working-set add /p/lib/a.rb");
+    ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "stale", tokens: 40 }], at: 6, adds: [{ kind: "file", key: "/p/lib/a.rb", label: "/p/lib/a.rb" }] });
+    assert.equal(row("a.rb").querySelector(".ws-pend").textContent, "reads next turn");
+    assert.equal(pop.querySelectorAll(".ws-row.added").length, 0, "held: no + row of its own");
+  } finally {
+    ws.popover.close();
+    infoEl.remove();
+    pop.remove();
+  }
+});

@@ -1045,6 +1045,13 @@ turn view ignores it.
   (`/working-set pin`, pending as `applies next turn` mid-turn); a pinned row
   shows `📌` and `unpin` (under any strategy), and its `drop` is greyed until
   you unpin it.
+  The list's foot (a phone's last row) takes a path, `memory:NAME` or a URL
+  and runs `/working-set add`: the item shows as a dashed `+ name` row with
+  `reads next turn` and an `undo` until the next turn starts (the model is then
+  asked to read it, and it joins the set as the model reads it). A stale or
+  forgotten row offers `refresh`, the same add of it. While a turn runs the
+  stage's rail shows an add queued for its end as a dashed `+ name · next turn`
+  line.
 
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.

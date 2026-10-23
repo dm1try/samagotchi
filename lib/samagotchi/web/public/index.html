@@ -1011,6 +1011,15 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-popover.sheet .ctx-pop-head>.ctx-pop-kind{order:3;flex:1 0 calc(100% - 30px)}
 .ws-popover.sheet .ctx-pop-head>.ws-ring{order:4}
 .ws-popover.sheet .ws-row{height:30px;line-height:30px}
+/* + add: the list's foot (a sheet's last row), one KEY typed; an added item the set doesn't hold yet is a pending row of its own. */
+.ws-add{display:flex;align-items:center;gap:6px;margin-top:8px}
+.ws-add-in{flex:1;min-width:0;height:26px;box-sizing:border-box;padding:0 8px;border:1px dashed var(--border-strong);border-radius:6px;background:transparent;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.ws-add-in::placeholder{color:var(--text-faint)}
+.ws-add-in:focus{outline:none;border-style:solid;border-color:var(--accent)}
+.ws-add .ws-act-b{line-height:22px;padding:0 10px}
+.ws-row.added .k{color:var(--warn-text);font-weight:600}
+.ws-popover.sheet .ws-add-in{height:34px;font-size:16px}
+.ws-popover.sheet .ws-add .ws-act-b{line-height:32px;padding:0 14px;font-size:12.5px;border-radius:6px}
 /* The session bar's chip, in the mem chip's place: a dot (the accent: changed since its list was last opened) and the count. */
 #infoBar .meta .ws-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
 #infoBar .meta .ws-chip:hover:not(:disabled){filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}

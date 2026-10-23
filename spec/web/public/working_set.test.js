@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
-  forgetOn, pinnable, quoteWord, steerWords, undroppable,
+  forgetOn, pinnable, quoteWord, steerWords, undroppable, addLine, addedItem, addedItems, refreshable, serverAddIds,
   stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
@@ -432,4 +432,37 @@ test("the server's has_drop: overlaid as hasDrop; such an item offers undrop and
   assert.equal(pinnable(lit[1]), true);
   // Taken off when the server's set no longer has it.
   assert.equal("hasDrop" in overlay(lit, { items: [{ kind: "file", key: "/w/a.rb", state: "live", tokens: 40 }], at: 5 })[0], false);
+});
+
+test("+ add: one typed KEY as a line (quoted with spaces); pending from the server's adds, then the queued lines; unadd nets it", () => {
+  assert.equal(addLine("  lib/a.rb "), "/working-set add lib/a.rb");
+  assert.equal(addLine("my notes/a b.md"), '/working-set add "my notes/a b.md"');
+  assert.equal(addLine("   "), null);
+  assert.deepEqual(parseSteerLine("/working-set add lib/a.rb memory:m", "/p"), { op: "add", ids: ["file:/p/lib/a.rb", "memory:m"] });
+  const server = { items: [], at: 3, adds: [{ kind: "file", key: "/p/lib/a.rb", label: "lib/a.rb" }, { kind: "memory", key: "m", label: "memory m" }] };
+  assert.deepEqual(serverAddIds(server), ["file:/p/lib/a.rb", "memory:m"]);
+  assert.deepEqual(serverAddIds({ items: [], at: 1 }), []);
+  const pending = pendingSteers(["/working-set unadd memory:m", "/working-set add https://x.dev/a", "/working-set unadd /p/lib/z.rb"], "/p", serverAddIds(server));
+  // The unadd of a server add nets it; an unadd of nothing added is refused (not pending).
+  assert.deepEqual([...pending], [["file:/p/lib/a.rb", "add"], ["url:https://x.dev/a", "add"]]);
+});
+
+test("addedItems: the pending adds the set doesn't hold, as rows named as the user typed them", () => {
+  const pending = new Map([["file:/p/lib/a.rb", "add"], ["memory:m", "add"], ["file:/p/lib/held.rb", "add"], ["file:/p/x.rb", "drop"]]);
+  const held = [{ kind: "file", key: "/p/lib/held.rb", ops: ["read"] }];
+  const rows = addedItems(pending, held, null, "/p");
+  assert.deepEqual(rows.map((it) => [it.kind, it.key, it.label, it.added]), [["file", "/p/lib/a.rb", "lib/a.rb", true], ["memory", "m", "m", true]]);
+  assert.equal(addedItem("url:https://github.com/a/b/pull/8").label, "github.com/…/pull/8");
+  assert.equal(addedItem("file:/elsewhere/a.rb", "/p").path, "/elsewhere/a.rb");
+});
+
+test("refreshable: a stale or forgotten item the server knows; not one holding the user's drop, a live, muted or added one", () => {
+  const item = (extra) => ({ kind: "file", key: "/p/a.rb", ops: ["read"], state: "stale", tokens: 40, ...extra });
+  assert.equal(refreshable(item()), true);
+  assert.equal(refreshable(item({ state: "forgotten" })), true);
+  assert.equal(refreshable(item({ state: "forgotten", hasDrop: true })), false);
+  assert.equal(refreshable(item({ state: "live" })), false);
+  assert.equal(refreshable(item({ state: "dropped" })), false);
+  assert.equal(refreshable(item({ tokens: undefined })), false);
+  assert.equal(refreshable(item({ muted: true })), false);
 });
