@@ -7,7 +7,8 @@ limited and capped; and what they **see** (P4a): their page and its reads, all t
 experimental. An agent participant waits on its own turns' replies through the API. The code and docs say
 "participants" and "review", never "shared": `session.shared` already means "attached by default".
 
-Until `web.public_url` lands, participants are a **LAN** feature (`web.host: lan`): a loopback peer with no token is
+Participants are a **LAN** feature for now (`web.host: lan`; a public URL, `web.public_url`, is planned, not a
+config key yet): a loopback peer with no token is
 the owner, and a reverse proxy on the same machine would make every visitor loopback. A participant's token is the
 participant's wherever it comes from: their link opened on this machine (or on a chi web not on the LAN, whose link
 works on this machine only) is the participant, never the owner.
