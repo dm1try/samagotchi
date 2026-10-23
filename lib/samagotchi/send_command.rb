@@ -709,7 +709,7 @@ module Samagotchi
       CLI::Exit::FAILED
     end
 
-    def local_refusal(name, id) = SessionCommands.ui_only_refusal(name, id, runner: "chi send")
+    def local_refusal(name, id) = SessionCommands.ui_only_refusal(name, id, runner: "chi send", remote: @access.invocation.remote)
 
     # --wait after a message that ran as a session command: no reply comes
     # for it. Its output shows where the session is open.

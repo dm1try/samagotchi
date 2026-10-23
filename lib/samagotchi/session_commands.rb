@@ -205,12 +205,14 @@ module Samagotchi
     end
 
     # Why a UI-only command isn't run by +runner+ ("chi send"): /stats points
-    # at its model-free reader (naming the session +id+ when there is one).
+    # at its model-free reader (naming the session +id+ when there is one),
+    # which reads the session's machine: under chi --remote NAME (+remote+)
+    # it runs there.
     # @return [String]
-    def self.ui_only_refusal(name, id, runner:)
+    def self.ui_only_refusal(name, id, runner:, remote: nil)
       return "#{name} is a terminal and web command; #{runner} doesn't run it" unless name == "/stats"
 
-      "#{name} is a terminal and web command; use chi sessions stats #{id ? id[0, 8] : "ID"}"
+      "#{name} is a terminal and web command; use chi sessions stats #{id ? id[0, 8] : "ID"}#{" on #{remote}" if remote}"
     end
 
     # The name of this chi's own session command +line+ is (one a worker

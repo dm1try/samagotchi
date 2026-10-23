@@ -111,7 +111,7 @@ RSpec.describe Samagotchi::SendCommand do
         events = serve(a)
 
         expect(run("-m", "/stats", short(a))).to eq(1)
-        expect(out.string).to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+        expect(out.string).to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}#{" on studio" if backend == :remote}\n")
         expect(inputs_of(a)).to be_empty
         expect(events).to be_empty
       end
@@ -137,7 +137,7 @@ RSpec.describe Samagotchi::SendCommand do
 
         expect(run("-m", "  /stats  ", short(a))).to eq(1)
         expect(out.string.lines.last)
-          .to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+          .to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}#{" on studio" if backend == :remote}\n")
         expect(inputs_of(a)).to be_empty
       end
 
