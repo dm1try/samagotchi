@@ -1666,7 +1666,8 @@ module Samagotchi
         event_routes: @event_routes,
         question_desk: -> { @question_desk },
         cancel_controller: -> { active_cancel_controller },
-        steer: ->(text, source) { steer(text, source: source) }
+        steer: ->(text, source) { steer(text, source: source) },
+        turn_author: -> { turn_author }
       )
     end
     private :build_hook_routes
@@ -2852,7 +2853,8 @@ module Samagotchi
         prompt_files: -> { @prompt_builder&.prompt_files || [] },
         frontend: -> { interface },
         cost: -> { @metrics.cost },
-        usage: -> { @metrics.usage }
+        usage: -> { @metrics.usage },
+        turn_author: -> { turn_author }
       )
     end
 

@@ -119,9 +119,12 @@ module Samagotchi
     # cancels the running turn (true when it did); +steer+ takes (text:,
     # hook:) and puts the text into the running turn (Engine#steer, true
     # when queued); +stop_generation+ takes (reason:, hook:) and cuts the
-    # streaming generation while the turn goes on (true when it did). A
-    # registry without one gives hooks no-op helpers.
-    Runtime = Struct.new(:notify, :ask_user, :stop_turn, :steer, :stop_generation, keyword_init: true)
+    # streaming generation while the turn goes on (true when it did);
+    # +turn_author+ returns the running turn's author when a participant
+    # wrote it ("p:<id>"), nil for the owner's (every event of such a turn
+    # carries it as author:). A registry without one gives hooks no-op
+    # helpers.
+    Runtime = Struct.new(:notify, :ask_user, :stop_turn, :steer, :stop_generation, :turn_author, keyword_init: true)
 
     # A thread-safe registry for named hook callbacks.
     #
@@ -385,6 +388,12 @@ module Samagotchi
       # The helpers, once per fire; a fire site's own keys stay.
       def with_runtime(event)
         return unless event.is_a?(Hash)
+
+        # A participant's turn: its events say whose it is (the owner's
+        # carry no author:, as before).
+        if !event.key?(:author) && (author = @runtime&.turn_author&.call)
+          event[:author] = author
+        end
 
         event[:notify] ||= lambda { |text, level: :info, fallback_for: nil|
           notice = { text: text.to_s, level: level, hook: event[:hook] }

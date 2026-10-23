@@ -41,7 +41,9 @@ module Samagotchi
         # ctx.usage: nil (zero), a Hash of the parts (turns:, tool_calls:,
         # tool_calls_by_tool:, steps:, active_ms:, tool_ms_by_tool:) or a
         # callable giving one.
-        usage: nil
+        usage: nil,
+        # ctx.turn_author and the hooks' author: (a participant's "p:<id>"), nil for the owner.
+        turn_author: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,

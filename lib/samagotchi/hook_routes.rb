@@ -22,11 +22,13 @@ module Samagotchi
     # @param question_desk     [#call] → QuestionDesk
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
     # @param steer             [#call] (text, source) → steers the running turn
-    def initialize(event_routes:, question_desk:, cancel_controller:, steer:)
+    # @param turn_author       [#call] → the running turn's participant author, nil
+    def initialize(event_routes:, question_desk:, cancel_controller:, steer:, turn_author: -> {})
       @event_routes = event_routes
       @question_desk = question_desk
       @cancel_controller = cancel_controller
       @steer = steer
+      @turn_author = turn_author
       @unknown_fallbacks = Set.new
     end
 
@@ -40,7 +42,8 @@ module Samagotchi
         ask_user: ->(question) { ask_user(question) },
         stop_turn: ->(reason:, hook:) { stop_turn(reason, hook) },
         steer: ->(text:, hook:) { @steer.call(text, source(hook)) },
-        stop_generation: ->(reason:, hook:) { stop_generation(reason, hook) }
+        stop_generation: ->(reason:, hook:) { stop_generation(reason, hook) },
+        turn_author: @turn_author
       )
     end
 

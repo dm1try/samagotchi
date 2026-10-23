@@ -51,7 +51,8 @@ module Samagotchi
           load_tools: ->(names, bundle) { recorder.load_tools(names, bundle) },
           cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
           cost: -> { cost(recorder[:cost]) },
-          usage: -> { usage(recorder[:usage]) }
+          usage: -> { usage(recorder[:usage]) },
+          turn_author: -> { recorder[:turn_author] }
         )
       end
 
@@ -119,7 +120,8 @@ module Samagotchi
           ask_user: ->(question) { recorder.ask_user(question) },
           stop_turn: ->(reason:, hook:) { recorder.stop(:turn, reason, hook) },
           steer: ->(text:, hook:) { recorder.steer(text, hook) },
-          stop_generation: ->(reason:, hook:) { recorder.stop(:generation, reason, hook) }
+          stop_generation: ->(reason:, hook:) { recorder.stop(:generation, reason, hook) },
+          turn_author: -> { recorder[:turn_author] }
         )
       end
     end

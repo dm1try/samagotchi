@@ -61,7 +61,7 @@ module Samagotchi
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
-                      :cancel_controller, :cost, :usage, keyword_init: true)
+                      :cancel_controller, :cost, :usage, :turn_author, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -174,6 +174,12 @@ module Samagotchi
       #   (#active_minutes) and #tool_ms_by_tool (docs/plugins.md); zero
       #   with no session
       def usage = @host.usage&.call || SessionMetrics::Usage.zero
+
+      # @return [String, nil] who wrote the running turn when it isn't the
+      #   session's owner: a participant's "p:<id>" (chi share); nil for the
+      #   owner's turns and between turns. A handler runs with the owner's
+      #   power whatever the author (docs/hooks.md).
+      def turn_author = @host.turn_author&.call
 
       # @return [String, nil] the name of the session's toolkit ("full" for
       #   one from before toolkits; nil with no session)
