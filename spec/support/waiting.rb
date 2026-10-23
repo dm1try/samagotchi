@@ -1,67 +1,21 @@
 # frozen_string_literal: true
 
+require "samagotchi/testing/waiting"
+
 # Waiting on state instead of sleeping a fixed time: a slow (parallel, CI)
 # runner gets as long as it needs, a fast one doesn't wait at all. Included
-# in every example group by spec_helper; SpecWaiting.mono also works outside
-# one (a helper class's own wait).
+# in every example group by spec_helper. The helpers are the bundle test
+# kit's (Samagotchi::Testing::Waiting), so core and bundle specs share one
+# copy; SpecWaiting also extends them, so SpecWaiting.pop! (and the others)
+# work outside an example group (a helper class's own wait).
 module SpecWaiting
+  include Samagotchi::Testing::Waiting
+  extend Samagotchi::Testing::Waiting
+
   module_function
 
   # A monotonic clock, so a wait doesn't depend on Time.now.
   def mono
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  end
-
-  # Poll the block every +interval+ seconds until it returns truthy or
-  # +timeout+ seconds pass.
-  # @return the block's last value: truthy once it held, falsy on a timeout.
-  def wait_until(timeout: 5, interval: 0.01)
-    deadline = mono + timeout
-    until (value = yield)
-      return yield if mono > deadline
-
-      sleep(interval)
-    end
-    value
-  end
-
-  # wait_until, raising when the time runs out: for a wait with no check of
-  # its own after it (a setup step, a stub, a helper thread), where a falsy
-  # return would go unseen and an unbounded loop would hang the suite.
-  # +what+ names the condition in the failure message.
-  # @return the block's truthy value.
-  def wait_until!(what, timeout: 5, interval: 0.01, &)
-    wait_until(timeout: timeout, interval: interval, &) ||
-      raise("timed out after #{timeout} s waiting for #{what}")
-  end
-
-  # Thread#join with a deadline: a thread that never ends fails the example
-  # with +what+ named, not after the suite's 120 s guard. Raises what the
-  # thread raised, as #join does.
-  # @return [Thread]
-  def join!(thread, what, timeout: 5)
-    thread.join(timeout) || raise("timed out after #{timeout} s waiting for #{what} to finish")
-  end
-
-  # Queue#pop with a deadline, for a queue that never carries nil: nothing
-  # pushed in time fails with +what+ named. A gate a stubbed lib thread
-  # waits on while the example works takes a longer +timeout+ (30): it only
-  # has to end a hang, never cut a slow example short.
-  # @return the value popped.
-  def pop!(queue, what, timeout: 5)
-    value = queue.pop(timeout: timeout)
-    raise("timed out after #{timeout} s waiting for #{what}") if value.nil?
-
-    value
-  end
-
-  # Whether no process +pid+ is left. A killed grandchild is reparented and
-  # reaped by init a moment later (a zombie answers signal 0 until then):
-  # wait_until { process_gone?(pid) }, not an immediate check.
-  def process_gone?(pid)
-    Process.kill(0, pid)
-    false
-  rescue Errno::ESRCH
-    true
   end
 end
