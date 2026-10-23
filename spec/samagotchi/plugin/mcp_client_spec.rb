@@ -28,8 +28,7 @@ RSpec.describe "The mcp bundle's client" do
     expect(initialize!).to include("serverInfo" => { "name" => "fake", "version" => "1" })
     client.notify("notifications/initialized")
     expect(client.request("tools/list", nil, timeout: 5)["tools"].map { |t| t["name"] }).to eq(%w[echo add fail mixed])
-    Timeout.timeout(2) { sleep(0.05) until logged.size.positive? }
-    expect(logged.pop).to eq(["stderr", { line: "fake mcp server starting (normal)" }])
+    expect(pop!(logged, "the server's stderr line")).to eq(["stderr", { line: "fake mcp server starting (normal)" }])
   end
 
   it "raises an error answer" do
@@ -44,13 +43,20 @@ RSpec.describe "The mcp bundle's client" do
 
     def received = File.readlines(log_file).map { |line| JSON.parse(line) }
 
+    # Whether the server logged a +method+ message (false while a line is
+    # still being written).
+    def received?(method)
+      File.exist?(log_file) && received.any? { |m| m["method"] == method }
+    rescue JSON::ParserError
+      false
+    end
+
     it "sends notifications/cancelled when the wait is cancelled" do
       initialize!
-      cancel = false
-      Thread.new { sleep(0.3); cancel = true }
-      expect { client.request("tools/call", { name: "slow" }, timeout: 10, cancelled: -> { cancel }) }
+      # Cancelled once the server has the call, so the wait is under way.
+      expect { client.request("tools/call", { name: "slow" }, timeout: 10, cancelled: -> { received?("tools/call") }) }
         .to raise_error(client_class::Cancelled)
-      Timeout.timeout(2) { sleep(0.05) until received.any? { |m| m["method"] == "notifications/cancelled" } }
+      wait_for("the server to get notifications/cancelled") { received?("notifications/cancelled") }
       call = received.find { |m| m["method"] == "tools/call" }
       expect(received.last).to include("method" => "notifications/cancelled",
                                        "params" => { "requestId" => call["id"], "reason" => "cancelled by the user" })
@@ -61,7 +67,7 @@ RSpec.describe "The mcp bundle's client" do
       initialize!
       expect { client.request("tools/call", { name: "slow" }, timeout: 0.3) }
         .to raise_error(client_class::Timeout, "tools/call timed out after 0.3s")
-      Timeout.timeout(2) { sleep(0.05) until received.any? { |m| m["method"] == "notifications/cancelled" } }
+      wait_for("the server to get notifications/cancelled") { received?("notifications/cancelled") }
     end
   end
 
@@ -69,7 +75,7 @@ RSpec.describe "The mcp bundle's client" do
     initialize!
     expect { client.request("tools/call", { name: "crash" }, timeout: 5) }
       .to raise_error(client_class::Dead, "the server exited (status 4)")
-    expect(exits.pop(timeout: 2)).to eq("the server exited (status 4)")
+    expect(pop!(exits, "the exit notice")).to eq("the server exited (status 4)")
     expect { client.request("tools/list", nil, timeout: 5) }.to raise_error(client_class::Dead)
     expect(exits.size).to eq(0)
   end
@@ -82,10 +88,10 @@ RSpec.describe "The mcp bundle's client" do
     rescue client_class::Dead => e
       e.message
     end
-    sleep 0.1
+    wait_for("the call to be waiting") { client.instance_variable_get(:@pending).any? }
     client.send(:ended)
-    expect(waiting.value).to eq("the server exited")
-    expect(exits.pop(timeout: 2)).to eq("the server exited")
+    expect(join!(waiting, "the waiting call").value).to eq("the server exited")
+    expect(pop!(exits, "the exit notice")).to eq("the server exited")
   end
 
   it "ends the process on close, without an exit notice" do
@@ -119,8 +125,8 @@ RSpec.describe "The mcp bundle's client" do
     rescue Errno::ESRCH
       false
     end
-    Timeout.timeout(2) { sleep(0.05) while group_alive.call }
-    expect(group_alive.call).to be(false)
+    wait_for("the server's process group to be gone") { !group_alive.call }
+    expect { Process.kill(0, -pid) }.to raise_error(Errno::ESRCH)
   end
 
   # kill -9 of chi runs no close: the server's stdin hits EOF, which a server
@@ -143,8 +149,7 @@ RSpec.describe "The mcp bundle's client" do
     expect(alive?(server)).to be(true)
     Process.kill("KILL", holder_pid)
     Process.wait(holder_pid)
-    Timeout.timeout(6) { sleep(0.1) while alive?(server) }
-    expect(alive?(server)).to be(false)
+    wait_for("the watchdog to stop the server", timeout: 6) { !alive?(server) }
   ensure
     out&.close
     if holder_pid

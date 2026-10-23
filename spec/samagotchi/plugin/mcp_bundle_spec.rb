@@ -170,12 +170,11 @@ RSpec.describe "The mcp bundle" do
         expect(gate.evaluate({ name: "find_tools", args: { "query" => "echo" } }, iteration: 1, params: "")).not_to be_ask
         engine.interface = :worker
         thread = Thread.new { engine.request_approval(verdict) }
-        Timeout.timeout(2) { sleep(0.005) until engine.pending_question }
-        pending = engine.pending_question
+        pending = wait_for("the call's approval question") { engine.pending_question }
         expect(pending.approval).to include(tool: "call_tool", acts_as: "mcp_fake_echo", label: "fake: echo")
         expect(pending.question.lines.first).to eq("fake: echo: text=hi\n")
         engine.cancel_question("dismissed", id: pending.id)
-        thread.join(2)
+        join!(thread, "the approval request")
       end
     end
 
@@ -200,11 +199,12 @@ RSpec.describe "The mcp bundle" do
           settings["startup_timeout"] = 10
           @engine = Samagotchi::Engine.new(client: client)
           @engine.start_init_tasks!
-          expect(wait_until(timeout: 5) { find("", "quick").include?("quick: echo") }).to be(true)
+          wait_for("the quick server's tools", seen: -> { find("", "quick") }) { find("", "quick").include?("quick: echo") }
 
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           expect(mcp("nope", server: "quick")).to start_with("Error: no tool quick/nope.")
-          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+          # not the starting server's 10 s startup_timeout: the miss doesn't wait for it
+          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
           expect(find("", "fake")).to include("fake (starting, try again)")
           expect(start_gated_server_during { mcp("echo", { "text" => "waited" }) }).to eq("echo: waited")
         end
@@ -363,7 +363,7 @@ RSpec.describe "The mcp bundle" do
 
     it "restarts on its next call, with one notice" do
       expect(mcp("crash")).to eq("Error: MCP server fake is not running (the server exited (status 4))")
-      Timeout.timeout(2) { sleep(0.05) until notices.any? }
+      wait_for("the server's stopped notice") { notices.any? }
       expect(notices).to eq(["MCP server fake stopped: the server exited (status 4); it restarts on its next call"])
       expect(mcp("echo", { "text" => "back" })).to eq("echo: back")
       expect(mcp("add", { "a" => 1, "b" => 2 })).to eq("3")
@@ -376,7 +376,7 @@ RSpec.describe "The mcp bundle" do
       4.times do |i|
         expect(mcp("echo", { "text" => "x" })).to eq("echo: x") if i.positive? # the restart
         expect(mcp("crash")).to start_with("Error: MCP server fake is not running")
-        Timeout.timeout(2) { sleep(0.05) until notices.size == i + 1 }
+        wait_for("stopped notice #{i + 1}", seen: -> { notices }) { notices.size == i + 1 }
       end
       expect(notices.last)
         .to eq("MCP server fake stopped: the server exited (status 4); it was restarted 3 times, its tools fail until chi restarts")
@@ -404,7 +404,8 @@ RSpec.describe "The mcp bundle" do
     it "starts them in init tasks: chi's start doesn't wait; each broken one is a warn card; the rest works" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       built = Samagotchi::Engine.new(client: client)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      # not the hung server's 2 s startup_timeout: the start doesn't wait for the servers
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.8
       built.shutdown
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       engine

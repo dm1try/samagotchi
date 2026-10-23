@@ -72,7 +72,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
       @init_events = []
       built.subscribe(observer: ->(e) { @init_events << e })
       built.start_init_tasks!
-      built.instance_variable_get(:@plugin_tasks).tasks.each { |task| task.thread&.join(10) }
+      built.instance_variable_get(:@plugin_tasks).tasks.each do |task|
+        join!(task.thread, "MCP init task #{task.id}", timeout: 10) if task.thread
+      end
       built.apply_staged_tools!
     end
   end

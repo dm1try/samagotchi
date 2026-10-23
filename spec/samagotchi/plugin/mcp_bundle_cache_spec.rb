@@ -121,8 +121,9 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("echo", { "text" => "x" })).to eq("echo: x")
       File.write(tools_file, "echo\nchanged\n")
       expect(mcp("changed")).to eq("changed")
-      Timeout.timeout(5) { sleep(0.05) until cache["tools"].map { |t| t["name"] } == %w[echo changed] }
-      Timeout.timeout(5) { sleep(0.05) until indexed == %w[echo changed] }
+      cached_names = -> { cache["tools"].map { |t| t["name"] } }
+      wait_for("the cache to list the changed tools", seen: cached_names) { cached_names.call == %w[echo changed] }
+      wait_for("the index to list the changed tools", seen: -> { indexed }) { indexed == %w[echo changed] }
       expect(engine.apply_staged_tools!).to be(false)
       expect(mcp("echo", { "text" => "still" })).to eq("echo: still")
       expect(spawned).to eq(2)
@@ -152,14 +153,16 @@ RSpec.describe "The mcp bundle" do
       File.write(mode_file, "hang")
       settings["startup_timeout"] = 30
       next_engine
-      cancel = false
-      allow(engine).to receive(:active_cancel_controller) { double(cancelled?: cancel) }
-      Thread.new { sleep(0.3); cancel = true }
+      # The turn is cancelled once the hung server is up (its pid written),
+      # so the start is waiting on its initialize.
+      cancel = -> { spawned >= 2 }
+      allow(engine).to receive(:active_cancel_controller) { double(cancelled?: cancel.call) }
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(mcp("echo", { "text" => "x" })).to eq("Error: initialize was cancelled")
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      # not the 30 s startup_timeout: the cancel ended the start
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 10
       File.write(mode_file, "")
-      cancel = false
+      cancel = -> { false }
       expect(mcp("echo", { "text" => "again" })).to eq("echo: again")
     end
 
