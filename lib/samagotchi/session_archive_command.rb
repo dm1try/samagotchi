@@ -3,6 +3,7 @@
 require_relative "session"
 require_relative "session_manager"
 require_relative "cli/command"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi sessions archive|unarchive`: hide sessions from every list and keep
@@ -29,12 +30,15 @@ module Samagotchi
 
     # @param action [String] "archive" or "unarchive"
     # @param argv [Array<String>] the arguments after "sessions <action>"
-    def initialize(action, argv, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
+    def initialize(action, argv, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
       @action = action
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @state_dir = state_dir || Session.default_state_dir
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     # @return [Integer] exit status: 0 all done, 1 any refused or unknown, 2 usage
@@ -57,9 +61,9 @@ module Samagotchi
     private
 
     def archive(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
+      id = @access.resolve_id(given)
       short = id[0, 8]
-      result = SessionManager.archive_session(id, state_dir: @state_dir)
+      result = @access.archive(id)
       if result[:archived].include?(id)
         notes = []
         notes << "stopped its worker" if result[:stopped].include?(id)
@@ -86,9 +90,9 @@ module Samagotchi
     end
 
     def unarchive(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
+      id = @access.resolve_id(given)
       short = id[0, 8]
-      result = SessionManager.unarchive_session(id, state_dir: @state_dir)
+      result = @access.unarchive(id)
       @stdout.puts(result[:unarchived].empty? ? "#{short}  not archived" : "#{short}  unarchived")
       true
     rescue ArgumentError => e

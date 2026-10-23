@@ -15,6 +15,7 @@ require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/event_renderer"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi sessions`: list, stop, restart, archive/unarchive, delete, prune,
@@ -81,10 +82,15 @@ module Samagotchi
     INTEGER_OPTIONS = %i[days keep limit].freeze
 
     # @param argv [Array<String>] the arguments after "sessions"
-    def initialize(argv, stdout: $stdout, stderr: $stderr)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's (delete, archive and unarchive build their
+    #   own unless one is given)
+    def initialize(argv, stdout: $stdout, stderr: $stderr, access: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
+      @given_access = access
+      @access = access || Samagotchi::SessionAccess::Local.new
     end
 
     # @return [Integer] exit status
@@ -99,9 +105,10 @@ module Samagotchi
 
       case @sub
       when "delete"
-        return Samagotchi::SessionDeleteCommand.new(@argv[1..], stdout: @stdout, stderr: @stderr).run
+        return Samagotchi::SessionDeleteCommand.new(@argv[1..], stdout: @stdout, stderr: @stderr, access: @given_access).run
       when "archive", "unarchive"
-        return Samagotchi::SessionArchiveCommand.new(@sub, @argv[1..], stdout: @stdout, stderr: @stderr).run
+        return Samagotchi::SessionArchiveCommand.new(@sub, @argv[1..], stdout: @stdout, stderr: @stderr,
+                                                                       access: @given_access).run
       end
 
       parsed = parse_flags(FLAGS.fetch(@sub), @argv[1..])
@@ -166,7 +173,8 @@ module Samagotchi
 
       # The current git project's sessions (Samagotchi::ProjectScope), like
       # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
-      # project's.
+      # project's. Machine-local (this cwd's project): remotely every
+      # project's unless --cwd (D4).
       project = scope == "all" || cwd ? nil : Samagotchi::ProjectScope.root_for(Dir.pwd)
       scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} (--scope=all: every project)" }
 
@@ -181,7 +189,7 @@ module Samagotchi
     def list_summaries(project, scope_note)
       live, cwd, limit, include_archived, format, sort, order =
         @opts.values_at(:live, :cwd, :limit, :include_archived, :format, :sort, :order)
-      summaries = Samagotchi::SessionManager.session_summaries(
+      summaries = @access.summaries(
         live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: Samagotchi::Session.test_session_env?,
         project_root: project,
         include_archived: include_archived, sort: sort, order: order
@@ -245,10 +253,12 @@ module Samagotchi
       sort, order, limit, include_archived = @opts.values_at(:sort, :order, :limit, :include_archived)
       sort ||= "updated_at"
       order ||= "desc"
-      sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project,
-                                                          include_archived: include_archived)
+      sessions = @access.list(sort: sort, order: order, limit: limit, project_root: project, include_archived: include_archived)
       # The session's title, else the saved recap's first sentence, else the
       # last prompt (or the first message, before any turn), cut as before.
+      # These rows read each session's folder here (its recap, saved
+      # context, owner): machine-local, the server's rows remotely (P2's
+      # list parity).
       state_dir = Samagotchi::Session.default_state_dir
       list_text = lambda do |s|
         recap = s.title ? nil : Samagotchi::RecapStore.preview(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
@@ -297,7 +307,8 @@ module Samagotchi
     # One session's cost, tokens and progress, for a script or an agent that
     # drives sessions (chi send --wait): a live worker's GET stats, else the
     # snapshot its saved analytics.json rebuilds. Never starts a worker, and
-    # never sends the model anything.
+    # never sends the model anything. Local only (SessionAccess::Contract):
+    # the Bridge's stats and analytics.json on this machine.
     def stats(ids)
       return usage_error("give a session id") if ids.empty?
       return usage_error("stats takes one session id") if ids.size > 1
@@ -369,8 +380,8 @@ module Samagotchi
       # error line, so the output keeps the order of the ids given.
       ok = ids.uniq.map do |given|
         begin
-          id = Samagotchi::Session.resolve_id(given)
-          released = Samagotchi::SessionManager.stop_session(id, wait: 10)
+          id = @access.resolve_id(given)
+          released = @access.stop(id, wait: 10)
         rescue Samagotchi::SessionManager::OwnedByTUI => e
           @stdout.flush
           @stderr.puts e.message
@@ -398,8 +409,8 @@ module Samagotchi
 
       ok = ids.uniq.map do |given|
         begin
-          id = Samagotchi::Session.resolve_id(given)
-          result = Samagotchi::SessionManager.restart_session(id)
+          id = @access.resolve_id(given)
+          result = @access.restart(id)
         rescue Samagotchi::SessionManager::OwnedByTUI => e
           @stdout.flush
           @stderr.puts e.message
@@ -426,6 +437,7 @@ module Samagotchi
       "Restarted session #{result.session_id} on chi #{result.version}#{from}."
     end
 
+    # Local only (SessionAccess::Contract): this machine's retention sweep.
     def prune(sub)
       days, keep, keep_status, dry_run, test_only = @opts.values_at(:days, :keep, :keep_status, :dry_run, :test_only)
       test_only = true if sub == "clean" && !@opts[:all]

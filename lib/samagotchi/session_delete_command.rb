@@ -4,6 +4,7 @@ require_relative "session"
 require_relative "session_manager"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi sessions delete`: remove sessions for good (SessionManager.delete_session),
@@ -24,11 +25,14 @@ module Samagotchi
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) { |f| f.switch "-f", "--force" }
 
     # @param argv [Array<String>] the arguments after "sessions delete"
-    def initialize(argv, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
+    def initialize(argv, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @state_dir = state_dir || Session.default_state_dir
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     # @return [Integer] exit status: 0 all deleted, 1 any refused or
@@ -56,10 +60,10 @@ module Samagotchi
 
     # @return [Boolean] whether the session is gone
     def delete(given, force:)
-      id = Session.resolve_id(given, state_dir: @state_dir)
+      id = @access.resolve_id(given)
       short = id[0, 8]
       preview = preview_of(id)
-      result = SessionManager.delete_session(id, state_dir: @state_dir, stop: force)
+      result = @access.delete(id, force: force)
       @stdout.puts(["#{short}  deleted#{" (stopped its worker)" if result[:stopped]}", preview].compact.join("  "))
       true
     rescue SessionManager::OwnedByTUI
@@ -80,7 +84,7 @@ module Samagotchi
     end
 
     def preview_of(id)
-      text = Session.load(id, state_dir: @state_dir).display_title.gsub(/\s+/, " ").strip
+      text = @access.show(id).display_title.gsub(/\s+/, " ").strip
       return nil if text.empty?
 
       text.length > PREVIEW_LIMIT ? "#{text[0, PREVIEW_LIMIT - 1]}…" : text
