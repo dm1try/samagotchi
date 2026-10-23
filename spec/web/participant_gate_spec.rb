@@ -105,6 +105,19 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(body).not_to include("owner page")
     end
 
+    it "never shows an untitled session's first prompt as its title (Session#display_title's fallback)" do
+      session.title = nil
+      session.messages << { role: "user", content: "the secret plan for the launch" }
+      session.compute_first_preview!
+      session.save(state_dir: state_dir)
+      expect(session.display_title).to include("secret plan")
+
+      expect(json("/api/sessions/#{session.id}").last.dig("session", "title")).to eq("an untitled session")
+      page = call("/")[2]
+      expect(page).to include("an untitled session")
+      expect(page).not_to include("secret plan")
+    end
+
     it "escapes what the page shows" do
       named = Samagotchi::Participants.invite(grants, session_id: session.id, name: "<b>Kim</b>", state_dir: state_dir)
       body = call("/", bearer: named.token)[2]

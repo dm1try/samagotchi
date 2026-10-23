@@ -152,9 +152,18 @@ module Samagotchi
       # its title, status and participants, nothing of the conversation.
       def participant_show(id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        json_response(200, { session: { id: session.id, title: session.display_title, status: session.status,
+        json_response(200, { session: { id: session.id, title: participant_title(session), status: session.status,
                                         participants: participant_names(id) } })
       end
+
+      # The session's own title, never Session#display_title's fallback (the
+      # first prompt's opening words: the conversation).
+      def participant_title(session)
+        title = session.title.to_s.strip
+        title.empty? ? UNTITLED : title
+      end
+
+      UNTITLED = "an untitled session"
 
       def participant_names(id)
         now = @grants.now
@@ -169,7 +178,7 @@ module Samagotchi
         session = @session_class.load(grant.session_id, state_dir: default_state_dir)
         name = CGI.escapeHTML(grant.name)
         others = participant_names(grant.session_id).map { |entry| CGI.escapeHTML(entry[:name]) }
-        html_response(200, format(PARTICIPANT_PAGE, name: name, title: CGI.escapeHTML(session.display_title.to_s),
+        html_response(200, format(PARTICIPANT_PAGE, name: name, title: CGI.escapeHTML(participant_title(session)),
                                                     status: CGI.escapeHTML(session.status.to_s),
                                                     participants: others.join(", ")))
       end

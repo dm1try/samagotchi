@@ -70,7 +70,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 |---|---|---|
 | `GET /` | participant | the participant page (server-rendered, no script): "Alex's review", the session's title and status, "Comments open soon", the participants' names. Never the owner's page, where every route would refuse them. |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
-| `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones) |
+| `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
 
 Everything else is `:owner`, `POST …/turn` included (P3 opens it). Static assets (`/app.js`, …) are served to any
 principal past the gate: they are the public frontend.
