@@ -8,6 +8,24 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Review sessions for participants (experimental). `chi review docs/plan.md …` starts a session made to be shared:
+  its subjects are project files (a secret such as `.env` or a key, a file outside the project or chi's own is
+  refused with one message), it starts idle, and it prints the `chi share` line to invite someone. `chi review --from
+  ID` starts a review of a working session from its recap, never its transcript; that session keeps running,
+  unarchived. Both work with `chi --remote NAME` (`--dir` there). On the web, the start page's `review…` chip takes
+  the files, and a session's bar has a **review** button for a review of it. Sharing a session that isn't a review
+  session still works, with a warning naming how many tool outputs its history holds (`chi share`, the Invite
+  dialog). Participants read the subjects as the **Plan**: rendered beside the thread on a wide screen, a Plan |
+  Thread toggle on a phone, checked again on every read and redacted. Under each participant's review turn the owner
+  gets **Apply**: it puts an owner's turn in the composer, not sent, that quotes the proposal line by line, so the
+  participant's words never reach the model as the owner's instruction. Plugins get `ctx.sessions.review(subjects:,
+  seed:)`. The coordinator bundle (0.6.0) adds an experimental sprint review: `/coordinate review [handoff]` opens a
+  review of the coordinator session seeded with its handoff, where a participant's new context gets a hand-off diff
+  and the owner's Apply updates the handoff. See [docs/cli.md](docs/cli.md#review-sessions) and
+  [docs/sessions.md](docs/sessions.md#review-sessions).
+
 ## [0.106.0] - 2026-10-23
 
 ### Added

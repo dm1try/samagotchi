@@ -47,6 +47,11 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   `:participant` routes through chi web. Their `POST …/turn` is a queued, read-only review turn
   (`Guardrails::ReviewBoundary`, the reserved `review` kit; no `!`/`/` lines, a turn limit, spend by author). Code
   and docs say "participants" / "review", never "shared". See docs/internals/participants.md.
+- `chi review FILE… [--dir D] [--model M]` / `chi review --from ID [FILE…]` (local or `--remote`): a review session
+  (`review: {subjects, from}`, `ReviewStart`) to share: its subjects are project files checked by
+  `Guardrails::ReviewPaths`, a `--from` fork starts from ID's recap and leaves ID running. Participants read the
+  subjects as the Plan (`GET …/review`'s `subjects`); the owner's Apply quotes a review turn's proposal
+  (`ReviewApply`, `GET …/apply`). See docs/sessions.md (Review sessions).
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that

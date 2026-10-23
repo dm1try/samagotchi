@@ -56,12 +56,17 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   await context.close();
 });
 
-test("a participant: the owner invites from the panel, the link joins over the LAN, a comment gets its reply, the owner sees their badge", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, a comment gets its reply, the owner applies it", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
   script("plain");
   await owner.goto(`${chi.baseURL}/`);
+  // The start page's review chip: the new session is a review of README.md.
+  await owner.locator("#reviewNew").click();
+  await owner.locator("#reviewNewPopover textarea").fill("README.md");
+  await owner.locator("#reviewNewPopover button[type=submit]").click();
+  await expect(owner.locator("#reviewNew")).toHaveText("review: README.md");
   await owner.locator("#prompt").fill("Say pong");
   await owner.locator("#actionBtn").click();
   await expect(owner).toHaveURL(/#\/s\/[0-9a-f-]+$/);
@@ -75,6 +80,8 @@ test("a participant: the owner invites from the panel, the link joins over the L
   await owner.locator("#participantsPopover .pp-invite-btn").click();
   const link = await owner.locator("#participantsPopover .pp-link input").inputValue();
   expect(link).toMatch(/\/\?token=chp_[\w-]+#s=[0-9a-f-]+$/);
+  // A review session: no warning about a working session's tool outputs.
+  await expect(owner.locator("#participantsPopover .pp-warning")).toHaveCount(0);
   await expect(chip).toHaveText("1 participant");
 
   // Another browser on the LAN address: the participant page, no owner page.
@@ -83,6 +90,9 @@ test("a participant: the owner invites from the panel, the link joins over the L
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(link.replace(/^http:\/\/[^/]+/, chi.lanURL));
   await expect(page.locator("#title")).toContainText("Alex's review");
+  // The Plan beside the thread: the subject's rendered markdown.
+  await expect(page.locator("#planPath")).toHaveText("README.md");
+  await expect(page.locator("#planDoc h1")).toHaveText("e2e project");
   await expect(page.locator("#thread .p-msg.user").first()).toContainText("Say pong");
   await expect(page.locator("#actionBtn")).toHaveCount(0);
 
@@ -97,6 +107,10 @@ test("a participant: the owner invites from the panel, the link joins over the L
   await expect(page.locator("#error")).toContainText("can't start with");
 
   await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
+  // Apply under the review turn's reply: the owner's turn in the composer,
+  // the proposal quoted, not sent.
+  await owner.locator(".review-apply-btn").last().click();
+  await expect(owner.locator("#prompt")).toHaveValue(/^Apply this proposal from Alex's review turn \w+, as far as it fits the plan\. [^\n]*\n\n> PONG from the fake model/);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
 });
