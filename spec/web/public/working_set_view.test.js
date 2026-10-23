@@ -183,7 +183,7 @@ test("the server's snapshot out of order: a GET an event overtook, or one behind
 });
 
 // Steering (P3a): a view whose list is open, the lines it posts recorded.
-function steeringView({ wide = true, llmContext = null, dir = undefined } = {}) {
+function steeringView({ wide = true, llmContext = null, dir = undefined, paths = ["lib/a.rb", "lib/b.rb"] } = {}) {
   const infoEl = document.createElement("div");
   infoEl.innerHTML = '<button class="ws-chip"></button>';
   document.body.append(infoEl);
@@ -194,9 +194,9 @@ function steeringView({ wide = true, llmContext = null, dir = undefined } = {}) 
     state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], llmContext, dir }),
     sendLine: (line) => { sent.push(line); return Promise.resolve(); },
   });
-  const turn = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { ...read("lib/b.rb"), status: "ok" }] }] }, 0);
+  const turn = itemsOfTurn({ gens: [{ tools: paths.map((path) => ({ ...read(path), status: "ok" })) }] }, 0);
   ws.seed([{ items: turn, prompt: "first" }]);
-  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
+  ws.update({ items: paths.map((path, i) => ({ kind: "file", key: `/p/${path}`, state: "live", tokens: i ? 9 : 40 })), at: 4 });
   const pop = ws.popover.pop;
   if (!wide) Object.defineProperty(window, "innerWidth", { value: 390, configurable: true });
   ws.popover.open(infoEl.querySelector(".ws-chip"));
@@ -230,6 +230,17 @@ test("inside the session's folder a line names a file by its relative path (the 
   ws.commandQueued({ command_id: "c2", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
   assert.equal(row("a.rb").querySelector(".ws-pend").textContent, "drops next turn");
   assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "drops next turn");
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("a file whose path has a space: its drop posts the path quoted, and its pending op marks the row", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView({ dir: "/p", paths: ["my notes/a b.md", "lib/b.rb"] });
+  row("a b.md").querySelector('[data-ws="steer"]').click();
+  assert.deepEqual(sent, ['/working-set drop "my notes/a b.md"']);
+  ws.commandQueued({ command_id: "c1", line: sent[0], waits: "turn_end" });
+  assert.equal(row("a b.md").querySelector(".ws-pend").textContent, "drops next turn");
   ws.popover.close();
   infoEl.remove();
   pop.remove();
