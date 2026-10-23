@@ -73,6 +73,8 @@ and commands may change between minor versions. How releases are made:
 - Two `chi remote add` / `chi remote rm` at once keep each other's change: `remotes.yml` is rewritten under a lock.
 - `chi --help` and `chi remote --help` list `review` (and `share`) among the commands `chi --remote NAME` runs, and
   `-p` says it stays in the session (the attached TUI by default, the REPL with `--no-shared`), not "in the REPL".
+- The participant page sends a comment once: a second Enter (or Send) while it is being posted no longer sends it
+  again as a second review turn.
 
 ## [0.106.0] - 2026-10-23
 
