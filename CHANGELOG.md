@@ -48,6 +48,9 @@ and commands may change between minor versions. How releases are made:
   being refused as busy; a participant's turn held for the owner reads `waiting_for_owner` (exit 3).
 - `chi send --wait --format json`: a turn still running names the wait on its turn id.
 - The attached terminal no longer announces your own `/share` or `/participants revoke` a second time.
+- Web: the session bar's first line keeps one width through a turn: the status word takes the same room for idle and
+  running, the working set's chip shows from the session's start (`set 0`), and every chip is one height. A short
+  folder path no longer hops between the bar's rows mid-turn and moves the stage.
 
 Update with `chi update`.
 

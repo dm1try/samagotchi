@@ -1051,6 +1051,8 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
+/* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
+#infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
 /* The open session's worker runs an older chi: its version, and Restart when it can. */
 #infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}
