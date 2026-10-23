@@ -31,8 +31,9 @@ module Samagotchi
     # WebBridgeClient), where the client stays the same object across
     # workers: +epoch_watch+ (a frame whose id has another epoch than the
     # cursor's is a new worker: worker_changed first, the client's key
-    # updated), +announce_retries+ (stream_retrying once a reconnect fails,
-    # stream_resumed once a stream answers again), +idle_timeout+ (no byte, not even
+    # updated), +announce_retries+ (stream_retrying once a reconnect fails
+    # and rediscovery neither moved nor ended the stream, stream_resumed
+    # once a stream answers again), +idle_timeout+ (no byte, not even
     # the Bridge's 15 s ping, for that long: a half-open connection,
     # reconnected with the cursor).
     class EventStream
@@ -125,7 +126,8 @@ module Samagotchi
             next
           end
 
-          announce_retry
+          # Rediscovery first: a stopped session or a new worker is no
+          # retry to announce (a stop prints its line alone).
           case rediscover_worker
           when :moved
             failures = 0
@@ -133,6 +135,7 @@ module Samagotchi
             next
           when :gone then return finish(@reason || "unreachable")
           end
+          announce_retry
 
           failures += 1
           return finish(@reason || "unreachable") if failures > @reconnect_delays.size

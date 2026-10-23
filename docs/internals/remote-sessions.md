@@ -309,7 +309,8 @@ passes none):
   sidecar before it ends the open streams: the reconnect finds no sidecar, chi web waits for the next worker's
   (`await_bridge_port`) and proxies the cursor to it. A sidecar still naming the dead port would get an empty 200
   (the proxy's connects refused), and the stream would move by rediscovery (`worker_changed`, then a `snapshot`).
-- `announce_retries:` `stream_retrying` once a reconnect fails, `stream_resumed` once a stream answers again (a replay may bring no frame).
+- `announce_retries:` `stream_retrying` once a reconnect fails and rediscovery neither moved the stream nor ended it
+  (a stop prints its stopped line alone), `stream_resumed` once a stream answers again (a replay may bring no frame).
 
 `EventStream` compares a rediscovered client's key with the key it last followed, not with the client object's, so a
 rediscovery that updates the same client in place is a move. Rediscovery may give a reason with its answer

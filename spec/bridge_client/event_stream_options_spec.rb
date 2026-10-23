@@ -159,6 +159,14 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
       expect(collect(1)).to eq([{ "type" => "stream_closed", "reason" => "stopped" }])
     end
 
+    it "says only that it closed when rediscovery finds the session stopped: no reconnecting line first" do
+      port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) }])
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true,
+                                                                              rediscover: -> { [:gone, "stopped"] })
+
+      expect(collect(2)).to eq([{ "type" => "snapshot" }, { "type" => "stream_closed", "reason" => "stopped" }])
+    end
+
     it "closes with the last reason it gave while retrying, once the delays run out" do
       client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port)
       stream_for(client, rediscover: -> { [nil, "auth"] })
