@@ -50,11 +50,10 @@ module Samagotchi
       end
 
       # The sidecar's worker, nil while none runs; gone once the session was
-      # stopped (no worker is coming). The stop marker is the default state
-      # dir's, as the loop read it.
+      # stopped (no worker is coming): its stop marker in +state_dir+.
       def live_worker
         id = @client.session_id
-        return [:gone, "unreachable"] if Session.stopped_marker?(id)
+        return [:gone, "unreachable"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
         [BridgeClient.discover(id, session_dir: session_dir, host: @client.host), nil]
       end

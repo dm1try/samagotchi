@@ -32,8 +32,8 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
       expect(link.live_worker).to eq([found, nil])
       expect(Samagotchi::BridgeClient).to have_received(:discover).with(id, session_dir: session_dir, host: "127.0.0.1").twice
 
-      # The stop marker in the default state dir, as the loop read it.
-      allow(Samagotchi::Session).to receive(:stopped_marker?).with(id).and_return(true)
+      # The stop marker in the link's state dir.
+      allow(Samagotchi::Session).to receive(:stopped_marker?).with(id, state_dir: state_dir).and_return(true)
       expect(link.live_worker).to eq([:gone, "unreachable"])
     end
   end

@@ -72,12 +72,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       allow(client).to receive(:host).and_return("127.0.0.1")
       found = instance_double(Samagotchi::BridgeClient)
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
-      allow(Samagotchi::Session).to receive(:stopped_marker?).with("s-1234").and_return(false)
+      allow(Samagotchi::Session).to receive(:stopped_marker?)
+        .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)
       expect(attached.send(:live_worker)).to be(found)
       expect(Samagotchi::BridgeClient).to have_received(:discover)
         .with("s-1234", session_dir: Samagotchi::Session.session_dir("s-1234"), host: "127.0.0.1")
 
-      allow(Samagotchi::Session).to receive(:stopped_marker?).with("s-1234").and_return(true)
+      allow(Samagotchi::Session).to receive(:stopped_marker?)
+        .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(true)
       expect(attached.send(:live_worker)).to eq(:gone)
     end
 
