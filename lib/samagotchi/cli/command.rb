@@ -26,9 +26,10 @@ module Samagotchi
         @stderr.puts(text)
       end
 
+      # @param usage [String, nil] what follows the line (nil: "(see …
+      #   --help)" on it); a one-line error whose fix the line says passes nil
       # @return [Integer] the usage exit status
-      def usage_error(message)
-        usage = usage_on_error
+      def usage_error(message, usage: usage_on_error)
         error_line("#{command_name}: #{message}#{" (see #{command_name} --help)" unless usage}")
         @stderr.puts(usage) if usage
         Exit::USAGE

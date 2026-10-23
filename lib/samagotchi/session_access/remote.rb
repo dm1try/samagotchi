@@ -11,6 +11,7 @@ require_relative "../context_sources"
 require_relative "../bridge_client"
 require_relative "../session_continue"
 require_relative "../guardrails/parent_policy"
+require_relative "../model_profile"
 require_relative "http_transport"
 require_relative "../chi_invocation"
 
@@ -493,6 +494,9 @@ module Samagotchi
           raise SessionManager::RestartRefused.new(sid, reason, version: json["version"]) if reason
         when "parent_answers_refused", "parent_continue_refused", "no_vision"
           raise Refused.new(message.to_s, code: error)
+        # No model configured there, or --model's host unknown there: what
+        # spawn_session raises here (chi send: could not start a session).
+        when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images"
           raise BadRequest.new(message.to_s, code: error)
         end

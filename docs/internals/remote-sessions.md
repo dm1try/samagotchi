@@ -101,9 +101,11 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `{error, detail, message, …fields}`: `detail` is the page's wording, `message` is the exception's own text, and the
   fields are those the class is built from (`session_id`, `reason`, `ids`, `busy_id`, `version`).
   `Remote#raise_refusal` rebuilds the class that Local's callee raises: `ArgumentError`, `Session::AmbiguousId`,
-  `SessionManager::OwnedByTUI` / `DeleteRefused` / `ArchiveRefused` / `RestartRefused`, `SessionContinue::Refused`.
+  `SessionManager::OwnedByTUI` / `DeleteRefused` / `ArchiveRefused` / `RestartRefused`, `SessionContinue::Refused`,
+  and `ModelProfile::MissingModel` for `invalid_model` (no model there, or `--model`'s host unknown there: "could not
+  start a session: …", exit 1, as here).
   Checks the client would make locally come back as `SessionAccess::Refused` (`parent_answers_refused`,
-  `parent_continue_refused`, `no_vision`, exit 1) or `BadRequest` (`invalid_*`, `missing_fields`, `bad_images`,
+  `parent_continue_refused`, `no_vision`, exit 1) or `BadRequest` (the other `invalid_*`, `missing_fields`, `bad_images`,
   exit 2, the usage-error path). That is for the routes `raise_refusal` reads (create, uploads, …). `POST …/turn` is
   mapped in `Remote#deliver_turn`: any 4xx but 404 and `owned_by_tui` becomes a refused `DeliverResult` with the
   server's `ack`, which `SendCommand` prints as `<id>  refused: <detail>` (`refused_word`, `REMOTE_REFUSALS`), exit 1.
@@ -214,9 +216,6 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 - Remote `sessions stop` always prints "Stopped session …": `Remote#stop` returns true because chi web's stop doesn't
   say whether the worker released the session.
 - `send -m /stats` is refused (UI-only) with "use chi sessions stats ID", which is local-only under a remote.
-- `send --new` without `--dir` on a remote is a usage error, and it prints the whole `chi send` usage. So does an
-  unknown `--model` host: the create route's 400 `invalid_model` becomes a `BadRequest` (exit 2, full usage), where
-  locally it is "could not start a session: …" (exit 1).
 - Through a remote the pair scripts (`bundles/{claude,codex}-peer/scripts/pair`) detect `CHI_REMOTE` or `--remote` in
   `CHI` the way Dispatch does, and attach only `*-outbox`: chi there can't reach this machine's Claude socket or Codex
   thread, so chi's replies reach Claude only when relayed.

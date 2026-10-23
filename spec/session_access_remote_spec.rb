@@ -182,14 +182,29 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
     it "--new needs --dir as an absolute path there, and a bad flag value is the server's usage error (exit 2)" do
       expect(send_command("--new", "-m", "hi")).to eq(2)
-      expect(err.string).to include("chi send: --new on studio needs --dir: a folder there")
+      # One line, not the whole usage after it.
+      expect(err.string).to eq("chi send: --new on studio needs --dir: a folder there (see chi send --help)\n")
+      err.truncate(0)
+      err.rewind
       expect(send_command("--new", "--dir", "proj", "-m", "hi")).to eq(2)
-      expect(err.string).to include("--dir is a folder on studio: give its absolute path")
+      expect(err.string).to eq("chi send: --dir is a folder on studio: give its absolute path (see chi send --help)\n")
       expect(send_command("--new", "--dir", File.join(tmpdir, "gone"), "-m", "hi")).to eq(2)
       expect(err.string).to include("not a folder: #{File.join(tmpdir, "gone")}")
       expect(send_command("--new", "--dir", folder, "--set", "nope.x=1", "-m", "hi")).to eq(2)
       expect(err.string).to include("no installed bundle nope")
       expect(spawned).to be_empty
+    end
+
+    it "refuses a --model whose host isn't configured there as it does here: one line, exit 1" do
+      unknown = "unknown host 'gone' in model 'gone:org/model'; the configured hosts are main"
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_raise(Samagotchi::ModelProfile::UnknownHost, unknown)
+
+      lines = [nil, remote].map do |access|
+        err.truncate(0)
+        err.rewind
+        [send_command("--new", "--dir", folder, "--model", "gone:org/model", "-m", "hi", access: access), err.string]
+      end
+      expect(lines).to eq([[1, "chi send: could not start a session: #{unknown}\n"]] * 2)
     end
 
     it "warns of a --parent-answers looser than the server's config.yml, in its words" do

@@ -432,8 +432,11 @@ module Samagotchi
     # --set names and the folder are the remote's to check.
     def remote_new_options(options, llm_words)
       unless options[:continues]
-        return usage_error("--new on #{remote_name} needs --dir: a folder there") unless options[:dir]
-        return usage_error("--dir is a folder on #{remote_name}: give its absolute path") unless options[:dir].start_with?("/")
+        # One line: the fix is in it, the whole usage would bury it.
+        return usage_error("--new on #{remote_name} needs --dir: a folder there", usage: nil) unless options[:dir]
+        unless options[:dir].start_with?("/")
+          return usage_error("--dir is a folder on #{remote_name}: give its absolute path", usage: nil)
+        end
       end
 
       settings = Array(options[:sets]).to_h do |pair|
