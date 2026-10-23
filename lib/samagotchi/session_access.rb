@@ -32,6 +32,43 @@ module Samagotchi
     # LAN IP only (403 forbidden): Remote.auth_failure's words.
     class AuthRefused < RemoteFailed; end
 
+    # The errors a participant's token meets (docs/internals/participants.md),
+    # one message each, built from the remote's label ("remote studio
+    # (http://…)"). chi web's code for each is its CODE.
+
+    # 401 token_revoked: the owner revoked the grant, or archived or
+    # deleted its session.
+    class TokenRevoked < AuthRefused
+      CODE = "token_revoked"
+      def initialize(label) = super("#{label}: this review link was revoked by the session's owner")
+    end
+
+    # 401 token_expired: the grant's time ran out.
+    class TokenExpired < AuthRefused
+      CODE = "token_expired"
+      def initialize(label) = super("#{label}: this review link expired: ask the session's owner for a new one")
+    end
+
+    # 403 not_permitted: a participant's token on a route only the session's
+    # owner may use.
+    class NotPermitted < RemoteFailed
+      CODE = "not_permitted"
+      def initialize(label) = super("#{label}: this token is a participant's: only the session's owner can do that")
+    end
+
+    # 429 too_many_turns (P3b): the participant's turns already wait in the
+    # queue up to their limit.
+    class TooManyTurns < RemoteFailed
+      CODE = "too_many_turns"
+      def initialize(label) = super("#{label}: this participant has too many turns waiting: wait for one to finish")
+    end
+
+    # 429 cap_reached (P3b): the participant's grant spent its cap.
+    class CapReached < RemoteFailed
+      CODE = "cap_reached"
+      def initialize(label) = super("#{label}: this participant's spending cap is reached: ask the session's owner to raise it")
+    end
+
     # A remote's chi web refused a request for a reason this machine checks
     # itself before sending (a parent's /continue yes, a loosening
     # /parent-answers, images to a model that can't see them): +message+
@@ -50,6 +87,23 @@ module Samagotchi
     # on this machine (a bad --set, --toolkit or --dir there): chi send
     # exits 2 with its message.
     class BadRequest < Refused; end
+
+    # One participant's grant as chi share ls shows it
+    # (Web::Grants::Grant#public_h): never its token or digest. +state+
+    # "active", "revoked" or "expired".
+    ParticipantView = Data.define(:id, :session_id, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
+                                  :revoked_by, :last_used_at, :state) do
+      def self.from_h(hash) = new(**members.to_h { |key| [key, hash[key] || hash[key.to_s]] })
+    end
+
+    # What chi share made: the participant, their token and the link that
+    # carries it (both shown this once: chi keeps only a digest), and
+    # whether that chi web listens on the LAN (+lan+ false: the link works
+    # on that machine only).
+    Invitation = Data.define(:participant, :token, :link, :lan) do
+      def inspect = "#<Invitation #{participant.id}>"
+      alias_method :to_s, :inspect
+    end
 
     # A session to create (chi send --new): a new one, or with +continues+
     # the next link of that session's chain (which brings its own folder,

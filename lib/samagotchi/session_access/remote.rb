@@ -74,8 +74,8 @@ module Samagotchi
       # add checks the same).
       # @return [RemoteFailed, nil]
       def self.info_problem(entry, reply)
-        failure = auth_failure(entry, reply)
-        return AuthRefused.new(failure) if failure
+        refused = access_error(entry, reply)
+        return refused if refused
         unless reply.status == 200 && reply.json.is_a?(Hash) && reply.json["app"] == "chi-web"
           return RemoteFailed.new("#{entry.label}: not chi web (GET /api/info answered #{reply.status})")
         end
@@ -91,19 +91,30 @@ module Samagotchi
           "update chi there (chi update)"
       end
 
-      # The words for a 401 or a 403 forbidden from +entry+'s chi web, nil
-      # for any other answer (chi remote add says the same).
-      def self.auth_failure(entry, reply)
+      # The errors any route of +entry+'s chi web can answer, each its one
+      # message: the token refused (401 unauthorized) or ended (401
+      # token_revoked / token_expired), the LAN IP only (403 forbidden), a
+      # participant's token on an owner's route (403 not_permitted) or over
+      # its limits (429 too_many_turns / cap_reached). nil for any other
+      # answer (chi remote add says the same).
+      # @return [RemoteFailed, nil]
+      def self.access_error(entry, reply)
+        error = reply.error
+        known = ACCESS_ERRORS.find { |klass| error == klass::CODE }
+        return known.new(entry.label) if known
+
         case reply.status
-        when 401 then "#{entry.label}: the token was refused (chi web's LAN link carries the current one: " \
-                      "chi remote add #{entry.name} #{entry.url} --token-file FILE)"
+        when 401 then AuthRefused.new("#{entry.label}: the token was refused (chi web's LAN link carries the current one: " \
+                                      "chi remote add #{entry.name} #{entry.url} --token-file FILE)")
         when 403
-          return nil unless reply.error == "forbidden"
+          return nil unless error == "forbidden"
 
           ip = reply.json["detail"].to_s[/ and (\S+) are answered/, 1]
-          "#{entry.label}: chi web answers its LAN IP only: use the LAN IP#{" #{ip}" if ip}, not a hostname"
+          AuthRefused.new("#{entry.label}: chi web answers its LAN IP only: use the LAN IP#{" #{ip}" if ip}, not a hostname")
         end
       end
+
+      ACCESS_ERRORS = [TokenRevoked, TokenExpired, NotPermitted, TooManyTurns, CapReached].freeze
 
       # --- ids and sessions
 
@@ -220,6 +231,40 @@ module Samagotchi
 
       # @return [NoteDelivery::Result]
       # @raise [SessionInbox::NoteRejected]
+      # --- participants (chi share)
+
+      # @param id [String, nil] one session's, or every session's
+      # @return [Array<ParticipantView>]
+      def participants(id = nil)
+        reply = request(:get, id ? "#{session_path(id)}/participants" : "/api/participants")
+        raise_refusal(reply) unless reply.status == 200
+
+        Array(reply.json["participants"]).map { |row| ParticipantView.from_h(row) }
+      end
+
+      # @param ttl [Integer, nil] seconds; nil: the grant's default
+      # @return [Invitation]
+      # @raise [BadRequest] a bad name, kind or ttl, an archived session
+      def invite(id, name:, kind:, ttl: nil)
+        reply = request(:post, "#{session_path(id)}/participants", body: { name: name, kind: kind, ttl: ttl }.compact)
+        raise_refusal(reply) unless reply.status == 201
+
+        json = reply.json
+        Invitation.new(participant: ParticipantView.from_h(json.fetch("participant")), token: json.fetch("token"),
+                       link: json.fetch("link"), lan: json["lan"] == true)
+      end
+
+      # Revokes one participant (+participant+), a session's, or with no
+      # +id+ every session's.
+      # @return [Array<ParticipantView>] the ones it revoked
+      def revoke_participants(id = nil, participant: nil)
+        reply = request(:delete, id ? "#{session_path(id)}/participants" : "/api/participants",
+                        query: { id: participant }.compact)
+        raise_refusal(reply) unless reply.status == 200
+
+        Array(reply.json["revoked"]).map { |row| ParticipantView.from_h(row) }
+      end
+
       def note(id, text:, source:)
         reply = request(:post, "#{session_path(id)}/notes", body: { text: text, source: source })
         json = reply.json.is_a?(Hash) ? reply.json : {}
@@ -520,7 +565,8 @@ module Samagotchi
       def request(method, path, **)
         check_server!
         reply = @transport.call(method, path, **)
-        raise AuthRefused, Remote.auth_failure(@entry, reply) if Remote.auth_failure(@entry, reply)
+        refused = Remote.access_error(@entry, reply)
+        raise refused if refused
         raise RemoteTooOld, too_old(@version) if missing_route?(reply)
 
         reply
@@ -576,6 +622,7 @@ module Samagotchi
         # spawn_session raises here (chi send: could not start a session).
         when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images"
+          # invalid_participant: chi share's name, kind or ttl, an archived session
           raise BadRequest.new(message.to_s, code: error)
         end
         raise RemoteFailed, "#{@entry.label} answered #{reply.status}#{" #{error}" unless error.empty?}" \

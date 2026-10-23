@@ -8,6 +8,7 @@ require "samagotchi/send_command"
 require "samagotchi/sessions_command"
 require "samagotchi/owner_lock"
 require_relative "support/remote_backend"
+require "samagotchi/participants"
 
 # SessionAccess::Remote's own side, against chi web's Rack app in this
 # process: the server check, the errors it raises, the wait it repeats, and
@@ -132,6 +133,57 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(view).to have_attributes(id: session.id, status: "running", working_directory: tmpdir, model_name: "m")
       expect(view.owner).to be_worker
       expect(view.pending_question).to have_attributes(id: "q1", options: %w[Yes No])
+    end
+  end
+
+  describe "a participant's token (one message per condition)" do
+    let(:state) { File.join(tmpdir, "samagotchi", "sessions") }
+    let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state)) }
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap do |s|
+        s.save(state_dir: state)
+        FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: state))
+      end
+    end
+    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Agent", kind: "agent", state_dir: state) }
+
+    def as_participant(token = issued.token)
+      described_class.new(RemoteBackend.entry(token: token),
+                          transport: RemoteBackend::RackTransport.new(RemoteBackend.app(state_dir: state), token: token),
+                          sleeper: ->(_s) {})
+    end
+
+    it "passes the server check (the trimmed /api/info) and reads its session's brief view" do
+      expect(as_participant.show(session.id)).to have_attributes(id: session.id, status: session.status)
+    end
+
+    it "raises NotPermitted on an owner's route, TokenRevoked once revoked, TokenExpired after its expiry" do
+      label = RemoteBackend.entry.label
+      expect { as_participant.summaries }
+        .to raise_error(Samagotchi::SessionAccess::NotPermitted,
+                        "#{label}: this token is a participant's: only the session's owner can do that")
+      expect { as_participant.participants(session.id) }.to raise_error(Samagotchi::SessionAccess::NotPermitted)
+
+      token = issued.token
+      Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state)
+      expect { as_participant(token).show(session.id) }
+        .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this review link was revoked by the session's owner")
+    end
+
+    it "words each code once, whatever the route (P3b's too_many_turns and cap_reached included)" do
+      label = RemoteBackend.entry.label
+      {
+        [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, "this review link expired: ask the session's owner for a new one"],
+        [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, "this review link was revoked by the session's owner"],
+        [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, "this token is a participant's: only the session's owner can do that"],
+        [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, "this participant has too many turns waiting: wait for one to finish"],
+        [429, "cap_reached"] => [Samagotchi::SessionAccess::CapReached, "this participant's spending cap is reached: ask the session's owner to raise it"],
+        [401, "unauthorized"] => [Samagotchi::SessionAccess::AuthRefused, "the token was refused"]
+      }.each do |(status, code), (klass, words)|
+        remote, = scripted([status, { error: code, detail: "server words" }])
+        expect { remote.summaries }.to raise_error(klass) { |e| expect(e.message).to start_with("#{label}: #{words}") }
+      end
+      expect(Samagotchi::SessionAccess::TokenExpired.ancestors).to include(Samagotchi::SessionAccess::AuthRefused)
     end
   end
 

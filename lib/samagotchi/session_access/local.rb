@@ -13,6 +13,10 @@ require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
 require_relative "../launch_mode"
+require_relative "../participants"
+require_relative "../config"
+require_relative "../web/grants"
+require_relative "../web/info_probe"
 
 module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
@@ -327,7 +331,49 @@ module Samagotchi
         end
       end
 
+      # --- participants (chi share)
+
+      # Remote's: through this machine's grants store, as chi web would.
+      # @return [Array<ParticipantView>]
+      def participants(id = nil)
+        grants.list(session_id: id).map { |grant| ParticipantView.from_h(grant.public_h(grants.now)) }
+      end
+
+      # The link names this machine's chi web: its LAN address when one
+      # runs on the LAN (web.port), else 127.0.0.1 (+lan+ false).
+      # @return [Invitation]
+      # @raise [ArgumentError] no such session
+      # @raise [BadRequest] a bad name, kind or ttl, an archived session
+      def invite(id, name:, kind:, ttl: nil)
+        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, state_dir: state_dir!)
+        ip, port = local_web
+        Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
+                       link: "http://#{ip || "127.0.0.1"}:#{port}/?token=#{issued.token}#s=#{id}", lan: !ip.nil?)
+      rescue Web::Grants::Invalid => e
+        raise BadRequest.new(e.message, code: "invalid_participant")
+      end
+
+      # @return [Array<ParticipantView>] the ones it revoked
+      def revoke_participants(id = nil, participant: nil)
+        Participants.revoke(grants, session_id: id, id: participant, state_dir: state_dir!)
+                    .map { |grant| ParticipantView.from_h(grant.public_h(grants.now)) }
+      end
+
       private
+
+      def grants = @grants ||= Web::Grants.new(Web::Grants.path(state_dir: state_dir!))
+
+      # Web::Server::DEFAULT_PORT, without loading chi web.
+      WEB_PORT = 4567
+      LOCAL_PROBE_TIMEOUT = 1.0
+
+      # [LAN ip or nil, port] of this machine's chi web (GET /api/info).
+      def local_web
+        port = Config.get("web.port").to_s.to_i
+        port = WEB_PORT unless port.positive?
+        info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
+        [info.is_a?(Hash) ? info["lan"] : nil, port]
+      end
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}
       def state_dir! = @state_dir || Session.default_state_dir

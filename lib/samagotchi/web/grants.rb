@@ -54,7 +54,9 @@ module Samagotchi
       # The store's folder or file can be read by others (chi web refuses to
       # start), or a grant can't be made from what was given.
       class Insecure < StandardError; end
-      class Invalid < ArgumentError; end
+      # Not ArgumentError: the session commands read that as "no such
+      # session".
+      class Invalid < StandardError; end
 
       # One participant's access to one session. +id+ (p_<8 hex>) names the
       # participant too: a turn they send is authored "p:<id>" (P3).
