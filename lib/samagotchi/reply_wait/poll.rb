@@ -3,6 +3,8 @@
 require_relative "../session"
 require_relative "../session_inbox"
 require_relative "../turn_checkpoint"
+require_relative "../continue_offer"
+require_relative "../steer"
 
 module Samagotchi
   module ReplyWait
@@ -70,7 +72,7 @@ module Samagotchi
 
         note_own_running(session)
         follow_merge(session)
-        reply(session) || settled_turn(session) || status_end(session) || question(session) || canceled ||
+        reply(session) || settled_turn(session) || status_end(session) || question(session) || held(session) || canceled ||
           ended_before_reply(session) || ended_before_turn(session) || turn_end(session) || owner_gone(session) ||
           timed_out
       end
@@ -78,8 +80,9 @@ module Samagotchi
       def look_at_input
         return unless @turn && !@claimed
 
-        waiting = SessionInbox.waiting_input(@session_dir, @turn)
-        @own_turn_input ||= waiting == :turn_end
+        waiting = SessionInbox.waiting_input_data(@session_dir, @turn)
+        @own_turn_input ||= !waiting.nil? && SessionInbox.turn_end_data?(waiting)
+        @participant_input ||= !waiting.nil? && Steer.participant_author?(waiting["author"])
         @claimed = waiting.nil?
       end
 
@@ -156,6 +159,18 @@ module Samagotchi
         pending = session.pending_question
         return nil unless pending && !@baseline&.question?(pending.id) &&
                           (@turn.nil? || ReplyWait.own_question?(session, @turn, @claimed)) &&
+                          session.waiting_question(live: SessionManager.worker_live?(@id, state_dir: @state_dir))
+
+        Result.new(status: :waiting_for_answer, question: pending, session: session)
+      end
+
+      # A participant's turn its worker holds while the owner's Continue
+      # offer stands (Worker#run_input_files): it waits for the owner's
+      # answer to that question, whenever it was asked (the baseline's
+      # question too). An owner's turn is never held: it drops the offer.
+      def held(session)
+        pending = session.pending_question
+        return nil unless @participant_input && !@claimed && pending&.kind.to_s == ContinueOffer::KIND &&
                           session.waiting_question(live: SessionManager.worker_live?(@id, state_dir: @state_dir))
 
         Result.new(status: :waiting_for_answer, question: pending, session: session)

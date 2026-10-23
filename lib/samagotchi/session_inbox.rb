@@ -285,14 +285,20 @@ module Samagotchi
     # take it as a steer), or nil when none waits.
     # @return [Symbol, nil]
     def self.waiting_input(session_dir, enqueued_id)
+      data = waiting_input_data(session_dir, enqueued_id) or return nil
+      turn_end_data?(data) ? :turn_end : :merges
+    end
+
+    # The unclaimed input file carrying +enqueued_id+, as parsed; nil when
+    # none waits.
+    # @return [Hash, nil]
+    def self.waiting_input_data(session_dir, enqueued_id)
       id = enqueued_id.to_s
       return nil if id.empty?
 
       find_new_input_files(session_dir).each do |file|
         data = JSON.parse(File.read(file))
-        next unless data.is_a?(Hash) && data["enqueued_id"] == id
-
-        return turn_end_data?(data) ? :turn_end : :merges
+        return data if data.is_a?(Hash) && data["enqueued_id"] == id
       rescue JSON::ParserError, SystemCallError
         next
       end

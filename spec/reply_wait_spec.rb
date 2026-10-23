@@ -727,6 +727,24 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(result.question).to have_attributes(id: "cont")
     end
 
+    # The worker holds a participant's turn while the owner's Continue
+    # offer stands (Worker#run_input_files): their wait says it waits for
+    # the owner's answer, even with the offer standing as it began; an
+    # owner's queued turn (the worker runs it, dropping the offer) waits on.
+    it "says a participant's turn held by the owner's Continue offer waits for the answer" do
+      own_by_worker
+      set(status: "idle", pending_question: { id: "cont", kind: "continue", question: "Continue?" })
+      Samagotchi::SessionInbox.write_input(dir, prompt: "is step 3 safe?", enqueued_id: "p1", delivery: "queue",
+                                                author: "p:p_1")
+      queue_input("q1")
+      base = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir), question_id: "cont")
+
+      result = wait(baseline: base, turn: "p1")
+      expect(result.status).to eq(:waiting_for_answer)
+      expect(result.question).to have_attributes(id: "cont")
+      expect(wait(baseline: base, turn: "q1", timeout: 0.3).status).to eq(:timeout)
+    end
+
     # A follow-up sent as a plain message (no queue) to a session that
     # looked idle: a turn starting at that moment may merge it as a steer,
     # and it never runs as a turn of its own.
