@@ -344,6 +344,17 @@ Style/RaiseArgs:
 
 # -- RSpec: taste off, the checks for broken specs on ----------------------------
 
+# The waits that fail their example when the state never comes count as its
+# expectation (RSpec/NoExpectationExample): a wait_for as an example's last
+# line checks something. The gem merges these with its own list.
+RSpec:
+  Language:
+    Expectations:
+      - wait_for
+      - eventually
+      - join!
+      - pop!
+
 RSpec/MultipleExpectations:
   Enabled: false
 
