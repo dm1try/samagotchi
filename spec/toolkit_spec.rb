@@ -51,8 +51,8 @@ RSpec.describe Samagotchi::Toolkit do
   end
 
   it "resolves a config kit through its base chain" do
-    config = { "review" => { "base" => "child", "add" => %w[web_fetch delegate] },
-               "deep" => { "base" => "review", "remove" => ["delegate"] } }
+    config = { "audit" => { "base" => "child", "add" => %w[web_fetch delegate] },
+               "deep" => { "base" => "audit", "remove" => ["delegate"] } }
     deep = declared(described_class.new(name: "deep").resolve(described_class.kits(config: config)))
     expect(deep).to eq(declared(described_class.new(name: "child").resolve(kits)))
   end
@@ -82,13 +82,23 @@ RSpec.describe Samagotchi::Toolkit do
     expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit", "toolkit.kits.odd: expected {base:, add:, remove:, prompt:}"])
   end
 
+  it "has a frozen review kit of reads whose name config can't take" do
+    review = described_class::BUILTIN_KITS.fetch("review")
+    expect(review.tools).to eq(%w[read memory_read])
+    expect(described_class::BUILTIN_KITS).to be_frozen
+    errors = []
+    kits = described_class.kits(config: { "review" => { "base" => "full" } }, errors: errors)
+    expect(kits["review"]).to eq(review)
+    expect(errors).to eq([described_class::RESERVED_REVIEW])
+  end
+
   it "loads a config kit with an unknown key and warns about the key (a typo, not a broken kit)" do
     errors = []
-    kits = described_class.kits(config: { "review" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
+    kits = described_class.kits(config: { "audit" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
                                 errors: errors)
-    expect(kits["review"].base).to eq("lean")
-    expect(errors).to eq(["toolkit.kits.review: unknown key tools (a kit takes base:, add:, remove:, prompt:)",
-                          "toolkit.kits.review: unknown key remvoe (a kit takes base:, add:, remove:, prompt:)"])
+    expect(kits["audit"].base).to eq("lean")
+    expect(errors).to eq(["toolkit.kits.audit: unknown key tools (a kit takes base:, add:, remove:, prompt:)",
+                          "toolkit.kits.audit: unknown key remvoe (a kit takes base:, add:, remove:, prompt:)"])
   end
 
   it "doesn't let a plugin kit replace one already known" do
@@ -125,7 +135,7 @@ RSpec.describe Samagotchi::Toolkit do
   describe "a kit's prompt text" do
     let(:config) do
       { "terse" => { "base" => "lean", "prompt" => "  - Be concise\n- Show paths  \n" },
-        "review" => { "base" => "terse", "add" => ["web_fetch"] },
+        "audit" => { "base" => "terse", "add" => ["web_fetch"] },
         "plain" => { "base" => "terse", "prompt" => "" },
         "loud" => { "prompt" => "Say more." } }
     end
@@ -135,7 +145,7 @@ RSpec.describe Samagotchi::Toolkit do
 
     it "resolves stripped, is inherited through a base, and \"\" clears it" do
       expect(resolved("terse").prompt).to eq("- Be concise\n- Show paths")
-      expect(resolved("review").prompt).to eq("- Be concise\n- Show paths")
+      expect(resolved("audit").prompt).to eq("- Be concise\n- Show paths")
       expect(resolved("plain").prompt).to be_nil
       expect(resolved("lean").prompt).to be_nil
       expect(resolved("nope").prompt).to be_nil
@@ -173,7 +183,7 @@ RSpec.describe Samagotchi::Toolkit do
 
       it "has a prompt key that differs when only the text differs" do
         expect(explained("terse").prompt_key).not_to eq(explained("lean").prompt_key)
-        expect(explained("terse").prompt_key).to eq(explained("review").prompt_key)
+        expect(explained("terse").prompt_key).to eq(explained("audit").prompt_key)
       end
 
       it "puts the text in the UIs' summary only when the kit has one" do

@@ -180,7 +180,7 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
 
   it "tells a delegate the kits it can start a child on (PeerView#toolkit_names)" do
     allow(Samagotchi::Toolkit).to receive(:config_kits).and_return("coding" => { "base" => "child" })
-    expect(Samagotchi::Engine::PeerView.new(engine).toolkit_names).to eq(%w[full lean child coding])
+    expect(Samagotchi::Engine::PeerView.new(engine).toolkit_names).to eq(%w[full lean child review coding])
   end
 
   it "declares find_tools and call_tool on lean, with the plugins loaded and no MCP" do

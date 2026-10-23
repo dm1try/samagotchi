@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     describe "every toolkit declares them" do
       let(:kits) do
-        Samagotchi::Toolkit.kits(config: { "review" => { "base" => "lean", "add" => ["delegate"] },
+        Samagotchi::Toolkit.kits(config: { "audit" => { "base" => "lean", "add" => ["delegate"] },
                                            "bare" => { "base" => "lean", "remove" => [call_name] } },
                                  plugins: [Samagotchi::Toolkit::Kit.new(name: "coordinator", base: "lean",
                                                                         add: %w[delegate delegate_result list_sessions],
@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       def declared(name) = registry.names(toolkit: Samagotchi::Toolkit.new(name: name).resolve(kits))
 
       it "in full, lean, child, coordinator and a config kit, unless its remove: names one" do
-        %w[full lean child coordinator review].each do |name|
+        %w[full lean child coordinator audit].each do |name|
           expect(declared(name)).to include(find_name, call_name), name
         end
         expect(declared("bare")).to include(find_name)

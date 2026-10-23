@@ -1391,7 +1391,7 @@ toolkit:
   default: lean        # the sessions you start (unset: full)
   child: child         # delegate children (unset: full)
   kits:                # your own, on a base
-    review: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
+    audit: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
     terse: { base: lean, prompt: "- Be concise in your responses" }
 ```
 
@@ -1408,7 +1408,7 @@ toolkit:
   key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil)).
 - **A kit's prompt text.** `prompt:` (text, several lines allowed) goes into the system prompt of the sessions on
   that kit, verbatim, with no header: after AGENTS.md and the appended files, before the memory indexes. A kit
-  without one inherits its base's (`review: {base: terse, add: [web_fetch]}` stays concise); `prompt: ""` clears
+  without one inherits its base's (`audit: {base: terse, add: [web_fetch]}` stays concise); `prompt: ""` clears
   it; a session's own `--tool` / `/toolkit add` never touch it. Sessions on the same kit share it in the prompt
   cache; `full` and every kit without a prompt send the bytes they sent before. Keep it to a line or two that
   fits the kit's work (the coordinator bundle's `coding`: be concise): one that isn't text or is over 2000

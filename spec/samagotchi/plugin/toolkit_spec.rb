@@ -16,10 +16,10 @@ RSpec.describe "Plugin toolkits" do
 
     it "declares a toolkit on a base when the plugin's register returns" do
       chi = api
-      chi.toolkit("review", base: "lean", add: ["delegate"], remove: ["web_fetch"])
+      chi.toolkit("audit", base: "lean", add: ["delegate"], remove: ["web_fetch"])
       expect(kits).to be_empty
       chi.commit!
-      expect(kits).to eq([Samagotchi::Toolkit::Kit.new(name: "review", base: "lean", add: ["delegate"], remove: ["web_fetch"],
+      expect(kits).to eq([Samagotchi::Toolkit::Kit.new(name: "audit", base: "lean", add: ["delegate"], remove: ["web_fetch"],
                                                        source: "mine")])
       expect(chi.counts[:toolkits]).to eq(1)
     end
@@ -38,9 +38,9 @@ RSpec.describe "Plugin toolkits" do
     it "refuses chi's own names, another bundle's, a twice-declared one and a bad name" do
       expect { api.toolkit("lean", base: "full") }.to raise_error(ArgumentError, "toolkit lean is chi's own")
       first = api("other")
-      first.toolkit("review", base: "lean")
+      first.toolkit("audit", base: "lean")
       first.commit!
-      expect { api.toolkit("review", base: "lean") }.to raise_error(ArgumentError, "toolkit review is already declared (other)")
+      expect { api.toolkit("audit", base: "lean") }.to raise_error(ArgumentError, "toolkit audit is already declared (other)")
       twice = api
       twice.toolkit("x", base: "lean")
       expect { twice.toolkit("x", base: "lean") }.to raise_error(ArgumentError, "toolkit x is declared twice")
