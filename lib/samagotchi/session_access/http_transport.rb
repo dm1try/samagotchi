@@ -48,9 +48,12 @@ module Samagotchi
       # @param query [Hash, nil] the query's parameters (nil values left out)
       # @param body [Hash, nil] sent as JSON
       # @param raw [String, nil] sent as is (an image), with +content_type+
+      # @param read_timeout [Numeric, nil] this request's, instead of the
+      #   transport's (a remote attach's turn, its join reads)
       # @return [Reply]
       # @raise [RemoteFailed] it could not be asked
-      def call(method, path, query: nil, body: nil, raw: nil, content_type: nil)
+      def call(method, path, query: nil, body: nil, raw: nil, content_type: nil, read_timeout: nil)
+        read_timeout ||= @read_timeout
         request = build(method, path, query)
         request["Authorization"] = "Bearer #{@entry.token}" if @entry.token
         request["Accept"] = "application/json"
@@ -63,14 +66,14 @@ module Samagotchi
         elsif method != :get
           request["Content-Length"] = "0"
         end
-        response = http.request(request)
+        response = http(read_timeout).request(request)
         Reply.of(response.code, response.body)
       rescue Errno::ECONNREFUSED
         failed("connection refused")
       rescue Net::OpenTimeout, Errno::ETIMEDOUT
         failed("no answer within #{@open_timeout} s")
       rescue Net::ReadTimeout
-        failed("it took the request but sent no answer within #{@read_timeout} s")
+        failed("it took the request but sent no answer within #{read_timeout} s")
       rescue SocketError => e
         failed(e.message.include?("getaddrinfo") ? "can't find host #{@uri.host}" : e.message)
       rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH
@@ -83,12 +86,12 @@ module Samagotchi
 
       private
 
-      def http
+      def http(read_timeout)
         Net::HTTP.new(@uri.host, @uri.port).tap do |http|
           http.use_ssl = @uri.scheme == "https"
           http.open_timeout = @open_timeout
-          http.read_timeout = @read_timeout
-          http.write_timeout = @read_timeout
+          http.read_timeout = read_timeout
+          http.write_timeout = read_timeout
           http.max_retries = 0
         end
       end

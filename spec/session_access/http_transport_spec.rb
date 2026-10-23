@@ -43,6 +43,18 @@ RSpec.describe Samagotchi::SessionAccess::HTTPTransport do
     end
   end
 
+  it "takes a request's own read timeout, and names it when it passes" do
+    http = instance_double(Net::HTTP, "use_ssl=": nil, "open_timeout=": nil, "max_retries=": nil)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:write_timeout=)
+    allow(http).to receive(:request).and_raise(Net::ReadTimeout)
+    allow(Net::HTTP).to receive(:new).and_return(http)
+
+    expect { transport.call(:post, "/api/sessions/s1/turn", body: {}, read_timeout: 45) }
+      .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /sent no answer within 45 s\z/)
+    expect(http).to have_received(:read_timeout=).with(45)
+  end
+
   it "never shows the token in inspect" do
     expect(transport.inspect).not_to include("tok\"")
     expect(transport.inspect).to include("remote studio")

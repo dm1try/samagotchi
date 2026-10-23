@@ -26,7 +26,9 @@ module RemoteBackend
       @requests = []
     end
 
-    def call(method, path, query: nil, body: nil, raw: nil, content_type: nil)
+    # +read_timeout+: in-process, nothing to time out.
+    def call(method, path, query: nil, body: nil, raw: nil, content_type: nil, read_timeout: nil)
+      _ = read_timeout
       params = query&.compact
       target = params && !params.empty? ? "#{path}?#{URI.encode_www_form(params)}" : path
       @requests << [method, target]
