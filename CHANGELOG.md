@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Remote sessions: `chi --remote NAME send|answer|note|context|sessions …` (or `CHI_REMOTE=NAME`) runs the session
+  commands against another machine's sessions, through its `chi web --web-host lan`. `chi remote add NAME URL
+  --token-file FILE` checks the address and token and saves the remote (`chi remote ls`, `chi remote rm`).
+  `send --new` there needs `--dir`, a folder on that machine; what runs on this machine only (attach, `sessions
+  stats`, `context mute`, `broadcast`, …) is refused with exit 2. See [docs/cli.md](docs/cli.md#remote-sessions).
+
+### Changed
+
+- The guardrails bundle (0.9.3) asks for `chi --remote NAME context add --cmd …` and `chi --remote NAME broadcast`
+  as it does without `--remote`. Update with `chi update`.
+
 ## [0.102.0] - 2026-10-23
 
 ### Added

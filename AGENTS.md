@@ -36,6 +36,11 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   composes with `-p` (prompt runs on the resumed session, prior history preserved as context).
 - `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the session**: the
   attached TUI by default, the REPL with `--no-shared`.
+- `--remote NAME` (before the subcommand; or `CHI_REMOTE=NAME`, the flag wins): the session commands
+  (`send`, `answer`, `note`, a session's `context`, `sessions list/stop/restart/archive/unarchive/delete`)
+  against another machine's chi web (`SessionAccess::Remote`, `SessionAccess::Dispatch`); what
+  `SessionAccess::Contract` lists local-only exits 2. `chi remote add|ls|rm` keeps the remotes
+  (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). See docs/cli.md (Remote sessions).
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--model NAME` (this run, not saved), `--thinking LEVEL` and `--llm-context`

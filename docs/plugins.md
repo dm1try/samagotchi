@@ -2194,6 +2194,13 @@ Claude pairs; without one the bundle costs one tool declaration.
   it only within your task, and stop and tell you when Claude agrees or after
   the last turn. Claude's skill ends each answer's summary with its verdict
   and never answers with `chi send` (which counts as you typing).
+- **chi on another machine.** With the chi session on the Studio and Claude on
+  the laptop, `CHI_REMOTE=studio sh <bundle>/scripts/pair <id>` pairs through
+  the Studio's chi web ([Remote sessions](cli.md#remote-sessions)), and
+  Claude's answers (its `chi context push claude-outbox`, with `CHI_REMOTE`
+  set) reach chi: the outbox leg works. The inbox leg doesn't: `claude_send`
+  writes to Claude's socket on the machine chi runs on, and the laptop's isn't
+  there.
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):

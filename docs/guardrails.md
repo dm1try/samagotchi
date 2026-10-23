@@ -582,7 +582,8 @@ hooks, approvals, bundles or attached context sources, or a `.git/hooks`
 (`shell-touches-chi`, `touches: chi_dirs`), unless they only read
 (`skip_read_only`); `chi context add … --cmd` (`chi-context-cmd`, once at a
 time: a command chi will run every few minutes outside the guardrails; see
-[Attached context](context.md#safety)); `chi broadcast` (`chi-broadcast`,
+[Attached context](context.md#safety); the rule also sees `chi --remote NAME context add`, and a remote's `context push`
+reaches its session with the trust of its chi web token, as your own `chi context push` does there); `chi broadcast` (`chi-broadcast`,
 once at a time and only by the user: it is the user's command, which also
 refuses to run inside a session; see [Broadcast](broadcast.md)); removing a
 memory with `memory_write remove: true` (`memory-remove`, once at a time:
