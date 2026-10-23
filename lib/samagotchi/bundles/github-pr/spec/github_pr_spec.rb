@@ -327,10 +327,10 @@ RSpec.describe "The github-pr bundle", :bundle do
         File.open("#{offers_path}.lock", File::RDWR | File::CREAT) do |lock|
           lock.flock(File::LOCK_EX)
           writer = Thread.new { namespace::OffersLog.new(offers_path, ctx.log).write("first_prompt", session: "s") }
-          sleep 0.2
+          wait_for("the writer to block on the log's lock") { writer.status == "sleep" }
           expect(File.exist?(offers_path)).to be(false)
           lock.flock(File::LOCK_UN)
-          writer.join(5)
+          join!(writer, "the log's writer")
         end
         expect(offers.map { _1["event"] }).to eq(["first_prompt"])
       end
@@ -402,6 +402,23 @@ RSpec.describe "The github-pr bundle", :bundle do
 
     def gh_calls = File.exist?(gh_log) ? File.readlines(gh_log, chomp: true) : []
 
+    # The block's value, once the refreshes its hooks kicked have ended
+    # (#kick runs #refresh on a raw thread): what they fetched is in, and
+    # nothing still runs when the example checks that nothing was fetched.
+    def settled
+      kicked = []
+      allow(Thread).to receive(:new).and_wrap_original do |original, *args, &body|
+        original.call(*args, &body).tap { |thread| kicked << thread if Thread.current[:github_pr_kick] }
+      end
+      allow(plugin).to receive(:kick).and_wrap_original do |original, *args|
+        Thread.current[:github_pr_kick] = true
+        original.call(*args)
+      ensure
+        Thread.current[:github_pr_kick] = nil
+      end
+      yield.tap { kicked.each { |thread| join!(thread, "the PR refresh") } }
+    end
+
     # The after_turn hook on an answer, fired with the fire site's present:
     # and refs: helpers (they read the event only for its hook label); the
     # display text it leaves (the refs it added in @refs).
@@ -425,10 +442,9 @@ RSpec.describe "The github-pr bundle", :bundle do
     context "filling the cache (never from after_turn)" do
       it "before_turn warms the PRs the turn's prompt names (a one-turn child's task)" do
         fake_gh
-        bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}/files")
+        settled { bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}/files") }
 
-        expect(wait_until { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
-        expect(wait_until { answer("see `lib/foo.rb:28`") != "see `lib/foo.rb:28`" }).to be(true)
+        expect(gh_calls).to include(a_string_including("/files"))
         expect(answer("see `lib/foo.rb:28`")).to eq("see [`lib/foo.rb:28`](#{anchor("lib/foo.rb", "R28")})")
       end
 
@@ -436,10 +452,9 @@ RSpec.describe "The github-pr bundle", :bundle do
         fake_gh
         messages = [{ role: "user", content: "what's open?" }, { role: "tool", content: "#42 #{pr_url}" },
                     { role: "model", content: "#{pr_url} is open" }]
-        bundle.fire(:before_turn, messages: messages, prompt: "next")
+        settled { bundle.fire(:before_turn, messages: messages, prompt: "next") }
 
         expect(namespace::PrRef.from_messages(messages, prompt: "next")).to eq([])
-        sleep 0.1
         expect(gh_calls).to eq([])
       end
 
@@ -469,15 +484,16 @@ RSpec.describe "The github-pr bundle", :bundle do
 
       it "before_generation picks up a PR attached mid-turn, at most every 30 s" do
         fake_gh
-        bundle.fire(:before_generation, iteration: 1)
-        ctx.context.attach(url: pr_url)
-        bundle.fire(:before_generation, iteration: 2)
-        sleep 0.1
+        settled do
+          bundle.fire(:before_generation, iteration: 1)
+          ctx.context.attach(url: pr_url)
+          bundle.fire(:before_generation, iteration: 2)
+        end
         expect(gh_calls).to eq([])
 
         plugin.instance_variable_set(:@generation_checked_at, nil)
-        bundle.fire(:before_generation, iteration: 3)
-        expect(wait_until { gh_calls.any? { |call| call.include?("/files") } }).to be(true)
+        settled { bundle.fire(:before_generation, iteration: 3) }
+        expect(gh_calls).to include(a_string_including("/files"))
       end
 
       it "the after_turn hook never runs gh, and links nothing before the cache has the PR" do
@@ -664,10 +680,9 @@ RSpec.describe "The github-pr bundle", :bundle do
 
         it "links nothing and fetches nothing" do
           FileUtils.rm_f(gh_log)
-          bundle.fire(:before_turn, messages: [], prompt: pr_url)
+          settled { bundle.fire(:before_turn, messages: [], prompt: pr_url) }
 
           expect(answer("lib/foo.rb:28")).to eq("lib/foo.rb:28")
-          sleep 0.1
           expect(gh_calls).to eq([])
         end
       end
@@ -687,11 +702,12 @@ RSpec.describe "The github-pr bundle", :bundle do
 
       # The init task, a turn naming the PR and a generation check.
       def run_hooks
-        summary = bundle.run_inits.first
-        bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}")
-        bundle.fire(:before_generation, iteration: 1)
-        sleep 0.1
-        summary
+        settled do
+          summary = bundle.run_inits.first
+          bundle.fire(:before_turn, messages: [], prompt: "review #{pr_url}")
+          bundle.fire(:before_generation, iteration: 1)
+          summary
+        end
       end
 
       def api_calls = gh_calls.select { |call| call.start_with?("api ") }
@@ -726,7 +742,7 @@ RSpec.describe "The github-pr bundle", :bundle do
             it "fetches and links as a worker does" do
               fake_gh_with_view
               run_hooks
-              expect(wait_until { api_calls.any? { |call| call.include?("/files") } }).to be(true)
+              expect(api_calls).to include(a_string_including("/files"))
               expect(answer("see lib/foo.rb:28")).to eq("see [lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
             end
           end
