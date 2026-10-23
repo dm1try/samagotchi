@@ -1308,7 +1308,8 @@ chi share revoke --all          # every link to every session
   the box pinned, tool lines folded. They never see tool output or arguments, thinking, approvals or questions,
   memories, context notes, plugin and delegate input, cards, command output, the working set, cost, timing or host
   paths; secret-shaped text (API keys, tokens, private keys) is redacted too. An agent participant can wait on its
-  turns' replies through the API. They can't reach anything else: every other route answers them 403, another
+  turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
+  or `send -m`, which prints the turn id `--wait --turn T` takes. They can't reach anything else: every other route answers them 403, another
   session 404.
 - **Your side of it.** In the session bar, the participants chip (`invite` while nobody has a link, then `2
   participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,

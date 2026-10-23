@@ -260,6 +260,7 @@ module Samagotchi
     def run_parsed(options)
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
+      @waiting = options[:wait] == true
       @cut = options[:cut] == true
       @queue = options[:queue] == true
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
@@ -582,6 +583,8 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_wait(prompt, options)
       id = resolve(options[:ids].first) or return 1
+      return run_participant_wait(id, prompt, options) if @access.participant?
+
       # Local: one read for the check and the baseline; remotely the
       # server's wait prepare route reads both (Busy's words).
       session = @access.show(id) unless @access.remote?
@@ -597,6 +600,27 @@ module Samagotchi
       target = WaitTarget.message(@delivered, queue: @queue, running: start.running,
                                               running_turn: (start.own_turn if start.running))
       wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout], **target.to_h)
+    end
+
+    # A participant's --wait -m (a review turn through chi --remote with
+    # their token): their message always runs as a queued turn of its own
+    # (chi web's review turns), so a running turn doesn't refuse it and
+    # there is no busy check (the owner's route, refused to them). Their
+    # wait routes take only a turn of theirs: the wait is on the one just
+    # queued, as --wait --turn T.
+    # @return [Integer] the exit status
+    def run_participant_wait(id, prompt, options)
+      return 1 unless deliver(id, prompt)
+
+      turn = @delivered.enqueued_id.to_s
+      if turn.empty?
+        error_line("chi send: #{id[0, 8]}: the review turn's id didn't come back; chi --remote … send --wait --turn T waits once you have it")
+        return 1
+      end
+      start = @access.prepare_wait(id, turn: turn)
+      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout],
+                         owner_grace: start.live ? self.class::WORKER_GONE_AFTER : nil,
+                         **WaitTarget.after(start, requested: turn).to_h)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -766,7 +790,10 @@ module Samagotchi
       # (next_step for an idle session) and a cut's outcome.
       @sent_delivery = result.delivery || delivery
       @sent_cut = result.cut
-      @info.puts("#{short}  sent#{with_images}#{delivery_note(result, delivery: delivery, running: running, owner: owner)}")
+      note = if @access.participant? then participant_note(id, result)
+             else delivery_note(result, delivery: delivery, running: running, owner: owner)
+             end
+      @info.puts("#{short}  sent#{with_images}#{note}")
       true
     rescue SessionManager::OwnedByTUI
       @info.puts("#{short}  refused: it is open in a chi REPL; messages need attached mode")
@@ -800,6 +827,16 @@ module Samagotchi
       return " (goes in at the running turn's next step)" unless CUT_OUTCOMES.include?(outcome)
 
       " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, result.cut_after)}"
+    end
+
+    # A participant's message: queued as a review turn of its own (chi
+    # web's), its id the one their wait takes.
+    def participant_note(id, result)
+      turn = result.enqueued_id.to_s
+      return " (queued as a review turn)" if turn.empty?
+      return " (queued as review turn #{turn})" if @waiting
+
+      " (queued as review turn #{turn}; #{@access.invocation.command("send --wait --turn #{turn} #{id}")} waits for its reply)"
     end
 
     # A --queue, worded from the Bridge's ack: queue when a turn ran as it

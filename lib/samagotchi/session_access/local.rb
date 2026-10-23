@@ -39,6 +39,9 @@ module Samagotchi
 
       def remote? = false
 
+      # This machine's sessions are the owner's.
+      def participant? = false
+
       # The printed commands' spelling: this machine's chi.
       # @return [ChiInvocation]
       def invocation = ChiInvocation::HERE

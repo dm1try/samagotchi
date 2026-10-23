@@ -170,9 +170,8 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this review link was revoked by the session's owner")
     end
 
-    # The participant routes chi send --wait --turn T reaches (resolve,
-    # wait/prepare and wait on a turn of theirs); a plain send --wait asks
-    # the owner's busy check and is refused.
+    # The participant routes chi send --wait reaches (resolve, wait/prepare
+    # and wait on a turn of theirs): --turn T, or the turn -m just queued.
     it "waits on their own turn with chi send --wait --turn: a turn waiting on the owner exits 3, wait again" do
       session_dir = Samagotchi::Session.session_dir(session.id, state_dir: state)
       FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
@@ -193,6 +192,35 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                                                                             state_dir: state, access: access).run
       expect(JSON.parse(json.string)).to eq("status" => "waiting_for_owner", "session_id" => session.id, "turn_id" => "e-1",
                                             "detail" => "waiting for the session's owner: #{wait_again}")
+    end
+
+    it "sends a review turn with chi send -m and names its id and the wait for it" do
+      access = as_participant
+      code = Samagotchi::SendCommand.new(["-m", "is step 3 right?", session.id[0, 8]], stdout: out, stderr: err,
+                                                                                      state_dir: state, access: access).run
+
+      expect(code).to eq(0), err.string
+      turn = out.string[/review turn (\S+);/, 1]
+      expect(turn).not_to be_nil
+      expect(out.string).to eq("#{session.id[0, 8]}  sent (queued as review turn #{turn}; " \
+                               "chi --remote studio send --wait --turn #{turn} #{session.id} waits for its reply)\n")
+    end
+
+    it "waits on the review turn chi send --wait -m queued, a running session too (no owner's busy check)" do
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.save(state_dir: state)
+      app = RemoteBackend.app(state_dir: state)
+      allow(app.send(:session_access)).to receive(:wait_reply).and_return(Samagotchi::ReplyWait::Result.new(status: :done, text: "yes"))
+      access = described_class.new(RemoteBackend.entry(token: issued.token),
+                                   transport: RemoteBackend::RackTransport.new(app, token: issued.token), sleeper: ->(_s) {})
+
+      code = Samagotchi::SendCommand.new(["--wait", "-m", "is step 3 right?", session.id], stdout: out, stderr: err,
+                                                                                          state_dir: state, access: access).run
+
+      expect([code, out.string]).to eq([0, "yes\n"]), err.string
+      turn = err.string[/queued as review turn (\S+)\)/, 1]
+      expect(turn).not_to be_nil
+      expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: true))
     end
 
     it "words each code once, whatever the route (P3b's too_many_turns and cap_reached included)" do

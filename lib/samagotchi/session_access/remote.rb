@@ -58,6 +58,14 @@ module Samagotchi
       def remote? = true
       def name = @entry.name
 
+      # Web::Grants::PREFIX, without loading chi web.
+      PARTICIPANT_PREFIX = "chp_"
+
+      # Whether the token is a participant's (chi share's link), not the
+      # owner's: their turns are queued review turns, their waits take only
+      # a turn of theirs.
+      def participant? = @entry.token.to_s.start_with?(PARTICIPANT_PREFIX)
+
       # The printed commands' spelling: chi --remote NAME.
       # @return [ChiInvocation]
       def invocation = ChiInvocation.new(remote: name)

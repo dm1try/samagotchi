@@ -127,8 +127,11 @@ anyone's); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`
 began too. A chi client gets it through `--remote` with a participant's token in `remotes.yml`: `chi --remote NAME
 send --wait --turn T ID` reaches only participant routes (resolve, `wait/prepare` and `wait` on their turn), and
 `ParentReport` reads `waiting_for_owner` as its own status, exit 3 like a question, its detail
-`ParentReport::WAITING_FOR_OWNER` (the route's words too) and the command that waits again. A plain `send --wait -m`
-isn't wired for participants: its busy check (`wait/prepare` without a turn) is refused, 403 `not_permitted`.
+`ParentReport::WAITING_FOR_OWNER` (the route's words too) and the command that waits again. With a
+participant's token (`chp_`, `SessionAccess::Remote#participant?`) `chi send -m` prints the queued turn's id and the
+command that waits for it, and `send --wait -m` skips the owner's busy check (its turn is queued, so a running turn
+doesn't refuse it; that check's `wait/prepare` without a turn would be 403 `not_permitted`) and waits on the turn it
+queued, as `--turn T` does.
 
 **The tool calls.** `Guardrails::ReviewBoundary` denies a participant's turn everything but reads of the project
 ([guardrails](../guardrails.md#a-participants-review-boundary)). Approvals and questions are owner-only: the boundary
