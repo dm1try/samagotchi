@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "tempfile"
 require "samagotchi/session_commands"
 require "samagotchi/engine"
 require "samagotchi/session"
@@ -689,6 +690,37 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(registry.mid_turn("/working-set undrop README.md")).to eq(:queue)
       expect(registry.mid_turn("/working-set pin README.md")).to eq(:queue)
       expect(registry.mid_turn("/working-set unpin README.md")).to eq(:queue)
+      expect(registry.mid_turn("/working-set add Gemfile")).to eq(:queue)
+      expect(registry.mid_turn("/working-set unadd Gemfile")).to eq(:queue)
+    end
+
+    it "adds what can be read (a file, a memory) to the next turn's note, refuses the rest; unadd takes one back" do
+      memory = Tempfile.new(%w[style .md])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).and_call_original
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).with("style", "project").and_return(memory.path)
+
+      result = commands.run("/working-set add Gemfile memory:style")
+
+      expect(result).to have_attributes(status: :ok, changed: [:messages])
+      expect(result.output).to eq("added Gemfile: the next turn's note asks the model to read it first (one tool call)\n" \
+                                  "added memory style: the next turn's note asks the model to read it first (one tool call)")
+      expect(saved).not_to be_empty
+      expect(session.messages.last[:content]).to include(%(load them with read "#{File.join(Dir.pwd, "Gemfile")}", memory_read "style"))
+      expect(commands.run("/working-set").output).to include("at the next turn's start: added Gemfile, added memory style")
+
+      refused = commands.run("/working-set add nope.rb lib memory:nope README.md")
+      expect(refused).to have_attributes(status: :error, changed: [])
+      expect(refused.output.lines.map(&:chomp)).to eq(
+        ["add nope.rb: no such file", "add lib: a directory: add its files", "add memory:nope: no such memory",
+         "add README.md: #{Samagotchi::WorkingSetSteer::Refused.text(:already_sent)}"]
+      )
+
+      expect(commands.run("/working-set unadd Gemfile memory:style"))
+        .to have_attributes(status: :ok, output: "unadded Gemfile: its add was never sent; nothing changes\n" \
+                                                 "unadded memory style: its add was never sent; nothing changes")
+      expect(session.messages.last).not_to include(kind: "working_set")
+    ensure
+      memory&.close!
     end
 
     it "lists the set, then the change the next turn starts with; the conversation changes and is saved" do

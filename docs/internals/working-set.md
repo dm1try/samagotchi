@@ -97,7 +97,8 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 
 ## Delivery
 
-**The event.** The Engine emits `{type: :working_set_updated, items:, at:}` (`Engine#emit_working_set`):
+**The event.** The Engine emits `{type: :working_set_updated, items:, at:}` (and `adds:` while the user's adds are
+pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_working_set`):
 - after each `:generation_started`, in `build_stream_event_handler`, from the running turn's conversation
   (`Engine#live_conversation`, read on the turn's thread) under the turn's strategy
   (`@kernel.turn_settings.llm_context`). Both loops start a generation after `apply_llm_context!`, so the set is
@@ -111,8 +112,8 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
   turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
   turn runs, the strategy is always the turn's.
 
-It is emitted only when the set differs from the last one emitted for the session (kept per session id), and never
-while the set is empty, so a tool-free turn on a fresh session emits nothing. One exception: when the last one had
+It is emitted only when the set (its items and adds) differs from the last one emitted for the session (kept per
+session id), and never while the set is empty (no items, no adds), so a tool-free turn on a fresh session emits nothing. One exception: when the last one had
 items and the set is empty now (a rollback removed the tool calls), one empty event goes out, so the page drops the
 stale items; it is remembered, so the next empty request sends none. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
@@ -182,6 +183,30 @@ names it), a `SessionSetup` field, so a respawn (the file), a continue (`Session
   closes only for `:messages`. Either way `Engine#announce_working_set` re-emits the set.
 - **The projection**: `WorkingSet.build(…, pins:)` sets each item's `pinned`, whatever the strategy; the page shows it
   only under forget (below).
+
+## Steering: add and unadd
+
+`/working-set add KEY…` and `unadd KEY…` run the same way (`mid_turn: :queue`, `WorkingSetCommand`), but an add
+changes nothing sent: it is a request in the turn-start note (D1 (a) of the plan), so the model runs the real
+`read` / `memory_read` / `web_fetch` and the output is an ordinary tool run (stamps, ids, forget, stale, the
+projection), on both loops. It costs one model step; a model may skip it (the note asks, chi doesn't run the tool).
+
+- **`WorkingSetSteer.add`** refuses an item already added (pending), a URL not http(s) (`web_fetch` fetches only
+  those), what the caller's `found` look says can't be read (`WorkingSetCommand#missing`: a file not there or a
+  directory; a memory name `memory_read` rejects or that neither scope holds), an item holding the user's drop
+  (`undrop_first`: undrop brings it back without a step), and one the model has whole (`already_sent`: live, a read
+  of it sent). A stale or forgotten item may be added: that is the web row's `refresh`. **`unadd`** takes a pending
+  add back (free); without one it is refused (`not_added`).
+- **The note**: an add always joins it (`the user added lib/tax.rb, memory style to your context: before anything
+  else, load them with read "/abs/lib/tax.rb", memory_read "style"`); a file is named by its absolute path in the
+  call, since a `read` resolves a relative path against the process's folder. An unadd cancels its add there.
+- **The projection**: the pending adds are not items (nothing of them is sent), but the snapshot carries them:
+  `WorkingSet.pending_adds` reads the pending note (`WorkingSet.pending_note_index` / `pending_ops`, which
+  `WorkingSetSteer` delegates to) into `Snapshot#adds` (`WorkingSet::Add`: `kind`, `key`, `label`), and `to_h` adds
+  `adds:` while any is pending. `Engine#emit_working_set` compares the items and the adds, so an add announces a new
+  set and the next turn's first request (the note sent, no adds) emits again, which clears the page's pending add.
+  A running turn's set has none (the note was sent when it started), so the Bridge snapshot's `working_set` and the
+  GET's `running` answer leave it out.
 
 ## The page's overlay
 

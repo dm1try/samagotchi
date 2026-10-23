@@ -265,6 +265,27 @@ RSpec.describe Samagotchi::Engine, "working set event" do
       expect(session.working_set_pins.map(&:key)).to eq([path])
     end
 
+    it "an add is announced pending, asked in the next turn's first request once, and gone from the set's adds then" do
+      extra = File.join(@dir, "extra.txt")
+      File.write(extra, "the added text\n")
+
+      result = commands.run("/working-set add extra.txt")
+
+      expect(result).to have_attributes(status: :ok, changed: [:messages])
+      expect(announced.last[:adds]).to eq([{ kind: "file", key: extra, label: "extra.txt" }])
+      expect(announced.last[:items]).to match([include(key: path)])
+
+      stream(%(<|tool_call>call:read{path:<|"|>#{extra}<|"|>}<tool_call|>))
+      stream("Read it.")
+      run_turn("go on")
+
+      first = prompt_of(server.requests[-2])
+      expect(first.scan(%(the user added extra.txt to your context: before anything else, load it with read "#{extra}")).size).to eq(1)
+      expect(prompt_of(server.requests.last)).to include("the added text")
+      expect(updates.last).not_to have_key(:adds)
+      expect(updates.last[:items]).to match([include(key: path), include(key: extra, state: "live")])
+    end
+
     it "refuses a key not in the set in the exception's words, changing nothing" do
       result = commands.run("/working-set drop other.txt")
 

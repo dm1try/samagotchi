@@ -33,6 +33,14 @@ module Samagotchi
   # drop asks for an unpin first, and a pin takes a pending drop off (one
   # never sent: free), else asks for an undrop first.
   #
+  # An add is a request: the turn-start note asks the model to read the
+  # item (read, memory_read, web_fetch) before the task, so its output is
+  # a real tool run (stamps, ids, forget, the projection), on both loops.
+  # Nothing sent changes until then; it costs the model one step. An item
+  # the model has whole already is refused; a stale or forgotten one is
+  # its refresh. Pending until the next turn sends the note
+  # (WorkingSet.pending_adds); an unadd takes it back.
+  #
   # Every op since the last turn is listed in one tail system message
   # (kind "working_set", #record!), so the model learns what changed and
   # doesn't read a dropped file again by reflex. An inverse op before the
@@ -40,16 +48,18 @@ module Samagotchi
   # nothing noted).
   module WorkingSetSteer
     BY = "user"
-    NOTE_KIND = "working_set"
+    NOTE_KIND = WorkingSet::NOTE_KIND
     # The tail note's ops: [{"op", "kind", "key", "label"}], until the turn
     # that sends it (the chat loop's kept entries leave the key out).
-    OPS = :working_set_ops
+    OPS = WorkingSet::NOTE_OPS
     NOTE_OPEN = "[WORKING SET: "
     DROP = "drop"
     UNDROP = "undrop"
     PIN = "pin"
     UNPIN = "unpin"
-    INVERSE = { DROP => UNDROP, UNDROP => DROP, PIN => UNPIN, UNPIN => PIN }.freeze
+    ADD = WorkingSet::ADD
+    UNADD = "unadd"
+    INVERSE = { DROP => UNDROP, UNDROP => DROP, PIN => UNPIN, UNPIN => PIN, ADD => UNADD, UNADD => ADD }.freeze
     MEMORY_PREFIX = "memory:"
     URL = %r{\A[a-z][a-z0-9+.-]*://}i
 
@@ -68,7 +78,15 @@ module Samagotchi
         derived: "nothing to drop: an older session's output that chi can't name",
         already_dropped: "already dropped",
         not_sent: "nothing to drop: none of it is sent now (forgotten or stubbed)",
-        not_dropped: "not dropped"
+        not_dropped: "not dropped",
+        no_file: "no such file",
+        directory: "a directory: add its files",
+        no_memory: "no such memory",
+        bad_memory: "not a memory name (no /, \\ or ..)",
+        not_http: "not an http(s) URL: web_fetch can't fetch it",
+        already_sent: "already in the model's context (sent whole): nothing to add",
+        already_added: "already added: the next turn reads it",
+        not_added: "not added (no add of it is pending)"
       }.freeze
 
       # @return [Symbol] a key of MESSAGES
@@ -237,6 +255,35 @@ module Samagotchi
       Done.new(target: target, op: UNPIN, ids: [], freed_chars: 0, tail_chars: 0, free: true)
     end
 
+    # Adds +target+: the next turn's note asks the model to read it. +found+
+    # answers whether the item exists (a file, a memory; the caller's
+    # look). Refused for an item the model is sent whole now (live, a read
+    # of it sent), a dropped one (undrop it), and one added already.
+    # @param found [#call] target → nil when it exists, else a Refused reason
+    # @return [Done]
+    # @raise [Refused]
+    def add(conversation, target, strategy:, cwd:, found: ->(_) {})
+      raise Refused, :already_added if pending?(conversation, ADD, target)
+
+      reason = target.kind == WorkingSet::URL && !target.key.match?(%r{\Ahttps?://}i) ? :not_http : found.call(target)
+      raise Refused, reason if reason
+
+      outputs = WorkingSet.outputs_of(conversation, kind: target.kind, key: target.key, strategy: strategy, cwd: cwd)
+      raise Refused, :undrop_first if outputs.any? { |output| drop_of(conversation, output) }
+      raise Refused, :already_sent if outputs.any?(&:sent) && live?(conversation, target, strategy, cwd)
+
+      Done.new(target: target, op: ADD, ids: [], freed_chars: 0, tail_chars: 0, free: true)
+    end
+
+    # Takes back +target+'s pending add (never sent: free).
+    # @return [Done]
+    # @raise [Refused]
+    def unadd(conversation, target)
+      raise Refused, :not_added unless pending?(conversation, ADD, target)
+
+      Done.new(target: target, op: UNADD, ids: [], freed_chars: 0, tail_chars: 0, free: true)
+    end
+
     # +pins+ after +done+ (a pin or an unpin). A new frozen Array.
     # @return [Array<WorkingSetPin>]
     def pinning(pins, done)
@@ -266,26 +313,23 @@ module Samagotchi
       end
     end
 
+    # Whether the set holds +target+ live (not stale, forgotten, dropped).
+    def live?(conversation, target, strategy, cwd)
+      WorkingSet.build(conversation, cwd: cwd, strategy: strategy).items.any? do |item|
+        item.kind == target.kind && item.key == target.key && item.state == WorkingSet::LIVE
+      end
+    end
+
     def layers(strategy) = LLMContextView.new(strategy: strategy).layers
 
     # ── the tail note ───────────────────────────────────────────────────
 
-    # The index of the note the next turn will send (one after the last
-    # turn's entries: only system messages follow it), or nil.
-    def pending_note_index(messages)
-      (messages.size - 1).downto(0) do |index|
-        message = messages[index]
-        return nil unless message[:role].to_s == "system"
-        return index if message[:kind].to_s == NOTE_KIND
-      end
-      nil
-    end
+    # The index of the note the next turn will send, or nil
+    # (WorkingSet.pending_note_index).
+    def pending_note_index(messages) = WorkingSet.pending_note_index(messages)
 
     # The ops the pending note lists ([{"op", "kind", "key", "label"}]).
-    def pending_ops(messages)
-      index = pending_note_index(messages)
-      index ? Array(messages[index][OPS]).select { |op| op.is_a?(Hash) } : []
-    end
+    def pending_ops(messages) = WorkingSet.pending_ops(messages)
 
     # Whether +target+'s +op+ is pending (made since the last turn).
     def pending?(messages, op, target)
@@ -341,10 +385,23 @@ module Samagotchi
       parts << "the user pinned #{pins.join(", ")}: forget_outputs won't forget #{pins.size == 1 ? "it" : "them"}" unless pins.empty?
       unpins = labels(ops, UNPIN)
       parts << "the user unpinned #{unpins.join(", ")}: you may forget #{unpins.size == 1 ? "it" : "them"} again" unless unpins.empty?
+      adds = ops.select { |entry| entry["op"] == ADD }
+      unless adds.empty?
+        parts << "the user added #{adds.map { |entry| entry["label"] }.join(", ")} to your context: before anything " \
+                 "else, load #{adds.size == 1 ? "it" : "them"} with #{adds.map { |entry| call_of(entry) }.join(", ")}"
+      end
       { role: "system", kind: NOTE_KIND, content: "#{NOTE_OPEN}since your last turn #{parts.join("; ")}.]", OPS => ops }
     end
 
     def labels(ops, op) = ops.select { |entry| entry["op"] == op }.map { |entry| entry["label"] }
+
+    # The tool call that loads an added item, as the note asks for it: a
+    # file by its absolute path (a read resolves a relative one against
+    # the process's folder, which may not be the session's).
+    def call_of(entry)
+      tool = { WorkingSet::MEMORY => "memory_read", WorkingSet::URL => "web_fetch" }.fetch(entry["kind"], "read")
+      %(#{tool} "#{entry["key"]}")
+    end
 
     # "12.4k tokens", chars/4.
     def k(chars)
@@ -352,6 +409,6 @@ module Samagotchi
       tokens >= 1000 ? format("%.1fk tokens", tokens / 1000.0) : "#{tokens} tokens"
     end
 
-    private_class_method :relative, :shared_with, :drop_of, :known?, :layers, :same?, :labels
+    private_class_method :relative, :shared_with, :drop_of, :known?, :live?, :layers, :same?, :labels, :call_of
   end
 end

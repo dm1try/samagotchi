@@ -214,6 +214,66 @@ RSpec.describe Samagotchi::WorkingSetSteer do
     end
   end
 
+  describe ".add and .unadd" do
+    let(:conversation) { [head, { role: "user", content: "go" }, *read_turn("lib/cart.rb", "c1", "t1"), { role: "model", content: "done" }] }
+
+    def add(conversation, word, found: ->(_) {}, strategy: :none)
+      described_class.add(conversation, target(word), strategy: strategy, cwd: root, found: found)
+    end
+
+    it "notes a request to read the item, pending until a turn sends it; an unadd takes it back, free" do
+      done = add(conversation, "lib/tax.rb")
+      expect(done).to have_attributes(op: "add", ids: [], free: true)
+      messages = described_class.record!(conversation, done)
+      messages = described_class.record!(messages, add(messages, "memory:style"))
+      messages = described_class.record!(messages, add(messages, "https://x.dev/a"))
+
+      expect(messages.last[:content]).to eq(
+        "[WORKING SET: since your last turn the user added lib/tax.rb, memory style, https://x.dev/a to your context: " \
+        'before anything else, load them with read "/work/shop/lib/tax.rb", memory_read "style", web_fetch "https://x.dev/a".]'
+      )
+      expect(Samagotchi::WorkingSet.pending_adds(messages).map(&:to_h)).to eq(
+        [{ kind: "file", key: "/work/shop/lib/tax.rb", label: "lib/tax.rb" }, { kind: "memory", key: "style", label: "memory style" },
+         { kind: "url", key: "https://x.dev/a", label: "https://x.dev/a" }]
+      )
+      expect(Samagotchi::WorkingSet.build(messages, cwd: root, strategy: :none, stat: ->(_) { raise Errno::ENOENT }).to_h[:adds].size)
+        .to eq(3)
+      expect { add(messages, "lib/tax.rb") }.to raise_error(described_class::Refused, "already added: the next turn reads it")
+
+      back = described_class.record!(messages, described_class.unadd(messages, target("memory:style")))
+      back = described_class.record!(back, described_class.unadd(back, target("https://x.dev/a")))
+      back = described_class.record!(back, described_class.unadd(back, target("lib/tax.rb")))
+      expect(back).to eq(conversation)
+      expect { described_class.unadd(back, target("lib/tax.rb")) }.to raise_error(described_class::Refused, "not added (no add of it is pending)")
+
+      sent = messages + [{ role: "user", content: "next" }]
+      expect(Samagotchi::WorkingSet.pending_adds(sent)).to eq([])
+      expect(Samagotchi::WorkingSet.build(sent, cwd: root, strategy: :none, stat: ->(_) { raise Errno::ENOENT }).to_h).not_to have_key(:adds)
+    end
+
+    it "refuses what can't be read and what the model has whole; a stale or forgotten item is its refresh" do
+      expect { add(conversation, "lib/none.rb", found: ->(_) { :no_file }) }.to raise_error(described_class::Refused, "no such file")
+      expect { add(conversation, "ftp://x.dev/a") }.to raise_error(described_class::Refused, described_class::Refused.text(:not_http))
+      # No stamp: the read is live.
+      expect { add(conversation, "lib/cart.rb") }.to raise_error(described_class::Refused, described_class::Refused.text(:already_sent))
+
+      # A stamp the file (gone here) no longer matches: stale, read again.
+      stale = conversation.map(&:dup)
+      stale[3] = stale[3].merge(tool_stamps: [{ mtime_ns: 1, size: 1 }])
+      expect(add(stale, "lib/cart.rb")).to have_attributes(op: "add")
+
+      # Forgotten under forget: it can be added again.
+      forgotten = conversation.map(&:dup)
+      Samagotchi::LLMContextEdit.store(forgotten[3], Samagotchi::LLMContextEdit.new(id: "t1", kind: :forget, note: "", by: "model",
+                                                                                    staged_at: now, applied_at: now))
+      expect(add(forgotten, "lib/cart.rb", strategy: [:forget])).to have_attributes(op: "add")
+
+      dropped = conversation.map(&:dup)
+      drop(dropped, "lib/cart.rb")
+      expect { add(dropped, "lib/cart.rb") }.to raise_error(described_class::Refused, described_class::Refused.text(:undrop_first))
+    end
+  end
+
   describe "the tail note" do
     let(:conversation) { [head, { role: "user", content: "go" }, *read_turn("lib/cart.rb", "c1", "t1"), { role: "model", content: "done" }] }
 

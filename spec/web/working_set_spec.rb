@@ -6,6 +6,7 @@ require "json"
 require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/session"
+require "samagotchi/working_set_steer"
 
 # GET /api/sessions/:id/working_set: the set as the model has it
 # (WorkingSet), from a live worker's snapshot or the session file.
@@ -61,6 +62,15 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     session.save(state_dir: state_dir)
 
     expect(call("/api/sessions/#{session.id}/working_set").last["items"]).to match([include("key" => path, "pinned" => true)])
+  end
+
+  it "carries the adds the next turn's note asks the model to read, through the session file" do
+    target = Samagotchi::WorkingSetSteer.target("lib/tax.rb", cwd: repo)
+    messages = Samagotchi::WorkingSetSteer.record!(read_messages, Samagotchi::WorkingSetSteer.add(read_messages, target, strategy: :none, cwd: repo))
+    session = saved_session(messages)
+
+    expect(call("/api/sessions/#{session.id}/working_set").last["adds"])
+      .to eq([{ "kind" => "file", "key" => File.join(repo, "lib/tax.rb"), "label" => "lib/tax.rb" }])
   end
 
   it "builds it from a live worker's snapshot (string keys) under the worker's strategy" do

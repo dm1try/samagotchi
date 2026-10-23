@@ -55,14 +55,36 @@ module Samagotchi
     # stubbed by the model's layers).
     Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned, :has_drop)
 
+    # An item the user added (/working-set add) that the next turn's note
+    # asks the model to read: its identity (+kind+, +key+, as an Item's)
+    # and how the note names it (+label+: a file relative to the session's
+    # folder, "memory NAME", a URL).
+    Add = Data.define(:kind, :key, :label)
+
     # A projection and the conversation's size (entries) it was built
     # from: the web keeps the newer of an event's and a GET's by it.
-    Snapshot = Data.define(:items, :at) do
-      def empty? = items.empty?
+    # +adds+: the pending note's adds (#pending_adds), not items yet.
+    Snapshot = Data.define(:items, :at, :adds) do
+      def initialize(items:, at:, adds: [])
+        super
+      end
 
-      # The JSON the event and the route carry: {items: [...], at:}.
-      def to_h = { items: items.map(&:to_h), at: at }
+      def empty? = items.empty? && adds.empty?
+
+      # The JSON the event and the route carry: {items: [...], at:}, and
+      # adds: [{kind, key, label}] while any is pending.
+      def to_h
+        hash = { items: items.map(&:to_h), at: at }
+        hash[:adds] = adds.map(&:to_h) unless adds.empty?
+        hash
+      end
     end
+
+    # The turn-start note (WorkingSetSteer#record!): a tail system message
+    # of this kind, its ops ([{"op", "kind", "key", "label"}]) in NOTE_OPS.
+    NOTE_KIND = "working_set"
+    NOTE_OPS = :working_set_ops
+    ADD = "add"
 
     FILE_OPS = { "read" => "read", "edit" => "edit", "write" => "edit" }.freeze
     CONTENT = %w[read memory_read web_fetch].freeze
@@ -97,7 +119,34 @@ module Samagotchi
       items = all_touches(conversation, cwd, view).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
         item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]))
       end
-      Snapshot.new(items: items, at: conversation.size)
+      Snapshot.new(items: items, at: conversation.size, adds: pending_adds(conversation))
+    end
+
+    # The index of the note the next turn will send (one after the last
+    # turn's entries: only system messages follow it), or nil.
+    def pending_note_index(messages)
+      (messages.size - 1).downto(0) do |index|
+        message = messages[index]
+        return nil unless message.is_a?(Hash) && message[:role].to_s == "system"
+        return index if message[:kind].to_s == NOTE_KIND
+      end
+      nil
+    end
+
+    # The ops the pending note lists ([{"op", "kind", "key", "label"}]).
+    def pending_ops(messages)
+      messages = Array(messages)
+      index = pending_note_index(messages)
+      index ? Array(messages[index][NOTE_OPS]).select { |op| op.is_a?(Hash) } : []
+    end
+
+    # The items the user added since the last turn, which the next turn's
+    # note asks the model to read.
+    # @return [Array<Add>]
+    def pending_adds(messages)
+      pending_ops(messages).select { |op| op["op"] == ADD }.map do |op|
+        Add.new(kind: op["kind"].to_s, key: op["key"].to_s, label: op["label"].to_s)
+      end
     end
 
     # One content output (read, memory_read, web_fetch) of an item: its

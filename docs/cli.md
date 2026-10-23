@@ -631,8 +631,19 @@ without forget it waits until one has it (the reply says so). The listing marks
 it `pinned`, and under forget the next turn's line tells the model. A pinned
 item can't be dropped until you unpin it; a pin takes back a drop not yet sent
 (free), and asks you to undrop one already sent first.
-`/working-set` alone answers mid-turn too; `drop`/`undrop`/`pin`/`unpin` sent
-while a turn runs wait for the turn's end.
+`/working-set add KEY…` brings an item in: the next turn's line asks the
+model to load it before anything else (`read` for a file, `memory_read` for
+`memory:NAME`, `web_fetch` for an http(s) URL), so it costs the model one tool
+call, and what it reads is an ordinary read (droppable, forgettable, in the
+set). Nothing is sent until then, and `/working-set unadd KEY…` takes an add
+back for free. On a stale or forgotten item it is a refresh (the model reads
+it again). Refused, with why: a file that isn't there (or a directory), a
+memory neither scope holds, a URL that isn't http(s), an item the model is
+sent whole now, a dropped one (undrop it instead), one already added. The
+listing's last line names the pending adds (`added lib/tax.rb`). The model is
+asked, not forced: a model may skip the read.
+`/working-set` alone answers mid-turn too; `drop`/`undrop`/`pin`/`unpin`/`add`/`unadd`
+sent while a turn runs wait for the turn's end.
 
 `/thinking` shows the thinking level the next turn runs at and where it came
 from (`session`, `--thinking` / `SAMAGOTCHI_THINKING_LEVEL`, `models: <key>`,

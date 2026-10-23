@@ -2945,7 +2945,8 @@ module Samagotchi
     end
 
     # The working set (WorkingSet) as the model has it, as a
-    # :working_set_updated event ({items:, at:}): at each request (the
+    # :working_set_updated event ({items:, at:}, adds: while the user's
+    # adds are pending): at each request (the
     # stream handler's :generation_started, from the running turn's
     # conversation) and at turn end (#end_turn, from the session's kept
     # messages). Only when it differs from the last one emitted for this
@@ -2963,16 +2964,16 @@ module Samagotchi
       snapshot = WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy,
                                   pins: session.working_set_pins)
 
-      items = snapshot.items.map(&:to_h)
+      shown = snapshot.to_h.except(:at)
       last = @working_set_emitted
-      if items.empty?
-        return unless last && last[0] == session.id && !last[1].empty?
-      elsif last == [session.id, items]
+      if snapshot.empty?
+        return unless last && last[0] == session.id && last[1] != { items: [] }
+      elsif last == [session.id, shown]
         return
       end
 
-      @working_set_emitted = [session.id, items]
-      event = { type: :working_set_updated, items: items, at: snapshot.at }
+      @working_set_emitted = [session.id, shown]
+      event = { type: :working_set_updated, **shown, at: snapshot.at }
       on_event ? emit_event(on_event, event) : announce_or_hold(event)
     rescue StandardError => e
       Log.warn(:turn, "working_set_failed", error: e.class.name, msg: e.message.to_s[0, 200])

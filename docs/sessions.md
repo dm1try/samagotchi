@@ -157,6 +157,9 @@ starts with one line about it (`kind: working_set`,
 escaped like a context note; the UIs don't show it): `[WORKING SET: since your last turn the user dropped
 lib/cart.rb from your context: you are sent a stub instead of its outputs; read it again only if the task needs
 it.]`. Every op since the last turn joins that one line, and an undrop before the next turn takes its drop off it.
+An add (`/working-set add KEY`) asks the model in that line to load the item first (`the user added lib/tax.rb to
+your context: before anything else, load it with read "/abs/lib/tax.rb"`); an unadd before the next turn takes it
+off.
 The drop itself is saved on the entries (`edits`, kind `drop`), so `--resume`, rollbacks and forks keep it. A pin is
 the session file's `working_set_pins` (`[{"kind": "file", "key": "/abs/path"}]`, `[]` for none; kinds `file`,
 `memory`, `url`), not an edit: a respawned worker reads it, a continue and a fork (`ctx.sessions.fork`) copy it as

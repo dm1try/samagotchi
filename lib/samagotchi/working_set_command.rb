@@ -2,12 +2,15 @@
 
 require_relative "working_set"
 require_relative "working_set_steer"
+require_relative "tools/memory"
 
 module Samagotchi
   # /working-set: with no arguments the session's working set (WorkingSet,
   # as the web's list shows it: each item, what was done to it, its state
   # and tokens, then the changes the next turn starts with); `drop KEY…`,
-  # `undrop KEY…`, `pin KEY…` and `unpin KEY…` steer it (WorkingSetSteer).
+  # `undrop KEY…`, `pin KEY…`, `unpin KEY…`, `add KEY…` and `unadd KEY…`
+  # steer it (WorkingSetSteer). An add asks the model, in the next turn's
+  # note, to read the item (a file that exists, a memory, an http(s) URL).
   # KEY: a path (absolute or the session's folder's), memory:NAME, a URL;
   # one with spaces quoted ("my dir/a.rb", WorkingSetSteer.words), as the
   # listing shows it.
@@ -20,10 +23,13 @@ module Samagotchi
   # replaces them, so the next turn's first request is the first with it.
   class WorkingSetCommand
     NAME = "/working-set"
-    USAGE = "usage: #{NAME} [drop KEY… | undrop KEY… | pin KEY… | unpin KEY…] (KEY: a path, memory:NAME or a URL; \"quote\" one with spaces)".freeze
-    VERBS = [WorkingSetSteer::DROP, WorkingSetSteer::UNDROP, WorkingSetSteer::PIN, WorkingSetSteer::UNPIN].freeze
+    USAGE = "usage: #{NAME} [drop KEY… | undrop KEY… | pin KEY… | unpin KEY… | add KEY… | unadd KEY…] " \
+            "(KEY: a path, memory:NAME or a URL; \"quote\" one with spaces)".freeze
+    VERBS = [WorkingSetSteer::DROP, WorkingSetSteer::UNDROP, WorkingSetSteer::PIN, WorkingSetSteer::UNPIN,
+             WorkingSetSteer::ADD, WorkingSetSteer::UNADD].freeze
     OP_WORDS = { WorkingSetSteer::DROP => "dropped", WorkingSetSteer::UNDROP => "undropped",
-                 WorkingSetSteer::PIN => "pinned", WorkingSetSteer::UNPIN => "unpinned" }.freeze
+                 WorkingSetSteer::PIN => "pinned", WorkingSetSteer::UNPIN => "unpinned",
+                 WorkingSetSteer::ADD => "added", WorkingSetSteer::UNADD => "unadded" }.freeze
     PIN_OPS = [WorkingSetSteer::PIN, WorkingSetSteer::UNPIN].freeze
 
     # @param engine [Engine] #session, #working_set_strategy,
@@ -101,7 +107,27 @@ module Samagotchi
         sent = !WorkingSetSteer.pending?(messages, WorkingSetSteer::DROP, target)
         WorkingSetSteer.undrop(messages, target, strategy: strategy, cwd: cwd, sent: sent)
       when WorkingSetSteer::PIN then WorkingSetSteer.pin(messages, pins, target, strategy: strategy, cwd: cwd)
-      else WorkingSetSteer.unpin(pins, target)
+      when WorkingSetSteer::UNPIN then WorkingSetSteer.unpin(pins, target)
+      when WorkingSetSteer::ADD
+        WorkingSetSteer.add(messages, target, strategy: strategy, cwd: cwd, found: method(:missing))
+      else WorkingSetSteer.unadd(messages, target)
+      end
+    end
+
+    # Why an added +target+ can't be read (a Refused reason), nil when it
+    # can: a file that is there, a memory the project or system scope
+    # holds (memory_read's look). A URL is fetched as it is.
+    def missing(target)
+      case target.kind
+      when WorkingSet::FILE
+        return :directory if File.directory?(target.key)
+
+        File.file?(target.key) ? nil : :no_file
+      when WorkingSet::MEMORY
+        return :bad_memory if target.key.empty? || Tools::MemoryRead.invalid_name?(target.key)
+
+        found = %w[project system].any? { |scope| File.file?(Tools::MemoryRead.memory_path(target.key, scope)) }
+        found ? nil : :no_memory
       end
     end
 
@@ -172,6 +198,9 @@ module Samagotchi
         off = forget?(strategy) ? "" : " (the strategy has no forget layer now: the pin holds when it has)"
         "#{what}: forget_outputs refuses its outputs, its later reads too#{off}"
       when WorkingSetSteer::UNPIN then "#{what}: the model may forget it again"
+      when WorkingSetSteer::ADD
+        "#{what}: the next turn's note asks the model to read it first (one tool call)"
+      when WorkingSetSteer::UNADD then "#{what}: its add was never sent; nothing changes"
       when WorkingSetSteer::DROP
         frees = done.freed_chars.positive? ? "frees #{WorkingSetSteer.k(done.freed_chars)}" : "frees nothing, the stubs are as long"
         "#{what}: the next turn's first request sends the stubs (#{frees}; the server reads the " \
