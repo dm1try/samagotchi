@@ -202,12 +202,12 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
@@ -1518,6 +1518,9 @@ module Samagotchi
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
+        # A participant's review turn: its own path, which takes from the
+        # body only the prompt (ParticipantAccess#handle_participant_turn).
+        return handle_participant_turn(req, id, body) unless principal(req).owner?
 
         prompt = body["prompt"] || body[:prompt]
         client_id = body["client_id"] || body[:client_id]
@@ -1699,6 +1702,13 @@ module Samagotchi
         @session_class.load(id, state_dir: default_state_dir)
         parsed = parse_json(request_body(req))
         client_id = (parsed["client_id"] if parsed.is_a?(Hash))
+        # A participant takes back only their own queued turns, by chi web's
+        # record of who sent each (never a body's client id).
+        unless (who = principal(req)).owner?
+          return not_permitted_for(req, who) unless own_queued_turn?(who.grant, id, enqueued_id)
+
+          client_id = ClientId.review(who.grant.id)
+        end
 
         request = ->(client) { client.dequeue(enqueued_id: enqueued_id, client_id: client_id) }
         relay(id, bridge_client(id), request, what: "the message was not removed", cant: "remove queued messages") do |reply|

@@ -920,6 +920,9 @@ module Samagotchi
       end
 
       delivery = Delivery.parse(raw_delivery)
+      # How many of a participant's turns may be running or waiting
+      # (chi web's, from their grant: its queue limit plus the running one).
+      pending_limit = nil
       if Steer.participant_author?(author)
         # A participant's message is a turn of its own, whatever the body
         # asks (D6), and never a command or a shell line: chi web refuses
@@ -927,6 +930,8 @@ module Samagotchi
         return participant_refused(sid, author, "command") if command_registry.command?(prompt.to_s)
 
         delivery = Delivery::QUEUE
+        pending_limit = fetched(parsed, "pending_limit")
+        pending_limit = nil unless pending_limit.is_a?(Integer) && pending_limit.positive?
       end
 
       # A session command sent as a message (chi send -m "/model x", chi -p,
@@ -950,6 +955,7 @@ module Samagotchi
       enqueued = @engine.synchronize_events do
         raise IntakeClosed if stopped?
         next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
+        next :too_many if pending_limit && pending_turns(author) >= pending_limit
 
         queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
@@ -965,6 +971,7 @@ module Samagotchi
         end
       end
       return deadline_passed("turn") if enqueued == :expired
+      return [{}, 429, { error: "too_many_turns", detail: ParticipantMessages::TOO_MANY_TURNS }] if enqueued == :too_many
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       # Queued (outside the event lock): a message sent as +cut+ cuts a
@@ -1016,6 +1023,13 @@ module Samagotchi
         end
       end
       dequeue_reply(taken, id, input)
+    end
+
+    # +author+'s turns running or waiting: the running turn when it is
+    # theirs, and their queued ones. Read with the event log held.
+    def pending_turns(author)
+      running = Steer.sender_author(@accumulator.current_turn&.dig(:origin, :author)) == author ? 1 : 0
+      running + @accumulator.queued.count { |row| row[:author] == author }
     end
 
     # 403 not_permitted for a participant's +what+ (a command, a shell

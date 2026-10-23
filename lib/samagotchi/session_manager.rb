@@ -12,6 +12,7 @@ require_relative "atomic_file"
 require_relative "config"
 require_relative "delivery"
 require_relative "steer"
+require_relative "participant_messages"
 
 require_relative "session"
 require_relative "session_inbox"
@@ -1217,6 +1218,9 @@ module Samagotchi
     #   owner (Web::Principal#author: chi web stamps it, never the body);
     #   to the Bridge or the file only when given, so an owner's turn is
     #   sent and saved as before
+    # @param pending_limit [Integer, nil] with +author+: how many of their
+    #   turns may be running or waiting (the Bridge counts them; with no
+    #   worker, their waiting files): :refused 429 too_many_turns past it
     # @param manager [#resume_session, #write_turn_input] this class, or a
     #   stand-in (the web's specs); #session_owner is optional
     # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -1230,7 +1234,7 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
-                          author: nil, state_dir: nil, manager: self, bridge: nil)
+                          author: nil, pending_limit: nil, state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir)
@@ -1248,6 +1252,7 @@ module Samagotchi
           options[:delivery] = delivery unless Delivery.next_step?(delivery)
           options[:no_interrupt] = true if no_interrupt
           options[:author] = author if author
+          options[:pending_limit] = pending_limit if author && pending_limit
           reply = client.post_turn(**options)
           ack = reply.json
           return DeliverResult.new(status: :accepted, via: :bridge, ack: ack) if reply.status == 202 && ack.is_a?(Hash)
@@ -1278,6 +1283,11 @@ module Samagotchi
         return DeliverResult.new(status: :timeout, via: :file,
                                  ack: { "error" => "worker_timeout",
                                         "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+      end
+      # No worker: the participant's waiting files are all their turns.
+      if author && pending_limit && pending_files(session_dir, author) >= pending_limit
+        return DeliverResult.new(status: :refused, code: 429,
+                                 ack: { "error" => "too_many_turns", "detail" => ParticipantMessages::TOO_MANY_TURNS })
       end
       enqueued_id = SecureRandom.uuid
       input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
@@ -1313,6 +1323,16 @@ module Samagotchi
     private_class_method def self.worker_has?(session_dir, feature)
       sidecar = WorkerSidecar.read(session_dir)
       sidecar.nil? || sidecar.features.include?(feature)
+    end
+
+    # The unclaimed input files +author+ wrote.
+    private_class_method def self.pending_files(session_dir, author)
+      SessionInbox.find_new_input_files(session_dir).count do |file|
+        data = JSON.parse(File.read(file))
+        data.is_a?(Hash) && data["author"] == author
+      rescue JSON::ParserError, SystemCallError
+        false
+      end
     end
 
     private_class_method def self.queue_unavailable

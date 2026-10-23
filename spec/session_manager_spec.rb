@@ -1981,6 +1981,19 @@ RSpec.describe Samagotchi::SessionManager do
         expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
       end
 
+      it "counts a participant's waiting files against their pending limit when no worker runs" do
+        allow(described_class).to receive(:resume_session)
+        2.times do
+          expect(described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
+                                                          state_dir: tmpdir, bridge: -> {}).status).to eq(:accepted)
+        end
+        result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
+                                                          state_dir: tmpdir, bridge: -> {})
+        expect(result).to have_attributes(status: :refused, code: 429)
+        expect(result.ack["error"]).to eq("too_many_turns")
+        expect(input_files.size).to eq(2)
+      end
+
       it "writes no participant's file while a worker holds the session with its Bridge gone (it may be an older one)" do
         own("worker")
         result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,

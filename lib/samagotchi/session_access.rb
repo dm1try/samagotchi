@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "participant_messages"
+
 module Samagotchi
   # The seam between chi's session commands (chi send, answer, note,
   # session-scope context, sessions list/stop/restart/archive/unarchive/
@@ -60,13 +62,13 @@ module Samagotchi
     # queue up to their limit.
     class TooManyTurns < RemoteFailed
       CODE = "too_many_turns"
-      def initialize(label) = super("#{label}: this participant has too many turns waiting: wait for one to finish")
+      def initialize(label) = super("#{label}: #{ParticipantMessages::TOO_MANY_TURNS}")
     end
 
     # 429 cap_reached (P3b): the participant's grant spent its cap.
     class CapReached < RemoteFailed
       CODE = "cap_reached"
-      def initialize(label) = super("#{label}: this participant's spending cap is reached: ask the session's owner to raise it")
+      def initialize(label) = super("#{label}: #{ParticipantMessages::CAP_REACHED}")
     end
 
     # A remote's chi web refused a request for a reason this machine checks

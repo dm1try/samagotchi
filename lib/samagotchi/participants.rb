@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "time"
 require_relative "atomic_file"
+require_relative "participant_messages"
 require_relative "archive_store"
 require_relative "session"
 require_relative "web/grants"
@@ -28,7 +29,7 @@ module Samagotchi
     LOG = "participants.jsonl"
     # What a participant is told when they try what only the owner may do:
     # a route (chi web's 403 not_permitted), a command or a shell line.
-    NOT_PERMITTED = "a participant can't do that: only the session's owner can"
+    NOT_PERMITTED = ParticipantMessages::NOT_PERMITTED
 
     # One participant as the sidecar has them. +removed_at+ when the grant
     # was revoked (nil while it works, or once it simply expired:

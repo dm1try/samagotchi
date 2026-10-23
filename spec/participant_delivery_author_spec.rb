@@ -177,6 +177,16 @@ RSpec.describe "a participant's author on delivery" do
       expect(of_type(:command_queued).map { |event| event[:line] }).to eq(["/title y"])
     end
 
+    it "refuses a participant's turn past their pending limit (429 too_many_turns); another's and the owner's go in" do
+      2.times { |i| expect(@client.post_turn(prompt: "q#{i}", client_id: "review:p_1", author: "p:p_1", pending_limit: 2).status).to eq(202) }
+      reply = @client.post_turn(prompt: "q2", client_id: "review:p_1", author: "p:p_1", pending_limit: 2)
+      expect([reply.status, reply.json]).to eq([429, { "error" => "too_many_turns",
+                                                       "detail" => Samagotchi::ParticipantMessages::TOO_MANY_TURNS }])
+      expect(@client.post_turn(prompt: "k", client_id: "review:p_2", author: "p:p_2", pending_limit: 2).status).to eq(202)
+      expect(@client.post_turn(prompt: "mine", client_id: "web:o").status).to eq(202)
+      expect(of_type(:turn_enqueued).map { |event| event[:prompt] }).to eq(%w[q0 q1 k mine])
+    end
+
     it "queues a participant's message as its own turn whatever its delivery asks, and never cuts" do
       reply = @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", delivery: "cut")
       expect(reply.status).to eq(202)

@@ -167,10 +167,13 @@ module Samagotchi
     #   the session's images/
     # @param author [String, nil] who wrote it when it isn't the session's
     #   owner; sent only when given (SessionManager.deliver_turn)
-    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil)
+    # @param pending_limit [Integer, nil] with a participant's +author+: how
+    #   many of their turns may be running or waiting (429 too_many_turns past it)
+    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil, pending_limit: nil)
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:author] = author if author
+      body[:pending_limit] = pending_limit if author && pending_limit
       body[:images] = images if images && !images.empty?
       body[:delivery] = delivery unless delivery.nil? || Delivery.next_step?(delivery)
       body[:deadline] = deadline

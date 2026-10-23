@@ -155,8 +155,8 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       end
     end
 
-    it "never reaches POST …/turn (P3 opens it)" do
-      expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(403)
+    it "reaches POST …/turn as a review turn (P3b; spec/web/participant_turn_spec.rb)" do
+      expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end
 
     it "gets 404 for another session on any session route, as if it didn't exist" do

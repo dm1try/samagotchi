@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
 require "cgi/escape"
+require "json"
 require_relative "grants"
 require_relative "principal"
 require_relative "../archive_store"
+require_relative "../client_id"
+require_relative "../delivery"
+require_relative "../session_inbox"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../log"
@@ -35,7 +39,12 @@ module Samagotchi
         @participant_peers = Hash.new { |hash, key| hash[key] = Set.new }
         @participant_refused = {}
         @participant_expired = Set.new
+        # enqueued_id => grant id of the turns participants sent through this
+        # chi web (their dequeue's check); the oldest go past PARTICIPANT_TURNS_KEPT.
+        @participant_turns = {}
       end
+
+      PARTICIPANT_TURNS_KEPT = 1000
 
       # The participant principal for the first of +tokens+ that is a live
       # grant's, or nil. An ended grant met on the way is kept in the
@@ -181,6 +190,97 @@ module Samagotchi
         html_response(200, format(PARTICIPANT_PAGE, name: name, title: CGI.escapeHTML(participant_title(session)),
                                                     status: CGI.escapeHTML(session.status.to_s),
                                                     participants: others.join(", ")))
+      end
+
+      # ── A participant's turn ──────────────────────────────────────────
+
+      # POST /api/sessions/:id/turn from a participant: a review turn (D6,
+      # D10). Of the body only the prompt counts: the author and client id
+      # are the grant's (review:<id>), the delivery is always queue, no
+      # images, no no_interrupt; the owner's prompt history never sees it.
+      # Refused: a line starting ! or / (403 not_permitted: shell lines
+      # and commands are the owner's), images (403), their turn limit (429
+      # too_many_turns, the Bridge counts) and their cap (429 cap_reached).
+      # Every answer is audited (turn: accepted or refused, why).
+      def handle_participant_turn(req, id, body)
+        grant = principal(req).grant
+        prompt = body["prompt"].to_s
+        return error_response(400, "missing_fields", "prompt is required") if prompt.strip.empty?
+
+        reason = participant_turn_refusal(grant, prompt, body)
+        return participant_turn_refused(grant, prompt, *reason) if reason
+
+        result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
+                                                 delivery: Delivery::QUEUE, author: grant.author,
+                                                 pending_limit: grant.queue_limit + 1,
+                                                 state_dir: @state_dir, manager: @manager,
+                                                 bridge: -> { live_bridge_client(id) })
+        participant_turn_result(grant, prompt, result)
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_tui(e)
+      end
+
+      # [status, code, detail] for a turn refused before delivery, nil to send it.
+      def participant_turn_refusal(grant, prompt, body)
+        return [403, "not_permitted", NOT_PERMITTED] if prompt.lstrip.start_with?("!", "/")
+        return [403, "not_permitted", NOT_PERMITTED] unless body["images"].nil? || body["images"] == []
+
+        participant_cap_refusal(grant)
+      end
+
+      # [429, cap_reached, …] once the grant spent its cap (P3b: spend by
+      # author), nil before.
+      def participant_cap_refusal(_grant) = nil
+
+      def participant_turn_refused(grant, prompt, status, code, detail)
+        audit_turn(grant, prompt, status: "refused", reason: code)
+        error_response(status, code, detail)
+      end
+
+      def participant_turn_result(grant, prompt, result)
+        case result.status
+        when :accepted
+          enqueued_id = result.ack["enqueued_id"]
+          remember_participant_turn(enqueued_id, grant.id)
+          audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id)
+          json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => Delivery::QUEUE))
+        when :refused
+          audit_turn(grant, prompt, status: "refused", reason: result.ack["error"])
+          json_response(result.code, result.ack)
+        when :timeout
+          audit_turn(grant, prompt, status: "refused", reason: "worker_timeout")
+          error_response(504, "worker_timeout", result.detail)
+        else error_response(500, "enqueue_failed", "could not write turn input")
+        end
+      end
+
+      def audit_turn(grant, prompt, status:, **fields)
+        Participants.log(grant.session_id, :turn, state_dir: default_state_dir, participant: grant.id,
+                                                  chars: prompt.length, status: status, **fields.compact)
+      end
+
+      def remember_participant_turn(enqueued_id, grant_id)
+        return if enqueued_id.to_s.empty?
+
+        @participant_mutex.synchronize do
+          @participant_turns[enqueued_id] = grant_id
+          @participant_turns.shift while @participant_turns.size > PARTICIPANT_TURNS_KEPT
+        end
+      end
+
+      # Whether the queued turn +enqueued_id+ of session +id+ is +grant+'s:
+      # chi web's record of who sent it, else (a chi web restarted since)
+      # its waiting input file's author, which only a principal stamps.
+      def own_queued_turn?(grant, id, enqueued_id)
+        sender = @participant_mutex.synchronize { @participant_turns[enqueued_id] }
+        return sender == grant.id if sender
+
+        SessionInbox.find_new_input_files(Session.session_dir(id, state_dir: default_state_dir)).any? do |file|
+          data = JSON.parse(File.read(file))
+          data.is_a?(Hash) && data["enqueued_id"] == enqueued_id && data["author"] == grant.author
+        rescue JSON::ParserError, SystemCallError
+          false
+        end
       end
 
       # Whether a principal's stream may go on (the proxy's running check,
