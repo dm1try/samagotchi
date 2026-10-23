@@ -1069,12 +1069,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
         typed.pop
       })
     end
-    wait_for { prompts.any? }
+    wait_for("the first prompt") { prompts.any? }
   end
 
   def push(event) = @push.call(event)
-
-  def wait_for(timeout: 2, &) = expect(wait_until(timeout: timeout, &)).to(be_truthy)
 
   def finish
     typed << nil
@@ -1086,11 +1084,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     start
     push("type" => "question_requested", "pending_question" => question)
 
-    wait_for { prompts.last == "? " }
-    wait_for { screen.slots[:notes] }
+    wait_for("the question prompt") { prompts.last == "? " }
+    wait_for("the notes") { screen.slots[:notes] }
     expect(screen.slots[:notes]).to include("? Which one?", "  2) Banana")
     typed << "2"
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     # The choices go; one line stays: the question and the answer.
@@ -1108,15 +1106,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     push("type" => "continue_offered", "context" => { "original_prompt" => "task" }, "no_interrupt" => false)
     push("type" => "question_requested", "pending_question" => limit)
 
-    wait_for { screen.slots[:notes]&.any? { |line| line.include?("Step limit") } }
+    wait_for("the note Step limit") { screen.slots[:notes]&.any? { |line| line.include?("Step limit") } }
     expect(screen.slots[:notes].join("\n")).to include("Enter or yes = Continue")
     expect(prompts.last).to eq("? ")
     typed << ""
-    wait_for { screen.lines.any? { |line| line.include?("→ Continue") } }
+    wait_for("the line → Continue") { screen.lines.any? { |line| line.include?("→ Continue") } }
     # The worker's events for that answer: the old offer's slot doesn't come back, nor its own line.
     push("type" => "question_answered", "id" => "c1", "answer" => { "selected" => ["Continue"] })
     push("type" => "continue_resolved", "decision" => "resume", "client_id" => "tui:1")
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(client).to have_received(:answer).with(id: "c1", selected: ["Continue"], freeform: nil)
@@ -1129,9 +1127,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     start
     push("type" => "question_requested", "pending_question" => { "id" => "c1", "kind" => "continue", "options" => %w[Continue Stop],
                                                                  "question" => "Continue it?", "allow_freeform" => true })
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
     typed << "no, it is going in circles"
-    wait_for { screen.lines.any? { |line| line.include?("→ Stop: it is going in circles") } }
+    wait_for("the line → Stop: it is going in circles") { screen.lines.any? { |line| line.include?("→ Stop: it is going in circles") } }
     finish
 
     expect(client).to have_received(:answer).with(id: "c1", selected: ["Stop"], freeform: "it is going in circles")
@@ -1143,10 +1141,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     start
     push("type" => "question_requested", "pending_question" => question)
 
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
     expect(prefills.last).to be_nil
     typed << "2"
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(prefills.last).to eq("half typed")
@@ -1164,13 +1162,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     push("type" => "continue_offered", "context" => { "original_prompt" => "task" }, "no_interrupt" => false)
     push("type" => "question_requested", "pending_question" => { "id" => "c1", "kind" => "continue", "options" => %w[Continue Stop],
                                                                  "question" => "Continue it?", "allow_freeform" => true })
-    wait_for { screen.slots[:notes]&.any? { |line| line.include?("Continue it?") } }
+    wait_for("the note Continue it?") { screen.slots[:notes]&.any? { |line| line.include?("Continue it?") } }
     buffer = ""
     typed << ""
-    wait_for { screen.lines.any? { |line| line.include?("→ Continue") } }
+    wait_for("the line → Continue") { screen.lines.any? { |line| line.include?("→ Continue") } }
     push("type" => "question_answered", "id" => "c1", "answer" => { "selected" => ["Continue"] })
     push("type" => "continue_resolved", "decision" => "resume", "client_id" => "tui:1")
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(prefills.last).to eq("half typed")
@@ -1187,12 +1185,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     it "shows the call and takes y (also when it was pending before the attach)" do
       allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       start(first: snapshot(pending_question: approval))
-      wait_for { prompts.last == "? " }
-      wait_for { screen.slots[:notes] }
+      wait_for("the question prompt") { prompts.last == "? " }
+      wait_for("the notes") { screen.slots[:notes] }
       expect(screen.slots[:notes]).to include("Approve tool call?", "! execute: git push", "  why: pushes (rule git-push, config)",
                                               "  3) Deny")
       typed << "y"
-      wait_for { prompts.last == "> " }
+      wait_for("the turn prompt") { prompts.last == "> " }
       finish
       expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow once"], freeform: nil)
       expect(screen.lines).to include("! execute: git push → Allow once")
@@ -1208,9 +1206,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
         allow(client).to receive(:answer)
           .and_return(Samagotchi::BridgeClient::Response.new(status: 403, body: JSON.generate(refusal)))
         start(first: snapshot(pending_question: approval))
-        wait_for { prompts.last == "? " }
+        wait_for("the question prompt") { prompts.last == "? " }
         typed << "2"
-        wait_for { screen.lines.any? { |line| line.include?("allowing a tool call is up to the user") } }
+        wait_for("the line allowing a tool call is up to the user") { screen.lines.any? { |line| line.include?("allowing a tool call is up to the user") } }
         expect(prompts.last).to eq("? ")
         finish
         expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow this call in this repo"], freeform: nil,
@@ -1223,12 +1221,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
       edit = approval.merge("question" => "edit: /k.conf\n  change: +1 \u22121",
                             "approval" => { "scopes" => %w[once], "preview" => { "text" => "@@ -1 +1 @@\n-a\n+b" } })
       start(first: snapshot(pending_question: edit))
-      wait_for { prompts.last == "? " }
+      wait_for("the question prompt") { prompts.last == "? " }
       push("type" => "question_requested", "pending_question" => edit)
-      wait_for { screen.slots[:notes] }
+      wait_for("the notes") { screen.slots[:notes] }
       expect(screen.slots[:notes]).to include("! edit: /k.conf", "  change: +1 \u22121")
       typed << ""
-      wait_for { prompts.last == "> " }
+      wait_for("the turn prompt") { prompts.last == "> " }
       finish
       expect(screen.lines.count("@@ -1 +1 @@\n-a\n+b")).to eq(1)
     end
@@ -1236,19 +1234,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     it "shows that the question waits in the parent too, live, and a relayed card's close in its own words" do
       start
       push("type" => "question_requested", "pending_question" => approval)
-      wait_for { screen.slots[:notes] }
+      wait_for("the notes") { screen.slots[:notes] }
       push("type" => "question_relay", "id" => "a1", "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp" })
-      wait_for { screen.slots[:notes]&.include?("  waiting in parent pppppppp too (answering here works)") }
+      wait_for("the note waiting in parent pppppppp too (answering here works)") { screen.slots[:notes]&.include?("  waiting in parent pppppppp too (answering here works)") }
       push("type" => "question_relay", "id" => "a1", "relayed_to" => nil, "reason" => "parent_gone")
-      wait_for { !screen.slots[:notes].to_s.include?("waiting in parent") }
+      wait_for("the note waiting in parent to go") { !screen.slots[:notes].to_s.include?("waiting in parent") }
       push("type" => "question_cancelled", "id" => "a1", "reason" => "user")
 
       relayed = approval.merge("id" => "a2", "relay" => { "child_id" => "cccc1111-0", "chain" => ["cccc1111"], "task" => "push it",
                                                           "asked" => "execute: git push" })
       push("type" => "question_requested", "pending_question" => relayed)
-      wait_for { screen.slots[:notes]&.include?("  delegate cccc1111 · push it") }
+      wait_for("the note delegate cccc1111 · push it") { screen.slots[:notes]&.include?("  delegate cccc1111 · push it") }
       push("type" => "question_cancelled", "id" => "a2", "reason" => "answered_on_child")
-      wait_for { prompts.last == "> " }
+      wait_for("the turn prompt") { prompts.last == "> " }
       finish
       expect(screen.lines).to include("! execute: git push → (question cancelled)",
                                       "! cccc1111: execute: git push → (answered in cccc1111)")
@@ -1259,13 +1257,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
       allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       start
       push("type" => "question_requested", "pending_question" => approval)
-      wait_for { prompts.last == "? " }
+      wait_for("the question prompt") { prompts.last == "? " }
       typed << "n; use a PR"
-      wait_for { prompts.last == "> " }
+      wait_for("the turn prompt") { prompts.last == "> " }
       push("type" => "question_requested", "pending_question" => approval.merge("id" => "a2"))
-      wait_for { prompts.last == "? " }
+      wait_for("the question prompt") { prompts.last == "? " }
       typed << ""
-      wait_for { prompts.last == "> " }
+      wait_for("the turn prompt") { prompts.last == "> " }
       finish
       expect(client).to have_received(:answer).with(id: "a1", selected: ["Deny"], freeform: "use a PR")
       expect(client).to have_received(:dismiss_question).with(id: "a2")
@@ -1276,13 +1274,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
   it "re-asks after an invalid answer, and closes when another UI answers first" do
     start
     push("type" => "question_requested", "pending_question" => question)
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << "9"
-    wait_for { screen.lines.include?("Invalid choice '9': pick 1-3") }
+    wait_for("the line Invalid choice '9': pick 1-3") { screen.lines.include?("Invalid choice '9': pick 1-3") }
     expect(screen.lines.last(2)).to eq(["? 9", "Invalid choice '9': pick 1-3"])
     push("type" => "question_answered", "id" => "q1", "answer" => { "selected" => ["Apple"], "freeform" => nil })
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(screen.lines).to include("? Which one? → Apple (in another UI)")
@@ -1291,10 +1289,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
   it "clears the choices and says so when the turn ends with the question open" do
     start
     push("type" => "question_requested", "pending_question" => question)
-    wait_for { screen.slots[:notes] }
+    wait_for("the notes") { screen.slots[:notes] }
 
     push("type" => "turn_canceled", "cancellation_reason" => "ctrl_c")
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(screen.slots).not_to have_key(:notes)
@@ -1316,10 +1314,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     allow(client).to receive(:answer)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << "1"
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(screen.lines).to include("? Which one? → (already answered in another UI)")
@@ -1328,10 +1326,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
   it "dismisses the question on an empty answer, as the REPL does" do
     allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << "  "
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     # Every UI gets the cancel, this one too: it is already closed here.
     push("type" => "question_cancelled", "id" => "q1", "reason" => "dismissed")
     finish
@@ -1345,10 +1343,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     allow(client).to receive(:dismiss_question)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << ""
-    wait_for { prompts.last == "> " }
+    wait_for("the turn prompt") { prompts.last == "> " }
     finish
 
     expect(screen.lines).to include("? Which one? → (question already closed in another UI)")
@@ -1358,10 +1356,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     allow(client).to receive(:dismiss_question)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << ""
-    wait_for { screen.lines.last.to_s.end_with?("Ctrl-C cancels the turn") }
+    wait_for("the line Ctrl-C cancels the turn") { screen.lines.last.to_s.end_with?("Ctrl-C cancels the turn") }
     finish
 
     expect(screen.lines).to include("this session's worker runs an older chi and can't dismiss questions; " \
@@ -1374,12 +1372,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     allow(client).to receive(:answer).and_raise(Errno::ETIMEDOUT.new("bridge answer: no reply within 30s"))
     allow(client).to receive(:dismiss_question).and_raise(Errno::ECONNREFUSED)
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << "1"
-    wait_for { screen.lines.last.to_s.start_with?("could not answer") }
+    wait_for("the line could not answer") { screen.lines.last.to_s.start_with?("could not answer") }
     typed << ""
-    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    wait_for("the line could not dismiss") { screen.lines.last.to_s.start_with?("could not dismiss") }
     finish
 
     expect(screen.lines).to include("could not answer (worker not answering: no reply within 30s)",
@@ -1392,12 +1390,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     late = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
     allow(client).to receive_messages(answer: late, dismiss_question: late)
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     typed << "1"
-    wait_for { screen.lines.last.to_s.start_with?("could not answer") }
+    wait_for("the line could not answer") { screen.lines.last.to_s.start_with?("could not answer") }
     typed << ""
-    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    wait_for("the line could not dismiss") { screen.lines.last.to_s.start_with?("could not dismiss") }
     finish
 
     expect(screen.lines).to include("could not answer (worker not answering in time)",
@@ -1522,7 +1520,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
     end
     typed << "fix the tests/lib/a.rb"
     expect(reads.pop(timeout: 2)).to be_nil
-    SpecWaiting.wait_for("the prompt sent") { sent.any? }
+    wait_for("the prompt sent") { sent.any? }
     expect(sent).to eq(["fix the tests/lib/a.rb"])
   end
 end
@@ -1772,8 +1770,6 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
   let(:typed) { Queue.new }
   let(:prompts) { [] }
 
-  def wait_for(timeout: 2, &) = expect(wait_until(timeout: timeout, &)).to(be_truthy)
-
   it "sends a bare answer as /continue <answer>, an empty one as /continue, and commands as they are" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
     offer = { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [],
@@ -1781,7 +1777,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     allow(client).to receive(:follow) { |&block| block.call(offer) && double("stream", close: nil) }
     # Reads block until typed into, like Reline.
     thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     ["no, too slow", "", "/model", nil].each { |line| typed << line }
     thread.join(2)
@@ -1802,7 +1798,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
                                                     "continue_offer" => { "context" => {}, "no_interrupt" => false } } }
     allow(client).to receive(:follow) { |&block| block.call(offer) && double("stream", close: nil) }
     thread = Thread.new { parent.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
-    wait_for { prompts.last == "? " }
+    wait_for("the question prompt") { prompts.last == "? " }
 
     ["", "no", nil].each { |line| typed << line }
     thread.join(2)
@@ -2008,7 +2004,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
         when :dequeued then @push.call("type" => "turn_dequeued", "enqueued_id" => "e2", "client_id" => "web:2")
         else next line
         end
-        sleep(0.2)
+        # The event is queued before this empty line, so the loop takes it first.
         ""
       })
 
@@ -2571,7 +2567,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
 
     attached.run(input: lambda do |_prompt, _prefill|
       # The read starts on its own thread as the loop takes the snapshot in.
-      wait_until(timeout: 2) { attached.running? }
+      wait_for("the turn running") { attached.running? }
       allow(Reline).to receive(:line_buffer).and_return("half typed")
       handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
       nil # then Ctrl-D, in the same read
@@ -2848,7 +2844,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
         expect(client).not_to have_received(:request_exit)
         push.call("type" => "command_ran", "command_id" => "c1", "client_id" => "web:tab", "line" => "/model x",
                   "status" => "ok", "output" => "runtime model set to x", "changed" => ["model"], "queued" => true)
-        sleep 2
+        sleep 30 # sleep-ok: no more input: the read stays open until the archive's stop ends it
         nil
       })
 
