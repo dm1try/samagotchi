@@ -1325,15 +1325,23 @@ module Samagotchi
             record_history(body, line) if PromptHistory.shell_line?(line)
             json_response(202, reply.json || { status: "accepted" })
           when 400
-            # One of this chi's own commands the worker doesn't know: it runs an older chi.
+            # One of this chi's own commands the worker doesn't know: it runs an
+            # older chi. command: which one, so a remote TUI names it as its
+            # Bridge's own 400 unknown_command would (WebBridgeClient).
             name = reply.json&.dig("error") == "unknown_command" && SessionCommands.builtin_name(line)
-            next error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "run #{name}")) if name
+            next older_worker_command(id, name) if name
 
             error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))
           end
         end
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
+      end
+
+      # 501 not_supported for a builtin +name+ ("/title") the worker lacks.
+      def older_worker_command(id, name)
+        words = BridgeClient.stale_worker_message(id, cant: "run #{name}")
+        json_response(501, { error: "not_supported", detail: words, message: words, command: name })
       end
 
       # Hand a request to the session's live Bridge (+client+, nil without

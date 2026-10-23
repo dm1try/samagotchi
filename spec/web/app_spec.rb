@@ -3540,6 +3540,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(resp).to include("error" => "not_supported")
       expect(resp["detail"]).to eq("this session's worker runs an older chi and can't run /llm-context; " \
                                    "restart it: chi sessions stop s1 && chi --resume s1 (its turns still work)")
+      expect(resp).to include("command" => "/llm-context", "message" => resp["detail"])
     end
 
     it "says so when the session's worker is older than the route" do
