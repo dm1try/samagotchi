@@ -154,10 +154,12 @@ rules:
   # code). add NAME --push and chi context push don't run anything. Quoted
   # words ("context", '--cmd=…') and backslash-newline continuations still
   # match; xargs chi context add asks whatever it is fed (its arguments
-  # aren't in the command).
+  # aren't in the command). chi's global flag --remote NAME (the only one
+  # that goes before a subcommand) may stand between chi and context;
+  # CHI_REMOTE=NAME leaves the words as they are.
   - id: chi-context-cmd
     tool: shell
-    command: '\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b(?:[^\n]|\\\n)*[\s"''\\]--cmd(?:[\s="''\\]|$)|\bxargs\b[^;&|\n]*\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b'
+    command: '\bchi["'']?(?:[\s\\]+["'']?--remote(?:=|["'']?[\s\\]+["'']?)[^\s"''\\;&|]+["'']?)*[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b(?:[^\n]|\\\n)*[\s"''\\]--cmd(?:[\s="''\\]|$)|\bxargs\b[^;&|\n]*\bchi["'']?(?:[\s\\]+["'']?--remote(?:=|["'']?[\s\\]+["'']?)[^\s"''\\;&|]+["'']?)*[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b'
     verdict: ask
     scopes: [once]
     reason: attaches a command chi will run every few minutes, outside the guardrails
@@ -165,10 +167,11 @@ rules:
   # ── chi broadcast: for the user, not an agent ─────────────────────────
   # chi broadcast refuses to run inside a session (SAMAGOTCHI_PARENT_SESSION
   # is set there), but an agent can unset that; this asks every time, and
-  # only the user may allow it. Quoted words and continuations still match.
+  # only the user may allow it. Quoted words, continuations and --remote
+  # NAME before the word still match.
   - id: chi-broadcast
     tool: shell
-    command: '\bchi["'']?[\s\\]+["'']?broadcast\b'
+    command: '\bchi["'']?(?:[\s\\]+["'']?--remote(?:=|["'']?[\s\\]+["'']?)[^\s"''\\;&|]+["'']?)*[\s\\]+["'']?broadcast\b'
     verdict: ask
     scopes: [once]
     reason: shares a note with every session it may concern; chi broadcast is for the user, not an agent
