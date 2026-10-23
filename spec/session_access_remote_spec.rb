@@ -114,6 +114,15 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect { remote.restart(make.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
     end
 
+    it "asks chi web to stop with the CLI's wait, which it caps at SessionManager::STOP_WAIT" do
+      session = make
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
+
+      expect(remote.stop(session.id, wait: Samagotchi::SessionManager::STOP_WAIT)).to be(true)
+      expect(Samagotchi::SessionManager).to have_received(:stop_session)
+        .with(session.id, state_dir: anything, wait: Samagotchi::SessionManager::STOP_WAIT)
+    end
+
     it "shows a session as the commands read it: the file's status, folder, owner and pending question" do
       session = make(owner: "worker", status: "running")
       session.pending_question = Samagotchi::PendingQuestion.new(id: "q1", question: "Go?", options: %w[Yes No])

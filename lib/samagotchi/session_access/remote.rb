@@ -317,13 +317,13 @@ module Samagotchi
 
       # --- sessions
 
-      # chi web stops it and waits its own bounded time (Web::App::
-      # STOP_WAIT_SECONDS, not +wait+).
+      # chi web stops it and waits up to +wait+ seconds (capped there at
+      # SessionManager::STOP_WAIT; a chi web before the field waits its
+      # Web::App::STOP_WAIT_SECONDS).
       # @return [Boolean] whether the worker had released it by then, as
       #   chi web's released says (absent: true)
       def stop(id, wait:)
-        _ = wait
-        reply = request(:post, "#{session_path(id)}/stop")
+        reply = request(:post, "#{session_path(id)}/stop", body: { wait: wait })
         raise_refusal(reply) unless reply.status == 200
 
         reply.json["released"] != false

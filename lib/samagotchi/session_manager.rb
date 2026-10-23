@@ -706,6 +706,10 @@ module Samagotchi
     end
 
     STOP_CANCEL_WAIT = 3.0
+    # How long a stop from the CLI (chi sessions stop, delete, a continue's
+    # orphan) waits for the worker to let go of the session, here or
+    # through chi web (POST …/stop's wait, capped at it).
+    STOP_WAIT = 10
     # The cancel reason of a turn a session stop cancels (Bridge::CANCEL_REASONS):
     # not the user's Stop, which only ends the turn ("user").
     STOP_CANCEL_REASON = "session_stopped"
@@ -869,7 +873,7 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
     # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
     #   outlived the wait
-    def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: 10)
+    def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT)
       sd = state_dir || Session.default_state_dir
       given = id_or_prefix.to_s
       # Only a plain id: anything else could name a path outside the state dir.

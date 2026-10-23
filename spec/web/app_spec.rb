@@ -2975,6 +2975,16 @@ RSpec.describe Samagotchi::Web::App do
         .with(session.id, state_dir: state_dir, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
     end
 
+    it "waits the body's seconds on POST /stop (a CLI through --remote), capped at the CLI's own wait" do
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
+
+      [[{ wait: 7 }, 7], [{ wait: 600 }, Samagotchi::SessionManager::STOP_WAIT], [{ wait: "x" }, 2.0], [{ wait: -1 }, 2.0]]
+        .each do |body, wait|
+          app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST", body: JSON.generate(body)))
+          expect(Samagotchi::SessionManager).to have_received(:stop_session).with(session.id, state_dir: state_dir, wait: wait).at_least(:once)
+        end
+    end
+
     it "says on POST /stop when the worker had not let go within its wait (released: false)" do
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
 

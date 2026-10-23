@@ -170,7 +170,7 @@ module Samagotchi
     private_class_method def self.discard_failed_link(id, state_dir)
       orphan = SessionChain.next_of(id, state_dir: state_dir) or return
       if SessionManager.refuse_tui!(orphan, state_dir: state_dir) &&
-         !SessionManager.stop_session(orphan, state_dir: state_dir, wait: 10)
+         !SessionManager.stop_session(orphan, state_dir: state_dir, wait: SessionManager::STOP_WAIT)
         raise SessionManager::DeleteRefused.new(orphan, :still_stopping)
       end
 

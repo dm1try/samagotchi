@@ -39,6 +39,8 @@ and commands may change between minor versions. How releases are made:
 - Attached terminal: a command typed right after the text `/unqueue` put back in the input (`/unqueue` again,
   `/queue TEXT`) runs as the command, with the text kept in the input, instead of going out joined to the text as
   one prompt.
+- `chi --remote NAME sessions stop` waits up to 10 s there for the worker to let go, as `chi sessions stop` does
+  here (chi web waited 2 s, so a slow worker read "still shutting down" more often); the page's Stop still waits 2 s.
 - The terminal's status line, cut to the terminal's width, ends at a word with `…` instead of mid-word (in a pipe
   too).
 

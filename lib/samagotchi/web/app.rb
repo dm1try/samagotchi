@@ -83,7 +83,11 @@ module Samagotchi
       IMAGE_TYPES = { "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "gif" => "image/gif",
                       "webp" => "image/webp" }.freeze
 
-      # POST /stop waits this long for the worker to let go of the session.
+      # POST /stop waits this long for the worker to let go of the session
+      # when the body names no wait (the page's Stop: it shows the stop at
+      # once, and a Rack thread isn't held for it). A CLI through --remote
+      # sends its own, SessionManager::STOP_WAIT at most, so chi sessions
+      # stop waits as long as here.
       STOP_WAIT_SECONDS = 2.0
 
       # GET /api/events: a `: ping` this often while idle, a queue this deep
@@ -1640,18 +1644,27 @@ module Samagotchi
         end
       end
 
-      # POST /api/sessions/:id/stop: 200 {status: "stopped", session_id,
-      # released}: released, whether the worker let go of the session
-      # within STOP_WAIT_SECONDS (chi sessions stop's two wordings); 409
+      # POST /api/sessions/:id/stop {wait?}: 200 {status: "stopped",
+      # session_id, released}: released, whether the worker let go of the
+      # session within the wait (STOP_WAIT_SECONDS, or the body's seconds up
+      # to SessionManager::STOP_WAIT: chi sessions stop's two wordings); 409
       # owned_by_tui.
-      def handle_stop(_req, id)
+      def handle_stop(req, id)
         # Bounded, so a Rack thread isn't held long; a worker still exiting
         # after it just means an immediate resume finds it (rare).
-        released = @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
+        released = @manager.stop_session(id, state_dir: @state_dir, wait: stop_wait(req))
         @hub&.touch(id)
         json_response(200, { status: "stopped", session_id: id, released: released == true })
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
+      end
+
+      # The body's wait (a number of seconds), capped at
+      # SessionManager::STOP_WAIT; STOP_WAIT_SECONDS without one.
+      def stop_wait(req)
+        body = parse_json(request_body(req, 4096))
+        wait = body["wait"] if body.is_a?(Hash)
+        wait.is_a?(Numeric) && wait.positive? ? [wait, SessionManager::STOP_WAIT].min : STOP_WAIT_SECONDS
       end
 
       # POST /api/sessions/:id/restart: hand the session to a new worker on

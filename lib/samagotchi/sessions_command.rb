@@ -389,7 +389,7 @@ module Samagotchi
       ok = ids.uniq.map do |given|
         begin
           id = @access.resolve_id(given)
-          released = @access.stop(id, wait: 10)
+          released = @access.stop(id, wait: Samagotchi::SessionManager::STOP_WAIT)
         rescue Samagotchi::SessionManager::OwnedByTUI => e
           @stdout.flush
           @stderr.puts e.message
