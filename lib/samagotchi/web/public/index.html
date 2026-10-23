@@ -981,7 +981,8 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-row.fresh{background:var(--accent-tint)}
 .ws-row.fresh .k{color:var(--accent)}
 .ws-row.muted{opacity:.6}
-/* Steering (drop / undrop): a row's actions on hover and keyboard focus (always where there is no hover); a pending op's row dashed warn with its pill, the footer counting them. */
+/* Steering (drop / undrop, pin / unpin): a row's actions on hover and keyboard focus (always where there is no hover); a pending op's row dashed warn with its pill, the footer counting them; a pinned row's 📌. */
+.ws-pin{flex:none;font-size:10px;line-height:1}
 .ws-act{flex:none;display:inline-flex;gap:4px;opacity:0}
 .ws-row:hover .ws-act,.ws-row:focus-within .ws-act,.ws-ghead:hover .ws-act,.ws-ghead:focus-within .ws-act,.ws-row.pending .ws-act{opacity:1}
 @media (hover:none){.ws-act{opacity:1}}

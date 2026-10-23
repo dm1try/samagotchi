@@ -1024,7 +1024,10 @@ turn view ignores it.
   pending changes (`undo all`), in every tab and after a reload. On a phone a
   tap on a row opens its actions under it. `drop` is greyed, with why on
   hover, for an item only edited, a memory only preloaded, or one already
-  forgotten.
+  forgotten. Under a strategy with forget a row also offers `pin`
+  (`/working-set pin`, pending as `applies next turn` mid-turn); a pinned row
+  shows `📌` and `unpin` (under any strategy), and its `drop` is greyed until
+  you unpin it.
 
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.
@@ -1040,8 +1043,8 @@ the same live, after a reload and in every tab:
 - **dropped** (struck): you dropped it (`/working-set drop`, the list's
   `drop`); its reads are sent as stubs under every strategy until you undrop
   it.
-- **pinned** (`📌`, under a strategy with forget only): you pinned it
-  (`/working-set pin`, the list's `pin`); `forget_outputs` refuses it.
+- **pinned** (`📌`): you pinned it (`/working-set pin`, the list's `pin`);
+  `forget_outputs` refuses it.
 - **forgotten** (struck): nothing of the item's content is still sent to the
   model under the session's current LLM context strategy (`forget_outputs`
   forgot every read of it; see

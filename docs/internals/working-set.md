@@ -221,6 +221,12 @@ command route (`createWorkingSet`'s `sendLine`). Pending ops are the queued line
 `working_set.js pendingSteers` until each one's `command_ran`; a seed clears them (the replay brings them back).
 A steer line names a file by its absolute path, a memory as `memory:NAME`, a URL by the server's full key. `dropped`
 is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
+`overlay` carries the server's `pinned`. A row offers `pin` only when the strategy the session's `llm ctx` chip names
+has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A pinned row shows
+`📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the
+exception's words, so it must keep a way out). A pending pin or unpin is dashed with `applies next turn`, and
+`pendingSteers` nets it with its inverse; a pin queued after a drop stands for both (the worker's pin takes the
+pending drop off).
 
 **Looks** (design spec §3, §5): a stale line is faded (`opacity: .55`); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are

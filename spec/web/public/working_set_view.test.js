@@ -183,7 +183,7 @@ test("the server's snapshot out of order: a GET an event overtook, or one behind
 });
 
 // Steering (P3a): a view whose list is open, the lines it posts recorded.
-function steeringView({ wide = true } = {}) {
+function steeringView({ wide = true, llmContext = null } = {}) {
   const infoEl = document.createElement("div");
   infoEl.innerHTML = '<button class="ws-chip"></button>';
   document.body.append(infoEl);
@@ -191,7 +191,7 @@ function steeringView({ wide = true } = {}) {
   const win = { innerWidth: wide ? 1200 : 390, innerHeight: 800 };
   const ws = createWorkingSet({
     historyEl: document.createElement("div"), infoEl, session: () => "s1",
-    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [] }),
+    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], llmContext }),
     sendLine: (line) => { sent.push(line); return Promise.resolve(); },
   });
   const turn = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { ...read("lib/b.rb"), status: "ok" }] }] }, 0);
@@ -245,6 +245,45 @@ test("pending ops come from command_queued (any client's), net with their invers
   assert.equal(ws.pending().size, 1);
   ws.seed([]);
   assert.equal(ws.pending().size, 0);
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed drop, under any strategy", () => {
+  const none = steeringView();
+  assert.equal(none.pop.querySelector('[data-op="pin"]'), null, "no forget layer: no pin");
+  none.ws.popover.close();
+  none.infoEl.remove();
+  none.pop.remove();
+
+  const { ws, pop, sent, row, infoEl } = steeringView({ llmContext: { strategy: "stale,forget" } });
+  assert.match(pop.querySelector(".ws-hint").textContent, /Pin keeps an item from the model's forget/);
+  row("a.rb").querySelector('[data-op="pin"]').click();
+  assert.equal(sent.at(-1), "/working-set pin /p/lib/a.rb");
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40, pinned: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
+  const a = row("a.rb");
+  assert.ok(a.querySelector(".ws-pin"));
+  assert.equal(a.querySelector('[data-op="drop"]').disabled, true);
+  assert.equal(a.querySelector('[data-op="drop"]').title, "pinned by the user: unpin it first");
+  a.querySelector('[data-op="unpin"]').click();
+  assert.equal(sent.at(-1), "/working-set unpin /p/lib/a.rb");
+  // Queued while a turn runs: pending until its command_ran, undo is the unpin.
+  ws.commandQueued({ command_id: "p1", line: "/working-set pin /p/lib/b.rb", waits: "turn_end" });
+  assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "applies next turn");
+  row("b.rb").querySelector('[data-ws="steer"]').click();
+  assert.equal(sent.at(-1), "/working-set unpin /p/lib/b.rb");
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("a pinned row keeps its unpin without the forget layer (its drop waits for it)", () => {
+  const { ws, pop, row, infoEl } = steeringView();
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40, pinned: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
+  assert.ok(row("a.rb").querySelector(".ws-pin"));
+  assert.ok(row("a.rb").querySelector('[data-op="unpin"]'));
+  assert.equal(row("b.rb").querySelector('[data-op="pin"]'), null);
   ws.popover.close();
   infoEl.remove();
   pop.remove();

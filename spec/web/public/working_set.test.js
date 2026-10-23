@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
+  forgetOn, pinnable,
   stepRange, stepTag, tokensText, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
@@ -329,7 +330,9 @@ test("steer lines: the words name a file by its path, a memory as memory:NAME, a
     { op: "drop", ids: ["file:/p/lib/a.rb", "memory:style", "url:https://x.dev/aaa/full"] });
   assert.deepEqual([file, memory, url].map(steerId), ["file:/p/lib/a.rb", "memory:style", "url:https://x.dev/aaa/full"]);
   assert.equal(parseSteerLine("/working-set"), null);
-  assert.equal(parseSteerLine("/working-set pin /p/a.rb"), null);
+  assert.deepEqual(parseSteerLine("/working-set pin /p/a.rb"), { op: "pin", ids: ["file:/p/a.rb"] });
+  assert.deepEqual(parseSteerLine("/working-set unpin memory:m"), { op: "unpin", ids: ["memory:m"] });
+  assert.equal(parseSteerLine("/working-set pinch /p/a.rb"), null);
   assert.equal(parseSteerLine("/model x"), null);
 });
 
@@ -337,6 +340,9 @@ test("pendingSteers: queued lines in order, an op then its inverse netting to no
   const pending = pendingSteers(["/working-set drop /p/a.rb /p/b.rb", "/model x", "/working-set undrop /p/a.rb", "/working-set undrop memory:m"]);
   assert.deepEqual([...pending], [["file:/p/b.rb", "drop"], ["memory:m", "undrop"]]);
   assert.equal(pendingSteers([]).size, 0);
+  // A pin then its unpin nets; a pin after a pending drop is the pin (it takes the drop off).
+  assert.deepEqual([...pendingSteers(["/working-set pin /p/a.rb", "/working-set unpin /p/a.rb", "/working-set drop /p/b.rb", "/working-set pin /p/b.rb"])],
+    [["file:/p/b.rb", "pin"]]);
 });
 
 test("dropRefusal: a read item drops; edit-only, preloaded-only, forgotten ones say why; muted, dropped, unknown have no drop", () => {
@@ -349,6 +355,31 @@ test("dropRefusal: a read item drops; edit-only, preloaded-only, forgotten ones 
   assert.equal(dropRefusal(item({ tokens: undefined })), null);
   assert.equal(dropRefusal(item({ state: "dropped" })), null);
   assert.equal(dropRefusal(item({ muted: true })), null);
+  assert.equal(dropRefusal(item({ pinned: true })), "pinned by the user: unpin it first");
+});
+
+test("pinnable and forgetOn: a known item pins (edit-only too), not a muted, dropped, preloaded-only or unknown one; only under forget", () => {
+  const item = (extra) => ({ kind: "file", key: "/p/a.rb", ops: ["read"], state: "live", tokens: 40, ...extra });
+  assert.equal(pinnable(item()), true);
+  assert.equal(pinnable(item({ ops: ["edit"], tokens: 0 })), true);
+  assert.equal(pinnable(item({ state: "forgotten" })), true);
+  assert.equal(pinnable(item({ state: "dropped" })), false);
+  assert.equal(pinnable(item({ muted: true })), false);
+  assert.equal(pinnable(item({ tokens: undefined })), false);
+  assert.equal(pinnable({ kind: "memory", key: "m", ops: [], preloaded: true, state: "live" }), false);
+  assert.equal(forgetOn({ strategy: "stale,forget" }), true);
+  assert.equal(forgetOn({ strategy: "forget" }), true);
+  assert.equal(forgetOn({ strategy: "stale" }), false);
+  assert.equal(forgetOn({ strategy: "none" }), false);
+  assert.equal(forgetOn(null), false);
+});
+
+test("the server's pinned: overlaid by key, and taken off when the server drops it", () => {
+  const items = itemsOfTurn(turnOf([file("/w/lib/a.rb"), file("/w/lib/b.rb")]), 0);
+  const lit = overlay(items, { items: [{ kind: "file", key: "/w/lib/a.rb", state: "live", tokens: 12, pinned: true }, { kind: "file", key: "/w/lib/b.rb", state: "live", tokens: 3, pinned: false }], at: 4 });
+  assert.deepEqual(lit.map((i) => i.pinned), [true, undefined]);
+  assert.equal(overlay(lit, { items: [{ kind: "file", key: "/w/lib/a.rb", state: "live", tokens: 12, pinned: true }, { kind: "file", key: "/w/lib/b.rb", state: "live", tokens: 3 }], at: 4 })[0], lit[0], "unchanged: the same object");
+  assert.equal(overlay(lit, { items: [{ kind: "file", key: "/w/lib/a.rb", state: "live", tokens: 12 }], at: 4 })[0].pinned, undefined);
 });
 
 test("the server's dropped state: overlaid, struck in a group (dropped when all are), counted apart in the footprint", () => {
