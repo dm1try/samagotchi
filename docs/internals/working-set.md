@@ -235,7 +235,8 @@ first). A row offers `pin` only when the strategy the session's `llm ctx` chip n
 has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A `command_ran` that carries
 `llm_context` redraws the open list (`strategyChanged`), so its pins come and go with the strategy at once. A pinned row shows
 `📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the
-exception's words, so it must keep a way out). A pending pin or unpin is dashed with `applies next turn`, and
+exception's words, so it must keep a way out). A pending row hides its tokens and step tag (its pill and undo take their room) and its ops text gives way before
+the name. A pending pin or unpin is dashed with `applies next turn`, and
 `pendingSteers` nets it with its inverse; a pin queued after a drop stands for both (the worker's pin takes the
 pending drop off). A drop queued after a pin, or of a pinned item, is one the worker refuses (`unpin_first`), so it
 is never pending: the row keeps the pin's pill and undo (a pinned row its 📌 and a greyed drop with the refusal's

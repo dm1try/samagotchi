@@ -974,7 +974,7 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-row a.t:hover{text-decoration:underline}
 .ws-row .e{flex:none;color:var(--accent);font-weight:600}
 .ws-row .n{flex:none;color:var(--text-faint)}
-.ws-row .st{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
+.ws-row .st{flex:0 4 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
 .ws-row .chev{flex:none;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
 .ws-row .ws-step{flex:none}
 .ws-row .tk,.ws-row .c{flex:none;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
@@ -994,6 +994,8 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-ghead>.ws-group-head{flex:1;min-width:0}
 .ws-row.pending{border:1px dashed var(--warn-border);background:var(--warn-bg)}
 .ws-row.pending:hover{background:var(--warn-bg)}
+/* A pending row: its pill and undo take the tokens' and the step tag's room, so the name stays readable. */
+.ws-row.pending .tk,.ws-row.pending .ws-step{display:none}
 .ws-pend{flex:none;padding:0 6px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;white-space:nowrap}
 .ws-pending{display:flex;align-items:center;gap:6px;margin-top:8px;padding:4px 8px;border:1px dashed var(--warn-border);border-radius:6px;background:var(--warn-bg);color:var(--warn-text);font-size:11.5px;line-height:20px}
 .ws-pending .ws-act-b{flex:none;margin-left:auto;white-space:nowrap;color:var(--warn-text);border-color:var(--warn-border)}
