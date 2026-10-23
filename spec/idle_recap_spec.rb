@@ -43,11 +43,11 @@ RSpec.describe Samagotchi::IdleRecap do
   # (the job never waits on the summarizer itself).
   def drive(idle)
     idle.tick
-    500.times do
-      break unless idle.in_flight?
+    wait_for("the recap attempt to be collected") do
+      next true unless idle.in_flight?
 
-      sleep(0.01)
       idle.tick
+      false
     end
   end
 
@@ -588,7 +588,7 @@ RSpec.describe Samagotchi::IdleRecap do
         # A turn starts: the in-flight recap must never render.
         idle.invalidate!
         proceed.push(:go)
-        500.times { break if finished; sleep(0.01) } # the summarizer may still be finishing: wait for it
+        wait_for("the summarizer to finish") { finished }
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
@@ -668,18 +668,26 @@ RSpec.describe Samagotchi::IdleRecap do
     it "invalidates a generation that was in-flight" do
       engine = stub_engine(messages: messages_with_two_user_turns)
       slow_client = double("slow_client")
+      started = Queue.new
+      proceed = Queue.new
       finished = false
-      allow(slow_client).to receive(:summarize) { sleep(0.3); finished = true; "recap" }
+      allow(slow_client).to receive(:summarize) do
+        started.push(:in)
+        proceed.pop
+        finished = true
+        "recap"
+      end
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       gen_before = idle.generation
       idle.tick
-      sleep(0.05)
+      pop!(started, "the summarizer to start")
       idle.invalidate!
       expect(idle.generation).to be > gen_before
       allow(idle).to receive(:should_fire?).and_return(false)
       drive(idle)
-      500.times { break if finished; sleep(0.01) } # the summarizer is still sleeping: wait for it to finish
+      proceed.push(:go)
+      wait_for("the summarizer to finish") { finished }
       expect(engine).not_to have_received(:emit_recap)
     end
 
@@ -782,7 +790,8 @@ RSpec.describe Samagotchi::IdleRecap do
                                  timeout: 30.0, client: blocked_client, clock: -> { base_time })
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       3.times { idle.tick }
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+      # not blocked on the summarizer, which holds on the gate until the example releases it
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
       expect(idle).to be_in_flight
       called.pop
       expect(blocked_client).to have_received(:summarize).once
@@ -803,7 +812,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(ticks).to eq(5)
       expect(idle).to be_in_flight
       gate.push(:go)
-      500.times { break if finished.any?; sleep(0.01) } # let the summarizer thread finish
+      wait_for("the summarizer thread to finish") { finished.any? }
     end
 
     it "drops an attempt that runs past the timeout" do
@@ -816,7 +825,7 @@ RSpec.describe Samagotchi::IdleRecap do
       idle.tick
       expect(idle).not_to be_in_flight
       gate.push(:go)
-      500.times { break if finished.any?; sleep(0.01) } # let the summarizer thread finish
+      wait_for("the summarizer thread to finish") { finished.any? }
       idle.tick
       expect(engine).not_to have_received(:emit_recap)
     end
@@ -1101,11 +1110,12 @@ RSpec.describe Samagotchi::IdleRecap do
       idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 0.2, client: client, store: store)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(idle.write_now).to be_nil
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.0
+      # the 0.2 s timeout, not the stuck summarizer, which holds on the gate until released
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
       expect(store.saved).to be_nil
       expect(idle).not_to be_in_flight
       gate.push(:go)
-      500.times { break if finished; sleep(0.01) } # the overdue thread may still be in the stub: let it finish
+      wait_for("the overdue summarizer thread to finish") { finished }
     end
 
     it "waits for the attempt already in flight instead of starting another" do
@@ -1117,10 +1127,18 @@ RSpec.describe Samagotchi::IdleRecap do
       idle = idle_for(engine, client)
       idle.tick
       expect(idle).to be_in_flight
-      Thread.new { sleep(0.1); gate.push(:go) }
+      # Released once write_now waits on the attempt (the example's thread
+      # blocks in its join), so it is the in-flight attempt it waits for.
+      waiter = Thread.current
+      releaser = Thread.new do
+        wait_for("write_now to wait on the attempt") { waiter.status == "sleep" }
+      ensure
+        gate.push(:go)
+      end
       expect(idle.write_now).to eq("from the idle window")
       expect(client).to have_received(:summarize).once
-      500.times { break if finished; sleep(0.01) } # write_now joined the thread: make sure the stub really finished
+      join!(releaser, "the gate's releaser")
+      expect(finished).to be(true)
     end
   end
 
@@ -1139,7 +1157,7 @@ RSpec.describe Samagotchi::IdleRecap do
       engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
       idle = idle_for(engine)
       expect(idle.request_now).to eq(:started)
-      500.times { break unless idle.in_flight?; sleep(0.01); idle.tick }
+      drive(idle)
       expect(engine).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3)
     end
 
@@ -1164,7 +1182,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.request_now).to eq(:started)
       expect(idle.request_now).to eq(:in_flight)
       gate.push(:go)
-      500.times { break unless idle.in_flight?; sleep(0.01); idle.tick } # collect it so the thread can't outlive the example
+      drive(idle) # collect it so the thread can't outlive the example
     end
   end
 end
