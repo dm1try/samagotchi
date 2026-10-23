@@ -1027,8 +1027,10 @@ session bar shows the `mem N` chip again. The turn view ignores it.
   on a phone it isn't shown.
 - **The footprint**, one line under each finished turn's block, live and after
   a reload: `touched …/web/public/ · 4 files · ◆ 2 memories s2–10 · +1 url ·
-  edited 1`. A step tag (`s2`) goes to that call's row; the rest opens the
-  turn's list. A turn that touched nothing has none.
+  edited 1`, then `n stale`, `n forgotten` or `n dropped` while some are (a file
+  changed after the turn read it, even at its very end, says so here). A step
+  tag (`s2`) goes to that call's row; the rest opens the turn's list. A turn
+  that touched nothing has none.
 - **The `set N` chip** in the session bar, in place of the `mem N` chip (whose
   tooltip goes too): the session's whole set, preloaded (`--memory`) and muted
   (`--mute`) memories included; its dot lights when the set changed since you

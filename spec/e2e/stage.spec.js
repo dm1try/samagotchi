@@ -582,6 +582,7 @@ test.describe("the working set", () => {
       await handedOff(page, 1);
       await page.reload();
       await expect(page.locator("#history .turn-work + .ws-foot .l.file.stale")).toHaveText("README.md");
+      await expect(page.locator("#history .turn-work + .ws-foot .s")).toHaveText("1 stale");
     } finally {
       fs.writeFileSync(readme, readmeText);
     }

@@ -126,10 +126,17 @@ test("the server's snapshot: kept by its at, overlaid on every form, the footpri
   const live = ws.liveItems({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }] }] });
   assert.equal(live.items[0].state, "forgotten");
 
+  // A turn-end stale (the rail is gone by then): the footprint says it.
+  ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "stale", tokens: 90 }], at: 7 });
+  assert.ok(foot.querySelector(".l.stale"));
+  assert.equal(foot.querySelector(".s").textContent, "1 stale");
+  assert.equal(foot.querySelector(".f"), null);
+
   // A newer one where it is live again: the strike goes.
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 90 }], at: 8 });
   assert.equal(foot.querySelector(".l.forgotten"), null);
   assert.equal(foot.querySelector(".f"), null);
+  assert.equal(foot.querySelector(".s"), null);
   historyEl.remove();
   infoEl.remove();
 });

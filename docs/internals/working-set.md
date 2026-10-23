@@ -286,5 +286,5 @@ leaves nothing behind. The rail adds a dashed `+ name · next turn` line per pen
 dark one, where a lighter grey reads as plain secondary text; a footprint label `.55` on both, its text already faint); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are
 forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`
-in words (colour is never alone) and shows `~1.2k` tokens per row (`tokensText`). A footprint adds `n forgotten`,
-struck. Titles add `(stale)` or `(forgotten)` per member.
+in words (colour is never alone) and shows `~1.2k` tokens per row (`tokensText`). A footprint adds `n stale` (plain; a file the turn's
+end found changed shows there, the rail is gone by then) and `n forgotten`, struck. Titles add `(stale)` or `(forgotten)` per member.

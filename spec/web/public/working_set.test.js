@@ -316,7 +316,8 @@ test("opsText and the footprint say stale and forgotten in words (colour is neve
   assert.equal(opsText(a), "read · stale");
   assert.equal(opsText(b), "edited · forgotten");
   assert.equal(footprint([a, b]).forgotten, 1);
-  assert.equal(footprintText([a, b]), "touched a.rb · b.rb · edited 1 · 1 forgotten");
+  assert.equal(footprint([a, b]).stale, 1);
+  assert.equal(footprintText([a, b]), "touched a.rb · b.rb · edited 1 · 1 stale · 1 forgotten");
 });
 
 // ── steering (P3a: drop / undrop) ────────────────────────────────────────
