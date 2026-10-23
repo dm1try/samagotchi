@@ -287,6 +287,14 @@ test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed
   // Queued while a turn runs: pending until its command_ran, undo is the unpin.
   ws.commandQueued({ command_id: "p1", line: "/working-set pin /p/lib/b.rb", waits: "turn_end" });
   assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "applies next turn");
+  // A drop queued after it (another client's) is refused by the worker: the pin stays pending (no drop offered).
+  ws.commandQueued({ command_id: "p2", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
+  assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "applies next turn");
+  assert.equal(row("b.rb").querySelector('[data-op="drop"]'), null);
+  // A pinned row's queued drop isn't pending either.
+  ws.commandQueued({ command_id: "p3", line: "/working-set drop /p/lib/a.rb", waits: "turn_end" });
+  assert.equal(row("a.rb").querySelector(".ws-pend"), null);
+  assert.equal(row("a.rb").querySelector('[data-op="drop"]').disabled, true);
   row("b.rb").querySelector('[data-ws="steer"]').click();
   assert.equal(sent.at(-1), "/working-set unpin /p/lib/b.rb");
   ws.popover.close();

@@ -369,6 +369,8 @@ test("pendingSteers: queued lines in order, an op then its inverse netting to no
   // A pin then its unpin nets; a pin after a pending drop is the pin (it takes the drop off).
   assert.deepEqual([...pendingSteers(["/working-set pin /p/a.rb", "/working-set unpin /p/a.rb", "/working-set drop /p/b.rb", "/working-set pin /p/b.rb"])],
     [["file:/p/b.rb", "pin"]]);
+  // A drop after a pending pin is refused by the worker (unpin it first): the pin stays.
+  assert.deepEqual([...pendingSteers(["/working-set pin /p/a.rb", "/working-set drop /p/a.rb"])], [["file:/p/a.rb", "pin"]]);
 });
 
 test("dropRefusal: a read item drops; edit-only, preloaded-only, forgotten ones say why; muted, dropped, unknown have no drop", () => {

@@ -232,7 +232,9 @@ has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or prelo
 `📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the
 exception's words, so it must keep a way out). A pending pin or unpin is dashed with `applies next turn`, and
 `pendingSteers` nets it with its inverse; a pin queued after a drop stands for both (the worker's pin takes the
-pending drop off).
+pending drop off). A drop queued after a pin, or of a pinned item, is one the worker refuses (`unpin_first`), so it
+is never pending: the row keeps the pin's pill and undo (a pinned row its 📌 and a greyed drop with the refusal's
+words).
 The rail stays read-only but marks a line with a pending op: dashed, its title adding `drops next turn` (or `pinned
 next turn`…; `working_set_rail.js pendingText`, a group's from its members). The view runs its `onServer` listeners
 on a change of the pending ops too, so the stage redraws the rail with `pending()`.
