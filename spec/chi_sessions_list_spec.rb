@@ -93,6 +93,17 @@ RSpec.describe "chi sessions list" do
       expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
     end
 
+    it "lists test sessions marked [test] with no picker flags, as the plain listing does" do
+      make("hello there")
+      make("a test", test_run: true)
+
+      out, err, status = run_chi
+
+      expect(status).to eq(0), err
+      expect(out).to include("hello there\n")
+      expect(out).to include("a test [test]\n")
+    end
+
     it "keeps --sort and --order with --format json and --cwd" do
       first = make("first")
       second = make("second")

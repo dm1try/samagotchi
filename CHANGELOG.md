@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi --remote NAME sessions list` shows test sessions, marked `[test]`, as the local list does.
+
 ## [0.104.0] - 2026-10-23
 
 ### Added

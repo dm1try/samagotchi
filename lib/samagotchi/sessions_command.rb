@@ -176,29 +176,32 @@ module Samagotchi
       # project's. Machine-local (this cwd's project): remotely every
       # project's (D4), and --scope=project is --cwd's project there (the
       # server finds its root). The rows are the server's (list_summaries).
+      # The picker (chi note from a script): filters apply before the limit,
+      # and test runs stay out, unless this is one (SAMAGOTCHI_ENV=test, CI):
+      # then its own sessions are what it looks for. The plain listing shows
+      # them, marked [test], here and remotely.
+      picker = @opts[:live] || cwd || (format && format != "text")
+      include_tests = !picker || Samagotchi::Session.test_session_env?
       if @access.remote?
         return usage_error("--scope=project on a remote needs --cwd: a folder there") if scope == "project" && !cwd
 
         project = scope == "project" ? cwd : nil
         scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} on #{@access.name} (--scope=all: every project)" }
-        return list_summaries(project, scope_note)
+        return list_summaries(project, scope_note, include_tests: include_tests)
       end
       project = scope == "all" || cwd ? nil : Samagotchi::ProjectScope.root_for(Dir.pwd)
       scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} (--scope=all: every project)" }
 
-      # The picker (chi note from a script): filters apply before the limit,
-      # and test runs stay out, unless this is one (SAMAGOTCHI_ENV=test, CI):
-      # then its own sessions are what it looks for.
-      return list_summaries(project, scope_note) if @opts[:live] || cwd || (format && format != "text")
+      return list_summaries(project, scope_note, include_tests: include_tests) if picker
 
       list_plain(project, scope_note)
     end
 
-    def list_summaries(project, scope_note)
+    def list_summaries(project, scope_note, include_tests:)
       live, cwd, limit, include_archived, format, sort, order =
         @opts.values_at(:live, :cwd, :limit, :include_archived, :format, :sort, :order)
       summaries = @access.summaries(
-        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: Samagotchi::Session.test_session_env?,
+        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: include_tests,
         project_root: project,
         include_archived: include_archived, sort: sort, order: order
       )
