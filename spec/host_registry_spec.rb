@@ -294,7 +294,10 @@ RSpec.describe Samagotchi::HostRegistry do
     it "returns a snapshot a late thread doesn't change, and stores no partial listing" do
       results = registry.list_all_models(wait: 0.05)
       release << :go
-      sleep 0.1
+      # Wait for the late thread's save, not a fixed time (a loaded CI
+      # runner took longer than 0.1 s).
+      deadline = mono + 5
+      sleep 0.01 until Samagotchi::ModelListStore.find("slow") || mono > deadline
 
       expect(results["slow"][:error]).to eq("no answer in 0.05 s")
       expect(registry.cached_results).to be_nil
