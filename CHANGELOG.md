@@ -22,6 +22,9 @@ and commands may change between minor versions. How releases are made:
   as it does without `--remote`. Update with `chi update`.
 - claude-peer (0.4.2): `pair` through a remote (`CHI_REMOTE`, or `--remote NAME` in `CHI`) attaches only
   `claude-outbox` and says chi there can't send to that Claude. Update with `chi update`.
+- codex-peer (0.3.3): the same for `pair` through a remote: it attaches only `codex-outbox`, says chi there can't
+  send to that Codex, and when chi can't reach the remote names Codex's sandbox `network_access` setting as a
+  possible cause. Update with `chi update`.
 
 ## [0.102.0] - 2026-10-23
 

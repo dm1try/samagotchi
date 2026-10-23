@@ -2305,6 +2305,17 @@ skill install card) works the same.
   rule Codex follows, not something enforced: anything shaped like that
   header is treated this way, and nothing stops a message from asking for
   more.
+- **chi on another machine.** As with Claude, `CHI_REMOTE=studio sh
+  <bundle>/scripts/pair <id>` (or `--remote NAME` in `CHI`) pairs through
+  the Studio's chi web, and only the outbox leg works: `codex_send` runs
+  `codex queue` on the machine chi runs on, where this Codex's thread isn't.
+  So `pair` attaches only `codex-outbox` and prints one line saying chi there
+  can't send to this Codex. Through a remote chi talks HTTP, not files, so
+  `writable_roots` doesn't matter; Codex's sandbox may block the network
+  instead, which pairing and every reply then need (workspace-write has none
+  by default): when chi can't reach the
+  remote, the pair script names `network_access = true` under
+  `[sandbox_workspace_write]` as the likely fix.
 - In the web, selecting text offers **Confirm with Codex**, which fills
   `/codex validate` and the quote, as claude-peer's pill does.
 - **The skill.** `skill_codex_peer` (system scope) is claude-peer's with

@@ -69,6 +69,100 @@ RSpec.describe "The codex-peer pair script" do
     expect(own.source("codex-inbox")).to be_nil
   end
 
+  context "through a remote" do
+    # A chi that drops the remote (CHI_REMOTE, a --remote NAME word) and runs
+    # this checkout's chi here, logging the remote and arguments it was given:
+    # the script's branch, no chi web.
+    let(:log) { File.join(tmpdir, "chi.log") }
+    let(:local_chi) do
+      FakeExecutables.fake_executable(bin, "chi-remote", <<~SH)
+        printf '%s|%s\n' "${CHI_REMOTE:-}" "$*" >> #{log}
+        unset CHI_REMOTE
+        skip=
+        for a do
+          shift
+          if [ -n "$skip" ]; then skip=; continue; fi
+          case $a in --remote) skip=1; continue ;; --remote=*) continue ;; esac
+          set -- "$@" "$a"
+        done
+        exec #{RbConfig.ruby} #{chi_bin} "$@"
+      SH
+    end
+    let(:remote_why) { "Codex's answers to what you sent it (codex-peer); Codex runs on another machine: codex_send can't reach it" }
+
+    def run_remote(chi:, remote: nil)
+      run_pair(session.id, thread: thread_a, extra: { "CHI" => chi, "CHI_REMOTE" => remote })
+    end
+
+    def says(remote, ask)
+      "pair: chi is on #{remote}, so chi can't send to this Codex session (codex_send runs codex queue on chi's " \
+        "machine): paired with chi #{session.id}, codex-outbox only. Answer chi with #{ask} context push codex-outbox " \
+        "#{session.id}; chi's replies reach you only when the user relays them (or asks you to run #{ask} send --wait " \
+        "#{session.id})\n"
+    end
+
+    it "with CHI_REMOTE set, attaches only codex-outbox and says chi there can't send to this Codex" do
+      out, err, status = run_remote(chi: local_chi, remote: " studio ")
+
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(out).to start_with(says("studio", "CHI_REMOTE=studio #{local_chi}"))
+      expect(out).not_to include("codex-inbox", "(thread")
+      expect(own.source("codex-outbox")).to have_attributes(why: remote_why, hint: "latest Codex reply", cmd: nil)
+      expect(own.source("codex-inbox")).to be_nil
+      expect(File.readlines(log)).to all(start_with(" studio |")) # chi trims it itself
+      expect(File.read(log)).not_to include("codex-inbox")
+    end
+
+    it "takes the remote a --remote NAME or --remote=NAME in CHI names over CHI_REMOTE, the last one" do
+      out, err, status = run_remote(chi: "#{local_chi} --remote studio", remote: "other")
+
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(out).to start_with(says("studio", "#{local_chi} --remote studio"))
+
+      out, err, status = run_remote(chi: "#{local_chi} --remote=laptop --remote=studio")
+
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(out).to start_with(says("studio", "#{local_chi} --remote=laptop --remote=studio"))
+      expect(own.source("codex-inbox")).to be_nil
+    end
+
+    it "pairs here, both sources, with a blank CHI_REMOTE" do
+      out, err, status = run_remote(chi: local_chi, remote: "  ")
+
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(out).to include("paired with chi #{session.id} (thread #{thread_a})")
+      expect(out).not_to include("pair: chi is on")
+      expect(own.source("codex-inbox")).to have_attributes(hint: thread_a)
+    end
+
+    it "says only chi's refusal when the outbox can't be attached there" do
+      out, err, status = run_remote(chi: env["CHI"], remote: "studio")
+
+      expect(status.exitstatus).to eq(1)
+      expect(err).to start_with("Error: no remote studio (")
+      expect(err).not_to include("sandbox")
+      expect(out).to eq("")
+      expect(own.source("codex-outbox")).to be_nil
+    end
+
+    it "names the network_access line, not writable_roots, when chi can't reach the remote" do
+      broke = FakeExecutables.fake_executable(bin, "chi-broke",
+                                              "echo 'chi context: studio (http://192.0.2.1:4567): the connection " \
+                                              "broke (EPERM)' >&2\nexit 1")
+
+      _, err, status = run_remote(chi: broke, remote: "studio")
+
+      expect(status.exitstatus).to eq(1)
+      expect(err).to eq(<<~ERR)
+        chi context: studio (http://192.0.2.1:4567): the connection broke (EPERM)
+        pair: Codex's sandbox may be keeping chi from reaching studio (workspace-write has no network by default): if so, add to ~/.codex/config.toml
+          [sandbox_workspace_write]
+          network_access = true
+        then restart Codex and pair again.
+      ERR
+    end
+  end
+
   it "says why when chi can't attach (no such session)" do
     _, err, status = run_pair("ffffffff", thread: thread_a)
 

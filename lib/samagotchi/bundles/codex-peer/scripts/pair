@@ -9,12 +9,15 @@
 # `codex queue --thread <id>` with it), and codex-outbox, where Codex's
 # answers go. Again later, it only refreshes the thread id: the push carries
 # the new hint. CHI names the chi command (default: chi on the PATH).
+# Through a remote (CHI_REMOTE, or --remote NAME in CHI) chi there can't
+# queue to this machine's Codex: it attaches codex-outbox only, and says so.
 #
 # chi writes the session's context under its state folder, which Codex's
 # default sandbox doesn't let it write: ~/.codex/config.toml needs
 #   [sandbox_workspace_write]
 #   writable_roots = ["<state>/samagotchi/context"]
-# and a write refused says so.
+# and a write refused says so. Through a remote chi talks HTTP instead,
+# which the sandbox may refuse (no network): a connection that fails says so.
 set -eu
 
 usage() {
@@ -39,14 +42,46 @@ if [ -z "$thread" ]; then
 fi
 chi=${CHI:-chi}
 
-# Prints chi's error, and the writable_roots line when the sandbox refused.
+# The remote, as SessionAccess::Dispatch names it: a --remote NAME (or
+# --remote=NAME) word in CHI, the last one, beats CHI_REMOTE (trimmed; blank:
+# local). An empty or dash-led name is still a remote: chi refuses it.
+remote=$(printf '%s\n' "${CHI_REMOTE:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+via= take=
+[ -z "$remote" ] || via=env
+for word in $chi; do
+  if [ -n "$take" ]; then
+    remote=$word take=
+    continue
+  fi
+  case "$word" in
+    --remote) remote= via=chi take=1 ;;
+    --remote=*) remote=${word#--remote=} via=chi ;;
+  esac
+done
+
+config='~/.codex/config.toml'
+[ -z "${CODEX_HOME:-}" ] || config=$CODEX_HOME/config.toml
+
+# Prints chi's error, and the config line when the sandbox may have refused:
+# writable_roots here, network_access through a remote.
 fail() {
   printf '%s\n' "$1" >&2
+  if [ -n "$via" ]; then
+    case "$1" in
+      *"connection broke"* | *"can't find host"* | *"host unreachable"* | *"no answer within"*)
+        cat >&2 <<MSG
+pair: Codex's sandbox may be keeping chi from reaching $remote (workspace-write has no network by default): if so, add to $config
+  [sandbox_workspace_write]
+  network_access = true
+then restart Codex and pair again.
+MSG
+        ;;
+    esac
+    exit 1
+  fi
   case "$1" in
     *"Operation not permitted"* | *"Read-only file system"* | *"Permission denied"*)
       state=${XDG_STATE_HOME:-$HOME/.local/state}
-      config='~/.codex/config.toml'
-      [ -z "${CODEX_HOME:-}" ] || config=$CODEX_HOME/config.toml
       cat >&2 <<MSG
 pair: Codex's sandbox can't write chi's state: add to $config
   [sandbox_workspace_write]
@@ -74,6 +109,16 @@ attach() {
     fi
   fi
 }
+
+if [ -n "$via" ]; then
+  attach codex-outbox --why "Codex's answers to what you sent it (codex-peer); Codex runs on another machine: codex_send can't reach it" \
+    --hint "latest Codex reply"
+  ask=$chi
+  [ "$via" = chi ] || ask="CHI_REMOTE=$remote $chi"
+  printf '%s\n' "pair: chi is on $remote, so chi can't send to this Codex session (codex_send runs codex queue on chi's machine): paired with chi $id, codex-outbox only. Answer chi with $ask context push codex-outbox $id; chi's replies reach you only when the user relays them (or asks you to run $ask send --wait $id)"
+  $chi context ls "$id"
+  exit 0
+fi
 
 attach codex-inbox --why "the Codex session paired with you: send it parts with codex_send" --hint "$thread"
 text="Codex peer inbox
