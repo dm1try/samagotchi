@@ -6,6 +6,7 @@ require_relative "note_delivery"
 require_relative "session_manager"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi note`: push text into sessions as a context note (background the
@@ -33,12 +34,15 @@ module Samagotchi
     end
 
     # @param argv [Array<String>] the arguments after "note"
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
       @stderr = stderr
       @state_dir = state_dir || Session.default_state_dir
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     # @return [Integer] exit status: 0 all queued, 1 any refused or failed,
@@ -93,8 +97,7 @@ module Samagotchi
 
     # --all: every live session. @return [Integer] exit status
     def deliver_to_live(text, source)
-      ids = SessionManager.session_summaries(live: true, include_tests: Session.test_session_env?,
-                                             state_dir: @state_dir).map { |s| s[:id] }
+      ids = @access.summaries(live: true, include_tests: Session.test_session_env?).map { |s| s[:id] }
       if ids.empty?
         error_line("chi note: no live sessions (chi sessions list --live --scope=all)")
         return 1
@@ -104,9 +107,7 @@ module Samagotchi
     end
 
     def resolve(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
-      Session.load(id, state_dir: @state_dir)
-      id
+      @access.resolve(given)
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
       error_line("chi note: #{message}")
@@ -115,7 +116,7 @@ module Samagotchi
 
     # @return [Boolean] whether the note was queued
     def deliver(id, text, source)
-      result = NoteDelivery.deliver(id, text: text, source: source, state_dir: @state_dir)
+      result = @access.note(id, text: text, source: source)
       @stdout.puts("#{id[0, 8]}  #{outcome(result)}")
       result.delivered?
     end

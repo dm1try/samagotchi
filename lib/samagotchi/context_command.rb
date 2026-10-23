@@ -11,6 +11,7 @@ require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
 require_relative "redacted_inspect"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi context`: attach live external text to sessions (ContextSources).
@@ -78,8 +79,10 @@ module Samagotchi
 
     # @param argv [Array<String>] the arguments after "context"
     # @param clock [#call] now, for ls's ages ("4s ago")
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV, cwd: Dir.pwd,
-                   clock: -> { Time.now })
+                   clock: -> { Time.now }, access: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -88,6 +91,7 @@ module Samagotchi
       @env = env
       @cwd = cwd
       @clock = clock
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     # @return [Integer] exit status: 0 done, 1 refused or failed, 2 usage
@@ -130,8 +134,7 @@ module Samagotchi
         scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601
       )
       each_target(options, args) do |target|
-        location = location_of(target)
-        location.add(source.with(scope: location.scope))
+        @access.context_add(target, source)
         @stdout.puts("#{target.label}  attached #{name}")
         true
       end
@@ -155,8 +158,7 @@ module Samagotchi
         scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601, provider: resolved.bundle
       )
       each_target(options, args) do |target|
-        location = location_of(target)
-        location.add(source.with(scope: location.scope))
+        @access.context_add(target, source)
         @stdout.puts("#{target.label}  attached #{source.name}")
         true
       end
@@ -173,18 +175,20 @@ module Samagotchi
 
       fetched = ContextSources.parse_output(text)
       each_target(options, args) do |target|
-        attached = find(target, name) or next false
-        # A command source's text is its command's (R2): a push between
-        # two fetches would read as a change and then vanish.
-        unless attached.source.push?
+        pushed = @access.context_push(target, name, fetched)
+        case pushed.status
+        when :missing
+          no_source(target, name)
+          next false
+        when :not_push
+          # A command source's text is its command's (R2): a push between
+          # two fetches would read as a change and then vanish.
           error_line("#{command_name}: #{name} runs a command, which writes its text: push goes to a --push source")
           next false
         end
 
-        before, written = attached.location.locked(name) do
-          [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
-        end
-        @stdout.puts("#{target.label}  #{name}: #{written.revision == before ? "unchanged" : "new text"} (#{written.revision[0, 12]})")
+        @stdout.puts("#{target.label}  #{name}: #{pushed.revision == pushed.before ? "unchanged" : "new text"} " \
+                     "(#{pushed.revision[0, 12]})")
         true
       end
     end
@@ -194,7 +198,7 @@ module Samagotchi
       return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
 
       targets = targets(options, args) or return CLI::Exit::FAILED
-      rows = targets.flat_map { |target| rows_for(target) }
+      rows = targets.flat_map { |target| @access.context_entries(target).map { |entry| row(target, entry) } }
       if format == "json"
         @stdout.puts(JSON.pretty_generate(rows))
       elsif rows.empty?
@@ -212,10 +216,10 @@ module Samagotchi
       targets = targets(options, args) or return CLI::Exit::FAILED
       return usage_error("show takes one target") if targets.size > 1
 
-      attached = find(targets.first, name) or return CLI::Exit::FAILED
-      snapshot = attached.snapshot
+      entry = @access.context_entry(targets.first, name) or return no_source(targets.first, name)
+      snapshot = entry.snapshot
       if options[:json]
-        @stdout.puts(JSON.pretty_generate({ "source" => attached.source.to_h, "snapshot" => snapshot.to_h }))
+        @stdout.puts(JSON.pretty_generate({ "source" => entry.source.to_h, "snapshot" => snapshot.to_h }))
         return 0
       end
       unless snapshot.text?
@@ -229,7 +233,8 @@ module Samagotchi
 
     # Runs the command in this process, not the worker's: the result shows
     # here, and the worker sees the new snapshot on its next loop. The
-    # source's lock keeps the two from running it at once.
+    # source's lock keeps the two from running it at once. Local only
+    # (SessionAccess::Contract): it runs the command on this machine.
     def run_refresh(options, args)
       name = args.shift
       return usage_error("give the source's NAME") unless name
@@ -271,14 +276,11 @@ module Samagotchi
 
       ContextSources.check_name!(name)
       each_target(options, args) do |target|
-        location = location_of(target)
-        if location.remove(name)
+        case @access.context_remove(target, name)
+        when :removed
           @stdout.puts("#{target.label}  detached #{name}")
           next true
-        end
-
-        project = !target.project? && ContextSources.project_location_for(target.project_root, state_dir: @state_dir)
-        if project&.source(name)
+        when :project
           error_line("#{command_name}: #{name} is the project's: chi context rm #{name} --project, or mute it for this session")
         else
           error_line("#{command_name}: no source #{name} for #{target.label}")
@@ -287,6 +289,7 @@ module Samagotchi
       end
     end
 
+    # Local only (SessionAccess::Contract): the session's muted/ files here.
     def run_mute(options, args) = mute_or_unmute(options, args, mute: true)
     def run_unmute(options, args) = mute_or_unmute(options, args, mute: false)
 
@@ -340,6 +343,8 @@ module Samagotchi
       resolved.all? ? resolved.uniq : nil
     end
 
+    # A project's sources: local only (SessionAccess::Contract), this
+    # machine's checkout.
     def project_target
       unless MemoryPaths.in_repo?(@cwd)
         error_line("#{command_name}: --project needs a git repository, and #{@cwd} is in none")
@@ -354,8 +359,8 @@ module Samagotchi
     end
 
     def session_target(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
-      session = Session.load(id, state_dir: @state_dir)
+      id = @access.resolve_id(given)
+      session = @access.show(id)
       Target.new(session_id: id, project_root: session.project_root, cwd: session.working_directory, label: id[0, 8])
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
@@ -364,63 +369,41 @@ module Samagotchi
     end
 
     # The session chi's execute runs this in (SAMAGOTCHI_PARENT_SESSION;
-    # "chi" is a run with no session).
+    # "chi" is a run with no session). Machine-local (a session on this
+    # machine): remotely no default (P3), the ids are given.
     def inside_session
       id = @env.fetch("SAMAGOTCHI_PARENT_SESSION", "").to_s.strip
       id.empty? || id == "chi" ? nil : id
     end
 
-    # The folder a target's own sources live in.
-    def location_of(target)
-      if target.project?
-        ContextSources.project_location_for(target.project_root, state_dir: @state_dir)
-      else
-        ContextSources.session_location(target.session_id, state_dir: @state_dir)
-      end
-    end
+    # The folder a target's own sources live in (refresh, mute: local only).
+    def location_of(target) = @access.context_location(target)
 
-    # A source as the target sees it (a session: its own, then its project's).
+    # A source as the target sees it (a session: its own, then its
+    # project's), for refresh and mute (local only).
     # @return [ContextSources::Attached, nil] nil after an error line
     def find(target, name)
-      ContextSources.check_name!(name)
-      found = if target.project?
-                location = location_of(target)
-                source = location.source(name)
-                source && ContextSources::Attached.new(source: source, location: location, shadowed: false)
-              else
-                attached_to(target).find { |a| a.name == name }
-              end
-      error_line("#{command_name}: no source #{name} for #{target.label}") unless found
+      found = @access.context_attached(target, name)
+      no_source(target, name) unless found
       found
     end
 
-    def attached_to(target, shadowed: false)
-      ContextSources.attached(target.session_id, project_root: target.project_root, state_dir: @state_dir,
-                                                 shadowed: shadowed)
+    # @return [Integer] 1, after the line
+    def no_source(target, name)
+      error_line("#{command_name}: no source #{name} for #{target.label}")
+      CLI::Exit::FAILED
     end
 
-    def rows_for(target)
-      if target.project?
-        location = location_of(target)
-        return location.sources.map { |source| row(target, source, location.snapshot(source.name)) }
-      end
-
-      own = ContextSources.session_location(target.session_id, state_dir: @state_dir)
-      subs = own.subscriptions
-      attached_to(target, shadowed: true).map do |a|
-        snapshot = a.snapshot
-        read = subs[a.name]&.read
-        row(target, a.source, snapshot, muted: own.muted?(a.name), shadowed: a.shadowed,
-                                        unread: snapshot.text? && read != snapshot.revision)
-      end
-    end
-
-    def row(target, source, snapshot, muted: nil, shadowed: nil, unread: nil)
+    # One line of ls (its --format json object).
+    # @param entry [SessionAccess::ContextEntry]
+    def row(target, entry)
+      source = entry.source
+      snapshot = entry.snapshot
       { "target" => target.label, "session_id" => target.session_id, "name" => source.name, "scope" => source.scope,
         "cmd" => source.cmd, "every_seconds" => source.every_seconds, "why" => source.why, "hint" => source.hint,
         "added_by" => source.added_by, "created_at" => source.created_at, "fetched_at" => snapshot.fetched_at,
         "revision" => snapshot.revision, "summary" => snapshot.summary, "error" => snapshot.error,
-        "muted" => muted, "shadowed" => shadowed, "unread" => unread }.compact
+        "muted" => entry.muted, "shadowed" => entry.shadowed, "unread" => entry.unread }.compact
     end
 
     def print_rows(rows, labels:)
