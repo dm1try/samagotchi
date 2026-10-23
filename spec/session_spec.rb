@@ -711,7 +711,7 @@ RSpec.describe Samagotchi::Session do
       expect { described_class.resolve_id("ab", state_dir: tmpdir) }.to raise_error(
         described_class::AmbiguousId,
         "session id ab matches 2 sessions:\n  abc12345-0000  first\n  abd99999-0000  second"
-      )
+      ) { |error| expect(error.ids).to eq(%w[abc12345-0000 abd99999-0000]) }
     end
   end
 

@@ -515,8 +515,16 @@ module Samagotchi
       new(**attrs)
     end
 
-    # A prefix that names more than one session.
-    class AmbiguousId < ArgumentError; end
+    # A prefix that names more than one session: +ids+ are the sessions it
+    # names (sorted), the message lists them with their first previews.
+    class AmbiguousId < ArgumentError
+      attr_reader :ids
+
+      def initialize(message = nil, ids: [])
+        @ids = ids
+        super(message)
+      end
+    end
 
     # A session id or a unique prefix of one (like git's): the full id. An
     # unknown one comes back as is, for the caller's own "not found"; one that
@@ -534,7 +542,7 @@ module Samagotchi
       rescue JSON::ParserError, SystemCallError
         "  #{match}"
       end
-      raise AmbiguousId, "session id #{id} matches #{matches.size} sessions:\n#{lines.join("\n")}"
+      raise AmbiguousId.new("session id #{id} matches #{matches.size} sessions:\n#{lines.join("\n")}", ids: matches)
     end
 
     # Return all saved sessions sorted by updated_at desc by default (newest first).
