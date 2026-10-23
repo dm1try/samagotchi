@@ -1,0 +1,227 @@
+# frozen_string_literal: true
+
+require "cgi/escape"
+require_relative "grants"
+require_relative "principal"
+require_relative "../archive_store"
+require_relative "../participants"
+require_relative "../session"
+require_relative "../log"
+
+module Samagotchi
+  module Web
+    # What a participant (a Web::Grants token) may do in chi web, mixed into
+    # App: the gate's lookup of their grant, the refusals that are theirs
+    # (token_revoked, token_expired, another session's 404, not_permitted
+    # by role), the trimmed and filtered answers of the :participant routes,
+    # the minimal participant page, and the running check that ends their
+    # streams when the grant does. See docs/internals/participants.md.
+    module ParticipantAccess
+      # A participant's refused routes are audited at most this often per
+      # route (a page retrying would fill the log).
+      REFUSED_AUDIT_INTERVAL = 60.0
+
+      ENDED = {
+        revoked: ["token_revoked", "this review link was revoked by the session's owner"],
+        expired: ["token_expired", "this review link expired: ask the session's owner for a new one"]
+      }.freeze
+      NOT_PERMITTED = "a participant can't do that: only the session's owner can"
+
+      private
+
+      def init_participant_access(grants, state_dir)
+        @grants = grants || Grants.new(Grants.path(state_dir: state_dir))
+        @participant_mutex = Mutex.new
+        @participant_peers = Hash.new { |hash, key| hash[key] = Set.new }
+        @participant_refused = {}
+        @participant_expired = Set.new
+      end
+
+      # The participant principal for the first of +tokens+ that is a live
+      # grant's, or nil. An ended grant met on the way is kept in the
+      # request's env for #token_gate's answer (#grant_ended_response). A
+      # grant whose session was archived or is gone is revoked here (archive
+      # and delete revoke too; this catches retention's prune and a delete
+      # from another process).
+      # @return [Principal, nil]
+      def participant_principal(req, tokens)
+        tokens.each do |token|
+          grant = @grants.lookup(token) or next
+          grant = settle_grant(grant)
+          state = grant.state(@grants.now)
+          if state == :active
+            req.env[GRANT_TOKEN_ENV] = token
+            return Principal.new(kind: :participant, grant: grant)
+          end
+          req.env[ENDED_GRANT_ENV] ||= [grant, state]
+        end
+        nil
+      end
+
+      GRANT_TOKEN_ENV = "samagotchi.grant_token"
+      ENDED_GRANT_ENV = "samagotchi.ended_grant"
+
+      def settle_grant(grant)
+        return grant unless grant.active?(@grants.now)
+
+        by = if !File.exist?(Session.session_file(grant.session_id, state_dir: default_state_dir)) then "gone"
+             elsif ArchiveStore.archived?(Session.session_dir(grant.session_id, state_dir: default_state_dir)) then "archive"
+             end
+        return grant unless by
+
+        Participants.revoke(@grants, session_id: grant.session_id, id: grant.id, by: by, state_dir: default_state_dir)
+        @grants.find(grant.id) || grant
+      end
+
+      # 401 token_revoked / token_expired for an ended grant's token (the
+      # page's HTML says the same), nil when none was presented.
+      def grant_ended_response(req)
+        grant, state = req.env[ENDED_GRANT_ENV]
+        return nil unless grant
+
+        audit_expired(grant) if state == :expired
+        code, detail = ENDED.fetch(state)
+        return error_response(401, code, detail) if req.path_info.start_with?("/api/")
+
+        html_response(401, ENDED_PAGE)
+      end
+
+      def audit_expired(grant)
+        fresh = @participant_mutex.synchronize { @participant_expired.add?(grant.id) }
+        Participants.log(grant.session_id, :expired, state_dir: default_state_dir, participant: grant.id) if fresh
+      end
+
+      # A participant's request, past the gate: its use is recorded (the
+      # grant's last_used_at, at most once a minute) and a peer not seen
+      # since chi web started goes into the audit trail.
+      def participant_seen(req, principal)
+        grant = principal.grant
+        @grants.touch(grant.id)
+        peer = req.get_header("REMOTE_ADDR").to_s
+        fresh = @participant_mutex.synchronize { @participant_peers[grant.id].add?(peer) }
+        return unless fresh
+
+        Participants.log(grant.session_id, :peer, state_dir: default_state_dir, participant: grant.id, ip: peer,
+                                                  user_agent: req.get_header("HTTP_USER_AGENT").to_s[0, 200])
+      end
+
+      # A participant asking for a session that isn't their grant's: 404 as
+      # for one that doesn't exist, so they can't learn which do.
+      def other_session?(principal, path, captures)
+        return false if principal.owner? || !path.start_with?("/api/sessions/") || captures.empty?
+
+        captures.first != principal.grant.session_id
+      end
+
+      def unknown_session(id)
+        error_response(404, "not_found", "Session not found: #{id.to_s[0, 80]}")
+      end
+
+      # 403 not_permitted, worded for the principal's role; a participant's
+      # refusal is audited.
+      def not_permitted_for(req, principal)
+        return not_permitted if principal.owner?
+
+        audit_refused(req, principal.grant)
+        error_response(403, "not_permitted", NOT_PERMITTED)
+      end
+
+      def audit_refused(req, grant)
+        key = [grant.id, req.request_method, req.path_info]
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        due = @participant_mutex.synchronize do
+          @participant_refused.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if @participant_refused.size > 256
+          last = @participant_refused[key]
+          (last.nil? || now - last >= REFUSED_AUDIT_INTERVAL).tap { |fresh| @participant_refused[key] = now if fresh }
+        end
+        return unless due
+
+        Participants.log(grant.session_id, :refused, state_dir: default_state_dir, participant: grant.id,
+                                                     method: req.request_method, path: req.path_info[0, 200],
+                                                     reason: "not_permitted")
+      end
+
+      # GET /api/info for a participant: what SessionAccess::Remote's
+      # check needs (app, version, features), not this machine's pid, cwd
+      # or LAN address.
+      def participant_info
+        json_response(200, { app: "chi-web", version: Samagotchi::VERSION, features: App::INFO_FEATURES })
+      end
+
+      # GET /api/sessions/:id for a participant (their grant's session):
+      # its title, status and participants, nothing of the conversation.
+      def participant_show(id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        json_response(200, { session: { id: session.id, title: session.display_title, status: session.status,
+                                        participants: participant_names(id) } })
+      end
+
+      def participant_names(id)
+        now = @grants.now
+        Participants.read(id, state_dir: default_state_dir).select { |entry| entry.active?(now) }
+                    .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
+      end
+
+      # The page a participant's link opens (P2: before comments exist).
+      # Never the owner's page, whose every route would refuse them.
+      def participant_page(principal)
+        grant = principal.grant
+        session = @session_class.load(grant.session_id, state_dir: default_state_dir)
+        name = CGI.escapeHTML(grant.name)
+        others = participant_names(grant.session_id).map { |entry| CGI.escapeHTML(entry[:name]) }
+        html_response(200, format(PARTICIPANT_PAGE, name: name, title: CGI.escapeHTML(session.display_title.to_s),
+                                                    status: CGI.escapeHTML(session.status.to_s),
+                                                    participants: others.join(", ")))
+      end
+
+      # Whether a principal's stream may go on (the proxy's running check,
+      # asked every BridgeClient::STREAM_POLL): while the server runs, and
+      # for a participant while their grant works, so a revoke or the expiry
+      # ends it within a poll (a chi share revoke in another process too:
+      # the grants file is re-read when it changes).
+      def stream_running(principal)
+        return @server_running if principal.owner?
+
+        id = principal.grant.id
+        -> { @server_running.call && @grants.active?(id) }
+      end
+
+      def html_response(status, body)
+        [status, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s,
+                   "Cache-Control" => "no-store" }, [body]]
+      end
+
+      PAGE_STYLE = <<~CSS
+        :root { color-scheme: light dark; }
+        body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 30rem; margin: 3rem auto; padding: 0 1rem; }
+        .meta { opacity: .75; }
+      CSS
+
+      PARTICIPANT_PAGE = <<~HTML
+        <!doctype html>
+        <html lang="en"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>chi · %<name>s's review</title>
+        <style>#{PAGE_STYLE}</style></head>
+        <body>
+        <h1>%<name>s's review</h1>
+        <p class="meta">%<title>s · %<status>s</p>
+        <p>Comments open soon: the owner will see what you write here.</p>
+        <p class="meta">Participants: %<participants>s</p>
+        </body></html>
+      HTML
+
+      ENDED_PAGE = <<~HTML
+        <!doctype html>
+        <html lang="en"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>chi: review link ended</title>
+        <style>#{PAGE_STYLE}</style></head>
+        <body>
+        <h1>chi</h1>
+        <p>This review link has expired or was revoked. Ask the session's owner for a new one.</p>
+        </body></html>
+      HTML
+    end
+  end
+end

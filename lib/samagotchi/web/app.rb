@@ -54,6 +54,7 @@ require_relative "../message_parts"
 require_relative "session_summary"
 require_relative "session_access_routes"
 require_relative "principal"
+require_relative "participant_access"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
@@ -71,6 +72,7 @@ module Samagotchi
       # @lan holds the LAN access token.
       include RedactedInspect
       include SessionAccessRoutes
+      include ParticipantAccess
 
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
@@ -131,13 +133,16 @@ module Samagotchi
       #   the address the server also listens on and its access token (a
       #   String, or a Web::Token::Source that follows the file); nil:
       #   loopback only, no token
+      # @param grants [Grants, nil] the participants' grants (default: the
+      #   store next to +state_dir+, Grants.path)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      editor: Config::BY_KEY["web.editor"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
-                     working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL)
+                     working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
+                     grants: nil)
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -161,6 +166,7 @@ module Samagotchi
         @refused_mutex = Mutex.new
         @refused_logged = {}
         @wait_poll_interval = wait_poll_interval
+        init_participant_access(grants, state_dir)
       end
 
       def call(env)
@@ -176,16 +182,18 @@ module Samagotchi
       # path's captures (the session id, an image's name). The fourth column
       # is who may use the route (ROUTE_PERMISSIONS, checked against the
       # request's Principal): :owner, or :participant for one a participant
-      # may use too (none yet). A :session route runs in #session_route: an
+      # may use too, its handler answering them as theirs (the participant
+      # page, the trimmed info, the filtered show; docs/internals/
+      # participants.md). A :session route runs in #session_route: an
       # ArgumentError is its unknown session.
       ROUTE_PERMISSIONS = %i[owner participant].freeze
       ROUTES = [
-        ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :owner],
+        ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :participant],
         ["GET", %r{\A/api/sessions\z}, :handle_list, :owner],
         ["POST", %r{\A/api/sessions\z}, :handle_create, :owner],
         ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :owner],
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
-        ["GET", %r{\A/api/info\z}, :handle_info, :owner],
+        ["GET", %r{\A/api/info\z}, :handle_info, :participant],
         ["GET", %r{\A/api/models\z}, :handle_models, :owner],
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
@@ -221,7 +229,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :owner, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
 
@@ -235,9 +243,12 @@ module Samagotchi
 
         # The principal the handlers read (#principal): never the body's.
         env[PRINCIPAL_ENV] = principal
+        participant_seen(req, principal) unless principal.owner?
         ROUTES.each do |verb, pattern, handler, permission, kind|
           next unless req.request_method == verb && (m = pattern.match(req.path_info))
-          return not_permitted unless principal.permits?(permission)
+          # Before the permission: a participant learns nothing of another session.
+          return unknown_session(m.captures.first) if other_session?(principal, req.path_info, m.captures)
+          return not_permitted_for(req, principal) unless principal.permits?(permission)
 
           # Every /api/sessions/:id route: an id that isn't one (Session.valid_id?,
           # "..", a %2F) is an unknown session before any handler makes a path.
@@ -345,8 +356,10 @@ module Samagotchi
       #   principal (#principal_for), or the response that refuses it
       def token_gate(req)
         principal = principal_for(req)
-        return [nil, unauthorized(req)] if principal.nil?
-        return [nil, token_redirect(req, current_token)] if token_trade?(req)
+        return [nil, grant_ended_response(req) || unauthorized(req)] if principal.nil?
+        # The cookie gets the token that was presented: the owner's, or the
+        # participant's grant's.
+        return [nil, token_redirect(req, req.env[GRANT_TOKEN_ENV] || current_token)] if token_trade?(req)
 
         [principal, nil]
       end
@@ -354,14 +367,17 @@ module Samagotchi
       # Who the request is: the owner for a peer the gate doesn't ask (no
       # LAN mode, or this machine's loopback) and for the access token (the
       # page's ?token= on a trade, else the Bearer header or the cookie);
-      # nil for anyone else.
+      # a participant for a live grant's token (Grants, looked up only when
+      # no owner token was given); nil for anyone else.
       # @return [Principal, nil]
       def principal_for(req)
         return Principal::OWNER unless token_required?(req)
 
         token = current_token
         given = token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[TOKEN_COOKIE]]
-        given.any? { |value| token_match?(value, token) } ? Principal::OWNER : nil
+        return Principal::OWNER if given.any? { |value| token_match?(value, token) }
+
+        participant_principal(req, given.select { |value| Grants.token?(value) })
       end
 
       def token_required?(req) = @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
@@ -521,13 +537,16 @@ module Samagotchi
       # session_commands: the routes chi --remote needs
       # (SessionAccessRoutes::FEATURE); remote_attach: the ones a remote
       # attached TUI needs (ATTACH_FEATURE). lan: its LAN address, nil when it
-      # listens on loopback only.
-      def handle_info(_req)
+      # listens on loopback only. A participant gets app, version and
+      # features only (#participant_info).
+      def handle_info(req)
+        return participant_info unless principal(req).owner?
+
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: ["dir", "newest_workers", SessionAccessRoutes::FEATURE,
-                                                      SessionAccessRoutes::ATTACH_FEATURE],
-                             lan: @lan && @lan[:ip] })
+                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
       end
+
+      INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and
@@ -993,6 +1012,8 @@ module Samagotchi
       end
 
       def handle_show(req, id)
+        return participant_show(id) unless principal(req).owner?
+
         # The page's light re-reads: never the whole conversation.
         return handle_cards_read(id) if req.params["cards"] == "1"
         return handle_tail_read(req, id) if req.params["tail"] == "1"
@@ -2012,7 +2033,7 @@ module Samagotchi
       # filter (#stream_filter).
       def proxy_stream_body(id, req, port)
         ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: stream_query(req), headers: req.env,
-                            server_running: @server_running, filter: stream_filter(principal(req)))
+                            server_running: stream_running(principal(req)), filter: stream_filter(principal(req)))
       end
 
       # What a principal's stream goes through on its way from the Bridge:
@@ -2143,6 +2164,8 @@ module Samagotchi
       end
 
       def serve_index(req)
+        return participant_page(principal(req)) unless principal(req).owner?
+
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
           body = File.read(path).sub("<body>", "<body #{index_data_attributes(req)}>")

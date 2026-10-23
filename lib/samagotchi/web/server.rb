@@ -95,6 +95,8 @@ module Samagotchi
             puts lan_off_line(setting)
             return 0
           end
+          # The participants' grants: never served from a store others can read.
+          Grants.check_permissions!(Grants.path)
           if start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
                    annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set)
             0
@@ -102,7 +104,7 @@ module Samagotchi
             1
           end
         end
-      rescue Lan::Error => e
+      rescue Lan::Error, Grants::Insecure => e
         warn "Error: #{e.message}"
         1
       rescue Interrupt

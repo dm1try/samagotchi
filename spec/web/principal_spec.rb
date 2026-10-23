@@ -9,8 +9,8 @@ require "samagotchi/web/app"
 require "samagotchi/web/principal"
 
 # Who a chi web request is (App#principal_for), and the permission column
-# of the route table it is checked against. Today every principal is the
-# owner and every route :owner; the routes a participant may use come later.
+# of the route table it is checked against. A participant's grants and gate
+# are spec/web/participant_gate_spec.rb's.
 RSpec.describe Samagotchi::Web::Principal do
   describe "the owner" do
     subject(:owner) { described_class::OWNER }
@@ -79,8 +79,9 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
       end
     end
 
-    it "keeps every route the owner's for now" do
-      expect(described_class.const_get(:ROUTES).map { |row| row[3] }.uniq).to eq([:owner])
+    it "lets a participant use only the page, the info and their session's show (P2)" do
+      participant = described_class.const_get(:ROUTES).select { |row| row[3] == :participant }.map { |row| row[2] }
+      expect(participant).to contain_exactly(:serve_index, :handle_info, :handle_show)
     end
   end
 
@@ -129,9 +130,13 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
     end
 
     it "refuses an :owner route to a principal that isn't the owner (403 not_permitted)" do
-      other = Samagotchi::Web::Principal.new(kind: :participant, grant: nil)
+      grant = Samagotchi::Web::Grants::Grant.new(id: "p_0123abcd", session_id: "s1", digest: "d", kind: "human", name: "Alex",
+                                                 role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
+                                                 revoked_by: nil, last_used_at: nil)
+      other = Samagotchi::Web::Principal.new(kind: :participant, grant: grant)
       allow(app).to receive(:principal_for).and_return(other)
-      env = Rack::MockRequest.env_for("/api/info")
+      allow(app).to receive(:participant_seen)
+      env = Rack::MockRequest.env_for("/api/sessions")
       env["HTTP_HOST"] = "127.0.0.1:4567"
       env["REMOTE_ADDR"] = "127.0.0.1"
       status, _headers, body = app.call(env)

@@ -428,6 +428,23 @@ RSpec.describe Samagotchi::Web::Server do
       expect { expect(described_class.launch(port: 4567)).to eq(130) }.to output("Chi Web stopped.\n").to_stdout
     end
 
+    it "refuses to start when others can read the participants' grants (one line, exit 1)" do
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start)
+      Dir.mktmpdir("server-grants") do |state|
+        with_env("XDG_STATE_HOME" => state) do
+          path = Samagotchi::Web::Grants.path
+          Samagotchi::Web::Grants.new(path).issue(session_id: "s1", name: "Alex")
+          File.chmod(0o755, File.dirname(path))
+
+          expect { expect(described_class.launch(port: 4567)).to eq(1) }
+            .to output("Error: #{File.dirname(path)} can be read by other users: chmod 700 #{File.dirname(path)} and 600 #{path} " \
+                       "(it holds the participants' grants)\n").to_stderr
+        end
+      end
+      expect(described_class).not_to have_received(:start)
+    end
+
     it "exits 1 when something else holds the port" do
       allow(described_class).to receive(:probe).and_return(:other)
       allow(described_class).to receive(:start)
