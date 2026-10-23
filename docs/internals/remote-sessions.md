@@ -238,8 +238,9 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   `spec/terminal_ui/remote_connector_spec.rb`, `spec/remote_attach_command_spec.rb`,
   `spec/session_access/remote_attach_spec.rb` (wake, worker, feature check through `RackTransport`), and bin/chi's
   branch in `spec/session_access_dispatch_spec.rb`.
-- By hand: the smoke-run skill (`.claude/skills/smoke-run`, kept in the checkout, not in git) covers chi web.
-  It has no remote recipe yet. The real lane is laptop → Studio over the LAN: `chi remote add`, `send --new --wait`,
+- By hand: the smoke-run skill (`.claude/skills/smoke-run`, kept in the checkout, not in git) covers chi web; its
+  cli-tui recipe has remote attach on one machine (two isolated envs, `chi remote add self http://<LAN IP>:PORT`, the
+  terminal's commands through chi web). The real lane is laptop → Studio over the LAN: `chi remote add`, `send --new --wait`,
   an exit-3 `answer`, `context push`, `note`, then `CHI_REMOTE=studio sh scripts/pair <id>` from the laptop's Claude.
 
 ## Remote attach
