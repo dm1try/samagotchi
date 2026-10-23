@@ -11,6 +11,8 @@ require "samagotchi/session"
 require "samagotchi/session_manager"
 require "samagotchi/owner_lock"
 require "samagotchi/archive_store"
+require "samagotchi/worker_sidecar"
+require "socket"
 
 # chi web's routes for chi's session commands run against another machine
 # (Web::SessionAccessRoutes, the remote-sessions plan's P2): resolve, the
@@ -566,8 +568,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
   end
 
   describe "what chi --remote reads besides (SessionAccess::Remote)" do
-    it "names the session commands' routes among GET /api/info's features" do
-      expect(call("/api/info").last["features"]).to include("session_commands")
+    it "names the session commands' routes and a remote attach's among GET /api/info's features" do
+      expect(call("/api/info").last["features"]).to include("session_commands", "remote_attach")
     end
 
     it "answers ?brief=1 with the session file's status, names, folder, model, owner and pending question, no messages" do
@@ -621,6 +623,121 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(rows.last["snapshot"]).to include("summary" => "s", "revision" => Samagotchi::ContextSources.revision_of("body"))
       expect(rows.last["snapshot"]).not_to have_key("text")
       expect(call("#{path}/notes?full=1").last).to include("text" => "body", "source" => include("name" => "notes"))
+    end
+  end
+
+  describe "a remote attach's worker: POST /api/sessions/:id/wake, GET …/worker" do
+    let(:servers) { [] }
+    let(:worker_json) do
+      { "epoch" => "e1e1e1e1", "started_at" => "2026-10-23T12:00:00.000Z", "version" => "9.9.9",
+        "features" => %w[delivery unqueue] }
+    end
+
+    after { servers.each(&:close) }
+
+    # A live worker's sidecar: a port that takes a connect, an epoch.
+    def live_worker(session, epoch: "e1e1e1e1")
+      server = TCPServer.new("127.0.0.1", 0).tap { |opened| servers << opened }
+      Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, session_id: session.id, started_at: "2026-10-23T12:00:00.000Z",
+                                    version: "9.9.9", features: %w[delivery unqueue], epoch: epoch).write(dir_of(session))
+    end
+
+    def wake(session, body = {}) = call("/api/sessions/#{session.id}/wake", method: "POST", body: body)
+
+    it "answers a live worker as is (woke: false), with the session's model, this machine's default and parent strategy" do
+      session = make(model: "m")
+      own(session)
+      live_worker(session)
+      allow(Samagotchi::ModelProfile).to receive(:default_model_name).and_return("server-default")
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      parent_answers_config("soft")
+
+      status, body = wake(session)
+
+      expect(status).to eq(200)
+      expect(body).to include("session_id" => session.id, "woke" => false, "worker" => worker_json, "model_name" => "m",
+                              "default_model" => "server-default", "installed" => nil)
+      expect(body["parent_strategy"]).to include("name" => "soft")
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
+
+    it "resumes an idle session's worker and waits for its Bridge, at most WAKE_MAX_WAIT" do
+      session = make
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for) { live_worker(session) && :client }
+
+      expect(wake(session, { wait: 60 })).to match([200, include("woke" => true, "worker" => worker_json)])
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
+      expect(Samagotchi::BridgeClient).to have_received(:wait_for)
+        .with(session.id, session_dir: dir_of(session), timeout: described_class::WAKE_MAX_WAIT)
+    end
+
+    it "answers 504 worker_timeout in chi --attach's words when the Bridge doesn't come in time" do
+      session = make
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+
+      late = "the worker for session #{session.id} did not start its Bridge in time"
+      expect(wake(session, { wait: 0.5 }))
+        .to eq([504, { "error" => "worker_timeout", "detail" => late, "message" => late, "session_id" => session.id }])
+      expect(Samagotchi::BridgeClient).to have_received(:wait_for).with(session.id, session_dir: dir_of(session), timeout: 0.5)
+    end
+
+    it "refuses a chi REPL's session (409 owned_by_tui), a leftover scratch one (409 scratch) and a bad wait (400)" do
+      repl = make
+      own(repl, kind: "tui")
+      status, body = wake(repl)
+      expect([status, body["error"], body["message"]])
+        .to eq([409, "owned_by_tui", Samagotchi::SessionManager::OwnedByTUI.new(repl.id).message])
+
+      scratch = make.tap do |made|
+        made.scratch = true
+        made.save(state_dir: state_dir)
+      end
+      expect(wake(scratch)).to eq([409, { "error" => "scratch", "detail" => Samagotchi::LaunchMode::SCRATCH_LEFTOVER,
+                                          "message" => Samagotchi::LaunchMode::SCRATCH_LEFTOVER,
+                                          "session_id" => scratch.id }])
+
+      expect(wake(make, { wait: "soon" }).first(1)).to eq([400])
+    end
+
+    it "answers 404 not_found for no such session, in a session's words, never a missing route's" do
+      [call("/api/sessions/feedbeef00/wake", method: "POST", body: {}), call("/api/sessions/feedbeef00/worker")].each do |status, body|
+        expect(status).to eq(404)
+        expect(body["error"]).to eq("not_found")
+        expect(body["detail"]).not_to start_with("not found: /")
+      end
+    end
+
+    it "reads the worker without starting one: live with its epoch, idle, stopped, a chi REPL's" do
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      live = make
+      own(live)
+      live_worker(live)
+      expect(call("/api/sessions/#{live.id}/worker"))
+        .to match([200, include("session_id" => live.id, "live" => true, "stopped" => false, "owner" => "worker",
+                                "worker" => worker_json, "parent_strategy" => include("name"))])
+
+      idle = make
+      expect(call("/api/sessions/#{idle.id}/worker").last)
+        .to include("live" => false, "stopped" => false, "owner" => nil, "worker" => nil)
+
+      stopped = make
+      Samagotchi::Session.mark_stopped(stopped.id, state_dir: state_dir)
+      expect(call("/api/sessions/#{stopped.id}/worker").last).to include("live" => false, "stopped" => true)
+
+      repl = make
+      own(repl, kind: "tui")
+      expect(call("/api/sessions/#{repl.id}/worker").last).to include("live" => false, "owner" => "tui")
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
+
+    it "reads an older worker's sidecar (no epoch) as epoch null" do
+      session = make
+      own(session)
+      live_worker(session, epoch: nil)
+
+      expect(call("/api/sessions/#{session.id}/worker").last["worker"]).to include("epoch" => nil)
     end
   end
 end

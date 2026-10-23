@@ -10,6 +10,8 @@ require_relative "../image_store"
 require_relative "../context_sources"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
+require_relative "../worker_sidecar"
+require_relative "../launch_mode"
 
 module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
@@ -64,6 +66,34 @@ module Samagotchi
       # SessionManager.session_summaries: the summary hashes (chi sessions
       # list --live/--format, chi note --all).
       def summaries(**filters) = SessionManager.session_summaries(**filters, **dir)
+
+      # The session's worker for an attach: the live one as is, else
+      # resumed and waited for up to +wait+ seconds (chi --attach on this
+      # machine; chi web's POST …/wake for a remote one).
+      # @return [Woken] its sidecar nil when the Bridge didn't come in time
+      # @raise [ArgumentError] no such session
+      # @raise [Refused] code scratch: a leftover chi scratch session
+      # @raise [SessionManager::OwnedByTUI] a chi REPL has it
+      def wake(id, wait:)
+        session = show(id)
+        raise Refused.new(LaunchMode::SCRATCH_LEFTOVER, code: "scratch") if session.scratch
+
+        live = WorkerSidecar.live(session_dir(id), unlink: true)
+        return Woken.new(woke: false, sidecar: live) if live
+
+        SessionManager.resume_session(id, **dir)
+        found = BridgeClient.wait_for(id, session_dir: session_dir(id), timeout: wait)
+        Woken.new(woke: true, sidecar: found && WorkerSidecar.read(session_dir(id)))
+      end
+
+      # The session's worker now, never started (chi web's GET …/worker).
+      # @return [WorkerState]
+      # @raise [ArgumentError] no such session
+      def worker(id)
+        show(id)
+        WorkerState.new(sidecar: WorkerSidecar.live(session_dir(id), unlink: true),
+                        stopped: Session.stopped_marker?(id, state_dir: state_dir!), owner: owner(id))
+      end
 
       # --- create and send
 

@@ -88,6 +88,19 @@ module Samagotchi
     # config.yml's (capped).
     Created = Data.define(:id, :model_warning, :continues, :moved_children, :parent_answers_warning)
 
+    # A session's worker as an attach finds it (Local#worker, chi web's GET
+    # …/worker): +sidecar+ the live worker's WorkerSidecar (port, version,
+    # features, epoch; nil: none runs), +stopped+ its stop marker, +owner+
+    # its OwnerLock::Owner (a worker, a chi REPL, nil).
+    WorkerState = Data.define(:sidecar, :stopped, :owner) do
+      def live? = !sidecar.nil?
+    end
+
+    # What a wake for an attach did (Local#wake, chi web's POST …/wake):
+    # +woke+ it started the worker (false: one ran), +sidecar+ the live
+    # worker's (nil: its Bridge didn't come within the wait).
+    Woken = Data.define(:woke, :sidecar)
+
     # What chi send --wait and chi answer read before anything is sent, so
     # neither an older reply nor a turn that ends before the first look is
     # taken for the answer (ReplyWait's cursor:, baseline:, turn:).

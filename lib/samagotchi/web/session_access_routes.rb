@@ -8,6 +8,8 @@ require_relative "../pending_question"
 require_relative "../context_sources"
 require_relative "../context_command"
 require_relative "../send_command"
+require_relative "../launch_mode"
+require_relative "../model_profile"
 
 module Samagotchi
   module Web
@@ -27,6 +29,12 @@ module Samagotchi
       # GET /api/info's feature: this chi web has these routes (a remote
       # client checks it before its first session command).
       FEATURE = "session_commands"
+      # GET /api/info's feature: this chi web has the routes a remote
+      # attached TUI needs (wake, worker; chi --remote NAME --attach).
+      ATTACH_FEATURE = "remote_attach"
+      # The longest POST …/wake waits for a worker's Bridge
+      # (TerminalUI::AttachLauncher::BRIDGE_WAIT, an attach's here).
+      WAKE_MAX_WAIT = 10.0
 
       private
 
@@ -219,6 +227,55 @@ module Samagotchi
         json[:question] = result.question&.to_file
         json[:parent_strategy] = strategy_json(strategy)
         json
+      end
+
+      # POST /api/sessions/:id/wake {wait}: the session's worker for a remote
+      # attach (SessionAccess::Local#wake): the live one, else resumed and
+      # waited for up to +wait+ seconds (WAKE_MAX_WAIT, also the most). 200
+      # {session_id, woke, worker: {epoch, started_at, version, features},
+      # model_name, default_model (this machine's config, for the TUI's
+      # status row), parent_strategy, installed (the newest chi here)}; 409
+      # owned_by_tui (a chi REPL has it), 409 scratch (a leftover scratch
+      # session, as chi --attach here says); 504 worker_timeout (its Bridge
+      # didn't come in time); 404 not_found.
+      def handle_wake(req, id)
+        body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        wait = body.fetch("wait", WAKE_MAX_WAIT)
+        return error_response(400, "invalid_wait", "wait is positive seconds") unless wait.is_a?(Numeric) && wait.positive?
+
+        woken = session_access.wake(id, wait: [wait, WAKE_MAX_WAIT].min)
+        unless woken.sidecar
+          late = format(LaunchMode::BRIDGE_LATE, id)
+          return json_response(504, { error: "worker_timeout", detail: late, message: late, session_id: id })
+        end
+
+        json_response(200, { session_id: id, woke: woken.woke, worker: worker_json(woken.sidecar),
+                             model_name: session_access.show(id).model_name,
+                             default_model: ModelProfile.default_model_name,
+                             parent_strategy: strategy_json(session_access.parent_strategy(id)),
+                             installed: @hub&.installed })
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_tui(e)
+      rescue SessionAccess::Refused => e
+        refusal_response(409, e.code, e, session_id: id)
+      end
+
+      # GET /api/sessions/:id/worker: the session's worker now, never
+      # started (SessionAccess::Local#worker): a remote attach's
+      # rediscovery and its features after a restart. 200 {session_id,
+      # live, stopped, owner: worker|tui|null, worker: {epoch, started_at,
+      # version, features}|null, parent_strategy}; 404 not_found.
+      def handle_worker(_req, id)
+        state = session_access.worker(id)
+        json_response(200, { session_id: id, live: state.live?, stopped: state.stopped, owner: state.owner&.kind,
+                             worker: state.sidecar && worker_json(state.sidecar),
+                             parent_strategy: strategy_json(session_access.parent_strategy(id)) })
+      end
+
+      # A live worker as a remote client knows it: its epoch is its
+      # identity (the one in its event ids).
+      def worker_json(sidecar)
+        { epoch: sidecar.epoch, started_at: sidecar.started_at, version: sidecar.version, features: sidecar.features }
       end
 
       # POST /api/sessions/:id/notes {text, source}: a context note for the

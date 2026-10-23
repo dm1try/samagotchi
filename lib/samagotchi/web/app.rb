@@ -194,6 +194,8 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer],
         ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss],
         ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :session],
@@ -469,11 +471,13 @@ module Samagotchi
       # on this machine (nil until the hub has looked); newest_workers: the
       # workers it starts run that one, not this chi web's version;
       # session_commands: the routes chi --remote needs
-      # (SessionAccessRoutes::FEATURE). lan: its LAN address, nil when it
+      # (SessionAccessRoutes::FEATURE); remote_attach: the ones a remote
+      # attached TUI needs (ATTACH_FEATURE). lan: its LAN address, nil when it
       # listens on loopback only.
       def handle_info(_req)
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: ["dir", "newest_workers", SessionAccessRoutes::FEATURE],
+                             cwd: Dir.pwd, features: ["dir", "newest_workers", SessionAccessRoutes::FEATURE,
+                                                      SessionAccessRoutes::ATTACH_FEATURE],
                              lan: @lan && @lan[:ip] })
       end
 

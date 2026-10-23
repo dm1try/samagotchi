@@ -5,6 +5,7 @@ require "spec_helper"
 require "samagotchi/session_access/local"
 require "samagotchi/session_manager"
 require "samagotchi/reply_wait"
+require "socket"
 
 # SessionAccess::Local: this machine's sessions, the calls the session
 # commands made before the seam (their own specs cover the behaviour).
@@ -34,6 +35,46 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     session = saved_session
     expect(access.resolve(session.id[0, 8])).to eq(session.id)
     expect { access.resolve("0000dead") }.to raise_error(ArgumentError)
+  end
+
+  describe "#wake and #worker (a remote attach, through chi web)" do
+    let(:server) { TCPServer.new("127.0.0.1", 0) }
+
+    after { server.close }
+
+    def sidecar_for(session, epoch: "ab12cd34")
+      Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, session_id: session.id, epoch: epoch)
+                               .write(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))
+    end
+
+    it "wakes nothing for a live worker, else resumes and waits; a Bridge that doesn't come is no sidecar" do
+      session = saved_session
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+
+      expect(access.wake(session.id, wait: 0.1)).to eq(Samagotchi::SessionAccess::Woken.new(woke: true, sidecar: nil))
+
+      sidecar_for(session)
+      expect(access.wake(session.id, wait: 0.1)).to have_attributes(woke: false, sidecar: have_attributes(epoch: "ab12cd34"))
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).once
+    end
+
+    it "refuses a leftover scratch session and an unknown one" do
+      scratch = saved_session(scratch: true)
+
+      expect { access.wake(scratch.id, wait: 0.1) }
+        .to raise_error(Samagotchi::SessionAccess::Refused, Samagotchi::LaunchMode::SCRATCH_LEFTOVER) { |e| expect(e.code).to eq("scratch") }
+      expect { access.wake("0000dead", wait: 0.1) }.to raise_error(ArgumentError)
+    end
+
+    it "reads the worker: its sidecar while live, the stop marker, the owner" do
+      session = saved_session
+      expect(access.worker(session.id)).to have_attributes(live?: false, stopped: false, owner: nil)
+
+      sidecar_for(session)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+      expect(access.worker(session.id)).to have_attributes(live?: true, stopped: true, sidecar: have_attributes(epoch: "ab12cd34"))
+    end
   end
 
   describe "#prepare_wait" do
