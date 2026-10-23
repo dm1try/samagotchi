@@ -60,7 +60,7 @@ module Samagotchi
 
       # A new worker's Bridge, on the port its event names.
       def switched(event)
-        @client = BridgeClient.new(session_id: @client.session_id, port: event[:port] || event["port"], host: @client.host)
+        @client = BridgeClient.new(session_id: @client.session_id, port: AttachLink.event_port(event), host: @client.host)
       end
 
       # No sidecar to read: true, its Bridge answers (a P0-P2 worker refuses

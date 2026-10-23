@@ -372,7 +372,7 @@ module Samagotchi
         @client = @link.switched(event)
         @worker_changed = true
         @view.finish_thinking_spinner
-        Log.info(:attached, "worker_changed", port: event[:port])
+        Log.info(:attached, "worker_changed", port: AttachLink.event_port(event))
         nil
       end
 

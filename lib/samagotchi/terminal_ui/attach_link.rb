@@ -21,6 +21,10 @@ module Samagotchi
         ALL = new(paths: true, memories: true)
       end
 
+      # The port a worker_changed event names (string or symbol keys; nil
+      # for a worker reached another way).
+      def self.event_port(event) = event[:port] || event["port"]
+
       # @return [#session_id, #follow, #post_turn, ...] the session's client
       #   (a BridgeClient on this machine), the newest after #switched
       def client = raise(NotImplementedError)
