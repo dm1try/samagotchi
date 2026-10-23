@@ -3,9 +3,9 @@
 module Samagotchi
   module SessionAccess
     # Which session commands and flags run against another machine's
-    # sessions (chi --remote NAME …, to come) and which run on this machine
-    # only (refused under a remote, exit 2: "chi <cmd> runs on this machine
-    # only: run it on <remote>"). The v1 scope is the remote-sessions plan's
+    # sessions (chi --remote NAME …, CHI_REMOTE; SessionAccess::Dispatch)
+    # and which run on this machine only (refused under a remote, exit 2:
+    # "chi <cmd> runs on this machine only: run it on <remote>"). The v1 scope is the remote-sessions plan's
     # D3: send, answer, note, a session's context (add, push, ls, show, rm)
     # and sessions list/stop/restart/archive/unarchive/delete; the rest
     # stays local. bin/chi's subcommands that act on the machine, not on
@@ -18,8 +18,10 @@ module Samagotchi
       SUPPORTED = :supported
       LOCAL_ONLY = :local_only
 
-      # bin/chi subcommands that act on this machine: never sessions.
-      MACHINE = %w[bootstrap update models desktop memory bundle].freeze
+      # bin/chi subcommands that act on this machine: never sessions. chi
+      # remote (this machine's list of remotes) runs here under a remote too
+      # (Dispatch); the others are refused there.
+      MACHINE = %w[bootstrap update models desktop memory bundle remote].freeze
 
       # "command", "command sub" or either with a flag (its long name) →
       # SUPPORTED or LOCAL_ONLY. A LOCAL_ONLY command or subcommand lists
