@@ -13,8 +13,7 @@ RSpec.describe Samagotchi::TitleCommand do
       s.first_preview = "hey chi, coordinate"
     end
   end
-  let(:saved) { [] }
-  let(:command) { described_class.new(engine: engine, save: ->(s) { saved << s.title }) }
+  let(:command) { described_class.new(engine: engine) }
 
   it "shows the title, or the first message the lists show without one" do
     expect(command.run("")).to eq(["title: none (shows the first message: hey chi, coordinate)", false, :ok])
@@ -22,17 +21,15 @@ RSpec.describe Samagotchi::TitleCommand do
     expect(command.run(" ")).to eq(["title: none (shows the first message)", false, :ok])
     session.title = "Coordinator"
     expect(command.run("")).to eq(["title: Coordinator", false, :ok])
-    expect(saved).to be_empty
   end
 
-  it "sets it, whitespace collapsed and cut at 80 characters, saved at once; the same again is no change" do
+  it "sets it, whitespace collapsed and cut at 80 characters (changed: its host saves it); the same again is no change" do
     expect(command.run("  Coordinator \n  of  the day ")).to eq(["title: Coordinator of the day", true, :ok])
-    expect(saved).to eq(["Coordinator of the day"])
+    expect(session.title).to eq("Coordinator of the day")
     expect(command.run("Coordinator of the day")).to eq(["title: Coordinator of the day\n(no change)", false, :ok])
 
-    command.run("x" * 90)
+    expect(command.run("x" * 90)[1]).to be(true)
     expect(session.title).to eq("#{"x" * 80}…")
-    expect(saved.size).to eq(2)
   end
 
   it "clears it with --clear, back to the first message" do
@@ -40,7 +37,6 @@ RSpec.describe Samagotchi::TitleCommand do
 
     expect(command.run(" --clear")).to eq(["title: none (shows the first message: hey chi, coordinate)", true, :ok])
     expect(session.title).to be_nil
-    expect(saved).to eq([nil])
     expect(command.run("--clear").last(2)).to eq([false, :ok])
   end
 
@@ -49,21 +45,19 @@ RSpec.describe Samagotchi::TitleCommand do
 
     expect(command.run("--clear  now")).to eq(["usage: /title [TEXT|--clear]", false, :error])
     expect(session.title).to eq("Coordinator")
-    expect(saved).to be_empty
   end
 
   it "refuses without a session" do
-    expect(described_class.new(engine: Struct.new(:session).new(nil), save: ->(_) {}).run("X"))
+    expect(described_class.new(engine: Struct.new(:session).new(nil)).run("X"))
       .to eq(["no session yet", false, :error])
   end
 
-  it "drops a preview that is the command itself, and the save derives it from the first user message" do
+  it "drops a preview that is the command itself, and the host's save derives it from the first user message" do
     dir = Dir.mktmpdir("title-spec")
     session.first_preview = "/title Coordinator"
     session.messages = [{ role: "user", content: "the real first question" }]
-    saving = described_class.new(engine: engine, save: ->(s) { s.save(state_dir: dir) })
-
-    saving.run("Coordinator")
+    command.run("Coordinator")
+    session.save(state_dir: dir)
 
     expect(Samagotchi::Session.load(session.id, state_dir: dir))
       .to have_attributes(title: "Coordinator", first_preview: "the real first question")

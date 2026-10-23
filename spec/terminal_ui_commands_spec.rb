@@ -417,10 +417,11 @@ RSpec.describe Samagotchi::TerminalUI do
       allow(agent).to receive_messages(piped_input?: true)
       status = agent.instance_variable_get(:@status_row)
 
-      agent.send(:run_input_line, nil, "/title Coordinator")
+      agent.send(:run_input_line, agent.engine.session, "/title Coordinator")
       expect(status.rows(120).join).to start_with("status> Coordinator | model=")
+      expect(agent.engine.session).to have_received(:save).once
 
-      agent.send(:run_input_line, nil, "/title --clear")
+      agent.send(:run_input_line, agent.engine.session, "/title --clear")
       expect(status.rows(120).join).to start_with("status> model=")
     end
   end

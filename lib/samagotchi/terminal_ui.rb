@@ -890,8 +890,8 @@ module Samagotchi
           show_command_result(command)
           refresh_status_row(clear_unknown_context: true) if command.changed.include?(:model)
           refresh_status_row if command.changed.include?(:title)
-          # /recap on|off|default doesn't save itself (a worker saves a changed command).
-          save_session(session) if command.changed.include?(:recap)
+          # /recap and /title don't save themselves (a worker saves a changed command).
+          save_session(session) if command.changed.intersect?(%i[recap title])
           persist_recent_history(input) if command.shell
           return
         end

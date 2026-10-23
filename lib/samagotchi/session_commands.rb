@@ -565,7 +565,7 @@ module Samagotchi
     # cleared its name. A plain save: no setting moved, and it may run on
     # an anytime thread beside a turn.
     def title(text)
-      output, changed, status = TitleCommand.new(engine: @engine, save: @save).run(text.delete_prefix(TITLE_COMMAND))
+      output, changed, status = TitleCommand.new(engine: @engine).run(text.delete_prefix(TITLE_COMMAND))
       reply(output, status: status, changed: changed ? [:title] : [])
     end
 

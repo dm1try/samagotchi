@@ -3,12 +3,13 @@
 module Samagotchi
   # /title, the session's own name (Session#title): with no argument, the
   # title and what shows without one; `/title TEXT` names the session
-  # (whitespace collapsed, cut at 80 characters as a preview is), saved at
-  # once; `/title --clear` drops it, and the lists show the first message
-  # again. Anyone who may send the session a command may name it (a parent
-  # agent its delegates too). It runs mid-turn as well (anytime): the save
-  # takes the session's lock and writes a running turn's checkpoint, as a
-  # turn's own saves do.
+  # (whitespace collapsed, cut at 80 characters as a preview is);
+  # `/title --clear` drops it, and the lists show the first message again.
+  # Anyone who may send the session a command may name it (a parent agent
+  # its delegates too). It doesn't save: its host saves a changed result at
+  # once (Worker, the REPL). It runs mid-turn as well (anytime): the
+  # worker's save takes the session's lock and writes a running turn's
+  # checkpoint, as a turn's own saves do.
   class TitleCommand
     NAME = "/title"
     CLEAR = "--clear"
@@ -17,10 +18,8 @@ module Samagotchi
     LIMIT = 80
 
     # @param engine [Engine] #session
-    # @param save [#call] saves the session after a change
-    def initialize(engine:, save:)
+    def initialize(engine:)
       @engine = engine
-      @save = save
     end
 
     # @param args [String] what follows /title
@@ -42,9 +41,8 @@ module Samagotchi
       session.title = title
       # The command itself as the session's first line (chi send --new
       # "/title X", a web first message) became its preview: it goes, and
-      # the save derives the preview from the first user message again.
+      # the host's save derives the preview from the first user message again.
       session.first_preview = "" if session.first_preview.to_s.start_with?(NAME)
-      @save.call(session)
       [listing(session), true, :ok]
     end
 
