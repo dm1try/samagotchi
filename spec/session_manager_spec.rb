@@ -1589,7 +1589,7 @@ RSpec.describe Samagotchi::SessionManager do
     let(:engine) do
       instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, turn_running?: false, last_activity_at: 0.0,
-                                          messages_checkpoint: [], used_memory_names: [], write_recap_now: nil)
+                                          messages_checkpoint: [], used_memory_names: [], write_recap_now: nil, recap_timeout: nil)
     end
 
     before do
@@ -1619,6 +1619,19 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.exist?(sidecar)).to be(false)
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
       expect(engine).to have_received(:stop_idle)
+    end
+
+    it "marks its owner lock leaving, with the recap's timeout, before the recap on leave" do
+      session.messages << { role: "user", content: "hi" }
+      session.save(state_dir: tmpdir)
+      allow(engine).to receive(:recap_timeout).and_return(12.0)
+      owner_at_recap = nil
+      allow(engine).to receive(:write_recap_now) { owner_at_recap = Samagotchi::OwnerLock.owner(session_dir) }
+
+      expect(run_worker).to eq(:idle_exit)
+
+      expect(owner_at_recap).to have_attributes(leaving?: true, leave_wait: 12.0)
+      expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
     end
 
     it "stays up while a reminder is registered" do

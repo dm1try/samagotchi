@@ -195,6 +195,7 @@ module Samagotchi
           resume = attach
         end
 
+        await_leaving_worker(resume, sd, err) if resume
         session = if resume
                     SessionManager.resume_session(resume, state_dir: sd)
                   else
@@ -212,6 +213,16 @@ module Samagotchi
         raise Error, e.message
       rescue ArgumentError => e
         raise Error, e.message
+      end
+
+      # The session's previous worker may still be leaving: its Bridge
+      # closed, the lock held while it writes its recap on leave (a resume
+      # now would start nothing, the lock taken). Wait for it to let go
+      # (OwnerLock.await_release), with one line saying so; any other owner
+      # is left to resume_session as before.
+      def await_leaving_worker(session_id, state_dir, err)
+        OwnerLock.await_release(Session.session_dir(session_id, state_dir: state_dir),
+                                on_wait: ->(_owner) { err.puts(LaunchMode::RECAP_WAIT) })
       end
 
       # --model as typed: spawn_session stores the resolved ref and this name.

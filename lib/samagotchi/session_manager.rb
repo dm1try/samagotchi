@@ -964,7 +964,8 @@ module Samagotchi
       # loop run in-process (specs) traps nothing.
       signals = spawned ? WorkerSignals.new.install! : WorkerSignals::NONE
       worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
-                          idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, signals: signals)
+                          idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, signals: signals,
+                          owner_lock: @owner_lock)
       result = begin
         worker.run
       rescue StandardError, ScriptError => e

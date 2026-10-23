@@ -254,7 +254,7 @@ module Samagotchi
     end
 
     # @return [Array(Integer, Integer)] the recap length range, e.g. [2, 4]
-    attr_reader :generation, :inactivity, :min_user_turns, :sentences
+    attr_reader :generation, :inactivity, :min_user_turns, :sentences, :timeout
 
     # @param callable [#call] true while a continue offer waits for an
     #   answer (the Worker's or the REPL's TurnFlow); read at each attempt

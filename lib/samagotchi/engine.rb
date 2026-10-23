@@ -1858,6 +1858,11 @@ module Samagotchi
       @recap&.write_now(on_start: on_start)
     end
 
+    # The longest #write_recap_now waits (recap.timeout), nil when no recap
+    # is set up.
+    # @return [Float, nil]
+    def recap_timeout = @recap&.timeout
+
     # Ask for a recap now (/recap), without waiting for the idle window.
     # @return [Symbol] IdleRecap#request_now's answer, or :off
     def request_recap

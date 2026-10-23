@@ -43,6 +43,37 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
     end
 
+    it "waits for a worker still leaving (its recap on leave), saying so once, then resumes" do
+      err = StringIO.new
+      calls = []
+      owner = Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", leaving_at: Time.now.iso8601, leave_wait: 30.0)
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::OwnerLock).to receive(:await_release) do |dir, on_wait:|
+        calls << [:await, dir]
+        on_wait.call(owner)
+        :released
+      end
+      allow(Samagotchi::SessionManager).to receive(:resume_session) { (calls << [:resume]) && session }
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+
+      expect(connect(attach: session.id, err: err)).to be(client)
+      expect(calls).to eq([[:await, Samagotchi::Session.session_dir(session.id, state_dir: state_dir)], [:resume]])
+      expect(err.string).to eq("#{Samagotchi::LaunchMode::RECAP_WAIT}\n")
+    end
+
+    it "says nothing when no worker is leaving (--resume ID too)" do
+      err = StringIO.new
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::OwnerLock).to receive(:await_release).and_call_original
+
+      expect(connect(attach: session.id, err: err)).to be(client)
+      expect(connect(resume: session.id, err: err)).to be(client)
+      expect(Samagotchi::OwnerLock).to have_received(:await_release).twice
+      expect(err.string).to eq("")
+    end
+
     it "refuses a session a chi REPL has open" do
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
       allow(Samagotchi::SessionManager).to receive(:resume_session)

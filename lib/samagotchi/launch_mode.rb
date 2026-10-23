@@ -19,6 +19,10 @@ module Samagotchi
     # A worker spawned or resumed for an attach whose Bridge never came (%s:
     # the session id).
     BRIDGE_LATE = "the worker for session %s did not start its Bridge in time"
+    # An attach (or a resume) that found the session's worker leaving, its
+    # Bridge closed and its recap on leave still being written: it waits for
+    # the worker to let go (OwnerLock.await_release), then starts a new one.
+    RECAP_WAIT = "(waiting for the session to finish its recap…)"
 
     module_function
 

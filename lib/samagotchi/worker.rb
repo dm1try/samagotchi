@@ -122,9 +122,14 @@ module Samagotchi
     #   trapped signals (SessionManager.run_session_loop); none by default
     # @param signal_grace [Array(Numeric, Numeric, Numeric)] the grace, the
     #   short grace and the hard exit's delay (specs shorten them)
+    # @param owner_lock [OwnerLock, nil] the session's, which this process
+    #   holds (SessionManager.run_session_loop): marked leaving as the Bridge
+    #   stops, so an attach waits for the recap on leave (OwnerLock.await_release)
     def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: nil,
-                   signals: WorkerSignals::NONE, signal_grace: [SIGNAL_GRACE, SIGNAL_SHORT_GRACE, SIGNAL_HARD_EXIT])
+                   signals: WorkerSignals::NONE, signal_grace: [SIGNAL_GRACE, SIGNAL_SHORT_GRACE, SIGNAL_HARD_EXIT],
+                   owner_lock: nil)
       @session_id = session_id
+      @owner_lock = owner_lock
       @state_dir = state_dir
       @session_dir = session_dir
       @idle_exit_minutes = idle_exit_minutes
@@ -1256,12 +1261,26 @@ module Samagotchi
     # The Bridge stops once the block (which closed its intake with the
     # event log held) answers true, outside the log: Bridge#stop waits for
     # the requests it is answering, and one waiting on the log would hold
-    # it for the whole grace before being killed.
+    # it for the whole grace before being killed. The owner lock says it is
+    # leaving first, so a client that finds no Bridge from here on waits
+    # for the lock (OwnerLock.await_release) instead of giving up.
     # @return [Boolean] what the block answered
     def stop_bridge_after
       leaving = yield
-      @bridge&.stop if leaving
+      if leaving
+        mark_leaving
+        @bridge&.stop
+      end
       leaving
+    end
+
+    # How long the lock stays held after the Bridge: the recap on leave's
+    # timeout (#left), none for a restart (#left writes none). A delete
+    # writes none either, but the bound only has to be an upper one.
+    def mark_leaving
+      @owner_lock&.mark_leaving(wait: @exit_restart ? 0 : @engine.recap_timeout.to_f)
+    rescue StandardError => e
+      Log.warn(:worker, "mark_leaving_failed", error: e.class.name, msg: e.message)
     end
 
     # Bridge POST /exit, on a Bridge thread with the event log held.
