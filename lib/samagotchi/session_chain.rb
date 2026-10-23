@@ -70,12 +70,20 @@ module Samagotchi
     # @return [String]
     def note_text(previous, recap:)
       head = "This session continues #{previous.id[0, 8]} (#{clock(previous.created_at) || previous.created_at}), the previous link of its chain."
+      "#{head}#{recap_text(recap)}"
+    end
+
+    # +recap+ as a note's tail: " Its recap, as of <time>:\n<text>" (cut
+    # to RECAP_CHARS), or " It left no recap."
+    # @param recap [Hash, nil] RecapStore.read's
+    # @return [String]
+    def recap_text(recap)
       text = recap && recap[:text].to_s.strip
-      return "#{head} It left no recap." if text.nil? || text.empty?
+      return " It left no recap." if text.nil? || text.empty?
 
       text = "#{text[0, RECAP_CHARS - 1]}…" if text.length > RECAP_CHARS
       as_of = clock(recap[:created_at])
-      "#{head} Its recap#{", as of #{as_of}" if as_of}:\n#{text}"
+      " Its recap#{", as of #{as_of}" if as_of}:\n#{text}"
     end
 
     # What web `continue →` prefills in +previous+'s next link: +previous+'s

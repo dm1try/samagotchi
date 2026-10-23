@@ -300,8 +300,9 @@ module Samagotchi
     # IdleRecap#request_now) and wait, up to +wait+ seconds, for recap.json
     # to change. A worker that is gone wrote its recap when it left; one
     # that has nothing new to say, too short a conversation, or recaps off
-    # answers at once. Best effort: the continue goes on without.
-    private_class_method def self.recap_before_archive(id, state_dir, wait:)
+    # answers at once. Best effort: the continue goes on without. A review
+    # fork (ReviewStart) asks the same, with nothing archived after.
+    def self.recap_before_archive(id, state_dir, wait:)
       return unless SessionManager.worker_live?(id, state_dir: state_dir)
 
       dir = Session.session_dir(id, state_dir: state_dir)
