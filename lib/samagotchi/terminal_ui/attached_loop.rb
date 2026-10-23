@@ -486,8 +486,9 @@ module Samagotchi
         return @screen.commit(STEER_CHOICE_USAGE) if route.kind == :usage
         return @screen.commit(queue_needs_newer_worker) if Delivery.queue?(route.delivery) && !worker_queues?
 
-        # To an idle session it is an ordinary prompt: no delivery to send.
-        send_prompt(route.text, delivery: route.delivery)
+        # To an idle session it is an ordinary prompt: no delivery to send,
+        # and its ack says it was sent now (#sent_note).
+        send_prompt(route.text, delivery: route.delivery, choice: route.choice)
         nil
       end
 
@@ -836,11 +837,13 @@ module Samagotchi
       # from the ack (the worker knows whether cutting is on for its model);
       # a queued one waits for the turn's end (the ack says queue).
       # An idle session's prompt simply runs, and a prompt with images runs
-      # as its own next turn (never merging mid-turn), so nothing is said.
+      # as its own next turn (never merging mid-turn), so nothing is said;
+      # one typed as /cut or /queue says it was sent now (+choice+).
       # @param ack [Hash, nil] the Bridge's 202 body
       # @param delivery [String, nil] what was asked for
       # @return [String, nil]
-      def sent_note(ack, delivery: nil, images: [], running: false)
+      def sent_note(ack, delivery: nil, images: [], running: false, choice: nil)
+        return STEER_CHOICE_IDLE if choice && !running
         return nil unless running && ack.is_a?(Hash)
         # The Bridge acks queue only while a turn ran at enqueue; a /queue
         # it acks next_step found the turn over: it is the next turn.
@@ -867,7 +870,8 @@ module Samagotchi
         @client_id
       end
 
-      def send_prompt(text, delivery: nil)
+      # @param choice [Symbol, nil] :cut or :queue when typed with that word
+      def send_prompt(text, delivery: nil, choice: nil)
         persist_recent_history(text)
         images = attach_images(text)
         return own_prompt_failed if images.nil?
@@ -883,7 +887,7 @@ module Samagotchi
           @sent_ids << enqueued_id if enqueued_id
           @open_ids << enqueued_id if enqueued_id && @wait_at_eof
           @my_queued << enqueued_id if enqueued_id && reply.json&.fetch("delivery", nil) == Delivery::QUEUE
-          note = sent_note(reply.json, delivery: delivery, images: images, running: running)
+          note = sent_note(reply.json, delivery: delivery, images: images, running: running, choice: choice)
           @screen.commit(note) if note
           return
         end

@@ -2058,6 +2058,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     expect(client).to have_received(:post_turn).with(prompt: "later please", client_id: "tui:1").ordered
     expect(client).to have_received(:post_turn).with(prompt: "now please", client_id: "tui:1").ordered
     expect(screen.lines).not_to include("(queued: runs after this turn)")
+    expect(screen.lines.grep(/nothing is running/)).to eq(["(nothing is running: sent now)"] * 2)
   end
 
   it "says a /cut with no text is a usage error, and sends nothing" do

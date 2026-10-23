@@ -91,6 +91,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(run).to eq("hello")
     agent.send(:run_input_line, used_session, "/queue hello")
     expect(run).to eq("hello")
+    expect(surface.lines.grep(/nothing is running/)).to eq(["(nothing is running: sent now)"] * 2)
   end
 
   it "says a /cut or /queue with no text is a usage error, and doesn't send it" do

@@ -867,7 +867,10 @@ module Samagotchi
       route = ComposerRoute.call(input, running: false, registry: command_registry)
       return @surface.commit(STEER_CHOICE_USAGE) if route.kind == :usage
 
-      input = route.text if route.choice
+      if route.choice
+        input = route.text
+        @surface.commit(STEER_CHOICE_IDLE)
+      end
 
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's

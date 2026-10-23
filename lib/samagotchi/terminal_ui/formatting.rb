@@ -118,6 +118,9 @@ module Samagotchi
       CUT_OFF_NOTE = "(cutting is off; goes in at the next step)"
       # A bare /cut or /queue (ComposerRoute's :usage).
       STEER_CHOICE_USAGE = "(/cut and /queue need a message: /cut TEXT, /queue TEXT)"
+      # A /cut TEXT or /queue TEXT with no turn running: the text is sent
+      # at once, a normal turn (ComposerRoute routes it on as a line).
+      STEER_CHOICE_IDLE = "(nothing is running: sent now)"
 
       # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
       # @param after [Integer, nil] the run's cut wait (the model's own

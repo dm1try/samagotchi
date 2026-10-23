@@ -29,6 +29,11 @@ and commands may change between minor versions. How releases are made:
 - The bundle test kit's `wait_until!` is renamed `wait_for`, with no alias: a bundle spec that calls
   `wait_until!` changes the name (same arguments).
 
+### Fixed
+
+- `/queue TEXT` (or `/cut TEXT`) with no turn running says `(nothing is running: sent now)` in the REPL and the
+  attached terminal, instead of sending without a word.
+
 ## [0.103.0] - 2026-10-23
 
 ### Added

@@ -752,7 +752,7 @@ REPL alike:
   with images works the same way: it waits for the turn's end, and the lines
   sent after it still go in at the next step.
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
-  as a normal prompt.
+  as a normal prompt, and the terminals say so: `(nothing is running: sent now)`.
 - `/unqueue` (attached terminal) takes back the newest line this terminal
   queued that hasn't started: `removed: <its first 60 characters>`, and its text
   goes back into the input to change and send again (not over typed text: then
