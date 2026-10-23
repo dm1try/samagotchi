@@ -183,7 +183,7 @@ test("the server's snapshot out of order: a GET an event overtook, or one behind
 });
 
 // Steering (P3a): a view whose list is open, the lines it posts recorded.
-function steeringView({ wide = true, llmContext = null } = {}) {
+function steeringView({ wide = true, llmContext = null, dir = undefined } = {}) {
   const infoEl = document.createElement("div");
   infoEl.innerHTML = '<button class="ws-chip"></button>';
   document.body.append(infoEl);
@@ -191,7 +191,7 @@ function steeringView({ wide = true, llmContext = null } = {}) {
   const win = { innerWidth: wide ? 1200 : 390, innerHeight: 800 };
   const ws = createWorkingSet({
     historyEl: document.createElement("div"), infoEl, session: () => "s1",
-    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], llmContext }),
+    state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], llmContext, dir }),
     sendLine: (line) => { sent.push(line); return Promise.resolve(); },
   });
   const turn = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { ...read("lib/b.rb"), status: "ok" }] }] }, 0);
@@ -217,6 +217,19 @@ test("the list's drop posts the session's /working-set line; a dropped row offer
   assert.match(undrop.title, /cache break/);
   undrop.click();
   assert.equal(sent.at(-1), "/working-set undrop /p/lib/a.rb");
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
+test("inside the session's folder a line names a file by its relative path (the bubble shows it); pending reads both", () => {
+  const { ws, pop, sent, row, infoEl } = steeringView({ dir: "/p/" });
+  row("a.rb").querySelector('[data-ws="steer"]').click();
+  assert.deepEqual(sent, ["/working-set drop lib/a.rb"]);
+  ws.commandQueued({ command_id: "c1", line: "/working-set drop lib/a.rb", waits: "turn_end" });
+  ws.commandQueued({ command_id: "c2", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
+  assert.equal(row("a.rb").querySelector(".ws-pend").textContent, "drops next turn");
+  assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "drops next turn");
   ws.popover.close();
   infoEl.remove();
   pop.remove();

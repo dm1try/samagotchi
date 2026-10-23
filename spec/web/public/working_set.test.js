@@ -352,6 +352,16 @@ test("steer words: a key with spaces is quoted on the line and read back whole, 
   assert.equal(quoteWord("lib/cart.rb"), "lib/cart.rb");
 });
 
+test("steer lines in the session's folder: a file inside it by its relative path, outside by its absolute one", () => {
+  const inside = { kind: "file", key: "/p/lib/a.rb", ops: ["read"] };
+  const outside = { kind: "file", key: "/etc/hosts", ops: ["read"] };
+  assert.equal(steerLine("drop", [inside, outside], "/p"), "/working-set drop lib/a.rb /etc/hosts");
+  assert.deepEqual(parseSteerLine("/working-set drop lib/a.rb ./lib/b.rb /etc/hosts", "/p/"),
+    { op: "drop", ids: ["file:/p/lib/a.rb", "file:/p/lib/b.rb", "file:/etc/hosts"] });
+  assert.equal(steerId(inside), "file:/p/lib/a.rb");
+  assert.deepEqual([...pendingSteers(["/working-set pin lib/a.rb"], "/p")], [["file:/p/lib/a.rb", "pin"]]);
+});
+
 test("pendingSteers: queued lines in order, an op then its inverse netting to nothing", () => {
   const pending = pendingSteers(["/working-set drop /p/a.rb /p/b.rb", "/model x", "/working-set undrop /p/a.rb", "/working-set undrop memory:m"]);
   assert.deepEqual([...pending], [["file:/p/b.rb", "drop"], ["memory:m", "undrop"]]);
