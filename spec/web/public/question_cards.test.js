@@ -326,6 +326,11 @@ test("resolved: the decision, and who made it when it was another client", () =>
   const other = history.children[1];
   cards.resolveContinue({ decision: "abort", client_id: "tui-123" });
   assert.match(other.querySelector(".question-result").textContent, /^Not continued \(.+\)$/);
+  cards.renderContinue({});
+  const refused = history.children[2];
+  cards.resolveContinue({ decision: "refused", reason: "revoked", client_id: "web-me" });
+  assert.equal(refused.querySelector(".question-result").textContent,
+    "Not continued: the participant may no longer run turns");
 });
 
 test("forgetContinue: a later offer draws a new card", () => {

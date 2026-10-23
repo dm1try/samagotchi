@@ -165,11 +165,48 @@ RSpec.describe Samagotchi::ContinueOffer do
       session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
                                                    author: "p:p_0123abcd")
       refusing = described_class.new(engine: engine, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
-                                     max_iterations: ->(_) { 100 }, participant_refused: ->(author) { author == "p:p_0123abcd" })
+                                     max_iterations: ->(_) { 100 },
+                                     participant_refused: ->(author) { "revoked" if author == "p:p_0123abcd" })
+      allow(turn_flow).to receive(:abort_continue!)
 
       refusing.run_continue_turn(command_from("web:owner"))
 
       expect(args).to eq({})
+      expect(turn_flow).to have_received(:abort_continue!)
+    end
+
+    # The worker's run_command, on a real TurnFlow: the owner's Continue on
+    # the offer of a participant refused since clears the offer (no resume
+    # announced, no question left, awaiting_continue? false: idle exit,
+    # /exit and the participant's held turns go on) and ends a wait on the
+    # offer turn (not_continued).
+    it "clears the offer when the owner continues a participant's turn refused since" do
+      real_flow = Samagotchi::TurnFlow.new(engine: engine)
+      real_flow.instance_variable_set(:@offer, { context: { original_prompt: "x" }, no_interrupt: false })
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
+                                                   author: "p:p_0123abcd")
+      announced = []
+      allow(engine).to receive(:announce).and_wrap_original do |original, event|
+        announced << event
+        original.call(event)
+      end
+      refusing = described_class.new(engine: engine, turn_flow: real_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+                                     max_iterations: ->(_) { 100 }, participant_refused: ->(_) { "revoked" })
+      refusing.send(:ask)
+      expect(engine.pending_question).not_to be_nil
+
+      # Worker#run_command's order.
+      awaiting = refusing.awaiting?
+      result = resolved(resume: true, decision: :resume)
+      refusing.announce_resolved(result, command_from("web:owner")) if refusing.resolved?(awaiting, result)
+      refusing.after_command(result, resolved: true)
+      refusing.run_continue_turn(command_from("web:owner"))
+
+      expect(args).to eq({})
+      expect({ awaiting: refusing.awaiting?, question: engine.pending_question }).to eq(awaiting: false, question: nil)
+      expect(session.last_turn).to have_attributes(outcome: "not_continued", enqueued_id: "q1")
+      expect(announced.select { |e| e[:type] == :continue_resolved }.map { |e| e[:decision] }).to eq(["refused"])
+      expect(announced.find { |e| e[:type] == :hook_notice }).to include(hook: "participants", level: :warn)
     end
 
     it "leaves the origin as the client's alone when the offer turn ran no input (or an older last_turn)" do

@@ -27,6 +27,12 @@ and commands may change between minor versions. How releases are made:
   and the owner's Apply updates the handoff. See [docs/cli.md](docs/cli.md#review-sessions) and
   [docs/sessions.md](docs/sessions.md#review-sessions).
 
+### Fixed
+
+- The owner's Continue on the step-limit offer of a participant whose turn is refused since (revoked, expired, at
+  their cap) ends the offer as a Stop does, with a notice: no "resumed" for a turn that never runs, and idle exit,
+  `/exit` and that participant's queued turns no longer wait on an offer nobody can answer.
+
 ## [0.106.0] - 2026-10-23
 
 ### Added

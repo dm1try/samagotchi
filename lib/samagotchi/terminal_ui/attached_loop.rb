@@ -849,7 +849,8 @@ module Samagotchi
         sync_continue_slot
       end
 
-      CONTINUE_DECISIONS = { "resume" => "yes", "abort" => "no", "abort_with_reason" => "no, with a reason" }.freeze
+      CONTINUE_DECISIONS = { "resume" => "yes", "abort" => "no", "abort_with_reason" => "no, with a reason",
+                             "refused" => "not continued: the participant may no longer run turns" }.freeze
 
       # The offer's choices go; one line says what became of it. Another
       # UI's answer shows as its command line (web> /continue yes) instead.
@@ -862,6 +863,8 @@ module Samagotchi
         who = client_label(event[:client_id], "another UI")
         outcome = if event[:decision] == "dropped"
                     "(dropped: #{own?(event[:client_id]) ? "you" : who} sent a new prompt)"
+                  elsif event[:decision] == "refused"
+                    CONTINUE_DECISIONS["refused"]
                   elsif own?(event[:client_id])
                     @continue_answer || CONTINUE_DECISIONS.fetch(event[:decision].to_s, event[:decision].to_s)
                   end

@@ -35,10 +35,13 @@ module Samagotchi
     # @param max_iterations [#call] (no_interrupt) → Integer
     # @param queue_command [#call] (line, client_id:) queues a session
     #   command as a card's (Bridge#queue_command, card: true)
-    # +participant_refused+ (author → Boolean): whether a participant's
-    # turn may no longer run (revoked, expired, at the cap: Worker's check).
-    def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) { false })
+    # +participant_refused+ (author → reason or nil): why a participant's
+    # turn may no longer run ("revoked", "cap_reached": Worker's check).
+    # @param save [#call] saves the session (a refused Continue's Stop)
+    def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
+                   save: -> {})
       @engine = engine
+      @save = save
       @turn_flow = turn_flow
       @run_turn = run_turn
       @max_iterations = max_iterations
@@ -91,7 +94,14 @@ module Samagotchi
     # it ends (chi answer --option Stop).
     # It carries the offer turn's enqueued_id, so a wait on that turn
     # (ReplyWait's turn:) ends on it too.
+    # A Continue on the offer of a participant who may no longer run a turn
+    # (revoked, expired, at the cap since) is decided here, before anything
+    # says "resume": it ends the offer as a Stop does (#refuse_continue).
     def announce_resolved(result, command)
+      if result.resume && (reason = refusal_of_offer_author)
+        return refuse_continue(reason, command)
+      end
+
       @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command.client_id)
       return if result.resume
 
@@ -133,12 +143,18 @@ module Samagotchi
     # review boundary and on their spend (never as the owner's). One whose
     # participant may no longer run a turn isn't continued.
     def run_continue_turn(command)
+      # Refused as it was answered (#announce_resolved): the offer is gone.
+      return @continue_steer = nil unless awaiting?
+
       offer = @turn_flow.offer
       resume_from = @turn_flow.resume_from
       enqueued_id = offer_turn_id
       author = Steer.sender_author(@engine.session&.last_turn&.author)
       close("answered")
-      return if author && @participant_refused.call(author)
+      if author && (reason = @participant_refused.call(author))
+        @continue_steer = nil
+        return @engine.synchronize_events { refuse_continue(reason, command) }
+      end
 
       steer = @continue_steer
       @continue_steer = nil
@@ -174,6 +190,37 @@ module Samagotchi
     end
 
     private
+
+    def refusal_of_offer_author
+      author = Steer.sender_author(@engine.session&.last_turn&.author)
+      author && @participant_refused.call(author)
+    end
+
+    # The offer of a participant refused since (+reason+: revoked,
+    # cap_reached) ends as a Stop: announced as "refused" (with a notice
+    # for the owner), the model reads it wasn't continued, last_turn says
+    # not_continued with the offer turn's enqueued_id (a wait on it ends),
+    # and awaiting_continue? goes false (idle exit, /exit, the held
+    # participant turns go on). The question goes with the next close.
+    # Called with the event log held.
+    def refuse_continue(reason, command)
+      author = @engine.session&.last_turn&.author
+      enqueued_id = offer_turn_id
+      @engine.announce(type: :continue_resolved, decision: "refused", reason: reason.to_s, client_id: command.client_id)
+      @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
+                       text: format(REFUSED_NOTICE, who: author.to_s.delete_prefix("p:"), reason: REFUSED_WHY.fetch(reason.to_s, reason.to_s)))
+      @turn_flow.abort_continue!
+      session = @engine.session
+      session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3), enqueued_id: enqueued_id) if session
+      @continue_steer = nil
+      close("answered")
+      @save.call
+      nil
+    end
+
+    REFUSED_NOTICE = "Not continued: participant %<who>s's turn %<reason>s."
+    REFUSED_WHY = { "revoked" => "is refused (their link was revoked or expired)",
+                    "cap_reached" => "is refused (they reached their review cap)" }.freeze
 
     # The enqueued_id of the turn the offer stands for: the exhausted
     # turn's last_turn (a canceled continue turn's carries the same id);

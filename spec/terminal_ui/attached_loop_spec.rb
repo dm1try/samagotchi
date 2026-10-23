@@ -1671,6 +1671,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
          { type: :continue_resolved, decision: "dropped", client_id: "web:tab" })
     expect(screen.lines.last).to eq("? The turn ran out of iterations. Continue it? → (dropped: web sent a new prompt)")
 
+    # A Continue on a participant's offer refused since says so, whoever answered.
+    feed({ type: :continue_offered, context: {}, no_interrupt: false },
+         { type: :continue_resolved, decision: "refused", reason: "revoked", client_id: "web:tab" })
+    expect(screen.lines.last).to eq("? The turn ran out of iterations. Continue it? → " \
+                                    "not continued: the participant may no longer run turns")
+
     other = described_class.new(client: client, screen: screen, client_id: "tui:2")
     other.handle_event(JSON.parse(JSON.generate(joined(continue_offer: { context: {}, no_interrupt: false }))))
     expect(other.send(:prompt_text)).to eq("? ")

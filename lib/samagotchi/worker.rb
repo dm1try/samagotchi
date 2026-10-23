@@ -264,7 +264,8 @@ module Samagotchi
       # Bridge exists by the time anyone answers).
       @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
-                                          participant_refused: ->(author) { !participant_refusal(author).nil? },
+                                          participant_refused: method(:participant_refusal),
+                                          save: -> { save_or_log(:command) { save_session } },
                                           queue_command: lambda { |line, client_id:|
                                             @bridge.queue_command(line, client_id: client_id, card: true)
                                           })
