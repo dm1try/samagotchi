@@ -87,11 +87,20 @@ test("every stream event type has its handler", () => {
     "answer_display", "card", "command_queued", "command_ran", "context_added", "context_status", "continue_offered",
     "continue_resolved", "empty_answer_retry", "generation_chunk", "generation_completed", "generation_retrying",
     "generation_started", "guardrail_warning", "hook_notice", "input_merged", "llm_context_edited", "merged_input",
-    "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
+    "participants_changed", "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
     "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated", "working_set_updated",
   ]);
+});
+
+test("participants_changed reads the owner's participants again; with no panel, it is ignored", () => {
+  assert.doesNotThrow(() => fakePage().handlers.participants_changed({ participants: [] }));
+  let reloads = 0;
+  const page = fakePage();
+  const handlers = createStreamHandlers({ ...page.deps, participantsControl: { reload: () => { reloads += 1; } } });
+  handlers.participants_changed({ participants: [], joined: [], left: [] });
+  assert.equal(reloads, 1);
 });
 
 test("working_set_updated goes to the working set; with it off (none), it is ignored", () => {

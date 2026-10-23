@@ -117,6 +117,9 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.user .state-badge button.unqueue:hover:not(:disabled){background:var(--danger-bg-dim);color:var(--danger-text);filter:none}
 .bubble.user:not([data-enqueued-id]) .state-badge button.unqueue{display:none}
 .bubble.user .origin-label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
+/* A participant's prompt: their name in their colour (tokens.css --author-N), and a rule of it on the bubble. */
+.bubble.user .origin-label.author-badge{color:var(--author-color);text-transform:none;letter-spacing:0;font-weight:600}
+.bubble.user.by-participant{border-left:3px solid var(--author-color)}
 .bubble.user .user-message{flex:1;min-width:0}
 .bubble.user blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-3);margin:2px 0 6px}
 .bubble.user blockquote:last-child{margin-bottom:0}
@@ -1096,6 +1099,49 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
 .ctx-popover{position:fixed;z-index:60;max-height:min(60vh,520px);overflow:auto;padding:12px 14px;border-radius:12px;background:var(--bg-panel);color:var(--text-2);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px;line-height:1.45;display:flex;flex-direction:column;gap:6px}
 .ctx-popover[hidden]{display:none}
+/* The participants chip (info bar) and its panel (participants_panel.js). */
+#infoBar .meta .participants-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-weight:400;white-space:nowrap}
+#infoBar .meta .participants-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .participants-chip.none{color:var(--text-muted);background:transparent;border-color:var(--border)}
+#infoBar .meta .participants-chip.none .pc-dot{display:none}
+.participants-chip .pc-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint)}
+.participants-chip.present .pc-dot{background:var(--ok)}
+.participants-popover .ctx-pop-head strong{font-family:inherit}
+.pp-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin:2px 0}
+.pp-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 8px;border-radius:8px;background:var(--bg-inset);border-left:3px solid var(--author-color)}
+.pp-row.ended{opacity:.7}
+.pp-who{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text)}
+.pp-who b{color:var(--author-color);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
+.pp-dot.present{background:var(--ok)}
+.pp-tag{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-3)}
+.pp-state{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.pp-meta{grid-column:1;font-size:11.5px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.pp-capped{color:var(--warn-text);font-weight:600}
+.pp-actions{grid-column:2;grid-row:1/3;display:flex;align-items:center;gap:4px}
+.pp-actions button,.pp-invite button,.pp-link button,.pp-foot button{padding:3px 9px;border-radius:6px;font-size:12px;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);cursor:pointer}
+.pp-actions button:hover,.pp-invite button:hover,.pp-link button:hover,.pp-foot button:hover{color:var(--text-hover)}
+.pp-actions .pp-revoke{color:var(--danger-text)}
+.pp-cap-form{display:flex;gap:4px}
+.pp-cap-form input{width:58px}
+.pp-ended summary{cursor:pointer;font-size:12px;color:var(--text-muted);margin:2px 0}
+.pp-invite{display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid var(--border)}
+.pp-invite-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pp-invite-row label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text-3)}
+.participants-popover input,.participants-popover select{font:inherit;font-size:12.5px;color:var(--text);background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:6px;padding:3px 7px}
+.pp-invite input[name=name]{flex:1;min-width:120px}
+.pp-invite input[name=cap]{width:52px}
+.pp-invite .pp-invite-btn{margin-left:auto;background:var(--primary);border-color:var(--primary);color:var(--on-solid);font-weight:600}
+.pp-invite-done{display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid var(--border)}
+.pp-link{display:flex;gap:4px}
+.pp-link input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px}
+.pp-qr{align-self:center;width:164px;height:164px;padding:6px;border-radius:8px;background:var(--on-solid)}
+.pp-qr svg{display:block;width:100%;height:100%}
+/* On a phone the panel is a sheet: the link goes out by Share or Copy, not by scanning this screen. */
+.participants-popover.sheet .pp-qr{display:none}
+.pp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:4px}
+.pp-view{font-size:12px;color:var(--accent);text-decoration:none}
+.pp-view:hover{text-decoration:underline}
 .ctx-pop-head{display:flex;align-items:baseline;gap:8px}
 .ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}
