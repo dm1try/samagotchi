@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
     count_loop_rounds(worker)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until { File.exist?(File.join(dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
+    wait_for("the worker's sidecar") { File.exist?(File.join(dir, Samagotchi::WorkerSidecar::FILE)) }
     worker
   end
 
@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
           .notify(type: :question_requested, pending_question: { id: "q-#{kind}", kind: kind, question: "?", **more }.compact)
   end
 
-  def next_turn(timeout: 3) = turns.pop(timeout: timeout)
+  def next_turn(timeout: 5) = pop!(turns, "the next turn", timeout: timeout)
 
   describe "a delegate child" do
     # A5 (2026-10-06): the worker's process exits right after #run returns
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
     it "wakes its idle parent before its run returns when it crashes" do
       child = make_child
       allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
-        sleep(0.2)
+        sleep(0.2) # sleep-ok: a slow wake, which run must still wait for before it returns
         wakes << id
       end
       allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
@@ -115,9 +115,9 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       start_worker(child)
 
       expect(next_turn&.first).to eq("count the specs")
-      expect(wait_until { ring_whys == ["turn_end"] }).to be(true)
+      wait_for("the turn_end ring") { ring_whys == ["turn_end"] }
       expect(Samagotchi::SessionInbox.read_ring(rings.first)[:child_id]).to eq(child.id)
-      expect(wait_until { wakes == [parent.id] }).to be(true)
+      wait_for("the parent's wake") { wakes == [parent.id] }
     end
 
     it "takes a parent.json written while it runs at its next turn's start: the turn and the save see the new parent" do
@@ -130,9 +130,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
       send_turn(child, "from the web", "web:tab1")
 
-      expect(seen.pop(timeout: 3)).to eq(["from the web", moved_to.id])
-      expect(wait_until { JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"] == moved_to.id })
-        .to be(true)
+      expect(pop!(seen, "the turn after the move")).to eq(["from the web", moved_to.id])
+      wait_for("the save to name the new parent") { JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"] == moved_to.id }
     end
 
     it "rings after a follow-up from its parent, not after a turn the user typed into it" do
@@ -146,7 +145,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
       send_turn(child, "and the second?", "delegate:#{parent.id[0, 8]}")
       expect(next_turn&.first).to eq("and the second?")
-      expect(wait_until { ring_whys == ["turn_end"] }).to be(true)
+      wait_for("the turn_end ring after the parent's follow-up") { ring_whys == ["turn_end"] }
     end
 
     # P4: a hook's question rings too (the parent reports or relays it); an
@@ -166,7 +165,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       send_turn(child, "go", "delegate:#{parent.id[0, 8]}")
 
       expect(next_turn&.first).to eq("go")
-      expect(wait_until { ring_whys == %w[question turn_end] }).to be(true)
+      wait_for("the question and turn_end rings") { ring_whys == %w[question turn_end] }
     end
 
     it "doesn't ring on a hook's question in a turn its user typed into it" do
@@ -197,13 +196,13 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       end
       start_worker(child)
       send_turn(child, "go", "delegate:#{parent.id[0, 8]}")
-      expect(wait_until { ring_whys == %w[question turn_end] }).to be(true)
+      wait_for("the question and turn_end rings") { ring_whys == %w[question turn_end] }
       rings.each { |f| File.delete(f) }
 
       send_turn(child, "answered on the web", "web:tab1")
-      expect(next_turn(timeout: 3)&.first).to eq("go")
+      expect(next_turn&.first).to eq("go")
       expect(next_turn&.first).to eq("answered on the web")
-      expect(wait_until { ring_whys == ["turn_end"] }).to be(true)
+      wait_for("the turn_end ring after the web answer") { ring_whys == ["turn_end"] }
       rings.each { |f| File.delete(f) }
 
       # Settled: the user's next turn is the user's again.
@@ -269,10 +268,10 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       # Taken once in the turn.
       expect(second).to eq([])
       merged = nil
-      expect(wait_until { merged = drain.find { |e| e[:type] == :input_merged } }).to be_truthy
+      wait_for("the input_merged event") { merged = drain.find { |e| e[:type] == :input_merged } }
       expect(merged).to include(count: 1, origins: [{ client_id: "child:#{child.id[0, 8]}" }])
 
-      expect(wait_until { rings.empty? }).to be(true)
+      wait_for("the report's ring to be taken") { rings.empty? }
       expect(cursor.reply_file).to end_with(".txt")
     end
 
@@ -294,7 +293,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
       expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
       restored = nil
-      expect(wait_until { (restored = drain.select { |e| e[:type] == :prompt_restored }).any? }).to be(true)
+      wait_for("the prompt_restored event") { (restored = drain.select { |e| e[:type] == :prompt_restored }).any? }
       expect(restored.map { |e| e[:prompt] }).to eq(["boom"])
       expect(rings.size).to eq(1)
 
@@ -302,7 +301,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       prompt, lines = next_turn
       expect(prompt).to eq("again")
       expect(lines.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
-      expect(wait_until { rings.empty? }).to be(true)
+      wait_for("the report's ring to be taken") { rings.empty? }
     end
 
     it "commits the report a failed turn read when the turn's work stays, and hands no prompt back" do
@@ -317,7 +316,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       send_turn(parent, "boom", "web:tab1")
 
       expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
-      expect(wait_until { rings.empty? }).to be(true)
+      wait_for("the report's ring to be taken") { rings.empty? }
       expect(cursor.reply_file).to end_with(".txt")
       expect(drain.none? { |e| e[:type] == :prompt_restored }).to be(true)
     end
@@ -362,7 +361,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         prompt, lines = next_turn
         expect(prompt).to be_nil
         expect(lines.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the report's ring to be taken") { rings.empty? }
         expect(cursor.reply_file).to end_with(".txt")
 
         send_turn(parent, "again", "web:tab1")
@@ -399,15 +398,14 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         reminder.call(["stretch"])
 
         expect(next_turn.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { drain.any? { |e| %i[turn_failed turn_completed turn_canceled].include?(e[:type]) } }).to be(true)
+        wait_for("the turn's end event") { drain.any? { |e| %i[turn_failed turn_completed turn_canceled].include?(e[:type]) } }
         # Saved as the turn ended (the Engine's failed save, or the worker's after the turn).
         saved = -> { Samagotchi::Session.load(parent.id, state_dir: tmpdir) }
-        expect(wait_until { saved.call.last_turn&.outcome == outcome }).to be(true)
+        wait_for("the turn's outcome to be saved") { saved.call.last_turn&.outcome == outcome }
         kept = saved.call.messages.any? { |m| m[:content].to_s.include?("found it") }
 
         send_turn(parent, "again", "web:tab1")
         again = next_turn
-        expect(again).not_to be_nil
         [kept, again.any? { |line| line.text.include?("found it") }]
       end
 
@@ -486,30 +484,30 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
         send_turn(parent, "long task", "web:tab1")
         expect(next_turn).to eq(["long task", []])
-        expect(wait_until { drain.one? { |e| e[:type] == :continue_offered } }).to be(true)
+        wait_for("the continue offer") { drain.one? { |e| e[:type] == :continue_offered } }
         child_answers("found it")
 
         # Canceled, the continue turn goes back to before it (TurnFlow): its
         # report with it, so its ring stays for the next turn.
         continue.call
         expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { drain.any? { |e| e[:type] == :command_ran } }).to be(true)
+        wait_for("the /continue command to run") { drain.any? { |e| e[:type] == :command_ran } }
         loop_rounds
         expect(rings.size).to eq(1)
 
         offers = drain.count { |e| e[:type] == :continue_offered }
         send_turn(parent, "long task", "web:tab1")
         expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { rings.empty? }).to be(true)
-        expect(wait_until { drain.count { |e| e[:type] == :continue_offered } == offers + 1 }).to be(true)
+        wait_for("the report's ring to be taken") { rings.empty? }
+        wait_for("the next continue offer") { drain.count { |e| e[:type] == :continue_offered } == offers + 1 }
         child_answers("more")
 
         # Failed before any progress, the continue turn stays (the offer
         # comes back): the report it read is delivered, once.
         continue.call
         expect(next_turn.last.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nmore"])
-        expect(wait_until { drain.count { |e| e[:type] == :continue_offered } == offers + 2 }).to be(true)
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the third continue offer") { drain.count { |e| e[:type] == :continue_offered } == offers + 2 }
+        wait_for("the report's ring to be taken") { rings.empty? }
 
         send_turn(parent, "again", "web:tab1")
         expect(next_turn).to eq(["again", []])
@@ -544,7 +542,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         start_worker(parent)
         child_answers("found it")
 
-        prompt, kwargs, lines = wake_turns.pop(timeout: 3)
+        prompt, kwargs, lines = pop!(wake_turns, "the wake turn")
         expect(prompt).to be_nil
         expect(kwargs).to include(continue: true, origin: { client_id: "child:#{child.id[0, 8]}" })
         # A new reason to act, not a step-limit Continue: it doesn't resume
@@ -554,7 +552,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(lines.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
         # Its message starts the turn (a reload shows the wake turn as its own).
         expect(lines.first.mark).to include(turn_start: true)
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the report's ring to be taken") { rings.empty? }
         loop_rounds
         expect(wake_turns).to be_empty
       end
@@ -569,10 +567,9 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         end
         child_answers("found it")
 
-        prompt, parent_id, = wake_turns.pop(timeout: 3)
+        prompt, parent_id, = pop!(wake_turns, "the wake turn")
         expect([prompt, parent_id]).to eq([nil, grand.id])
-        expect(wait_until { JSON.parse(File.read(File.join(tmpdir, "#{parent.id}.json")))["parent_id"] == grand.id })
-          .to be(true)
+        wait_for("the parent's save to name the grandparent") { JSON.parse(File.read(File.join(tmpdir, "#{parent.id}.json")))["parent_id"] == grand.id }
       end
 
       it "keeps the rings and stops waking after a failed wake turn, until a human's input" do
@@ -580,7 +577,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         start_worker(parent)
         child_answers("found it")
 
-        expect(wake_turns.pop(timeout: 3)).not_to be_nil
+        pop!(wake_turns, "the wake turn")
         loop_rounds
         expect(wake_turns).to be_empty
         expect(rings.size).to eq(1)
@@ -593,7 +590,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(prompt).to eq("hello")
         # The report joins the human's turn.
         expect(lines.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the report's ring to be taken") { rings.empty? }
       end
 
       # A Stop (or a before_turn hook's cancel) before the model call: the
@@ -610,7 +607,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         start_worker(parent)
         child_answers("found it")
 
-        expect(wake_turns.pop(timeout: 3)).not_to be_nil
+        pop!(wake_turns, "the wake turn")
         loop_rounds
         expect(wake_turns).to be_empty
         expect(rings.size).to eq(1)
@@ -619,19 +616,19 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         prompt, _kwargs, lines = next_turn
         expect(prompt).to eq("hello")
         expect(lines.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the report's ring to be taken") { rings.empty? }
       end
 
       it "stops at session.max_wakes in a row, says so once, and wakes again after a human's input" do
         max_wakes[0] = 1
         start_worker(parent)
         child_answers("one")
-        expect(wake_turns.pop(timeout: 3)&.last&.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\none"])
-        expect(wait_until { rings.empty? }).to be(true)
+        expect(pop!(wake_turns, "the wake turn").last.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\none"])
+        wait_for("the report's ring to be taken") { rings.empty? }
 
         child_answers("two")
         notice = nil
-        expect(wait_until { notice = drain.find { |e| e[:type] == :hook_notice } }).to be_truthy
+        wait_for("the max_wakes notice") { notice = drain.find { |e| e[:type] == :hook_notice } }
         expect(notice[:text]).to eq("1 delegate report waiting; it joins your next message (1 turn ran for reports in a row, session.max_wakes)")
         loop_rounds
         expect(wake_turns).to be_empty
@@ -640,7 +637,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         send_turn(parent, "hi", "web:tab1")
         expect(next_turn&.last&.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\ntwo"])
         child_answers("three")
-        expect(wake_turns.pop(timeout: 3)).not_to be_nil
+        pop!(wake_turns, "the wake turn")
       end
 
       context "with the real start grace" do
@@ -669,7 +666,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         end
         child_answers("found it")
 
-        _prompt, _kwargs, lines = wake_turns.pop(timeout: 5)
+        _prompt, _kwargs, lines = pop!(wake_turns, "the wake turn")
         expect(lines.map(&:source)).to eq([nil, "delegate_report"])
         expect(lines.first.mark).to include(turn_start: true)
         expect(lines.last.mark).to be_nil
@@ -698,7 +695,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         start_worker(parent)
         send_turn(parent, "long task", "web:tab1")
         expect(next_turn&.first).to eq("long task")
-        expect(wait_until { drain.any? { |e| e[:type] == :continue_offered } }).to be_truthy
+        wait_for("the continue offer") { drain.any? { |e| e[:type] == :continue_offered } }
 
         child_answers("found it")
         loop_rounds
@@ -718,6 +715,9 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       end
       let(:relayed) { [] }
 
+      # A fresh worker's wait before its first wake turn, short as in "idle
+      # (a wake turn)", so a wake-turn example doesn't sit out the real 2 s.
+      before { stub_const("Samagotchi::Worker::WAKE_START_GRACE", 0.2) }
       after { @child_lock&.release }
 
       # The child's live worker holds its question (ReplyWait reports only those).
@@ -759,8 +759,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         child_id, qid, peer, seen = relayed.first
         expect([child_id, qid, peer]).to eq([child.id, "h1", Samagotchi::Engine::RelayPeer])
         expect(seen).not_to include(:input_merged)
-        expect(wait_until { drain.any? { |e| e[:type] == :input_merged } }).to be(true)
-        expect(wait_until { rings.empty? }).to be(true)
+        wait_for("the input_merged event") { drain.any? { |e| e[:type] == :input_merged } }
+        wait_for("the report's ring to be taken") { rings.empty? }
       end
 
       it "opens no card for a question answered on the child after the ring was taken (M1)" do
