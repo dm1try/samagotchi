@@ -10,6 +10,7 @@ require_relative "guardrails/parent_policy"
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi answer`: answer the question a session's worker waits on (exit 3
@@ -68,11 +69,14 @@ module Samagotchi
       f.value "--format"
     end
 
-    def initialize(argv, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
+    def initialize(argv, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @state_dir = state_dir || Session.default_state_dir
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     private
@@ -106,17 +110,15 @@ module Samagotchi
     def run_parsed(options)
       id = resolve(options[:id]) or return 1
       qid = options[:question].strip
-      session = Session.load(id, state_dir: @state_dir)
+      session = @access.show(id)
       pending = session.pending_question
       # Taken before the answer goes in, with the question answered as the
       # one already reported: the file keeps it until the turn thread
-      # wakes, and it must not come back as exit 3.
-      cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
-      baseline = ReplyWait.baseline_of(session, question_id: qid)
-      # The turn the answer is about: the one asking (running), or the one
+      # wakes, and it must not come back as exit 3. Its own_turn is the
+      # turn the answer is about: the one asking (running), or the one
       # whose continue offer stands. Its own reply is the answer's, not a
       # turn queued behind it; nil (an older worker): the next reply.
-      turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
+      start = @access.prepare_wait(id, session: session, question_id: qid)
 
       if pending && pending.id.to_s == qid
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
@@ -134,7 +136,7 @@ module Samagotchi
       end
       # Answered here, or no longer open (answered elsewhere, or a newer
       # question): what comes next either way.
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn)
+      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout], turn: start.own_turn)
     end
 
     # The labels to send. A number is an option's place (1-based); an
@@ -163,6 +165,8 @@ module Samagotchi
     # with this process's config.yml tightened by the session file's own
     # parent_answers, and the question's own tags). A deny, text alone or a
     # dismissal always passes. The worker checks it again with its own.
+    # Machine-local (this machine's config.yml): remotely skipped here; the
+    # server forwards CLI_ANSWER and the worker's check refuses (P2).
     def parent_refusal(pending, selected, session)
       offered = Array(pending.options).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
@@ -177,23 +181,18 @@ module Samagotchi
         "(--option Stop --text WHY stops it)"
     end
 
-    # Post the answer (or the dismissal) to the live worker's Bridge.
+    # Post the answer (or the dismissal) to the live worker (its Bridge,
+    # through SessionAccess), marked as chi answer's.
     # @return [Integer, nil] an exit status when it didn't go in; nil to
     #   wait (it went in, or the question was no longer open: 409)
     def post(id, qid, selected, options)
-      client = BridgeClient.discover(id, session_dir: Session.session_dir(id, state_dir: @state_dir))
-      return failure(worker_gone(id)) unless client
-
-      reply = nil
-      2.times do
-        reply = if options[:dismiss]
-                  client.dismiss_question(id: qid)
-                else
-                  client.answer(id: qid, selected: selected, freeform: options[:text],
-                                client_id: ClientId::CLI_ANSWER)
-                end
-        break unless reply.status == 408
-      end
+      reply = if options[:dismiss]
+                @access.dismiss(id, question_id: qid)
+              else
+                @access.answer(id, question_id: qid, selected: selected, freeform: options[:text],
+                                   client_id: ClientId::CLI_ANSWER)
+              end
+      return failure(worker_gone(id)) unless reply
 
       case reply.status
       when 200 then nil

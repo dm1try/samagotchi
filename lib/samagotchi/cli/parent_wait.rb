@@ -12,8 +12,8 @@ module Samagotchi
     # for it, and the wait for what comes next, reported the ParentReport
     # way (Ctrl-C included). The including class (a CLI::Command) defines
     # #parse (options, or an exit status) and #run_parsed(options), sets
-    # @stdout, @stderr and @state_dir, and may override the constants
-    # (specs stub them on the class).
+    # @stdout, @stderr and @access (a SessionAccess backend), and may
+    # override the constants (specs stub them on the class).
     module ParentWait
       POLL_INTERVAL = ReplyWait::POLL_INTERVAL
       # No live worker this long while waiting: it died before it could mark
@@ -45,9 +45,7 @@ module Samagotchi
       # error line; nil after the error line.
       # @return [String, nil]
       def resolve(given)
-        id = Session.resolve_id(given, state_dir: @state_dir)
-        Session.load(id, state_dir: @state_dir)
-        @session_id = id
+        @session_id = @access.resolve(given)
       rescue ArgumentError => e
         error_line("#{command_name}: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
         nil
@@ -70,14 +68,16 @@ module Samagotchi
       # @return [Integer] the exit status
       def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil,
                          queued: false, ended_before: false, report_turn_id: turn)
-        result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
-                                    owner_grace: owner_grace, poll_interval: self.class::POLL_INTERVAL, turn: turn,
-                                    queued: queued, ended_before: ended_before)
+        result = @access.wait_reply(id, cursor: cursor, timeout: timeout, baseline: baseline, owner_grace: owner_grace,
+                                        poll_interval: self.class::POLL_INTERVAL, turn: turn, queued: queued,
+                                        ended_before: ended_before)
         result.turn_id = report_turn_id if report_turn_id && !report_turn_id.to_s.empty?
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
-        # What a parent may pick there: config.yml tightened by the session's own.
-        strategy = ParentReport.strategy_for(id, state_dir: @state_dir)
+        # What a parent may pick there: config.yml tightened by the session's
+        # own. Machine-local (this machine's config.yml): remotely the
+        # server's (P2's wait route).
+        strategy = @access.parent_strategy(id)
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
                                     json: @json, timeout: timeout, extra: report_extra, strategy: strategy)
       rescue Interrupt

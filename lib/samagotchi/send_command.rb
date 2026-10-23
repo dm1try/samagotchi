@@ -25,6 +25,7 @@ require_relative "cli/flags"
 require_relative "cli/parent_wait"
 require_relative "send_command/parent_gate"
 require_relative "send_command/wait_target"
+require_relative "session_access/local"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -212,12 +213,15 @@ module Samagotchi
     private_class_method :configured_no?
 
     # @param argv [Array<String>] the arguments after "send"
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param access [SessionAccess::Local, nil] where the sessions are;
+    #   default this machine's, in +state_dir+
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
       @stderr = stderr
       @state_dir = state_dir || Session.default_state_dir
+      @access = access || SessionAccess::Local.new(state_dir: @state_dir)
     end
 
     private
@@ -259,6 +263,9 @@ module Samagotchi
 
       # A parent agent's /continue yes held to guardrails.parent_answers,
       # and a /parent-answers that loosens: refused before anything is sent.
+      # Machine-local (the targets' session files, this machine's
+      # config.yml): remotely the server's (P2: its /turn and create
+      # routes check; the worker checks a CLI_ANSWER /continue again).
       gate = ParentGate.new(options, state_dir: @state_dir)
       if prompt && (refusal = gate.continue_refusal(prompt))
         @stderr.puts("chi send: #{refusal}")
@@ -270,6 +277,7 @@ module Samagotchi
       end
       # A file that is not there or not an image: a run-time failure (1),
       # reported in the --format json line too; --image itself was fine.
+      # Client-side on any backend: the files are this machine's.
       return CLI::Exit::FAILED unless ingest_images(options[:images])
 
       return run_new(prompt, options) if options[:new]
@@ -409,6 +417,8 @@ module Samagotchi
       model, typed = continued_model(options)
       return 1 if model == false
 
+      # Machine-local (this machine's model registry): remotely the
+      # server's (P2: the create route checks vision).
       if images && (refusal = vision_refusal(model, typed: typed))
         error_line("chi send: refused: #{refusal}")
         return 1
@@ -419,20 +429,7 @@ module Samagotchi
       # says whether it ran as one.
       through_worker = images || command_like?(prompt)
       begin
-        start = through_worker ? { prompt: nil, preview: prompt } : { prompt: prompt }
-        session = if options[:continues]
-                    SessionManager.continue_session(options[:continues], **start, model: options[:model],
-                                                                             state_dir: @state_dir)
-                  else
-                    SessionManager.spawn_session(**start, working_directory: options[:dir],
-                                                          model_name: options[:model],
-                                                          setup: SessionSetup.new(llm_context: options[:llm_context],
-                                                                                  thinking: options[:thinking],
-                                                                                  toolkit: options[:toolkit_value],
-                                                                                  settings: options[:settings],
-                                                                                  parent_answers: options[:parent_answers]),
-                                                          state_dir: @state_dir)
-                  end
+        session = @access.create(new_session_spec(prompt, options, through_worker: through_worker))
       rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
         error_line("chi send: refused: #{e.message}")
         return 1
@@ -453,14 +450,36 @@ module Samagotchi
       return 0 unless options[:wait]
       return report_command(session.id) if @sent_command
 
-      wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
+      start = @access.prepare_wait(session.id, session: session, created: true)
+      wait_for_reply(session.id, cursor: start.cursor, baseline: start.baseline,
                                  timeout: options[:timeout], **WaitTarget.first_message(@delivered).to_h)
+    end
+
+    # What chi send --new asks to create: through the worker (images, a
+    # session command), it starts idle with the message as its preview.
+    # Without --dir its folder is the current one (spawn_session's
+    # default): machine-local, so remotely --dir is required (D4).
+    # @return [SessionAccess::NewSession]
+    def new_session_spec(prompt, options, through_worker:)
+      start = through_worker ? { prompt: nil, preview: prompt } : { prompt: prompt }
+      if options[:continues]
+        return SessionAccess::NewSession.new(**start, continues: options[:continues], model_name: options[:model])
+      end
+
+      SessionAccess::NewSession.new(**start, working_directory: options[:dir], model_name: options[:model],
+                                             setup: SessionSetup.new(llm_context: options[:llm_context],
+                                                                     thinking: options[:thinking],
+                                                                     toolkit: options[:toolkit_value],
+                                                                     settings: options[:settings],
+                                                                     parent_answers: options[:parent_answers]))
     end
 
     # The model the new session will run, for the images check: --model
     # (nil: the default), or with --continues the one the new link will run
     # (SessionContinue.model_for: --model's, else the previous link's, else
-    # the default it falls back to).
+    # the default it falls back to). Machine-local (the previous link's
+    # file, this machine's models): remotely the server's, with the vision
+    # check (P2).
     # @return [Array, false] [model_name, model_typed], or false after the
     #   error line (no such session, a model it can't start on)
     def continued_model(options)
@@ -495,8 +514,11 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_wait(prompt, options)
       id = resolve(options[:ids].first) or return 1
-      session = Session.load(id, state_dir: @state_dir)
-      if session.status == Session::STATUS_RUNNING && (owner = SessionManager.session_owner(id, state_dir: @state_dir)) &&
+      session = @access.show(id)
+      # Machine-local reads (the owner lock, this machine's
+      # parent_answers for the question's advice): remotely the server's
+      # (P2: its prepare route says busy or waiting).
+      if session.status == Session::STATUS_RUNNING && (owner = @access.owner(id)) &&
          (!@queue || session.waiting_question(live: owner.worker?))
         # The turn waits on a question: the message would only queue
         # behind it, and the answer goes in with chi answer.
@@ -518,17 +540,13 @@ module Samagotchi
         return 1
       end
 
-      cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
-      baseline = baseline_of(session)
-      running_turn = if session.status == Session::STATUS_RUNNING
-                       ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
-                     end
+      start = @access.prepare_wait(id, session: session)
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
-      target = WaitTarget.message(@delivered, queue: @queue, running: session.status == Session::STATUS_RUNNING,
-                                              running_turn: running_turn)
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], **target.to_h)
+      target = WaitTarget.message(@delivered, queue: @queue, running: start.running,
+                                              running_turn: (start.own_turn if start.running))
+      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout], **target.to_h)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -546,24 +564,15 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_wait_only(options)
       id = resolve(options[:ids].first) or return 1
-      session = Session.load(id, state_dir: @state_dir)
-      session_dir = Session.session_dir(id, state_dir: @state_dir)
       requested_turn = options[:turn]&.to_s
-      if requested_turn && !ReplyWait.known_turn?(session, session_dir: session_dir, turn: requested_turn)
+      start = @access.prepare_wait(id, turn: requested_turn)
+      if requested_turn && !start.known_turn
         error_line("chi send: turn #{requested_turn} is not a running, queued, or last ended turn")
         return 1
       end
-      live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
-      target = WaitTarget.wait_only(session, session_dir: session_dir, requested: requested_turn)
-      wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
-                         baseline: baseline_of(session),
-                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil, **target.to_h)
-    end
-
-    # The session as it was before the message went in (ReplyWait's
-    # baseline).
-    def baseline_of(session, **)
-      ReplyWait.baseline_of(session, **)
+      target = WaitTarget.after(start, requested: requested_turn)
+      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline,
+                         timeout: options[:timeout], owner_grace: start.live ? self.class::WORKER_GONE_AFTER : nil, **target.to_h)
     end
 
     # A new idle session's first turn, with the images. Its worker's Bridge
@@ -571,13 +580,11 @@ module Samagotchi
     # and the spawned one takes its lock only once it runs.
     # @return [Boolean] whether the message was queued
     def deliver_new(session, prompt)
-      dir = Session.session_dir(session.id, state_dir: @state_dir)
       result = nil
       begin
-        refs = copy_images(dir)
-        if BridgeClient.wait_for(session.id, session_dir: dir, timeout: SessionManager::TURN_BRIDGE_WAIT)
-          result = SessionManager.deliver_turn(session.id, prompt: prompt, client_id: client_id_for(prompt), images: refs,
-                                                           state_dir: @state_dir)
+        refs = upload_images(session.id)
+        if @access.await_worker(session.id, timeout: SessionManager::TURN_BRIDGE_WAIT)
+          result = @access.deliver_turn(session.id, prompt: prompt, client_id: client_id_for(prompt), images: refs)
         end
       rescue StandardError => e
         @info.puts("#{session.id}  failed: #{e.message}")
@@ -656,14 +663,16 @@ module Samagotchi
     # @return [Boolean] whether the message was queued
     def deliver(id, prompt)
       short = id[0, 8]
-      session = Session.load(id, state_dir: @state_dir)
+      session = @access.show(id)
+      # Machine-local (this machine's model registry): remotely the
+      # server's (P2), as for --new.
       if !@images.empty? && (refusal = vision_refusal(session.model_name, typed: session.model_typed))
         @info.puts("#{short}  refused: #{refusal}")
         return false
       end
-      owner = SessionManager.session_owner(id, state_dir: @state_dir)
+      owner = @access.owner(id)
       running = owner && session.status == Session::STATUS_RUNNING
-      refs = copy_images(Session.session_dir(id, state_dir: @state_dir))
+      refs = upload_images(id)
       # --cut asks the running turn for a cut (to an idle session an
       # ordinary message: nothing to cut). --queue always goes as a queue,
       # idle or not: the Bridge acks next_step to an idle worker and the
@@ -673,8 +682,7 @@ module Samagotchi
       delivery = if @queue then Delivery::QUEUE
                  elsif @cut && running then Delivery::CUT
                  end
-      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, state_dir: @state_dir,
-                                               delivery: delivery)
+      result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery)
       unless result.accepted?
         # A worker older than queueing would steer it: refused, not sent.
         word = result.error == Delivery::QUEUE_UNAVAILABLE["error"] ? "refused" : "failed"
@@ -781,13 +789,8 @@ module Samagotchi
       false
     end
 
-    # The images' files copied into a session dir, as the refs a turn takes.
-    def copy_images(session_dir)
-      @images.map do |ref|
-        ImageStore.copy_file(ref, from: @image_dir, to: session_dir)
-        { file: ref[:file], name: ref[:name] }
-      end
-    end
+    # The images' files copied into the session, as the refs a turn takes.
+    def upload_images(id) = @access.upload_images(id, @images, from: @image_dir)
 
     def with_images
       case @images.size

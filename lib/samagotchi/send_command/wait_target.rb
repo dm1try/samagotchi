@@ -45,11 +45,24 @@ module Samagotchi
       # for its answer), its last turn's end is the answer (ended_before);
       # with --turn, when that turn is the last one.
       def self.wait_only(session, session_dir:, requested:)
-        turn = requested || ReplyWait.own_turn(session, session_dir: session_dir)
         settled = session.status == Session::STATUS_IDLE && !session.last_turn.nil? && session.pending_question.nil?
-        ended_before = requested ? session.last_turn&.enqueued_id == requested : settled
-        new(turn: turn, report_turn_id: turn || (session.last_turn&.enqueued_id if settled), ended_before: ended_before)
+        own = requested ? nil : ReplyWait.own_turn(session, session_dir: session_dir)
+        wait_only_of(own_turn: own, settled: settled, last_turn_id: session.last_turn&.enqueued_id, requested: requested)
       end
+
+      # #wait_only from what SessionAccess#prepare_wait read
+      # (SessionAccess::WaitStart): its own_turn, settled and last_turn_id.
+      def self.after(start, requested:)
+        wait_only_of(own_turn: start.own_turn, settled: start.settled, last_turn_id: start.last_turn_id,
+                     requested: requested)
+      end
+
+      def self.wait_only_of(own_turn:, settled:, last_turn_id:, requested:)
+        turn = requested || own_turn
+        ended_before = requested ? last_turn_id == requested : settled
+        new(turn: turn, report_turn_id: turn || (last_turn_id if settled), ended_before: ended_before)
+      end
+      private_class_method :wait_only_of
     end
   end
 end
