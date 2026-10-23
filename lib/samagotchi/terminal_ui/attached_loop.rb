@@ -200,8 +200,10 @@ module Samagotchi
                                 reconnect_delays: @link.reconnect_delays) do |event|
           queue << [:event, event]
         end
-        @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
-                                        prefill: default_input_text).start
+        read = input || method(:read_input_line)
+        # A command typed after /unqueue's text echoes as the command alone.
+        echoed_read = ->(prompt, prefill) { RelineSeam.echo_as(method(:prefilled_echo)) { read.call(prompt, prefill) } }
+        @reader = LineReader.new(queue, prompt: method(:prompt_text), read: echoed_read, prefill: default_input_text).start
         loop do
           kind, payload = next_item(queue)
           case kind
@@ -433,8 +435,12 @@ module Samagotchi
         text, kept = split_prefilled(text)
         submitted = submit_line(text)
         # The removed text the command was typed after, back in the input
-        # (unless an /unqueue put its own there, or the loop ends).
-        @prefilled = kept if kept && submitted != :detach && @prefilled.nil? && @reader&.prefill(kept)
+        # (unless an /unqueue put its own there, or the loop ends). Set
+        # before the read restarts with it: the read's echo reads it.
+        if kept && submitted != :detach && @prefilled.nil?
+          @prefilled = kept
+          @prefilled = nil unless @reader&.prefill(kept)
+        end
         submitted
       end
 
@@ -445,13 +451,24 @@ module Samagotchi
       def split_prefilled(text)
         kept = @prefilled
         @prefilled = nil
-        return [text, nil] unless kept && text.length > kept.length && text.start_with?(kept)
+        rest = command_after(text, kept)
+        rest ? [rest, kept] : [text, nil]
+      end
+
+      # The command typed after +kept+ (/unqueue's text) in +text+, or nil.
+      # @return [String, nil]
+      def command_after(text, kept)
+        return nil unless kept && text.length > kept.length && text.start_with?(kept)
 
         rest = text[kept.length..].strip
         route = ComposerRoute.call(rest, running: @running, registry: command_registry)
-        command = route.choice || %i[local command usage].include?(route.kind)
-        command ? [rest, kept] : [text, nil]
+        rest if route.choice || %i[local command usage].include?(route.kind)
       end
+
+      # The read's echo (RelineSeam.echo_as, on the reader thread): the
+      # command alone when one is typed after /unqueue's text, as
+      # #split_prefilled runs it; nil echoes the line as typed.
+      def prefilled_echo(typed) = command_after(typed.strip, @prefilled)
 
       # @return [Symbol, nil] :detach to end the loop
       def submit_line(text)
@@ -740,8 +757,11 @@ module Samagotchi
         @screen.commit("removed: #{first_line_clip(prompt)}")
         return if @wait_at_eof || prompt.strip.empty?
 
-        return @prefilled = prompt.strip if @reader&.prefill(prompt)
+        # Set before the read restarts with it: the read's echo reads it.
+        @prefilled = prompt.strip
+        return if @reader&.prefill(prompt)
 
+        @prefilled = nil
         @screen.commit("(the removed message is in the input history: ↑)")
       end
 

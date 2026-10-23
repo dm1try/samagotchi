@@ -1460,6 +1460,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
   let(:typed) { Queue.new }
   let(:reads) { Queue.new }
+  let(:echoes) { Queue.new }
 
   before do
     allow(client).to receive(:post_turn)
@@ -1470,14 +1471,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
       block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
       double("stream", close: nil)
     end
-    # Each read reports its prefill, then blocks until the spec types.
-    @thread = Thread.new { attached.run(input: ->(_prompt, prefill) { reads << prefill; typed.pop }) }
+    # Each read reports its prefill, then blocks until the spec types; what
+    # its echo (RelineSeam.echo_as) leaves for the line goes to echoes.
+    @thread = Thread.new do
+      attached.run(input: lambda { |_prompt, prefill|
+        reads << prefill
+        line = typed.pop
+        echoes << Thread.current[:samagotchi_reline_echo]&.call(line.to_s)
+        line
+      })
+    end
     expect(reads.pop(timeout: 2)).to be_nil
   end
 
   after do
     typed << nil
-    @thread.join(2)
+    join!(@thread, "the attached loop")
   end
 
   it "puts the removed text into the next read" do
@@ -1505,6 +1514,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
     typed << "fix the tests/queue later"
     expect([reads.pop(timeout: 2), reads.pop(timeout: 2)]).to eq([nil, "fix the tests"])
     expect(client).to have_received(:post_turn).with(prompt: "later", client_id: "tui:1")
+    # The echo shows the command that ran, as a plain /unqueue's does.
+    expect(Array.new(4) { echoes.pop(timeout: 2) }).to eq([nil, nil, "/unqueue", "/queue later"])
   end
 
   it "sends the removed text with more typed after it as one prompt, when the rest is no command" do
@@ -1522,6 +1533,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a removed queued prompt" d
     expect(reads.pop(timeout: 2)).to be_nil
     wait_for("the prompt sent") { sent.any? }
     expect(sent).to eq(["fix the tests/lib/a.rb"])
+    expect(Array.new(3) { echoes.pop(timeout: 2) }).to eq([nil, nil, nil])
   end
 end
 

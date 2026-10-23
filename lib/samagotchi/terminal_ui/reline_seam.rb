@@ -63,6 +63,20 @@ module Samagotchi
           Thread.current[:samagotchi_reline_no_echo] = was
         end
 
+        # Run a read (on this thread) whose submitted line +echo+ may echo
+        # as other text: called with the typed text at Enter, a String is
+        # echoed after the prompt instead of the typed lines, nil leaves the
+        # typed lines (the attached TUI's command typed after /unqueue's
+        # text). A read without echo stays without.
+        # @param echo [#call] (typed) -> String or nil
+        def echo_as(echo)
+          was = Thread.current[:samagotchi_reline_echo]
+          Thread.current[:samagotchi_reline_echo] = echo
+          yield
+        ensure
+          Thread.current[:samagotchi_reline_echo] = was
+        end
+
         # @api private
         attr_writer :reading
 
@@ -136,7 +150,7 @@ module Samagotchi
         screen = RelineSeam.screen
         return super unless screen
 
-        screen.finish_editor(Thread.current[:samagotchi_reline_no_echo] ? nil : seam_final_lines)
+        screen.finish_editor(Thread.current[:samagotchi_reline_no_echo] ? nil : seam_echo_lines)
         clear_rendered_screen_cache
       end
 
@@ -212,6 +226,12 @@ module Samagotchi
 
       # Reline's alias still points at its own ed_clear_screen.
       def clear_screen(key) = ed_clear_screen(key)
+
+      # The typed lines, or the echo's text after the prompt (#echo_as).
+      def seam_echo_lines
+        text = Thread.current[:samagotchi_reline_echo]&.call(@buffer_of_lines.join("\n"))
+        text ? [Reline::Unicode.strip_non_printing_start_end(prompt_list[0]) + text] : seam_final_lines
+      end
 
       # The prompt and the text as render_finished writes them: one line per
       # input line, with a trailing space when a line fills the width exactly.
