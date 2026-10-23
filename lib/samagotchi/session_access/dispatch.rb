@@ -21,10 +21,8 @@ module Samagotchi
       # bin/chi's own words besides its SUBCOMMANDS (a refusal names them).
       OWN_WORDS = %w[web scratch self].freeze
       HELP = %w[--version -h --help].freeze
-      # The run flags (not subcommands) a refusal names: remote attach is
-      # its own phase (P4).
-      RUN_FLAGS = { "--attach" => "--attach", "--resume" => "--resume", "-p" => "-p", "--prompt" => "-p",
-                    "--shared" => "--shared", "--no-shared" => "--no-shared" }.freeze
+      # --non-interactive's refusal: what runs one turn there instead.
+      ONE_TURN = "(%s send --new --dir D -m TEXT --wait runs one turn there)"
 
       # A usage error in the flag itself (--remote with no name, a bad one).
       class Usage < StandardError; end
@@ -54,6 +52,14 @@ module Samagotchi
 
       def remote? = !@remote.nil?
 
+      # Whether the arguments are run flags, no subcommand: a session in
+      # this terminal (bin/chi's RunOptions parse them; under a remote,
+      # RemoteAttachCommand runs them).
+      def run_flags?
+        command = @argv.first
+        command.nil? || command.start_with?("-")
+      end
+
       # Whether the arguments run here as they would without a remote: chi
       # remote, --version, --help.
       def here?
@@ -67,7 +73,8 @@ module Samagotchi
       def refusal
         words = local_words or return nil
 
-        "chi #{words} runs on this machine only: run it on #{@remote}"
+        line = "chi #{words} runs on this machine only: run it on #{@remote}"
+        words == "--non-interactive" ? "#{line} #{format(ONE_TURN, "chi --remote #{@remote}")}" : line
       end
 
       # The session command against the remote: refused (exit 2), or run
@@ -101,11 +108,11 @@ module Samagotchi
       private
 
       # The words that run here only: the command (and its subcommand, a
-      # flag) the Contract lists local_only, a machine command, or the run
-      # flags (a session in this terminal, attach). nil: supported.
+      # flag) the Contract lists local_only, a machine command, or a run
+      # flag Contract::RUN lists local_only. nil: supported.
       def local_words
         command = @argv.first
-        return run_words if command.nil? || command.start_with?("-")
+        return run_words if run_flags?
         return command if Contract::MACHINE.include?(command) || Contract.status(command).nil?
         return command if Contract.status(command) == Contract::LOCAL_ONLY
 
@@ -124,9 +131,21 @@ module Samagotchi
         @argv.drop(1).take_while { |arg| arg != "--" }.select { |arg| arg.start_with?("--") }.map { |arg| arg.split("=", 2).first }
       end
 
+      # The first local-only run flag, a value (-p TEXT, --model NAME)
+      # never read as one. An unknown flag is the parser's to refuse.
       def run_words
-        flag = @argv.take_while { |arg| arg != "--" }.map { |arg| arg.split("=", 2).first }.find { |arg| RUN_FLAGS.key?(arg) }
-        flag ? RUN_FLAGS[flag] : "(a session in this terminal)"
+        require_relative "../run_options"
+        values = RunOptions.value_switches
+        words = @argv.take_while { |arg| arg != "--" }
+        index = 0
+        while index < words.size
+          arg = words[index]
+          flag = arg.start_with?("--") ? arg.split("=", 2).first : arg[0, 2]
+          return Contract::RUN_WORDS.fetch(flag, flag) if arg.start_with?("-") && Contract.run_status(flag) == Contract::LOCAL_ONLY
+
+          index += values.include?(arg) ? 2 : 1
+        end
+        nil
       end
     end
   end

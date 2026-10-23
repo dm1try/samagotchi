@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require "socket"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_access/dispatch"
@@ -49,11 +50,24 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
         %w[context mute x ab] => "chi context mute", %w[context add x --push --project] => "chi context add --project",
         %w[context ls --project] => "chi context ls --project", %w[broadcast -m x] => "chi broadcast",
         %w[bundle list] => "chi bundle", %w[memory ls] => "chi memory", %w[web] => "chi web", %w[self] => "chi self",
-        %w[--attach ab] => "chi --attach", %w[-p hi] => "chi -p", %w[--resume ab] => "chi --resume",
-        [] => "chi (a session in this terminal)"
+        %w[--attach ab --verbose] => "chi --verbose", %w[-v -p hi] => "chi --verbose", %w[--no-shared] => "chi --no-shared",
+        %w[--memory m --attach ab] => "chi --memory", %w[--dir /x --mute m] => "chi --mute",
+        %w[--append-system-prompt=f.md] => "chi --append-system-prompt", %w[--attach ab --status-line on] => "chi --status-line"
       }.each do |argv, words|
         expect(refusal(*argv)).to eq("#{words} runs on this machine only: run it on studio"), argv.join(" ")
       end
+      expect(refusal("-p", "hi", "--non-interactive"))
+        .to eq("chi --non-interactive runs on this machine only: run it on studio " \
+               "(chi --remote studio send --new --dir D -m TEXT --wait runs one turn there)")
+    end
+
+    it "lets a remote attach's run flags through, a flag's value never read as a flag (bin/chi parses them)" do
+      [[], %w[--attach ab], %w[--resume ab -p hi], %w[--dir /x -p hi --model m --thinking low], %w[-p --verbose],
+       %w[--attach ab --no-interrupt --no-default-input --set a=b --toolkit lean --tool x --no-tool y]].each do |argv|
+        expect(refusal(*argv)).to be_nil, argv.join(" ")
+        expect(described_class.new(argv, remote: "studio")).to be_run_flags
+      end
+      expect(described_class.new(%w[send -m x], remote: "studio")).not_to be_run_flags
     end
 
     it "runs chi remote, --version and --help here whatever the remote" do
@@ -108,6 +122,27 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
 
       out, _err, status = fork_chi("remote", "ls", env: env.merge("CHI_REMOTE" => "nope"))
       expect([status.exitstatus, out]).to eq([0, "no remotes (chi remote add NAME URL --token-file FILE)\n"])
+    end
+
+    it "takes a remote attach's run flags to the remote before this machine's checks; refuses the local-only ones (exit 2)" do
+      env = isolated_chi_env(tmpdir)
+      closed = TCPServer.new("127.0.0.1", 0).then { |server| server.local_address.ip_port.tap { server.close } }
+      Samagotchi::Remotes.put(Samagotchi::Remotes::Entry.new(name: "studio", url: "http://127.0.0.1:#{closed}", token: nil),
+                              path: File.join(tmpdir, "config", "samagotchi", "remotes.yml"))
+
+      # Never resolved here (no such session on this machine): the remote is asked.
+      _out, err, status = fork_chi("--remote", "studio", "--attach", "ab12", env: env)
+      expect([status.exitstatus, err]).to eq([1, "Error: remote studio (http://127.0.0.1:#{closed}): connection refused\n"])
+
+      _out, err, status = fork_chi("--remote", "studio", "-p", "hi", env: env)
+      expect([status.exitstatus, err]).to eq([2, "Error: a new session on studio needs --dir, that machine's absolute path " \
+                                                 "(or --attach ID / --resume ID)\n"])
+
+      _out, err, status = fork_chi("--remote", "studio", "--attach", "ab12", "--verbose", env: env)
+      expect([status.exitstatus, err]).to eq([2, "Error: chi --verbose runs on this machine only: run it on studio\n"])
+
+      _out, err, status = fork_chi("--dir", "/x", "-p", "hi", env: env)
+      expect([status.exitstatus, err]).to eq([2, "Error: --dir goes with --remote; cd there instead\n"])
     end
   end
 end

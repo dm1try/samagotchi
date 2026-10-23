@@ -14,7 +14,7 @@ module Samagotchi
   module RunOptions
     # The flags an underscored spelling is refused for (--recap_base_url),
     # with the config registry's.
-    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token].freeze
+    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token].freeze
 
     module_function
 
@@ -107,6 +107,14 @@ module Samagotchi
       [options, cli_overrides]
     end
 
+    # The switches that take a value (--model NAME, -p TEXT), long and
+    # short: a word after one is its value, not a flag.
+    # @return [Array<String>]
+    def value_switches
+      parser_switches(build_parser({}, {})).select { |switch| switch.is_a?(OptionParser::Switch::RequiredArgument) }
+                                           .flat_map { |switch| switch.long + switch.short }.push("--no-tool").uniq
+    end
+
     # Every switch the parser takes, long and short, a --[no-]x as --x and
     # --no-x (--no-tool too, read before the parse), for what classifies the
     # run flags.
@@ -144,6 +152,7 @@ module Samagotchi
                  chi models [--format json] [TEXT]   the models --model takes, from every host
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
                  chi --remote NAME <send|answer|note|context|sessions> …   those commands on that machine (or CHI_REMOTE=NAME)
+                 chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
                  chi self                         version, paths, model and bundles
                  chi update [--dry-run]           update this chi, its bundles and the desktop helper
           (each subcommand takes --help)
@@ -152,6 +161,8 @@ module Samagotchi
         opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
         opts.on("--resume SESSION_ID", "Resume a previous session by its ID (or a unique prefix of it)") { |s| options[:resume] = s }
         opts.on("--attach SESSION_ID", "Attach to a session's worker, waking one if it has exited; ID or a unique prefix") { |s| options[:attach] = s }
+        opts.on("--dir DIR", "With --remote: a new session's folder on that machine, its absolute path (required there; " \
+                             "here cd instead)") { |d| options[:dir] = d }
         opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (the default, config session.shared; with --resume: that session); --no-shared runs a plain in-process REPL") { |v| options[:shared] = v }
         opts.on("--model NAME", "Model for this run, not saved (overrides --resume's; config default.model) [env SAMAGOTCHI_DEFAULT_MODEL]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
         opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,

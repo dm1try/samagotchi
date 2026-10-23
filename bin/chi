@@ -69,7 +69,10 @@ SUBCOMMANDS = {
 }.freeze
 # chi --remote NAME <command> (or CHI_REMOTE=NAME): the session commands
 # against another machine's chi web; what runs here only is refused (exit 2).
-# chi remote, --version and --help run here as always.
+# chi remote, --version and --help run here as always. Run flags under a
+# remote (--attach, --resume, -p, --dir: a session there in this terminal)
+# are parsed below and go to RemoteAttachCommand before this machine's
+# checks; the local-only ones are refused here.
 require "samagotchi/session_access/dispatch"
 begin
   remote_run = Samagotchi::SessionAccess::Dispatch.from(ARGV)
@@ -78,7 +81,12 @@ rescue Samagotchi::SessionAccess::Dispatch::Usage => e
   exit 2
 end
 ARGV.replace(remote_run.argv)
-exit remote_run.run(SUBCOMMANDS) if remote_run.remote? && !remote_run.here?
+remote_attach = remote_run.remote? && !remote_run.here? && remote_run.run_flags?
+if remote_attach && (refusal = remote_run.refusal)
+  warn "Error: #{refusal}"
+  exit 2
+end
+exit remote_run.run(SUBCOMMANDS) if remote_run.remote? && !remote_run.here? && !remote_attach
 
 if (path, klass = SUBCOMMANDS[ARGV[0]])
   require path
@@ -151,6 +159,29 @@ Samagotchi::Config.reload!(cli_overrides: cli_overrides) unless cli_overrides.em
 # -v (the plain REPL only): debug records, each mirrored to stderr.
 require "samagotchi/log"
 Samagotchi::Log.configure(level: options[:verbose] ? :debug : nil, mirror: options[:verbose])
+
+# chi --remote NAME --attach ID (--resume ID, --dir DIR, -p TEXT): the
+# attached TUI on that machine's session. Nothing below runs: it checks
+# this machine's sessions, memories and files.
+if remote_attach
+  unless ARGV.empty?
+    warn "Error: unknown command #{ARGV.first} (see chi --help)"
+    exit 1
+  end
+  require "samagotchi/remote_attach_command"
+  begin
+    entry = Samagotchi::Remotes.find(Samagotchi::Remotes.check_name!(remote_run.remote))
+  rescue Samagotchi::Remotes::Invalid => e
+    warn "Error: #{e.message}"
+    exit 2
+  end
+  exit Samagotchi::RemoteAttachCommand.new(options, access: Samagotchi::SessionAccess::Remote.new(entry)).run
+end
+# --dir names a folder on a remote; here the session starts in this one.
+if options[:dir]
+  warn "Error: --dir goes with --remote; cd there instead"
+  exit 2
+end
 
 # `chi web`: its flags (--port, --open, --web-view…) went through the parser above.
 options[:web] = true if web

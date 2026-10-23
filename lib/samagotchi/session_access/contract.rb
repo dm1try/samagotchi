@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../config"
+
 module Samagotchi
   module SessionAccess
     # Which session commands and flags run against another machine's
@@ -9,11 +11,13 @@ module Samagotchi
     # D3: send, answer, note, a session's context (add, push, ls, show, rm)
     # and sessions list/stop/restart/archive/unarchive/delete; the rest
     # stays local. bin/chi's subcommands that act on the machine, not on
-    # sessions, are MACHINE. The run flags (--attach, -p, --resume) are not
-    # subcommands and not in this table (remote attach is its own phase).
+    # sessions, are MACHINE. The run flags (chi --attach, -p, --resume: a
+    # session in this terminal, a remote attach there) are RUN's.
     #
     # spec/session_access_contract_spec.rb fails when a subcommand, one of
-    # its subcommands or one of a supported one's flags is in neither.
+    # its subcommands or one of a supported one's flags is in neither, or
+    # a run flag (RunOptions.switches) is in neither RUN list and isn't a
+    # config registry flag.
     module Contract
       SUPPORTED = :supported
       LOCAL_ONLY = :local_only
@@ -114,7 +118,29 @@ module Samagotchi
         "broadcast" => LOCAL_ONLY
       }.freeze
 
+      # bin/chi's run flags under a remote (chi --remote NAME --attach ID,
+      # RemoteAttachCommand): what a remote attach takes, and what runs
+      # this machine's REPL or reads this machine's files (P4-D2..D4). A
+      # config registry flag (--recap-base-url …) is this machine's
+      # config: LOCAL_ONLY without being listed.
+      RUN = {
+        SUPPORTED => %w[--attach --resume -p --prompt --shared --model --thinking --llm-context --llm-context-apply
+                        --llm-context-budget --toolkit --tool --no-tool --set --parent-answers --no-interrupt
+                        --no-default-input --dir --version -h --help],
+        LOCAL_ONLY => %w[--no-shared --non-interactive -v --verbose --append-system-prompt --memory --mute --profile
+                         --port --open --new-token --scope --web-markdown --no-web-markdown]
+      }.freeze
+      # A short run flag's name in a refusal.
+      RUN_WORDS = { "-v" => "--verbose" }.freeze
+
       module_function
+
+      # @param flag [String] a run flag as RunOptions.switches lists it
+      # @return [Symbol, nil] SUPPORTED or LOCAL_ONLY; nil: not a run flag
+      def run_status(flag)
+        RUN.each { |status, flags| return status if flags.include?(flag) }
+        LOCAL_ONLY if Config.cli_entries.any? { |entry| [entry.cli_flag, entry.cli_flag.sub("--", "--no-")].include?(flag) }
+      end
 
       # @param words [Array<String>] a command, maybe its subcommand, maybe
       #   a flag's long name: status("context", "add", "--cmd")

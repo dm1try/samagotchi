@@ -9,6 +9,7 @@ require "samagotchi/note_command"
 require "samagotchi/context_command"
 require "samagotchi/sessions_command"
 require "samagotchi/session_delete_command"
+require "samagotchi/run_options"
 
 # Every session command, subcommand and flag says whether it runs against a
 # remote (supported) or on this machine only (local_only): a new one fails
@@ -80,6 +81,18 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
       expect(contract.status(*words)).to eq(contract::SUPPORTED), "#{key}: a local_only command lists no flags"
       expect(Array(flags_of[words.join(" ")]&.names).flatten).to include(flag), "#{key}: no such flag"
     end
+  end
+
+  # bin/chi's run flags (a session in this terminal; under a remote, a
+  # remote attach): each one is a remote attach's, or this machine's.
+  it "classifies every run flag: listed in RUN, or a config registry flag (this machine's config)" do
+    unclassified = Samagotchi::RunOptions.switches.reject { |flag| values.include?(contract.run_status(flag)) }
+    expect(unclassified).to eq([])
+    listed = contract::RUN.values.flatten
+    expect(listed - Samagotchi::RunOptions.switches).to eq([]), "RUN lists a flag the parser doesn't take"
+    expect(listed.tally.select { |_flag, n| n > 1 }.keys).to eq([]), "a flag in both lists"
+    expect(contract.run_status("--recap-base-url")).to eq(contract::LOCAL_ONLY)
+    expect(contract.run_status("--attach")).to eq(contract::SUPPORTED)
   end
 
   it "answers for a whole command line" do
