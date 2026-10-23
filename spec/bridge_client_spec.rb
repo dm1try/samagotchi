@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::BridgeClient do
       conn.close
     end
     thread.report_on_exception = false
-    [server.local_address.ip_port, -> { thread.join(1); server.close; received }]
+    [server.local_address.ip_port, -> { join!(thread, "the fake Bridge"); server.close; received }]
   end
 
   def json_reply(status, body)
@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::BridgeClient do
     it "returns a client once the worker publishes a live sidecar" do
       server = TCPServer.new("127.0.0.1", 0)
       writer = Thread.new do
-        sleep 0.25
+        sleep 0.25 # sleep-ok: the worker publishing its sidecar late is the behaviour
         File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port))
       end
 
@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::BridgeClient do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       expect(described_class.wait_for("s1", session_dir: dir, timeout: 0.3)).to be_nil
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 1.0)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 2.0) # not much past it
     end
   end
 
@@ -313,17 +313,19 @@ RSpec.describe Samagotchi::BridgeClient do
       conn = server.accept
       conn.readpartial(16_384)
       conn.write("HTTP/1.1 200 OK\r\n\r\n")
-      sleep
+      sleep # sleep-ok: holds the quiet stream open
     end
     peer.report_on_exception = false
     running = true
+    asked = 0
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
-    reader = Thread.new { client.stream(running: -> { running }) { nil } }
+    reader = Thread.new { client.stream(running: -> { asked += 1; running }) { nil } }
 
-    sleep 0.3
+    # Asked again after a silent STREAM_POLL: the quiet stream went on.
+    wait_for("the stream to ask `running` twice") { asked >= 2 }
     expect(reader).to be_alive
     running = false
-    expect(reader.join(1.5)).to eq(reader)
+    join!(reader, "the stream")
   ensure
     reader&.kill
     peer&.kill
@@ -338,7 +340,7 @@ RSpec.describe Samagotchi::BridgeClient do
       conn.write("HTTP/1.1 200 OK\r\n\r\n")
       loop do
         conn.write("data: x\r\n\r\n")
-        sleep 0.1
+        sleep 0.1 # sleep-ok: a stream that never goes quiet
       end
     end
     peer.report_on_exception = false
@@ -347,11 +349,9 @@ RSpec.describe Samagotchi::BridgeClient do
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
     reader = Thread.new { client.stream(running: -> { running }) { chunks += 1 } }
 
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
-    sleep 0.01 until chunks.positive? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-    expect(chunks).to be > 0
+    wait_for("the first chunk") { chunks.positive? }
     running = false
-    expect(reader.join(1.5)).to eq(reader)
+    expect(join!(reader, "the stream")).not_to be_alive
   ensure
     reader&.kill
     peer&.kill
@@ -372,7 +372,7 @@ RSpec.describe Samagotchi::BridgeClient do
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
     reader = Thread.new { client.stream(header_timeout: 0.1) { raise "no body expected" } }
 
-    expect(reader.join(3)).to eq(reader)
+    join!(reader, "the stream to give up")
     expect(conns.size).to eq(described_class::STREAM_CONNECT_ATTEMPTS)
   ensure
     reader&.kill
@@ -387,7 +387,7 @@ RSpec.describe Samagotchi::BridgeClient do
       conn = server.accept
       conn.readpartial(16_384)
       conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n")
-      sleep
+      sleep # sleep-ok: holds the headers unfinished
     end
     peer.report_on_exception = false
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
@@ -426,13 +426,13 @@ RSpec.describe Samagotchi::BridgeClient do
 
     it "gives up after its own short read timeout, not the 30 s default" do
       server = TCPServer.new("127.0.0.1", 0)
-      hold = Thread.new { server.accept.tap { sleep 2 } }
+      hold = Thread.new { server.accept.tap { sleep } } # sleep-ok: holds the request unanswered
       client = described_class.new(session_id: "c1", port: server.local_address.ip_port)
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { client.relay(action: "closed", relay_id: "r", question_id: "q", read_timeout: 0.2) }
         .to raise_error(Errno::ETIMEDOUT)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the full 30 s
     ensure
       hold&.kill
       server&.close

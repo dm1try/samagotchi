@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "timeout"
 require "samagotchi/bridge_client"
 
 # EventStream's options for a stream through chi web (SessionAccess::
@@ -47,7 +46,14 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
 
   def frame(id, type) = "id: #{id}\ndata: #{JSON.generate(type: type)}\n\n"
 
-  def collect(count) = Array.new(count) { Timeout.timeout(5) { events.pop } }
+  def collect(count) = Array.new(count) { |i| pop!(events, "event #{i + 1} of #{count}") }
+
+  # Holds a scripted connection open until the stream hangs up.
+  def hold(conn)
+    conn.read
+  rescue IOError, SystemCallError
+    nil
+  end
 
   def types(list) = list.map { |event| event["type"] }
 
@@ -57,8 +63,8 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
 
   describe "idle_timeout" do
     it "reconnects with the cursor when no byte comes for that long (a half-open connection)" do
-      port, heads = scripted([->(conn) { conn.write(sse_head + frame("4-e1", "snapshot")) && sleep(2) },
-                              ->(conn) { conn.write(sse_head + frame("5-e1", "turn_started")) && sleep(2) }])
+      port, heads = scripted([->(conn) { conn.write(sse_head + frame("4-e1", "snapshot")) && hold(conn) },
+                              ->(conn) { conn.write(sse_head + frame("5-e1", "turn_started")) && hold(conn) }])
       stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), idle_timeout: 0.2)
 
       expect(types(collect(2))).to eq(%w[snapshot turn_started])
@@ -67,26 +73,29 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     end
 
     it "never fires while the Bridge's pings come (its 15 s against 40 s, here scaled down)" do
+      # Pings for twice the idle timeout, then says whether the stream is still there.
+      still_open = Queue.new
       pinging = lambda do |conn|
         conn.write(sse_head + frame("1-e1", "snapshot"))
-        8.times do
-          sleep 0.05
+        12.times do
+          sleep 0.05 # sleep-ok: the Bridge's pings, well inside the idle timeout
           conn.write(": ping\n\n")
         end
-        sleep 2
+        still_open << !conn.wait_readable(0) # a hang-up would read as EOF
+        hold(conn)
       end
       port, heads = scripted([pinging, pinging])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), idle_timeout: 0.2)
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), idle_timeout: 0.3)
 
       expect(types(collect(1))).to eq(%w[snapshot])
-      sleep 0.35
+      expect(pop!(still_open, "the pings")).to be(true)
       expect(heads.size).to eq(1)
       expect(events).to be_empty
     end
 
     it "is off for a Bridge on this machine: BridgeClient#follow passes none" do
       allow(described_class).to receive(:new).and_call_original
-      port, = scripted([->(conn) { conn.write(sse_head) && sleep(2) }])
+      port, = scripted([->(conn) { conn.write(sse_head) && hold(conn) }])
       @stream = Samagotchi::BridgeClient.new(session_id: "s1", port: port).follow { |event| events << event }
 
       expect(described_class).to have_received(:new).with(anything, hash_excluding(:idle_timeout, :epoch_watch,
@@ -98,7 +107,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
   describe "epoch_watch" do
     it "announces a frame from another epoch than the cursor's as a new worker, and updates the client's key" do
       port, heads = scripted([->(conn) { conn.write(sse_head + frame("7-aaaa", "snapshot")) },
-                              ->(conn) { conn.write(sse_head + frame("1-bbbb", "reset")) && sleep(2) }])
+                              ->(conn) { conn.write(sse_head + frame("1-bbbb", "reset")) && hold(conn) }])
       client = web_client_class.new(session_id: "s1", port: port).tap { |made| made.worker_key = "aaaa" }
       stream_for(client, epoch_watch: true)
 
@@ -129,7 +138,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
       port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) },
                         ->(conn) { conn.close },
                         ->(conn) { conn.close },
-                        ->(conn) { conn.write(sse_head + frame("2-e", "turn_started")) && sleep(2) }])
+                        ->(conn) { conn.write(sse_head + frame("2-e", "turn_started")) && hold(conn) }])
       stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
 
       expect(types(collect(4))).to eq(%w[snapshot stream_retrying stream_resumed turn_started])
@@ -138,7 +147,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     it "says it is back once the stream answers, before any frame (a quiet session's replay is empty)" do
       port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) },
                         ->(conn) { conn.close },
-                        ->(conn) { conn.write(sse_head + ": ping\n\n") && sleep(2) }])
+                        ->(conn) { conn.write(sse_head + ": ping\n\n") && hold(conn) }])
       stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
 
       expect(types(collect(3))).to eq(%w[snapshot stream_retrying stream_resumed])

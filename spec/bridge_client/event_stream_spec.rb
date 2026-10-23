@@ -32,10 +32,16 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     "id: #{seq}\r\nevent: #{payload[:type]}\r\ndata: #{JSON.generate(payload)}\r\n\r\n"
   end
 
-  def collect(events, count, timeout: 2)
-    deadline = Time.now + timeout
-    sleep 0.01 until events.size >= count || Time.now > deadline
+  def collect(events, count)
+    wait_for("#{count} events", seen: -> { events.map { |e| e["type"] } }) { events.size >= count }
     events.dup
+  end
+
+  # Holds a scripted connection open until the stream hangs up.
+  def hold(conn)
+    conn.read
+  rescue IOError, SystemCallError
+    nil
   end
 
   after do
@@ -54,7 +60,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
         conn.write(frame(5, { type: :snapshot, snapshot: { event_seq: 5, messages: [] } }))
         conn.write(": ping\r\n\r\n")
         conn.write(frame(6, { type: :turn_started, event_seq: 6 }))
-        sleep 1
+        hold(conn)
       end]
     end
 
@@ -83,7 +89,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
 
       started = Time.now
       @stream.close
-      expect(Time.now - started).to be < 0.5
+      expect(Time.now - started).to be < 0.5 # not the full 1 s join
       expect(@stream).not_to be_alive
       expect(events.map { |e| e["type"] }).not_to include("stream_closed")
     end
@@ -93,7 +99,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     let(:scripts) do
       [
         ->(conn) { conn.write(sse_head + frame(7, { type: :turn_started, event_seq: 7 })) },
-        ->(conn) { conn.write(sse_head + frame(8, { type: :turn_completed, event_seq: 8 })); sleep 1 }
+        ->(conn) { conn.write(sse_head + frame(8, { type: :turn_completed, event_seq: 8 })); hold(conn) }
       ]
     end
 
@@ -116,8 +122,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
 
       got = collect(events, 2)
       expect(got.last).to eq("type" => "stream_closed", "reason" => "unreachable")
-      @stream.join(1)
-      expect(@stream).not_to be_alive
+      join!(@stream, "the stream")
     end
   end
 
@@ -130,7 +135,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
       follow
 
       expect(collect(events, 1)).to eq([{ "type" => "stream_closed", "reason" => "unknown_session" }])
-      @stream.join(1)
+      join!(@stream, "the stream")
       expect(bridge.requests.size).to eq(1)
     end
   end
@@ -139,7 +144,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     let(:scripts) { [->(conn) { conn.write(sse_head + frame(41, { type: :turn_completed, event_seq: 41 })) }] }
 
     it "follows the new worker from its snapshot, announced by worker_changed, without the old cursor" do
-      second = scripted_bridge([->(conn) { conn.write(sse_head + frame(1, { type: :snapshot, snapshot: {} })); sleep 1 }])
+      second = scripted_bridge([->(conn) { conn.write(sse_head + frame(1, { type: :snapshot, snapshot: {} })); hold(conn) }])
       looks = 0
       rediscover = lambda do
         looks += 1
