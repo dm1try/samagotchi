@@ -7,6 +7,7 @@ require "open3"
 require "tempfile"
 require "tmpdir"
 require "fileutils"
+require "support/task_dirs"
 
 RSpec.describe Samagotchi::Tools::Execute do
   around do |example|
@@ -631,22 +632,11 @@ RSpec.describe Samagotchi::Tools::Execute do
     end
 
     describe "at the limit, handed over as a task (on_timeout: task)" do
-      around do |example|
-        Dir.mktmpdir do |dir|
-          Dir.chdir(dir) do
-            example.run
-          ensure
-            # Every task an example handed over, stopped through its record
-            # (which checks the pid still is the group chi started).
-            Samagotchi::Tools::TaskRuntime.list_records.each do |record|
-              Samagotchi::Tools::TaskRuntime.stop_task(record.id, by: "model")
-            end
-            # Then chi's exit-status recorders (TaskRuntime.record_exit_status),
-            # which may still write exit_code or the record into dir.
-            Thread.list.select { |t| t.name == Samagotchi::Tools::TaskRuntime::EXIT_STATUS_THREAD }.each { |t| t.join(5) }
-          end
-        end
-      end
+      include TaskDirs
+
+      # Every task an example handed over is stopped through its record
+      # (which checks the pid still is the group chi started).
+      around { |example| with_task_dir { example.run } }
 
       # task_wait looks more often: how often it looks, never what it decides.
       before { stub_const("Samagotchi::Tools::TaskWait::POLL_INTERVAL", 0.05) }

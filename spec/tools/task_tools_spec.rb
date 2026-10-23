@@ -13,24 +13,12 @@ require "samagotchi/tools/task_runtime"
 require "samagotchi/tools/task_stop"
 require "samagotchi/tools/task_wait"
 require "tmpdir"
+require "support/task_dirs"
 
 RSpec.describe "task tools" do
-  around do |example|
-    Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        example.run
-      ensure
-        # A task still running writes its exit_code into dir as it ends:
-        # stop it before mktmpdir removes dir (ENOTEMPTY otherwise).
-        Samagotchi::Tools::TaskRuntime.list_records.each do |record|
-          Samagotchi::Tools::TaskRuntime.stop_task(record.id, by: "model")
-        end
-        # Then chi's exit-status recorders (TaskRuntime.record_exit_status),
-        # which may still write exit_code or the record into dir.
-        Thread.list.select { |t| t.name == Samagotchi::Tools::TaskRuntime::EXIT_STATUS_THREAD }.each { |t| t.join(5) }
-      end
-    end
-  end
+  include TaskDirs
+
+  around { |example| with_task_dir { example.run } }
 
   describe Samagotchi::Tools::TaskCreate do
     it "creates a running task and returns metadata with output path" do
@@ -924,6 +912,25 @@ RSpec.describe "task tools" do
           expect(runtime.load_record(record.id)).to have_attributes(status: status, exit_code: code, stop_reason: nil,
                                                                     finished_at: early.finished_at)
         end
+      end
+    end
+
+    describe "TaskRuntime.quiesce!" do
+      it "joins the exit-status recorders, and returns the ones still alive at its deadline" do
+        gate = Queue.new
+        waiter = Struct.new(:value).new(nil)
+        waiter.define_singleton_method(:value) { SpecWaiting.pop!(gate, "the example to open the gate", timeout: 30) && nil }
+        thread = runtime.record_exit_status(waiter, File.join(Dir.pwd, "exit_code"), task_id: "task-quiesce")
+
+        expect(runtime.quiesce!(timeout: 0.05)).to eq([thread])
+        expect(thread).to be_alive
+
+        gate << true
+        expect(runtime.quiesce!).to eq([])
+        expect(thread).not_to be_alive
+      ensure
+        gate << true
+        thread&.join(5)
       end
     end
 

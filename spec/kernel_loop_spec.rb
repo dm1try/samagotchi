@@ -6,8 +6,11 @@ require "samagotchi/session"
 require "samagotchi/message_parts"
 require "fileutils"
 require "tmpdir"
+require "support/task_dirs"
 
 RSpec.describe Samagotchi::KernelLoop do
+  include TaskDirs
+
   subject(:kernel) { described_class.new(client: client) }
 
   let(:client) { instance_double(Samagotchi::Client) }
@@ -2002,25 +2005,19 @@ Need to inspect the filesystem first.
     end
 
     it "dispatches a native task_create call and records task activity" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          responses = [
-            %(<|tool_call>call:task_create{command: "ruby -e 'puts 12'"}<tool_call|>),
-            "done"
-          ]
-          allow(client).to receive(:complete).and_return(*responses)
+      with_task_dir do
+        responses = [
+          %(<|tool_call>call:task_create{command: "ruby -e 'puts 12'"}<tool_call|>),
+          "done"
+        ]
+        allow(client).to receive(:complete).and_return(*responses)
 
-          result = kernel.run([{ role: "user", content: "run in background" }])
-          event = result.tool_activity.find { |entry| entry[:tool] == "task_create" }
+        result = kernel.run([{ role: "user", content: "run in background" }])
+        event = result.tool_activity.find { |entry| entry[:tool] == "task_create" }
 
-          expect(result.output).to eq("done")
-          expect(event[:action]).to eq("starting background task")
-          expect(event[:params]).to include("command=")
-        ensure
-          # The task writes its exit_code into dir: let it end before
-          # mktmpdir removes dir (ENOTEMPTY otherwise).
-          wait_until(timeout: 10) { Samagotchi::Tools::TaskRuntime.list_records.none?(&:running?) }
-        end
+        expect(result.output).to eq("done")
+        expect(event[:action]).to eq("starting background task")
+        expect(event[:params]).to include("command=")
       end
     end
 

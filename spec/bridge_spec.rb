@@ -6,6 +6,7 @@ require "stringio"
 require "socket"
 require "net/http"
 require "json"
+require "support/task_dirs"
 require "support/test_kernel"
 
 require "samagotchi/engine"
@@ -392,21 +393,13 @@ RSpec.describe Samagotchi::Bridge do
   describe "POST tasks/stop" do
     let(:engine) { make_engine }
     let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }
-    let(:created) { [] }
 
-    around do |example|
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          example.run
-        ensure
-          created.each { |id| Samagotchi::Tools::TaskRuntime.stop_task(id, by: "model") }
-        end
-      end
-    end
+    include TaskDirs
+
+    around { |example| with_task_dir { example.run } }
 
     def start(command = "sleep 30")
       record, = Samagotchi::Tools::TaskRuntime.create_task(command)
-      created << record.id
       record.id
     end
 

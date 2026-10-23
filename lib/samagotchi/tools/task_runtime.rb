@@ -99,9 +99,10 @@ module Samagotchi
       # status. Only while this chi runs. A record a refresh finished in
       # between (failed, no exit code) is corrected; a stopped task (its
       # stop flag on disk) is left as task_stop records it.
-      # The thread is named EXIT_STATUS_THREAD (a spec joins them before it
-      # removes the tasks' folder) here, before it returns: named from
-      # inside, a thread not yet scheduled was missed by that join.
+      # The thread is named EXIT_STATUS_THREAD (a spec joins them with
+      # #quiesce! before it removes the tasks' folder) here, before it
+      # returns: named from inside, a thread not yet scheduled was missed by
+      # that join.
       # @return [Thread]
       def record_exit_status(waiter, path, task_id:)
         # Absolute now: safe against a later chdir.
@@ -131,6 +132,19 @@ module Samagotchi
 
       # record_exit_status's threads' name.
       EXIT_STATUS_THREAD = "task_exit_status"
+
+      # Joins every live EXIT_STATUS_THREAD, for up to +timeout+ s in all: a
+      # spec calls it (with_task_dir) after stopping its tasks and before it
+      # removes their folder, which a recorder may still write into. chi
+      # itself doesn't call it.
+      # @return [Array<Thread>] the ones still alive after +timeout+ (empty
+      #   when quiet)
+      def quiesce!(timeout: 5)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        threads = Thread.list.select { |thread| thread.name == EXIT_STATUS_THREAD && thread != Thread.current }
+        threads.each { |thread| thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max) }
+        threads.select(&:alive?)
+      end
 
       # Reasons a refresh finishes a record with when it read no exit code.
       MISSING_CODE_REASONS = ["process_ended_without_exit_code", NOT_CHIS_PROCESS].freeze
