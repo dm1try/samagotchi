@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads,
+  authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
   retries, retryDelay,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
@@ -131,4 +131,9 @@ test("participant: a failed read is retried when chi web is unreachable or answe
   assert.equal(retries(401), false);
   assert.deepEqual([0, 1, 2, 3, 4, 9].map(retryDelay), [3000, 6000, 12000, 24000, 30000, 30000]);
   assert.equal(refusalText(0, null), "Not sent: can't reach the session. Send it again.");
+});
+
+test("participant: a turn's start or end (or the stream starting over) holds the live reply until the re-read", () => {
+  for (const type of ["turn_started", "turn_completed", "turn_canceled", "turn_failed", "snapshot", "reset"]) assert.ok(endsLiveTurn(type), type);
+  for (const type of ["turn_enqueued", "question_requested", "generation_chunk"]) assert.ok(!endsLiveTurn(type), type);
 });

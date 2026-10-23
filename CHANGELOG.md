@@ -88,6 +88,8 @@ and commands may change between minor versions. How releases are made:
   the reply streams, and no longer redraws the messages it already shows (a text selection in them stays).
 - The participant page on a phone is the visible viewport's height (100dvh), so its composer sits above the browser's
   URL bar instead of under it.
+- The participant page no longer adds the next turn's first words to the reply of the turn that just ended while it
+  reads the review again (a queued turn starting): the live reply waits for the re-read, whose stream replays them.
 
 ## [0.106.0] - 2026-10-23
 

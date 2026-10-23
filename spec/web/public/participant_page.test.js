@@ -282,3 +282,19 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
 test("participant page: the page is the dynamic viewport's height (the dock above a phone's URL bar), 100% where unknown", () => {
   assert.match(HTML, /html,body\{height:100%;height:100dvh\}/);
 });
+
+test("participant page: after a turn ends, the next turn's events wait for the re-read, never added to the ended reply", async (t) => {
+  const running = (prompt, text, id) => ({ ...REVIEW, session: { ...REVIEW.session, status: "running" },
+    current_turn: { prompt, text, tools: [] }, last_event_id: id });
+  const { $, calls, tick, sources } = await openPage(t, { respond: firstReadOnly(running("First", "Done.", "7-ab")) });
+  sources[0].emit("turn_completed");
+  sources[0].emit("turn_started");
+  sources[0].emit("generation_chunk", { text: "Next" });
+  assert.equal($("liveReply").textContent, "Done.", "the ended turn's reply is left as it was");
+  await tick(120);
+  calls.at(-1).answer(200, running("Second", "Next", "10-ab"));
+  await settle();
+  assert.match(sources.at(-1).url, /from_seq=10-ab/);
+  sources.at(-1).emit("generation_chunk", { text: " one" });
+  assert.equal($("liveReply").textContent, "Next one");
+});
