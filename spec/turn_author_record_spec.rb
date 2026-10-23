@@ -70,7 +70,9 @@ RSpec.describe "a turn's author on the record" do
 
     it "saves a participant's opening message with author and name, and puts the author in last_turn and analytics" do
       grant = invite("Alex")
-      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
+      events = []
+      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author },
+                                                  on_event: ->(e) { events << e })
 
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(content: "Is step 3 safe?", author: grant.author, author_name: "Alex")
@@ -78,6 +80,7 @@ RSpec.describe "a turn's author on the record" do
       expect(session.to_h["last_turn"]).to include("author" => grant.author)
       expect(analytics["turn_records"].last).to include("author" => grant.author)
       expect(sent.last.last).to include(author: grant.author, author_name: "Alex")
+      expect(events.find { |e| e[:type] == :turn_started }).to include(author: grant.author, author_name: "Alex")
     end
 
     it "names a participant the sidecar doesn't know by id only (the header says the id)" do
@@ -91,11 +94,13 @@ RSpec.describe "a turn's author on the record" do
 
     it "keeps the owner's turn free of any author: message, last_turn, analytics, even with participants invited" do
       invite("Alex")
-      engine.run_turn(session, "hi", origin: { client_id: "web:t", enqueued_id: "e1" })
+      events = []
+      engine.run_turn(session, "hi", origin: { client_id: "web:t", enqueued_id: "e1" }, on_event: ->(e) { events << e })
 
       expect(session.messages.find { |m| m[:role] == "user" }.keys).to eq(%i[role content turn_id])
       expect(session.to_h["last_turn"]).not_to have_key("author")
       expect(analytics["turn_records"].last).not_to have_key("author")
+      expect(events.find { |e| e[:type] == :turn_started }.keys).not_to include(:author, :author_name)
     end
   end
 end

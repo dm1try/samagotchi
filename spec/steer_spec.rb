@@ -25,6 +25,13 @@ RSpec.describe Samagotchi::Steer do
       expect(described_class.merge(["x"]).event_fields).to eq(count: 1, content: "x")
     end
 
+    it "names the merged text's author in its event fields only when one participant wrote all of it" do
+      line = described_class::Line
+      theirs = line.new(text: "q", source: "participant", author: "p:p_1", author_name: "Alex")
+      expect(described_class.merge([theirs]).event_fields).to include(author: "p:p_1", author_name: "Alex")
+      expect(described_class.merge([theirs, "mine"]).event_fields.keys).not_to include(:author, :author_name)
+    end
+
     it "saves a Line's source on its input message, and a user Line like a String" do
       line = described_class::Line
       merge = described_class.merge([line.new(text: "a", source: "chi_send"), line.new(text: " b ", source: "chi_send")])

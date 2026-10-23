@@ -2149,6 +2149,9 @@ module Samagotchi
       turn_started[:resumed] = true if turn.resumed?
       turn_started[:images] = image_refs unless image_refs.empty?
       turn_started[:cut_after] = steer_cut_after
+      # A participant's turn names them (author, author_name) for the UIs'
+      # badge; the owner's turn_started stays as it was.
+      turn_started.merge!(author_fields(turn.origin, session: session))
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 

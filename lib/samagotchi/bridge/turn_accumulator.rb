@@ -86,7 +86,7 @@ module Samagotchi
           text.clear
         end
         unless turn[:prompt].nil?
-          prompt = { role: "user", content: turn[:prompt].to_s }
+          prompt = { role: "user", content: turn[:prompt].to_s, **author_of(turn) }
           prompt[:images] = turn[:images] if turn[:images]
           messages << prompt
         end
@@ -95,7 +95,7 @@ module Samagotchi
           when "text" then text << part[:text].to_s
           when "input"
             flush.call
-            messages << { role: "user", content: part[:text].to_s }
+            messages << { role: "user", content: part[:text].to_s, **author_of(part) }
           when "steer"
             flush.call
             messages << Steer.message(text: part[:text], source: part[:source])
@@ -103,6 +103,12 @@ module Samagotchi
         end
         flush.call
         messages
+      end
+
+      # A turn's or an input part's author fields (author:, author_name:),
+      # {} for the owner's: the same keys a saved message carries.
+      def self.author_of(item)
+        Steer.author_fields(item[:author], item[:author_name])
       end
 
       # The turn in progress (#current_turn's shape, symbol keys) as the live
@@ -125,6 +131,7 @@ module Samagotchi
         started = { type: :turn_started, prompt: turn[:prompt], origin: turn[:origin], continue: !!turn[:continue] }
         started[:resumed] = true if turn[:resumed]
         started[:started_at] = started_at if started_at
+        started.merge!(author_of(turn))
         events = [with_images(started, turn[:images])]
         text_iteration = nil # a text part is open for this iteration
         close_text = lambda do
@@ -265,6 +272,7 @@ module Samagotchi
           @working_set = nil
           @turn[:images] = event[:images] if event[:images]
           @turn[:cut_after] = event[:cut_after] if event[:cut_after]
+          Steer::AUTHOR_KEYS.each { |key| @turn[key] = event[key] if event[key] }
         when :input_merged
           @merged_origins = Array(event[:origins])
           dequeue(@merged_origins)
@@ -330,7 +338,9 @@ module Samagotchi
           # A steer-only merge (count 0) has no user part: the origins stay
           # for the user lines' own merge.
           unless event[:content].nil?
-            parts << { kind: "input", iteration: event[:iteration], text: event[:content].to_s.dup, origins: @merged_origins }
+            input = { kind: "input", iteration: event[:iteration], text: event[:content].to_s.dup, origins: @merged_origins }
+            Steer::AUTHOR_KEYS.each { |key| input[key] = event[key] if event[key] }
+            parts << input
             @merged_origins = []
           end
           Array(event[:steers]).each do |steer|

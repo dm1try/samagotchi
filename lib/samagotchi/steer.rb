@@ -74,7 +74,18 @@ module Samagotchi
         reports = inputs.select { |input| input[:source] == DELEGATE_REPORT }
                         .flat_map { |input| input[:content].split(/\n\n(?=session: )/) }
         fields[:reports] = reports unless reports.empty?
-        fields
+        fields.merge(merged_author)
+      end
+
+      # The author fields of the merged text when one participant wrote all
+      # of it ({author:, author_name:}), {} otherwise: the owner's merges
+      # stay as they were. (A participant's line waits for its own turn, so
+      # this is defence: a UI never shows their text as the owner's.)
+      def merged_author
+        authors = inputs.map { |input| [input[:author], input[:author_name]] }.uniq
+        return {} unless authors.size == 1
+
+        Steer.author_fields(*authors.first)
       end
     end
 

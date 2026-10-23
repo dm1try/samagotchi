@@ -343,6 +343,22 @@ exit: 0"
     ])
   end
 
+  it "names a participant's prompt and merged input as theirs, live and replayed; the owner's carry no author" do
+    feed({ type: :turn_started, prompt: "is step 3 safe?", author: "p:p_1", author_name: "Alex",
+           origin: { client_id: "review:p_1", author: "p:p_1" } },
+         { type: :pending_input_merged, iteration: 2, count: 1, content: "and step 4?", author: "p:p_1", author_name: "Alex" })
+
+    expect(described_class.messages_of(acc.current_turn)).to eq([
+      { role: "user", content: "is step 3 safe?", author: "p:p_1", author_name: "Alex" },
+      { role: "user", content: "and step 4?", author: "p:p_1", author_name: "Alex" }
+    ])
+    expect(described_class.replay_events(acc.current_turn).first).to include(author: "p:p_1", author_name: "Alex")
+
+    feed({ type: :turn_completed }, { type: :turn_started, prompt: "mine" })
+    expect(described_class.messages_of(acc.current_turn)).to eq([{ role: "user", content: "mine" }])
+    expect(described_class.replay_events(acc.current_turn).first.keys).not_to include(:author, :author_name)
+  end
+
   it "a steer-only merge adds no input part and leaves the senders for the user's own merge" do
     origins = [{ client_id: "web:1", enqueued_id: "e3" }]
     feed({ type: :turn_started, prompt: "hi" },

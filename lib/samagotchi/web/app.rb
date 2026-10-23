@@ -2478,6 +2478,8 @@ module Samagotchi
           # record by this, not by its place.
           turn_id = m[:turn_id] || m["turn_id"]
           message[:turn_id] = turn_id.to_s if norm_role == "user" && turn_id
+          # A participant's message names them (the page's author badge).
+          message.merge!(Samagotchi::Steer.author_fields(m[:author] || m["author"], m[:author_name] || m["author_name"])) if norm_role == "user"
           images = m[:images] || m["images"]
           message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
           if norm_role == "assistant"
