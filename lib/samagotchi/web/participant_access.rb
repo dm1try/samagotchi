@@ -3,6 +3,7 @@
 require "json"
 require_relative "grants"
 require_relative "principal"
+require_relative "qr"
 require_relative "../archive_store"
 require_relative "../client_id"
 require_relative "../delivery"
@@ -353,7 +354,19 @@ module Samagotchi
       # or digest.
       def handle_participants_list(_req, id = nil)
         now = @grants.now
-        json_response(200, { participants: @grants.list(session_id: id).map { |grant| grant.public_h(now) } })
+        grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
+        json_response(200, { participants: id ? with_spend(id, grants) : grants })
+      end
+
+      # One session's grants with what each spent and how many turns they
+      # ran (its saved analytics: SessionMetrics.saved_by_author), for the
+      # owner's participants panel.
+      def with_spend(id, grants)
+        rows = SessionMetrics.saved_by_author(Session.session_dir(id, state_dir: default_state_dir))
+        grants.map do |grant|
+          row = rows["p:#{grant[:id]}"] || { turns: 0, cost: 0.0 }
+          grant.merge(spend: row[:cost].round(4), turns: row[:turns])
+        end
       end
 
       # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
@@ -369,8 +382,9 @@ module Samagotchi
 
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
                                               ttl: ttl, cap: cap, state_dir: default_state_dir)
+        link = participant_link(req, id, issued.token)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
-                             link: participant_link(req, id, issued.token), lan: !@lan.nil? })
+                             link: link, lan: !@lan.nil?, qr_svg: QR.svg(link) })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
       end

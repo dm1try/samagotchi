@@ -32,6 +32,20 @@ module Samagotchi
         end
       end
 
+      # The code as an SVG (the web's Invite dialog): one path of dark
+      # modules on white, whatever the page's theme, so a camera reads it.
+      # @return [String]
+      def svg(text, quiet: QUIET)
+        rows = matrix(text, quiet: quiet)
+        size = rows.size
+        dark = rows.each_with_index.flat_map do |row, y|
+          row.each_index.select { |x| row[x] }.map { |x| "M#{x} #{y}h1v1h-1z" }
+        end
+        %(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 #{size} #{size}" shape-rendering="crispEdges" role="img" ) +
+          %(aria-label="QR code of the review link"><rect width="#{size}" height="#{size}" fill="#fff"/>) +
+          %(<path d="#{dark.join}" fill="#000"/></svg>)
+      end
+
       # Dark modules as true, the quiet zone around them.
       # Level L: the code is read off a screen, never damaged, and stays small.
       def matrix(text, quiet: QUIET)

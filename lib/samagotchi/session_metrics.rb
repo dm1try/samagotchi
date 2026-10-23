@@ -380,12 +380,29 @@ module Samagotchi
     # spend is saved at its end).
     # @return [Float]
     def self.saved_spend(session_dir, author)
-      data = AnalyticsFile.read(session_dir) or return 0.0
-      records = Array(data["turn_records"]).select { |record| record.is_a?(Hash) && record["author"] == author }
-      turns = records.sum { |record| record_cost(record.transform_keys(&:to_sym)) }
-      turns + SideTotals.from_saved(data["side"]).spent_by(author)
+      saved_by_author(session_dir).dig(author, :cost) || 0.0
+    end
+
+    # Every participant's turns and cost from the saved analytics.json
+    # (#saved_spend's reading): author => {turns:, cost:}; {} without a
+    # file. The owner's turns (no author) aren't counted. The web's
+    # participants panel.
+    # @return [Hash{String => Hash}]
+    def self.saved_by_author(session_dir)
+      data = AnalyticsFile.read(session_dir) or return {}
+      rows = Hash.new { |hash, author| hash[author] = { turns: 0, cost: 0.0 } }
+      Array(data["turn_records"]).each do |record|
+        next unless record.is_a?(Hash) && record["author"].is_a?(String)
+
+        row = rows[record["author"]]
+        row[:turns] += 1
+        row[:cost] += record_cost(record.transform_keys(&:to_sym))
+      end
+      side = SideTotals.from_saved(data["side"])
+      side.by_author.each_key { |author| rows[author][:cost] += side.spent_by(author) }
+      rows.to_h
     rescue TypeError
-      0.0
+      {}
     end
 
     # What +author+ has cost so far: their finished turns, their running

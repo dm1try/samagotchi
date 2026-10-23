@@ -9,6 +9,7 @@ require "samagotchi/web/app"
 require "samagotchi/web/grants"
 require "samagotchi/participants"
 require "samagotchi/session_manager"
+require "samagotchi/analytics_file"
 
 # The owner's participants routes (GET/POST/DELETE /api/sessions/:id/
 # participants, GET/DELETE /api/participants), and an archive or a delete
@@ -38,6 +39,25 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     env["REMOTE_ADDR"] = "127.0.0.1"
     status, _headers, chunks = app.call(env)
     [status, JSON.parse(chunks.join)]
+  end
+
+  describe "GET /api/sessions/:id/participants" do
+    it "gives each participant's spend and turns from the saved analytics; the invite gives the link's QR once" do
+      status, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
+      expect(status).to eq(201)
+      expect(invited["qr_svg"]).to start_with("<svg").and include("QR code of the review link")
+      id = invited["participant"]["id"]
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [
+        { "id" => "t1", "author" => "p:#{id}", "cost" => 0.25 }, { "id" => "t2", "author" => "p:#{id}", "cost_estimate" => 0.5 },
+        { "id" => "t3", "cost" => 9.0 }
+      ] }))
+
+      _, body = call("/api/sessions/#{session.id}/participants")
+      expect(body["participants"]).to contain_exactly(include("id" => id, "name" => "Alex", "spend" => 0.75, "turns" => 2))
+      expect(call("/api/participants").last["participants"].first).not_to have_key("spend")
+      expect(JSON.generate(body)).not_to include(invited["token"])
+    end
   end
 
   describe "POST /api/sessions/:id/participants/:participant/cap" do

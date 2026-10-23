@@ -33,4 +33,14 @@ RSpec.describe Samagotchi::Web::QR do
   it "is a version-4 code (33 modules, 19 lines) for a LAN link" do
     expect(described_class.lines(link, color: false).size).to eq(19)
   end
+
+  it "draws an SVG of the same modules, dark on white, one unit square each" do
+    svg = described_class.svg(link)
+    rows = described_class.matrix(link)
+
+    expect(svg).to start_with(%(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 #{rows.size} #{rows.size}"))
+    expect(svg).to include(%(<rect width="#{rows.size}" height="#{rows.size}" fill="#fff"/>), %(fill="#000"))
+    expect(svg.scan(/M\d+ \d+h1v1h-1z/).size).to eq(rows.flatten.count(true))
+    expect(svg).to include("M2 2h1v1h-1z")
+  end
 end
