@@ -172,6 +172,9 @@ module Samagotchi
       # One a worker that died left is not open.
       @pending_card.clear
       @pending_card_handle = @engine.subscribe(observer: @pending_card)
+      # #stop and #close_intake wake the acceptor through it: closing the
+      # listen socket doesn't cut a select on it short on Linux.
+      @wake_reader, @wake_writer = IO.pipe
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
       write_sidecar
@@ -198,12 +201,17 @@ module Samagotchi
       rescue StandardError
         nil
       end
+      wake_acceptor
     end
 
     # Stop the acceptor, release the socket and remove the sidecar, so clients
     # don't have to find it stale. Does not stop the owning turn. Joins the
     # acceptor thread so the process can exit cleanly (Ruby waits for a thread
     # blocked in IO.select at VM shutdown). Safe to call again.
+    #
+    # The sidecar goes before the open streams close: a client that
+    # reconnects as its stream ends (chi web's proxy, an attached TUI) then
+    # finds no worker, or the next one, never this one's dead port.
     def stop
       @mutex.synchronize { @stopped = true }
       begin
@@ -211,6 +219,7 @@ module Samagotchi
       rescue StandardError
         nil
       end
+      wake_acceptor
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
       @engine.running_turn_messages = nil
@@ -220,13 +229,14 @@ module Samagotchi
       # A turn post killed between its enqueue and its reply looks failed to
       # the web, which then queues the prompt again from the input file.
       await_answers(REQUEST_GRACE_SECONDS)
+      remove_sidecar
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
       # Its relay watchers (RelayWatcher) end with it.
       watchers = @mutex.synchronize { (@relay_watchers || []).tap { @relay_watchers = [] } }
       watchers.each { |thread| thread.kill.join(RELAY_WATCHER_JOIN_SECONDS) }
       @accept_thread&.join(2)
-      remove_sidecar
+      [@wake_reader, @wake_writer].each { |io| io&.close rescue nil }
       nil
     end
 
@@ -360,17 +370,25 @@ module Samagotchi
       end
     end
 
+    # #stop or #close_intake: the acceptor's select returns now.
+    def wake_acceptor
+      @wake_writer&.write_nonblock(".", exception: false)
+    rescue IOError
+      nil # closed by an earlier #stop
+    end
+
     def accept_loop
       loop do
         break if stopped? || @server.closed?
 
         begin
-          rs, = IO.select([@server], nil, nil, 0.5)
+          rs, = IO.select([@server, @wake_reader], nil, nil, 0.5)
         rescue IOError
           break
         end
 
         next unless rs
+        break if rs.include?(@wake_reader)
 
         client =
           begin

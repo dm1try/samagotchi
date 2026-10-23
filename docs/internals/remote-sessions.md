@@ -249,7 +249,10 @@ passes none):
   half-open connection (Wi-Fi gone, a sleeping laptop), reconnected with the cursor.
 - `epoch_watch:` a frame whose id carries another epoch than the cursor's is a new worker answering the old cursor:
   `worker_changed {"port" => nil, "epoch" => new}` comes before it (the `reset` the new Bridge sends), and the
-  client's `worker_key` is updated in place.
+  client's `worker_key` is updated in place. A restart reaches the stream this way because `Bridge#stop` removes its
+  sidecar before it ends the open streams: the reconnect finds no sidecar, chi web waits for the next worker's
+  (`await_bridge_port`) and proxies the cursor to it. A sidecar still naming the dead port would get an empty 200
+  (the proxy's connects refused), and the stream would move by rediscovery (`worker_changed`, then a `snapshot`).
 - `announce_retries:` `stream_retrying` once a reconnect fails, `stream_resumed` at the next frame.
 
 `EventStream` compares a rediscovered client's key with the key it last followed, not with the client object's, so a

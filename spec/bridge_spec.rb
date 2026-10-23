@@ -751,10 +751,39 @@ RSpec.describe Samagotchi::Bridge do
 
         started = mono
         @bridge.stop
-        # Not the request grace nor the stream: only the acceptor's 0.5 s
-        # IO.select poll, which closing the socket doesn't cut short on
-        # Linux (macOS wakes it at once). Wide for a loaded CI runner.
+        # Not the request grace nor the stream. Wide for a loaded CI runner.
         expect(mono - started).to be < 10
+      end
+
+      # Closing the listen socket doesn't cut the acceptor's IO.select short
+      # on Linux (macOS wakes it at once): #close_intake wakes it itself,
+      # rather than leaving it to the select's 0.5 s timeout.
+      it "ends the acceptor at once when the intake closes" do
+        start_bridge
+        acceptor = @bridge.instance_variable_get(:@accept_thread)
+        @bridge.close_intake
+        expect(acceptor.join(0.3)).to be(acceptor)
+      end
+
+      # A client reconnecting as its stream ends (chi web's proxy reads the
+      # sidecar for the port) must not be sent to this Bridge's closed port.
+      it "removes its sidecar before it ends an open stream" do
+        stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
+        start_bridge
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        sock, status = client.connect_stream(timeout: 5)
+        expect(status).to eq(200)
+        sidecar_at_end = Thread.new do
+          loop { sock.readpartial(4096) }
+        rescue IOError, SystemCallError
+          File.exist?(sidecar)
+        ensure
+          sock.close rescue nil
+        end
+        wait_until { @bridge.open_streams == 1 }
+
+        @bridge.stop
+        expect(sidecar_at_end.value).to be(false)
       end
     end
 
