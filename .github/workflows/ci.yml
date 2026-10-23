@@ -42,7 +42,14 @@ jobs:
           restore-keys: parallel-runtime-${{ runner.os }}-ruby-${{ matrix.ruby }}-
       # Both spec roots: parallel_rspec doesn't read .rspec's --pattern.
       - name: Specs (:integration and :macos_build skip themselves)
+        id: specs
         run: bundle exec parallel_rspec -n 4 spec lib/samagotchi/bundles/*/spec
+      # Only the examples that failed, once more with plain rspec: the job
+      # summary says "Flaky: passed on rerun" or "Failed twice". The job fails
+      # either way (docs/testing.md, "Flakes").
+      - name: Rerun the failed examples (flake check)
+        if: failure() && steps.specs.outcome == 'failure'
+        run: ruby script/rerun_failures.rb --job "rspec (Ruby ${{ matrix.ruby }})"
       - name: Save the spec runtime log (main only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -76,7 +83,14 @@ jobs:
           restore-keys: parallel-runtime-${{ runner.os }}-ruby-3.4-
       # Both spec roots: parallel_rspec doesn't read .rspec's --pattern.
       - name: Specs (:integration and :macos_build skip themselves)
+        id: specs
         run: bundle exec parallel_rspec -n 3 spec lib/samagotchi/bundles/*/spec
+      # Only the examples that failed, once more with plain rspec: the job
+      # summary says "Flaky: passed on rerun" or "Failed twice". The job fails
+      # either way (docs/testing.md, "Flakes").
+      - name: Rerun the failed examples (flake check)
+        if: failure() && steps.specs.outcome == 'failure'
+        run: ruby script/rerun_failures.rb --job "rspec (macOS, Ruby 3.4)"
       - name: Save the spec runtime log (main only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
