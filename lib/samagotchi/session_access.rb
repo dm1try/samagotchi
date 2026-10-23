@@ -24,7 +24,8 @@ module Samagotchi
     class RemoteFailed < StandardError; end
 
     # A remote's chi web is from before the routes this command needs
-    # ("remote studio runs chi 0.102.0; this needs 0.103.0 or later").
+    # ("remote studio runs chi 0.102.0, too old for this command through
+    # --remote: update chi there (chi update)").
     class RemoteTooOld < RemoteFailed; end
 
     # A remote's chi web refused a request for a reason this machine checks

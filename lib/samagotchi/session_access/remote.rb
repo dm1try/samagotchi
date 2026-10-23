@@ -30,9 +30,6 @@ module Samagotchi
     # the remote. Waits and prefixes run on the server (plan D2); a wait
     # here asks again until it ends or the caller's own timeout passes.
     class Remote
-      # The chi whose chi web has the session commands' routes (GET
-      # /api/info's session_commands feature).
-      NEEDS = "0.103.0"
       # The longest a wait route waits (Web::SessionAccessRoutes::
       # WAIT_MAX_SECONDS): each request asks for at most this.
       WAIT_SLICE = 30.0
@@ -84,8 +81,11 @@ module Samagotchi
         RemoteTooOld.new(too_old_message(entry, reply.json["version"]))
       end
 
+      # By feature, not by a release number (that is the release's to
+      # name): a chi without the routes, or without the one a command asks.
       def self.too_old_message(entry, version)
-        "remote #{entry.name} runs chi #{version || "(unknown)"}; this needs #{NEEDS} or later"
+        "remote #{entry.name} runs chi #{version || "(unknown)"}, too old for this command through --remote: " \
+          "update chi there (chi update)"
       end
 
       # The words for a 401 or a 403 forbidden from +entry+'s chi web, nil

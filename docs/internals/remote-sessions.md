@@ -122,7 +122,8 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   taken from the 403's detail. `chi remote add` uses the same words through `Remote.info_problem`.
 - **Version skew.** The check is by feature, not by version: `/api/info`'s `features` must include `session_commands`
   (`SessionAccessRoutes::FEATURE`, mirrored as `Remote::FEATURE` so chi web needn't be loaded). If it's missing,
-  `RemoteTooOld` says "remote NAME runs chi X; this needs `Remote::NEEDS` or later". A 404 counts as a missing route
+  `RemoteTooOld` says "remote NAME runs chi X, too old for this command through --remote: update chi there (chi
+  update)": no release number, which would be a guess before the release. A 404 counts as a missing route
   only when its detail starts with `not found: /` (the 404 from `serve_static`, for a path no route takes). A route's
   own 404 (no such session or source) stays a refusal. **Keep that rule:** a new route's 404 must never use the
   `not found: /…` wording.

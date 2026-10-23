@@ -79,9 +79,9 @@ RSpec.describe Samagotchi::RemoteCommand do
     context "with a chi web from before the session commands' routes" do
       let(:reply) { [200, JSON.generate(app: "chi-web", version: "0.102.0", features: %w[dir newest_workers])] }
 
-      it "names its chi and the one it needs" do
+      it "names its chi and says to update it" do
         expect(run("add", "studio", "192.168.1.29")).to eq(1)
-        expect(err.string).to include("remote studio runs chi 0.102.0; this needs #{Samagotchi::SessionAccess::Remote::NEEDS} or later")
+        expect(err.string).to include("remote studio runs chi 0.102.0, too old for this command through --remote: update chi there (chi update)")
       end
     end
 

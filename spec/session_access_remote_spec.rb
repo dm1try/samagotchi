@@ -66,10 +66,10 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(transport.requests.first).to eq([:get, "/api/info"])
     end
 
-    it "names its chi and the one this needs when it lacks them, or answers 404 for a route" do
+    it "names its chi and says to update it when it lacks them, or answers 404 for a route" do
       old, = scripted([200, {}], info: { app: "chi-web", version: "0.102.0", features: %w[dir] })
       expect { old.resolve_id("ab12") }
-        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, "remote studio runs chi 0.102.0; this needs #{described_class::NEEDS} or later")
+        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, "remote studio runs chi 0.102.0, too old for this command through --remote: update chi there (chi update)")
 
       missing, = scripted([404, { error: "not_found", detail: "not found: /api/sessions/resolve" }])
       expect { missing.resolve_id("ab12") }.to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /runs chi 9.9.9/)
