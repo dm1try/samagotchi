@@ -359,11 +359,16 @@ module Samagotchi
 
       # GET /api/sessions/:id/participants, GET /api/participants: the
       # grants (one session's, or every one), in every state, never a token
-      # or digest.
+      # or digest. One session's also carries +warning+: the share warning
+      # for a session that isn't a review session (ReviewStart.share_warning,
+      # null for one), which the panel shows before its Invite.
       def handle_participants_list(_req, id = nil)
         now = @grants.now
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
-        json_response(200, { participants: id ? with_spend(id, grants) : grants })
+        return json_response(200, { participants: grants }) unless id
+
+        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
+        json_response(200, { participants: with_spend(id, grants), warning: warning })
       end
 
       # One session's grants with what each spent and how many turns they

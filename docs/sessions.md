@@ -283,6 +283,14 @@ sessions](cli.md#review-sessions)); both start idle and print the `chi share` li
   folder and setup are taken (`dir` and the setup fields beside it are 400 `invalid_review`) and `model` is the
   only choice. A subject refused, or the source's folder gone, is 400 `invalid_review` with the one message; an
   unknown source 404 `not_found`.
+- **The page:** the start page's `review…` chip (beside think and llm ctx) takes the files (comma- or
+  space-separated, relative to the page's folder): its chip then reads `review: plan.md +1`, and Start makes a
+  review session (the message typed, if any, is its first turn; with none it starts idle). A refused file shows the
+  server's one message. On a session that isn't a review session the participants panel (the session bar's
+  participants chip) says so before its Invite, with the share warning (how many tool outputs its history holds)
+  and **Start a review of it**: a review fork of it, opened, with a toast (`Review 4b7e9a01 started from 3f9a1c2e's
+  recap; 3f9a1c2e keeps running.`) whose **Invite** opens the new session's panel. Every summary carries `review`
+  (null for other sessions).
 
 ## Toolkits
 

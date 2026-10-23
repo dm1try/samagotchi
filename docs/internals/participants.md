@@ -258,7 +258,7 @@ the owner sees the text before it runs (docs/guardrails.md, the review boundary)
 
 | Route | Body / params | Answer | Refusals |
 |---|---|---|---|
-| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant]}`, every state | |
+| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it | |
 | `GET /api/participants` | | 200 `{participants: [grant]}`, every session's | |
 | `POST /api/sessions/:id/participants` | `name`, `kind` (`human`/`agent`), `ttl` (seconds) | 201 `{participant: grant, token, link, lan, qr_svg, warning}`: the token and the link once; `warning` for a session that isn't a review session (`ReviewStart.share_warning`, null for one); `link` names this chi web's LAN address (`http://IP:PORT/?token=…#s=<id>`), `lan` false when it has none | 400 `invalid_participant` (name, kind, ttl, an archived session); 404 |
 | `GET /api/sessions/:id/apply[?turn=T]` | `turn`: a turn id or a prefix (none: the latest review turn with a reply) | 200 `{text, turn_id, author, author_name}`: the Apply turn for the composer, never sent | 404 `not_found` (no such turn, no review turn), 400 `not_review_turn` (an owner's turn), 409 `no_reply` |

@@ -203,7 +203,7 @@ test("a command_ran while the pick is in flight: its ack syncs the button then",
 test("the new session's choices: sent with the create, then cleared; opening a session drops them", async (t) => {
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
-  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined });
+  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, review: undefined });
   // The thinking chip's form, on the start page: a level for the next session.
   const choose = (level) => {
     p.thinkChip.click();

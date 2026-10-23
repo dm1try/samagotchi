@@ -66,6 +66,9 @@ module Samagotchi
           # The session this one continues (the previous link of its
           # chain), else nil: the lists draw chains from it.
           continues: session.continues,
+          # A review session's {subjects, from} (SessionReview), else nil:
+          # the session bar offers Start review on the others.
+          review: session.review&.to_file,
           first_preview: first_preview_for(session),
           # The session's own name (/title), else nil: the pages show it in
           # place of the first message.

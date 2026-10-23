@@ -1364,7 +1364,8 @@ chi review --from 3f9a1c2e docs/plan.md       # a review of a working session: i
 - Sharing a working session (one `chi review` didn't start) still works, with a warning on stderr that says how many
   tool outputs its history holds: `chi share: warning: 3f9a1c2e is a working session, not a review session: a
   participant's review turn can quote what its history holds (42 tool outputs so far). … (chi review --from 3f9a1c2e
-  starts one)`. The web's Invite shows the same words above the link.
+  starts one)`. On the web the participants panel shows the same words before its Invite, with **Start a review of
+  it**, and again above the link an invite gives.
 
 How it works inside (grants, the gate, the routes, the audit trail):
 [internals/participants.md](internals/participants.md).

@@ -4,6 +4,7 @@ import {
   api,
   listSessions,
   createIdleSession,
+  startReview,
   continueSession,
   getSession,
   sendTurn,
@@ -414,4 +415,15 @@ test("archiveSession and unarchiveSession POST to the session's archive routes",
   await archiveSession("3fa2", { fetchImpl });
   await unarchiveSession("3fa2", { fetchImpl });
   assert.deepEqual(calls, [["/api/sessions/3fa2/archive", "POST"], ["/api/sessions/3fa2/unarchive", "POST"]]);
+});
+
+test("createIdleSession with review files makes a review session (no idle, no preview); startReview forks one", async () => {
+  const bodies = [];
+  const fetchImpl = (_path, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createIdleSession({ dir: "/r", preview: "hi", review: { subjects: ["docs/plan.md"] }, thinking: "high", fetchImpl });
+  await startReview("abc", { fetchImpl });
+  assert.deepEqual(bodies, [{ review: { subjects: ["docs/plan.md"] }, dir: "/r", thinking: "high" }, { review: { from: "abc" } }]);
 });

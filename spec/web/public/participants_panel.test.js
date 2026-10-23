@@ -109,3 +109,12 @@ test("participants: a participant's queued or started prompt carries their badge
   assert.match(bubble, /<span class="origin-label author-badge"[^>]*>Alex B · review<\/span>/);
   setParticipantNames([]);
 });
+
+test("participants: a working session's warning comes before the Invite, with Start a review of it; none for a review session", () => {
+  const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e is a working session" }));
+  assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e is a working session<button[^>]*data-act="start-review"[^>]*>Start a review of it<\/button>/);
+  assert.ok(working.indexOf("pp-working") < working.indexOf('class="pp-invite"'));
+  assert.match(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", reviewing: true })), /disabled[^>]*>Starting…</);
+  assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s" })), /pp-working/);
+  assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", invite: { name: "A", link: "x", lan: true } })), /pp-working/);
+});
