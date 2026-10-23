@@ -165,7 +165,7 @@ class ControllableIO
 
   def write(data)
     @mutex.synchronize { @buffer << data }
-    sleep(@write_sleep) if @write_sleep.positive?
+    sleep(@write_sleep) if @write_sleep.positive? # sleep-ok: the slow client socket is the behaviour
     data.bytesize
   end
 
@@ -280,7 +280,7 @@ RSpec.describe Samagotchi::Bridge do
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
-      wait_until { io.buffer.include?("id: 10\r\n") } # subscribe + replay complete
+      wait_for("the replay up to seq 10") { io.buffer.include?("id: 10\r\n") } # subscribe + replay complete
 
       seqs_in_order = %w[5 6 7 8 9 10]
       positions = seqs_in_order.map { |s| io.buffer.index("id: #{s}") }
@@ -308,7 +308,7 @@ RSpec.describe Samagotchi::Bridge do
         )
         writer_thread = Thread.new { writer.serve!(io) }
         # The last replayed frame, or the reset (which carries the newest id).
-        wait_until { io.buffer.include?("id: 10\r\n") }
+        wait_for("the last replayed frame or the reset") { io.buffer.include?("id: 10\r\n") }
 
         if resets
           expect(io.buffer).to include("event: reset")
@@ -335,7 +335,7 @@ RSpec.describe Samagotchi::Bridge do
           heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
-        wait_until { io.buffer.include?("id: 10-e2\r\n") } # the last replayed frame, or the reset's
+        wait_for("the last replayed frame or the reset") { io.buffer.include?("id: 10-e2\r\n") } # the last replayed frame, or the reset's
         writer_thread.kill
         io.buffer
       end
@@ -373,7 +373,7 @@ RSpec.describe Samagotchi::Bridge do
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
-      wait_until { io.buffer.include?("text/event-stream") } # subscribe + headers written
+      wait_for("the stream's headers") { io.buffer.include?("text/event-stream") } # subscribe + headers written
 
       start = mono
       500.times { |i| writer.call(type: :x, event_seq: 10_000 + i) }
@@ -691,7 +691,8 @@ RSpec.describe Samagotchi::Bridge do
         # The prompt is queued; the reply hasn't gone out yet.
         allow(@bridge).to receive(:write_json).and_wrap_original do |original, *args|
           enqueued << true
-          sleep(0.3) # the reply still going out while stop runs (stop must wait for it)
+          # sleep-ok: the reply still going out while stop runs (stop must wait for it)
+          sleep(0.3)
           original.call(*args)
         end
         client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
@@ -715,15 +716,17 @@ RSpec.describe Samagotchi::Bridge do
         @engine.synchronize_events do
           post = Thread.new { client.post_turn(prompt: "hi") }
           post.report_on_exception = false
-          # The post's connection thread now waits on the event log.
-          sleep(0.3)
+          # The post's connection thread, its request read, waits on the event log.
+          wait_for("the post's connection thread to wait on the event log") do
+            @bridge.instance_variable_get(:@connection_threads).any? { |t| t[:bridge_answering] && t.status == "sleep" }
+          end
           @bridge.close_intake
         end
 
         started = mono
         @bridge.stop
 
-        expect(mono - started).to be < 5
+        expect(mono - started).to be < 5 # not the full 30 s grace
         # No reply: the client reads an empty answer or a reset, never a 202.
         reply = begin
           post.value
@@ -740,7 +743,7 @@ RSpec.describe Samagotchi::Bridge do
         stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
         start_bridge
         @clients << SSEClient.new(@bridge_port, @session.id).start
-        wait_until { @bridge.open_streams == 1 }
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
 
         started = mono
         @bridge.stop
@@ -773,7 +776,7 @@ RSpec.describe Samagotchi::Bridge do
         ensure
           sock.close rescue nil
         end
-        wait_until { @bridge.open_streams == 1 }
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
 
         @bridge.stop
         expect(sidecar_at_end.value).to be(false)
@@ -787,11 +790,11 @@ RSpec.describe Samagotchi::Bridge do
 
         client = SSEClient.new(@bridge_port, @session.id).start
         @clients << client
-        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
 
         client.stop
         # The writer's watcher reads the hang-up.
-        expect(wait_until { @bridge.open_streams.zero? }).to be(true)
+        wait_for("the closed stream to be uncounted") { @bridge.open_streams.zero? }
       end
 
       # A detached TUI's stream must not hold the worker up for a /exit
@@ -800,11 +803,11 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge(heartbeat_interval: 30)
         gone = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
         @clients << gone
-        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
 
         gone.stop
 
-        expect(wait_until(timeout: 2) { @bridge.open_streams.zero? }).to be(true)
+        wait_for("the closed stream to be uncounted") { @bridge.open_streams.zero? }
         expect(@bridge.open_streams_except("tui:2")).to eq(0)
       end
 
@@ -812,7 +815,7 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
         own = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
         @clients << own
-        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
         expect(@bridge.open_streams_except("tui:1")).to eq(0)
         expect(@bridge.open_streams_except("tui:2")).to eq(1)
         expect(@bridge.open_streams_except(nil)).to eq(1)
@@ -821,15 +824,15 @@ RSpec.describe Samagotchi::Bridge do
         @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
         web = SSEClient.new(@bridge_port, @session.id).start
         @clients << web
-        expect(wait_until { @bridge.open_streams == 3 }).to be(true)
+        wait_for("three open streams") { @bridge.open_streams == 3 }
         expect(@bridge.open_streams_except("tui:1")).to eq(1)
 
         web.stop
-        expect(wait_until { @bridge.open_streams == 2 }).to be(true)
+        wait_for("the web tab's stream to be uncounted") { @bridge.open_streams == 2 }
         expect(@bridge.open_streams_except("tui:1")).to eq(0)
 
         own.stop
-        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        wait_for("the old stream to be uncounted") { @bridge.open_streams == 1 }
         expect(@bridge.open_streams_except("tui:1")).to eq(0)
         expect(@bridge.open_streams_except("tui:2")).to eq(1)
       end
@@ -842,9 +845,9 @@ RSpec.describe Samagotchi::Bridge do
         expect(after_request).to be > before
 
         client = SSEClient.new(@bridge_port, @session.id).start
-        wait_until { @bridge.open_streams == 1 }
+        wait_for("the stream to open") { @bridge.open_streams == 1 }
         client.stop
-        wait_until { @bridge.open_streams.zero? }
+        wait_for("the closed stream to be uncounted") { @bridge.open_streams.zero? }
         expect(@bridge.last_client_activity_at).to be > after_request
       end
 
@@ -854,7 +857,9 @@ RSpec.describe Samagotchi::Bridge do
         expect(Samagotchi::BridgeClient.sidecar_port(
           Samagotchi::Session.session_dir(@session.id, state_dir: state_dir)
         )).to eq(@bridge_port)
-        sleep(0.1) # nothing to wait on: a request would have noted activity by now
+        # The probe's connection thread read no request and ended: it noted nothing.
+        threads = -> { @bridge.instance_variable_get(:@connection_threads) }
+        wait_for("the probe's connection to end") { threads.call.any? && threads.call.none?(&:alive?) }
         expect(@bridge.last_client_activity_at).to eq(before)
       end
     end
@@ -884,7 +889,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       client = SSEClient.new(@bridge_port, @session.id).start
       @clients = [client]
-      wait_until { @bridge.open_streams == 1 } # the acceptor + per-connection subscribe happened
+      wait_for("the stream to open") { @bridge.open_streams == 1 } # the acceptor + per-connection subscribe happened
 
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi")
@@ -953,7 +958,7 @@ RSpec.describe Samagotchi::Bridge do
         release = hold_turn_after({ type: :generation_started, iteration: 1 }, *chunks,
                                   conversation: [{ role: "model", content: "done" }])
         turn = Thread.new { run_turn_sync(@engine, @session, "long one") }
-        wait_until { @engine.event_count >= 302 }
+        wait_for("the turn's 302 events") { @engine.event_count >= 302 }
 
         c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
         @clients << c
@@ -968,7 +973,8 @@ RSpec.describe Samagotchi::Bridge do
         expect(snap["current_turn"]["parts"].map { |p| p["text"] }.join).to eq(chunks.map { |e| e[:content] }.join)
         expect(snap["messages"]).to eq([])
 
-        rest = c.wait_for(2 + 3, timeout: 3).drop(1) # completion events arrive live
+        # The completion events arrive live.
+        rest = c.wait_until { |seen| seen.any? { |e| e[:data]["type"] == "turn_completed" } }.drop(1)
         ids = rest.map { |e| e[:id].to_i }
         expect(ids.first).to eq(first[:id].to_i + 1)
         expect(ids).to eq((ids.first..ids.last).to_a)
@@ -1000,7 +1006,7 @@ RSpec.describe Samagotchi::Bridge do
                                   conversation: [{ role: "model", content: "done" }])
         expect(@bridge.snapshot[:working_set]).to be_nil
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
-        wait_until { @bridge.snapshot[:working_set] }
+        wait_for("the working set in the snapshot") { @bridge.snapshot[:working_set] }
 
         body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")
         release << true
@@ -1017,7 +1023,7 @@ RSpec.describe Samagotchi::Bridge do
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },
                                   conversation: [{ role: "model", content: "done" }])
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
-        wait_until { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
+        wait_for("the turn's first part in the snapshot") { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
 
         client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
         body = client.get_json("snapshot")
@@ -1046,7 +1052,7 @@ RSpec.describe Samagotchi::Bridge do
                                   { type: :generation_chunk, iteration: 1, thinking: "hm", content: "" },
                                   conversation: [{ role: "model", content: "done" }])
         turn = Thread.new { run_turn_sync(@engine, @session, "thinking one") }
-        wait_until { @bridge.snapshot.dig(:current_turn, :generation) }
+        wait_for("the generation in the snapshot") { @bridge.snapshot.dig(:current_turn, :generation) }
 
         live = @bridge.snapshot[:current_turn][:generation]
         release << true
@@ -1160,10 +1166,10 @@ RSpec.describe Samagotchi::Bridge do
                               timeout: 5) { gate.pop }
         expect(@bridge.snapshot[:init_tasks]).to eq([])
         @engine.start_init_tasks!
-        wait_until { @bridge.snapshot[:init_tasks].any? }
+        wait_for("the init task in the snapshot") { @bridge.snapshot[:init_tasks].any? }
         expect(@bridge.snapshot[:init_tasks]).to eq([{ bundle: "b", id: "b-1", label: "Warming up" }])
         gate << :go
-        wait_until { @bridge.snapshot[:init_tasks].empty? }
+        wait_for("the init task to leave the snapshot") { @bridge.snapshot[:init_tasks].empty? }
       end
 
       it "is followed by BridgeClient#follow: snapshot first, then gap-free live events" do
@@ -1171,15 +1177,15 @@ RSpec.describe Samagotchi::Bridge do
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },
                                   conversation: [{ role: "model", content: "done" }])
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
-        wait_until { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
+        wait_for("the turn's first part in the snapshot") { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
 
         events = Queue.new
         stream = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).follow { |e| events << e }
-        snap = events.pop(timeout: 3)
+        snap = pop!(events, "the snapshot")
         release << true
         turn.join
         live = []
-        live << events.pop(timeout: 3) until live.last&.dig("type") == "turn_completed" || live.include?(nil)
+        live << pop!(events, "the live events") until live.last&.dig("type") == "turn_completed"
         stream.close
 
         expect(snap["type"]).to eq("snapshot")
@@ -1199,7 +1205,7 @@ RSpec.describe Samagotchi::Bridge do
         turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
         # Not @engine.pending_question: it is set before :question_requested
         # is emitted, and the snapshot follows the event log.
-        wait_until { @bridge.snapshot.dig(:current_turn, :pending_question) }
+        wait_for("the pending question in the snapshot") { @bridge.snapshot.dig(:current_turn, :pending_question) }
 
         c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
         @clients << c
@@ -1318,13 +1324,15 @@ RSpec.describe Samagotchi::Bridge do
 
       c = SSEClient.new(@bridge_port, @session.id, last_event_id: current_seq.to_s).start
       @clients << c
-      wait_until { @bridge.open_streams == 1 }
-      sleep(0.1) # nothing to wait on: a reset would follow the subscribe at once
-      events = c.events
+      wait_for("the stream to open") { @bridge.open_streams == 1 }
+      # A reset would come in the replay, before any live event: the next
+      # turn's events arriving show the replay is over.
+      run_turn_sync(@engine, @session, "hi again")
+      events = c.wait_until { |seen| seen.any? { |e| e[:data]&.fetch("type") == "turn_started" } }
+      expect(events.map { |e| e[:data]&.fetch("type") }).to include("turn_started")
       reset = events.find { |e| e[:data]&.fetch("type") == "reset" }
       expect(reset).to be_nil
-      # The all-events-wait_for consumer would time out, but the connection
-      # stays serviceable: status is 200 and no reset was sent.
+      # The connection stays serviceable: status is 200 and no reset was sent.
       expect(c.status_code).to eq(200)
     end
 
@@ -1482,7 +1490,7 @@ RSpec.describe Samagotchi::Bridge do
         release << true
         holder.join
 
-        expect(dropped.pop(timeout: 2)).to eq("turn_expired")
+        expect(pop!(dropped, "the dropped turn")).to eq("turn_expired")
         expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
         expect(seen).to be_empty
       ensure
@@ -1594,7 +1602,7 @@ RSpec.describe Samagotchi::Bridge do
       threads = -> { @bridge.instance_variable_get(:@connection_threads) }
 
       5.times { Net::HTTP.get_response(uri) }
-      wait_until(timeout: 2) { threads.call.none?(&:alive?) }
+      wait_for("the connections to end") { threads.call.none?(&:alive?) }
       Net::HTTP.get_response(uri)
 
       expect(threads.call.size).to eq(1)
@@ -1608,7 +1616,7 @@ RSpec.describe Samagotchi::Bridge do
 
       Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
 
-      record = wait_until(timeout: 2) do
+      record = wait_for("the request's log record") do
         File.exist?(log) && File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.tag == "bridge" && r.event == "request" } }
       end
       expect(record.fields.except("ms")).to eq("method" => "GET", "path" => "/session/#{@session.id}/stats", "status" => "200")
@@ -1619,7 +1627,7 @@ RSpec.describe Samagotchi::Bridge do
       Samagotchi::Log.configure(path: log)
       start_bridge
       @bridge.stop
-      sleep 0.1 # nothing to wait on: the accept loop would have logged by now
+      join!(@bridge.instance_variable_get(:@accept_thread), "the accept loop") # #stop joined it (2 s at most)
 
       expect(File.exist?(log) ? File.read(log) : "").not_to include("accept_loop_failed")
     end
@@ -1633,7 +1641,7 @@ RSpec.describe Samagotchi::Bridge do
       response = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
       expect([response.code, JSON.parse(response.body)]).to eq(["500", { "error" => "bridge_error", "detail" => "boom" }])
 
-      wait_until(timeout: 2) { File.exist?(log) }
+      wait_for("the log file") { File.exist?(log) }
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "handler_failed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "bridge")
       expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom")
@@ -1715,7 +1723,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       thread = Thread.new { @engine.open_question(question: "Pick", options: %w[Cats Dogs], multi_select: false) }
       thread.report_on_exception = false
-      wait_until { @engine.pending_question }
+      wait_for("the pending question") { @engine.pending_question }
       qid = @engine.pending_question.id
 
       status, resp, = post_answer(JSON.generate(id: qid, selected: ["Dogs"]))
@@ -1745,7 +1753,7 @@ RSpec.describe Samagotchi::Bridge do
                  multi_select: false, allow_freeform: true, kind: "approval",
                  approval: { tool: "execute", scopes: %w[once session] } }
       thread = Thread.new { result[:answer] = @engine.open_question(fields) }
-      wait_until { @engine.pending_question }
+      wait_for("the pending question") { @engine.pending_question }
       qid = @engine.pending_question.id
 
       status, resp, reason = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"],
@@ -1964,7 +1972,7 @@ RSpec.describe Samagotchi::Bridge do
         release << true
         holder.join
 
-        expect(dropped.pop(timeout: 2)).to eq("command_expired")
+        expect(pop!(dropped, "the dropped command")).to eq("command_expired")
         expect(queued).to be_empty
       ensure
         release&.push(true)
@@ -2127,7 +2135,7 @@ RSpec.describe Samagotchi::Bridge do
                                            pending_tool_calls: false, tool_activity: [])
         end
         @turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
-        wait_until(timeout: 3) { @engine.pending_question }
+        wait_for("the pending question") { @engine.pending_question }
         tool_result
       end
 
@@ -2144,7 +2152,7 @@ RSpec.describe Samagotchi::Bridge do
 
         expect(status).to eq(200)
         expect(resp).to include("status" => "dismissed", "id" => id)
-        expect(JSON.parse(tool_result.pop(timeout: 2))).to include("id" => id)
+        expect(JSON.parse(pop!(tool_result, "the tool's result"))).to include("id" => id)
         expect(seen).to include(hash_including(type: :question_cancelled, id: id, reason: "dismissed"))
       end
 
@@ -2159,7 +2167,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(resp["error"]).to eq("question_not_pending")
         expect(@engine.pending_question).to have_attributes(id: id, status: "pending")
         @engine.answer_question(id: id, selected: ["A"])
-        expect(JSON.parse(tool_result.pop(timeout: 2))).to include("selected" => ["A"])
+        expect(JSON.parse(pop!(tool_result, "the tool's result"))).to include("selected" => ["A"])
       end
 
       it "carries a question asked between turns in its snapshot's top level (the turn accumulator drops it)" do
