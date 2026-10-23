@@ -73,6 +73,26 @@ test("frameFree lets the height go; resetHeld and forgetContent are the stage's 
   assert.equal(stage.style.height, "");
 });
 
+test("forgetContent lets a held frame shrink back to what shows (the cloud closed by hand)", (t) => {
+  const { frame, stage, status, centerEl } = frameOf();
+  Object.defineProperty(centerEl, "clientHeight", { configurable: true, get: () => 2000 });
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  let inner = 1000;
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => inner });
+  t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
+  let tall = 300;
+  Object.defineProperty(status, "offsetHeight", { configurable: true, get: () => tall });
+  frame.fitCap();
+  assert.equal(stage.style.height, "300px");
+  tall = 100;
+  inner = 900; // the cap moves (600 → 540 px): the frame refits
+  frame.fitCap();
+  assert.equal(stage.style.getPropertyValue("--stage-max"), "540px");
+  assert.equal(stage.style.height, "300px", "held while the turn runs: grow-only");
+  frame.forgetContent();
+  assert.equal(stage.style.height, "100px");
+});
+
 test("afterGrowth runs its function two frames on when no growth eases", async () => {
   const { frame } = frameOf();
   let ran = false;

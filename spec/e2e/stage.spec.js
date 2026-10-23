@@ -348,6 +348,18 @@ test("check-in's card waits for the user in the stage; after Nudge the turn stay
   const card = stageEl(page).locator(".ts-extras .plugin-card");
   await expect(card.locator(".card-title")).toHaveText("3 tool calls, no answer yet");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
+  // The steps opened and closed by hand: the stage grows for them, then
+  // shrinks back (no empty room left under the card).
+  await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
+  const stageHeight = () => stageEl(page).evaluate((el) => el.offsetHeight);
+  const closed = await stageHeight();
+  const chip = stageEl(page).locator(".ts-chip");
+  await chip.click();
+  await expect(stageEl(page)).toHaveClass(/cloud-open/);
+  await expect.poll(stageHeight).toBeGreaterThan(closed);
+  await chip.click();
+  await expect(stageEl(page)).not.toHaveClass(/cloud-open/);
+  await expect.poll(stageHeight).toBeLessThanOrEqual(closed);
   await page.evaluate(() => {
     window.held = [];
     window.holdSampler = setInterval(() => {
