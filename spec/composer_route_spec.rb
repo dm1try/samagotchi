@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::ComposerRoute do
     let(:core) { Samagotchi::SessionCommands.builtin_registry }
 
     it "covers every core command (! is the shell's: a row's !cmd)" do
-      expect(CORE_ROUTES.keys).to match_array(core.entries.map(&:name) - ["!"])
+      expect(CORE_ROUTES.keys).to match_array(core.entries.map(&:name).uniq - ["!"])
     end
 
     CORE_ROUTES.each do |name, (idle, running)|

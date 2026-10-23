@@ -17,6 +17,7 @@ require_relative "parent_answers_command"
 require_relative "title_command"
 require_relative "reasoning_history_command"
 require_relative "working_set_command"
+require_relative "recap_command"
 require_relative "guardrails/parent_policy"
 
 module Samagotchi
@@ -42,6 +43,7 @@ module Samagotchi
     TITLE_COMMAND = TitleCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     WORKING_SET_COMMAND = WorkingSetCommand::NAME
+    RECAP_COMMAND = RecapCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -126,7 +128,14 @@ module Samagotchi
                         id: :title, anytime: true, match: ->(text) { text.match?(%r{\A/title(?:\s+.*)?\z}) }) { |text| title(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
-      registry.register("/recap", "show the session's recap", local: true)
+      # /recap with words (on|off|default, or a slip: the usage) runs here:
+      # it toggles the idle job only, so it doesn't wait for a running turn.
+      # The bare /recap shows the recap: the UIs' own, under the same name
+      # (Registry#register); /help lists the name once, with this entry's
+      # description.
+      registry.register(RECAP_COMMAND, "show the session's recap (in a terminal); on|off|default sets this session's own",
+                        id: :recap_setting, anytime: true, match: ->(text) { text.match?(%r{\A/recap\s+\S}) }) { |text| recap_setting(text) }
+      registry.register(RECAP_COMMAND, "show the session's recap", local: true, match: ->(text) { text == RECAP_COMMAND })
       # Bare `exit` too; any case; --delete after it.
       registry.register("/exit", "leave (--delete also deletes the session)", local: true,
                                                                               match: exit_match("/?exit"))
@@ -237,7 +246,9 @@ module Samagotchi
     # own (marked by UI), each group by name.
     # @return [String]
     def help_listing
-      entries = @registry.entries.sort_by { |entry| [help_group(entry), entry.name] }
+      # A name with a UI's entry and the session's (/recap): listed once,
+      # as the session's (registered first).
+      entries = @registry.entries.uniq(&:name).sort_by { |entry| [help_group(entry), entry.name] }
       width = entries.map { |entry| self.class.display_name(entry).length }.max
       lines = entries.map do |entry|
         notes = []
@@ -556,6 +567,14 @@ module Samagotchi
     def title(text)
       output, changed, status = TitleCommand.new(engine: @engine, save: @save).run(text.delete_prefix(TITLE_COMMAND))
       reply(output, status: status, changed: changed ? [:title] : [])
+    end
+
+    # /recap on|off|default (RecapCommand); :recap in changed when this
+    # session's own recap.enabled moved. It doesn't save: its host does on
+    # a changed result (Worker#run_command, the REPL).
+    def recap_setting(text)
+      output, changed, status = RecapCommand.new(engine: @engine).run(text.delete_prefix(RECAP_COMMAND))
+      reply(output, status: status, changed: changed ? [:recap] : [])
     end
 
     # A session setting changed (/llm-context, /thinking, /reasoning-history):

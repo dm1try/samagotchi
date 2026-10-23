@@ -968,7 +968,8 @@ module Samagotchi
         return @screen.commit("(no recap: the worker did not answer)") unless answer
 
         @screen.commit(recap_command_text(enabled: answer["enabled"], saved: answer["saved"],
-                                          request: answer["request"], min_user_turns: answer["min_user_turns"]))
+                                          request: answer["request"], min_user_turns: answer["min_user_turns"],
+                                          session_off: answer["session_off"] == true))
       rescue SystemCallError, IOError
         @screen.commit("(no recap: the worker did not answer)")
       end

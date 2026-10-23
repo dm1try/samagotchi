@@ -575,10 +575,12 @@ module Samagotchi
 
     # /recap in an attached TUI: the saved recap, and a new one asked for at
     # once (it arrives as :recap_ready). Answers mid-turn too.
-    # 200 {enabled:, saved:, request:, min_user_turns:}. Returns [headers, status, body].
+    # 200 {enabled:, saved:, request:, min_user_turns:}; off, session_off:
+    # whether the session's own setting (/recap off) turned it off.
+    # Returns [headers, status, body].
     def handle_recap(_session_id, _body = nil)
       recap = @engine.recap
-      return [{}, 200, { enabled: false }] unless recap
+      return [{}, 200, { enabled: false, session_off: @engine.recap_override == false }] unless recap
 
       saved = @engine.saved_recap
       [{}, 200, { enabled: true, saved: saved, request: @engine.request_recap.to_s, min_user_turns: recap.min_user_turns }]

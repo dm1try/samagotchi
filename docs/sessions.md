@@ -284,7 +284,8 @@ it). A value that isn't a level reads as `hard`. `/parent-answers` changes it; l
 ## Session settings
 
 A session's own settings are what `chi --set`, `chi send --new --set …` or `POST /api/sessions` `settings` gave it
-at creation. The file keeps them in two fields:
+at creation. One changes live: `/recap on|off|default` (any UI, or `chi send -m "/recap off" ID`) sets or removes
+`recap.enabled` and the worker saves it, so a respawn keeps it. The file keeps them in two fields:
 
 - `config_settings` (`{"recap.enabled": false}`): the core keys a session may set (`recap.enabled`,
   `recap.sentences`; see [Per-session settings](configuration.md#per-session-settings)), typed by their key. They go

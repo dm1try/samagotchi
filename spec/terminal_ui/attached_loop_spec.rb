@@ -906,6 +906,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       expect(screen.lines).to include(a_string_starting_with("recap is off (recap: false in config.yml"))
     end
 
+    it "says when this session's own setting turned it off" do
+      allow(client).to receive(:request_recap).and_return(recap_reply(enabled: false, session_off: true))
+
+      run_with(["/recap"])
+
+      expect(screen.lines).to include(a_string_starting_with("recap is off for this session (/recap on"))
+    end
+
     it "shows the saved recap, and that a new one is being written" do
       allow(client).to receive(:request_recap)
         .and_return(recap_reply(enabled: true, min_user_turns: 2, request: "started",

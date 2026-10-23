@@ -107,6 +107,8 @@ module Samagotchi
 
     # What memory_write answers in a scratch session.
     SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
+    # The session setting /recap on|off|default writes (#recap_override=).
+    RECAP_ENABLED_KEY = "recap.enabled"
 
     # @param client             [Client, nil] defaults to Client.new
     # @param profile            [ModelProfile, Symbol, String, nil]
@@ -1756,7 +1758,7 @@ module Samagotchi
       # One session per REPL/worker process: its records carry this sid.
       Log.session_id = session.id if session&.id
       # Its own recap values (chi --set recap.enabled=false) rebuild the job.
-      rebuild_recap_for_session!
+      rebuild_recap!
       # A woken worker's /stats and status line count the turns before it.
       bind_metrics(session)
       @used_memories.absorb(session)
@@ -1819,7 +1821,7 @@ module Samagotchi
     # is dropped (an attempt in flight goes stale) and the scheduler swaps
     # it, keeping its one thread. Binding the same session again changes
     # nothing (the REPL binds it twice).
-    def rebuild_recap_for_session!
+    def rebuild_recap!
       return if session_recap_values == @recap_built_for
 
       old = @recap
@@ -1827,7 +1829,25 @@ module Samagotchi
       @recap = build_recap
       @idle_scheduler&.replace_job(old, @recap)
     end
-    private :rebuild_recap_for_session!
+
+    # /recap on|off|default: the bound session's own recap.enabled (true,
+    # false; nil removes it, so config.yml's applies again), and the recap
+    # job rebuilt under it at once. It doesn't save: the command says
+    # changed: [:recap] and its host saves (Worker#run_command).
+    # @param enabled [Boolean, nil]
+    # @raise [ArgumentError] no session is bound
+    def recap_override=(enabled)
+      raise ArgumentError, "no session" unless @session
+
+      core = @session.settings.core.dup
+      enabled.nil? ? core.delete(RECAP_ENABLED_KEY) : core[RECAP_ENABLED_KEY] = enabled
+      @session.settings = @session.settings.with(core: core)
+      rebuild_recap!
+    end
+
+    # The bound session's own recap.enabled (/recap on|off, --set), or nil.
+    # @return [Boolean, nil]
+    def recap_override = @session&.settings&.core&.fetch(RECAP_ENABLED_KEY, nil)
 
     # Write the recap now, before the session is left (IdleRecap#write_now).
     # @return [String, nil] the recap written, nil when none was (recap off,

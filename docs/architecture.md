@@ -311,7 +311,8 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   refused connection is `503 not_live`.
 - `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
 - `POST /session/:id/recap` — `/recap` in an attached TUI: `200 {enabled, saved, request,
-  min_user_turns}` (`{enabled: false}` without recaps); a new recap is asked for at once and
+  min_user_turns}` (`{enabled: false, session_off}` without recaps; `session_off` when the session's own
+  `/recap off` turned it off); a new recap is asked for at once and
   arrives as `:recap_ready`. Answers mid-turn too.
 - `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
   answered first or it is gone, `400` for an invalid selection. With `client_id: "cli:answer"`

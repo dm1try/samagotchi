@@ -478,14 +478,17 @@ module Samagotchi
         end.join("\n")
       end
 
-      RECAP_OFF_TEXT = "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false)"
+      RECAP_OFF_TEXT = "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false; /recap on turns it on here)"
+      # Off by the session's own recap.enabled (/recap off, --set recap.enabled=false).
+      RECAP_SESSION_OFF_TEXT = "recap is off for this session (/recap on turns it on, /recap default goes back to config.yml)"
 
       # What /recap says (the REPL's words, attached mode's too): the saved
       # recap, then what came of asking for a new one.
       # @param saved [Hash, nil] {text:, turns_since:}
       # @param request [Symbol, String, nil] IdleRecap#request_now's answer
-      def recap_command_text(enabled:, saved: nil, request: nil, min_user_turns: nil)
-        return RECAP_OFF_TEXT unless enabled
+      # @param session_off [Boolean] off by the session's own setting
+      def recap_command_text(enabled:, saved: nil, request: nil, min_user_turns: nil, session_off: false)
+        return session_off ? RECAP_SESSION_OFF_TEXT : RECAP_OFF_TEXT unless enabled
 
         saved = saved&.transform_keys(&:to_sym)
         lines = []

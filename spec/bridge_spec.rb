@@ -1825,7 +1825,7 @@ RSpec.describe Samagotchi::Bridge do
 
         expect(post_command(JSON.generate(line: "hello")).first).to eq(400)
         expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /context, /continue, " \
-                                                 "/guardrails, /help, /llm-context, /model, /models, /parent-answers, /reasoning-history, /thinking, /title, /toolkit, /working-set; /help lists them)")
+                                                 "/guardrails, /help, /llm-context, /model, /models, /parent-answers, /reasoning-history, /recap, /thinking, /title, /toolkit, /working-set; /help lists them)")
         expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
         expect(post_command("{nope").first).to eq(400)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/other/command"),
@@ -1991,7 +1991,9 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
         allow(@engine).to receive(:recap).and_return(nil)
 
-        expect(post_recap).to eq([200, { "enabled" => false }])
+        expect(post_recap).to eq([200, { "enabled" => false, "session_off" => false }])
+        allow(@engine).to receive(:recap_override).and_return(false)
+        expect(post_recap).to eq([200, { "enabled" => false, "session_off" => true }])
         expect(post_recap(session_id: "other").first).to eq(404)
       end
     end

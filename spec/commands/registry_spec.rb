@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     it "is frozen, and each command #run runs has a handler" do
       expect(builtins).to be_frozen
       runnable = builtins.entries.reject(&:local)
-      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers title help])
+      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers title help recap_setting])
       expect(runnable.map(&:handler)).to all(be_a(Proc))
     end
   end

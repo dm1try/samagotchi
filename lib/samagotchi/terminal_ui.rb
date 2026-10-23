@@ -890,6 +890,8 @@ module Samagotchi
           show_command_result(command)
           refresh_status_row(clear_unknown_context: true) if command.changed.include?(:model)
           refresh_status_row if command.changed.include?(:title)
+          # /recap on|off|default doesn't save itself (a worker saves a changed command).
+          save_session(session) if command.changed.include?(:recap)
           persist_recent_history(input) if command.shell
           return
         end
@@ -1180,7 +1182,7 @@ module Samagotchi
     # chat moved on (it prints when it arrives, BetweenTurns#flush_recap).
     def handle_recap_command
       recap = @engine.recap
-      return recap_command_text(enabled: false) unless recap
+      return recap_command_text(enabled: false, session_off: @engine.recap_override == false) unless recap
 
       saved = @engine.saved_recap
       request = @engine.turn_running? ? :busy : @engine.request_recap

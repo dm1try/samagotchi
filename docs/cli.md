@@ -761,7 +761,7 @@ REPL alike:
   `cutting in…`, then `steered`. A phone shows the short form (`↳ after this
   thinking · 0:42`) with `cut in` and `queue` chips.
 - Commands answer, wait or are refused, by what they do:
-  - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
+  - At once, beside the turn: `/stats`, `/recap` (and `/recap on|off|default`), `/help`, `/context`, a
     plugin's anytime command (`/btw`), and the commands that only show
     something: `/models` (with a filter too), and `/model`, `/llm-context`,
     `/thinking`, `/reasoning-history` and `/guardrails` alone.
@@ -1151,7 +1151,16 @@ working on, what came of it and what is still open, not a turn-by-turn log.
   after it (`recap (before the last 2 turns)>`). One written while you sit at
   the prompt prints there.
 - `/recap` shows the saved one and asks for a new one when the chat moved on
-  (`writing a recap…`, then the recap when it comes).
+  (`writing a recap…`, then the recap when it comes). The web answers the bare
+  `/recap` with a note (the recap shows there by itself).
+- `/recap off` and `/recap on` turn the recap off or on for this session, at
+  once and in any UI (the web composer too, and mid-turn); `/recap default`
+  goes back to config.yml's. The reply says both: `recap: off (this session;
+  config.yml: on)`. It is the session's own `recap.enabled`, as `--set
+  recap.enabled=false` gives it (see [Per-session
+  settings](configuration.md#per-session-settings)): saved with the session,
+  so a respawned worker keeps it, and it beats config.yml (`/recap on` under
+  `recap: false` turns it on here). With it off, `/recap` says so.
 - One written while a continue offer waits (the last turn ran out of steps)
   says that turn stopped before the task was finished. Answering `no` counts
   as activity, so the next recap no longer says so.
