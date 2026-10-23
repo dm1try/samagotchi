@@ -79,9 +79,10 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
       end
     end
 
-    it "lets a participant use only the page, the info, their session's show and its turns (P2, P3b)" do
+    it "lets a participant use only the page, the info, their session's show, its turns and waits (P2, P3b)" do
       participant = described_class.const_get(:ROUTES).select { |row| row[3] == :participant }.map { |row| row[2] }
-      expect(participant).to contain_exactly(:serve_index, :handle_info, :handle_show, :handle_turn, :handle_dequeue_turn)
+      expect(participant).to contain_exactly(:serve_index, :handle_info, :handle_show, :handle_turn, :handle_dequeue_turn,
+                                             :handle_resolve, :handle_wait_prepare, :handle_wait)
     end
   end
 

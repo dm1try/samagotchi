@@ -69,6 +69,7 @@ module Samagotchi
       def handle_resolve(req)
         given = req.params["id"].to_s
         return error_response(404, "not_found", "no session #{given[0, 80]}") unless Session.valid_id?(given)
+        return participant_resolve(principal(req).grant, given) unless principal(req).owner?
 
         json_response(200, { id: session_access.resolve(given) })
       rescue Session::AmbiguousId => e
@@ -136,6 +137,7 @@ module Samagotchi
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         turn = body["turn"]
         return error_response(400, "invalid_turn", "turn is a turn id") unless turn.nil? || turn.is_a?(String)
+        return participant_wait_prepare(req, id, body) unless principal(req).owner?
 
         session = session_access.show(id)
         if body["busy"] == true
@@ -180,6 +182,7 @@ module Samagotchi
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         options, error = wait_options(body)
         return error if error
+        return participant_wait(req, id, options) unless principal(req).owner?
 
         session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,

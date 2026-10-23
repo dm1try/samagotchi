@@ -162,4 +162,67 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       expect(call("/api/sessions/#{session.id}/turn/e-owner/dequeue").first).to eq(403)
     end
   end
+
+  describe "resolve and wait (an agent participant's send --wait)" do
+    let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
+    let(:start) do
+      Samagotchi::SessionAccess::WaitStart.new(cursor: "c1", baseline: Samagotchi::ReplyWait::Baseline.new(messages: 2),
+                                               own_turn: true, known_turn: true, running: false, live: true,
+                                               settled: false, last_turn_id: nil)
+    end
+
+    before do
+      allow(app).to receive(:session_access).and_return(access)
+      allow(access).to receive(:show).and_return(session)
+      allow(access).to receive(:prepare_wait).and_return(start)
+    end
+
+    def get(path)
+      env = Rack::MockRequest.env_for(path)
+      env["HTTP_HOST"] = "#{lan_ip}:4567"
+      env["REMOTE_ADDR"] = "192.168.1.20"
+      env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+      status, _headers, chunks = app.call(env)
+      [status, JSON.parse(chunks.join)]
+    end
+
+    it "resolves only the grant's session, by its id or a prefix; anything else is no session" do
+      expect(get("/api/sessions/resolve?id=#{session.id[0, 8]}")).to eq([200, { "id" => session.id }])
+      expect(get("/api/sessions/resolve?id=#{session.id}")).to eq([200, { "id" => session.id }])
+      expect(get("/api/sessions/resolve?id=ffffffff")).to eq([404, { "error" => "not_found", "detail" => "no session ffffffff" }])
+      expect(get("/api/sessions/resolve?id=a").first).to eq(404) unless session.id.start_with?("a")
+    end
+
+    it "prepares and waits only on a turn of theirs, the answer trimmed to their reply" do
+      turn({ prompt: "Is step 3 safe?" })
+      result = Samagotchi::ReplyWait::Result.new(status: :done, text: "Yes.", file: "/home/owner/x.md", turn_id: "t9",
+                                                 origin: { client_id: "web:o" })
+      allow(access).to receive(:wait_reply).and_return(result)
+      allow(access).to receive(:parent_strategy)
+
+      status, body = call("/api/sessions/#{session.id}/wait/prepare", body: { turn: "e-1", busy: true })
+      expect([status, body["cursor"]]).to eq([200, "c1"])
+      expect(access).to have_received(:prepare_wait).with(session.id, session: session, question_id: :pending, turn: "e-1")
+
+      expect(call("/api/sessions/#{session.id}/wait", body: { turn: "e-1", cursor: "c1" }))
+        .to eq([200, { "status" => "done", "text" => "Yes.", "turn_id" => "t9" }])
+      expect(access).to have_received(:wait_reply).with(session.id, hash_including(turn: "e-1", queued: true, cursor: nil))
+    end
+
+    it "says an owner's question or approval in their turn is the owner's, with nothing of it" do
+      turn({ prompt: "q" })
+      question = Struct.new(:to_file).new({ "question" => "Allow write?" })
+      allow(access).to receive(:wait_reply).and_return(Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: question))
+      expect(call("/api/sessions/#{session.id}/wait", body: { turn: "e-1" }))
+        .to eq([200, { "status" => "waiting_for_owner", "detail" => "waiting for the session's owner" }])
+    end
+
+    it "refuses a wait without a turn of theirs (403 not_permitted): another's, none, an unknown one" do
+      [{}, { turn: "owner-eid" }, { turn: 5 }].each do |body|
+        expect(call("/api/sessions/#{session.id}/wait/prepare", body: body).first).to eq(body[:turn] == 5 ? 400 : 403)
+        expect(call("/api/sessions/#{session.id}/wait", body: body).first).to eq(body[:turn] == 5 ? 400 : 403)
+      end
+      expect(access).not_to have_received(:prepare_wait)
+    end
+  end
 end

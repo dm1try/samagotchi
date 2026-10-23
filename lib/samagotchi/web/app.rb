@@ -191,7 +191,7 @@ module Samagotchi
         ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :participant],
         ["GET", %r{\A/api/sessions\z}, :handle_list, :owner],
         ["POST", %r{\A/api/sessions\z}, :handle_create, :owner],
-        ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :owner],
+        ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :participant],
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
         ["GET", %r{\A/api/info\z}, :handle_info, :participant],
         ["GET", %r{\A/api/models\z}, :handle_models, :owner],
@@ -208,8 +208,8 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :participant, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :participant, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],
@@ -1705,7 +1705,7 @@ module Samagotchi
         # A participant takes back only their own queued turns, by chi web's
         # record of who sent each (never a body's client id).
         unless (who = principal(req)).owner?
-          return not_permitted_for(req, who) unless own_queued_turn?(who.grant, id, enqueued_id)
+          return not_permitted_for(req, who) unless own_turn?(who.grant, id, enqueued_id)
 
           client_id = ClientId.review(who.grant.id)
         end

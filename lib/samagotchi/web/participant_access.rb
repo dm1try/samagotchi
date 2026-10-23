@@ -277,10 +277,12 @@ module Samagotchi
         end
       end
 
-      # Whether the queued turn +enqueued_id+ of session +id+ is +grant+'s:
-      # chi web's record of who sent it, else (a chi web restarted since)
-      # its waiting input file's author, which only a principal stamps.
-      def own_queued_turn?(grant, id, enqueued_id)
+      # Whether the turn +enqueued_id+ of session +id+ is +grant+'s: chi
+      # web's record of who sent it, else (a chi web restarted since) its
+      # waiting input file's author, which only a principal stamps.
+      def own_turn?(grant, id, enqueued_id)
+        return false unless enqueued_id.is_a?(String) && !enqueued_id.empty?
+
         sender = @participant_mutex.synchronize { @participant_turns[enqueued_id] }
         return sender == grant.id if sender
 
@@ -290,6 +292,59 @@ module Samagotchi
         rescue JSON::ParserError, SystemCallError
           false
         end
+      end
+
+      # GET /api/sessions/resolve?id= for a participant: their grant's
+      # session for its id or a prefix of it, else 404 as for no session
+      # (never another session's id, never an ambiguity listing them).
+      def participant_resolve(grant, given)
+        return json_response(200, { id: grant.session_id }) if grant.session_id.start_with?(given)
+
+        error_response(404, "not_found", "no session #{given[0, 80]}")
+      end
+
+      # POST …/wait/prepare for a participant (an agent's chi --remote
+      # send --wait, D11): only for a turn of theirs (+turn+, the enqueued
+      # id their POST …/turn answered); the body's busy, queue and created
+      # don't count.
+      def participant_wait_prepare(req, id, body)
+        grant = principal(req).grant
+        return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, body["turn"])
+
+        start = session_access.prepare_wait(id, session: session_access.show(id), question_id: :pending, turn: body["turn"])
+        json_response(200, wait_start_json(id, start))
+      end
+
+      # POST …/wait for a participant: only on a turn of theirs, and the
+      # answer trimmed to what their turn's reply is (status, text, turn
+      # id, a cancel's reason): no file path, no question (an approval or a
+      # question their turn raised is the owner's to answer: the status
+      # says waiting_for_owner), no origin, no parent strategy. It waits as
+      # for a queued turn (theirs always is: never merged), so it never
+      # falls back to the next reply past a cursor, which would be anyone's;
+      # the body's cursor doesn't count.
+      def participant_wait(req, id, options)
+        grant = principal(req).grant
+        return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
+
+        options = options.merge(queued: true, cursor: nil)
+        session_access.show(id)
+        result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
+                                               cancelled: -> { !@server_running.call })
+        return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
+
+        json_response(200, participant_wait_json(result))
+      end
+
+      WAITING_FOR_OWNER = "waiting for the session's owner"
+
+      def participant_wait_json(result)
+        if result.status.to_s == "waiting_for_answer"
+          return { status: "waiting_for_owner", detail: WAITING_FOR_OWNER, turn_id: result[:turn_id] }.compact
+        end
+
+        text = result[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
+        { status: result.status.to_s, text: text, turn_id: result[:turn_id], cancel_reason: result[:cancel_reason] }.compact
       end
 
       # Whether a principal's stream may go on (the proxy's running check,
