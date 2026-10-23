@@ -33,12 +33,21 @@ RSpec.describe Samagotchi::IdleScheduler do
       expect(scheduler.replace_job(nil, nil).jobs).to eq([job_b, job_a])
     end
 
+    # A long interval: after the thread's first tick it waits, so the
+    # example's own tick is the only one left and the counts are exact.
     it "keeps the running thread, which ticks the new job" do
+      ticked = Queue.new
+      allow(job_b).to receive(:tick) { ticked << true }
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
       scheduler.start
       thread = scheduler.instance_variable_get(:@thread)
+      pop!(ticked, "the thread's first tick")
+
       scheduler.replace_job(job_a, job_c)
       scheduler.tick
-      expect(job_c).to have_received(:tick)
+      expect(job_a).to have_received(:tick).once
+      expect(job_c).to have_received(:tick).once
+      expect(job_b).to have_received(:tick).twice
       expect(scheduler.instance_variable_get(:@thread)).to equal(thread)
     ensure
       scheduler.stop
@@ -67,12 +76,111 @@ RSpec.describe Samagotchi::IdleScheduler do
   end
 
   describe "#stop" do
-    it "kills the background thread and is idempotent" do
+    # The thread's first tick has run; it waits out its interval (60 s).
+    def started(scheduler, ticked)
+      scheduler.start
+      pop!(ticked, "the thread's first tick")
+      scheduler.instance_variable_get(:@thread).tap { |thread| allow(thread).to receive(:kill).and_call_original }
+    end
+
+    it "stops the background thread and is idempotent" do
       scheduler.start
       scheduler.stop
       scheduler.stop
       expect(scheduler.running?).to be false
       expect(scheduler.instance_variable_get(:@thread)).to be_nil
+    end
+
+    it "wakes a thread waiting out its interval and joins it, with no kill" do
+      stub_const("#{described_class}::STOP_JOIN_SECONDS", 30)
+      ticked = Queue.new
+      allow(job_b).to receive(:tick) { ticked << true }
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      thread = started(scheduler, ticked)
+
+      scheduler.stop
+
+      expect(thread).not_to be_alive
+      expect(thread).not_to have_received(:kill)
+      expect(thread.name).to eq(described_class::THREAD_NAME)
+    end
+
+    it "kills a thread whose tick is still blocked after STOP_JOIN_SECONDS" do
+      stub_const("#{described_class}::STOP_JOIN_SECONDS", 0.05)
+      ticked = Queue.new
+      gate = Queue.new
+      allow(job_b).to receive(:tick) do
+        ticked << true
+        pop!(gate, "the example to open the gate", timeout: 30)
+      end
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      thread = started(scheduler, ticked)
+
+      scheduler.stop
+
+      expect(thread).to have_received(:kill)
+      join!(thread, "the killed thread")
+    ensure
+      gate << true
+    end
+
+    it "with join: false returns while a tick runs, and the thread exits after it" do
+      ticked = Queue.new
+      gate = Queue.new
+      allow(job_b).to receive(:tick) do
+        ticked << true
+        pop!(gate, "the example to open the gate", timeout: 30)
+      end
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      thread = started(scheduler, ticked)
+
+      scheduler.stop(join: false)
+      expect(thread).to be_alive
+      expect(scheduler.running?).to be false
+
+      gate << true
+      join!(thread, "the thread's last tick")
+      expect(thread).not_to have_received(:kill)
+      expect(job_b).to have_received(:tick).once
+    ensure
+      gate << true
+    end
+
+    it "leaves the thread of a stop(join: false) for a later stop to join" do
+      ticked = Queue.new
+      gate = Queue.new
+      allow(job_b).to receive(:tick) do
+        ticked << true
+        pop!(gate, "the example to open the gate", timeout: 30)
+      end
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      thread = started(scheduler, ticked)
+      allow(thread).to receive(:join).and_call_original
+
+      scheduler.stop(join: false)
+      expect(thread).not_to have_received(:join)
+      gate << true
+      scheduler.stop
+
+      expect(thread).to have_received(:join).with(described_class::STOP_JOIN_SECONDS)
+      expect(thread).not_to be_alive
+      expect(thread).not_to have_received(:kill)
+    ensure
+      gate << true
+    end
+
+    it "is safe from inside a tick: it doesn't join its own thread, which ends after the tick" do
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      stopped = Queue.new
+      allow(job_b).to receive(:tick) do
+        scheduler.stop
+        stopped << Thread.current
+      end
+      scheduler.start
+
+      thread = pop!(stopped, "the tick that stops the scheduler")
+      join!(thread, "the scheduler's thread")
+      expect(job_a).to have_received(:tick).once
     end
   end
 
@@ -133,14 +241,16 @@ RSpec.describe Samagotchi::IdleScheduler do
       job_b = double("JobB")
       allow(job_a).to receive(:tick) { counts[:a] += 1 }
       allow(job_b).to receive(:tick) { counts[:b] += 1 }
-      scheduler = described_class.new(engine: engine, jobs: [job_a, job_b])
+      scheduler = described_class.new(engine: engine, jobs: [job_a, job_b], interval: 0.01)
       scheduler.start
-      # A few 0.5 s poll cycles, however long a slow runner takes for them.
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-      sleep(0.05) until counts.values_at(:a, :b).min >= 2 || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      wait_for("two ticks of each job", seen: -> { counts }) { counts.values_at(:a, :b).min >= 2 }
       scheduler.stop
       expect(counts[:a]).to be >= 2
       expect(counts[:b]).to be >= 2
+    end
+
+    it "waits POLL_INTERVAL_SECONDS between ticks by default" do
+      expect(described_class.new(engine: engine).interval).to eq(described_class::POLL_INTERVAL_SECONDS)
     end
   end
 end

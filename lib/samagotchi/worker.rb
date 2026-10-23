@@ -1245,7 +1245,8 @@ module Samagotchi
           next false unless @idle_exit.due?
 
           @bridge&.close_intake
-          @engine.stop_idle
+          # Not joined: a recap tick's emit waits for the event log held here.
+          @engine.stop_idle(join: false)
           log_idle_exit
           true
         end
@@ -1313,7 +1314,8 @@ module Samagotchi
           end
 
           @bridge&.close_intake
-          @engine.stop_idle
+          # Not joined: a recap tick's emit waits for the event log held here.
+          @engine.stop_idle(join: false)
           Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
           true
         end

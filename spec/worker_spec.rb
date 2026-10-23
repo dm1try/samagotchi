@@ -605,6 +605,41 @@ RSpec.describe Samagotchi::Worker do
       expect(held).to all(be(false))
     end
 
+    # A recap tick emits under the event log, which #leave_idle holds as it
+    # stops the idle jobs: a stop that joined would wait out
+    # IdleScheduler::STOP_JOIN_SECONDS and then kill the tick mid-emit. Not
+    # joined, the tick's emit goes through once the log is let go.
+    it "stops the idle jobs as it idle-exits without waiting for a tick that needs the event log" do
+      entered = Queue.new
+      go = Queue.new
+      emitted = Queue.new
+      events = engine
+      job = Object.new
+      job.define_singleton_method(:tick) do
+        entered << true
+        SpecWaiting.pop!(go, "the worker to stop the idle jobs", timeout: 30)
+        events.synchronize_events { emitted << :recap }
+      end
+      scheduler = Samagotchi::IdleScheduler.new(engine: engine, jobs: [job], interval: 60)
+      engine.instance_variable_set(:@idle_scheduler, scheduler)
+      allow(engine).to receive(:stop_idle).and_wrap_original do |original, **kwargs|
+        go << true
+        original.call(**kwargs)
+      end
+      scheduler.start
+      ticking = scheduler.instance_variable_get(:@thread)
+      pop!(entered, "the recap tick")
+
+      start_worker(poll_interval: 0.05, idle_exit_minutes: 0.002)
+
+      expect(join!(@thread, "the worker's idle exit").value).to eq(:idle_exit)
+      expect(pop!(emitted, "the tick's emit, after the worker let the event log go")).to eq(:recap)
+      # The teardown's Engine#shutdown joined it.
+      expect(ticking).not_to be_alive
+    ensure
+      go << true
+    end
+
     it "shuts its Engine down as it idle-exits: the plugins' services stop" do
       stopped = []
       services = engine.instance_variable_get(:@services)

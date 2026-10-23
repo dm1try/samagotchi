@@ -1887,9 +1887,12 @@ module Samagotchi
       self
     end
 
-    # Stop the shared idle scheduler (TerminalUI calls this when the REPL exits).
-    def stop_idle
-      @idle_scheduler&.stop
+    # Stop the shared idle scheduler (TerminalUI calls this when the REPL
+    # exits). +join+: wait for a tick under way (IdleScheduler#stop); a
+    # caller holding #synchronize_events passes false, since a recap's emit
+    # in that tick waits for the same lock.
+    def stop_idle(join: true)
+      @idle_scheduler&.stop(join: join)
       self
     end
 
