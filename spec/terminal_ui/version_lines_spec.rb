@@ -32,6 +32,29 @@ RSpec.describe Samagotchi::TerminalUI::VersionLines do
     expect(line(worker: nil, installed: "0.20.0", terminal: "0.19.0")).to be_nil
   end
 
+  describe "across two machines (a remote attach, P4-D10)" do
+    let(:via) { Samagotchi::ChiInvocation.new(remote: "studio") }
+
+    def remote_line(worker:, installed:, terminal:)
+      described_class.at_attach(worker: worker, installed: installed, session_id: "abcdef1234", terminal: terminal, via: via)
+    end
+
+    it "advises each machine where it runs: the worker there, this terminal here" do
+      expect(remote_line(worker: "0.103.0", installed: "0.104.0", terminal: "0.104.0"))
+        .to eq("chi> the session's worker runs chi 0.103.0; studio has 0.104.0 installed: chi --remote studio sessions restart abcdef12")
+      expect(remote_line(worker: "0.104.0", installed: "0.104.0", terminal: "0.103.0"))
+        .to eq("chi> this terminal runs chi 0.103.0 (studio has 0.104.0): chi update here")
+      expect(remote_line(worker: "0.103.0", installed: "0.104.0", terminal: "0.102.0"))
+        .to eq("chi> the session's worker runs chi 0.103.0; studio has 0.104.0 installed: chi --remote studio sessions " \
+               "restart abcdef12. This terminal runs chi 0.102.0 (studio has 0.104.0): chi update here")
+    end
+
+    it "says nothing when the worker is that machine's newest and this terminal isn't behind it" do
+      expect(remote_line(worker: "0.104.0", installed: "0.104.0", terminal: "0.105.0")).to be_nil
+      expect(remote_line(worker: "0.104.0", installed: nil, terminal: "0.104.0")).to be_nil
+    end
+  end
+
   it "names the restarted worker's version" do
     expect(described_class.restarted("0.19.0")).to eq("chi> the session's worker restarted on chi 0.19.0")
     expect(described_class.restarted(nil)).to eq("chi> the session's worker restarted")

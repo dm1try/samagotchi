@@ -107,13 +107,15 @@ module Samagotchi
           close_surface(surface)
         end
         if ended == :unanswered && attached.unanswered
-          # A link's strategy is read where the session is, its commands
-          # spelled its way.
+          # A link's strategy is read where the session is, now (L4), its
+          # commands spelled its way.
           where = connector ? { strategy: link.parent_strategy, via: link.via } : {}
           report_unanswered(attached.unanswered, session_id: client.session_id, state_dir: state_dir, **where)
         end
         report_ended(ended)
         ended
+      ensure
+        link&.close
       end
 
       # This TUI's client id: tui:PID, or the connector's own (a remote one
@@ -206,8 +208,8 @@ module Samagotchi
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, format(LaunchMode::BRIDGE_LATE, session.id))
-      rescue SessionManager::OwnedByTUI
-        raise Error, "session #{resume} is open in a chi REPL; close it there first"
+      rescue SessionManager::OwnedByTUI => e
+        raise Error, e.message
       rescue ArgumentError => e
         raise Error, e.message
       end

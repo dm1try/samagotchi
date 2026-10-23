@@ -11,7 +11,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run with a connector" d
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1") }
   let(:via) { Samagotchi::ChiInvocation.new(remote: "studio") }
   let(:strategy) { Samagotchi::Guardrails::ParentPolicy.strategy("soft") }
-  let(:link) { instance_double(Samagotchi::TerminalUI::LocalLink, client: client, parent_strategy: strategy, via: via) }
+  let(:link) { instance_double(Samagotchi::TerminalUI::LocalLink, client: client, parent_strategy: strategy, via: via, close: nil) }
   let(:connector) { double("connector", connect: link) }
   let(:surface) { instance_double(Samagotchi::TerminalUI::PlainSurface) }
 

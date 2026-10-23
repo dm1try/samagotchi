@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a link" do
   let(:link) do
     instance_double(Samagotchi::TerminalUI::LocalLink, client: client, via: via, reconnect_delays: [0.5], queues?: true,
                                                        unqueues?: true, children_counts: Samagotchi::ChildrenStatus::Counts.none,
-                                                       installed_version: nil, default_model_name: "dm",
+                                                       installed_version: nil, default_model_name: "dm", unavailable: nil,
                                                        completions: Samagotchi::TerminalUI::AttachLink::Completions::ALL)
   end
   let(:attached) { described_class.new(link: link, screen: screen, client_id: "tui:1") }
@@ -45,11 +45,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a link" do
     expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi -r x --attach s-1234")
   end
 
-  it "rediscovers through the link: its client, or :gone whatever the reason" do
+  it "rediscovers through the link, its reason passed on to the stream" do
     found = instance_double(Samagotchi::BridgeClient)
-    allow(link).to receive(:live_worker).and_return([found, nil], [nil, nil], [:gone, "stopped"])
+    allow(link).to receive(:live_worker).and_return([found, nil], [nil, "worker_gone"], [:gone, "stopped"])
 
-    expect(Array.new(3) { attached.send(:live_worker) }).to eq([found, nil, :gone])
+    expect(Array.new(3) { attached.send(:live_worker) }).to eq([[found, nil], [nil, "worker_gone"], [:gone, "stopped"]])
   end
 
   it "sends requests to the client the link switched to" do

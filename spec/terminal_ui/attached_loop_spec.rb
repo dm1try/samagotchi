@@ -74,13 +74,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)
-      expect(attached.send(:live_worker)).to be(found)
+      expect(attached.send(:live_worker)).to eq([found, nil])
       expect(Samagotchi::BridgeClient).to have_received(:discover)
         .with("s-1234", session_dir: Samagotchi::Session.session_dir("s-1234"), host: "127.0.0.1")
 
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(true)
-      expect(attached.send(:live_worker)).to eq(:gone)
+      expect(attached.send(:live_worker)).to eq([:gone, "stopped"])
+      # The stream closes with that reason; here the line reads as it always has.
+      attached.handle_event({ "type" => "stream_closed", "reason" => "stopped" })
+      expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --shared --resume s-1234")
     end
 
     it "shows queued prompts and the turn so far, with a tool still running as the status line" do

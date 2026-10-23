@@ -335,10 +335,13 @@ module Samagotchi
           @status.take_event(event)
           @renderer.call(event)
         when :worker_changed then switch_worker(event)
+        # A stream through chi web (never a Bridge here): a reconnect failed,
+        # and the next frame came.
+        when :stream_retrying then @screen.commit("(lost the connection to #{via.remote || "the worker"}; reconnecting…)")
+        when :stream_resumed then @screen.commit("(reconnected)")
         when :stream_closed
           @view.finish_thinking_spinner
-          @screen.commit("Lost the session's worker (#{event[:reason]}). " \
-                             "Resume it with: #{via.command("--shared --resume #{@client.session_id}")}")
+          @screen.commit(closed_line(event[:reason].to_s))
           return :closed
         else @renderer.call(event)
         end
@@ -358,22 +361,43 @@ module Samagotchi
       def via = @link.via
 
       # The session's live worker for the stream to follow (EventStream's
-      # rediscover): nil while there is none yet, :gone once no worker is
-      # coming (AttachLink#live_worker). The reason isn't passed on: the
-      # stream closes as "unreachable", the words a stopped session has
-      # always had here.
-      def live_worker
-        found, _reason = @link.live_worker
-        found
-      end
+      # rediscover), with its reason (AttachLink#live_worker's pair): the
+      # stream's closing event carries the last one (#closed_line).
+      def live_worker = @link.live_worker
 
       # The stream moved to a new worker (a restart): requests go there too.
       def switch_worker(event)
         @client = @link.switched(event)
         @worker_changed = true
         @view.finish_thinking_spinner
-        Log.info(:attached, "worker_changed", port: AttachLink.event_port(event))
+        Log.info(:attached, "worker_changed", port: AttachLink.event_port(event), epoch: event[:epoch])
         nil
+      end
+
+      # The stream ended for good: why, and what brings the session back.
+      def closed_line(reason)
+        id = @client.session_id
+        return remote_closed_line(reason, id) if via.remote?
+
+        # Here a stopped session has always read as unreachable.
+        reason = "unreachable" if reason == "stopped"
+        "Lost the session's worker (#{reason}). Resume it with: #{via.command("--shared --resume #{id}")}"
+      end
+
+      # Each reason in its own words (the remote's name, its chi web's
+      # failure as AttachLink#failure gave it).
+      def remote_closed_line(reason, id)
+        name = via.remote
+        failure = @link.failure
+        case reason
+        when "stopped" then "The session was stopped on #{name}. Resume it with: #{via.resume(id)}"
+        when "auth_failed", "too_old" then "Lost the session: #{failure || reason}"
+        when "worker_gone" then "The session's worker on #{name} is gone. Resume it with: #{via.resume(id)}"
+        when "unknown_session" then "The session is gone from #{name} (deleted)."
+        else
+          cause = failure&.sub(/\Aremote \S+ \([^)]*\): /, "")
+          "Lost the connection to #{name}#{" (#{cause})" if cause}. Re-attach with: #{via.attach(id)}"
+        end
       end
 
       def next_item(queue)
@@ -415,6 +439,11 @@ module Samagotchi
         # REPL reads the same words). Before the continue offer: the
         # leaving ones are no answer to it.
         local = route.local
+        # The link can't run it (a remote's, until chi web has its route).
+        if (refused = local && @link.unavailable(local, text))
+          @screen.commit(refused)
+          return nil
+        end
         return submit(nil) if local == :detach
         return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
         return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
@@ -634,6 +663,9 @@ module Samagotchi
       # Why a Bridge request raised, for the line that says what didn't go
       # through: a stopped (or wedged) worker times out, a gone one refuses.
       def worker_down(error)
+        # Through chi web: the message names the remote and what failed.
+        return error.message if via.remote?
+
         head, detail = error.message.split(" - ", 2)
         return "worker not answering: #{(detail || head).sub(/\Abridge \S+: /, "")}" if error.is_a?(Errno::ETIMEDOUT)
 

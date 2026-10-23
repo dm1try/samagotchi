@@ -117,6 +117,14 @@ module Samagotchi
 
       def via = ChiInvocation::HERE
 
+      # Every terminal command runs here.
+      def unavailable(_local, _text) = nil
+
+      # The closing line says it all (unreachable, unknown_session).
+      def failure = nil
+
+      def close = nil
+
       private
 
       def session_dir = Session.session_dir(@client.session_id, state_dir: @state_dir)

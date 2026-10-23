@@ -99,6 +99,19 @@ module Samagotchi
       # How the commands the TUI prints are spelled.
       # @return [ChiInvocation]
       def via = raise(NotImplementedError)
+
+      # The line for a terminal command (the registry's local id, the line
+      # as typed) this link can't run, nil when it can.
+      # @return [String, nil]
+      def unavailable(_local, _text) = raise(NotImplementedError)
+
+      # Why the session's machine couldn't be asked the last time (for the
+      # stream's closing line), nil when there is nothing more to say.
+      # @return [String, nil]
+      def failure = raise(NotImplementedError)
+
+      # The attach is over (AttachLauncher.run): let go of what it held.
+      def close = raise(NotImplementedError)
     end
   end
 end
