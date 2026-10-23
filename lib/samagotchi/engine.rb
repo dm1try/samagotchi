@@ -2646,12 +2646,18 @@ module Samagotchi
     end
 
     # Restore the current session's conversation to a #messages_checkpoint.
+    # Between turns the working set is announced when that changed it (a
+    # !rollback or a canceled continue dropping the turn's tool calls, the
+    # set emptied too), so the page doesn't keep the dropped items until
+    # the next request.
     # @param checkpoint [Array<Hash>]
     # @return [Array<Hash>] the session's messages
     def rollback_to(checkpoint)
       raise ArgumentError, "no current session" unless @session
 
-      replace_session_messages(@session, clone_messages(checkpoint))
+      messages = replace_session_messages(@session, clone_messages(checkpoint))
+      announce_working_set unless turn_running?
+      messages
     end
 
     # Clone a messages array (shallow dup of each element).

@@ -25,6 +25,11 @@ and commands may change between minor versions. How releases are made:
   release takes no participant's turn until it is restarted. See [docs/cli.md](docs/cli.md#participants) and
   [docs/guardrails.md](docs/guardrails.md#a-participants-review-boundary).
 
+### Fixed
+
+- Web: `!rollback` (and a canceled continue) updates the working set at once; one that emptied it no longer leaves
+  the dropped items in the rail and the list until the next turn.
+
 ## [0.105.0] - 2026-10-23
 
 ### Changed

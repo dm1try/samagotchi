@@ -12,7 +12,7 @@ require_relative "support/fake_provider_server"
 # The working set's :working_set_updated event (WorkingSet), through the real
 # Engine and KernelLoop over HTTP: at each request after a tool ran and at
 # turn end, only when the set changed, never while it is empty — except one
-# empty event when the set was emptied (a rollback removed the tool calls).
+# empty event when the set was emptied (announced at a rollback between turns).
 RSpec.describe Samagotchi::Engine, "working set event" do
   around do |example|
     original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
@@ -103,26 +103,38 @@ RSpec.describe Samagotchi::Engine, "working set event" do
       expect(updates.first[:items]).not_to be_empty
     end
 
-    it "sends exactly one empty event, at the next request" do
+    it "announces exactly one empty event at the rollback, and none at the next request" do
+      announced = []
+      engine.subscribe(observer: ->(e) { announced << e if e[:type] == :working_set_updated })
       engine.rollback_to(@checkpoint)
-      stream("Hello.")
 
-      run_turn("again")
+      expect(announced.size).to eq(1)
+      expect(announced.first[:items]).to eq([])
+      expect(announced.first[:at]).to be_a(Integer)
 
-      empties = updates.select { |u| u[:items].empty? }
-      expect(updates.size).to eq(2)
-      expect(empties.size).to eq(1)
-      expect(empties.first[:items]).to eq([])
-      expect(empties.first[:at]).to be_a(Integer)
-    end
-
-    it "sends nothing for a second empty request after the empty one" do
-      engine.rollback_to(@checkpoint)
       stream("Hello.")
       run_turn("again")
-
       stream("Hi again.")
       run_turn("and again")
+
+      expect(updates.size).to eq(1)
+      expect(announced.size).to eq(1)
+    end
+
+    it "announces nothing for a rollback that leaves the set as it was" do
+      announced = []
+      engine.subscribe(observer: ->(e) { announced << e if e[:type] == :working_set_updated })
+
+      engine.rollback_to(engine.messages_checkpoint)
+
+      expect(announced).to be_empty
+    end
+
+    it "still sends the empty event at the next request when the set was emptied without a rollback" do
+      session.messages = engine.clone_messages(@checkpoint)
+      stream("Hello.")
+
+      run_turn("again")
 
       empties = updates.select { |u| u[:items].empty? }
       expect(updates.size).to eq(2)

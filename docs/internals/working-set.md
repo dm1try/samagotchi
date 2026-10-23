@@ -106,7 +106,7 @@ pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_worki
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
   turn-end apply has run by then);
 - between turns, from `Engine#announce_working_set` (the session's messages, under the event lock; after a
-  `/working-set` op, and after an `/llm-context` change: the states are the next turn's strategy's): announced
+  `/working-set` op, after a `rollback_to`, and after an `/llm-context` change: the states are the next turn's strategy's): announced
   (`working_set_updated` is in `ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
   `holding_announcements`), under the *next* turn's strategy (`SessionModelSettings#turn_llm_context`, as the
   turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
@@ -115,7 +115,9 @@ pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_worki
 It is emitted only when the set (its items and adds) differs from the last one emitted for the session (kept per
 session id), and never while the set is empty (no items, no adds), so a tool-free turn on a fresh session emits nothing. One exception: when the last one had
 items and the set is empty now (a rollback removed the tool calls), one empty event goes out, so the page drops the
-stale items; it is remembered, so the next empty request sends none. It goes out whatever the web's flag;
+stale items; it is remembered, so the next empty request sends none. `Engine#rollback_to` between turns (`!rollback`,
+a canceled continue's restore, a failed turn's) announces the set at once (`announce_working_set`), so an emptied or
+smaller set reaches the page then, not at the next request. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
 **The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
