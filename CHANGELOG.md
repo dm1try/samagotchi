@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-10-23
+
 ### Added
 
 - Participants (experimental) can now ask questions and comment: a participant's message through chi web is a
@@ -40,6 +42,14 @@ and commands may change between minor versions. How releases are made:
   text and buttons (drop, pin, add) are easier to read.
 - Web: `!rollback` (and a canceled continue) updates the working set at once; one that emptied it no longer leaves
   the dropped items in the rail and the list until the next turn.
+- `chi share`'s link names the port the running chi web listens on (recorded in `$XDG_STATE_HOME/samagotchi/web.json`),
+  not only config's `web.port`.
+- A participant's `chi --remote NAME send -m` prints the review turn's id, and `send --wait -m` waits on it instead of
+  being refused as busy; a participant's turn held for the owner reads `waiting_for_owner` (exit 3).
+- `chi send --wait --format json`: a turn still running names the wait on its turn id.
+- The attached terminal no longer announces your own `/share` or `/participants revoke` a second time.
+
+Update with `chi update`.
 
 ## [0.105.0] - 2026-10-23
 
@@ -3998,7 +4008,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.105.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.106.0...HEAD
+[0.106.0]: https://github.com/dm1try/samagotchi/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/dm1try/samagotchi/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/dm1try/samagotchi/compare/v0.103.0...v0.104.0
 [0.103.0]: https://github.com/dm1try/samagotchi/compare/v0.102.0...v0.103.0
