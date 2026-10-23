@@ -118,9 +118,10 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`
+- Writing a bundle (the walkthrough, `chi bundle new`/`check`/`test`/`try`) → `docs/bundle-authoring.md`
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
-- Session files, context notes, sending, chains, delegating → `docs/sessions.md`
+- Session files, context notes, sending, chains, delegating → `docs/sessions.md`; review sessions (`chi review`, `ReviewStart`, Apply) → `docs/sessions.md` (Review sessions), `docs/internals/participants.md`
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - Participants (`chi share`, `Web::Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
