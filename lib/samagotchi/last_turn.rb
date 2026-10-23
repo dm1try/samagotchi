@@ -16,9 +16,12 @@ module Samagotchi
   # known. enqueued_id: the input's id when the turn ran one (a POST /turn
   # ack's, an input file's), so a wait for a queued message (`chi send
   # --queue --wait`, ReplyWait's turn:) tells its own turn's end from
-  # another's. A field may be nil (unset; left out of the file).
+  # another's. author: who wrote the turn when it wasn't the owner ("p:<id>",
+  # a participant; origin stays the category), nil for the owner. A field
+  # may be nil (unset; left out of the file).
   LastTurn = Data.define(:outcome, :ended_at, :seconds, :origin, :exhausted, :limit,
-                         :error_kind, :retryable, :kept_steps, :cancel_reason, :stopped_by, :enqueued_id) do
+                         :error_kind, :retryable, :kept_steps, :cancel_reason, :stopped_by, :enqueued_id,
+                         :author) do
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, **fields)
     end

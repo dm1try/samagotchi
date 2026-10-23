@@ -17,6 +17,7 @@ require_relative "session_metrics/cost"
 require_relative "session_metrics/usage"
 require_relative "session_metrics/side_totals"
 require_relative "side_usage"
+require_relative "steer"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -174,6 +175,9 @@ module Samagotchi
       # The turn the user started by answering the step-limit question with
       # Continue (:turn_started's +resumed+): it resumed the run before it.
       :resumed,
+      # Who wrote the turn when it wasn't the owner (:turn_started's
+      # origin author, "p:<id>"); its record carries it, the owner's none.
+      :author,
       :id,
       :started_at,
       :started_monotonic,
@@ -695,6 +699,7 @@ module Samagotchi
           gen_switch: false,
           continue: event[:continue] ? true : false,
           resumed: event[:resumed] ? true : false,
+          author: Steer.sender_author(event[:origin].is_a?(Hash) ? event[:origin][:author] : nil),
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
@@ -735,6 +740,7 @@ module Samagotchi
           # from one written before the mark.
           record[:continue] = @turn.continue
           record[:resumed] = @turn.resumed
+          record[:author] = @turn.author if @turn.author
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)
@@ -751,7 +757,7 @@ module Samagotchi
       {
         id: @turn.id, status: "canceled", started_at: @turn.started_at, completed_at: now.iso8601(3),
         duration_ms: elapsed_ms(@turn.started_monotonic), cancellation_reason: "worker_stopped",
-        continue: @turn.continue, resumed: @turn.resumed
+        continue: @turn.continue, resumed: @turn.resumed, **{ author: @turn.author }.compact
       }.merge(turn_token_fields(@turn))
     end
 

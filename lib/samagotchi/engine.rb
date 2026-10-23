@@ -85,6 +85,7 @@ require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
 require_relative "prompt_warmup"
 require_relative "working_set"
+require_relative "session_participants"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -218,6 +219,9 @@ module Samagotchi
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @prompt_builder = build_system_prompt(memories, appended_prompt_files)
+      # The session's participants (participants.json), read at each turn's
+      # start: their names for the messages they wrote.
+      @participants = SessionParticipants.new(state_dir: -> { session_state_dir })
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -1462,7 +1466,19 @@ module Samagotchi
       session.last_turn = LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), seconds: seconds.round(1),
                                        origin: source, exhausted: limit ? true : nil, limit: limit,
                                        enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
+                                       author: Steer.sender_author(origin.is_a?(Hash) ? origin[:author] : nil),
                                        **stop_facts(event))
+    end
+
+    # The author fields a message +author+ wrote carries (Steer.author_fields:
+    # author:, and author_name: from participants.json), {} for the owner.
+    # The worker's drain names a participant's merged lines with it.
+    # @param origin [Hash, String, nil] a turn's origin, or an author
+    def author_fields(origin)
+      author = origin.is_a?(Hash) ? origin[:author] : origin
+      return {} unless Steer.participant_author?(author)
+
+      Steer.author_fields(author, @participants.name_for(author))
     end
 
     # Why a turn stopped, from its end event (LastTurn::STOP_FACTS), for a
@@ -2103,6 +2119,7 @@ module Samagotchi
       # prompt built next declares, unchanged until the next turn's start.
       apply_staged_tools!
       apply_toolkit!(session, turn.on_event)
+      @participants.refresh!(session)
       # A Stop during the wait above: the turn ends here,
       # before the hooks run or a reminder is used up.
       return false if turn.controller.cancelled?
@@ -2231,7 +2248,7 @@ module Samagotchi
       end
 
       unless turn.continue
-        user_message = { role: "user", content: turn.prompt, turn_id: turn.id }
+        user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin) }
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt

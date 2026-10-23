@@ -1,0 +1,88 @@
+{
+  "metadata_version": 3,
+  "id": "1b1a8963-0bdd-418b-ac29-ad63559379a3",
+  "mode": "assist",
+  "model_name": "qwen3-14b",
+  "model_typed": null,
+  "working_directory": "/tmp/project",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Review docs/plan.md",
+      "turn_id": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "role": "model",
+      "content": "Reading it.",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "name": "read",
+          "arguments": {
+            "path": "docs/plan.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "# Plan\nstep 1",
+      "tool_call_id": "call_1"
+    },
+    {
+      "role": "user",
+      "kind": "input",
+      "content": "also check step 2"
+    },
+    {
+      "role": "user",
+      "kind": "input",
+      "source": "chi_send",
+      "content": "from chi send"
+    },
+    {
+      "role": "user",
+      "kind": "steer",
+      "source": "check-in",
+      "content": "nudge"
+    },
+    {
+      "role": "model",
+      "content": "Step 2 is fine."
+    }
+  ],
+  "created_at": "2026-10-23T19:22:08.512+02:00",
+  "updated_at": "2026-10-23T19:22:08.512+02:00",
+  "status": "idle",
+  "last_prompt": "Review docs/plan.md",
+  "first_preview": "Review docs/plan.md",
+  "title": null,
+  "test_run": false,
+  "pending_question": null,
+  "used_memory_names": [],
+  "project_root": null,
+  "preloaded_memory_names": [],
+  "muted_memory_names": [],
+  "prompt_notes": [],
+  "parent_id": null,
+  "scratch": false,
+  "last_turn": {
+    "outcome": "completed",
+    "ended_at": "2026-10-23T10:00:00.000+02:00",
+    "seconds": 12.5,
+    "origin": "client",
+    "enqueued_id": "e-1"
+  },
+  "delegate": false,
+  "llm_context": null,
+  "continues": null,
+  "thinking": null,
+  "reasoning_history": null,
+  "appended_prompt_files": [],
+  "toolkit": null,
+  "bundle_settings": {},
+  "config_settings": {},
+  "interrupted_turn": null,
+  "parent_answers": null,
+  "working_set_pins": []
+}
