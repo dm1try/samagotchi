@@ -83,11 +83,17 @@ module Samagotchi
       @protected = nil
     end
 
-    # A turn starts: its origin, and the git facts read afresh.
+    # A turn starts: its origin (Engine#run_turn's: {client_id:,
+    # enqueued_id:, author:}, each optional), and the git facts read afresh.
     def begin_turn(origin)
       @origin = origin
       @git = Guardrails::GitInfo.new
     end
+
+    # Who wrote the running turn when it isn't the session's owner (its
+    # origin's author); nil for the owner's turns and every other origin.
+    # @return [String, nil]
+    def turn_author = @origin.is_a?(Hash) ? @origin[:author] : nil
 
     # The gate every tool call asks first.
     # @return [Guardrails::Gate]

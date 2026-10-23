@@ -1142,10 +1142,10 @@ module Samagotchi
     #   session's images/
     # @return [String, false] the input file's path, or false.
     def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil,
-                              images: [], delivery: nil)
+                              images: [], delivery: nil, author: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                                            no_interrupt: no_interrupt, images: images, delivery: delivery)
+                                            no_interrupt: no_interrupt, images: images, delivery: delivery, author: author)
     end
 
     # How long a turn waits for the Bridge of a worker a resume just spawned.
@@ -1207,6 +1207,10 @@ module Samagotchi
     # @param no_interrupt [Boolean] the turn runs with the raised iteration
     #   limit (an attached TUI's --no-interrupt), through the Bridge or the
     #   file; sent only when true, so older callees see no new field
+    # @param author [String, nil] who wrote it when it isn't the session's
+    #   owner (Web::Principal#author: chi web stamps it, never the body);
+    #   to the Bridge or the file only when given, so an owner's turn is
+    #   sent and saved as before
     # @param manager [#resume_session, #write_turn_input] this class, or a
     #   stand-in (the web's specs); #session_owner is optional
     # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -1220,7 +1224,7 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
-                          state_dir: nil, manager: self, bridge: nil)
+                          author: nil, state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir)
@@ -1235,6 +1239,7 @@ module Samagotchi
           # An old worker ignores the field: it cuts anyway (its own default).
           options[:delivery] = delivery unless Delivery.next_step?(delivery)
           options[:no_interrupt] = true if no_interrupt
+          options[:author] = author if author
           reply = client.post_turn(**options)
           ack = reply.json
           return DeliverResult.new(status: :accepted, via: :bridge, ack: ack) if reply.status == 202 && ack.is_a?(Hash)
@@ -1262,6 +1267,7 @@ module Samagotchi
       input[:images] = images unless images.empty?
       input[:delivery] = delivery unless Delivery.next_step?(delivery)
       input[:no_interrupt] = true if no_interrupt
+      input[:author] = author if author
       path = manager.write_turn_input(session_id, **input)
       return DeliverResult.new(status: :failed) unless path
 

@@ -1510,8 +1510,10 @@ module Samagotchi
         return refused if refused
 
         # no_interrupt: an attached TUI's --no-interrupt (chi --remote --attach).
+        # author: the principal's (nil for the owner), never the body's.
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, no_interrupt: body["no_interrupt"] == true,
+                                                 author: principal(req).author,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
         case result.status

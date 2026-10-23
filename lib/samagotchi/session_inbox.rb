@@ -45,9 +45,12 @@ module Samagotchi
     #   "cut" or "queue"
     # @param images [Array<Hash>] image refs ({file:, name:}) in the
     #   session's images/
+    # @param author [String, nil] who wrote the message when it isn't the
+    #   session's owner (Web::Principal#author); nil, the owner's, is never
+    #   written, so an owner's file is as it always was
     # @return [String, false] the input file's path, or false
     def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [],
-                         delivery: nil)
+                         delivery: nil, author: nil)
       images = Array(images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
@@ -56,7 +59,8 @@ module Samagotchi
       record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
                  "no_interrupt" => (no_interrupt ? true : nil),
                  "delivery" => (Delivery.queue?(delivery) ? Delivery::QUEUE : nil),
-                 "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
+                 "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }),
+                 "author" => author }.compact
       AtomicFile.write(path, JSON.generate(record))
       path
     rescue StandardError
@@ -229,7 +233,8 @@ module Samagotchi
       data = JSON.parse(File.read(claimed_file).to_s)
       return UNREADABLE_INPUT unless data.is_a?(Hash)
 
-      origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
+      # author: only a file that names one (an owner's names none).
+      origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"], author: data["author"] }.compact
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
       Input.new(prompt: data["prompt"].to_s, origin: origin.empty? ? nil : origin, no_interrupt: data["no_interrupt"] == true,
                 images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil)

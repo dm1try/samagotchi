@@ -1955,9 +1955,11 @@ module Samagotchi
     #   run it resumes started (ModelResult#run_start, kept in the offer by
     #   TurnFlow), so it keeps that run's reasoning; nil starts cold (a
     #   model change while the offer stood, every other turn).
-    # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:});
-    #   when given, the turn's boundary events (:turn_started, :turn_completed,
-    #   :turn_canceled, :turn_failed) carry it as `origin:`
+    # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:},
+    #   and author: when someone other than the session's owner wrote it, from
+    #   its input file; absent for the owner); when given, the turn's boundary
+    #   events (:turn_started, :turn_completed, :turn_canceled, :turn_failed)
+    #   carry it as `origin:`, and GuardrailWiring#begin_turn gets it
     # @param images [Array<Hash>] the prompt's images: {path:} (a file on this
     #   machine; in-process and attached-TUI callers only) or {file:, name:}
     #   (already in the session's images/, e.g. a web upload). They are

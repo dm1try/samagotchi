@@ -892,6 +892,10 @@ module Samagotchi
       client_id = fetched(parsed, "client_id")
       # --no-interrupt: the turn runs with the raised iteration limit.
       no_interrupt = fetched(parsed, "no_interrupt") == true
+      # Who wrote it when it isn't the owner (chi web stamps it from the
+      # request's principal; the Bridge is loopback and trusts its caller).
+      author = fetched(parsed, "author")
+      author = nil unless author.is_a?(String) && !author.empty?
       if sid.to_s.strip.empty? || prompt.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
@@ -935,7 +939,7 @@ module Samagotchi
 
         queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                     no_interrupt: no_interrupt, images: images, delivery: delivery).tap do |ok|
+                     no_interrupt: no_interrupt, images: images, delivery: delivery, author: author).tap do |ok|
           next unless ok
 
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
@@ -1082,9 +1086,9 @@ module Samagotchi
 
     # Write a turn into this session's input dir, reusing the file IPC the
     # worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil)
+    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil, author: nil)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                                            no_interrupt: no_interrupt, images: images, delivery: delivery)
+                                            no_interrupt: no_interrupt, images: images, delivery: delivery, author: author)
     end
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────

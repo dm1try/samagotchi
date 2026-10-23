@@ -518,7 +518,10 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |
 
 The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry `origin`
-when the turn was queued with one.
+when the turn was queued with one: `{client_id:, enqueued_id:}`, plus `author:` when someone other than the session's
+owner wrote it (its input file's `author`, stamped by chi web from the request's `Web::Principal`). An owner's turn
+has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn` gets the
+origin, and `#turn_author` reads its author for the gate's checks.
 
 ### Hook points (not events)
 
