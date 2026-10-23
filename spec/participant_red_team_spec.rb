@@ -212,6 +212,20 @@ RSpec.describe "a participant red-teaming a session" do
       expect(Samagotchi::PromptHistory).not_to have_received(:append)
     end
 
+    it "can't read a secret, thinking or a host path through /wait, in its reply or its turn's crash" do
+      enqueued_id = turn({ prompt: "is step 3 safe?" }).last["enqueued_id"]
+      reply = "<think>THINKING-SECRET</think>See #{project}/docs/plan.md and #{Dir.home}/x: key sk-ant-abcdefghijklmnopqrstuvwx"
+      crash = "Errno::EACCES: #{Dir.home}/.config/samagotchi/x API_KEY=CRASH-SECRET"
+      allow(app.send(:session_access)).to receive(:wait_reply)
+        .and_return(Samagotchi::ReplyWait::Result.new(status: :done, text: reply, turn_id: "t1"),
+                    Samagotchi::ReplyWait::Result.new(status: :error, text: crash))
+
+      done = post("/api/sessions/#{session.id}/wait", { turn: enqueued_id })
+      expect(done).to eq([200, { "status" => "done", "text" => "See docs/plan.md and ~/x: key [redacted]", "turn_id" => "t1" }])
+      failed = post("/api/sessions/#{session.id}/wait", { turn: enqueued_id })
+      expect(failed).to eq([200, { "status" => "error", "text" => Samagotchi::ParticipantMessages::TURN_FAILED }])
+    end
+
     it "can't send images" do
       expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] })).to eq(not_permitted)
     end

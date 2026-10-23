@@ -346,6 +346,12 @@ module Samagotchi
         out.gsub(/\u0000(\d+)\u0000/) { held[Regexp.last_match(1).to_i] }
       end
 
+      # A turn's saved reply (the reply file a wait reads) as a participant
+      # may read it: no cut-off or closed thinking or tool call, redacted.
+      def reply(text, viewer)
+        Redact.text(OutputFormatter.strip_markup(visible_raw(text)), viewer)
+      end
+
       def field(hash, key)
         return nil unless hash.is_a?(Hash)
 

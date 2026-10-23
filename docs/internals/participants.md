@@ -72,7 +72,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `POST /api/sessions/:id/turn` | participant | a queued review turn of their own ([Turns](#turns)) |
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
-| `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
+| `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`, the reply's `text` through `ParticipantView.reply` (no thinking or tool call, redacted) and any other text (an error's exception, a failed turn's summary) `ParticipantMessages::TURN_FAILED`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
 | `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
 | `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}` |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
@@ -227,7 +227,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
   not, and a URL's password), the owner's web token, the session's folder (shown as relative paths) and the home
   folder (`~`). Defence in depth only: the allowlist is the control; a reply that paraphrases a secret isn't caught.
-- **Errors.** A participant's 404 and 500 carry fixed words, never an exception's (which may name a path).
+- **Errors.** A participant's 404 and 500 carry fixed words, never an exception's (which may name a path); so does their `wait` on a turn that failed (`TURN_FAILED`).
 - **The owner's participant view.** The owner reaches the same reads: `/?as=participant#s=<id>` serves the participant
   page, `GET …/review` is always the filtered view, and `…/stream?as=participant` goes through the same filter, with
   no participant of their own (nothing `mine`, no composer). It is the server's filter, never a page imitating it.

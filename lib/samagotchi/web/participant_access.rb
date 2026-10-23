@@ -3,6 +3,7 @@
 require "json"
 require_relative "grants"
 require_relative "principal"
+require_relative "participant_view"
 require_relative "qr"
 require_relative "../archive_store"
 require_relative "../client_id"
@@ -326,20 +327,25 @@ module Samagotchi
         return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
 
         options = options.merge(queued: true, cursor: nil)
-        session_access.show(id)
+        session = session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
                                                cancelled: -> { !@server_running.call })
         return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-        json_response(200, participant_wait_json(result))
+        json_response(200, participant_wait_json(result, participant_viewer(req, session)))
       end
 
-      def participant_wait_json(result)
+      # The wait's answer as a participant reads it: their reply through
+      # ParticipantView.reply (as the stream and the review show it), any
+      # other text (an error's exception, a failed turn's summary) the fixed
+      # TURN_FAILED.
+      def participant_wait_json(result, viewer)
         if result.status.to_s == "waiting_for_answer"
           return { status: "waiting_for_owner", detail: ParentReport::WAITING_FOR_OWNER, turn_id: result[:turn_id] }.compact
         end
 
         text = result[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
+        text = result.status == :done ? ParticipantView.reply(text, viewer) : ParticipantMessages::TURN_FAILED if text
         { status: result.status.to_s, text: text, turn_id: result[:turn_id], cancel_reason: result[:cancel_reason] }.compact
       end
 

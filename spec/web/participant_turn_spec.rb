@@ -209,6 +209,33 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       expect(access).to have_received(:wait_reply).with(session.id, hash_including(turn: "e-1", queued: true, cursor: nil))
     end
 
+    def wait_on(result)
+      turn({ prompt: "q" })
+      allow(access).to receive(:wait_reply).and_return(result)
+      call("/api/sessions/#{session.id}/wait", body: { turn: "e-1" })
+    end
+
+    it "redacts their reply as the stream does: no secret, no thinking, no host path" do
+      text = "<think>THOUGHT-SECRET</think>Saved #{root}/docs/x.md and #{Dir.home}/notes; key sk-ant-abcdefghijklmnopqrstuvwx, " \
+             "password: hunter2, Authorization: Bearer abc.def\n-----BEGIN RSA PRIVATE KEY-----\nKEYBYTES\n" \
+             "-----END RSA PRIVATE KEY-----\nbye<tool_call>{\"cmd\":\"TOOL-ARG\"}"
+      status, body = wait_on(Samagotchi::ReplyWait::Result.new(status: :done, text: text, turn_id: "t9"))
+      expect(status).to eq(200)
+      expect(body["text"]).to include("Saved docs/x.md and ~/notes", "password: [redacted]", "bye")
+      %w[THOUGHT-SECRET sk-ant hunter2 abc.def KEYBYTES TOOL-ARG].each { |leak| expect(body["text"]).not_to include(leak), leak }
+      expect(body["text"]).not_to include(root)
+    end
+
+    it "says their turn failed in fixed words, never the exception's or the failure summary's" do
+      crash = "Errno::ENOENT: No such file #{Dir.home}/.config/samagotchi/x key sk-ant-abcdefghijklmnopqrstu"
+      [Samagotchi::ReplyWait::Result.new(status: :error, text: crash),
+       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "failed: #{crash}")].each do |result|
+        status, body = wait_on(result)
+        expect(body["text"].to_s).not_to include("ENOENT", "sk-ant", Dir.home)
+        expect([status, body["status"], body["text"]]).to eq([200, result.status.to_s, Samagotchi::ParticipantMessages::TURN_FAILED])
+      end
+    end
+
     it "says an owner's question or approval in their turn is the owner's, with nothing of it" do
       turn({ prompt: "q" })
       question = Struct.new(:to_file).new({ "question" => "Allow write?" })

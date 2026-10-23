@@ -39,6 +39,9 @@ and commands may change between minor versions. How releases are made:
   client (the web, the attached TUI, `chi send` without `--queue`), never steered or cut into their read-only turn;
   each says it was queued (the web's delivery line, the TUI's note, `chi send`'s line), and `chi send --wait` waits
   for that turn's own answer.
+- Participants: an agent participant's `chi send --wait` no longer reads its reply unfiltered: the reply is
+  redacted as the page shows it (secret shapes, the owner's token, host paths, no thinking or tool calls), and a
+  failed turn says "this turn failed: the session's owner can see why", never the error's own words.
 
 ## [0.106.0] - 2026-10-23
 
