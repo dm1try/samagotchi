@@ -45,10 +45,14 @@ module Samagotchi
       # @param entry [Remotes::Entry]
       # @param transport [#call] HTTPTransport by default; specs pass one
       #   that calls the Rack app in this process
-      def initialize(entry, transport: nil, sleeper: ->(seconds) { sleep(seconds) })
+      # @param clock [#call] the monotonic seconds a wait's deadline is
+      #   counted on (specs pass their own)
+      def initialize(entry, transport: nil, sleeper: ->(seconds) { sleep(seconds) },
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @entry = entry
         @transport = transport || HTTPTransport.new(entry)
         @sleeper = sleeper
+        @clock = clock
         @strategies = {}
       end
 
@@ -437,7 +441,7 @@ module Samagotchi
       private
 
       def session_path(id) = "/api/sessions/#{id}"
-      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      def monotonic = @clock.call
 
       def exists?(id)
         request(:get, session_path(id), query: { brief: 1 }).status == 200

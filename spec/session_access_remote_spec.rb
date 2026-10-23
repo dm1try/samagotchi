@@ -42,16 +42,18 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
   # A transport that answers +replies+ in turn (the last one repeats) after
   # a chi web's GET /api/info.
-  def scripted(*replies, info: { app: "chi-web", version: "9.9.9", features: ["session_commands"] })
+  def scripted(*replies, info: { app: "chi-web", version: "9.9.9", features: ["session_commands"] }, clock: nil, on_call: nil)
     calls = []
     fake = lambda do |method, path, **opts|
       calls << [method, path, opts]
+      on_call&.call(path)
       next Samagotchi::SessionAccess::HTTPTransport::Reply.of(200, JSON.generate(info)) if path == "/api/info"
 
       status, body = replies.size > 1 ? replies.shift : replies.first
       Samagotchi::SessionAccess::HTTPTransport::Reply.of(status, JSON.generate(body))
     end
-    [described_class.new(RemoteBackend.entry, transport: fake, sleeper: ->(_s) {}), calls]
+    clock = clock ? { clock: clock } : {}
+    [described_class.new(RemoteBackend.entry, transport: fake, sleeper: ->(_s) {}, **clock), calls]
   end
 
   describe "the server" do
@@ -140,10 +142,14 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
 
     it "asks for no more than the time left of its own --timeout, and times out itself" do
-      access, calls = scripted([200, { status: "timeout" }])
+      # Each slice takes 30 s of a clock the spec moves: a 45 s --timeout is
+      # asked as 30 s, then the 15 s left, then it times out without asking.
+      now = 1000.0
+      access, calls = scripted([200, { status: "timeout" }], clock: -> { now },
+                                                             on_call: ->(path) { now += 30 if path.end_with?("/wait") })
 
-      expect(access.wait_reply("s1", cursor: nil, timeout: 0.05, baseline: baseline).status).to eq(:timeout)
-      expect(calls.drop(1).map { |_m, _p, o| o[:body][:timeout] }).to all(be <= 0.05)
+      expect(access.wait_reply("s1", cursor: nil, timeout: 45, baseline: baseline).status).to eq(:timeout)
+      expect(calls.drop(1).map { |_m, _p, o| o[:body][:timeout] }).to eq([30.0, 15.0])
     end
 
     it "holds a parent to the strictest strategy before any wait said the server's" do
