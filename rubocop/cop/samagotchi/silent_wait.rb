@@ -21,18 +21,40 @@ module RuboCop
       # (it, specify, example, before, after, around), an if's branch or an
       # ensure's body there included, counts as unused: RSpec drops that
       # value. A tag goes on the call's first line or the line above.
+      #
+      # A Timeout.timeout block is flagged too: around a poll or a pop it is
+      # a wait whose timeout names nothing (wait_for, pop!, join!). A hang
+      # guard around a call that should simply return carries
+      # "# timeout-ok: why".
+      #
+      #   # bad
+      #   Timeout.timeout(2) { queue.pop }
+      #
+      #   # good
+      #   pop!(queue, "the redraw", timeout: 2)
+      #   status = Timeout.timeout(10) { Process.wait2(pid) } # timeout-ok: a hang guard: the child exits by itself
       class SilentWait < Base
         MSG = "Use wait_for(what) { … }: a timeout then names what it waited for."
+        MSG_TIMEOUT = "A Timeout.timeout names nothing when it fires: wait with wait_for(what), pop! or join!. " \
+                      "A hang guard around a call that returns by itself carries \"# timeout-ok: why\"."
         TAG = /#\s*wait-ok:\s*\S/
+        TIMEOUT_TAG = /#\s*timeout-ok:\s*\S/
         EXAMPLE_BLOCKS = %i[it specify example before after around].to_set.freeze
 
         # @!method wait_until_block?(node)
         def_node_matcher :wait_until_block?, "(any_block (send {nil? (const {nil? cbase} :SpecWaiting)} :wait_until ...) ...)"
 
+        # @!method timeout_block?(node)
+        def_node_matcher :timeout_block?, "(any_block (send (const {nil? cbase} :Timeout) :timeout ...) ...)"
+
         # @!method expect_true?(node, wait)
         def_node_matcher :expect_true?, "(send (send nil? :expect %1) :to {(send nil? {:be :eq} true) (send nil? :be_truthy)})"
 
         def on_block(node)
+          if timeout_block?(node)
+            add_offense(node.send_node, message: MSG_TIMEOUT) unless tagged?(node.first_line, TIMEOUT_TAG)
+            return
+          end
           return unless wait_until_block?(node)
           return unless silent?(node)
           return if tagged?(node.first_line)
@@ -73,8 +95,8 @@ module RuboCop
           end
         end
 
-        def tagged?(line)
-          processed_source.comments.any? { |comment| [line, line - 1].include?(comment.loc.line) && comment.text.match?(TAG) }
+        def tagged?(line, tag = TAG)
+          processed_source.comments.any? { |comment| [line, line - 1].include?(comment.loc.line) && comment.text.match?(tag) }
         end
       end
     end

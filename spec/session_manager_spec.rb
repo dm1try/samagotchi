@@ -1363,9 +1363,9 @@ RSpec.describe Samagotchi::SessionManager do
         exit!(0)
       end
       writer.close
-      _, status = Timeout.timeout(10) { Process.wait2(starter) }
+      _, status = Timeout.timeout(10) { Process.wait2(starter) } # timeout-ok: a hang guard: the starter exits by itself
       starter_exited = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      lines = Timeout.timeout(10) { reader.read.lines.map(&:split) }
+      lines = Timeout.timeout(10) { reader.read.lines.map(&:split) } # timeout-ok: a hang guard: the read ends when the children close the pipe
 
       worker, = lines.assoc("worker").values_at(1)
       expect(status.exitstatus).to eq(0)

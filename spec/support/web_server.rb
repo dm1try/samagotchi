@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "timeout"
 require "webrick"
 require "rackup"
 
@@ -36,7 +35,7 @@ module WebServer
       end
     end
     thread.report_on_exception = false
-    server = Timeout.timeout(5) { ready.pop }
+    server = SpecWaiting.pop!(ready, "the web server to start")
     Running.new(port: server.listeners.first.addr[1], server: server, thread: thread)
   end
 end

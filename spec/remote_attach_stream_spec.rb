@@ -83,12 +83,7 @@ RSpec.describe "a remote attach's stream through chi web" do
   end
 
   def next_event(type)
-    Timeout.timeout(10) do
-      loop do
-        event = events.pop
-        return event if event["type"] == type
-      end
-    end
+    wait_for("a #{type} event", timeout: 10) { events.pop(timeout: 0.05)&.then { |event| event if event["type"] == type } }
   end
 
   def follow(client)

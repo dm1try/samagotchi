@@ -172,7 +172,7 @@ RSpec.describe Samagotchi::NoteCommand do
       a = make(owner: "worker")
       socket, other_end = UNIXSocket.pair
 
-      expect(Timeout.timeout(5) { run(a.id, stdin: socket) }).to eq(2)
+      expect(Timeout.timeout(5) { run(a.id, stdin: socket) }).to eq(2) # timeout-ok: a hang guard: the note must not read the open socket
       expect(err.string).to include("no note text")
     ensure
       [socket, other_end].compact.each(&:close)

@@ -224,6 +224,7 @@ RSpec.configure do |config|
     if example_timeout.zero? || example.metadata.values_at(*SPEC_UNTIMED_TAGS).any?
       example.run
     else
+      # timeout-ok: the per-example limit, whose message names the example's hang
       Timeout.timeout(example_timeout, SpecExampleTimeout,
                       "example still running after #{example_timeout.to_i} s (SPEC_EXAMPLE_TIMEOUT): a hang?") do
         example.run

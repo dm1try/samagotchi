@@ -554,6 +554,7 @@ RSpec.describe Samagotchi::SendCommand do
       serve(a)
       socket, other_end = UNIXSocket.pair
 
+      # timeout-ok: a hang guard: the send must not read the open socket
       expect(Timeout.timeout(5) { run("-m", "hi", a.id, stdin: socket) }).to eq(0), err.string
       expect(inputs_of(a).first["prompt"]).to eq("hi")
     ensure

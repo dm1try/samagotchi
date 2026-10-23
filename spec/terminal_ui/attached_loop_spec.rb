@@ -2607,7 +2607,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     typed = Queue.new
     prompts = Queue.new
     thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
-    Timeout.timeout(2) { nil until prompts.pop.include?(at) }
+    wait_for("the prompt #{at.inspect}", timeout: 2) { prompts.pop(timeout: 0.05)&.include?(at) }
     lines.each { |line| typed << line }
     thread.value
   end

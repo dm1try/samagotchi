@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "worker identity" do
   end
 
   def collect(count)
-    Array.new(count) { Timeout.timeout(5) { events.pop } }
+    Array.new(count) { |index| pop!(events, "event #{index + 1} of #{count}") }
   end
 
   it "is the port" do

@@ -346,7 +346,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       $stderr = StringIO.new
       events = []
       engine.subscribe(observer: ->(e) { events << e if e[:type] == :question_cancelled })
-      result = Timeout.timeout(5) do
+      result = Timeout.timeout(5) do # timeout-ok: a hang guard: with no terminal the question returns at once
         engine.request_question(question: "Which one?", options: %w[Apple Banana], header: "Fruit")
       end
 

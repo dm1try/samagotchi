@@ -84,6 +84,29 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentWait do
     RUBY
   end
 
+  it "flags a Timeout.timeout block, which names nothing when it fires" do
+    expect_offense(<<~RUBY)
+      Timeout.timeout(2) { queue.pop }
+      ^^^^^^^^^^^^^^^^^^ #{described_class::MSG_TIMEOUT}
+      ::Timeout.timeout(2) do
+      ^^^^^^^^^^^^^^^^^^^^ #{described_class::MSG_TIMEOUT}
+        nil until done?
+      end
+    RUBY
+  end
+
+  it "allows a Timeout.timeout hang guard tagged timeout-ok, on its line or the line above, but not an empty tag" do
+    expect_no_offenses(<<~RUBY)
+      status = Timeout.timeout(10) { Process.wait2(pid) } # timeout-ok: the child exits by itself
+      # timeout-ok: a hang guard: the read ends at EOF
+      lines = Timeout.timeout(5) { reader.read }
+    RUBY
+    expect_offense(<<~RUBY)
+      Timeout.timeout(5) { reader.read } # timeout-ok:
+      ^^^^^^^^^^^^^^^^^^ #{described_class::MSG_TIMEOUT}
+    RUBY
+  end
+
   it "flags expect(wait_until { … }).to be(true), eq(true) and be_truthy" do
     expect_offense(<<~RUBY)
       expect(wait_until { done? }).to be(true)

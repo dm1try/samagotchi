@@ -289,7 +289,7 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
 
       Process.kill("WINCH", Process.pid)
 
-      expect(Timeout.timeout(2) { redrawn.pop }).to be(true)
+      expect(pop!(redrawn, "the redraw after the WINCH", timeout: 2)).to be(true)
       screen.close
     end
   end

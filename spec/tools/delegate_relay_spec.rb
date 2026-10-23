@@ -99,6 +99,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     update(child, status: "idle")
   end
 
+  # timeout-ok: a hang guard: the relay's own timeout returns it
   def wait(timeout: 5) = Timeout.timeout(10) { described_class.call(child.id, peers: peers, timeout: timeout, owner_grace: 0.3) }
 
   def user_answers(label, index, freeform: nil)

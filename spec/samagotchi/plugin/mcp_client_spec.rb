@@ -145,7 +145,7 @@ RSpec.describe "The mcp bundle's client" do
     out, writer = IO.pipe
     holder_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", holder, out: writer)
     writer.close
-    server = Timeout.timeout(10) { Integer(out.gets) }
+    server = Timeout.timeout(10) { Integer(out.gets) } # timeout-ok: a hang guard: the holder prints its server's pid first
     expect(alive?(server)).to be(true)
     Process.kill("KILL", holder_pid)
     Process.wait(holder_pid)

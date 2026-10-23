@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::WorkerSignals do
       exit!(0)
     end
     writer.close
-    lines = Timeout.timeout(5) { reader.read.lines.map(&:strip) }
+    lines = Timeout.timeout(5) { reader.read.lines.map(&:strip) } # timeout-ok: a hang guard: the read ends when the child exits
     _, status = Process.wait2(pid)
 
     expect(status.exitstatus).to eq(0)
