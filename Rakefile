@@ -54,6 +54,19 @@ namespace :lint do
   task :fix do
     sh "bundle exec rubocop -a"
   end
+
+  desc "The timing cops (Samagotchi/SpecSleep, Samagotchi/SilentWait) over PATHS (space-separated; none: the repo, " \
+       "counted per cop, exit 0). With PATHS it fails on any offense; not part of rake lint yet (docs/testing.md, \"Waiting and time\")"
+  task :timing, [:paths] do |_task, args|
+    paths = [args[:paths], *args.extras].compact.flat_map(&:split)
+    command = ["bundle", "exec", "rubocop", "-c", "rubocop/timing.yml", "--only", "Samagotchi/SpecSleep,Samagotchi/SilentWait"]
+    if paths.empty?
+      # The repo-wide count: offenses are expected until they're all gone.
+      sh(*command, "--format", "offenses") { |_ok, _status| nil }
+    else
+      sh(*command, *paths)
+    end
+  end
 end
 
 namespace :bundles do

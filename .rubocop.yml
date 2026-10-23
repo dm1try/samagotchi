@@ -10,6 +10,12 @@ plugins:
   - rubocop-performance
   - rubocop-rspec
 
+# Our own cops (rubocop/): the only non-style rules of the repo's own, for a
+# flake pattern no stock cop sees (a spec that sleeps to wait, a wait that
+# times out naming nothing). docs/testing.md, "Waiting and time".
+require:
+  - ./rubocop/samagotchi.rb
+
 AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
@@ -422,3 +428,23 @@ RSpec/DescribedClass:
 RSpec/BeEq:
   Safe: true
   SafeAutoCorrect: true
+
+# -- samagotchi's own cops ---------------------------------------------------
+
+# Off in `rake lint` while specs still carry the sleeps and silent waits they
+# flag: `rake lint:timing[PATHS]` (rubocop/timing.yml) runs them. They turn
+# on here once its repo-wide count is zero.
+Samagotchi/SpecSleep:
+  Enabled: false
+  Include:
+    - spec/**/*
+    - lib/samagotchi/bundles/*/spec/**/*
+  Exclude:
+    # The helpers' own poll interval.
+    - spec/support/waiting.rb
+
+Samagotchi/SilentWait:
+  Enabled: false
+  Include:
+    - spec/**/*
+    - lib/samagotchi/bundles/*/spec/**/*
