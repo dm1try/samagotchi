@@ -36,6 +36,8 @@ and commands may change between minor versions. How releases are made:
 - The ctx % no longer dips at the start of each turn on a chat host (`api: openai` / `anthropic`): the turn's first
   estimate, made before the host counts anything, left out the tool schemas; it now uses the last count's chars per
   token.
+- The terminal's status line, cut to the terminal's width, ends at a word with `…` instead of mid-word (in a pipe
+  too).
 
 ## [0.103.0] - 2026-10-23
 

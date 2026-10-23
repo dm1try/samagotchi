@@ -562,11 +562,20 @@ module Samagotchi
         "#{label}: #{visible.join(", ")}#{suffix}"
       end
 
+      # +text+ cut to +width+ with an ellipsis, at a word (or a " | "
+      # between segments) when one ends in the second half, so the row never
+      # stops mid-word (a plain surface prints it as is).
       def cap_preview_text(text, width)
         return "" if width <= 0
 
         value = text.to_s
-        value.length > width ? value[0, width] : value
+        return value if value.length <= width
+        return value[0, width] if width < 2
+
+        cut = value[0, width - 1]
+        space = cut.rindex(" ")
+        cut = cut[0, space] if space && space >= width / 2
+        "#{cut.sub(/[\s,;:|·-]+\z/, "")}…"
       end
 
       public

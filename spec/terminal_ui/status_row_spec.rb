@@ -23,6 +23,14 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
     expect(surface.slots[:status]).to eq(["status> model=m2 (default: m1) | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli | muted: gh"])
   end
 
+  it "cuts a row too long for the width at a word, with an ellipsis" do
+    narrow = described_class.new(RecordingSurface.new(columns: 41))
+    narrow.update(model: "m1", context: { est_pct: 12.34, bucket: "under20" }, used_memories: %w[notes])
+
+    expect(narrow.rows(40)).to eq(["status> model=m1 | ctx=12.3% (under20)…"])
+    expect(narrow.rows(34)).to eq(["status> model=m1 | ctx=12.3%…"])
+  end
+
   it "names the served model first when the server served another" do
     row.update(model: "m1", default_model: "m1", served: %w[ornith m1])
 
