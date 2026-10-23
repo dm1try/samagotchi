@@ -2004,9 +2004,25 @@ module Samagotchi
           return [200, headers.merge("rack.hijack" => hijack), []]
         end
 
-        query = stream_query(req)
-        [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env,
-                                           server_running: @server_running)]
+        [200, headers, proxy_stream_body(id, req, bridge_port)]
+      end
+
+      # The one ProxyStreamBody both of #handle_stream's transports send:
+      # the session's Bridge stream, through the request principal's frame
+      # filter (#stream_filter).
+      def proxy_stream_body(id, req, port)
+        ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: stream_query(req), headers: req.env,
+                            server_running: @server_running, filter: stream_filter(principal(req)))
+      end
+
+      # What a principal's stream goes through on its way from the Bridge:
+      # nil, the raw bytes unchanged, for the owner (the only principal
+      # today). A filter is anything with #call(chunk) -> String (nil or
+      # "" sends nothing); see ProxyStreamBody.
+      def stream_filter(principal)
+        return nil if principal.owner?
+
+        raise ArgumentError, "no stream filter for a #{principal.kind} principal"
       end
 
       # GET /api/events: the session list as one SSE stream per tab. The
@@ -2066,10 +2082,10 @@ module Samagotchi
       # (WEBrick via rackup) has already sent the status line + headers, so
       # only body bytes go to the socket here.
       def sse_hijack(id, req, port)
+        # Made before the status line goes out: a principal with no filter
+        # is refused (#stream_filter), never streamed.
+        body = proxy_stream_body(id, req, port)
         lambda do |io|
-          query = stream_query(req)
-          body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
-                                     server_running: @server_running)
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
@@ -2673,15 +2689,20 @@ module Samagotchi
       # ends when the Bridge closes the stream or, as EventsBody, when the
       # server leaves :Running: rackup's WEBrick joins every request thread
       # before returning, and a read blocked on a quiet worker would hang
-      # Ctrl-C of chi web. The bytes go through unchanged.
+      # Ctrl-C of chi web. Without a +filter+ the bytes go through unchanged
+      # (the owner's stream); with one, each chunk read from the Bridge goes
+      # through it, and what it returns is sent.
       class ProxyStreamBody
         # @param headers [Hash] the request's Rack env; only its Last-Event-ID
         #   is kept (the env carries the token cookie, never held or inspected)
-        def initialize(host:, port:, session_id:, query:, headers:, server_running: -> { true })
+        # @param filter [#call, nil] chunk -> String (nil or "": nothing sent);
+        #   it sees the Bridge's reads as they come, not whole frames
+        def initialize(host:, port:, session_id:, query:, headers:, server_running: -> { true }, filter: nil)
           @client = BridgeClient.new(session_id: session_id, port: port, host: host)
           @query = query
           @last_event_id = headers["HTTP_LAST_EVENT_ID"]
           @server_running = server_running
+          @filter = filter
         end
 
         def each(&)
@@ -2689,7 +2710,12 @@ module Samagotchi
           # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
           # stale initial cursor — without this the bridge would replay content
           # already delivered (duplicate bubbles).
-          @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running, &)
+          return @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running, &) unless @filter
+
+          @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running) do |chunk|
+            out = @filter.call(chunk)
+            yield(out) unless out.nil? || out.empty?
+          end
         end
       end
     end

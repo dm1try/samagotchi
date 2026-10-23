@@ -469,7 +469,8 @@ Every route goes through `Bridge#dispatch`: an id other than the bridge's own se
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
 for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
-`GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
+`GET /api/sessions/:id/output`), as a byte pipe for the owner: `App#proxy_stream_body` gives `ProxyStreamBody` the
+request principal's frame filter (`App#stream_filter`, nil for the owner, the only principal today). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
 an earlier worker gets the `reset` snapshot, not a replay.
 
 **Session hub.** The cross-session layer (which sessions exist, who owns them, what changed)
