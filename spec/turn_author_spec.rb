@@ -78,11 +78,14 @@ RSpec.describe "a turn's author" do
       expect(bridge).to have_received(:post_turn).twice
     end
 
-    it "writes the author into the fallback file only when there is one" do
+    it "writes the author into the fallback file only when there is one (a participant's when no worker holds it)" do
       allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
 
-      deliver(author: "p:p_1")
       deliver(author: nil)
+      @lock.release
+      allow(described_class).to receive(:resume_session)
+      deliver(author: "p:p_1")
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
 
       expect(input_files.map { |input| input["author"] }).to contain_exactly("p:p_1", nil)
       expect(input_files.map(&:keys)).to contain_exactly(%w[prompt client_id enqueued_id author],

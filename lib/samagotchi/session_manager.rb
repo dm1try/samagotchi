@@ -11,6 +11,7 @@ require_relative "analytics_file"
 require_relative "atomic_file"
 require_relative "config"
 require_relative "delivery"
+require_relative "steer"
 
 require_relative "session"
 require_relative "session_inbox"
@@ -1237,6 +1238,8 @@ module Samagotchi
         # A worker from before queueing (no "delivery" feature) ignores the
         # field or refuses it; either way a file would steer the running turn.
         return queue_unavailable if Delivery.queue?(delivery) && !worker_queues?(session_dir)
+        # A participant's turn only to a worker with the review boundary.
+        return review_unavailable if Steer.participant_author?(author) && !worker_has?(session_dir, Delivery::REVIEW_FEATURE)
 
         begin
           options = { prompt: prompt, client_id: client_id }
@@ -1267,6 +1270,15 @@ module Samagotchi
           nil # the worker closed its Bridge on the way out: queue the file
         end
       end
+      # A participant's file only for a worker started after it: a worker
+      # still holding the session with its Bridge gone (exiting) may be an
+      # older one, which would run it without the review boundary.
+      # (A chi REPL holding it is refused as for anyone, below.)
+      if Steer.participant_author?(author) && (holder = delivery_owner(manager, session_id, state_dir)) && !holder.tui?
+        return DeliverResult.new(status: :timeout, via: :file,
+                                 ack: { "error" => "worker_timeout",
+                                        "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+      end
       enqueued_id = SecureRandom.uuid
       input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
       input[:images] = images unless images.empty?
@@ -1294,13 +1306,21 @@ module Samagotchi
     # Whether the session's live worker runs delivery: queue (its sidecar
     # names the feature). No sidecar to read (the client came from a stand-in,
     # or it went between the wait and here): true, the post finds out.
-    private_class_method def self.worker_queues?(session_dir)
+    private_class_method def self.worker_queues?(session_dir) = worker_has?(session_dir, Delivery::QUEUE_FEATURE)
+
+    # Whether the session's live worker names +feature+ in its sidecar; no
+    # sidecar to read: true, as for #worker_queues?.
+    private_class_method def self.worker_has?(session_dir, feature)
       sidecar = WorkerSidecar.read(session_dir)
-      sidecar.nil? || sidecar.features.include?(Delivery::QUEUE_FEATURE)
+      sidecar.nil? || sidecar.features.include?(feature)
     end
 
     private_class_method def self.queue_unavailable
       DeliverResult.new(status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE)
+    end
+
+    private_class_method def self.review_unavailable
+      DeliverResult.new(status: :refused, code: 409, ack: Delivery::REVIEW_UNAVAILABLE)
     end
 
     private_class_method def self.turn_timeout

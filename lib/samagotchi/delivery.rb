@@ -48,6 +48,16 @@ module Samagotchi
                   "restart it (chi sessions restart ID, or the web's update badge) and send again"
     }.freeze
 
+    # A worker that runs participants' turns inside the review boundary
+    # (Bridge::FEATURES): one without it would run theirs with the owner's
+    # tools, so none is sent to it.
+    REVIEW_FEATURE = "review_turns"
+    REVIEW_UNAVAILABLE = {
+      "error" => "review_unavailable",
+      "detail" => "this session's worker predates participants' turns, so it has no review boundary; " \
+                  "the owner must restart it (chi sessions restart ID, or the web's update badge)"
+    }.freeze
+
     # Whether it is the one every sender defaulting to a step boundary uses.
     def self.next_step?(value) = parse(value) == NEXT_STEP
 

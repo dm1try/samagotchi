@@ -17,9 +17,10 @@ require "samagotchi/session_access/web_bridge_client"
 require_relative "support/remote_backend"
 
 # A participant's author survives every way their input reaches a
-# session: merged mid-turn (the drain), a /word input file or POST /turn
-# that becomes a command, a queued turn's announcement. The owner's
-# events and commands carry no author key.
+# session (a queued turn's announcement, its own turn's saved prompt), and
+# the worker's own layer keeps it a turn of its own: never merged into a
+# running turn whatever its delivery, never a command (a /word input file
+# or POST /turn). The owner's events and commands carry no author key.
 RSpec.describe "a participant's author on delivery" do
   let(:tmpdir) { Dir.mktmpdir("delivery-author") }
 
@@ -76,25 +77,28 @@ RSpec.describe "a participant's author on delivery" do
       @thread.report_on_exception = false
     end
 
-    it "merges a participant's line mid-turn as their own message, with author and name, apart from the owner's" do
+    it "never merges a participant's line into a running turn, whatever its delivery: it waits for its own" do
       author = grant.author
       engine.session_state_dir = tmpdir
-      allow(engine).to receive(:run_turn) do |turn_session, _prompt, **kwargs|
-        engine.instance_variable_get(:@participants).refresh!(turn_session)
-        Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
-        Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "web:t", author: author)
-        drained << kwargs[:pending_input].call
+      prompts = Queue.new
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        prompts << [prompt, kwargs[:origin]&.dig(:author)]
+        if prompt == "first"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p",
+                                                            author: author, delivery: "cut")
+          drained << kwargs[:pending_input].call
+        end
         result
       end
       start_worker
       Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "web:o", enqueued_id: "e1")
 
       lines = pop!(drained, "the drain's lines")
-      expect(lines.map { |l| [l.text, l.author, l.author_name] })
-        .to eq([["owner steer", nil, nil], ["is step 3 safe?", author, "Alex"]])
-      expect(Samagotchi::Steer.merge(lines).messages)
-        .to eq([{ role: "user", kind: "input", content: "owner steer" },
-                { role: "user", kind: "input", content: "is step 3 safe?", author: author, author_name: "Alex" }])
+      expect(lines.map { |l| [l.text, l.author] }).to eq([["owner steer", nil]])
+      expect(pop!(prompts, "the owner's turn")).to eq(["first", nil])
+      expect(pop!(prompts, "the participant's own turn")).to eq(["is step 3 safe?", author])
     end
 
     it "saves a participant's prompt as theirs before the loop's first boundary (a worker killed there keeps the author)" do
@@ -112,18 +116,20 @@ RSpec.describe "a participant's author on delivery" do
         .to eq(role: "user", content: "is step 3 safe?", author: author, author_name: "Alex")
     end
 
-    it "queues a participant's /word input file as a command that names its author; the owner's names none" do
+    it "refuses a participant's /word or !line input file (dropped, audited); the owner's is queued" do
       allow(engine).to receive(:run_turn).and_return(result)
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "/title theirs", client_id: "web:t", author: "p:p_1")
-
-      theirs = pop!(events, "the participant's command_queued")
-      expect(theirs).to include(line: "/title theirs", author: "p:p_1")
-
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "/toolkit full", client_id: "review:p_1", author: "p:p_1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "!ls", client_id: "review:p_1", author: "p:p_1")
       Samagotchi::SessionInbox.write_input(session_dir, prompt: "/title mine", client_id: "web:o")
+
       mine = pop!(events, "the owner's command_queued")
       expect(mine).to include(line: "/title mine")
       expect(mine).not_to have_key(:author)
+      expect(engine).not_to have_received(:run_turn)
+      audit = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+      expect(audit.select { |line| line["event"] == "refused" }.map { |line| line.values_at("participant", "what") })
+        .to eq([%w[p_1 command], %w[p_1 command]])
     end
   end
 
@@ -160,14 +166,23 @@ RSpec.describe "a participant's author on delivery" do
       expect(mine).not_to have_key(:author)
     end
 
-    it "keeps the author on a /word sent as a message: the command and its command_queued name it" do
-      expect(@client.post_turn(prompt: "/title x", client_id: "web:t", author: "p:p_1").status).to eq(202)
+    it "refuses a participant's /word or !line sent as a message (403 not_permitted); the owner's is the command" do
+      ["/title x", "/toolkit full", "!ls"].each do |line|
+        reply = @client.post_turn(prompt: line.delete("\\"), client_id: "review:p_1", author: "p:p_1")
+        expect([reply.status, reply.json]).to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])
+      end
       @client.post_turn(prompt: "/title y", client_id: "web:o")
 
-      expect(commands.map(&:author)).to eq(["p:p_1", nil])
-      theirs, mine = of_type(:command_queued)
-      expect(theirs).to include(line: "/title x", author: "p:p_1")
-      expect(mine).not_to have_key(:author)
+      expect(commands.map(&:author)).to eq([nil])
+      expect(of_type(:command_queued).map { |event| event[:line] }).to eq(["/title y"])
+    end
+
+    it "queues a participant's message as its own turn whatever its delivery asks, and never cuts" do
+      reply = @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", delivery: "cut")
+      expect(reply.status).to eq(202)
+      expect(reply.json).not_to have_key("cut")
+      file = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")].first
+      expect(read_file(file)).to include("delivery" => "queue", "author" => "p:p_1")
     end
   end
 

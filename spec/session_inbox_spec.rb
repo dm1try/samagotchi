@@ -94,6 +94,16 @@ RSpec.describe Samagotchi::SessionInbox do
         expect(described_class.waits_for_turn_end?(cut)).to be(false)
       end
 
+      it "answers true for a participant's line whatever its delivery: theirs is always a turn of its own" do
+        cut = described_class.write_input(session_dir, prompt: "now", delivery: Samagotchi::Delivery::CUT, author: "p:p_1",
+                                                       enqueued_id: "e9")
+        plain = described_class.write_input(session_dir, prompt: "hi", author: "p:p_1")
+        owner = described_class.write_input(session_dir, prompt: "mine", author: "owner")
+
+        expect([cut, plain, owner].map { |file| described_class.waits_for_turn_end?(file) }).to eq([true, true, false])
+        expect(described_class.waiting_input(session_dir, "e9")).to eq(:turn_end)
+      end
+
       it "answers false for a file it cannot read" do
         FileUtils.mkdir_p(input_dir)
         broken = File.join(input_dir, "20260101000000000000001.json")

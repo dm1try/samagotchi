@@ -22,6 +22,7 @@ require_relative "engine"
 require_relative "session_commands"
 require_relative "queued_command"
 require_relative "steer"
+require_relative "participants"
 require_relative "image_store"
 require_relative "log"
 require_relative "version"
@@ -543,8 +544,11 @@ module Samagotchi
     # Stop's last_turn carry the turn's enqueued_id (ReplyWait.own_turn).
     # unqueue: POST turn/dequeue (#handle_dequeue_turn) takes a queued
     # message back before it runs.
+    # review_turns: a participant's turn runs as its own, inside the review
+    # boundary (Guardrails::ReviewBoundary); a worker without it has none,
+    # so chi web sends it no participant's turn (Delivery::REVIEW_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
-                SessionInbox::UNQUEUE_FEATURE].freeze
+                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -916,6 +920,14 @@ module Samagotchi
       end
 
       delivery = Delivery.parse(raw_delivery)
+      if Steer.participant_author?(author)
+        # A participant's message is a turn of its own, whatever the body
+        # asks (D6), and never a command or a shell line: chi web refuses
+        # those first, and this is the worker's own layer.
+        return participant_refused(sid, author, "command") if command_registry.command?(prompt.to_s)
+
+        delivery = Delivery::QUEUE
+      end
 
       # A session command sent as a message (chi send -m "/model x", chi -p,
       # a UI whose command list lags) runs as the command, as typed in a
@@ -1004,6 +1016,14 @@ module Samagotchi
         end
       end
       dequeue_reply(taken, id, input)
+    end
+
+    # 403 not_permitted for a participant's +what+ (a command, a shell
+    # line), with its audit line.
+    def participant_refused(sid, author, what)
+      Participants.log(sid, :refused, state_dir: File.dirname(session_dir), participant: author.delete_prefix("p:"), what: what,
+                                      reason: "not_permitted")
+      [{}, 403, { error: "not_permitted", detail: Participants::NOT_PERMITTED }]
     end
 
     def dequeue_reply(taken, id, input)

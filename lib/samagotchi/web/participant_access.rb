@@ -25,7 +25,7 @@ module Samagotchi
         revoked: ["token_revoked", "this review link was revoked by the session's owner"],
         expired: ["token_expired", "this review link expired: ask the session's owner for a new one"]
       }.freeze
-      NOT_PERMITTED = "a participant can't do that: only the session's owner can"
+      NOT_PERMITTED = Participants::NOT_PERMITTED
 
       private
 

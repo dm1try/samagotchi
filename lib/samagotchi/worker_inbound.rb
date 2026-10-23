@@ -12,6 +12,7 @@ require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "steer"
+require_relative "participants"
 require_relative "tools/task_record"
 require_relative "worker_wakes"
 
@@ -238,14 +239,21 @@ module Samagotchi
     # A session command sent as a message (chi send -m "/model x", a web
     # page's first message) runs as the command, as the Bridge does for a
     # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
-    # pass runs it, with its input's author (only a participant's: the
-    # owner's command is queued as it always was).
+    # pass runs it. A participant's is refused (dropped, with its audit
+    # line): commands and shell lines are the owner's (chi web and the
+    # Bridge refuse them first; this is the worker's own layer).
     # @return [Boolean] whether +text+ was one
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
 
-      author = Steer.sender_author(origin&.dig(:author))
-      @queue_command.call(text, origin&.dig(:client_id), after_file, origin&.dig(:enqueued_id), **{ author: author }.compact)
+      if (author = Steer.sender_author(origin&.dig(:author)))
+        Log.warn(:worker, "participant_command_refused", participant: author)
+        Participants.log(@session.id, :refused, state_dir: @state_dir, participant: author.delete_prefix("p:"),
+                                                what: "command", reason: "not_permitted")
+        return true
+      end
+
+      @queue_command.call(text, origin&.dig(:client_id), after_file, origin&.dig(:enqueued_id))
       true
     end
 

@@ -1963,6 +1963,33 @@ RSpec.describe Samagotchi::SessionManager do
         expect(input_files).to be_empty
       end
 
+      it "refuses a participant's turn to a worker without the review boundary (review_turns), and posts it to one with" do
+        own("worker")
+        write_sidecar(%w[delivery])
+        bridge = instance_double(Samagotchi::BridgeClient)
+        expect(bridge).not_to receive(:post_turn)
+        result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+                                                          bridge: -> { bridge })
+        expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::REVIEW_UNAVAILABLE)
+        expect(input_files).to be_empty
+
+        write_sidecar(%w[delivery review_turns])
+        posting = instance_double(Samagotchi::BridgeClient)
+        allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+        expect(described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+                                                        bridge: -> { posting }).status).to eq(:accepted)
+        expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
+      end
+
+      it "writes no participant's file while a worker holds the session with its Bridge gone (it may be an older one)" do
+        own("worker")
+        result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+                                                          bridge: -> {})
+        expect(result).to have_attributes(status: :timeout)
+        expect(result.ack["detail"]).to include("exiting")
+        expect(input_files).to be_empty
+      end
+
       it "posts it when the worker names the feature; a next_step or cut posts either way" do
         own("worker")
         write_sidecar(%w[restart])

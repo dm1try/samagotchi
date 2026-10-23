@@ -26,6 +26,9 @@ module Samagotchi
   module Participants
     FILE = "participants.json"
     LOG = "participants.jsonl"
+    # What a participant is told when they try what only the owner may do:
+    # a route (chi web's 403 not_permitted), a command or a shell line.
+    NOT_PERMITTED = "a participant can't do that: only the session's owner can"
 
     # One participant as the sidecar has them. +removed_at+ when the grant
     # was revoked (nil while it works, or once it simply expired:

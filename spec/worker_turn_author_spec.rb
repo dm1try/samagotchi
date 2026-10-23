@@ -59,12 +59,13 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
     @thread.report_on_exception = false
   end
 
-  it "runs the turn with the file's author in its origin, and the drain keeps a merged line's" do
+  it "runs the turn with the file's author in its origin; another participant's line waits for its own turn" do
     start_worker
     Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "web:t", enqueued_id: "e1", author: "p:p_1")
 
     expect(pop!(turns, "the authored turn")).to eq(["first", { client_id: "web:t", enqueued_id: "e1", author: "p:p_1" }])
-    expect(pop!(merged_origins, "the drain's :input_merged")).to eq([{ client_id: "web:t", author: "p:p_2" }])
+    expect(pop!(turns, "the other participant's own turn")).to eq(["steer", { client_id: "web:t", author: "p:p_2" }])
+    expect(merged_origins).to be_empty
   end
 
   it "runs an owner's turn with no author in its origin" do

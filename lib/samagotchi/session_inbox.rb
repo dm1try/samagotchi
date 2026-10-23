@@ -8,6 +8,7 @@ require_relative "atomic_file"
 require_relative "delivery"
 require_relative "log"
 require_relative "session"
+require_relative "steer"
 
 module Samagotchi
   # A session directory's file inbox and outbox (see SessionManager for the
@@ -248,15 +249,23 @@ module Samagotchi
 
     # Whether a mid-turn drain leaves this unclaimed input file for a turn
     # of its own instead of merging it at a step boundary: a queued message
-    # (`delivery: queue`) or an image message (steering merges text only).
+    # (`delivery: queue`), an image message (steering merges text only), or
+    # a participant's, whatever its delivery says: theirs always runs as its
+    # own turn, never inside another author's (D6; chi web queues it, and
+    # this is the worker's own layer).
     # The drain skips such a file without stopping at it, so a later text
     # line still merges; the drain's file filter reads this one predicate,
     # so what a boundary leaves changes in one place.
     def self.waits_for_turn_end?(input_file)
       data = JSON.parse(File.read(input_file))
-      data.is_a?(Hash) && (Array(data["images"]).any? || Delivery.queue?(data["delivery"]))
+      data.is_a?(Hash) && turn_end_data?(data)
     rescue JSON::ParserError, SystemCallError
       false
+    end
+
+    # A parsed input file's #waits_for_turn_end?.
+    def self.turn_end_data?(data)
+      Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"])
     end
 
     # How the unclaimed input file carrying +enqueued_id+ waits: :turn_end
@@ -272,7 +281,7 @@ module Samagotchi
         data = JSON.parse(File.read(file))
         next unless data.is_a?(Hash) && data["enqueued_id"] == id
 
-        return Array(data["images"]).any? || Delivery.queue?(data["delivery"]) ? :turn_end : :merges
+        return turn_end_data?(data) ? :turn_end : :merges
       rescue JSON::ParserError, SystemCallError
         next
       end
