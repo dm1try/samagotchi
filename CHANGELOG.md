@@ -44,7 +44,8 @@ and commands may change between minor versions. How releases are made:
   failed turn says "this turn failed: the session's owner can see why", never the error's own words.
 - Participants: a secret on a long streamed line (`password: …`, an `Authorization:` header, an `sk-…` key, a
   private key's BEGIN line) is no longer sent unredacted when the participant's stream cuts the line at 400
-  characters; a line with no space for 1600 characters ends in `[redacted]`.
+  characters; a line with no space for 1600 characters ends in `[redacted]`. A private key block that begins on the
+  line where another one ends is withheld too.
 - Participants: a participant's link opened on chi web's own machine (or `chi share` on a chi web not on the LAN,
   whose link opens on that machine only) is the participant, no longer the owner: a `chp_` token is the participant's
   from any peer, an ended one is refused, and the owner's browser that opened a participant link is the owner's again

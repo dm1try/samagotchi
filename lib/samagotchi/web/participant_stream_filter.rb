@@ -210,8 +210,8 @@ module Samagotchi
         run = +""
         text.each_line do |line|
           if @in_key
-            @in_key = false if PEM_END.match?(line)
-          elsif PEM_BEGIN.match?(line) && !PEM_END.match?(line)
+            @in_key = opens_key?(line) if PEM_END.match?(line)
+          elsif opens_key?(line)
             out << ParticipantView::Redact.text(run, @viewer)
             run = +""
             @in_key = true
@@ -221,6 +221,14 @@ module Samagotchi
           end
         end
         out << ParticipantView::Redact.text(run, @viewer)
+      end
+
+      # Whether +line+ leaves a private key block open: a BEGIN line with
+      # no END after it (an END and the next BEGIN may share a line).
+      def opens_key?(line)
+        last_begin = line.rindex(PEM_BEGIN) or return false
+        last_end = line.rindex(PEM_END)
+        last_end.nil? || last_begin > last_end
       end
 
       def frame(id, shown)

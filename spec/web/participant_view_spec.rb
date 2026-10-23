@@ -260,6 +260,13 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
     expect(texts(out)).to eq("Here:\n[redacted]\nafter\n")
   end
 
+  it "withholds the next key block when its BEGIN shares a line with the last one's END" do
+    parts = ["-----BEGIN EC PRIVATE KEY-----\nONE\n-----END EC PRIVATE KEY----- and ", "-----BEGIN EC PRIVATE KEY-----\nTWO\n",
+             "-----END EC PRIVATE KEY-----\nafter\n"]
+    out = parts.each_with_index.map { |text, i| filter.call(frame(i.to_s, { type: "generation_chunk", text: text })) }.join
+    expect(texts(out)).to eq("[redacted]\nafter\n")
+  end
+
   it "sends the held rest of a line before a tool row or the turn's end, and drops it at a restarted step" do
     out = filter.call(frame("1", { type: "generation_chunk", text: "Let me look", iteration: 1 })) +
           filter.call(frame("2", { type: "tool_call_started", tool: "read", iteration: 1, call_index: 0 }))
