@@ -46,8 +46,6 @@ module Samagotchi
       include InputSupport
 
       PROMPT = "> "
-      # How long /exit --delete waits for the worker to let go.
-      DELETE_WAIT = 10
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
@@ -115,8 +113,8 @@ module Samagotchi
       def initialize(screen:, client_id:, client: nil, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, as_parent: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
-                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
-                     archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
+                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: LocalLink::DELETE_WAIT) },
+                     archive_session: ->(id) { SessionManager.archive_session(id, wait: LocalLink::DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
                      state_dir: Session.default_state_dir,
                      children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) }, link: nil)

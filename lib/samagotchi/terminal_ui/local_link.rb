@@ -24,7 +24,7 @@ module Samagotchi
       include AttachLink
 
       # How long /exit --delete and /archive wait for the worker to let go
-      # (AttachedLoop::DELETE_WAIT).
+      # (AttachedLoop's defaults too).
       DELETE_WAIT = 10
 
       attr_reader :client
