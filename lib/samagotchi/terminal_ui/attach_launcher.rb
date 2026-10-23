@@ -8,6 +8,7 @@ require_relative "../thinking_command"
 require_relative "../bridge_client"
 require_relative "../parent_report"
 require_relative "../cli/exit"
+require_relative "../launch_mode"
 require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
@@ -169,7 +170,7 @@ module Samagotchi
                                                                          parent_answers: parent_answers))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
-        client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")
+        client || raise(Error, format(LaunchMode::BRIDGE_LATE, session.id))
       rescue SessionManager::OwnedByTUI
         raise Error, "session #{resume} is open in a chi REPL; close it there first"
       rescue ArgumentError => e

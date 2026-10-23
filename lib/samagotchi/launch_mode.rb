@@ -11,6 +11,14 @@ module Samagotchi
     # reach the worker: a /model command, and no_interrupt on each posted
     # turn; --memory and --mute are session fields the worker reads.)
     REPL_ONLY = { verbose: "--verbose" }.freeze
+    # What an attached run can't be combined with (the worker runs its turns).
+    ATTACHED_CONFLICTS = { non_interactive: "--non-interactive", verbose: "--verbose" }.freeze
+    # Opening a `chi scratch` session a killed REPL left behind would turn it
+    # into a kept one.
+    SCRATCH_LEFTOVER = "that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)"
+    # A worker spawned or resumed for an attach whose Bridge never came (%s:
+    # the session id).
+    BRIDGE_LATE = "the worker for session %s did not start its Bridge in time"
 
     module_function
 
@@ -29,6 +37,20 @@ module Samagotchi
       return [:repl, "(session.shared: #{flag} runs in a plain REPL)"] if flag
 
       [:attached, nil]
+    end
+
+    # Why an attached run's flags don't go together, or nil when they do.
+    # @param options [Hash] bin/chi's parsed options
+    # @return [String, nil]
+    def attached_conflict(options)
+      conflict = ATTACHED_CONFLICTS.find { |key, _flag| options[key] }
+      if options[:attach] && options[:shared]
+        "use either --attach ID or --shared"
+      elsif options[:attach] && options[:resume]
+        "--attach takes the session id; --resume goes with --shared"
+      elsif conflict
+        "--attach/--shared can't be combined with #{conflict.last}"
+      end
     end
   end
 end
