@@ -69,7 +69,8 @@ module Samagotchi
         --new       start a new session with the message instead, as the
                     web does, and print its id
         --dir DIR   (--new) its folder, the project it belongs to; default
-                    the current one
+                    the current one (with --remote: required, that
+                    machine's absolute path)
         --continues ID
                     (--new) start the next link of that session's chain:
                     in its folder, on its model (or --model's; one whose
@@ -147,8 +148,9 @@ module Samagotchi
                     queue), with --cut also cut (now, waits, off)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
         question waits, 4 still running (--timeout), 130 Ctrl-C.
-        Only sessions on this machine. Answers show in the attached TUI
-        or web page, not here.
+        Sessions on this machine, or another's: chi --remote NAME send …
+        (chi remote). Answers show in the attached TUI or web page, not
+        here.
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
 
@@ -288,16 +290,19 @@ module Samagotchi
       # A parent agent's /continue yes held to guardrails.parent_answers,
       # and a /parent-answers that loosens: refused before anything is sent.
       # Machine-local (the targets' session files, this machine's
-      # config.yml): remotely the server's (P2: its /turn and create
-      # routes check; the worker checks a CLI_ANSWER /continue again).
-      gate = ParentGate.new(options, state_dir: @state_dir)
-      if prompt && (refusal = gate.continue_refusal(prompt))
-        @stderr.puts("chi send: #{refusal}")
-        return CLI::Exit::FAILED
-      end
-      if prompt && gate.loosens?(prompt)
-        error_line("chi send: refused: #{ParentAnswersCommand::REFUSED}")
-        return CLI::Exit::FAILED
+      # config.yml): remotely the server's (its /turn and create routes
+      # check the line chi send's client_id marks; the worker checks a
+      # CLI_ANSWER /continue again).
+      unless @access.remote?
+        gate = ParentGate.new(options, state_dir: @state_dir)
+        if prompt && (refusal = gate.continue_refusal(prompt))
+          @stderr.puts("chi send: #{refusal}")
+          return CLI::Exit::FAILED
+        end
+        if prompt && gate.loosens?(prompt)
+          error_line("chi send: refused: #{ParentAnswersCommand::REFUSED}")
+          return CLI::Exit::FAILED
+        end
       end
       # A file that is not there or not an image: a run-time failure (1),
       # reported in the --format json line too; --image itself was fine.
@@ -404,6 +409,8 @@ module Samagotchi
 
         options[:parent_answers] = level
       end
+      return remote_new_options(options, words) if @access.remote?
+
       toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
       options[:toolkit_value] = toolkit if toolkit
       begin
@@ -418,6 +425,32 @@ module Samagotchi
       end
       options
     end
+
+    # --new against a remote: its folder is given, as that machine's
+    # absolute path (D4: none is guessed from this one's), and the setup
+    # flags go as typed (SetupWords): the toolkit's default, the bundles a
+    # --set names and the folder are the remote's to check.
+    def remote_new_options(options, llm_words)
+      unless options[:continues]
+        return usage_error("--new on #{remote_name} needs --dir: a folder there") unless options[:dir]
+        return usage_error("--dir is a folder on #{remote_name}: give its absolute path") unless options[:dir].start_with?("/")
+      end
+
+      settings = Array(options[:sets]).to_h do |pair|
+        key, sep, value = pair.partition("=")
+        return usage_error("--set takes KEY=VALUE, not #{pair}") if sep.empty? || key.strip.empty?
+
+        [key.strip, value]
+      end
+      options[:setup_words] = SessionAccess::SetupWords.new(
+        llm_context: (llm_words unless llm_words.empty?), thinking: options[:thinking]&.to_s,
+        toolkit: options[:toolkit], tools: Array(options[:tools]), no_tools: Array(options[:no_tools]),
+        settings: (settings unless settings.empty?), parent_answers: options[:parent_answers]
+      )
+      options
+    end
+
+    def remote_name = @access.respond_to?(:name) ? @access.name : "the remote"
 
     # With both, stdin is the context quoted above the message; with one,
     # it goes in as is. nil when both are blank.
@@ -454,7 +487,10 @@ module Samagotchi
       through_worker = images || command_like?(prompt)
       begin
         session = @access.create(new_session_spec(prompt, options, through_worker: through_worker))
-      rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
+      rescue SessionAccess::BadRequest => e
+        return usage_error(e.message)
+      rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI,
+             SessionAccess::Refused => e
         error_line("chi send: refused: #{e.message}")
         return 1
       rescue StandardError => e
@@ -462,9 +498,13 @@ module Samagotchi
         return 1
       end
       error_line("chi send: warning: #{session.model_warning}") if session.model_warning
-      if (capped = Guardrails::ParentPolicy.capped_note(options[:parent_answers]))
-        error_line("chi send: warning: --parent-answers #{capped}")
-      end
+      # Remotely the server's config.yml caps it (its create's warning).
+      capped = if @access.remote?
+                 session.parent_answers_warning
+               else
+                 Guardrails::ParentPolicy.capped_note(options[:parent_answers])
+               end
+      error_line("chi send: warning: --parent-answers #{capped}") if capped
       if through_worker
         return 1 unless deliver_new(session, prompt)
       else
@@ -486,16 +526,17 @@ module Samagotchi
     # @return [SessionAccess::NewSession]
     def new_session_spec(prompt, options, through_worker:)
       start = through_worker ? { prompt: nil, preview: prompt } : { prompt: prompt }
+      # For a remote's create route, which checks them as this machine does
+      # before it creates (the first line's client_id, the images' model).
+      start = start.merge(client_id: client_id_for(prompt), images: !@images.empty?)
       if options[:continues]
         return SessionAccess::NewSession.new(**start, continues: options[:continues], model_name: options[:model])
       end
 
-      SessionAccess::NewSession.new(**start, working_directory: options[:dir], model_name: options[:model],
-                                             setup: SessionSetup.new(llm_context: options[:llm_context],
-                                                                     thinking: options[:thinking],
-                                                                     toolkit: options[:toolkit_value],
-                                                                     settings: options[:settings],
-                                                                     parent_answers: options[:parent_answers]))
+      setup = options[:setup_words] || SessionSetup.new(llm_context: options[:llm_context], thinking: options[:thinking],
+                                                        toolkit: options[:toolkit_value], settings: options[:settings],
+                                                        parent_answers: options[:parent_answers])
+      SessionAccess::NewSession.new(**start, working_directory: options[:dir], model_name: options[:model], setup: setup)
     end
 
     # The model the new session will run, for the images check: --model
@@ -507,7 +548,8 @@ module Samagotchi
     # @return [Array, false] [model_name, model_typed], or false after the
     #   error line (no such session, a model it can't start on)
     def continued_model(options)
-      return [options[:model], nil] unless options[:continues]
+      # Remotely the server reads the previous link (its vision check).
+      return [options[:model], nil] unless options[:continues] && !@access.remote?
 
       previous = Session.load(SessionChain.resolve(options[:continues], state_dir: @state_dir), state_dir: @state_dir)
       self.class.continued_model(previous, options[:model])
@@ -536,12 +578,10 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_wait(prompt, options)
       id = resolve(options[:ids].first) or return 1
-      session = @access.show(id)
-      # Machine-local reads (the owner lock, this machine's
-      # parent_answers for the question's advice): remotely the server's
-      # (its wait prepare route says busy or waiting, Busy's words).
-      owner = @access.owner(id) if session.status == Session::STATUS_RUNNING
-      if (busy = Busy.for(session, owner: owner, queue: @queue))
+      # Local: one read for the check and the baseline; remotely the
+      # server's wait prepare route reads both (Busy's words).
+      session = @access.show(id) unless @access.remote?
+      if (busy = @access.busy(id, queue: @queue, session: session))
         error_line("#{id[0, 8]}  #{busy.message}")
         return 1
       end
@@ -592,6 +632,9 @@ module Samagotchi
         if @access.await_worker(session.id, timeout: SessionManager::TURN_BRIDGE_WAIT)
           result = @access.deliver_turn(session.id, prompt: prompt, client_id: client_id_for(prompt), images: refs)
         end
+      rescue SessionAccess::Refused => e
+        @info.puts("#{session.id}  refused: #{e.message}")
+        return false
       rescue StandardError => e
         @info.puts("#{session.id}  failed: #{e.message}")
         return false
@@ -603,7 +646,7 @@ module Samagotchi
         return false
       end
       unless result.accepted?
-        @info.puts("#{session.id}  failed: #{result.detail || "could not queue it"}")
+        @info.puts("#{session.id}  #{refused_word(result)}: #{result.detail || "could not queue it"}")
         return false
       end
 
@@ -614,6 +657,19 @@ module Samagotchi
     end
 
     SENT_COMMAND = "sent as a session command"
+
+    # A remote's refusals of what this machine checks before sending (a
+    # parent's /continue yes, a loosening /parent-answers, images to a
+    # model that can't see them): its turn route's error codes.
+    REMOTE_REFUSALS = %w[parent_answers_refused parent_continue_refused no_vision].freeze
+
+    # How a delivery that didn't go in reads: refused (a worker older than
+    # queueing would steer it; a remote refused it as chi send refuses it
+    # here) or failed.
+    def refused_word(result)
+      refused = result.error == Delivery::QUEUE_UNAVAILABLE["error"] || REMOTE_REFUSALS.include?(result.error)
+      refused ? "refused" : "failed"
+    end
 
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
@@ -690,9 +746,7 @@ module Samagotchi
                  end
       result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery)
       unless result.accepted?
-        # A worker older than queueing would steer it: refused, not sent.
-        word = result.error == Delivery::QUEUE_UNAVAILABLE["error"] ? "refused" : "failed"
-        @info.puts("#{short}  #{word}: #{result.detail || "could not queue it"}")
+        @info.puts("#{short}  #{refused_word(result)}: #{result.detail || "could not queue it"}")
         return false
       end
 
@@ -769,6 +823,9 @@ module Samagotchi
     # What to say when +model_name+ is known not to take images, or nil
     # (it does, or it is unknown: sent as before). Asked once per model.
     def vision_refusal(model_name, typed: nil)
+      # Remotely the server's (check_vision on its turn and create routes).
+      return nil if @access.remote?
+
       @vision ||= {}
       answer = @vision[[model_name.to_s, typed.to_s]] ||= self.class.vision_answer(model_name, typed: typed)
       self.class.vision_refusal(model_name, answer)

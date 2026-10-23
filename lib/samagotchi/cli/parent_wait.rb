@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "../reply_wait"
 require_relative "../parent_report"
 require_relative "exit"
+require_relative "../session_access"
 
 module Samagotchi
   module CLI
@@ -30,7 +31,14 @@ module Samagotchi
         # With --format json stdout is one JSON object, whatever the end: a
         # failure before the wait is reported from stderr's last line.
         @stderr = ParentReport::LastLine.new(@stderr) if @json
-        status = run_parsed(options)
+        status = begin
+          run_parsed(options)
+        rescue SessionAccess::RemoteFailed => e
+          # A remote that went away mid-run: the command's line, and with
+          # --format json its object.
+          error_line("#{command_name}: #{e.message}")
+          Exit::FAILED
+        end
         if @json && !@reported && status == 1
           detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
           @stdout.puts(ParentReport.error_line(detail, session_id: @session_id))

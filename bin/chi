@@ -64,8 +64,23 @@ SUBCOMMANDS = {
   # list and remove memories (ls, rm; --scope, --format)
   "memory" => ["samagotchi/memory_command", "MemoryCommand"],
   # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
-  "bundle" => ["samagotchi/bundle_command", "BundleCommand"]
+  "bundle" => ["samagotchi/bundle_command", "BundleCommand"],
+  # other machines' chi web, for chi --remote NAME (add, ls, rm)
+  "remote" => ["samagotchi/remote_command", "RemoteCommand"]
 }.freeze
+# chi --remote NAME <command> (or CHI_REMOTE=NAME): the session commands
+# against another machine's chi web; what runs here only is refused (exit 2).
+# chi remote, --version and --help run here as always.
+require "samagotchi/session_access/dispatch"
+begin
+  remote_run = Samagotchi::SessionAccess::Dispatch.from(ARGV)
+rescue Samagotchi::SessionAccess::Dispatch::Usage => e
+  warn "Error: #{e.message}"
+  exit 2
+end
+ARGV.replace(remote_run.argv)
+exit remote_run.run(SUBCOMMANDS) if remote_run.remote? && !remote_run.here?
+
 if (path, klass = SUBCOMMANDS[ARGV[0]])
   require path
   exit Samagotchi.const_get(klass).new(ARGV[1..] || []).run
@@ -112,6 +127,8 @@ parser = OptionParser.new do |opts|
            chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
            chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            chi models [--format json] [TEXT]   the models --model takes, from every host
+           chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
+           chi --remote NAME <send|answer|note|context|sessions> …   those commands on that machine (or CHI_REMOTE=NAME)
            chi self                         version, paths, model and bundles
            chi update [--dry-run]           update this chi, its bundles and the desktop helper
     (each subcommand takes --help)

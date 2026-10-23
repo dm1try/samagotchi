@@ -14,6 +14,7 @@ require "samagotchi/engine"
 require "samagotchi/bridge"
 require_relative "support/fake_provider_server"
 require "support/test_kernel"
+require_relative "support/remote_backend"
 
 RSpec.describe Samagotchi::SendCommand do
   let(:tmpdir) { Dir.mktmpdir("send-command") }
@@ -73,8 +74,13 @@ RSpec.describe Samagotchi::SendCommand do
   # The engine of the Bridge a #serve started for +session+.
   def engine_of(session) = @engines.fetch(session.id)
 
+  # On a remote --new takes --dir (D4); without one here it is this
+  # folder, as --new's default is on this machine.
   def run(*argv, stdin: StringIO.new(""))
-    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: tmpdir).run
+    if backend == :remote && argv.include?("--new") && !argv.include?("--continues") && argv.none? { |a| a.start_with?("--dir") }
+      argv = ["--dir", Dir.pwd, *argv]
+    end
+    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: tmpdir, access: backend_access(tmpdir)).run
   end
 
   def inputs_of(session)
@@ -83,502 +89,507 @@ RSpec.describe Samagotchi::SendCommand do
 
   def short(session) = session.id[0, 8]
 
-  it "sends -m through the live worker's Bridge, announced as from cli:send" do
-    a = make(owner: "worker")
-    events = serve(a)
-
-    expect(run("-m", "is this the same bug?", short(a))).to eq(0), err.string
-
-    expect(out.string).to eq("#{short(a)}  sent\n")
-    expect(inputs_of(a)).to contain_exactly(include("prompt" => "is this the same bug?", "client_id" => "cli:send"))
-    expect(events.map { |e| e.slice(:type, :client_id, :prompt) })
-      .to eq([{ type: :turn_enqueued, client_id: "cli:send", prompt: "is this the same bug?" }])
-  end
-
-  # /stats, /exit and the other UI-only commands run in the terminal and the
-  # web, not in the worker: sending one used to pass it to the model as a
-  # prompt, costing a whole turn. chi send refuses it instead.
-  describe "a UI-only command" do
-    it "refuses /stats with a pointer to chi sessions stats, and sends nothing" do
+  RemoteBackend.both(self) do
+    it "sends -m through the live worker's Bridge, announced as from cli:send" do
       a = make(owner: "worker")
       events = serve(a)
 
-      expect(run("-m", "/stats", short(a))).to eq(1)
-      expect(out.string).to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
-      expect(inputs_of(a)).to be_empty
-      expect(events).to be_empty
+      expect(run("-m", "is this the same bug?", short(a))).to eq(0), err.string
+
+      expect(out.string).to eq("#{short(a)}  sent\n")
+      expect(inputs_of(a)).to contain_exactly(include("prompt" => "is this the same bug?", "client_id" => "cli:send"))
+      expect(events.map { |e| e.slice(:type, :client_id, :prompt) })
+        .to eq([{ type: :turn_enqueued, client_id: "cli:send", prompt: "is this the same bug?" }])
     end
 
-    it "refuses the other local commands too (/exit, /recap, /archive, bare exit)" do
-      a = make(owner: "worker")
-      serve(a)
+    # /stats, /exit and the other UI-only commands run in the terminal and the
+    # web, not in the worker: sending one used to pass it to the model as a
+    # prompt, costing a whole turn. chi send refuses it instead.
+    describe "a UI-only command" do
+      it "refuses /stats with a pointer to chi sessions stats, and sends nothing" do
+        a = make(owner: "worker")
+        events = serve(a)
 
-      %w[/recap /archive /detach].each do |line|
-        expect(run("-m", line, short(a))).to eq(1), line
-        expect(out.string.lines.last)
-          .to eq("#{short(a)}  refused: #{line} is a terminal and web command; chi send doesn't run it\n"), line
+        expect(run("-m", "/stats", short(a))).to eq(1)
+        expect(out.string).to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+        expect(inputs_of(a)).to be_empty
+        expect(events).to be_empty
       end
-      expect(run("-m", "exit", short(a))).to eq(1)
-      expect(out.string.lines.last)
-        .to eq("#{short(a)}  refused: /exit is a terminal and web command; chi send doesn't run it\n")
-      expect(inputs_of(a)).to be_empty
+
+      it "refuses the other local commands too (/exit, /recap, /archive, bare exit)" do
+        a = make(owner: "worker")
+        serve(a)
+
+        %w[/recap /archive /detach].each do |line|
+          expect(run("-m", line, short(a))).to eq(1), line
+          expect(out.string.lines.last)
+            .to eq("#{short(a)}  refused: #{line} is a terminal and web command; chi send doesn't run it\n"), line
+        end
+        expect(run("-m", "exit", short(a))).to eq(1)
+        expect(out.string.lines.last)
+          .to eq("#{short(a)}  refused: /exit is a terminal and web command; chi send doesn't run it\n")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "refuses the others even with whitespace around the line, and still sends a prompt with text after the word" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("-m", "  /stats  ", short(a))).to eq(1)
+        expect(out.string.lines.last)
+          .to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "sends a prompt whose text merely starts with a local command's word" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("-m", "/stats please", short(a))).to eq(0), err.string
+        expect(inputs_of(a)).to contain_exactly(include("prompt" => "/stats please"))
+      end
+
+      it "reports the refusal as a --format json error line with --wait" do
+        a = make(owner: "worker")
+        serve(a)
+
+        # --timeout bounds the red run: without the refusal the line is sent
+        # and the wait would block for the answer.
+        expect(run("--wait", "--timeout", "1", "--format", "json", "-m", "/stats", a.id)).to eq(1)
+        line = JSON.parse(out.string)
+        expect(line).to include("status" => "error", "session_id" => a.id)
+        expect(line["detail"]).to include("refused: /stats is a terminal and web command")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "with --wait, an unknown id gets the no-session line, not a refusal" do
+        expect(run("--wait", "-m", "/stats", "zzzz")).to eq(1)
+        expect(err.string).to include("no session zzzz")
+        expect(err.string).not_to include("refused")
+      end
+
+      it "with --new refuses it before a session is created" do
+        allow(Process).to receive(:spawn)
+
+        expect(run("--new", "-m", "/stats")).to eq(1)
+        expect(err.string).to include("refused: /stats is a terminal and web command; use chi sessions stats")
+        expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
+        expect(Process).not_to have_received(:spawn)
+      end
+
+      it "sends a worker-run command (/model) and an unknown /word as before" do
+        a = make(owner: "worker")
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
+
+        expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
+        expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
+        expect(queued.map(&:line)).to eq(["/model qwen"])
+        expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
+      end
     end
 
-    it "refuses the others even with whitespace around the line, and still sends a prompt with text after the word" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("-m", "  /stats  ", short(a))).to eq(1)
-      expect(out.string.lines.last)
-        .to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "sends a prompt whose text merely starts with a local command's word" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("-m", "/stats please", short(a))).to eq(0), err.string
-      expect(inputs_of(a)).to contain_exactly(include("prompt" => "/stats please"))
-    end
-
-    it "reports the refusal as a --format json error line with --wait" do
-      a = make(owner: "worker")
-      serve(a)
-
-      # --timeout bounds the red run: without the refusal the line is sent
-      # and the wait would block for the answer.
-      expect(run("--wait", "--timeout", "1", "--format", "json", "-m", "/stats", a.id)).to eq(1)
-      line = JSON.parse(out.string)
-      expect(line).to include("status" => "error", "session_id" => a.id)
-      expect(line["detail"]).to include("refused: /stats is a terminal and web command")
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "with --wait, an unknown id gets the no-session line, not a refusal" do
-      expect(run("--wait", "-m", "/stats", "zzzz")).to eq(1)
-      expect(err.string).to include("no session zzzz")
-      expect(err.string).not_to include("refused")
-    end
-
-    it "with --new refuses it before a session is created" do
-      allow(Process).to receive(:spawn)
-
-      expect(run("--new", "-m", "/stats")).to eq(1)
-      expect(err.string).to include("refused: /stats is a terminal and web command; use chi sessions stats")
-      expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
-      expect(Process).not_to have_received(:spawn)
-    end
-
-    it "sends a worker-run command (/model) and an unknown /word as before" do
+    # As typed in the TUI: /model switches the model, the model never sees it.
+    it "sends a session command as the command, and an unknown /word as a message" do
       a = make(owner: "worker")
       queued = []
-      serve(a, on_command: ->(command) { queued << command })
+      events = serve(a, on_command: ->(command) { queued << command })
 
       expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
       expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
-      expect(queued.map(&:line)).to eq(["/model qwen"])
+
+      expect(out.string).to eq("#{short(a)}  sent as a session command\n#{short(a)}  sent\n")
+      expect(queued.map { |c| c.to_h.slice(:client_id, :line) }).to eq([{ client_id: "cli:send", line: "/model qwen" }])
       expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
-    end
-  end
-
-  # As typed in the TUI: /model switches the model, the model never sees it.
-  it "sends a session command as the command, and an unknown /word as a message" do
-    a = make(owner: "worker")
-    queued = []
-    events = serve(a, on_command: ->(command) { queued << command })
-
-    expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
-    expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
-
-    expect(out.string).to eq("#{short(a)}  sent as a session command\n#{short(a)}  sent\n")
-    expect(queued.map { |c| c.to_h.slice(:client_id, :line) }).to eq([{ client_id: "cli:send", line: "/model qwen" }])
-    expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
-    expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
-  end
-
-  # A parent agent's /continue yes is an answer to the step-limit question:
-  # it goes as chi answer's (cli:answer), so the worker holds it to its
-  # guardrails.parent_answers, and chi send refuses it first under hard.
-  describe "/continue yes from a parent agent" do
-    def strategy(name)
-      allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(name)
+      expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
     end
 
-    it "goes as cli:answer under soft, and a person's as cli:send" do
-      strategy("soft")
-      a = make(owner: "worker")
-      queued = []
-      serve(a, on_command: ->(command) { queued << command })
-      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
-      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
-      expect(run("-m", "/continue no", short(a))).to eq(0), err.string
-      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
-      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+    # A parent agent's /continue yes is an answer to the step-limit question:
+    # it goes as chi answer's (cli:answer), so the worker holds it to its
+    # guardrails.parent_answers, and chi send refuses it first under hard.
+    describe "/continue yes from a parent agent" do
+      def strategy(name)
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return(name)
+      end
 
-      expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
-        .to eq([{ client_id: "cli:answer", line: "/continue yes" }, { client_id: "cli:send", line: "/continue no" },
-                { client_id: "cli:send", line: "/continue yes" }])
+      it "goes as cli:answer under soft, and a person's as cli:send" do
+        strategy("soft")
+        a = make(owner: "worker")
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+        expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+        expect(run("-m", "/continue no", short(a))).to eq(0), err.string
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
+        expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+
+        expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
+          .to eq([{ client_id: "cli:answer", line: "/continue yes" }, { client_id: "cli:send", line: "/continue no" },
+                  { client_id: "cli:send", line: "/continue yes" }])
+      end
+
+      it "is refused under hard before anything is sent; a Stop still goes",
+         local_only: "refused here before anything is sent, all targets; remotely each target's turn route refuses its own" do
+        strategy("hard")
+        a = make(owner: "worker")
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+
+        expect(run("-m", "/continue yes", short(a))).to eq(1)
+        expect(err.string).to include("a parent agent may only stop this turn here (guardrails.parent_answers: hard)")
+        expect(run("-m", "/continue no, enough", short(a))).to eq(0), err.string
+        expect(queued.map(&:line)).to eq(["/continue no, enough"])
+      end
+
+      # P3: each target's own parent_answers, tighten-only.
+      it "is refused by a target session's own, stricter level; per id",
+         local_only: "refused here before anything is sent, all targets; remotely each target's turn route refuses its own" do
+        strategy("soft")
+        a = make(owner: "worker")
+        b = make(owner: "worker")
+        b.parent_answers = "hard"
+        b.save(state_dir: tmpdir)
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+
+        expect(run("-m", "/continue yes", short(b))).to eq(1)
+        expect(err.string).to include("(parent_answers: hard (this session))")
+        expect(run("-m", "/continue yes", short(a), short(b))).to eq(1)
+        expect(queued).to be_empty
+        expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
+        expect(queued.map(&:line)).to eq(["/continue yes"])
+      end
     end
 
-    it "is refused under hard before anything is sent; a Stop still goes" do
-      strategy("hard")
-      a = make(owner: "worker")
-      queued = []
-      serve(a, on_command: ->(command) { queued << command })
-      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+    # P3: chi send never loosens a session's own parent_answers (only a user
+    # at a UI does); it refuses before sending, per target. Tightening goes.
+    describe "/parent-answers" do
+      it "refuses a loosening before anything is sent, for any target; a tightening goes",
+         local_only: "refused here before anything is sent, all targets; remotely each target's turn route refuses its own" do
+        a = make(owner: "worker")
+        b = make(owner: "worker")
+        b.parent_answers = "standard"
+        b.save(state_dir: tmpdir)
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
 
-      expect(run("-m", "/continue yes", short(a))).to eq(1)
-      expect(err.string).to include("a parent agent may only stop this turn here (guardrails.parent_answers: hard)")
-      expect(run("-m", "/continue no, enough", short(a))).to eq(0), err.string
-      expect(queued.map(&:line)).to eq(["/continue no, enough"])
+        expect(run("-m", "/parent-answers soft", short(b))).to eq(1)
+        expect(err.string).to include("chi send: refused: loosening parent_answers is the user's")
+        expect(run("-m", "/parent-answers default", short(a), short(b))).to eq(1)
+        expect(queued).to be_empty
+
+        expect(run("-m", "/parent-answers hard", short(a))).to eq(0), err.string
+        expect(run("-m", "/parent-answers soft", short(a))).to eq(0), err.string
+        expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
+          .to eq([{ client_id: "cli:send", line: "/parent-answers hard" }, { client_id: "cli:send", line: "/parent-answers soft" }])
+      end
     end
 
-    # P3: each target's own parent_answers, tighten-only.
-    it "is refused by a target session's own, stricter level; per id" do
-      strategy("soft")
-      a = make(owner: "worker")
-      b = make(owner: "worker")
-      b.parent_answers = "hard"
-      b.save(state_dir: tmpdir)
-      queued = []
-      serve(a, on_command: ->(command) { queued << command })
-      allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
-
-      expect(run("-m", "/continue yes", short(b))).to eq(1)
-      expect(err.string).to include("(parent_answers: hard (this session))")
-      expect(run("-m", "/continue yes", short(a), short(b))).to eq(1)
-      expect(queued).to be_empty
-      expect(run("-m", "/continue yes", short(a))).to eq(0), err.string
-      expect(queued.map(&:line)).to eq(["/continue yes"])
-    end
-  end
-
-  # P3: chi send never loosens a session's own parent_answers (only a user
-  # at a UI does); it refuses before sending, per target. Tightening goes.
-  describe "/parent-answers" do
-    it "refuses a loosening before anything is sent, for any target; a tightening goes" do
-      a = make(owner: "worker")
-      b = make(owner: "worker")
-      b.parent_answers = "standard"
-      b.save(state_dir: tmpdir)
-      queued = []
-      serve(a, on_command: ->(command) { queued << command })
-
-      expect(run("-m", "/parent-answers soft", short(b))).to eq(1)
-      expect(err.string).to include("chi send: refused: loosening parent_answers is the user's")
-      expect(run("-m", "/parent-answers default", short(a), short(b))).to eq(1)
-      expect(queued).to be_empty
-
-      expect(run("-m", "/parent-answers hard", short(a))).to eq(0), err.string
-      expect(run("-m", "/parent-answers soft", short(a))).to eq(0), err.string
-      expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
-        .to eq([{ client_id: "cli:send", line: "/parent-answers hard" }, { client_id: "cli:send", line: "/parent-answers soft" }])
-    end
-  end
-
-  it "quotes stdin above the -m message" do
-    a = make(owner: "worker")
-    serve(a)
-
-    expect(run("-m", "same bug?", a.id, stdin: StringIO.new("undefined method\r\n\n  at foo.rb:3\n\n"))).to eq(0), err.string
-    expect(inputs_of(a).first["prompt"]).to eq("> undefined method\n>\n>   at foo.rb:3\n\nsame bug?")
-  end
-
-  it "sends stdin as the message itself without -m" do
-    a = make(owner: "worker")
-    serve(a)
-
-    expect(run(a.id, stdin: StringIO.new("what does this do?\n"))).to eq(0), err.string
-    expect(inputs_of(a).first["prompt"]).to eq("what does this do?")
-  end
-
-  it "says a running turn picks the message up" do
-    a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-    serve(a)
-
-    expect(run("-m", "also check the tests", a.id)).to eq(0)
-    expect(out.string).to eq("#{short(a)}  sent (goes in at the running turn's next step)\n")
-  end
-
-  describe "--cut" do
-    it "posts delivery cut, and names the outcome from the worker's ack" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :now)
-
-      expect(run("--cut", "-m", "skip the tests", a.id)).to eq(0), err.string
-
-      expect(out.string).to eq("#{short(a)}  sent (cut in now)\n")
-      expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
-    end
-
-    it "names a cut that waits for the thinking, and one that is off" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :waits)
-
-      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 20 s)\n")
-    end
-
-    it "says the seconds the worker's ack gives when the model's cut wait differs from the global" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :waits)
-      allow(engine_of(a)).to receive(:steer_cut_after).and_return(60)
-
-      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 60 s)\n")
-    end
-
-    it "says cutting is off when the worker's ack says so" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :off)
-
-      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (cutting is off; goes in at the next step)\n")
-    end
-
-    it "to an idle session it sends normally, without a delivery" do
+    it "quotes stdin above the -m message" do
       a = make(owner: "worker")
       serve(a)
 
-      expect(run("--cut", "-m", "hello", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent\n")
-      expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
+      expect(run("-m", "same bug?", a.id, stdin: StringIO.new("undefined method\r\n\n  at foo.rb:3\n\n"))).to eq(0), err.string
+      expect(inputs_of(a).first["prompt"]).to eq("> undefined method\n>\n>   at foo.rb:3\n\nsame bug?")
     end
 
-    it "sends the delivery to the worker (Bridge body) for a running session" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :now)
+    it "sends stdin as the message itself without -m" do
+      a = make(owner: "worker")
+      serve(a)
 
-      expect(run("--cut", "-m", "go", a.id)).to eq(0), err.string
-      expect(engine_of(a)).to have_received(:cut_for_steer).once
+      expect(run(a.id, stdin: StringIO.new("what does this do?\n"))).to eq(0), err.string
+      expect(inputs_of(a).first["prompt"]).to eq("what does this do?")
     end
 
-    it "says the next-step line when the ack names no cut (the Bridge went away: a file)" do
+    it "says a running turn picks the message up" do
       a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
       serve(a)
-      allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
 
-      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+      expect(run("-m", "also check the tests", a.id)).to eq(0)
       expect(out.string).to eq("#{short(a)}  sent (goes in at the running turn's next step)\n")
     end
 
-    it "adds the applied delivery to the --format json line (an idle session: next_step, no cut)" do
+    describe "--cut" do
+      it "posts delivery cut, and names the outcome from the worker's ack" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :now)
+
+        expect(run("--cut", "-m", "skip the tests", a.id)).to eq(0), err.string
+
+        expect(out.string).to eq("#{short(a)}  sent (cut in now)\n")
+        expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
+      end
+
+      it "names a cut that waits for the thinking, and one that is off" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :waits)
+
+        expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 20 s)\n")
+      end
+
+      it "says the seconds the worker's ack gives when the model's cut wait differs from the global" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :waits)
+        allow(engine_of(a)).to receive(:steer_cut_after).and_return(60)
+
+        expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 60 s)\n")
+      end
+
+      it "says cutting is off when the worker's ack says so" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :off)
+
+        expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (cutting is off; goes in at the next step)\n")
+      end
+
+      it "to an idle session it sends normally, without a delivery" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--cut", "-m", "hello", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent\n")
+        expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
+      end
+
+      it "sends the delivery to the worker (Bridge body) for a running session" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :now)
+
+        expect(run("--cut", "-m", "go", a.id)).to eq(0), err.string
+        expect(engine_of(a)).to have_received(:cut_for_steer).once
+      end
+
+      it "says the next-step line when the ack names no cut (the Bridge went away: a file)" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a)
+        allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+        expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (goes in at the running turn's next step)\n")
+      end
+
+      it "adds the applied delivery to the --format json line (an idle session: next_step, no cut)" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--cut", "--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
+        line = JSON.parse(out.string)
+        expect(line).to include("delivery" => "next_step")
+        expect(line).not_to have_key("cut")
+      end
+
+      it "leaves the --format json line as it was without --cut" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
+        expect(JSON.parse(out.string)).not_to have_key("delivery")
+      end
+
+      it "with --wait into a running turn keeps the busy refusal (exit 1)" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a, cut: :now)
+
+        expect(run("--cut", "--wait", "-m", "go", a.id)).to eq(1)
+        expect(err.string).to include("busy: a turn is running; wait or attach")
+        expect(inputs_of(a)).to be_empty
+      end
+    end
+
+    describe "--queue" do
+      # The Bridge's turn running (its accumulator), so a queue acks queue.
+      def running_turn!
+        bridges.last.instance_variable_get(:@accumulator).call(type: :turn_started, prompt: "long one")
+      end
+
+      it "is refused beside --cut (usage, exit 2)" do
+        expect(run("--cut", "--queue", "-m", "x", "abcd")).to eq(2)
+        expect(err.string).to include("--cut and --queue: choose one")
+      end
+
+      it "posts delivery queue to a running turn: the file waits for the turn's end, the line says so" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        events = serve(a)
+        running_turn!
+
+        expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+        expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+        expect(events.last).to include(type: :turn_enqueued, delivery: "queue")
+      end
+
+      it "says it runs now when the turn ended before it went in (the ack's next_step)" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a)
+
+        expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (the running turn had ended: it runs now)\n")
+      end
+
+      it "to an idle session still sends a queue (the Bridge acks next_step: it runs now), and says so" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (nothing running: it runs now)\n")
+        expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+      end
+
+      it "stays a queue when another client's turn started after chi read the session idle (the race)" do
+        a = make(owner: "worker")
+        serve(a)
+        running_turn!
+
+        expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+        expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+      end
+
+      it "keeps the queue in the input file when the Bridge goes away" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a)
+        allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+        expect(run("--queue", "-m", "later", a.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+        expect(inputs_of(a)).to contain_exactly(include("delivery" => "queue", "enqueued_id" => a_string_matching(/\A\h{8}-/)))
+      end
+
+      it "is refused for a worker older than queueing (it would steer): nothing sent, exit 1" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        events = serve(a)
+        sidecar = Samagotchi::WorkerSidecar.read(dir_of(a))
+        sidecar.with(features: sidecar.features - [Samagotchi::Delivery::QUEUE_FEATURE]).write(dir_of(a))
+
+        expect(run("--queue", "-m", "later", a.id)).to eq(1)
+        expect(out.string).to start_with("#{short(a)}  refused: this session's worker predates queueing")
+        expect(inputs_of(a)).to be_empty
+        expect(events).to be_empty
+      end
+    end
+
+    it "falls back to the input file when the Bridge goes away mid-send" do
       a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--cut", "--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
-      line = JSON.parse(out.string)
-      expect(line).to include("delivery" => "next_step")
-      expect(line).not_to have_key("cut")
-    end
-
-    it "leaves the --format json line as it was without --cut" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
-      expect(JSON.parse(out.string)).not_to have_key("delivery")
-    end
-
-    it "with --wait into a running turn keeps the busy refusal (exit 1)" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a, cut: :now)
-
-      expect(run("--cut", "--wait", "-m", "go", a.id)).to eq(1)
-      expect(err.string).to include("busy: a turn is running; wait or attach")
-      expect(inputs_of(a)).to be_empty
-    end
-  end
-
-  describe "--queue" do
-    # The Bridge's turn running (its accumulator), so a queue acks queue.
-    def running_turn!
-      bridges.last.instance_variable_get(:@accumulator).call(type: :turn_started, prompt: "long one")
-    end
-
-    it "is refused beside --cut (usage, exit 2)" do
-      expect(run("--cut", "--queue", "-m", "x", "abcd")).to eq(2)
-      expect(err.string).to include("--cut and --queue: choose one")
-    end
-
-    it "posts delivery queue to a running turn: the file waits for the turn's end, the line says so" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      events = serve(a)
-      running_turn!
-
-      expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
-      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
-      expect(events.last).to include(type: :turn_enqueued, delivery: "queue")
-    end
-
-    it "says it runs now when the turn ended before it went in (the ack's next_step)" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a)
-
-      expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (the running turn had ended: it runs now)\n")
-    end
-
-    it "to an idle session still sends a queue (the Bridge acks next_step: it runs now), and says so" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (nothing running: it runs now)\n")
-      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
-    end
-
-    it "stays a queue when another client's turn started after chi read the session idle (the race)" do
-      a = make(owner: "worker")
-      serve(a)
-      running_turn!
-
-      expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
-      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
-    end
-
-    it "keeps the queue in the input file when the Bridge goes away" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
       serve(a)
       allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
 
-      expect(run("--queue", "-m", "later", a.id)).to eq(0), err.string
-      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
-      expect(inputs_of(a)).to contain_exactly(include("delivery" => "queue", "enqueued_id" => a_string_matching(/\A\h{8}-/)))
+      expect(run("-m", "hi there", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent\n")
+      expect(err.string).to be_empty
+      expect(inputs_of(a)).to contain_exactly(include("prompt" => "hi there", "client_id" => "cli:send"))
     end
 
-    it "is refused for a worker older than queueing (it would steer): nothing sent, exit 1" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      events = serve(a)
-      sidecar = Samagotchi::WorkerSidecar.read(dir_of(a))
-      sidecar.with(features: sidecar.features - [Samagotchi::Delivery::QUEUE_FEATURE]).write(dir_of(a))
+    it "wakes the worker of a session nobody runs" do
+      stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+      a = make(status: Samagotchi::Session::STATUS_STOPPED)
+      allow(Process).to receive(:spawn).and_return(40_004)
 
-      expect(run("--queue", "-m", "later", a.id)).to eq(1)
-      expect(out.string).to start_with("#{short(a)}  refused: this session's worker predates queueing")
-      expect(inputs_of(a)).to be_empty
-      expect(events).to be_empty
+      expect(run("-m", "wake up", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (started its worker)\n")
+      expect(Process).to have_received(:spawn).at_least(:once)
+      expect(inputs_of(a).first["prompt"]).to eq("wake up")
     end
-  end
 
-  it "falls back to the input file when the Bridge goes away mid-send" do
-    a = make(owner: "worker")
-    serve(a)
-    allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+    it "refuses a session open in a chi REPL and exits 1, still sending to the others" do
+      repl = make(owner: "tui")
+      live = make(owner: "worker")
+      serve(live)
+      allow(Process).to receive(:spawn)
 
-    expect(run("-m", "hi there", a.id)).to eq(0), err.string
-    expect(out.string).to eq("#{short(a)}  sent\n")
-    expect(err.string).to be_empty
-    expect(inputs_of(a)).to contain_exactly(include("prompt" => "hi there", "client_id" => "cli:send"))
-  end
+      expect(run("-m", "x", repl.id, live.id)).to eq(1)
+      expect(out.string.lines).to eq(["#{short(repl)}  refused: it is open in a chi REPL; messages need attached mode\n",
+                                      "#{short(live)}  sent\n"])
+      expect(Process).not_to have_received(:spawn)
+      expect(inputs_of(repl)).to be_empty
+    end
 
-  it "wakes the worker of a session nobody runs" do
-    stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
-    a = make(status: Samagotchi::Session::STATUS_STOPPED)
-    allow(Process).to receive(:spawn).and_return(40_004)
+    it "reports a failure in one line, no backtrace" do
+      a = make(owner: "worker")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Errno::EACCES, "input")
 
-    expect(run("-m", "wake up", a.id)).to eq(0), err.string
-    expect(out.string).to eq("#{short(a)}  sent (started its worker)\n")
-    expect(Process).to have_received(:spawn).at_least(:once)
-    expect(inputs_of(a).first["prompt"]).to eq("wake up")
-  end
+      expect(run("-m", "x", a.id)).to eq(1)
+      expect(out.string).to eq("#{short(a)}  failed: Permission denied - input\n")
+    end
 
-  it "refuses a session open in a chi REPL and exits 1, still sending to the others" do
-    repl = make(owner: "tui")
-    live = make(owner: "worker")
-    serve(live)
-    allow(Process).to receive(:spawn)
+    it "says a message the worker didn't answer for was not sent" do
+      a = make(owner: "worker")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+        .and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, via: :bridge,
+                                                                  ack: { "error" => "worker_timeout",
+                                                                         "detail" => "the session's worker did not answer, so the message was not sent" }))
 
-    expect(run("-m", "x", repl.id, live.id)).to eq(1)
-    expect(out.string.lines).to eq(["#{short(repl)}  refused: it is open in a chi REPL; messages need attached mode\n",
-                                    "#{short(live)}  sent\n"])
-    expect(Process).not_to have_received(:spawn)
-    expect(inputs_of(repl)).to be_empty
-  end
+      expect(run("-m", "x", a.id)).to eq(1)
+      expect(out.string).to eq("#{short(a)}  failed: the session's worker did not answer, so the message was not sent\n")
+    end
 
-  it "reports a failure in one line, no backtrace" do
-    a = make(owner: "worker")
-    allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Errno::EACCES, "input")
+    it "reports an unknown or ambiguous id and exits 1" do
+      live = make(owner: "worker")
+      serve(live)
+      make(id: "abc1-one")
+      make(id: "abc1-two")
 
-    expect(run("-m", "x", a.id)).to eq(1)
-    expect(out.string).to eq("#{short(a)}  failed: Permission denied - input\n")
-  end
+      expect(run("-m", "x", "nope", "abc1", live.id)).to eq(1)
+      expect(err.string).to include("no session nope", "session id abc1 matches 2 sessions")
+      expect(inputs_of(live).size).to eq(1)
+    end
 
-  it "says a message the worker didn't answer for was not sent" do
-    a = make(owner: "worker")
-    allow(Samagotchi::SessionManager).to receive(:deliver_turn)
-      .and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, via: :bridge,
-                                                                ack: { "error" => "worker_timeout",
-                                                                       "detail" => "the session's worker did not answer, so the message was not sent" }))
+    describe "without a locale (Finder, launchd: stdin and ARGV aren't UTF-8)" do
+      it "keeps non-ASCII text from stdin and -m" do
+        a = make(owner: "worker")
+        serve(a)
 
-    expect(run("-m", "x", a.id)).to eq(1)
-    expect(out.string).to eq("#{short(a)}  failed: the session's worker did not answer, so the message was not sent\n")
-  end
+        expect(run("-m", "café?".b, a.id, stdin: StringIO.new("h\xC3\xA9llo".dup.force_encoding("US-ASCII")))).to eq(0), err.string
+        expect(inputs_of(a).first["prompt"]).to eq("> héllo\n\ncafé?")
+      end
+    end
 
-  it "reports an unknown or ambiguous id and exits 1" do
-    live = make(owner: "worker")
-    serve(live)
-    make(id: "abc1-one")
-    make(id: "abc1-two")
-
-    expect(run("-m", "x", "nope", "abc1", live.id)).to eq(1)
-    expect(err.string).to include("no session nope", "session id abc1 matches 2 sessions")
-    expect(inputs_of(live).size).to eq(1)
-  end
-
-  describe "without a locale (Finder, launchd: stdin and ARGV aren't UTF-8)" do
-    it "keeps non-ASCII text from stdin and -m" do
+    it "doesn't wait on an inherited stdin that is neither a pipe nor a file (a launcher's socket)" do
       a = make(owner: "worker")
       serve(a)
+      socket, other_end = UNIXSocket.pair
 
-      expect(run("-m", "café?".b, a.id, stdin: StringIO.new("h\xC3\xA9llo".dup.force_encoding("US-ASCII")))).to eq(0), err.string
-      expect(inputs_of(a).first["prompt"]).to eq("> héllo\n\ncafé?")
+      expect(Timeout.timeout(5) { run("-m", "hi", a.id, stdin: socket) }).to eq(0), err.string
+      expect(inputs_of(a).first["prompt"]).to eq("hi")
+    ensure
+      [socket, other_end].compact.each(&:close)
     end
-  end
 
-  it "doesn't wait on an inherited stdin that is neither a pipe nor a file (a launcher's socket)" do
-    a = make(owner: "worker")
-    serve(a)
-    socket, other_end = UNIXSocket.pair
+    it "is a usage error with neither -m nor stdin, or both blank" do
+      a = make(owner: "worker")
+      tty = StringIO.new("")
+      def tty.tty? = true
 
-    expect(Timeout.timeout(5) { run("-m", "hi", a.id, stdin: socket) }).to eq(0), err.string
-    expect(inputs_of(a).first["prompt"]).to eq("hi")
-  ensure
-    [socket, other_end].compact.each(&:close)
-  end
+      expect(run(a.id, stdin: tty)).to eq(2)
+      expect(run("-m", " ", a.id, stdin: StringIO.new("\n \n"))).to eq(2)
+      expect(err.string).to include("Usage: chi send")
+      expect(inputs_of(a)).to be_empty
+    end
 
-  it "is a usage error with neither -m nor stdin, or both blank" do
-    a = make(owner: "worker")
-    tty = StringIO.new("")
-    def tty.tty? = true
+    it "refuses a message over 16 KiB before sending any" do
+      a = make(owner: "worker")
 
-    expect(run(a.id, stdin: tty)).to eq(2)
-    expect(run("-m", " ", a.id, stdin: StringIO.new("\n \n"))).to eq(2)
-    expect(err.string).to include("Usage: chi send")
-    expect(inputs_of(a)).to be_empty
-  end
+      expect(run("-m", "x" * ((16 * 1024) + 1), a.id)).to eq(1)
+      expect(err.string).to include("chi send: the message is 16385 bytes; the limit is 16 KiB")
+      expect(inputs_of(a)).to be_empty
+    end
 
-  it "refuses a message over 16 KiB before sending any" do
-    a = make(owner: "worker")
+    it "asks for targets, and has no --all" do
+      expect(run("-m", "x")).to eq(2)
+      expect(err.string).to include("give session ids")
+      expect(run("-m", "x", "--all")).to eq(2)
+      expect(err.string).to include("--all")
+    end
 
-    expect(run("-m", "x" * ((16 * 1024) + 1), a.id)).to eq(1)
-    expect(err.string).to include("chi send: the message is 16385 bytes; the limit is 16 KiB")
-    expect(inputs_of(a)).to be_empty
-  end
-
-  it "asks for targets, and has no --all" do
-    expect(run("-m", "x")).to eq(2)
-    expect(err.string).to include("give session ids")
-    expect(run("-m", "x", "--all")).to eq(2)
-    expect(err.string).to include("--all")
-  end
-
-  it "prints help" do
-    expect(run("--help")).to eq(0)
-    expect(out.string).to include("Usage: chi send", "-m TEXT", "chi sessions list --live")
+    it "prints help" do
+      expect(run("--help")).to eq(0)
+      expect(out.string).to include("Usage: chi send", "-m TEXT", "chi sessions list --live")
+    end
   end
 
   describe ".vision_answer" do
@@ -630,219 +641,224 @@ RSpec.describe Samagotchi::SendCommand do
     end
   end
 
-  describe "--image" do
-    let(:fixtures) { File.expand_path("fixtures/images", __dir__) }
-    let(:png) { File.join(fixtures, "tiny.png") }
-    let(:jpg) { File.join(fixtures, "tiny.jpg") }
+  RemoteBackend.both(self) do
+    describe "--image" do
+      let(:fixtures) { File.expand_path("fixtures/images", __dir__) }
+      let(:png) { File.join(fixtures, "tiny.png") }
+      let(:jpg) { File.join(fixtures, "tiny.jpg") }
 
-    # No model server here: whether the model sees images is unknown, as
-    # with a host chi can't ask (the examples below that refuse say no).
-    before { allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION) }
+      # No model server here: whether the model sees images is unknown, as
+      # with a host chi can't ask (the examples below that refuse say no).
+      before { allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION) }
 
-    # Each ref names a file in that session's own images/.
-    def images_in(session, input)
-      input.fetch("images").map do |ref|
-        expect(File.file?(File.join(dir_of(session), ref["file"]))).to be(true), "#{ref["file"]} missing in #{short(session)}"
-        ref["name"]
-      end
-    end
-
-    it "copies the image into the session and sends it as a ref with the message" do
-      a = make(owner: "worker")
-      events = serve(a)
-
-      expect(run("--image", png, "-m", "why is this red?", short(a))).to eq(0), err.string
-
-      expect(out.string).to eq("#{short(a)}  sent with 1 image\n")
-      input = inputs_of(a).first
-      expect(input).to include("prompt" => "why is this red?", "client_id" => "cli:send")
-      expect(images_in(a, input)).to eq(["tiny.png"])
-      expect(events.first).to include(type: :turn_enqueued, images: [include(name: "tiny.png")])
-    end
-
-    it "sends each image to each session, from its own images/, ingesting a file once" do
-      a = make(owner: "worker")
-      b = make(owner: "worker")
-      serve(a)
-      serve(b)
-      allow(Samagotchi::ImageStore).to receive(:ingest).and_call_original
-
-      expect(run("--image=#{png}", "--image", jpg, "-m", "look", a.id, b.id)).to eq(0), err.string
-
-      expect(out.string.lines).to eq(["#{short(a)}  sent with 2 images\n", "#{short(b)}  sent with 2 images\n"])
-      expect(images_in(a, inputs_of(a).first)).to eq(["tiny.png", "tiny.jpg"])
-      expect(images_in(b, inputs_of(b).first)).to eq(["tiny.png", "tiny.jpg"])
-      expect(Samagotchi::ImageStore).to have_received(:ingest).twice
-    end
-
-    it "converts an image the model can't take (bmp) to png" do
-      skip "no sips or ImageMagick" unless Samagotchi::ImageResizer.detect.available?
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--image", File.join(fixtures, "tiny.bmp"), "-m", "hm", a.id)).to eq(0), err.string
-      expect(inputs_of(a).first["images"].first["file"]).to end_with(".png")
-    end
-
-    it "says a busy session runs the image message after the current turn" do
-      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
-      serve(a)
-
-      expect(run("--image", png, "-m", "and this?", a.id)).to eq(0)
-      expect(out.string).to eq("#{short(a)}  sent with 1 image (runs after the current turn)\n")
-    end
-
-    it "refuses a missing file or a non-image (exit 1) and too many images (usage, 2) before sending anything" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
-      expect(err.string).to include("chi send: /nope/shot.png: no such file")
-      # A text file named .png.
-      expect(run("--image", File.join(fixtures, "text.png"), "-m", "x", a.id)).to eq(1)
-      expect(err.string).to include("chi send: text.png is not an image chi can send")
-      expect(run(*(["--image", png] * 21), "-m", "x", a.id)).to eq(2)
-      expect(err.string).to include("at most 20 images")
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "reports a missing image as a --format json error line (a run-time failure, not usage)" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--wait", "--format", "json", "--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
-      line = JSON.parse(out.string)
-      expect(line).to include("status" => "error", "session_id" => nil)
-      expect(line["detail"]).to include("/nope/shot.png: no such file")
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "needs text with the images, also with --wait (which would otherwise only wait)" do
-      a = make(owner: "worker")
-      tty = StringIO.new("")
-      def tty.tty? = true
-
-      expect(run("--image", png, a.id, stdin: tty)).to eq(2)
-      expect(run("--wait", "--image", png, a.id, stdin: tty)).to eq(2)
-      expect(err.string.scan("chi send: --image needs a message: pass -m TEXT or pipe it in").size).to eq(2)
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "takes piped context as the text" do
-      a = make(owner: "worker")
-      serve(a)
-
-      expect(run("--image", png, a.id, stdin: StringIO.new("the error log\n"))).to eq(0), err.string
-      expect(inputs_of(a).first).to include("prompt" => "the error log")
-    end
-
-    it "fails the one session it can't copy into and still sends to the others" do
-      a = make(owner: "worker")
-      b = make(owner: "worker")
-      serve(b)
-      allow(Samagotchi::ImageStore).to receive(:copy_file).and_call_original
-      allow(Samagotchi::ImageStore).to receive(:copy_file)
-        .with(anything, from: anything, to: dir_of(a)).and_raise(Errno::ENOSPC, "images")
-
-      expect(run("--image", png, "-m", "x", a.id, b.id)).to eq(1)
-      expect(out.string.lines).to eq(["#{short(a)}  failed: No space left on device - images\n",
-                                      "#{short(b)}  sent with 1 image\n"])
-      expect(inputs_of(a)).to be_empty
-    end
-
-    it "with --new starts the session idle, waits for its worker, then sends the turn with the image (one worker)" do
-      started = nil
-      worker = nil
-      allow(Process).to receive(:spawn) do
-        # The worker coming up a moment later, as a real one does: it owns
-        # the session, then serves its Bridge.
-        started ||= Samagotchi::Session.list(state_dir: tmpdir).first
-        worker ||= Thread.new do
-          sleep(0.3)
-          locks << Samagotchi::OwnerLock.acquire(dir_of(started), kind: "worker")
-          serve(started)
+      # Each ref names a file in that session's own images/.
+      def images_in(session, input)
+        input.fetch("images").map do |ref|
+          expect(File.file?(File.join(dir_of(session), ref["file"]))).to be(true), "#{ref["file"]} missing in #{short(session)}"
+          ref["name"]
         end
-        40_005
       end
 
-      Dir.mktmpdir("proj") do |dir|
-        expect(run("--new", "--dir", dir, "--image", png, "-m", "what is this?")).to eq(0), err.string
+      it "copies the image into the session and sends it as a ref with the message" do
+        a = make(owner: "worker")
+        events = serve(a)
+
+        expect(run("--image", png, "-m", "why is this red?", short(a))).to eq(0), err.string
+
+        expect(out.string).to eq("#{short(a)}  sent with 1 image\n")
+        input = inputs_of(a).first
+        expect(input).to include("prompt" => "why is this red?", "client_id" => "cli:send")
+        expect(images_in(a, input)).to eq(["tiny.png"])
+        expect(events.first).to include(type: :turn_enqueued, images: [include(name: "tiny.png")])
       end
 
-      worker.join
-      expect(Process).to have_received(:spawn).once
-      expect(out.string).to eq("#{started.id}  started with 1 image\n")
-      session = Samagotchi::Session.load(started.id, state_dir: tmpdir)
-      expect(session.last_prompt).to be_nil
-      expect(session.first_preview).to eq("what is this?")
-      input = inputs_of(started).first
-      expect(input).to include("prompt" => "what is this?")
-      expect(images_in(started, input)).to eq(["tiny.png"])
-    end
-
-    describe "to a model that can't take images" do
-      let(:text_only) { Samagotchi::VisionSupport::Answer.new(value: false, reason: "host main lists gemma4 as text-only") }
-
-      it "refuses that session up front with the reason, sends to the others, and exits 1" do
+      it "sends each image to each session, from its own images/, ingesting a file once",
+         local_only: "ingests here once; remotely chi web stores each upload again" do
         a = make(owner: "worker")
         b = make(owner: "worker")
-        b.model_name = "vis-model"
-        b.save(state_dir: tmpdir)
         serve(a)
-        events_b = serve(b)
-        allow(described_class).to receive(:vision_answer) do |model|
-          model == "gemma4" ? text_only : Samagotchi::VisionSupport::Answer.new(value: true, reason: nil)
-        end
+        serve(b)
+        allow(Samagotchi::ImageStore).to receive(:ingest).and_call_original
 
-        expect(run("--image", png, "-m", "look", a.id, b.id)).to eq(1)
-        expect(out.string.lines).to eq(["#{short(a)}  refused: gemma4 can't take images (host main lists gemma4 as text-only); " \
-                                        "send text only or switch the model (/model)\n",
+        expect(run("--image=#{png}", "--image", jpg, "-m", "look", a.id, b.id)).to eq(0), err.string
+
+        expect(out.string.lines).to eq(["#{short(a)}  sent with 2 images\n", "#{short(b)}  sent with 2 images\n"])
+        expect(images_in(a, inputs_of(a).first)).to eq(["tiny.png", "tiny.jpg"])
+        expect(images_in(b, inputs_of(b).first)).to eq(["tiny.png", "tiny.jpg"])
+        expect(Samagotchi::ImageStore).to have_received(:ingest).twice
+      end
+
+      it "converts an image the model can't take (bmp) to png" do
+        skip "no sips or ImageMagick" unless Samagotchi::ImageResizer.detect.available?
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--image", File.join(fixtures, "tiny.bmp"), "-m", "hm", a.id)).to eq(0), err.string
+        expect(inputs_of(a).first["images"].first["file"]).to end_with(".png")
+      end
+
+      it "says a busy session runs the image message after the current turn" do
+        a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(a)
+
+        expect(run("--image", png, "-m", "and this?", a.id)).to eq(0)
+        expect(out.string).to eq("#{short(a)}  sent with 1 image (runs after the current turn)\n")
+      end
+
+      it "refuses a missing file or a non-image (exit 1) and too many images (usage, 2) before sending anything" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
+        expect(err.string).to include("chi send: /nope/shot.png: no such file")
+        # A text file named .png.
+        expect(run("--image", File.join(fixtures, "text.png"), "-m", "x", a.id)).to eq(1)
+        expect(err.string).to include("chi send: text.png is not an image chi can send")
+        expect(run(*(["--image", png] * 21), "-m", "x", a.id)).to eq(2)
+        expect(err.string).to include("at most 20 images")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "reports a missing image as a --format json error line (a run-time failure, not usage)" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--wait", "--format", "json", "--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
+        line = JSON.parse(out.string)
+        expect(line).to include("status" => "error", "session_id" => nil)
+        expect(line["detail"]).to include("/nope/shot.png: no such file")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "needs text with the images, also with --wait (which would otherwise only wait)" do
+        a = make(owner: "worker")
+        tty = StringIO.new("")
+        def tty.tty? = true
+
+        expect(run("--image", png, a.id, stdin: tty)).to eq(2)
+        expect(run("--wait", "--image", png, a.id, stdin: tty)).to eq(2)
+        expect(err.string.scan("chi send: --image needs a message: pass -m TEXT or pipe it in").size).to eq(2)
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "takes piped context as the text" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--image", png, a.id, stdin: StringIO.new("the error log\n"))).to eq(0), err.string
+        expect(inputs_of(a).first).to include("prompt" => "the error log")
+      end
+
+      it "fails the one session it can't copy into and still sends to the others",
+         local_only: "the copy into this machine's session folder; remotely chi web stores each upload" do
+        a = make(owner: "worker")
+        b = make(owner: "worker")
+        serve(b)
+        allow(Samagotchi::ImageStore).to receive(:copy_file).and_call_original
+        allow(Samagotchi::ImageStore).to receive(:copy_file)
+          .with(anything, from: anything, to: dir_of(a)).and_raise(Errno::ENOSPC, "images")
+
+        expect(run("--image", png, "-m", "x", a.id, b.id)).to eq(1)
+        expect(out.string.lines).to eq(["#{short(a)}  failed: No space left on device - images\n",
                                         "#{short(b)}  sent with 1 image\n"])
         expect(inputs_of(a)).to be_empty
-        expect(Dir.exist?(File.join(dir_of(a), "images"))).to be(false)
-        expect(events_b.first).to include(type: :turn_enqueued)
       end
 
-      it "with --wait says so on stderr and exits 1 without sending" do
-        a = make(owner: "worker")
-        serve(a)
-        allow(described_class).to receive(:vision_answer).and_return(text_only)
+      it "with --new starts the session idle, waits for its worker, then sends the turn with the image (one worker)" do
+        started = nil
+        worker = nil
+        allow(Process).to receive(:spawn) do
+          # The worker coming up a moment later, as a real one does: it owns
+          # the session, then serves its Bridge.
+          started ||= Samagotchi::Session.list(state_dir: tmpdir).first
+          worker ||= Thread.new do
+            sleep(0.3)
+            locks << Samagotchi::OwnerLock.acquire(dir_of(started), kind: "worker")
+            serve(started)
+          end
+          40_005
+        end
 
-        expect(run("--wait", "--image", png, "-m", "look", a.id)).to eq(1)
-        expect(err.string).to include("#{short(a)}  refused: gemma4 can't take images")
-        expect(out.string).to eq("")
-        expect(inputs_of(a)).to be_empty
+        Dir.mktmpdir("proj") do |dir|
+          expect(run("--new", "--dir", dir, "--image", png, "-m", "what is this?")).to eq(0), err.string
+        end
+
+        worker.join
+        expect(Process).to have_received(:spawn).once
+        expect(out.string).to eq("#{started.id}  started with 1 image\n")
+        session = Samagotchi::Session.load(started.id, state_dir: tmpdir)
+        expect(session.last_prompt).to be_nil
+        expect(session.first_preview).to eq("what is this?")
+        input = inputs_of(started).first
+        expect(input).to include("prompt" => "what is this?")
+        expect(images_in(started, input)).to eq(["tiny.png"])
       end
 
-      it "with --new starts no session" do
-        allow(described_class).to receive(:vision_answer).with("txt", typed: nil).and_return(text_only)
-        allow(Process).to receive(:spawn)
+      describe "to a model that can't take images" do
+        let(:text_only) { Samagotchi::VisionSupport::Answer.new(value: false, reason: "host main lists gemma4 as text-only") }
 
-        expect(run("--new", "--model", "txt", "--image", png, "-m", "hi")).to eq(1)
-        expect(err.string).to include("chi send: refused: txt can't take images (host main lists gemma4 as text-only)")
-        expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
-        expect(Process).not_to have_received(:spawn)
+        it "refuses that session up front with the reason, sends to the others, and exits 1" do
+          a = make(owner: "worker")
+          b = make(owner: "worker")
+          b.model_name = "vis-model"
+          b.save(state_dir: tmpdir)
+          serve(a)
+          events_b = serve(b)
+          allow(described_class).to receive(:vision_answer) do |model|
+            model == "gemma4" ? text_only : Samagotchi::VisionSupport::Answer.new(value: true, reason: nil)
+          end
+
+          expect(run("--image", png, "-m", "look", a.id, b.id)).to eq(1)
+          expect(out.string.lines).to eq(["#{short(a)}  refused: gemma4 can't take images (host main lists gemma4 as text-only); " \
+                                          "send text only or switch the model (/model)\n",
+                                          "#{short(b)}  sent with 1 image\n"])
+          expect(inputs_of(a)).to be_empty
+          # Remotely the images are uploaded before the turn route refuses them.
+          expect(Dir.exist?(File.join(dir_of(a), "images"))).to be(false) if backend == :local
+          expect(events_b.first).to include(type: :turn_enqueued)
+        end
+
+        it "with --wait says so on stderr and exits 1 without sending" do
+          a = make(owner: "worker")
+          serve(a)
+          allow(described_class).to receive(:vision_answer).and_return(text_only)
+
+          expect(run("--wait", "--image", png, "-m", "look", a.id)).to eq(1)
+          expect(err.string).to include("#{short(a)}  refused: gemma4 can't take images")
+          expect(out.string).to eq("")
+          expect(inputs_of(a)).to be_empty
+        end
+
+        it "with --new starts no session" do
+          allow(described_class).to receive(:vision_answer).with("txt", typed: nil).and_return(text_only)
+          allow(Process).to receive(:spawn)
+
+          expect(run("--new", "--model", "txt", "--image", png, "-m", "hi")).to eq(1)
+          expect(err.string).to include("chi send: refused: txt can't take images (host main lists gemma4 as text-only)")
+          expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
+          expect(Process).not_to have_received(:spawn)
+        end
+
+        it "sends as before when it is unknown whether the model sees images, and checks nothing without images" do
+          a = make(owner: "worker")
+          serve(a)
+          allow(described_class).to receive(:vision_answer).and_return(Samagotchi::VisionSupport::Answer.new(value: nil, reason: nil))
+
+          expect(run("--image", png, "-m", "look", a.id)).to eq(0), err.string
+          expect(run("-m", "text", a.id)).to eq(0)
+          expect(described_class).to have_received(:vision_answer).once
+        end
       end
 
-      it "sends as before when it is unknown whether the model sees images, and checks nothing without images" do
-        a = make(owner: "worker")
-        serve(a)
-        allow(described_class).to receive(:vision_answer).and_return(Samagotchi::VisionSupport::Answer.new(value: nil, reason: nil))
+      it "with --new keeps the idle session and names it when its worker never comes up" do
+        stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+        allow(Process).to receive(:spawn).and_return(40_006)
 
-        expect(run("--image", png, "-m", "look", a.id)).to eq(0), err.string
-        expect(run("-m", "text", a.id)).to eq(0)
-        expect(described_class).to have_received(:vision_answer).once
+        expect(run("--new", "--image", png, "-m", "hi")).to eq(1)
+        started = Samagotchi::Session.list(state_dir: tmpdir).first
+        expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept (chi --attach #{started.id})\n")
+        expect(Process).to have_received(:spawn).once
       end
-    end
-
-    it "with --new keeps the idle session and names it when its worker never comes up" do
-      stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
-      allow(Process).to receive(:spawn).and_return(40_006)
-
-      expect(run("--new", "--image", png, "-m", "hi")).to eq(1)
-      started = Samagotchi::Session.list(state_dir: tmpdir).first
-      expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept (chi --attach #{started.id})\n")
-      expect(Process).to have_received(:spawn).once
     end
   end
 

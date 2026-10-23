@@ -174,7 +174,15 @@ module Samagotchi
       # The current git project's sessions (Samagotchi::ProjectScope), like
       # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
       # project's. Machine-local (this cwd's project): remotely every
-      # project's unless --cwd (D4).
+      # project's (D4), and --scope=project is --cwd's project there (the
+      # server finds its root). The rows are the server's (list_summaries).
+      if @access.remote?
+        return usage_error("--scope=project on a remote needs --cwd: a folder there") if scope == "project" && !cwd
+
+        project = scope == "project" ? cwd : nil
+        scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} on #{@access.name} (--scope=all: every project)" }
+        return list_summaries(project, scope_note)
+      end
       project = scope == "all" || cwd ? nil : Samagotchi::ProjectScope.root_for(Dir.pwd)
       scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} (--scope=all: every project)" }
 

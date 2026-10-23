@@ -124,7 +124,9 @@ module Samagotchi
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
 
         selected = selection(pending, options) or return @selection_status
-        refusal = parent_refusal(pending, selected, session)
+        # Remotely the worker's check alone (chi web passes chi answer's
+        # client_id on, and its 403 says why).
+        refusal = parent_refusal(pending, selected, session) unless @access.remote?
         return failure(refusal) if refusal
 
         posted = post(id, qid, selected, options)

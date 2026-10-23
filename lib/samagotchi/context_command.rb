@@ -135,7 +135,7 @@ module Samagotchi
         name: name, cmd: options[:cmd], every_seconds: ContextSources.check_every!(options[:every]),
         why: ContextSources.one_line(options[:why], ContextSources::LINE_MAX_CHARS),
         hint: ContextSources.one_line(options[:hint], ContextSources::LINE_MAX_CHARS),
-        scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601
+        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601
       )
       each_target(options, args) do |target|
         @access.context_add(target, source)
@@ -151,6 +151,7 @@ module Samagotchi
       if options[:cmd] || options[:push] || options[:every]
         return usage_error("a URL's command comes from its provider: give no --cmd, --push or --every")
       end
+      return add_remote_url(url, options, args) if @access.remote?
 
       resolved = ContextProviders.resolve(url)
       return fail_line("no installed bundle resolves #{url} (chi bundle install github-pr for GitHub PRs)") unless resolved
@@ -159,11 +160,24 @@ module Samagotchi
         name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds,
         why: ContextSources.one_line(options[:why] || resolved.why, ContextSources::LINE_MAX_CHARS),
         hint: ContextSources.one_line(options[:hint] || resolved.hint, ContextSources::LINE_MAX_CHARS),
-        scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601, provider: resolved.bundle
+        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601, provider: resolved.bundle
       )
       each_target(options, args) do |target|
         @access.context_add(target, source)
         @stdout.puts("#{target.label}  attached #{source.name}")
+        true
+      end
+    rescue ContextProviders::Invalid => e
+      fail_line(e.message)
+    end
+
+    # A URL on a remote: its installed bundles' providers resolve it there.
+    def add_remote_url(url, options, args)
+      why = ContextSources.one_line(options[:why], ContextSources::LINE_MAX_CHARS)
+      hint = ContextSources.one_line(options[:hint], ContextSources::LINE_MAX_CHARS)
+      each_target(options, args) do |target|
+        name = @access.context_add_url(target, url, why: why, hint: hint, added_by: added_by)
+        @stdout.puts("#{target.label}  attached #{name}")
         true
       end
     rescue ContextProviders::Invalid => e
@@ -334,10 +348,11 @@ module Samagotchi
         return [target]
       end
       if args.empty?
-        own = inside_session
+        own = inside_session unless @access.remote?
         unless own
-          error_line("#{command_name}: give session ids (or unique prefixes), or --project; " \
-                     "inside a chi session it's that session")
+          # Remotely no default: the session chi runs in is this machine's.
+          error_line("#{command_name}: give session ids (or unique prefixes)" \
+                     "#{", or --project; inside a chi session it's that session" unless @access.remote?}")
           return nil
         end
         args = [own]
@@ -372,9 +387,14 @@ module Samagotchi
       nil
     end
 
+    # Who adds a source: an agent (chi's execute runs this in a session)
+    # or the user's cli.
+    def added_by = inside_session ? "agent" : "cli"
+
     # The session chi's execute runs this in (SAMAGOTCHI_PARENT_SESSION;
     # "chi" is a run with no session). Machine-local (a session on this
-    # machine): remotely no default (P3), the ids are given.
+    # machine): remotely it is no default target (#targets), the ids are
+    # given.
     def inside_session
       id = @env.fetch("SAMAGOTCHI_PARENT_SESSION", "").to_s.strip
       id.empty? || id == "chi" ? nil : id

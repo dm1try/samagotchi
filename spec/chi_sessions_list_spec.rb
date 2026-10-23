@@ -8,6 +8,7 @@ require "spec_helper"
 require "samagotchi/session"
 require "samagotchi/owner_lock"
 require "samagotchi/sessions_command"
+require_relative "support/remote_backend"
 
 # `chi sessions list` as the picker for `chi note` (an Automator dialog,
 # a script): --live, --cwd, --format json|tsv. With none of them the output
@@ -39,7 +40,8 @@ RSpec.describe "chi sessions list" do
   def run_chi(*args, dir: outside)
     out = StringIO.new
     err = StringIO.new
-    code = with_env(env) { Dir.chdir(dir) { Samagotchi::SessionsCommand.new(["list", *args], stdout: out, stderr: err).run } }
+    access = respond_to?(:backend_access) ? backend_access(state_dir) : nil
+    code = with_env(env) { Dir.chdir(dir) { Samagotchi::SessionsCommand.new(["list", *args], stdout: out, stderr: err, access: access).run } }
     [out.string, err.string, code]
   end
 
@@ -61,77 +63,6 @@ RSpec.describe "chi sessions list" do
     end
   end
 
-  it "prints the same lines as before with no new flags" do
-    session = make("hello there")
-    make("a test", test_run: true)
-
-    out, err, status = run_chi
-
-    expect(status).to eq(0), err
-    expect(out).to include("#{session.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
-    expect(out).to include("  a test [test]\n")
-    expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
-  end
-
-  it "keeps --sort and --order with --format json and --cwd" do
-    first = make("first")
-    second = make("second")
-
-    newest_first = JSON.parse(run_chi("--format", "json").first).map { |row| row["id"] }
-    expect(newest_first).to eq([second.id, first.id])
-    oldest_first = JSON.parse(run_chi("--format", "json", "--order", "asc").first).map { |row| row["id"] }
-    expect(oldest_first).to eq([first.id, second.id])
-    out, = run_chi("--cwd", "/work", "--format", "tsv", "--sort", "created_at", "--order", "asc")
-    expect(out.lines.map { |line| line.split("\t").first }).to eq([first.id, second.id])
-  end
-
-  it "marks a session whose last turn loop-guard stopped [looped], and no other" do
-    looped = make("kept repeating itself", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
-    other = make("stopped from the outside", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "check-in" })
-    plain = make("finished", last_turn: { "outcome" => "completed" })
-
-    out, err, status = run_chi
-
-    expect(status).to eq(0), err
-    expect(out).to match(/^#{looped.id} .*  kept repeating itself \[looped\]\n/)
-    expect(out).to match(/^#{other.id} .*  stopped from the outside \[stopped by check-in\]\n/)
-    expect(out).to match(/^#{plain.id} .*  finished\n/)
-  end
-
-  it "marks it in the --live, --cwd and --format text listings too" do
-    looped = make("kept repeating itself", live: true, owner: "worker",
-                                           last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
-
-    [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
-      out, err, status = run_chi(*args)
-      expect(status).to eq(0), err
-      expect(out).to match(/^#{looped.id} .*  (app · )?kept repeating itself \[looped\]\n/), "#{args.join(" ")}: #{out}"
-    end
-  end
-
-  it "marks a chi scratch session [scratch]" do
-    make("throwaway", scratch: true)
-
-    out, err, status = run_chi
-
-    expect(status).to eq(0), err
-    expect(out).to include("  throwaway [scratch]\n")
-  end
-
-  it "marks it in the --live, --cwd and --format text listings too; json has scratch" do
-    scratch = make("throwaway", scratch: true, owner: "worker")
-    plain = make("kept", live: true)
-
-    [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
-      out, err, status = run_chi(*args)
-      expect(status).to eq(0), err
-      expect(out).to match(/  (app · )?throwaway \[scratch\]\n/), "#{args.join(" ")}: #{out}"
-      expect(out).to match(/  (app · )?kept\n/)
-    end
-    rows = JSON.parse(run_chi("--format", "json").first).to_h { |row| [row["id"], row["scratch"]] }
-    expect(rows).to eq(scratch.id => true, plain.id => false)
-  end
-
   def save_context(session, used_tokens, window_tokens)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     FileUtils.mkdir_p(dir)
@@ -140,275 +71,351 @@ RSpec.describe "chi sessions list" do
                              "context" => { "used_tokens" => used_tokens, "window_tokens" => window_tokens }))
   end
 
-  it "shows how full the context was after the last turn, in the plain and the --live listings; json has ctx_pct" do
-    counted = make("counted", live: true)
-    save_context(counted, 1234, 10_000)
-    scratch = make("throwaway", scratch: true)
-    save_context(scratch, 500, 1000)
-    unknown = make("no window yet")
-    save_context(unknown, 500, nil)
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to include("#{counted.id}  idle      ctx 12%   ")
-    expect(out).to match(/#{scratch.id}  idle      ctx 50%   .*  throwaway \[scratch\]\n/)
-    expect(out).to include("#{unknown.id}  idle      #{" " * 8}  ")
-
-    live_out, = run_chi("--live")
-    expect(live_out).to include("#{counted.id}  live      ctx 12%   ")
-
-    json, = run_chi("--format", "json", "--scope=all")
-    by_id = JSON.parse(json).to_h { |row| [row["id"], row["ctx_pct"]] }
-    expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
-  end
-
-  it "counts the fill against the session's llm_context budget when it is smaller than the window" do
-    budgeted = make("counted", live: true)
-    budgeted.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 20_000)
-    budgeted.save(state_dir: state_dir)
-    save_context(budgeted, 12_340, 100_000)
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to include("#{budgeted.id}  idle      ctx 62%   ")
-
-    json, = run_chi("--format", "json", "--scope=all")
-    expect(JSON.parse(json).first["ctx_pct"]).to eq(61.7)
-  end
-
-  it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)" do
-    parent = make("the plan")
-    child = make("count the specs", live: true, parent_id: parent.id)
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to include("#{child.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
-    expect(out).to match(/#{parent.id}  idle .* the plan\n/)
-
-    out, _err, _status = run_chi("--live")
-    expect(out).to include("#{child.id}  live      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
-
-    out, _err, _status = run_chi("--format=json")
-    by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("parent_id", "delegate")] }
-    expect(by_id).to eq(parent.id => [nil, false], child.id => [parent.id, false])
-  end
-
-  it "marks a chain's link with the session it continues, in the plain and the --live listings; json has continues" do
-    previous = make("monday")
-    today = make("tuesday", live: true).tap do |s|
-      s.continues = previous.id
-      s.save(state_dir: state_dir)
-    end
-    saved = Samagotchi::Session.load(today.id, state_dir: state_dir).updated_at
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to include("#{today.id}  idle      #{" " * 8}  #{saved}  tuesday  ↪ #{previous.id[0, 8]}\n")
-    expect(out).to match(/#{previous.id}  idle .* monday\n/)
-
-    out, _err, _status = run_chi("--live")
-    expect(out).to include("#{today.id}  live      #{" " * 8}  #{saved}  app · tuesday  ↪ #{previous.id[0, 8]}\n")
-
-    out, _err, _status = run_chi("--format=json")
-    expect(JSON.parse(out).to_h { |row| [row["id"], row["continues"]] }).to eq(previous.id => nil, today.id => previous.id)
-  end
-
-  it "marks a session waiting for an answer, in the plain and the --live listings; json has waiting" do
-    asking = make("which file?", live: true)
-    approving = make("run it", live: true)
-    orphaned = make("crashed while asking")
-    { asking => { "id" => "q1", "question" => "Which?" },
-      approving => { "id" => "a1", "question" => "execute: x", "kind" => "approval" },
-      orphaned => { "id" => "q9", "question" => "Gone?" } }.each do |session, pending|
-      s = Samagotchi::Session.load(session.id, state_dir: state_dir)
-      s.status = "running"
-      s.pending_question = pending
-      s.save(state_dir: state_dir)
-    end
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to match(/^#{asking.id}  waiting  .* which file\?\n/)
-    expect(out).to match(/^#{approving.id}  waiting  .* run it\n/)
-    # A question a dead worker left in the file waits for no one.
-    expect(out).to match(/^#{orphaned.id}  running  .* crashed while asking\n/)
-
-    out, _err, _status = run_chi("--live")
-    expect(out).to match(/^#{asking.id}  waiting  /)
-
-    out, _err, _status = run_chi("--format", "json")
-    by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("waiting", "waiting_id")] }
-    expect(by_id).to eq(asking.id => %w[question q1], approving.id => %w[approval a1], orphaned.id => [nil, nil])
-  end
-
-  it "says a delegate's approval waits in its parent's card too (the approval relay), plain and json" do
-    child = make("push it", live: true)
-    s = Samagotchi::Session.load(child.id, state_dir: state_dir)
-    s.status = "running"
-    s.pending_question = { "id" => "a1", "kind" => "approval", "question" => "execute: git push",
-                           "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp", "relay_id" => "r" } }
-    s.save(state_dir: state_dir)
-
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  .* push it\n/)
-    out, _err, _status = run_chi("--live")
-    expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  /)
-    out, _err, _status = run_chi("--format", "json")
-    expect(JSON.parse(out).first.values_at("waiting", "waiting_id", "relayed_to")).to eq(%w[approval a1 pppppppp])
-  end
-
-  it "shows a quoted message without its quote markers" do
-    make("> answer:\n> the build failed\n\nsame bug?")
-
-    out, err, status = run_chi
-
-    expect(status).to eq(0), err
-    expect(out).to include("  answer: the build failed same bug?\n")
-  end
-
-  it "shows the first message of a session with no turn yet (chi send --new -m \"/model x\", the web start page)" do
-    session = make(nil)
-    session.first_preview = "/model box:gemma"
-    session.save(state_dir: state_dir)
-
-    out, err, status = run_chi
-
-    expect(status).to eq(0), err
-    expect(out).to include("#{session.id}  idle  ").and include("  /model box:gemma\n")
-  end
-
   def write_recap(session, text)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "recap.json"), JSON.generate(text: text, covered: 2))
   end
 
-  it "shows a saved recap's first sentence in place of the last prompt, in the text output only" do
-    recapped = make("fix it", live: true)
-    plain = make("hello there", live: true)
-    write_recap(recapped, "The user was fixing the login page for the new theme, and the tests. It works now.")
+  # Remotely a plain list is chi web's rows in the --live/--cwd text form
+  # (its status and folder · description), not this machine's file reads.
+  plain = "the plain listing; remotely the --live text form of chi web's rows"
+  RemoteBackend.both(self) do
+    it "prints the same lines as before with no new flags", local_only: plain do
+      session = make("hello there")
+      make("a test", test_run: true)
 
-    out, err, status = run_chi
-    expect(status).to eq(0), err
-    line = out.lines.find { |l| l.start_with?(recapped.id) }
-    expect(line).to end_with("  Fixing the login page for the new theme, and the tests.\n")
-    expect(out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  hello there\n")
+      out, err, status = run_chi
 
-    live_out = run_chi("--live").first
-    expect(live_out.lines.find { |l| l.start_with?(recapped.id) })
-      .to end_with("  app · Fixing the login page for the new theme, and the test…\n")
-    expect(live_out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  app · hello there\n")
+      expect(status).to eq(0), err
+      expect(out).to include("#{session.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
+      expect(out).to include("  a test [test]\n")
+      expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
+    end
 
-    expect(run_chi("--live", "--format", "tsv").first).to include("#{recapped.id}\tapp · fix it\n")
-    expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == recapped.id })
-      .to include("desc" => "app · fix it")
-  end
+    it "keeps --sort and --order with --format json and --cwd" do
+      first = make("first")
+      second = make("second")
 
-  it "shows a session's title over its recap and its last prompt, plain, live, tsv and json" do
-    titled = make("fix it", live: true)
-    write_recap(titled, "The user was fixing the login page. It works now.")
-    s = Samagotchi::Session.load(titled.id, state_dir: state_dir)
-    s.title = "Login fix"
-    s.save(state_dir: state_dir)
+      newest_first = JSON.parse(run_chi("--format", "json").first).map { |row| row["id"] }
+      expect(newest_first).to eq([second.id, first.id])
+      oldest_first = JSON.parse(run_chi("--format", "json", "--order", "asc").first).map { |row| row["id"] }
+      expect(oldest_first).to eq([first.id, second.id])
+      out, = run_chi("--cwd", "/work", "--format", "tsv", "--sort", "created_at", "--order", "asc")
+      expect(out.lines.map { |line| line.split("\t").first }).to eq([first.id, second.id])
+    end
 
-    expect(run_chi.first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  Login fix\n")
-    expect(run_chi("--live").first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  app · Login fix\n")
-    expect(run_chi("--live", "--format", "tsv").first).to include("#{titled.id}\tapp · Login fix\n")
-    expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == titled.id })
-      .to include("desc" => "app · Login fix", "title" => "Login fix")
-  end
+    it "marks a session whose last turn loop-guard stopped [looped], and no other", local_only: plain do
+      looped = make("kept repeating itself", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
+      other = make("stopped from the outside", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "check-in" })
+      plain = make("finished", last_turn: { "outcome" => "completed" })
 
-  it "cuts a long recap to 60 characters, as it does a prompt" do
-    session = make("x")
-    write_recap(session, "Checking #{"word " * 30}.")
+      out, err, status = run_chi
 
-    line = run_chi.first.lines.find { |l| l.start_with?(session.id) }
-    expect(line.chomp.split("  ").last).to eq("Checking #{"word " * 30}"[0, 60])
-  end
+      expect(status).to eq(0), err
+      expect(out).to match(/^#{looped.id} .*  kept repeating itself \[looped\]\n/)
+      expect(out).to match(/^#{other.id} .*  stopped from the outside \[stopped by check-in\]\n/)
+      expect(out).to match(/^#{plain.id} .*  finished\n/)
+    end
 
-  it "--live --format tsv: id<TAB>description per live session, for choose from list + cut -f1" do
-    live = make("fix the login page", live: true)
-    make("stopped one")
-    make("a live test", live: true, test_run: true)
+    it "marks it in the --live, --cwd and --format text listings too" do
+      looped = make("kept repeating itself", live: true, owner: "worker",
+                                             last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
 
-    out, err, status = run_chi("--live", "--format", "tsv")
+      [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
+        out, err, status = run_chi(*args)
+        expect(status).to eq(0), err
+        expect(out).to match(/^#{looped.id} .*  (app · )?kept repeating itself \[looped\]\n/), "#{args.join(" ")}: #{out}"
+      end
+    end
 
-    expect(status).to eq(0), err
-    expect(out).to eq("#{live.id}\tapp · fix the login page\n")
-  end
+    it "marks a chi scratch session [scratch]", local_only: plain do
+      make("throwaway", scratch: true)
 
-  it "--live in a test run (SAMAGOTCHI_ENV=test) lists its test sessions, marked [test]" do
-    live = make("a live test", live: true, test_run: true)
+      out, err, status = run_chi
 
-    out, err, status = run_chi("--live")
-    expect(status).to eq(0), err
-    expect(out).to eq("No sessions.\n")
+      expect(status).to eq(0), err
+      expect(out).to include("  throwaway [scratch]\n")
+    end
 
-    env["SAMAGOTCHI_ENV"] = "test"
-    out, err, status = run_chi("--live")
-    expect(status).to eq(0), err
-    expect(out).to start_with("#{live.id}  live      ")
-    expect(out).to include("a live test [test]\n")
-    expect(out).to end_with("\n1 session(s)\n")
-  end
+    it "marks it in the --live, --cwd and --format text listings too; json has scratch" do
+      scratch = make("throwaway", scratch: true, owner: "worker")
+      plain = make("kept", live: true)
 
-  it "--format json: one object per session" do
-    live = make("fix it", cwd: "/work/app", live: true)
+      [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
+        out, err, status = run_chi(*args)
+        expect(status).to eq(0), err
+        expect(out).to match(/  (app · )?throwaway \[scratch\]\n/), "#{args.join(" ")}: #{out}"
+        expect(out).to match(/  (app · )?kept\n/)
+      end
+      rows = JSON.parse(run_chi("--format", "json").first).to_h { |row| [row["id"], row["scratch"]] }
+      expect(rows).to eq(scratch.id => true, plain.id => false)
+    end
 
-    out, err, status = run_chi("--live", "--format=json", "--cwd", "/work")
+    it "shows how full the context was after the last turn, in the plain and the --live listings; json has ctx_pct", local_only: plain do
+      counted = make("counted", live: true)
+      save_context(counted, 1234, 10_000)
+      scratch = make("throwaway", scratch: true)
+      save_context(scratch, 500, 1000)
+      unknown = make("no window yet")
+      save_context(unknown, 500, nil)
 
-    expect(status).to eq(0), err
-    expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it", "title" => nil,
-                                     "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
-                                     "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
-                                     "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
-  end
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to include("#{counted.id}  idle      ctx 12%   ")
+      expect(out).to match(/#{scratch.id}  idle      ctx 50%   .*  throwaway \[scratch\]\n/)
+      expect(out).to include("#{unknown.id}  idle      #{" " * 8}  ")
 
-  it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
-    live = make("fix it", live: true)
-    FileUtils.mkdir_p(Samagotchi::Session.session_dir(live.id, state_dir: state_dir))
-    File.write(File.join(Samagotchi::Session.session_dir(live.id, state_dir: state_dir), "recap.json"),
-               JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
+      live_out, = run_chi("--live")
+      expect(live_out).to include("#{counted.id}  live      ctx 12%   ")
 
-    expect(JSON.parse(run_chi("--live", "--format", "json").first).first).to include("recap" => "We fixed the login.")
-    expect(run_chi("--live", "--format", "tsv").first).to eq("#{live.id}\tapp · fix it\n")
-  end
+      json, = run_chi("--format", "json", "--scope=all")
+      by_id = JSON.parse(json).to_h { |row| [row["id"], row["ctx_pct"]] }
+      expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
+    end
 
-  it "--format json: owner is worker, tui (a chi REPL) or null; the text and tsv lines don't change" do
-    stopped = make("stopped")
-    repl = make("in a repl", owner: "tui")
-    live = make("live", live: true)
+    it "counts the fill against the session's llm_context budget when it is smaller than the window", local_only: plain do
+      budgeted = make("counted", live: true)
+      budgeted.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 20_000)
+      budgeted.save(state_dir: state_dir)
+      save_context(budgeted, 12_340, 100_000)
 
-    out, err, status = run_chi("--format", "json")
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to include("#{budgeted.id}  idle      ctx 62%   ")
 
-    expect(status).to eq(0), err
-    expect(JSON.parse(out).to_h { |row| [row["id"], row["owner"]] }).to eq(live.id => "worker", repl.id => "tui", stopped.id => nil)
-    expect(run_chi("--format", "tsv").first.lines).to eq(["#{live.id}\tapp · live\n", "#{repl.id}\tapp · in a repl\n",
-                                                          "#{stopped.id}\tapp · stopped\n"])
-    expect(run_chi("--cwd", "/work").first).not_to include("tui", "worker")
-  end
+      json, = run_chi("--format", "json", "--scope=all")
+      expect(JSON.parse(json).first["ctx_pct"]).to eq(61.7)
+    end
 
-  it "prints an empty JSON array when nothing matches" do
-    out, _err, status = run_chi("--live", "--format", "json")
+    it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)", local_only: plain do
+      parent = make("the plan")
+      child = make("count the specs", live: true, parent_id: parent.id)
 
-    expect(status).to eq(0)
-    expect(JSON.parse(out)).to eq([])
-  end
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to include("#{child.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
+      expect(out).to match(/#{parent.id}  idle .* the plan\n/)
 
-  it "--live defaults to 10 sessions; --limit changes that" do
-    12.times { |i| make("p#{i}", live: true) }
+      out, _err, _status = run_chi("--live")
+      expect(out).to include("#{child.id}  live      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
 
-    expect(run_chi("--live", "--format", "tsv").first.lines.size).to eq(10)
-    expect(run_chi("--live", "--format", "tsv", "--limit", "3").first.lines.size).to eq(3)
-  end
+      out, _err, _status = run_chi("--format=json")
+      by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("parent_id", "delegate")] }
+      expect(by_id).to eq(parent.id => [nil, false], child.id => [parent.id, false])
+    end
 
-  it "refuses an unknown format" do
-    _out, err, status = run_chi("--format", "yaml")
+    it "marks a chain's link with the session it continues, in the plain and the --live listings; json has continues", local_only: plain do
+      previous = make("monday")
+      today = make("tuesday", live: true).tap do |s|
+        s.continues = previous.id
+        s.save(state_dir: state_dir)
+      end
+      saved = Samagotchi::Session.load(today.id, state_dir: state_dir).updated_at
 
-    expect(status).to eq(2)
-    expect(err).to include("--format text|json|tsv")
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to include("#{today.id}  idle      #{" " * 8}  #{saved}  tuesday  ↪ #{previous.id[0, 8]}\n")
+      expect(out).to match(/#{previous.id}  idle .* monday\n/)
+
+      out, _err, _status = run_chi("--live")
+      expect(out).to include("#{today.id}  live      #{" " * 8}  #{saved}  app · tuesday  ↪ #{previous.id[0, 8]}\n")
+
+      out, _err, _status = run_chi("--format=json")
+      expect(JSON.parse(out).to_h { |row| [row["id"], row["continues"]] }).to eq(previous.id => nil, today.id => previous.id)
+    end
+
+    it "marks a session waiting for an answer, in the plain and the --live listings; json has waiting" do
+      asking = make("which file?", live: true)
+      approving = make("run it", live: true)
+      orphaned = make("crashed while asking")
+      { asking => { "id" => "q1", "question" => "Which?" },
+        approving => { "id" => "a1", "question" => "execute: x", "kind" => "approval" },
+        orphaned => { "id" => "q9", "question" => "Gone?" } }.each do |session, pending|
+        s = Samagotchi::Session.load(session.id, state_dir: state_dir)
+        s.status = "running"
+        s.pending_question = pending
+        s.save(state_dir: state_dir)
+      end
+
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to match(/^#{asking.id}  waiting  .* which file\?\n/)
+      expect(out).to match(/^#{approving.id}  waiting  .* run it\n/)
+      # A question a dead worker left in the file waits for no one.
+      expect(out).to match(/^#{orphaned.id}  running  .* crashed while asking\n/)
+
+      out, _err, _status = run_chi("--live")
+      expect(out).to match(/^#{asking.id}  waiting  /)
+
+      out, _err, _status = run_chi("--format", "json")
+      by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("waiting", "waiting_id")] }
+      expect(by_id).to eq(asking.id => %w[question q1], approving.id => %w[approval a1], orphaned.id => [nil, nil])
+    end
+
+    it "says a delegate's approval waits in its parent's card too (the approval relay), plain and json" do
+      child = make("push it", live: true)
+      s = Samagotchi::Session.load(child.id, state_dir: state_dir)
+      s.status = "running"
+      s.pending_question = { "id" => "a1", "kind" => "approval", "question" => "execute: git push",
+                             "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp", "relay_id" => "r" } }
+      s.save(state_dir: state_dir)
+
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  .* push it\n/)
+      out, _err, _status = run_chi("--live")
+      expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  /)
+      out, _err, _status = run_chi("--format", "json")
+      expect(JSON.parse(out).first.values_at("waiting", "waiting_id", "relayed_to")).to eq(%w[approval a1 pppppppp])
+    end
+
+    it "shows a quoted message without its quote markers", local_only: plain do
+      make("> answer:\n> the build failed\n\nsame bug?")
+
+      out, err, status = run_chi
+
+      expect(status).to eq(0), err
+      expect(out).to include("  answer: the build failed same bug?\n")
+    end
+
+    it "shows the first message of a session with no turn yet (chi send --new -m \"/model x\", the web start page)", local_only: plain do
+      session = make(nil)
+      session.first_preview = "/model box:gemma"
+      session.save(state_dir: state_dir)
+
+      out, err, status = run_chi
+
+      expect(status).to eq(0), err
+      expect(out).to include("#{session.id}  idle  ").and include("  /model box:gemma\n")
+    end
+
+    it "shows a saved recap's first sentence in place of the last prompt, in the text output only", local_only: plain do
+      recapped = make("fix it", live: true)
+      plain = make("hello there", live: true)
+      write_recap(recapped, "The user was fixing the login page for the new theme, and the tests. It works now.")
+
+      out, err, status = run_chi
+      expect(status).to eq(0), err
+      line = out.lines.find { |l| l.start_with?(recapped.id) }
+      expect(line).to end_with("  Fixing the login page for the new theme, and the tests.\n")
+      expect(out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  hello there\n")
+
+      live_out = run_chi("--live").first
+      expect(live_out.lines.find { |l| l.start_with?(recapped.id) })
+        .to end_with("  app · Fixing the login page for the new theme, and the test…\n")
+      expect(live_out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  app · hello there\n")
+
+      expect(run_chi("--live", "--format", "tsv").first).to include("#{recapped.id}\tapp · fix it\n")
+      expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == recapped.id })
+        .to include("desc" => "app · fix it")
+    end
+
+    it "shows a session's title over its recap and its last prompt, plain, live, tsv and json", local_only: plain do
+      titled = make("fix it", live: true)
+      write_recap(titled, "The user was fixing the login page. It works now.")
+      s = Samagotchi::Session.load(titled.id, state_dir: state_dir)
+      s.title = "Login fix"
+      s.save(state_dir: state_dir)
+
+      expect(run_chi.first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  Login fix\n")
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  app · Login fix\n")
+      expect(run_chi("--live", "--format", "tsv").first).to include("#{titled.id}\tapp · Login fix\n")
+      expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == titled.id })
+        .to include("desc" => "app · Login fix", "title" => "Login fix")
+    end
+
+    it "cuts a long recap to 60 characters, as it does a prompt", local_only: plain do
+      session = make("x")
+      write_recap(session, "Checking #{"word " * 30}.")
+
+      line = run_chi.first.lines.find { |l| l.start_with?(session.id) }
+      expect(line.chomp.split("  ").last).to eq("Checking #{"word " * 30}"[0, 60])
+    end
+
+    it "--live --format tsv: id<TAB>description per live session, for choose from list + cut -f1" do
+      live = make("fix the login page", live: true)
+      make("stopped one")
+      make("a live test", live: true, test_run: true)
+
+      out, err, status = run_chi("--live", "--format", "tsv")
+
+      expect(status).to eq(0), err
+      expect(out).to eq("#{live.id}\tapp · fix the login page\n")
+    end
+
+    it "--live in a test run (SAMAGOTCHI_ENV=test) lists its test sessions, marked [test]" do
+      live = make("a live test", live: true, test_run: true)
+
+      out, err, status = run_chi("--live")
+      expect(status).to eq(0), err
+      expect(out).to eq("No sessions.\n")
+
+      env["SAMAGOTCHI_ENV"] = "test"
+      out, err, status = run_chi("--live")
+      expect(status).to eq(0), err
+      expect(out).to start_with("#{live.id}  live      ")
+      expect(out).to include("a live test [test]\n")
+      expect(out).to end_with("\n1 session(s)\n")
+    end
+
+    it "--format json: one object per session" do
+      live = make("fix it", cwd: "/work/app", live: true)
+
+      out, err, status = run_chi("--live", "--format=json", "--cwd", "/work")
+
+      expect(status).to eq(0), err
+      expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it", "title" => nil,
+                                       "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
+                                       "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
+                                       "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
+                                       "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
+    end
+
+    it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
+      live = make("fix it", live: true)
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(live.id, state_dir: state_dir))
+      File.write(File.join(Samagotchi::Session.session_dir(live.id, state_dir: state_dir), "recap.json"),
+                 JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
+
+      expect(JSON.parse(run_chi("--live", "--format", "json").first).first).to include("recap" => "We fixed the login.")
+      expect(run_chi("--live", "--format", "tsv").first).to eq("#{live.id}\tapp · fix it\n")
+    end
+
+    it "--format json: owner is worker, tui (a chi REPL) or null; the text and tsv lines don't change" do
+      stopped = make("stopped")
+      repl = make("in a repl", owner: "tui")
+      live = make("live", live: true)
+
+      out, err, status = run_chi("--format", "json")
+
+      expect(status).to eq(0), err
+      expect(JSON.parse(out).to_h { |row| [row["id"], row["owner"]] }).to eq(live.id => "worker", repl.id => "tui", stopped.id => nil)
+      expect(run_chi("--format", "tsv").first.lines).to eq(["#{live.id}\tapp · live\n", "#{repl.id}\tapp · in a repl\n",
+                                                            "#{stopped.id}\tapp · stopped\n"])
+      expect(run_chi("--cwd", "/work").first).not_to include("tui", "worker")
+    end
+
+    it "prints an empty JSON array when nothing matches" do
+      out, _err, status = run_chi("--live", "--format", "json")
+
+      expect(status).to eq(0)
+      expect(JSON.parse(out)).to eq([])
+    end
+
+    it "--live defaults to 10 sessions; --limit changes that" do
+      12.times { |i| make("p#{i}", live: true) }
+
+      expect(run_chi("--live", "--format", "tsv").first.lines.size).to eq(10)
+      expect(run_chi("--live", "--format", "tsv", "--limit", "3").first.lines.size).to eq(3)
+    end
+
+    it "refuses an unknown format" do
+      _out, err, status = run_chi("--format", "yaml")
+
+      expect(status).to eq(2)
+      expect(err).to include("--format text|json|tsv")
+    end
   end
 
   it "lists the flags in the help, through bin/chi" do
