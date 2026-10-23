@@ -9,6 +9,7 @@ require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../session_inbox"
 require_relative "../session_metrics"
+require_relative "../parent_report"
 require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
@@ -336,11 +337,9 @@ module Samagotchi
         json_response(200, participant_wait_json(result))
       end
 
-      WAITING_FOR_OWNER = "waiting for the session's owner"
-
       def participant_wait_json(result)
         if result.status.to_s == "waiting_for_answer"
-          return { status: "waiting_for_owner", detail: WAITING_FOR_OWNER, turn_id: result[:turn_id] }.compact
+          return { status: "waiting_for_owner", detail: ParentReport::WAITING_FOR_OWNER, turn_id: result[:turn_id] }.compact
         end
 
         text = result[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub

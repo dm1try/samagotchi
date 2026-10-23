@@ -170,6 +170,31 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this review link was revoked by the session's owner")
     end
 
+    # The participant routes chi send --wait --turn T reaches (resolve,
+    # wait/prepare and wait on a turn of theirs); a plain send --wait asks
+    # the owner's busy check and is refused.
+    it "waits on their own turn with chi send --wait --turn: a turn waiting on the owner exits 3, wait again" do
+      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: state)
+      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:#{issued.grant.id}",
+                                                        author: issued.grant.author, enqueued_id: "e-1", delivery: "queue")
+      app = RemoteBackend.app(state_dir: state)
+      allow(app.send(:session_access)).to receive(:wait_reply)
+        .and_return(Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: { "id" => "c1", "kind" => "continue" }))
+      access = described_class.new(RemoteBackend.entry(token: issued.token),
+                                   transport: RemoteBackend::RackTransport.new(app, token: issued.token), sleeper: ->(_s) {})
+      wait_again = "chi --remote studio send --wait --turn e-1 #{session.id}"
+
+      code = Samagotchi::SendCommand.new(["--wait", "--turn", "e-1", session.id[0, 8]], stdout: out, stderr: err,
+                                                                                    state_dir: state, access: access).run
+      expect([code, err.string]).to eq([3, "chi send: waiting for the session's owner: #{wait_again}\n"])
+      json = StringIO.new
+      Samagotchi::SendCommand.new(["--wait", "--format", "json", "--turn", "e-1", session.id], stdout: json, stderr: err,
+                                                                                            state_dir: state, access: access).run
+      expect(JSON.parse(json.string)).to eq("status" => "waiting_for_owner", "session_id" => session.id, "turn_id" => "e-1",
+                                            "detail" => "waiting for the session's owner: #{wait_again}")
+    end
+
     it "words each code once, whatever the route (P3b's too_many_turns and cap_reached included)" do
       label = RemoteBackend.entry.label
       {

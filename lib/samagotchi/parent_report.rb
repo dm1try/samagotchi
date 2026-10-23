@@ -33,14 +33,20 @@ module Samagotchi
       end
     end
 
+    # A participant's turn waiting on the session's owner (a question or
+    # approval it raised, the owner's step-limit Continue offer it is held
+    # for): what chi web's participant wait says, and how it reads here.
+    WAITING_FOR_OWNER = "waiting for the session's owner"
+
     module_function
 
     # @param result [ReplyWait::Result]
     # @return [String] answered, question, failed, canceled, limit (the
     #   turn ran out of iterations, nobody asked), not_continued (a Stop
     #   answered the step-limit question), removed (the queued message was
-    #   taken back before it ran), no_answer, error, worker_gone, stopped
-    #   or running
+    #   taken back before it ran), no_answer, error, worker_gone, stopped,
+    #   waiting_for_owner (a participant's turn waits on the owner: chi
+    #   web's participant wait, through --remote) or running
     def status(result)
       case result.status
       when :done then "answered"
@@ -57,6 +63,7 @@ module Samagotchi
       when :error then "error"
       when :worker_gone then "worker_gone"
       when :stopped then "stopped"
+      when :waiting_for_owner then "waiting_for_owner"
       # ReplyWait's own :canceled is the caller giving up (its cancelled:),
       # and :timeout the deadline: the turn goes on either way.
       else "running"
@@ -64,12 +71,13 @@ module Samagotchi
     end
 
     # @return [Integer] 0 answered (or not continued: the Stop asked for
-    #   was carried out), 3 a question waits, 4 still running, 1 anything
+    #   was carried out), 3 a question waits (or, for a participant, the
+    #   owner: waiting_for_owner), 4 still running, 1 anything
     #   else
     def exit_status(result)
       case status(result)
       when "answered", "not_continued" then CLI::Exit::OK
-      when "question" then CLI::Exit::QUESTION
+      when "question", "waiting_for_owner" then CLI::Exit::QUESTION
       when "running" then CLI::Exit::RUNNING
       else CLI::Exit::FAILED
       end
@@ -304,6 +312,9 @@ module Samagotchi
       when :error then "the worker failed: #{result.text}; #{shows} shows what happened"
       when :worker_gone then "the worker is gone; #{shows} shows what happened"
       when :stopped then "the session was stopped (chi sessions stop)"
+      when :waiting_for_owner
+        turn = turn_id || result.turn_id
+        turn.to_s.empty? ? WAITING_FOR_OWNER : "#{WAITING_FOR_OWNER}: #{via.command("send --wait --turn #{turn} #{session_id}")}"
       else
         wait_again = via.command("send --wait --turn #{turn_id} #{session_id}") unless turn_id.to_s.empty?
         hint = wait_again || shows

@@ -123,7 +123,11 @@ and `chi sessions restart` name what waits, the offer (`continue_offered`), not 
 the worker: a worker that restarts has none, and runs them.
 Their `wait` always waits as for a queued turn of theirs, never for the next reply past a cursor (which could be
 anyone's); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`), the offer asked before the wait
-began too.
+began too. A chi client gets it through `--remote` with a participant's token in `remotes.yml`: `chi --remote NAME
+send --wait --turn T ID` reaches only participant routes (resolve, `wait/prepare` and `wait` on their turn), and
+`ParentReport` reads `waiting_for_owner` as its own status, exit 3 like a question, its detail
+`ParentReport::WAITING_FOR_OWNER` (the route's words too) and the command that waits again. A plain `send --wait -m`
+isn't wired for participants: its busy check (`wait/prepare` without a turn) is refused, 403 `not_permitted`.
 
 **The tool calls.** `Guardrails::ReviewBoundary` denies a participant's turn everything but reads of the project
 ([guardrails](../guardrails.md#a-participants-review-boundary)). Approvals and questions are owner-only: the boundary

@@ -62,6 +62,22 @@ RSpec.describe Samagotchi::ParentReport do
     expect(described_class.exit_status(result)).to eq(3)
   end
 
+  # A participant's wait through chi web (chi --remote send --wait --turn T
+  # with a participant's token): the owner's question or Continue offer
+  # their turn waits on is the owner's, so nothing of it comes back.
+  it "reports a participant's turn waiting for the session's owner, with the wait-again command, exit 3" do
+    result = Samagotchi::ReplyWait::Result.new(status: :waiting_for_owner, turn_id: "e-1")
+    via = Samagotchi::ChiInvocation.new(remote: "studio")
+    expect(JSON.parse(described_class.json_line(result, session_id: id, via: via))).to eq(
+      "status" => "waiting_for_owner", "session_id" => id, "turn_id" => "e-1",
+      "detail" => "waiting for the session's owner: chi --remote studio send --wait --turn e-1 #{id}"
+    )
+    expect(described_class.exit_status(result)).to eq(3)
+    stderr = StringIO.new
+    described_class.report(result, session_id: id, stdout: StringIO.new, stderr: stderr, command: "chi send", via: via)
+    expect(stderr.string).to eq("chi send: waiting for the session's owner: chi --remote studio send --wait --turn e-1 #{id}\n")
+  end
+
   it "includes the waited-for turn id on every JSON result when it is known" do
     [
       Samagotchi::ReplyWait::Result.new(status: :timeout, turn_id: "turn-1"),

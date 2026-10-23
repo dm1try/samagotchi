@@ -143,11 +143,12 @@ module Samagotchi
                     status answered (text), question (question,
                     answer_with), turn_id when known, running, or failed, canceled,
                     limit, no_answer, error, worker_gone, stopped,
-                    command (detail); with --cut or --queue also
+                    command, waiting_for_owner (detail); with --cut or --queue also
                     delivery (what the worker applied: next_step, cut,
                     queue), with --cut also cut (now, waits, off)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
-        question waits, 4 still running (--timeout), 130 Ctrl-C.
+        question waits (or the owner, for a participant's token), 4
+        still running (--timeout), 130 Ctrl-C.
         Sessions on this machine, or another's: chi --remote NAME send …
         (chi remote). Answers show in the attached TUI or web page, not
         here.
