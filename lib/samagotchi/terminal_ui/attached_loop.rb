@@ -1429,7 +1429,8 @@ module Samagotchi
         end
         from = messages.index { |m| m.equal?(exchange[last_user]) }
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
-        failed = join_failed_record(exchange[last_user])
+        record = @link.saved_turn_record(exchange[last_user][:turn_id] || exchange[last_user]["turn_id"])
+        failed = join_failed_record(record)
         # A turn that ended with no answer: its notice, as live.
         empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
         if empty
@@ -1441,6 +1442,11 @@ module Samagotchi
           failure = failed["failure"]
           @screen.commit(@view.turn_failed_line(failure["summary"] || failure["message"], failed["duration_ms"]))
           @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) if failure["kept_steps"]
+        elsif record && record["status"] == "canceled"
+          # A canceled turn (a Stop, Ctrl-C): its line, as live, and no
+          # text it streamed before the cancel as if it were the answer.
+          @screen.commit(@view.turn_canceled_line(record["cancellation_reason"], record["duration_ms"], by: record["cancelled_by"]))
+          @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) unless record["continue"]
         else
           # The saved answer is raw: the latest keeps its thinking, and one may
           # be only a tool call.
@@ -1481,12 +1487,11 @@ module Samagotchi
         @link.saved_tool_records(prompt[:turn_id] || prompt["turn_id"])
       end
 
-      # The turn's saved record when it failed with the fields its line is
-      # made of (SessionMetrics#failure_fields), else nil: a completed,
-      # canceled or older turn — or one saved before the failure field —
-      # draws its answer as before.
-      def join_failed_record(prompt)
-        record = @link.saved_turn_record(prompt[:turn_id] || prompt["turn_id"])
+      # The turn's saved +record+ when it failed with the fields its line is
+      # made of (SessionMetrics#failure_fields), else nil: a completed or
+      # older turn — or one saved before the failure field — draws its
+      # answer as before (a canceled one its line).
+      def join_failed_record(record)
         return nil unless record && record["status"] == "failed" && record["failure"].is_a?(Hash)
 
         failure = record["failure"]

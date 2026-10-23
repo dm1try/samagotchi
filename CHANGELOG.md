@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - `chi --remote NAME sessions list` shows test sessions, marked `[test]`, as the local list does.
 - The attached terminal echoes a command typed after `/unqueue`'s text (`fix it/unqueue`) as the command alone, not the
   whole line.
+- Attaching to a session whose last turn was stopped or canceled shows the turn's canceled line, not the text it
+  streamed before the stop as if it were the answer.
 
 ## [0.104.0] - 2026-10-23
 

@@ -391,6 +391,25 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                    "✕ turn failed: bad image · 1.5s"])
       end
 
+      it "draws a stopped turn's line and the hint after its steps, not the text it streamed before the stop" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "canceled", "duration_ms" => 3100,
+                                        "cancellation_reason" => "session_stopped", "continue" => false }])
+        feed(snapshot(messages: [*messages.take(3), { role: "model", content: "Still search", interrupted: true }]))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "■ turn canceled (session stopped) · 3.1s",
+                                   "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"])
+      end
+
+      it "draws a turn a hook stopped by its stopper, without the hint for a continue" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "canceled", "duration_ms" => 1000,
+                                        "cancellation_reason" => "hook", "cancelled_by" => "loop-guard", "continue" => true }])
+        feed(snapshot(messages: messages))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "■ turn stopped by loop-guard · 1.0s"])
+      end
+
       it "leaves a failed record saved before the failure field as it was" do
         save_analytics(turn_records: [{ "id" => "t1", "status" => "failed", "duration_ms" => 2000 }])
         feed(snapshot(messages: messages))

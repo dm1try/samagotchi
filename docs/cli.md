@@ -1235,7 +1235,7 @@ chi --remote studio --dir /Users/me/app -p "hi"        # a new session there (--
   `/detach`, `/exit`, `/exit --delete`, `/archive`, `/stats` and `/recap` work
   as here, on that machine's session (`/exit --delete` deletes it there).
   The status row's children segment counts its delegates there, and a join
-  shows the steps' durations and a failed turn's line from its saved records
+  shows the steps' durations and a failed or canceled turn's line from its saved records
   there. A chi web too old for one of them says so in one line ("remote
   studio runs chi X, too old for this command through --remote: update chi
   there").
