@@ -50,7 +50,18 @@ RSpec.describe "Plugin init tasks" do
 
   def events(type) = seen.select { |e| e[:type] == type }
   def tasks = engine.instance_variable_get(:@plugin_tasks).tasks
-  def join_tasks = tasks.each { |task| task.thread&.join(5) }
+  def join_tasks = tasks.each { |task| join!(task.thread, "init task #{task.id}") if task.thread }
+
+  # The passes the turn's wait for tools has made (PluginTasks#await polls):
+  # "the turn is still held" is shown by passes going by, not by a pause.
+  def count_wait_passes
+    passes = [0]
+    allow(engine.instance_variable_get(:@plugin_tasks)).to receive(:sleep).and_wrap_original do |original, *args|
+      passes[0] += 1
+      original.call(*args)
+    end
+    passes
+  end
 
   # A task that brings the tool slow_tool once +gate+ opens.
   def add_tool_task(gate, timeout: 5, label: "Warming up")
@@ -69,7 +80,7 @@ RSpec.describe "Plugin init tasks" do
     add_tool_task(gate)
     expect(events(:plugin_init_started)).to be_empty
     engine.start_init_tasks!
-    Timeout.timeout(2) { sleep(0.01) until engine.init_tasks.any? }
+    wait_for("the init task to start") { engine.init_tasks.any? }
     expect(engine.init_tasks).to eq([{ bundle: "slowb", id: "slowb-1", label: "Warming up" }])
     expect(events(:plugin_init_started)).to eq([{ type: :plugin_init_started, bundle: "slowb", id: "slowb-1",
                                                   label: "Warming up", event_seq: 1 }])
@@ -86,15 +97,16 @@ RSpec.describe "Plugin init tasks" do
     gate = Queue.new
     add_tool_task(gate)
     engine.start_init_tasks!
+    passes = count_wait_passes
     sink = []
     turn = Thread.new { engine.run_turn(session, "hi", on_event: ->(e) { sink << e }) }
-    Timeout.timeout(2) { sleep(0.01) until sink.any? { |e| e[:type] == :plugin_init_wait } }
+    wait_event = wait_for("the turn's plugin_init_wait") { sink.find { |e| e[:type] == :plugin_init_wait } }
     expect(sink.map { |e| e[:type] }.first).to eq(:turn_started)
-    expect(sink.find { |e| e[:type] == :plugin_init_wait }[:tasks]).to eq([{ bundle: "slowb", id: "slowb-1", label: "Warming up" }])
-    sleep(0.2)
+    expect(wait_event[:tasks]).to eq([{ bundle: "slowb", id: "slowb-1", label: "Warming up" }])
+    wait_for("the turn's wait to go round 3 times") { passes[0] >= 3 }
     expect(tools_at_request).to be_empty
     gate << :go
-    turn.join(5)
+    join!(turn, "the held turn")
     expect(tools_at_request).to eq([["slow_tool"]])
   end
 
@@ -111,10 +123,19 @@ RSpec.describe "Plugin init tasks" do
     add_tool_task(gate)
     engine.start_init_tasks!
     controller = Samagotchi::CancellationController.new
-    Thread.new { sleep(0.3); controller.cancel!(:ctrl_c) }
+    passes = count_wait_passes
+    # Ctrl-C once the wait is going round, not after a fixed delay.
+    canceller = Thread.new do
+      wait_for("the wait for tools to go round twice") { passes[0] >= 2 }
+    ensure
+      controller.cancel!(:ctrl_c)
+    end
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    engine.await_init_tasks(controller)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.25, 1.5)
+    expect(engine.await_init_tasks(controller)).to be(true)
+    join!(canceller, "the Ctrl-C thread")
+    # not the task's 5 s timeout: the cancel ended the wait
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
+    expect(passes[0]).to be >= 2
     expect(tasks.first.state).to eq(:running)
     expect(tasks.first.cancelled?).to be(false)
     gate << :go
@@ -125,8 +146,9 @@ RSpec.describe "Plugin init tasks" do
 
   it "waits at most the task's timeout" do
     add_tool_task(Queue.new, timeout: 0.3)
-    engine.start_init_tasks!
+    # Taken before the task starts, so the time measured is at least its timeout.
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    engine.start_init_tasks!
     engine.run_turn(session, "hi", on_event: ->(_e) {})
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.25, 2)
     expect(tools_at_request).to eq([[]])
@@ -140,7 +162,8 @@ RSpec.describe "Plugin init tasks" do
     engine.start_init_tasks!
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     engine.run_turn(session, "hi", on_event: ->(_e) {})
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+    # not the task's 5 s timeout: its gate stays shut until the example ends
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
   end
 
   it "shows a failure as finished (not ok) and a warn card a late UI still gets; the turn goes on without its tools" do
@@ -161,7 +184,7 @@ RSpec.describe "Plugin init tasks" do
     engine.add_init_task(bundle: "mcp", label: "Starting MCP server chrome (first run, saving its tools)", plugin_label: "x",
                          provides_tools: false, quiet: false, timeout: 5, failed: "chrome didn't start") { raise "no npx" }
     engine.start_init_tasks!
-    Timeout.timeout(2) { sleep(0.01) until events(:card).any? }
+    wait_for("the failure's card") { events(:card).any? }
     join_tasks
     expect(events(:card).first).to include(source: "mcp", title: "chrome didn't start", body: "no npx", level: :warn)
   end
@@ -172,7 +195,9 @@ RSpec.describe "Plugin init tasks" do
     engine.add_init_task(bundle: "slowb", label: "Refreshing more", plugin_label: "x", provides_tools: false, quiet: true,
                          timeout: 5) { raise "gone" }
     engine.start_init_tasks!
-    Timeout.timeout(2) { sleep(0.01) until engine.init_tasks.empty? && tasks.all? { |t| %i[done failed].include?(t.state) } }
+    wait_for("both quiet tasks to end", seen: -> { tasks.map(&:state) }) do
+      engine.init_tasks.empty? && tasks.all? { |t| %i[done failed].include?(t.state) }
+    end
     join_tasks
     expect(events(:plugin_init_started) + events(:plugin_init_finished)).to be_empty
     expect(events(:card).map { |c| [c[:title], c[:body]] }).to eq([["setup failed", "Refreshing more: gone"]])
@@ -212,11 +237,12 @@ RSpec.describe "Plugin init tasks" do
       raise "cancelled"
     end
     engine.start_init_tasks!
-    Timeout.timeout(2) { sleep(0.01) until engine.init_tasks.any? }
+    wait_for("the init task to start") { engine.init_tasks.any? }
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     engine.shutdown
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
-    expect(stopped.pop(timeout: 1)).to eq(:cancelled)
+    # not Engine::SHUTDOWN_JOIN_SECONDS (3 s): the task saw the cancel and ended
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+    expect(pop!(stopped, "the init task to see the cancel")).to eq(:cancelled)
     expect(events(:plugin_init_finished) + events(:card)).to be_empty
     engine.start_init_tasks!
   end
