@@ -15,7 +15,7 @@ and commands may change between minor versions. How releases are made:
   refused with one message), it starts idle, and it prints the `chi share` line to invite someone. `chi review --from
   ID` starts a review of a working session from its recap, never its transcript; that session keeps running,
   unarchived. Both work with `chi --remote NAME` (`--dir` there). On the web, the start page's `review…` chip takes
-  the files, and a session's bar has a **review** button for a review of it. Sharing a session that isn't a review
+  the files, and the participants panel's **Start a review of it** starts a review of the session. Sharing a session that isn't a review
   session still works, with a warning naming how many tool outputs its history holds (`chi share`, the Invite
   dialog). Participants read the subjects as the **Plan**: rendered beside the thread on a wide screen, a Plan |
   Thread toggle on a phone, checked again on every read and redacted. Under each participant's review turn the owner
