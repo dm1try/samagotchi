@@ -1813,6 +1813,26 @@ RSpec.describe Samagotchi::SessionManager do
         .to eq(:accepted)
     end
 
+    it "carries no_interrupt to the Bridge and into the fallback file, and only when it is set" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn)
+        .with(prompt: "long", client_id: "tui:1", no_interrupt: true)
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+
+      expect(described_class.deliver_turn(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true,
+                                                      state_dir: tmpdir, bridge: -> { bridge }).status)
+        .to eq(:accepted)
+
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      described_class.deliver_turn(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true,
+                                               state_dir: tmpdir, bridge: -> { bridge })
+      described_class.deliver_turn(session.id, prompt: "short", client_id: "tui:1", state_dir: tmpdir, bridge: -> { bridge })
+
+      files = input_files.map { |path| JSON.parse(File.read(path)) }.sort_by { |input| input["prompt"] }
+      expect(files.map { |input| [input["prompt"], input["no_interrupt"]] }).to eq([["long", true], ["short", nil]])
+    end
+
     it "writes the delivery into the fallback file (queue only)" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient)

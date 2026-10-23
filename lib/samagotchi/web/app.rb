@@ -1449,8 +1449,10 @@ module Samagotchi
         refused = turn_refusal(id, body, prompt.to_s, images)
         return refused if refused
 
+        # no_interrupt: an attached TUI's --no-interrupt (chi --remote --attach).
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
-                                                 delivery: delivery, state_dir: @state_dir, manager: @manager,
+                                                 delivery: delivery, no_interrupt: body["no_interrupt"] == true,
+                                                 state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
         case result.status
         when :accepted

@@ -1199,6 +1199,9 @@ module Samagotchi
     # @param images [Array<Hash>] refs ({file:, name:}) already in images/
     # @param delivery [String, nil] what the message asks the running turn
     #   for: "next_step" (default), "cut" or "queue"
+    # @param no_interrupt [Boolean] the turn runs with the raised iteration
+    #   limit (an attached TUI's --no-interrupt), through the Bridge or the
+    #   file; sent only when true, so older callees see no new field
     # @param manager [#resume_session, #write_turn_input] this class, or a
     #   stand-in (the web's specs); #session_owner is optional
     # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -1211,8 +1214,8 @@ module Samagotchi
     #   :failed when the input file couldn't be written
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
-    def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, state_dir: nil, manager: self,
-                          bridge: nil)
+    def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
+                          state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir)
@@ -1226,6 +1229,7 @@ module Samagotchi
           options[:images] = images unless images.empty?
           # An old worker ignores the field: it cuts anyway (its own default).
           options[:delivery] = delivery unless Delivery.next_step?(delivery)
+          options[:no_interrupt] = true if no_interrupt
           reply = client.post_turn(**options)
           ack = reply.json
           return DeliverResult.new(status: :accepted, via: :bridge, ack: ack) if reply.status == 202 && ack.is_a?(Hash)
@@ -1252,6 +1256,7 @@ module Samagotchi
       input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
       input[:images] = images unless images.empty?
       input[:delivery] = delivery unless Delivery.next_step?(delivery)
+      input[:no_interrupt] = true if no_interrupt
       path = manager.write_turn_input(session_id, **input)
       return DeliverResult.new(status: :failed) unless path
 

@@ -435,6 +435,23 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(turn(session, { prompt: "look", images: [ref], check_vision: true })).to match([422, include("error" => "no_vision")])
     end
 
+    it "passes no_interrupt on to the worker's Bridge, and into the input file without one" do
+      session = make
+      own(session)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn)
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1"}'))
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+
+      expect(turn(session, { prompt: "long", client_id: "tui:1", no_interrupt: true }).first).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(prompt: "long", client_id: "tui:1", no_interrupt: true)
+
+      allow(app).to receive(:live_bridge_client).and_return(nil)
+      expect(turn(session, { prompt: "long", client_id: "tui:1", no_interrupt: true })).to match([202, include("via" => "file")])
+      inputs = Dir[File.join(dir_of(session), "input", "*")].map { |path| JSON.parse(File.read(path)) }
+      expect(inputs).to contain_exactly(include("prompt" => "long", "no_interrupt" => true))
+    end
+
     def fixture_png
       File.join(@tmp, "a.png").tap do |path|
         # A 1x1 PNG.
