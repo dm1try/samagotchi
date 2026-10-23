@@ -544,4 +544,63 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(body).to include("error" => "ambiguous_id", "ids" => [a.id, "#{a.id[0, 4]}#{b.id[4..]}"].sort)
     end
   end
+
+  describe "what chi --remote reads besides (SessionAccess::Remote)" do
+    it "names the session commands' routes among GET /api/info's features" do
+      expect(call("/api/info").last["features"]).to include("session_commands")
+    end
+
+    it "answers ?brief=1 with the session file's status, names, folder, model, owner and pending question, no messages" do
+      question = Samagotchi::PendingQuestion.new(id: "q1", question: "Go?", options: %w[Yes No])
+      session = make(status: "running", pending_question: question, parent_answers: "hard")
+      own(session)
+
+      status, body = call("/api/sessions/#{session.id}?brief=1")
+
+      expect(status).to eq(200)
+      expect(body.keys).to contain_exactly("brief", "session", "pending_question")
+      expect(body["session"]).to include("id" => session.id, "status" => "running", "display_title" => session.display_title,
+                                         "working_directory" => folder, "project_root" => session.project_root,
+                                         "model_name" => "m", "parent_answers" => "hard", "owner" => "worker")
+      expect(body["pending_question"]).to include("id" => "q1", "options" => %w[Yes No])
+      expect(call("/api/sessions/#{make.id}?brief=1").last).to include("pending_question" => nil)
+      expect(call("/api/sessions/#{session.id.tr("0-9a-f", "0")}?brief=1").first).to eq(404)
+    end
+
+    it "says in a turn's 202 whether it went through the worker's Bridge or its input file" do
+      session = make
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+
+      status, body = call("/api/sessions/#{session.id}/turn", method: "POST", body: { prompt: "hi", history: false })
+
+      expect(status).to eq(202)
+      expect(body).to include("via" => "file", "enqueued_id" => be_a(String))
+    end
+
+    it "with ?full=1 lists each source as added (its command too) and its snapshot, and a shadowed one" do
+      session = make
+      own_sources = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
+      project = Samagotchi::ContextSources.project_location_for(session.project_root, state_dir: state_dir)
+      source = lambda do |name, scope, cmd: nil|
+        Samagotchi::ContextSources::Source.new(name: name, cmd: cmd, every_seconds: nil, why: "w", hint: "h", scope: scope,
+                                               added_by: "cli", created_at: "2026-10-23T10:00:00Z")
+      end
+      own_sources.add(source.call("ci", own_sources.scope, cmd: "echo ci"))
+      project.add(source.call("ci", project.scope, cmd: "echo theirs"))
+      project.add(source.call("notes", project.scope))
+      project.record_text("notes", Samagotchi::ContextSources::Fetched.new(text: "body", summary: "s", wake: false, hint: nil))
+      path = "/api/sessions/#{session.id}/context"
+
+      expect(call(path).last["sources"].map { |row| row["name"] }).to eq(%w[ci notes])
+      expect(JSON.generate(call(path).last)).not_to include("echo ci")
+
+      rows = call("#{path}?full=1").last["sources"]
+      expect(rows.map { |row| [row["name"], row.dig("source", "cmd"), row["shadowed"]] })
+        .to eq([["ci", "echo ci", false], ["ci", "echo theirs", true], ["notes", nil, false]])
+      expect(rows.first["source"]).to eq(own_sources.source("ci").to_h)
+      expect(rows.last["snapshot"]).to include("summary" => "s", "revision" => Samagotchi::ContextSources.revision_of("body"))
+      expect(rows.last["snapshot"]).not_to have_key("text")
+      expect(call("#{path}/notes?full=1").last).to include("text" => "body", "source" => include("name" => "notes"))
+    end
+  end
 end

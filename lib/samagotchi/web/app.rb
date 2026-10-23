@@ -467,10 +467,14 @@ module Samagotchi
       # What a second `chi web` probes before starting its own server: this
       # is chi web, and it knows ?dir (features). installed: the newest chi
       # on this machine (nil until the hub has looked); newest_workers: the
-      # workers it starts run that one, not this chi web's version.
+      # workers it starts run that one, not this chi web's version;
+      # session_commands: the routes chi --remote needs
+      # (SessionAccessRoutes::FEATURE). lan: its LAN address, nil when it
+      # listens on loopback only.
       def handle_info(_req)
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: %w[dir newest_workers], lan: @lan && @lan[:ip] })
+                             cwd: Dir.pwd, features: ["dir", "newest_workers", SessionAccessRoutes::FEATURE],
+                             lan: @lan && @lan[:ip] })
       end
 
       # The models a new session can start on, spelled as chi spells them
@@ -941,6 +945,7 @@ module Samagotchi
         return handle_cards_read(id) if req.params["cards"] == "1"
         return handle_tail_read(req, id) if req.params["tail"] == "1"
         return handle_timing_read(id) if req.params["timing"] == "1"
+        return handle_brief_read(id) if req.params["brief"] == "1"
 
         session = @session_class.load(id, state_dir: default_state_dir)
         # Read-only preview: selecting a session never spawns a worker.
@@ -1450,7 +1455,9 @@ module Samagotchi
         case result.status
         when :accepted
           record_history(body, prompt)
-          json_response(202, result.ack)
+          # via: bridge or file (the worker was gone: its input file), which
+          # names the turn a remote chi send --wait follows (WaitTarget).
+          json_response(202, result.ack.merge("via" => result.via.to_s))
         when :refused then json_response(result.code, result.ack)
         when :timeout then error_response(504, "worker_timeout", result.detail)
         else error_response(500, "enqueue_failed", "could not write turn input")
@@ -1735,21 +1742,28 @@ module Samagotchi
       # provider (ContextProviders): never a command.
 
       # GET /api/sessions/:id/context: the sources this session sees, muted
-      # ones marked, with what the chips show.
-      def handle_context_list(_req, id)
+      # ones marked, with what the chips show, never a command. ?full=1
+      # (chi context ls from another machine, SessionAccess::Remote): each
+      # source as it was added too, its command included (#context_row), and
+      # a project's source a session's own of its name shadows, marked
+      # shadowed.
+      def handle_context_list(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         subs = own.subscriptions
-        rows = attached_context(session).map { |attached| context_row(attached, own, subs) }
+        full = truthy_param?(req.params["full"])
+        rows = attached_context(session, shadowed: full).map { |attached| context_row(attached, own, subs, full: full) }
         json_response(200, { session_id: id, sources: rows, can_add_url: ContextProviders.any? })
       end
 
-      # GET /api/sessions/:id/context/:name: one source with its text.
-      def handle_context_show(_req, id, name)
+      # GET /api/sessions/:id/context/:name: one source with its text
+      # (?full=1: as the list's).
+      def handle_context_show(req, id, name)
         session = @session_class.load(id, state_dir: default_state_dir)
         attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
         own = ContextSources.session_location(id, state_dir: default_state_dir)
-        json_response(200, context_row(attached, own, own.subscriptions).merge(text: attached.snapshot.text))
+        row = context_row(attached, own, own.subscriptions, full: truthy_param?(req.params["full"]))
+        json_response(200, row.merge(text: attached.snapshot.text))
       end
 
       # POST /api/sessions/:id/context: a source attached to this session.
@@ -1847,8 +1861,9 @@ module Samagotchi
         error_response(404, "not_found", "no source #{name[0, 40]}")
       end
 
-      def attached_context(session)
-        ContextSources.attached(session.id, project_root: session.project_root, state_dir: default_state_dir)
+      def attached_context(session, shadowed: false)
+        ContextSources.attached(session.id, project_root: session.project_root, state_dir: default_state_dir,
+                                            shadowed: shadowed)
       end
 
       # @return [ContextSources::Attached, nil]
@@ -1859,13 +1874,20 @@ module Samagotchi
         nil
       end
 
-      def context_row(attached, own, subs)
+      # A source's row: what the page's chips show. +full+ (chi context ls
+      # and show from another machine, SessionAccess::Remote): also the
+      # source as it was added (source: Source#to_h, its command too) and
+      # the snapshot (Snapshot#to_h without its text), and shadowed.
+      def context_row(attached, own, subs, full: false)
         source = attached.source
         snapshot = attached.snapshot
-        { name: source.name, scope: source.scope, kind: source.push? ? "push" : "cmd", every_seconds: source.every_seconds,
-          why: source.why, hint: snapshot.hint || source.hint, summary: snapshot.summary, error: snapshot.error,
-          fetched_at: snapshot.fetched_at, has_text: snapshot.text?, muted: own.muted?(source.name),
-          unread: snapshot.text? && subs[source.name]&.read != snapshot.revision }
+        row = { name: source.name, scope: source.scope, kind: source.push? ? "push" : "cmd", every_seconds: source.every_seconds,
+                why: source.why, hint: snapshot.hint || source.hint, summary: snapshot.summary, error: snapshot.error,
+                fetched_at: snapshot.fetched_at, has_text: snapshot.text?, muted: own.muted?(source.name),
+                unread: snapshot.text? && subs[source.name]&.read != snapshot.revision }
+        return row unless full
+
+        row.merge(source: source.to_h, snapshot: snapshot.to_h.except("text", :text), shadowed: attached.shadowed)
       end
 
       def handle_stream(req, id)

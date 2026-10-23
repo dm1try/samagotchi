@@ -24,6 +24,9 @@ module Samagotchi
       # A wait route answers within this many seconds (status timeout); the
       # client asks again until its own --timeout.
       WAIT_MAX_SECONDS = 30.0
+      # GET /api/info's feature: this chi web has these routes (a remote
+      # client checks it before its first session command).
+      FEATURE = "session_commands"
 
       private
 
@@ -61,6 +64,26 @@ module Samagotchi
         refusal_response(400, "ambiguous_id", e, ids: e.ids)
       rescue ArgumentError
         error_response(404, "not_found", "no session #{given[0, 80]}")
+      end
+
+      # GET /api/sessions/:id?brief=1: the session as a session command
+      # reads it (SessionAccess::Local#show): the file's status (not the
+      # displayed one), its names, folder, model and parent_answers, its
+      # owner's kind, and the file's pending question, never its messages.
+      # A chi web from before ?brief answers the whole read, which has the
+      # session part too.
+      def handle_brief_read(id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        owner = session_access.owner(id)
+        json_response(200, {
+          brief: true,
+          session: { id: session.id, status: session.status, title: session.title,
+                     display_title: session.display_title, project_root: session.project_root,
+                     working_directory: session.working_directory, model_name: session.model_name,
+                     model_typed: session.model_typed, parent_answers: session.parent_answers,
+                     owner: owner&.kind },
+          pending_question: session.pending_question&.to_file
+        })
       end
 
       # GET /api/sessions/summaries: the rows chi sessions list prints

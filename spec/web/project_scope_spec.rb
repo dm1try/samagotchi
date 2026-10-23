@@ -116,13 +116,13 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "GET /api/info" do
-    it "says it is chi web, with the dir and newest_workers features and the newest installed chi" do
+    it "says it is chi web, with the dir, newest_workers and session_commands features and the newest installed chi" do
       hub.scan
       status, _, body = call("/api/info")
 
       expect(status).to eq(200)
       expect(JSON.parse(body)).to include("app" => "chi-web", "version" => Samagotchi::VERSION, "pid" => Process.pid,
-                                          "cwd" => Dir.pwd, "features" => %w[dir newest_workers],
+                                          "cwd" => Dir.pwd, "features" => %w[dir newest_workers session_commands],
                                           "installed" => Samagotchi::VERSION)
     end
   end
