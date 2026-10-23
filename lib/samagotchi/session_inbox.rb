@@ -263,6 +263,17 @@ module Samagotchi
       false
     end
 
+    # Whether an unclaimed input file may be a participant's (it names a
+    # participant author): what the worker holds while the owner's Continue
+    # offer stands (Worker#run_input_files). An unreadable file counts:
+    # holding it costs nothing (it runs no turn), running it unread could.
+    def self.participant_input?(input_file)
+      data = JSON.parse(File.read(input_file))
+      !data.is_a?(Hash) || Steer.participant_author?(data["author"])
+    rescue JSON::ParserError, SystemCallError
+      true
+    end
+
     # A parsed input file's #waits_for_turn_end?.
     def self.turn_end_data?(data)
       Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"])

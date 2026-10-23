@@ -387,7 +387,9 @@ module Samagotchi
         return
       end
 
-      input_files = SessionInbox.find_new_input_files(@session_dir)
+      # A participant's input waits while the owner's Continue offer
+      # stands (#run_input_files): with only theirs, the loop idles.
+      input_files = SessionInbox.find_new_input_files(@session_dir).reject { |file| held_for_offer?(file) }
       return idle_pass if input_files.empty?
       # A command queued since the look above, before these prompts were
       # written (an answer's /continue yes, then a prompt), still runs
@@ -412,8 +414,17 @@ module Samagotchi
       nil
     end
 
+    # A participant's input file is held (left in the inbox, still queued
+    # and counted as theirs) while the owner's Continue offer stands: the
+    # offer is the owner's to answer (continue, stop, or a turn of their
+    # own, which drops it), never dropped by a participant's turn. Once
+    # one is held, the batch's later participant files wait with it, and
+    # the batch ends after the next turn that runs: the next pass takes
+    # the held ones in order (each checked against participants.json and
+    # the cap as it starts, #run_prompt).
     # @return [nil]
     def run_input_files(input_files)
+      held = false
       input_files.sort.each do |input_file|
         # A stop (or a signal) between two queued turns leaves the rest queued.
         break if signalled? || stopped_on_disk?
@@ -422,10 +433,19 @@ module Samagotchi
         # before this prompt, a command an earlier file carried) run first.
         run_queued_commands
         @inbound.absorb_notes
+        if held ? SessionInbox.participant_input?(input_file) : held_for_offer?(input_file)
+          held = true
+          next
+        end
         run_input_file(input_file)
+        break if held
       end
       nil
     end
+
+    # Whether +input_file+ waits for the owner's answer to the Continue
+    # offer that stands (#run_input_files).
+    def held_for_offer?(input_file) = @turn_flow&.awaiting_continue? && SessionInbox.participant_input?(input_file)
 
     # An error outside a turn: the session is marked errored.
     # @return [Symbol] :crashed
@@ -815,10 +835,14 @@ module Samagotchi
       end
     end
 
+    # A participant's file held for the Continue offer (#run_input_files)
+    # doesn't hold a command back: that command may be the owner's answer.
     def ready_command?(command)
       return true if command.after_file.nil?
 
-      SessionInbox.find_new_input_files(@session_dir).none? { |path| File.basename(path) <= command.after_file }
+      SessionInbox.find_new_input_files(@session_dir).none? do |path|
+        File.basename(path) <= command.after_file && !held_for_offer?(path)
+      end
     end
 
     def drain_commands

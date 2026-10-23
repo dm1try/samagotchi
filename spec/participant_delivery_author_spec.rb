@@ -174,6 +174,93 @@ RSpec.describe "a participant's author on delivery" do
       expect(audit.select { |line| line["event"] == "refused" }.map { |line| line.values_at("participant", "what") })
         .to eq([%w[p_1 command], %w[p_1 command]])
     end
+
+    # The owner's turn ran out of iterations: its Continue offer is the
+    # owner's to answer, so a participant's queued turn waits (in the
+    # inbox, still queued) until the owner continues, stops or sends a turn
+    # of their own; then the held turns run in order.
+    describe "while the owner's Continue offer stands" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:prompts) { Queue.new }
+      let(:resolved) { Queue.new }
+      let(:dequeued) { Queue.new }
+      let(:t0) { Time.now }
+
+      before do
+        engine.session_state_dir = tmpdir
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        engine.subscribe(observer: lambda { |event|
+          resolved << event if event[:type] == :continue_resolved
+          dequeued << event if event[:type] == :turn_dequeued
+        })
+      end
+
+      # The owner's "long task" runs out of iterations; while it runs, the
+      # inputs +during+ names are written (queued for after it).
+      def run_out_of_iterations(during: [])
+        allow(kernel).to receive(:run) do |messages, **|
+          prompt = messages.last[:content].to_s.lines.last.to_s
+          prompts << prompt
+          if prompt == "long task"
+            during.each_with_index { |input, i| write_queued(**input, now: t0 + 1 + i) }
+            Samagotchi::LLM::ModelResult.new(
+              text: "", conversation: messages + [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }],
+              exhausted: true, pending_tool_calls: true, canceled: false, tool_activity: []
+            )
+          else
+            Samagotchi::LLM::ModelResult.new(text: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          end
+        end
+      end
+
+      def write_queued(prompt:, author: nil, enqueued_id: nil, now: Time.now)
+        Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, client_id: author ? "review:p" : "web:o",
+                                                          enqueued_id: enqueued_id, author: author, delivery: "queue", now: now)
+      end
+
+      it "holds a participant's turn until the owner answers the offer, then runs it (the offer isn't dropped)" do
+        run_out_of_iterations(during: [{ prompt: "is step 3 safe?", author: grant.author, enqueued_id: "p1" },
+                                       { prompt: "/continue no" }])
+        start_worker
+        write_queued(prompt: "long task", now: t0)
+
+        expect(pop!(prompts, "the owner's turn")).to eq("long task")
+        expect(pop!(resolved, "the offer's answer")).to include(decision: "abort", client_id: "web:o")
+        expect(pop!(prompts, "the held turn")).to eq("is step 3 safe?")
+        expect(resolved).to be_empty
+        expect(dequeued).to be_empty
+      end
+
+      it "runs the owner's own turn first (it drops the offer), then the held turns in the order they came" do
+        run_out_of_iterations(during: [{ prompt: "first", author: grant.author, enqueued_id: "p1" },
+                                       { prompt: "something else" },
+                                       { prompt: "second", author: grant.author, enqueued_id: "p2" }])
+        start_worker
+        write_queued(prompt: "long task", now: t0)
+
+        expect(Array.new(4) { pop!(prompts, "a turn") }).to eq(["long task", "something else", "first", "second"])
+        expect(pop!(resolved, "the dropped offer")).to include(decision: "dropped", client_id: "web:o")
+      end
+
+      it "doesn't run a held turn whose link ended meanwhile: dropped from the queue and audited as it's released" do
+        run_out_of_iterations(during: [{ prompt: "is step 3 safe?", author: grant.author, enqueued_id: "p1" }])
+        start_worker
+        write_queued(prompt: "long task", now: t0)
+        expect(pop!(prompts, "the owner's turn")).to eq("long task")
+        wait_for("the offer's question") do
+          Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question&.kind.to_s == "continue"
+        end
+
+        grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+        Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
+        write_queued(prompt: "/continue no")
+
+        expect(pop!(resolved, "the offer's answer")).to include(decision: "abort")
+        expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "p1")
+        expect(prompts).to be_empty
+      end
+    end
   end
 
   describe Samagotchi::Bridge, "POST /session/:id/turn" do
