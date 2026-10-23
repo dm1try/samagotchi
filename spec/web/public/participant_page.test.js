@@ -278,3 +278,7 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
   assert.equal(currentAfter.open, false);
   assert.equal($("thread").querySelector(".p-msg.reply .p-bubble"), bubble, "a message drawn already is kept, not drawn again");
 });
+
+test("participant page: the page is the dynamic viewport's height (the dock above a phone's URL bar), 100% where unknown", () => {
+  assert.match(HTML, /html,body\{height:100%;height:100dvh\}/);
+});

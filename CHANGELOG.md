@@ -86,6 +86,8 @@ and commands may change between minor versions. How releases are made:
   instead of its own second wording.
 - The participant page keeps a tool list the reader opened or closed as they left it when the thread is read again or
   the reply streams, and no longer redraws the messages it already shows (a text selection in them stays).
+- The participant page on a phone is the visible viewport's height (100dvh), so its composer sits above the browser's
+  URL bar instead of under it.
 
 ## [0.106.0] - 2026-10-23
 
