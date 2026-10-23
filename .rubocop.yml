@@ -442,11 +442,10 @@ RSpec/BeEq:
 
 # -- samagotchi's own cops ---------------------------------------------------
 
-# Off in `rake lint` while specs still carry the sleeps and silent waits they
-# flag: `rake lint:timing[PATHS]` (rubocop/timing.yml) runs them. They turn
-# on here once its repo-wide count is zero.
+# A sleep that waits for something, a wait that names nothing when it times
+# out: docs/testing.md, "Waiting and time", for the tags that allow one.
 Samagotchi/SpecSleep:
-  Enabled: false
+  Enabled: true
   Include:
     - spec/**/*
     - lib/samagotchi/bundles/*/spec/**/*
@@ -455,7 +454,7 @@ Samagotchi/SpecSleep:
     - spec/support/waiting.rb
 
 Samagotchi/SilentWait:
-  Enabled: false
+  Enabled: true
   Include:
     - spec/**/*
     - lib/samagotchi/bundles/*/spec/**/*

@@ -76,10 +76,14 @@ run, CI) and too long on a fast one. The contract a new spec follows:
    separating mtimes) carries `# sleep-ok: why` on its line or the line above (for a call over several lines, its
    first line). A bounded best-effort `wait_until`
    whose timeout is fine ("at most 0.5 s, fine to cut short") carries `# wait-ok: why`; it must not become
-   `wait_for`, which would raise where the code moves on.
+   `wait_for`, which would raise where the code moves on. A `Timeout.timeout` is a wait too (use `pop!`, `join!` or
+   `wait_for`); one that only guards a call that returns by itself against a hang carries `# timeout-ok: why`.
 2. **Time logic takes seams.** Intervals, graces and deadlines in lib take `clock:` / `sleeper:` / `interval:`
    constructor arguments, and the unit spec moves the clock itself (`SessionAccess::Remote` is the model;
-   `IdleScheduler.new(interval:)`). Real time is used only in one smoke example per class.
+   `IdleScheduler.new(interval:)`). Real time is used only in one smoke example per class. Two sessions or inbox
+   files that must sort apart get distinct times, not a pause: `Session.new_session(now:)`, `Session#save(now:)` and
+   `SessionInbox.write_input` / `write_note` / `write_output(now:)` take `now: next_stamp` (spec/support/stamps.rb:
+   a millisecond later on each call, starting a second in the past).
 3. **What a spec starts, it stops and waits for** before teardown: `join!(thread, what)`, `with_task_dir { … }`
    (spec/support/task_dirs.rb: a tasks' folder of its own, its tasks stopped and their exit-status recorders joined
    with `TaskRuntime.quiesce!`), a `stop` that joins (`IdleScheduler#stop`). Never only `Thread#kill`.
@@ -120,10 +124,10 @@ Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integrat
 limit, `0` turns it off (a debugger session). The limit is not scaled.
 
 **The cops.** `Samagotchi/SpecSleep` (an untagged `sleep` in a spec) and `Samagotchi/SilentWait` (a `wait_until`
-whose value is dropped, an example's last line included, or `expect(wait_until { … }).to be(true)`) live in
-`rubocop/` and are off in `rake lint` while the suite still carries what they flag. `bundle exec rake
-"lint:timing[FILES]"` runs only them over your files and fails on any offense: run it on the specs you change.
-With no files it counts them over the repo. They turn on in `rake lint` once that count is zero.
+whose value is dropped, an example's last line included, `expect(wait_until { … }).to be(true)`, or an untagged
+`Timeout.timeout`) live in `rubocop/` and run in `rake lint`, so CI fails on them. RSpec counts `wait_for`,
+`eventually`, `join!` and `pop!` as an example's expectation (`RSpec/NoExpectationExample`), so a wait can be an
+example's last line.
 
 ## Bundle specs: the test kit
 
