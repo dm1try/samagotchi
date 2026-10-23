@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, endedText, cursorSeq, streamURL, reloads,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
+  retries, retryDelay,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
 test("participant: an author's colour slot is stable per id and in range; the owner has their own colour", () => {
@@ -100,4 +101,13 @@ test("participant: the Plan view picks its subject, says why one can't show, and
   assert.equal(narrowView("plan", subjects), "plan");
   assert.equal(narrowView("plan", []), "thread");
   assert.equal(narrowView(undefined, subjects), "thread");
+});
+
+test("participant: a failed read is retried when chi web is unreachable or answers a 5xx, with a backoff", () => {
+  assert.equal(retries(0), true);
+  assert.equal(retries(503), true);
+  assert.equal(retries(404), false);
+  assert.equal(retries(401), false);
+  assert.deepEqual([0, 1, 2, 3, 4, 9].map(retryDelay), [3000, 6000, 12000, 24000, 30000, 30000]);
+  assert.equal(refusalText(0, null), "Not sent: can't reach the session. Send it again.");
 });

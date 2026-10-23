@@ -133,3 +133,76 @@ test("participant page: a comment whose post fails can be sent again", async (t)
   await settle();
   assert.equal(posts().length, 2);
 });
+
+test("participant page: a review that can't be read at open says it is retrying, and backs off until it reads", async (t) => {
+  let gets = 0;
+  const { $, calls, tick, sources } = await openPage(t, {
+    respond: (call) => {
+      gets++;
+      if (gets === 1) call.drop();
+      else if (gets === 2) call.answer(503, { error: "review_unavailable", detail: "the session's worker is starting" });
+      else call.answer(200, REVIEW);
+    },
+  });
+  assert.equal($("head").hidden, false, "never a blank page");
+  assert.equal($("offline").hidden, false);
+  assert.match($("offline").textContent, /can't reach the session — retrying/i);
+  assert.equal(sources.length, 0);
+
+  await tick(3000);
+  assert.equal(calls.length, 2);
+  assert.equal($("offline").hidden, false);
+  await tick(3000);
+  assert.equal(calls.length, 2, "the second retry waits longer");
+  await tick(3000);
+  assert.equal(calls.length, 3);
+  assert.equal($("offline").hidden, true);
+  assert.equal($("main").hidden, false);
+  assert.match($("thread").textContent, /PONG/);
+  assert.equal(sources.length, 1, "the stream opens once the review is read");
+});
+
+test("participant page: a re-read that fails after a turn boundary keeps the thread, says so, and retries", async (t) => {
+  let gets = 0;
+  const { $, calls, tick, sources } = await openPage(t, {
+    respond: (call) => {
+      gets++;
+      if (gets === 2) call.drop();
+      else call.answer(200, { ...REVIEW, messages: gets > 2 ? [...REVIEW.messages, { role: "user", content: "Next" }] : REVIEW.messages });
+    },
+  });
+  sources[0].emit("turn_completed");
+  await tick(120);
+  assert.equal(calls.length, 2);
+  assert.equal($("offline").hidden, false);
+  assert.equal($("main").hidden, false);
+  assert.match($("thread").textContent, /PONG/);
+  await tick(3000);
+  assert.equal(calls.length, 3);
+  assert.equal($("offline").hidden, true);
+  assert.match($("thread").textContent, /Next/);
+});
+
+test("participant page: a 401 ends the page with the server's words for revoked and expired", async (t) => {
+  for (const [code, detail] of [["token_revoked", "this review link was revoked by the session's owner"],
+    ["token_expired", "this review link expired: ask the session's owner for a new one"]]) {
+    await t.test(code, async (tt) => {
+      const { $ } = await openPage(tt, { respond: (call) => call.answer(401, { error: code, detail }) });
+      assert.equal($("ended").hidden, false);
+      assert.equal($("head").hidden, true);
+      assert.equal($("endedText").textContent, `${detail[0].toUpperCase()}${detail.slice(1)}.`);
+    });
+  }
+});
+
+test("participant page: a comment that can't reach the session says so and stays in the box", async (t) => {
+  const { $, posts } = await openPage(t);
+  $("comment").value = "Is step 3 safe?";
+  enter($("comment"));
+  await settle();
+  posts()[0].drop();
+  await settle();
+  assert.equal($("comment").value, "Is step 3 safe?");
+  assert.equal($("error").hidden, false);
+  assert.match($("error").textContent, /can't reach the session/i);
+});
