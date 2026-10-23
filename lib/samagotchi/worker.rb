@@ -333,7 +333,7 @@ module Samagotchi
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
-        input_pending: -> { !@command_queue.empty? || !SessionInbox.find_new_input_files(@session_dir).empty? },
+        input_pending: method(:input_pending?),
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
         running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) },
         # Only when a finish would wake the session (D3): with queue its end
@@ -441,6 +441,14 @@ module Samagotchi
         break if held
       end
       nil
+    end
+
+    # Whether a command or an input file waits to run (WorkerIdleExit's
+    # :input_queued). A participant's file held for the Continue offer
+    # (#held_for_offer?) doesn't count: what waits is the owner's answer,
+    # the policy's :continue_offered.
+    def input_pending?
+      !@command_queue.empty? || SessionInbox.find_new_input_files(@session_dir).any? { |file| !held_for_offer?(file) }
     end
 
     # Whether +input_file+ waits for the owner's answer to the Continue

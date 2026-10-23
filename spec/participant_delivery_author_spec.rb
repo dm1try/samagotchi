@@ -71,8 +71,8 @@ RSpec.describe "a participant's author on delivery" do
     end
 
     def start_worker
-      worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
-                                   idle_exit_minutes: 0, poll_interval: 0.02)
+      @worker = worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
+                                             idle_exit_minutes: 0, poll_interval: 0.02)
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
     end
@@ -241,6 +241,20 @@ RSpec.describe "a participant's author on delivery" do
 
         expect(Array.new(4) { pop!(prompts, "a turn") }).to eq(["long task", "something else", "first", "second"])
         expect(pop!(resolved, "the dropped offer")).to include(decision: "dropped", client_id: "web:o")
+      end
+
+      it "tells a client asking to exit or restart that the step-limit question waits, not that a prompt is queued" do
+        run_out_of_iterations(during: [{ prompt: "is step 3 safe?", author: grant.author, enqueued_id: "p1" }])
+        start_worker
+        write_queued(prompt: "long task", now: t0)
+        expect(pop!(prompts, "the owner's turn")).to eq("long task")
+        wait_for("the offer's question") do
+          Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question&.kind.to_s == "continue"
+        end
+
+        expect(@worker.send(:exit_request, "web:o", restart: true)).to have_attributes(reason: :continue_offered)
+        expect(@worker.send(:exit_request, "web:o")).to have_attributes(reason: :continue_offered)
+        expect(Samagotchi::SessionInbox.find_new_input_files(session_dir).size).to eq(1)
       end
 
       it "doesn't run a held turn whose link ended meanwhile: dropped from the queue and audited as it's released" do

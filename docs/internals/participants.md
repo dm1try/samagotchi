@@ -118,7 +118,9 @@ stays in the inbox: still queued on the Bridge (counted against their queue limi
 and it doesn't hold back a command written after it (`#ready_command?`: that may be the owner's `/continue`). Once
 the owner continues, stops or sends a turn of their own (which drops the offer, as any owner prompt does), the held
 turns run in the order they came, each through the link and cap check above as it starts; a reminder turn drops the
-offer too and so releases them. The offer lives in the worker: a worker that restarts has none, and runs them.
+offer too and so releases them. A held file isn't queued input for the idle-exit policy (`Worker#input_pending?`): `/exit`
+and `chi sessions restart` name what waits, the offer (`continue_offered`), not a queued prompt. The offer lives in
+the worker: a worker that restarts has none, and runs them.
 Their `wait` always waits as for a queued turn of theirs, never for the next reply past a cursor (which could be
 anyone's); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`), the offer asked before the wait
 began too.
