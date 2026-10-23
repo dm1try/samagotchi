@@ -202,7 +202,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   (`Principal#author`, nil for the owner) and rides with the turn (`SessionManager.deliver_turn(author:)` →
   `BridgeClient#post_turn` → `Bridge#handle_post_turn` → the input file, the fallback's too → the turn's `origin`);
   an owner's turn carries none, so its input file and session are byte for byte as before.
-- **The token at rest.** `remotes.yml` is written through `AtomicFile.write(perm: 0o600)`. `Entry#inspect` / `#to_s`
+- **The token at rest.** `remotes.yml` is written through `AtomicFile.write(perm: 0o600)`, its read-modify-write (`Remotes.put` / `remove`) under `remotes.yml.lock`. `Entry#inspect` / `#to_s`
   redact the token. `chi remote ls` never prints it (JSON shows `token: true|false`). `HTTPTransport#inspect` and
   `Remote#inspect` show only the label.
 - **The Host check.** `local_host_header?` accepts only the loopback names and the exact LAN IP. `http://studio.local`

@@ -17,7 +17,8 @@ module Samagotchi
   #       url: http://192.168.1.29:4567
   #       token: …
   #
-  # chi remote add / ls / rm write and read it (RemoteCommand).
+  # chi remote add / ls / rm write and read it (RemoteCommand); a write
+  # replaces it whole (AtomicFile) under remotes.yml.lock.
   module Remotes
     FILE = "remotes.yml"
     # A name as git takes a remote's, short: letters, digits, - and _.
@@ -81,17 +82,19 @@ module Samagotchi
 
     # Saves +entry+, replacing one of its name.
     def put(entry, path: self.path)
-      write(all(path: path).reject { |other| other.name == entry.name } + [entry], path)
+      locked(path) { write(all(path: path).reject { |other| other.name == entry.name } + [entry], path) }
     end
 
     # @return [Boolean] whether there was one
     def remove(name, path: self.path)
-      entries = all(path: path)
-      kept = entries.reject { |entry| entry.name == name }
-      return false if kept.size == entries.size
+      locked(path) do
+        entries = all(path: path)
+        kept = entries.reject { |entry| entry.name == name }
+        next false if kept.size == entries.size
 
-      write(kept, path)
-      true
+        write(kept, path)
+        true
+      end
     end
 
     # @raise [Invalid] unless +name+ is one
@@ -120,6 +123,17 @@ module Samagotchi
     rescue URI::InvalidURIError
       raise Invalid, "give chi web's address, http://HOST:PORT, not #{text}"
     end
+
+    # The read-modify-write of +path+ under <path>.lock (0600), so two
+    # chi remote add / rm at once never drop each other's entry.
+    def locked(path)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.open("#{path}.lock", File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        yield
+      end
+    end
+    private_class_method :locked
 
     def write(entries, path)
       FileUtils.mkdir_p(File.dirname(path))

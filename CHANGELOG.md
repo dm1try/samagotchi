@@ -70,6 +70,7 @@ and commands may change between minor versions. How releases are made:
   it does locally, instead of "too old for this command … update chi there" or a URI error.
 - A remote at an IPv6 address (`chi remote add box http://[::1]:4567`) connects: its commands and its attached
   TUI's stream used the bracketed host as a name to look up ("can't find host").
+- Two `chi remote add` / `chi remote rm` at once keep each other's change: `remotes.yml` is rewritten under a lock.
 
 ## [0.106.0] - 2026-10-23
 

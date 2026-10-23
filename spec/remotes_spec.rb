@@ -36,6 +36,33 @@ RSpec.describe Samagotchi::Remotes do
       .to raise_error(described_class::NotFound, "no remote box (chi remote ls lists them; chi remote add NAME URL adds one)")
   end
 
+  it "rewrites the file under its lock, so two chi remote add at once keep both" do
+    described_class.put(entry("studio"), path: path)
+    put = nil
+    File.open("#{path}.lock", File::RDWR | File::CREAT) do |lock|
+      lock.flock(File::LOCK_EX)
+      thread = Thread.new { put = described_class.put(entry("box"), path: path) }
+      # Blocked on the lock (a put that didn't take it would be done).
+      wait_for("the put to wait for the lock") { thread.status == "sleep" }
+      expect(described_class.all(path: path).map(&:name)).to eq(%w[studio])
+      described_class.send(:write, [entry("studio"), entry("laptop")], path) # another put, between its read and write
+      lock.flock(File::LOCK_UN)
+      join!(thread, "the put")
+    end
+    expect(put).not_to be_nil
+    expect(described_class.all(path: path).map(&:name)).to eq(%w[box laptop studio])
+    expect(File.stat(path).mode & 0o777).to eq(0o600)
+
+    File.open("#{path}.lock", File::RDWR | File::CREAT) do |lock|
+      lock.flock(File::LOCK_EX)
+      thread = Thread.new { described_class.remove("box", path: path) }
+      wait_for("the remove to wait for the lock") { thread.status == "sleep" }
+      lock.flock(File::LOCK_UN)
+      join!(thread, "the remove")
+    end
+    expect(described_class.all(path: path).map(&:name)).to eq(%w[laptop studio])
+  end
+
   it "never shows the token in inspect" do
     expect(entry("studio").inspect).not_to include("t-studio")
     expect(entry("studio").inspect).to include("[redacted]")
