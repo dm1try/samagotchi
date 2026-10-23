@@ -531,14 +531,20 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | `POST /api/sessions/:id/turn` (its 202) | | the ack with `via`: `bridge` or `file` (the input file: a remote `chi send --wait` follows that turn) | |
 | `GET /api/sessions/:id/context?full=1`, `…/context/:name?full=1` | | each row with `source` (`Source#to_h`, its command too; the page's rows never carry one), `snapshot` (`Snapshot#to_h`, no text) and `shadowed`, shadowed project sources included | |
 | `POST /api/sessions/:id/wake` | `wait` (seconds, default and most 10: `WAKE_MAX_WAIT`) | 200 `{session_id, woke, worker: {epoch, started_at, version, features}, model_name, default_model, parent_strategy, installed}`: the live worker as is (`woke: false`), else resumed and its Bridge waited for (`Local#wake`); `default_model` and `installed` are this machine's | 409 `owned_by_tui`, `scratch` (`LaunchMode::SCRATCH_LEFTOVER`); 504 `worker_timeout` (`LaunchMode::BRIDGE_LATE`); 400 `invalid_wait`; 404 |
-| `GET /api/sessions/:id/worker` | | 200 `{session_id, live, stopped, owner: worker \| tui \| null, worker: {epoch, started_at, version, features} \| null, parent_strategy}` (`Local#worker`; never starts one) | 404 |
+| `GET /api/sessions/:id/worker` | | 200 `{session_id, live, stopped, owner: worker \| tui \| null, worker: {epoch, started_at, version, features} \| null, default_model, parent_strategy}` (`Local#worker`; never starts one; `default_model` is this machine's) | 404 |
+| `POST /api/sessions/:id/exit` | `client_id` (passed on only when it is an attached TUI's, `tui:…`; any other is dropped), `delete` | 200 the worker's `{status: exiting, session_id, discard}` (`BridgeClient#request_exit`; never wakes one) | 409 `held` with the worker's `{status, reason, tasks, hint}`; 503 `not_live`; 501 `not_supported`; 504 `worker_timeout` |
+| `POST /api/sessions/:id/recap` | | 200 the worker's `{enabled, saved, request, min_user_turns, session_off}` (`BridgeClient#request_recap`) | 503, 501, 504 as every relay |
+| `GET /api/sessions/:id/stats` | | 200 `{session_id, metrics}`: the worker's stats, its state's metrics for a worker from before the stats route | 503 `not_live`; 504 `worker_timeout`; 502 `bridge_error` |
+| `GET /api/sessions/:id/children/counts` | | 200 `{running, waiting, unreported}` (`ChildrenStatus.counts`, the delegates' files here) | 404 |
+| `GET /api/sessions/:id/turns/:turn_id/records` | | 200 `{tool_records: […], turn_record: {…} \| null}` (`SessionMetrics.saved_tool_records` / `saved_turn_record`, as saved) | 400 `invalid_turn_id`; 404 |
 | `POST /api/sessions/:id/turn` (`no_interrupt`) | `no_interrupt: true`: the turn runs with the raised iteration limit (`SessionManager.deliver_turn(no_interrupt:)`, to the Bridge or the input file) | as before | |
 | `POST /api/sessions/:id/command` (its 501) | | | 501 `not_supported` for a builtin the worker lacks adds `command` (`"/title"`) and `message` |
 
 `GET /api/info` names the feature `session_commands` (`SessionAccessRoutes::FEATURE`): `SessionAccess::Remote` asks it
 once before its first request, and a chi web without it (or `serve_static`'s 404 for a path no route takes) is "remote NAME runs chi X, too
 old for this command through --remote: update chi there (chi update)". The feature `remote_attach`
-(`SessionAccessRoutes::ATTACH_FEATURE`) names the wake and worker routes a remote attached TUI needs.
+(`SessionAccessRoutes::ATTACH_FEATURE`) names the routes a remote attached TUI needs: wake, worker, exit, recap, stats,
+children counts and a turn's records. Their refusals carry `{error, detail, message}`.
 
 `POST …/answer` passes on `client_id` only when it is chi answer's (`cli:answer`), so the worker holds the answer to
 its `guardrails.parent_answers`; any other is dropped, so a forwarded id can only tighten. The worker's 403

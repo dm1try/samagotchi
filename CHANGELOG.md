@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Remote attach: `chi --remote NAME --attach ID` (and `--resume ID`, `-p TEXT`, or `--dir DIR` for a new session
+  there, that machine's absolute path) runs the attached TUI on another machine's session, through its chi web:
+  the same lines and exit codes, every printed command spelled with `--remote NAME`, `@path` images from this
+  machine, a "(reconnecting…)" / "(reconnected)" line for about a minute of reconnects, and the version line naming
+  both machines. `--non-interactive`, `--verbose`, `--no-shared`, `--memory`, `--mute` and
+  `--append-system-prompt` stay this machine's (exit 2). `--dir` without `--remote` exits 2. `/exit`,
+  `/exit --delete`, `/archive`, `/stats` and `/recap` work through a remote as here, the status row counts the
+  session's delegates there, and a join shows the steps' durations and a failed turn's line from that machine's
+  saved records. See [docs/cli.md](docs/cli.md#remote-sessions).
+
 ## [0.103.0] - 2026-10-23
 
 ### Added

@@ -1228,10 +1228,14 @@ chi --remote studio --dir /Users/me/app -p "hi"        # a new session there (--
 - The same TUI and exit codes (0 detached, 3 a question left waiting with
   input from a pipe, 1 otherwise), every printed command with `--remote
   studio`. Prompts, session commands, `/model`, `!cmd` (a shell command **on
-  that machine**, under its guardrails), `/queue`, `/cut`, `/unqueue` and
-  `/detach` work as here. `/exit`, `/exit --delete`, `/archive`, `/stats` and
-  `/recap` aren't available through a remote yet (one line says so; `/detach`
-  leaves the session running), and the status row has no children segment.
+  that machine**, under its guardrails), `/queue`, `/cut`, `/unqueue`,
+  `/detach`, `/exit`, `/exit --delete`, `/archive`, `/stats` and `/recap` work
+  as here, on that machine's session (`/exit --delete` deletes it there).
+  The status row's children segment counts its delegates there, and a join
+  shows the steps' durations and a failed turn's line from its saved records
+  there. A chi web too old for one of them says so in one line ("remote
+  studio runs chi X, too old for this command through --remote: update chi
+  there").
 - A new session needs `--dir`, that machine's absolute path; `--model`,
   `--thinking`, `--llm-context*`, `--toolkit`, `--tool`, `--no-tool`, `--set`
   and `--parent-answers` are checked there (exit 2 for a bad one). With
