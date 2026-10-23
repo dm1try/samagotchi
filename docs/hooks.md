@@ -74,6 +74,15 @@ of the hook about to run) and the callables `notify:`, `ask_user:`,
 undefined behaviour. `:before_tool_call` carries no messages (the gate stays
 cheap).
 
+## Participants' turns
+
+A [participant's](internals/participants.md#turns) review turn fires the same hooks, and every event of it carries
+`author: "p:<id>"` (the owner's carry no `author:` key, as before); a plugin reads the same as `ctx.turn_author`
+(nil for the owner's turns and between turns). **A hook runs with the owner's power whatever the author**: it may
+read, write and run what the owner's chi may, and `notify`, `ask_user` and `steer` reach the owner. A bundle that
+acts on a turn's text (a prompt rewrite, a fetch of what it names) should check `author:` first: the text may be a
+participant's. The review boundary checks a tool call after the hooks, on the call they leave.
+
 ## What a hook can do: the runtime
 
 Besides reading (and, on `:before_tool_call`, voting on) its event, a hook

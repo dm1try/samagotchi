@@ -8,6 +8,23 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Participants (experimental) can now ask questions and comment: a participant's message through chi web is a
+  review turn of its own, queued behind the running one, that the model answers read-only. It may read the session's
+  project (never its secret files, `~/.ssh` or chi's own state and config) and project memories, and proposes
+  changes as text for the owner to apply; writes, commands, fetches, notes, reminders, plugin and MCP tools are
+  denied, never asked about, and every approval or question stays the owner's. A line starting `!` or `/` and images
+  are refused. Each participant gets one running and 3 waiting turns (`web.participants.queue`) and a spending cap,
+  `chi share --cap DOLLARS` (default $2, `web.participants.cap`); at the cap their next comment is refused and the
+  owner gets a notice, and `chi share cap ID P DOLLARS` raises it. `/stats` shows each participant's spend, their
+  turns and the side requests they caused. Hooks see `author:` on a participant's turn and plugins
+  `ctx.turn_author`; a hook still runs with the owner's power. The participant's page still shows only the session's
+  title and status (an agent participant can wait on its turns' replies through chi web's API). The `review`
+  toolkit is new and reserved: config's `toolkit.kits.review` is refused. A session whose worker predates this
+  release takes no participant's turn until it is restarted. See [docs/cli.md](docs/cli.md#participants) and
+  [docs/guardrails.md](docs/guardrails.md#a-participants-review-boundary).
+
 ## [0.105.0] - 2026-10-23
 
 ### Changed

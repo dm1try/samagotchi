@@ -535,9 +535,25 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any autho
   `Steer.review_header`, both loops through `Steer.wire_text`; see prompt-caching.md). Saved raw.
 - **`Session#last_turn.author`** (`LastTurn#origin` stays the category) and the turn's analytics record's `author`
   (`SessionMetrics`).
-- **Commands and queued turns**: `QueuedCommand#author` (a `/word` input file, `WorkerInbound#take_input`, or a
-  `/word` POST /turn, `Bridge#queue_command_request`), in `command_queued`; `turn_enqueued`; the accumulator's
-  queued rows.
+- **Queued turns**: `turn_enqueued`; the accumulator's queued rows. A participant's `/word` or `!line` is never a
+  command: `Bridge#handle_post_turn` answers it 403 and `WorkerInbound#queue_as_command` drops it (so
+  `QueuedCommand#author` stays nil on every path now).
+- **Delivery**: a participant's input file always waits for a turn of its own (`SessionInbox.waits_for_turn_end?`),
+  so `Worker#pending_input_drain` never merges it; the Bridge queues their `POST /turn` whatever its delivery and
+  counts their running and queued turns against chi web's `pending_limit` (429 `too_many_turns`).
+  `Worker#run_prompt` checks their link and cap (`participant_refusal`: `participants.json`'s entry and cap against
+  `SessionMetrics#spend`) before their turn starts and after it ends (the owner's notice, once per cap). A Continue
+  keeps the offer turn's author (`ContinueOffer#run_continue_turn`, from `last_turn.author`).
+- **The gate**: `GuardrailWiring#review_boundary` (`Guardrails::ReviewBoundary`) is the first core check; it reads
+  `#turn_author` and denies a participant's turn all but `Toolkit::REVIEW_TOOLS` and `forget_outputs`
+  (docs/guardrails.md). The declared tools stay the session's (D3: no rebuild per author).
+- **Hooks and plugins**: `Engine#turn_author` (the running turn's participant author, nil otherwise) is the hook
+  runtime's `turn_author` (`Hooks::Registry#with_runtime` adds `author:` to every event of such a turn) and the
+  plugin host's (`ctx.turn_author`).
+- **Spend**: the analytics turn record's `author` feeds `SessionMetrics#spend` / `spend_by_author` (the snapshot's
+  `spend_by_author`, `/stats`); `Engine#note_side_usage` stamps a side request's author (`#side_author`: the running
+  turn's, the recap's after it, else the owner's) into `SideTotals#by_author`.
+- **Side models**: `IdleRecap::TranscriptFilter` and `Plugin::SideQuestion` name a participant's message as theirs.
 - **The system prompt**: `Engine#refresh_participants!` at a turn's start (after `apply_toolkit!`) rebuilds the
   prompt when the session gains its first active participant or loses its last (the participants line).
 

@@ -298,6 +298,46 @@ card still names `child-boundary`. The parent (never a delegate), forks and
 ordinary sessions don't get it. Like the rules it reads command text: a
 `sh -c` body, a script or `$(…)` isn't looked into.
 
+## A participant's review boundary
+
+Built in, for a [participant's](internals/participants.md#turns) turns only (a
+turn whose author is `p:<id>`), in every mode (also with
+`guardrails.enabled: false`) and without the guardrails bundle:
+`Guardrails::ReviewBoundary`, rule `review-boundary`, source `core`. It comes
+first among the core checks, before the hooks' asks and the rules, and it
+**denies, never asks**: nobody on the participant's side may approve, and the
+owner's approval would give the participant's text the owner's tools. A
+participant's turn may call only the `review` kit's tools:
+
+- `read`, under the session's project root (the work tree top of its folder)
+  and never a secret: chi's state and config dirs (sessions, the grants, the
+  web token, memories and their `.bundles`, `config.yml`, hooks), `~/.ssh`,
+  `~/.gnupg`, `~/.aws`, and the project's `.env*`, `.netrc`, `*.pem`, `*.key`,
+  `credentials` files and `.git/config`. The path is checked as given and as it
+  resolves, so a symlink in the project to `~/.ssh` is `~/.ssh`. A session
+  whose folder is the home folder or above it reads nothing.
+- `memory_read` with `scope: project` (a read without a scope would fall back
+  to the system memories). The prompt's preloaded memories and the memory
+  index are in the system prompt anyway: a review session should start
+  without personal ones.
+- `forget_outputs`, under the `forget` layer.
+
+Everything else is denied with "a participant's review turn may only read …",
+and the model is told to propose the change as text or a diff for the owner
+to apply: `write`, `edit`, `memory_write`, `execute`, the task tools,
+`delegate`, `send_note`, `list_sessions`, `register_reminder` (it would fire
+an owner turn later), `web_fetch`, `context_read`, `ask_user_question`, and
+every plugin or MCP tool, including through `call_tool` (a built-in reached
+through `call_tool` is checked as that built-in). The session's declared tools
+stay its own (no prompt rebuild per author), so the model may still try a
+write; the turn's header ("This turn may only read") keeps that rare.
+
+The kit is `Toolkit::REVIEW`, a frozen built-in: config's `toolkit.kits.review`
+is refused with one message ([configuration](configuration.md#toolkits)), so
+config can't widen the boundary. Hooks still run on a participant's turn, with
+the owner's power ([hooks](hooks.md#participants-turns)); a hook that rewrites a
+call is checked on the call it leaves.
+
 ## Rules in config.yml
 
 ```yaml
@@ -703,6 +743,15 @@ Alex's text the owner's tools: the model will act on it as the owner asked.
 That is the residual risk, documented rather than engineered away: on a
 session with sensitive tools, quote the proposal you want applied in your own
 turn instead.
+
+Within its own turn a participant's text can't act: the review boundary
+leaves it reads of the project only, and an injection that convinces the
+model still meets the boundary (containment over detection). What it can do
+is make the model *say* what the history holds: a review turn's model sees the
+whole conversation, earlier tool outputs included, so start a review in a
+fresh session (or a continue), not on a working session full of outputs. A
+line of a participant's text that looks like one of chi's own headers goes
+out quoted (`(quoted) [Steer from the user, …]`), under the real one.
 
 ## Limits
 

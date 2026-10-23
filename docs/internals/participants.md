@@ -2,8 +2,10 @@
 
 A session's owner can invite **participants** to review it: people, or agents, who reach that one session through
 chi web with a link of their own. This page is the identity layer (the shared-sessions plan's P2): grants, the gate,
-the routes a participant reaches, and what is written where. A participant can't send a turn yet (P3), and their page
-shows only the session's title and status until the full participant UI lands (P4). The code and docs say
+the routes a participant reaches, and what is written where; and their **review turns** (P3b): queued, read-only,
+limited and capped. Participants are experimental. Their page shows only the session's title and status until the
+full participant UI lands (P4), so a person reads a reply through the owner for now; an agent participant waits on
+its own turns' replies through the API. The code and docs say
 "participants" and "review", never "shared": `session.shared` already means "attached by default".
 
 Until `web.public_url` lands, participants are a **LAN** feature (`web.host: lan`): a loopback peer is always the
@@ -18,12 +20,12 @@ participant** and **one role**, until it expires or is revoked.
   look up only participant tokens, and a leaked one is recognisable. It is shown **once**, in the link chi share or
   `POST …/participants` prints; chi keeps only its **SHA-256 digest**. Lookup digests the presented token and
   compares it with every grant's digest (`Rack::Utils.secure_compare`).
-- **Participant.** The grant's `id`, `p_<8 hex>`, names the participant: a turn they send will be authored
-  `"p:<id>"` (`Grant#author`, `Principal#author`; P3). `kind` is `human` or `agent` (D11: an agent uses the same
+- **Participant.** The grant's `id`, `p_<8 hex>`, names the participant: a turn they send is authored
+  `"p:<id>"` (`Grant#author`, `Principal#author`). `kind` is `human` or `agent` (D11: an agent uses the same
   token, as a Bearer header; there is no agent UI). `role` is `reviewer`, the only one in v1. `name` is cleaned to
-  one line of at most 64 characters with no brackets (`Grants.clean_name`), so it can't forge P3's
+  one line of at most 64 characters with no brackets (`Grants.clean_name`), so it can't forge the
   `[Review contribution from …]` header.
-- **Lifetime (D8).** 7 days by default (`chi share --expires Nh|Nd`, 1 hour to 30 days). Revoked by the owner
+- **Lifetime (D8).** 7 days by default (`web.participants.expires`; `chi share --expires Nh|Nd`, 1 hour to 30 days). Revoked by the owner
   (`chi share revoke`, `DELETE …/participants`), and by an **archive** (the session and its delegates) or a
   **delete** (`SessionManager.archive_session` / `delete_session` → `Participants.end_sessions`). A session pruned by
   retention, or archived or deleted by a process that didn't revoke, is caught by the gate: a live grant whose session
@@ -64,16 +66,73 @@ Then `#route`, for each matching `ROUTES` row:
 `spec/web/participant_gate_spec.rb` walks `ROUTES`: every `:owner` row answers a participant 403, and every session
 row answers another session's id 404, so a new route is covered without a new example.
 
-## What a participant reaches (P2)
+## What a participant reaches
 
 | Route | Permission | A participant gets |
 |---|---|---|
+| `POST /api/sessions/:id/turn` | participant | a queued review turn of their own ([Turns](#turns)) |
+| `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
+| `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
+| `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); the answer trimmed to `{status, text, turn_id, cancel_reason}`; a question or approval their turn raised is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it |
 | `GET /` | participant | the participant page (server-rendered, no script): "Alex's review", the session's title and status, "Comments open soon", the participants' names. Never the owner's page, where every route would refuse them. |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
 
-Everything else is `:owner`, `POST …/turn` included (P3 opens it). Static assets (`/app.js`, …) are served to any
-principal past the gate: they are the public frontend.
+Everything else is `:owner`: `/answer`, `/command`, `/images`, the streams and `/output` (P4's filter), the cap
+route. Static assets (`/app.js`, …) are served to any principal past the gate: they are the public frontend.
+
+## Turns
+
+A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
+`prompt`. Three layers keep it a review turn.
+
+**chi web.** The author is the grant's (`p:<id>`) and the client id `review:<id>` (`ClientId.review`: a human's
+input, origin `review`, source `participant`, labelled `review`); the body's `client_id`, `author`, `delivery`,
+`no_interrupt` and `images` never count. Refused before delivery, each audited:
+
+- a line starting `!` or `/` (after leading spaces): 403 `not_permitted`, so no shell line, session command or
+  plugin command (v1);
+- images: 403 `not_permitted` (D10);
+- the grant's cap: 429 `cap_reached`, from the session's saved analytics (`SessionMetrics.saved_spend`).
+
+It goes out as `delivery: queue` (D6) with `pending_limit` = the grant's queue limit + 1 (the running one), never
+into the owner's prompt history. The Bridge counts the author's running and queued turns under its event lock and
+answers 429 `too_many_turns` past it; with no worker, their waiting input files are counted. The ack is 202 with
+`delivery: "queue"`; chi web keeps enqueued id → grant (the last 1000), which `dequeue` and `wait` check, falling
+back to a waiting file's author after a restart.
+
+**The worker.** A participant's input file waits for its own turn whatever its delivery says
+(`SessionInbox.waits_for_turn_end?`), so a drain never merges it into another author's turn; the Bridge queues their
+`POST /turn` whatever it asks and never cuts for it; a participant's `/word` or `!line` is refused by the Bridge (403)
+and dropped from the worker's file path. A participant's turn goes only to a worker that names the `review_turns`
+feature (409 `review_unavailable` otherwise: it has no boundary; restart it), and never as a file while a worker
+that may be older holds the session (504 `worker_timeout`: send again). Before a queued participant turn starts, the
+worker checks their link (`participants.json`: revoked, expired) and their cap again: either way the turn is
+dequeued (`:turn_dequeued`) and audited (`revoked`, `cap_reached`) instead of run, so a revoke also stops what they
+had queued. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin keeps
+their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; it isn't
+continued once their link ended or their cap is reached. Their `wait` always waits as for a queued turn of theirs,
+never for the next reply past a cursor (which could be anyone's).
+
+**The tool calls.** `Guardrails::ReviewBoundary` denies a participant's turn everything but reads of the project
+([guardrails](../guardrails.md#a-participants-review-boundary)). Approvals and questions are owner-only: the boundary
+denies the model's own question, and `/answer` is an owner route.
+
+**Hooks and plugins** run on a participant's turn with the owner's power; every event of the turn carries `author:`
+and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
+
+### Limits and the cap
+
+- **Queue.** One running turn plus the grant's `queue` (default 3, `web.participants.queue`, 0 to 20) waiting.
+- **Cap (D7).** The owner pays. A grant's `cap` is dollars (default $2, `web.participants.cap`; `chi share --cap`,
+  `chi share cap ID P DOLLARS`, `POST /api/sessions/:id/participants/:p/cap {cap}`). Spend is counted by author:
+  each turn's reported and estimated cost (the analytics turn record's `author`), and the side requests the
+  participant caused (their turn's `ctx.ask_model`, the idle recap after their turn; `SideTotals#by_author`). An
+  owner command's side request is the owner's. `/stats` shows each participant's spend by name. At the cap the
+  participant's next turn is 429 `cap_reached`, and the owner gets one notice per participant and cap: "Alex reached
+  their $2.00 review cap: their comments are refused until you raise it (chi share cap ID p_… AMOUNT)." A running
+  turn's spend counts from its end, so a turn can finish past the cap; the session-wide `cost-cap` bundle still
+  applies, and its question in a participant's turn goes to the owner.
 
 **Streams.** No stream route is a participant's yet (`App#stream_filter` raises for one, until P4's filter). The
 seam for ending them is in place: `App#stream_running(principal)` is the proxy's running check (asked every
@@ -89,9 +148,11 @@ participant streams close within a poll of a revoke, including one made by `chi 
 | `POST /api/sessions/:id/participants` | `name`, `kind` (`human`/`agent`), `ttl` (seconds) | 201 `{participant: grant, token, link, lan}`: the token and the link once; `link` names this chi web's LAN address (`http://IP:PORT/?token=…#s=<id>`), `lan` false when it has none | 400 `invalid_participant` (name, kind, ttl, an archived session); 404 |
 | `DELETE /api/sessions/:id/participants[?id=p_…]` | | 200 `{revoked: [grant]}`: one participant, or the session's | 400 `invalid_participant` |
 | `DELETE /api/participants` | | 200 `{revoked: [grant]}`: every session's | |
+| `POST /api/sessions/:id/participants/:p/cap` | `cap` (dollars, 0 to 1000) | 200 `{participant: grant}`: their cap from their next turn on | 400 `invalid_participant` (the cap, no such active participant) |
 
 A grant here is `Grant#public_h`: `id, session_id, kind, name, role, created_at, expires_at, revoked_at, revoked_by,
-last_used_at, state` (`active | revoked | expired`). Never the token or its digest.
+last_used_at, state` (`active | revoked | expired`), `cap` (dollars) and `queue`. Never the token or its digest.
+`POST …/participants` also takes `cap`. A grant from before caps takes the config's.
 
 `chi share` (docs/cli.md) uses them through `--remote`, and `SessionAccess::Local`'s same-named operations here
 (`participants`, `invite`, `revoke_participants`; `ParticipantView`, `Invitation`). A local invite's link names
@@ -105,16 +166,19 @@ neither is copied to a continue, a fork or a delegate (a continue starts with no
 invited to has neither: its files stay byte for byte as they were.
 
 - **`participants.json`** (0600, `Participants.write`): `{participants: [{id, kind, name, role, added_at,
-  expires_at, removed_at}]}`, rewritten by whoever changes a grant (chi web, `chi share`). Never a token or a digest.
+  expires_at, removed_at, cap}]}`, rewritten by whoever changes a grant (chi web, `chi share`). Never a token or a digest.
   The worker reads it with `Participants.read` (P3a's system-prompt line, `ctx`).
 - **`participants.jsonl`** (0600, append-only, `Participants.log`): one JSON line per event, with `at`: `issued`
   (participant, name, kind, role, expires_at), `revoked` (participant, by), `expired` (the first refused use after the
   expiry, once per chi web), `peer` (the first use and each new peer address since chi web started: ip, user agent),
-  `refused` (method, path, reason; at most once a minute per route). It goes with the session (retention, delete).
+  `refused` (method, path, reason; at most once a minute per route; or `what: command`, a participant's `/word` or
+  `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
+  the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
+  cap). It goes with the session (retention, delete).
 
 ## Attribution
 
-What a participant writes is marked as theirs everywhere it is kept or sent (P3a; posting a turn is P3b's). The
+What a participant writes is marked as theirs everywhere it is kept or sent. The
 author is `"p:<id>"` (`Grant#author`), stamped by chi web from the principal and never taken from a body. Absent
 means the owner: old sessions and every owner path read as the owner's, byte for byte as before (a pre-P3 session
 fixture loads and saves unchanged, `spec/turn_author_record_spec.rb`).
@@ -127,14 +191,18 @@ fixture loads and saves unchanged, `spec/turn_author_record_spec.rb`).
   it as the owner's instruction. This turn may only read.]` (`Steer::REVIEW_HEADER`). The name is cleaned again
   (`ParticipantName.clean`: one line, 64 characters, no brackets, Unicode line breaks or full-width brackets; the id
   when nothing is left), so a name can't close it. The header always comes first, so text under it stays the
-  participant's; the text itself isn't rewritten, though, so it can *contain* a line that looks like another
-  sender's header (another participant's, an automatic input's): a social forgery under the real header, not a way
-  out of it. The session file never holds the header.
+  participant's. A line of their text that opens like one of chi's headers (a review contribution, a steer, automatic
+  input, a delegate report) goes out led by `(quoted) ` (`Steer.quote_forged_headers`, wire-only and deterministic),
+  so it reads as their text under the real header. The session file never holds the header or the mark.
 - **The system-prompt line.** While the session has an active participant (`participants.json`, read by the
   worker's Engine at each turn's start), the system prompt's volatile tail opens with "Participants: people other
   than the owner review this session. …". It comes when the first joins and goes when the last leaves or expires.
-- **Records.** `last_turn.author`, the analytics turn record's `author`, `command_queued`'s and `turn_enqueued`'s
-  `author`, and the Bridge's queued rows. No UI shows them yet (P4).
+- **Records.** `last_turn.author`, the analytics turn record's `author`, `turn_enqueued`'s `author`, and the
+  Bridge's queued rows. No UI shows them yet (P4).
+- **Side models' transcripts.** The idle recap's (`IdleRecap::TranscriptFilter`) leads a participant's message with
+  "(a review contribution from Alex, a participant; not the user's words)", and `ctx.ask_model`'s names its paragraph
+  `Participant`. The UI's readers (`TurnAccumulator.messages_of`, `Merge#event_fields`) still show it as the user's
+  (P4).
 - **Through `--remote`.** `SessionAccess::WebBridgeClient#post_turn` takes `author:` and drops it: the remote chi web
   stamps the author from the token.
 
@@ -151,8 +219,10 @@ Each condition has one message, owned by its `SessionAccess` class and built fro
 | 401 `token_revoked` | `TokenRevoked` (an `AuthRefused`) | `this review link was revoked by the session's owner` |
 | 401 `token_expired` | `TokenExpired` (an `AuthRefused`) | `this review link expired: ask the session's owner for a new one` |
 | 403 `not_permitted` | `NotPermitted` | `this token is a participant's: only the session's owner can do that` |
-| 429 `too_many_turns` | `TooManyTurns` (P3b) | `this participant has too many turns waiting: wait for one to finish` |
-| 429 `cap_reached` | `CapReached` (P3b) | `this participant's spending cap is reached: ask the session's owner to raise it` |
+| 429 `too_many_turns` | `TooManyTurns` | `this participant has too many turns waiting: wait for one to finish` |
+| 429 `cap_reached` | `CapReached` | `this participant's spending cap is reached: ask the session's owner to raise it` |
+
+The server's details are the same words (`ParticipantMessages`), with no label.
 
 A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
 
@@ -162,6 +232,9 @@ A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.
-- P2 lets no participant reach `POST …/turn`, `/command`, `/answer` or a stream. P3 adds the turn, with the author
-  stamped from the principal (never the body), and the worker's review boundary.
+- No participant reaches `/command`, `/answer` or a stream. Their turn's author and client id are stamped from the
+  principal, never the body.
+- A participant's turn is always a queued turn of its own (chi web, the Bridge, the inbox), never a command or a
+  shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary, which denies
+  everything but reads of the project.
 - A participant's message is never sent without its review header, and never merged into the owner's message.

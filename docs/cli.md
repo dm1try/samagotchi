@@ -22,7 +22,7 @@
 - `chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one takes it at its next step; `--cut` asks it to cut long thinking for it; `--queue` runs it as a turn of its own after the running one, and `--queue --wait` waits for that turn's own answer); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending — to an idle session whose last turn already ended, that ended turn's reply or end comes back; `--wait --turn T ID` with no message waits for exactly turn T, whether running, queued or last ended; `--format json` includes its `turn_id` when known, for waiting again after exit 3 or 4; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). What a parent may pick follows `guardrails.parent_answers`, or the session's own `parent_answers` when stricter (`soft`, the default: a deny, a plain answer, Continue and "Allow once"; `standard`: no allow; `hard`: no Continue either), never a wider scope or an allow on chi's own config; a refused pick exits 1 with what to answer instead (a convention, not a security boundary; see [Guardrails](guardrails.md#answers-from-a-parent-agent))
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
-- `chi share ID --name NAME [--agent] [--expires 3d]`, `chi share ls [ID]`, `chi share revoke ID [P] | --all` — invite a participant to review a session through chi web on the LAN (a link of their own, 7 days), list them, revoke them (see [Participants](#participants))
+- `chi share ID --name NAME [--agent] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant to review a session through chi web on the LAN (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
 - `chi --remote NAME send|answer|note|context|sessions|share …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
 - `chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR [-p TEXT]`) — the attached TUI on a session of that machine (see [Remote sessions](#remote-sessions))
 - `chi memory ls [--scope project|system] [--format text|json]` — the memories of both scopes (this folder's project first), one row each: scope, name, size, date, `from <bundle>`, the index description and its model overlays; `chi memory rm NAME [--scope project|system]` removes one as `memory_write` with `remove: true` does: its file and model overlays go to the bundle trash (the line names the dir; `chi bundle trash` lists and empties it) and its index line is dropped. NAME in both scopes without `--scope` exits 2 naming both; a missing NAME or a bundle's memory (`chi bundle uninstall` removes it) exits 1 (see [Memory: Listing and removing from the shell](memory.md#listing-and-removing-from-the-shell))
@@ -1274,10 +1274,11 @@ A session's owner can invite **participants**, people or agents, to review it th
 
 ```sh
 chi share 3f9a1c2e --name Alex
-# p_7c01d2aa  Alex (human, reviewer) · session 3f9a1c2e · expires 2026-10-30 14:02
+# p_7c01d2aa  Alex (human, reviewer) · session 3f9a1c2e · expires 2026-10-30 14:02 · cap $2.00
 # http://192.168.1.29:4567/?token=chp_…#s=3f9a1c2e-…
 # (shown once: chi keeps only its digest; chi share revoke 3f9a1c2e p_7c01d2aa ends it)
 chi share ls                    # every session's participants (--format json; never a token)
+chi share cap 3f9a1c2e p_7c01d2aa 5   # Alex's turns may cost you $5, from their next one
 chi share revoke 3f9a1c2e       # every link to that session; add a participant id for one
 chi share revoke --all          # every link to every session
 ```
@@ -1285,10 +1286,21 @@ chi share revoke --all          # every link to every session
 - The link is printed once (with a QR code at a terminal): chi keeps only a digest of its token. Send it to the
   participant; opening it sets their browser's cookie, as the owner's LAN link does. `--agent` marks an agent
   participant, which uses the token as `Authorization: Bearer` (e.g. `chi --remote` with that token).
-- It works for 7 days (`--expires Nh` or `Nd`, 1 hour to 30 days), until it is revoked, or until the session is
-  archived or deleted. A revoked or expired link shows "This review link has expired or was revoked."
-- For now a participant sees a page with the session's title and status; comments and the review itself come in
-  a later chi. They can't reach anything else: every other route answers them 403, another session 404.
+- It works for 7 days (`--expires Nh` or `Nd`, 1 hour to 30 days; `web.participants.expires`), until it is revoked,
+  or until the session is archived or deleted. A revoked or expired link shows "This review link has expired or was
+  revoked."
+- **Review turns (experimental).** A participant can ask questions and comment through chi web's `POST …/turn`: each
+  message is a turn of its own, queued behind the running one, that the model answers **read-only**. It may read the
+  project (never its secret files or chi's own), and proposes changes as text or a diff for you to apply; it can't
+  write, run, fetch, send notes or set reminders, and any approval or question is yours. A line starting `!` or `/`
+  and images are refused. One running and 3 waiting turns per participant (`web.participants.queue`). You pay: each
+  participant has a spending cap (`--cap DOLLARS`, default $2, `web.participants.cap`), counted from their turns'
+  cost and the side requests they cause; at the cap their next comment is refused and you get a notice, and `chi
+  share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review
+  boundary: restart an older one.
+- For now a participant's page shows the session's title and status; the thread and the comment box come in a later
+  chi (an agent participant can wait on its turns' replies through the API). They can't reach anything else: every
+  other route answers them 403, another session 404.
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
   this machine's chi web; without one on the LAN, chi says the link opens on this machine only.
 - The owner's own token and the `chi web --new-token` rotation are separate: rotating it ends no participant's link.

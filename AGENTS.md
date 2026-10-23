@@ -41,10 +41,12 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   against another machine's chi web (`SessionAccess::Remote`, `SessionAccess::Dispatch`); what
   `SessionAccess::Contract` lists local-only exits 2. `chi remote add|ls|rm` keeps the remotes
   (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). See docs/cli.md (Remote sessions).
-- `chi share ID --name NAME [--agent] [--expires 3d]` / `share ls [ID]` / `share revoke ID [P] | --all` (local or
-  `--remote`): a session's participants, each a `Web::Grants` grant (a `chp_` token for one session, digest-only,
-  7 days, revoked on archive/delete) that reaches only that session's `:participant` routes through chi web. Code and
-  docs say "participants" / "review", never "shared". See docs/internals/participants.md.
+- `chi share ID --name NAME [--agent] [--expires 3d] [--cap 2]` / `share ls [ID]` / `share cap ID P DOLLARS` /
+  `share revoke ID [P] | --all` (local or `--remote`): a session's participants, each a `Web::Grants` grant (a `chp_`
+  token for one session, digest-only, 7 days, a $2 cap, revoked on archive/delete) that reaches only that session's
+  `:participant` routes through chi web. Their `POST …/turn` is a queued, read-only review turn
+  (`Guardrails::ReviewBoundary`, the reserved `review` kit; no `!`/`/` lines, a turn limit, spend by author). Code
+  and docs say "participants" / "review", never "shared". See docs/internals/participants.md.
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that
@@ -114,7 +116,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating → `docs/sessions.md`
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
-- Participants (`chi share`, `Web::Grants`, the participant gate and routes, `participants.json`) → `docs/internals/participants.md`
+- Participants (`chi share`, `Web::Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`

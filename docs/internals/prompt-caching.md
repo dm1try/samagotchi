@@ -122,7 +122,8 @@ right-hand column happens.
   and on a Messages host). The participants line opens the system prompt's volatile tail, after breakpoint #1:
   a new session's cache is untouched. The Engine checks the sidecar at each turn's start and rebuilds (`reset!`)
   only when the first participant joins and when the last leaves or expires: one history re-read each, then stable.
-  Under D3(a) the declared tools stay the session's, so an author switch costs nothing.
+  Under D3(a) the declared tools stay the session's, so an author switch costs nothing: the review boundary is a
+  gate on the calls, not a toolkit switch. The forged-header mark (`(quoted) `) is a pure function of the text too.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 
