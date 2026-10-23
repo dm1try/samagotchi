@@ -2139,6 +2139,24 @@ RSpec.describe Samagotchi::Worker do
           expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).title).to eq("Coordinator")
         end
 
+        it "turns the recap off at once while a turn runs, saved beside it, and the turn's end save keeps it" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          done = ran(JSON.parse(post_command("/recap off").body)["command_id"])
+          during = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          still_running = engine.turn_running?
+          release << true
+
+          expect(still_running).to be(true)
+          expect(done).to include(status: "ok", anytime: true, changed: ["recap"])
+          expect(engine.recap).to be_nil
+          expect(during.settings.core).to eq("recap.enabled" => false)
+          expect(wait_until { saved_messages.include?("OK") }).to be(true)
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).settings.core).to eq("recap.enabled" => false)
+        end
+
         it "runs between turns too, and a normal command still waits its turn" do
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")

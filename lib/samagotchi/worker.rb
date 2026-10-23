@@ -943,14 +943,17 @@ module Samagotchi
     # finishes) comes after its command_queued. The cards it shows go out at
     # once (btw's "thinking…" card), after its command_queued, which the
     # UIs draw its line at (Engine#running_anytime). Its handler reads
-    # copies (ctx.messages) and shows things through ctx only. One saves:
-    # /title, a field no turn writes, through Session#save, which takes the
-    # session's lock and writes a running turn's checkpoint (as
-    # WorkerSignals' save off the turn thread does), so the turn's own saves
-    # keep it.
+    # copies (ctx.messages) and shows things through ctx only. One that
+    # changed the session (/title, /recap off: fields no turn writes) is
+    # saved here, as a queued one is (#run_command), through Session#save,
+    # which takes the session's lock and writes a running turn's checkpoint
+    # (as WorkerSignals' save off the turn thread does), so the turn's own
+    # saves keep it.
     def start_anytime_command(command)
       @engine.spawn_anytime do
         result = command_result(command) { @engine.running_anytime { @commands.run(command.line, confirm: confirm?(command)) } }
+        # Saved before its command_ran: a client that reads the file on the reply finds it.
+        save_or_log(:command) { save_session } unless Array(result.changed).empty?
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
                                   anytime: true, confirm: result.confirm)
       rescue StandardError => e
