@@ -88,7 +88,7 @@ RSpec.describe "steering a running turn (chi send)" do
                                     idle_exit_minutes: 0, poll_interval: 0.05)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until(timeout: 10) { File.exist?(File.join(session_dir, "bridge.json")) }).to be_truthy
+    wait_for("the worker's bridge.json", timeout: 10) { File.exist?(File.join(session_dir, "bridge.json")) }
   end
 
   def run_turn(prompt)
@@ -101,10 +101,9 @@ RSpec.describe "steering a running turn (chi send)" do
   # chi send does. The thinking is fresh throughout (a chunk every 50 ms),
   # so a cut is eligible from steer.cut_after (1 s here) on.
   def send_after_thinking(*argv, seconds: 1.4)
-    thinking = wait_until(timeout: 10) { events.any? { |e| e[:type] == :generation_chunk && !e[:thinking].to_s.strip.empty? } }
-    raise "the model never started thinking" unless thinking
+    wait_for("the model to start thinking", timeout: 10) { events.any? { |e| e[:type] == :generation_chunk && !e[:thinking].to_s.strip.empty? } }
 
-    sleep(seconds)
+    sleep(seconds) # sleep-ok: the thinking runs this long before the send (past steer.cut_after)
     Samagotchi::SendCommand.new([*argv, session.id], stdin: StringIO.new(""), stdout: out, stderr: err, state_dir: tmpdir).run
       .tap { @sent = true }
   end
@@ -150,13 +149,12 @@ RSpec.describe "steering a running turn (chi send)" do
     stream_thinking
     run_turn("have a long think")
     start_worker
-    expect(wait_until(timeout: 10) { events.any? { |e| e[:type] == :generation_chunk } }).to be_truthy
+    wait_for("the first generation chunk", timeout: 10) { events.any? { |e| e[:type] == :generation_chunk } }
 
     queued = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "later please", client_id: "web:x",
                                                                  delivery: "queue", state_dir: tmpdir)
     expect(queued).to have_attributes(status: :accepted)
     expect(queued.ack).to include("delivery" => "queue")
-    sleep(0.01)
     plain = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "mind the typos", client_id: "web:x", state_dir: tmpdir)
     @sent = true
     expect(plain.ack).to include("delivery" => "next_step")
@@ -215,6 +213,6 @@ RSpec.describe "steering a running turn (chi send)" do
 
     expect(status).to eq(0), err.string
     expect(answered.string).to eq("RUNNING ANSWER\n")
-    expect(wait_until(timeout: 15) { Dir.children(File.join(session_dir, "output")).size == 2 }).to be_truthy
+    wait_for("both replies saved", timeout: 15) { Dir.children(File.join(session_dir, "output")).size == 2 }
   end
 end

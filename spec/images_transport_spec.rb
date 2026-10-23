@@ -7,6 +7,7 @@ require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/bridge"
 require "support/test_kernel"
+require "support/worker_loop_rounds"
 
 # Images between a UI and the worker: refs only (never paths or bytes),
 # through the Bridge, the input files, the worker and the snapshot.
@@ -106,6 +107,8 @@ RSpec.describe "Images in transport" do
   end
 
   describe "the worker" do
+    include WorkerLoopRounds
+
     let(:turns) { Queue.new }
 
     before do
@@ -121,15 +124,16 @@ RSpec.describe "Images in transport" do
 
     def start_worker
       worker = Samagotchi::Worker.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir, idle_exit_minutes: 0, poll_interval: 0.05)
+      count_loop_rounds(worker)
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
-      expect(wait_until { File.exist?(File.join(session_dir, "bridge.json")) }).to be_truthy
-      sleep(0.1)
+      wait_for("the worker's bridge.json") { File.exist?(File.join(session_dir, "bridge.json")) }
+      loop_rounds
     end
 
     def queue_input(prompt, images: [])
       Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, images: images, state_dir: tmpdir)
-      sleep(0.002) # distinct timestamps keep the files in order
+      sleep(0.002) # sleep-ok: distinct name timestamps keep the files in order
     end
 
     # D11: an image line is skipped like a queued one, not a barrier, so a
