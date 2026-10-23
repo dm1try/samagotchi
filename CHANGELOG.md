@@ -78,6 +78,9 @@ and commands may change between minor versions. How releases are made:
 - The participant page that can't reach chi web (a network blip, a 5xx) says "Can't reach the session — retrying…" and
   reads again with a backoff (3 s, doubling, at most 30 s), at open and after a turn boundary, instead of a blank or
   silently stale page; a comment that can't be sent says so and stays in the box.
+- The participant page's live reply no longer loses the text that streams while the page re-reads the review (another
+  participant's comment queuing mid-turn left a hole until the turn ended): it streams again from the re-read's
+  cursor, and an older re-read answering last no longer overwrites a newer one.
 
 ## [0.106.0] - 2026-10-23
 

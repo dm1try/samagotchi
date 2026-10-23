@@ -206,3 +206,50 @@ test("participant page: a comment that can't reach the session says so and stays
   assert.equal($("error").hidden, false);
   assert.match($("error").textContent, /can't reach the session/i);
 });
+
+// GETs after the first left pending, in +calls+, for the test to answer.
+const firstReadOnly = (review = REVIEW) => {
+  let gets = 0;
+  return (call) => {
+    if (call.method === "GET" && ++gets === 1) call.answer(200, review);
+    else if (call.method === "POST") call.answer(202, { status: "accepted" });
+  };
+};
+
+test("participant page: of two reads in flight, an older answer arriving last is dropped", async (t) => {
+  const { $, calls, tick, sources } = await openPage(t, { respond: firstReadOnly() });
+  sources[0].emit("turn_enqueued");
+  await tick(120);
+  $("comment").value = "Is step 3 safe?";
+  enter($("comment"));
+  await settle();
+  const gets = calls.filter((c) => c.method === "GET");
+  assert.equal(gets.length, 3);
+  const mine = { ...REVIEW, queued: { mine: [{ enqueued_id: "q1", prompt: "Is step 3 safe?" }], others: 0 } };
+  gets[2].answer(200, mine);
+  await settle();
+  gets[1].answer(200, REVIEW);
+  await settle();
+  assert.match($("queue").textContent, /Queued: Is step 3 safe\?/);
+});
+
+test("participant page: the reply's events that arrive while the review is re-read are replayed from its cursor, not lost", async (t) => {
+  const running = (text, id) => ({ ...REVIEW, session: { ...REVIEW.session, status: "running" },
+    current_turn: { prompt: "Go", text, tools: [] }, last_event_id: id });
+  const { $, calls, tick, sources } = await openPage(t, { respond: firstReadOnly(running("Hel", "7-ab")) });
+  assert.match(sources[0].url, /from_seq=7-ab/);
+  assert.equal($("liveReply").textContent, "Hel");
+  // Another participant's comment queues (a re-read); the reply goes on
+  // while it is in flight, after the server cut its snapshot (seq 8).
+  sources[0].emit("turn_enqueued");
+  await tick(120);
+  sources[0].emit("generation_chunk", { text: "lo" });
+  calls.at(-1).answer(200, running("Hel", "8-ab"));
+  await settle();
+  assert.equal(sources.length, 2, "the stream again from the re-read's cursor");
+  assert.equal(sources[0].readyState, FakeSource.CLOSED);
+  assert.match(sources[1].url, /from_seq=8-ab/);
+  sources[1].emit("generation_chunk", { text: "lo" });
+  sources[1].emit("generation_chunk", { text: " world" });
+  assert.equal($("liveReply").textContent, "Hello world");
+});

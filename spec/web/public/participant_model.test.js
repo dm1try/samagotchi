@@ -48,9 +48,10 @@ test("participant: an ended link says why", () => {
 test("participant: the stream goes on from the review's cursor, or joins with a snapshot; the owner's asks for the filter", () => {
   assert.equal(cursorSeq("12-ep"), 12);
   assert.equal(cursorSeq(null), null);
-  assert.equal(streamURL("s1", "12-ep"), "/api/sessions/s1/stream?from_seq=12");
+  assert.equal(streamURL("s1", "12-ep"), "/api/sessions/s1/stream?from_seq=12-ep");
+  assert.equal(streamURL("s1", 12), "/api/sessions/s1/stream?from_seq=12");
   assert.equal(streamURL("s1", null), "/api/sessions/s1/stream?snapshot=1");
-  assert.equal(streamURL("s1", "3-ep", { owner: true }), "/api/sessions/s1/stream?from_seq=3&as=participant");
+  assert.equal(streamURL("s1", "3-ep", { owner: true }), "/api/sessions/s1/stream?from_seq=3-ep&as=participant");
 });
 
 test("participant: turn boundaries, the queue and the owner's questions re-read; the reply's events draw live", () => {
