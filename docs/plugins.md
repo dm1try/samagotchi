@@ -2200,7 +2200,12 @@ Claude pairs; without one the bundle costs one tool declaration.
   Claude's answers (its `chi context push claude-outbox`, with `CHI_REMOTE`
   set) reach chi: the outbox leg works. The inbox leg doesn't: `claude_send`
   writes to Claude's socket on the machine chi runs on, and the laptop's isn't
-  there.
+  there. So through a remote (`CHI_REMOTE`, or `--remote NAME` in `CHI`)
+  `pair` attaches only `claude-outbox` and prints one line saying chi there
+  can't send to this Claude: chi's replies reach Claude only when you relay
+  them (or ask it to run `chi --remote studio send --wait <id>`). A session
+  that already has a `claude-inbox` it can't reach:
+  `chi --remote studio context rm claude-inbox <id>`.
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):

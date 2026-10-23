@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 - The guardrails bundle (0.9.3) asks for `chi --remote NAME context add --cmd …` and `chi --remote NAME broadcast`
   as it does without `--remote`. Update with `chi update`.
+- claude-peer (0.4.2): `pair` through a remote (`CHI_REMOTE`, or `--remote NAME` in `CHI`) attaches only
+  `claude-outbox` and says chi there can't send to that Claude. Update with `chi update`.
 
 ## [0.102.0] - 2026-10-23
 

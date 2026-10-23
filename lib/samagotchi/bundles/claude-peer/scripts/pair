@@ -8,7 +8,9 @@
 # is this session's inbox socket (chi's claude_send tool writes there), and
 # claude-outbox, where Claude's answers go. Again after a Claude restart, it
 # only refreshes the socket: the push carries the new hint. CHI names the chi
-# command (default: chi on the PATH).
+# command (default: chi on the PATH). Through a remote (CHI_REMOTE, or
+# --remote NAME in CHI) chi there can't reach this machine's socket: it
+# attaches claude-outbox only, and says so.
 set -eu
 
 usage() {
@@ -33,6 +35,23 @@ if [ -z "$sock" ]; then
 fi
 chi=${CHI:-chi}
 
+# The remote, as SessionAccess::Dispatch names it: a --remote NAME (or
+# --remote=NAME) word in CHI, the last one, beats CHI_REMOTE (trimmed; blank:
+# local). An empty or dash-led name is still a remote: chi refuses it.
+remote=$(printf '%s\n' "${CHI_REMOTE:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+via= take=
+[ -z "$remote" ] || via=env
+for word in $chi; do
+  if [ -n "$take" ]; then
+    remote=$word take=
+    continue
+  fi
+  case "$word" in
+    --remote) remote= via=chi take=1 ;;
+    --remote=*) remote=${word#--remote=} via=chi ;;
+  esac
+done
+
 # A JSON string: backslashes, quotes, tabs and newlines escaped.
 json() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
@@ -50,6 +69,16 @@ attach() {
     fi
   fi
 }
+
+if [ -n "$via" ]; then
+  attach claude-outbox --why "Claude's answers to what you sent it (claude-peer); Claude runs on another machine: claude_send can't reach it" \
+    --hint "latest Claude reply"
+  ask=$chi
+  [ "$via" = chi ] || ask="CHI_REMOTE=$remote $chi"
+  printf '%s\n' "pair: chi is on $remote, so chi can't send to this Claude session (claude_send needs its socket on chi's machine): paired with chi $id, claude-outbox only. Answer chi with $ask context push claude-outbox $id; chi's replies reach you only when the user relays them (or asks you to run $ask send --wait $id)"
+  $chi context ls "$id"
+  exit 0
+fi
 
 attach claude-inbox --why "the Claude Code session paired with you: send it parts with claude_send" --hint "$sock"
 text="Claude Code peer inbox
