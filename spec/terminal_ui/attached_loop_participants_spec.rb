@@ -74,3 +74,73 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
     expect(screen.lines.last).to eq("Al 31mex x ▸ review> hi")
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/share and /participants" do
+  let(:screen) { RecordingSurface.new(columns: 100) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: "/state") }
+
+  it "runs chi share for this session through the link's access, mid-turn too, and sends no prompt" do
+    commands = instance_double(Samagotchi::TerminalUI::ParticipantCommands)
+    allow(Samagotchi::TerminalUI::ParticipantCommands).to receive(:new).and_return(commands)
+    allow(commands).to receive(:run) { |line| "ran #{line}" }
+    attached.instance_variable_set(:@running, true)
+
+    attached.send(:submit_line, "/share Alex")
+    attached.send(:submit_line, "/participants revoke p_aaaa1111")
+
+    expect(screen.lines).to eq(["ran /share Alex", "ran /participants revoke p_aaaa1111"])
+    expect(Samagotchi::TerminalUI::ParticipantCommands).to have_received(:new).once
+      .with(access: an_instance_of(Samagotchi::SessionAccess::Local), session_id: "s-1234", tty: anything)
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
+  let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
+  let(:commands) { described_class.new(access: access, session_id: "abcdef12-0000", tty: false) }
+  let(:grant) do
+    Samagotchi::SessionAccess::ParticipantView.new(
+      id: "p_aaaa1111", session_id: "abcdef12-0000", kind: "human", name: "Alex Smith", role: "reviewer",
+      created_at: "2026-10-23T10:00:00Z", expires_at: "2026-10-30T10:00:00Z", revoked_at: nil, revoked_by: nil,
+      last_used_at: nil, state: "active", cap: 2.0, queue: 3
+    )
+  end
+
+  before { allow(access).to receive(:resolve) { |id| id } }
+
+  it "/share NAME invites through chi share's access and words: the link once" do
+    allow(access).to receive(:invite).and_return(
+      Samagotchi::SessionAccess::Invitation.new(participant: grant, token: "chp_x", link: "http://10.0.0.2:8080/?token=chp_x#s=abcdef12", lan: true)
+    )
+    out = commands.run("/share Alex Smith --cap 5 --expires 3d")
+
+    expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", kind: "human", ttl: 3 * 86_400, cap: 5.0)
+    expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (human, reviewer) · session abcdef12 · expires " \
+                                          "#{Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")} · cap $2.00",
+                                          "http://10.0.0.2:8080/?token=chp_x#s=abcdef12",
+                                          "(shown once: chi keeps only its digest; chi share revoke abcdef12 p_aaaa1111 ends it)"])
+  end
+
+  it "says how to use /share and /participants, and leads chi share's refusals with the command typed" do
+    expect(commands.run("/share")).to eq(described_class::SHARE_USAGE)
+    expect(commands.run("/share --agent")).to eq(described_class::SHARE_USAGE)
+    expect(commands.run("/participants list")).to eq(described_class::PARTICIPANTS_USAGE)
+    expect(commands.run("/share Alex --expires 90d")).to eq("/share: --expires takes Nh or Nd, 1h to 30d (e.g. 3d) (see /share --help)")
+    expect(commands.run("/participants revoke bob")).to start_with("/participants revoke: not a participant: bob")
+  end
+
+  it "/participants lists, revokes and caps this session's" do
+    allow(access).to receive_messages(participants: [grant], revoke_participants: [grant], set_participant_cap: grant)
+
+    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  human")
+    expect(access).to have_received(:participants).with("abcdef12-0000")
+    expect(commands.run("/participants revoke p_aaaa1111")).to eq("p_aaaa1111  Alex Smith  revoked")
+    expect(access).to have_received(:revoke_participants).with("abcdef12-0000", participant: "p_aaaa1111")
+    expect(commands.run("/participants cap p_aaaa1111 5")).to eq("p_aaaa1111  Alex Smith  cap $2.00")
+  end
+
+  it "words a remote's refusal as chi --remote share does, led by the command" do
+    allow(access).to receive(:participants).and_raise(Samagotchi::SessionAccess::RemoteFailed, "remote studio: unreachable")
+    expect(commands.run("/participants")).to eq("/participants: remote studio: unreachable")
+  end
+end

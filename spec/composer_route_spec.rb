@@ -43,7 +43,9 @@ RSpec.describe Samagotchi::ComposerRoute do
     "/detach" => %w[local local],
     "/cut" => %w[usage usage],
     "/queue" => %w[usage usage],
-    "/unqueue" => %w[local local]
+    "/unqueue" => %w[local local],
+    "/share" => %w[local local],
+    "/participants" => %w[local local]
   }.freeze
 
   def expect_route(route, expected, row)

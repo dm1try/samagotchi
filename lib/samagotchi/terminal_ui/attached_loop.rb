@@ -14,6 +14,7 @@ require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "version_lines"
+require_relative "participant_commands"
 require_relative "local_link"
 require_relative "../bridge/turn_accumulator"
 require_relative "../bridge_client"
@@ -507,6 +508,8 @@ module Samagotchi
           show_recap
         elsif local == :unqueue
           unqueue_newest
+        elsif %i[share participants].include?(local)
+          @screen.commit(participant_commands.run(text))
         elsif route.kind == :command
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if PromptHistory.shell_line?(text)
@@ -1018,6 +1021,12 @@ module Samagotchi
       rescue ImageStore::Error => e
         @screen.commit("could not attach the image: #{e.message}")
         nil
+      end
+
+      # /share and /participants: chi share for this session, where it is.
+      def participant_commands
+        @participant_commands ||= ParticipantCommands.new(access: @link.session_access, session_id: @client.session_id,
+                                                          tty: $stdout.tty?)
       end
 
       def show_stats

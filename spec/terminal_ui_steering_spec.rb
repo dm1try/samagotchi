@@ -471,6 +471,16 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines.count(described_class::REPL_UNQUEUE_NOTE)).to eq(2)
   end
 
+  # A participant's turns run on the session's worker: the REPL points at
+  # the attached terminal and chi share, and the model never sees the line.
+  it "answers /share and /participants with a note, and sends nothing" do
+    allow(engine).to receive(:run_turn)
+    agent.send(:run_input_line, session, "/share Alex")
+    agent.send(:run_input_line, session, "/participants")
+    expect(engine).not_to have_received(:run_turn)
+    expect(surface.lines.count(described_class::REPL_SHARE_NOTE)).to eq(2)
+  end
+
   it "queues !cmd typed mid-turn, and refuses !rollback with its own hint" do
     reader = double("reader", prefill_next: nil)
     repl_input.instance_variable_set(:@reader, reader)

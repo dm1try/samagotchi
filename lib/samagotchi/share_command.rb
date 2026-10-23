@@ -59,13 +59,16 @@ module Samagotchi
     # @param access [SessionAccess::Local, SessionAccess::Remote, nil]
     #   where the sessions are; default this machine's, in +state_dir+
     # @param tty [Boolean, nil] print the QR code (default: stdout is a TTY)
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil, tty: nil)
+    # @param name [String, nil] what its error lines are led by, when not
+    #   "chi share …" (the attached TUI's /share and /participants)
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil, tty: nil, name: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
       @stderr = stderr
       @access = access || SessionAccess::Local.new(state_dir: state_dir)
       @tty = tty.nil? ? @stdout.respond_to?(:tty?) && @stdout.tty? : tty
+      @name = name
     end
 
     # @return [Integer] exit status: 0 done, 1 refused or failed, 2 usage
@@ -90,7 +93,7 @@ module Samagotchi
 
     private
 
-    def command_name = @sub ? "chi share #{@sub}" : "chi share"
+    def command_name = @name || (@sub ? "chi share #{@sub}" : "chi share")
     def usage_on_error = nil
 
     def run_invite(options, args)

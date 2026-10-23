@@ -94,6 +94,11 @@ module Samagotchi
       # @return [Completions]
       def completions = raise(NotImplementedError)
 
+      # Where /share and /participants reach the session's participants,
+      # as chi share does (SessionAccess::Local, or the remote's).
+      # @return [SessionAccess::Local, SessionAccess::Remote]
+      def session_access = raise(NotImplementedError)
+
       # The stream's sleeps between failed reconnects.
       # @return [Array<Float>]
       def reconnect_delays = raise(NotImplementedError)

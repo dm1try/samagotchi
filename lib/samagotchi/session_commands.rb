@@ -158,6 +158,12 @@ module Samagotchi
       # runs (the worker's POST turn/dequeue); the web has × on the bubble.
       registry.register("/unqueue", "remove your newest queued message before it runs", local: true, uis: [:attached],
                                                                                           match: ->(text) { text.casecmp?("/unqueue") })
+      # chi share for the attached session (TerminalUI::ParticipantCommands):
+      # a participant's turns run on its worker, so the REPL points there.
+      registry.register("/share", "invite someone to review this session (/share NAME [--agent] [--expires 3d] [--cap 2])",
+                        local: true, uis: [:attached], match: ->(text) { text.match?(%r{\A/share(?:\s.*)?\z}i) })
+      registry.register("/participants", "list this session's participants (revoke [P], cap P DOLLARS)",
+                        local: true, uis: [:attached], match: ->(text) { text.match?(%r{\A/participants(?:\s.*)?\z}i) })
       registry
     end
 

@@ -113,6 +113,13 @@ module Samagotchi
 
       def completions = Completions::ALL
 
+      # chi share's on this machine: the grants store and the sidecar
+      # under +state_dir+.
+      def session_access
+        require_relative "../session_access/local"
+        @session_access ||= SessionAccess::Local.new(state_dir: @state_dir)
+      end
+
       def reconnect_delays = BridgeClient::EventStream::REDISCOVER_DELAYS
 
       def via = ChiInvocation::HERE

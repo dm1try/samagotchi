@@ -69,6 +69,10 @@ module Samagotchi
     REPL_DETACH_NOTE = "(not attached: this session runs in this terminal; /exit ends it)"
     # /unqueue is the attached terminal's (its worker's queued input files).
     REPL_UNQUEUE_NOTE = "(/unqueue is the attached terminal's; here a line queued with /queue TEXT runs after the turn)"
+    # A participant's turns run on the session's worker, which an attached
+    # terminal has and this REPL doesn't.
+    REPL_SHARE_NOTE = "(/share and /participants are the attached terminal's: a participant's turns run on the " \
+                      "session's worker; chi share does the same from a shell)"
     IMAGE_LINE_WAITS = "(a line with images runs as the next turn)"
 
     # Raised when another process (a `chi web` worker or another chi) owns the
@@ -1176,6 +1180,7 @@ module Samagotchi
       when :stats then @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}")
       when :recap then @surface.commit("\nmodel> #{handle_recap_command}")
       when :unqueue then @surface.commit(REPL_UNQUEUE_NOTE)
+      when :share, :participants then @surface.commit(REPL_SHARE_NOTE)
       else return false
       end
       true

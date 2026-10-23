@@ -28,8 +28,9 @@ module Samagotchi
       # The registry ids (SessionCommands' local: true, :attached) the
       # attached loop runs remotely as it does here: its own leaving, the
       # deliveries, the dequeue route, and the exit, archive, stats and
-      # recap through chi web's routes.
-      HANDLED_COMMANDS = %i[detach cut queue unqueue exit archive stats recap].freeze
+      # recap through chi web's routes, and /share and /participants through
+      # its participants routes (#session_access, chi --remote NAME share's).
+      HANDLED_COMMANDS = %i[detach cut queue unqueue exit archive stats recap share participants].freeze
 
       # About a minute of reconnects (P4-D5); a Bridge here keeps
       # EventStream::REDISCOVER_DELAYS.
@@ -176,6 +177,9 @@ module Samagotchi
       # / commands and this machine's @path files (images are ingested here);
       # no memory names: they would be this machine's (P4-D11).
       def completions = Completions.new(paths: true, memories: false)
+
+      # chi --remote NAME share's: its chi web's owner routes.
+      def session_access = @remote
 
       def reconnect_delays = RECONNECT_DELAYS
 
