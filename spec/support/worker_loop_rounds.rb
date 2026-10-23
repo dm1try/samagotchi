@@ -22,7 +22,7 @@ module WorkerLoopRounds
     count.times do
       start = @rounds[0]
       waker.wake
-      expect(wait_until { @rounds[0] > start }).to be(true)
+      wait_for("the worker loop to come round to its wait") { @rounds[0] > start }
     end
   end
 end
