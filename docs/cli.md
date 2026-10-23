@@ -1328,7 +1328,8 @@ chi share revoke --all          # every link to every session
   shows their name in their colour, live and after a reload.
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
   this machine's running chi web, on the port it listens on (it records it in `$XDG_STATE_HOME/samagotchi/web.json`;
-  `web.port` when none answers there); without one on the LAN, chi says the link opens on this machine only.
+  `web.port` when none answers there); without one on the LAN, chi says the link opens on this machine only (as
+  the participant there too: a participant's link never opens as the owner).
 - The owner's own token and the `chi web --new-token` rotation are separate: rotating it ends no participant's link.
 - **In the attached terminal.** A participant's message reads `Alex ▸ review> is step 3 right?`, the name in that
   participant's own colour (queued, running, and the last exchange when you join); yours stay as they were. A line

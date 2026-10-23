@@ -7,8 +7,10 @@ limited and capped; and what they **see** (P4a): their page and its reads, all t
 experimental. An agent participant waits on its own turns' replies through the API. The code and docs say
 "participants" and "review", never "shared": `session.shared` already means "attached by default".
 
-Until `web.public_url` lands, participants are a **LAN** feature (`web.host: lan`): a loopback peer is always the
-owner, and a reverse proxy on the same machine would make every visitor loopback.
+Until `web.public_url` lands, participants are a **LAN** feature (`web.host: lan`): a loopback peer with no token is
+the owner, and a reverse proxy on the same machine would make every visitor loopback. A participant's token is the
+participant's wherever it comes from: their link opened on this machine (or on a chi web not on the LAN, whose link
+works on this machine only) is the participant, never the owner.
 
 ## Grants
 
@@ -44,16 +46,21 @@ participant** and **one role**, until it expires or is revoked.
 
 `App#principal_for` resolves every request to a `Web::Principal`:
 
-1. A loopback peer, or a chi web not on the LAN: the **owner** (unchanged).
-2. The owner's token (Bearer, then the cookie; `?token=` on the page's trade): the **owner**. Checked first, so the
+1. The owner's token (Bearer, then the cookie; `?token=` on the page's trade): the **owner**. Checked first, so the
    owner's requests never touch the grants store (measured: no change to an owner route's time).
-3. A `chp_` token whose grant is active: a **participant** (`Principal.new(kind: :participant, grant:)`).
+2. A `chp_` token (`Grants.token?`) whose grant is active: a **participant** (`Principal.new(kind: :participant,
+   grant:)`), from any peer: loopback and a chi web not on the LAN too. An ended or unknown one is refused
+   (below), never the owner.
+3. No `chp_` token from a loopback peer, or on a chi web not on the LAN: the **owner** (unchanged).
 4. Anything else: nil. `#token_gate` answers an ended grant's token **401 `token_revoked`** or **401
    `token_expired`** (the page: "This review link has expired or was revoked. Ask the session's owner for a new
    one."), any other **401 `unauthorized`** as before.
 
 The `?token=` trade sets the `chi_token` cookie to the token that was presented, the owner's or the participant's
-(one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there).
+(one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
+makes that browser the participant, on loopback too). A grant's token is traded on any peer; the owner's only where
+the gate asks for it. On a peer the gate doesn't ask, the 401 for a grant's cookie that no longer works clears the
+cookie, so that browser is the owner's again at its next request.
 
 Then `#route`, for each matching `ROUTES` row:
 
@@ -392,7 +399,8 @@ participant TUI in v1.
 
 ## Invariants
 
-- The owner is a loopback peer or the owner's token; nothing else. A participant token never widens to the owner.
+- The owner is the owner's token, or a loopback peer (or a chi web not on the LAN) with no participant token; nothing
+  else. A participant token never widens to the owner, from any peer.
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.

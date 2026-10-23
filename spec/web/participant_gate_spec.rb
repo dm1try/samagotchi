@@ -80,6 +80,40 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
     end
   end
 
+  describe "a participant's token on this machine (a loopback peer, or chi web not on the LAN)" do
+    let(:loopback) { "127.0.0.1" }
+
+    it "is the participant, never the owner: Bearer, cookie and the page's trade" do
+      expect(json("/api/info", peer: loopback).last.keys).to contain_exactly("app", "version", "features")
+      expect(json("/api/sessions", peer: loopback)).to eq([403, { "error" => "not_permitted",
+                                                                  "detail" => Samagotchi::ParticipantMessages::NOT_PERMITTED }])
+      cookie = { "HTTP_COOKIE" => "chi_token=#{token}" }
+      expect(call("/", peer: loopback, bearer: nil, headers: cookie)[2]).to include(%(data-name="Alex"))
+      status, headers, = call("/?token=#{token}", peer: loopback, bearer: nil)
+      expect([status, headers["Location"], headers["Set-Cookie"].to_s[/\Achi_token=[^;]*/]]).to eq([303, "/", "chi_token=#{token}"])
+
+      plain = described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants)
+      req = Rack::Request.new(Rack::MockRequest.env_for("/api/info", "HTTP_AUTHORIZATION" => "Bearer #{token}",
+                                                                     "REMOTE_ADDR" => phone))
+      expect(plain.send(:principal_for, req)&.author).to eq("p:#{issued.grant.id}")
+    end
+
+    it "is refused once the grant ended (401), and an ended cookie is cleared so the owner's browser is the owner again" do
+      token
+      Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state_dir)
+      expect(json("/api/info", peer: loopback).last["error"]).to eq("token_revoked")
+      status, headers, = call("/", peer: loopback, bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })
+      expect([status, headers["Set-Cookie"].to_s]).to match([401, a_string_starting_with("chi_token=; ")])
+      expect(call("/", peer: loopback, bearer: nil)[2]).to include("owner page")
+    end
+
+    it "is the owner with the owner's token or no token at all, whatever cookie a participant link left" do
+      cookie = { "HTTP_COOKIE" => "chi_token=#{token}" }
+      expect(json("/api/info", peer: loopback, bearer: owner_token, headers: cookie).last.keys).to include("pid", "cwd")
+      expect(json("/api/info", peer: loopback, bearer: nil).last.keys).to include("pid", "cwd")
+    end
+  end
+
   describe "the routes a participant reaches" do
     it "GET /api/sessions/:id: their session's title, status and participants only" do
       status, body = json("/api/sessions/#{session.id}")

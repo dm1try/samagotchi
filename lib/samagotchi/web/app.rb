@@ -375,7 +375,7 @@ module Samagotchi
       #   principal (#principal_for), or the response that refuses it
       def token_gate(req)
         principal = principal_for(req)
-        return [nil, grant_ended_response(req) || unauthorized(req)] if principal.nil?
+        return [nil, refused_token(req)] if principal.nil?
         # The cookie gets the token that was presented: the owner's, or the
         # participant's grant's.
         return [nil, token_redirect(req, req.env[GRANT_TOKEN_ENV] || current_token)] if token_trade?(req)
@@ -383,28 +383,51 @@ module Samagotchi
         [principal, nil]
       end
 
-      # Who the request is: the owner for a peer the gate doesn't ask (no
-      # LAN mode, or this machine's loopback) and for the access token (the
-      # page's ?token= on a trade, else the Bearer header or the cookie);
-      # a participant for a live grant's token (Grants, looked up only when
-      # no owner token was given); nil for anyone else.
+      # Who the request is, from the token it presents (the page's ?token=
+      # on a trade, else the Bearer header or the cookie): the owner for
+      # the access token; a participant for a live grant's token (a chp_
+      # one, looked up only when no owner token was given), wherever the
+      # request comes from, this machine's loopback too; with neither, the
+      # owner for a peer the gate doesn't ask (no LAN mode, or this
+      # machine's loopback), else nil. An ended or unknown grant's token is
+      # nil anywhere: it never falls back to the owner.
       # @return [Principal, nil]
       def principal_for(req)
-        return Principal::OWNER unless token_required?(req)
+        given = presented_tokens(req)
+        return Principal::OWNER if @lan && given.any? { |value| token_match?(value, current_token) }
 
-        token = current_token
-        given = token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[TOKEN_COOKIE]]
-        return Principal::OWNER if given.any? { |value| token_match?(value, token) }
+        grant_tokens = given.select { |value| Grants.token?(value) }
+        return Principal::OWNER if grant_tokens.empty? && !token_required?(req)
 
-        participant_principal(req, given.select { |value| Grants.token?(value) })
+        participant_principal(req, grant_tokens)
+      end
+
+      def presented_tokens(req)
+        token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[TOKEN_COOKIE]]
       end
 
       def token_required?(req) = @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
 
-      # The page opened with ?token= (a gated request): its token is traded
-      # for the cookie, whatever else the request carries.
+      # The page opened with ?token= (a gated request, or a grant's token
+      # anywhere): its token is traded for the cookie, whatever else the
+      # request carries.
       def token_trade?(req)
-        token_required?(req) && req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+        return false unless req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+
+        token_required?(req) || Grants.token?(req.params["token"])
+      end
+
+      # The 401 for a request #principal_for refused: an ended grant's, else
+      # unauthorized. On a peer the gate doesn't ask, a grant's cookie that
+      # no longer works is cleared too, so the browser it was left in (the
+      # owner's, who opened a participant link) is the owner's again.
+      def refused_token(req)
+        response = grant_ended_response(req) || unauthorized(req)
+        return response if token_required?(req) || !Grants.token?(req.cookies[TOKEN_COOKIE])
+
+        status, headers, body = response
+        [status, headers.merge("Set-Cookie" => "#{TOKEN_COOKIE}=; #{TOKEN_COOKIE_ATTRIBUTES.sub(/Max-Age=\d+/, "Max-Age=0")}"),
+         body]
       end
 
       def bearer_token(req) = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]

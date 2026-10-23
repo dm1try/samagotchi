@@ -465,6 +465,25 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
+    it "is a participant on this machine too: its link opened on loopback, or on a chi web not on the LAN" do
+      plain = Samagotchi::Web::App.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants)
+      [[app, "127.0.0.1"], [plain, "127.0.0.1"], [plain, "192.168.1.20"]].each do |web, peer|
+        reads = ["/output", "/images/0", "?parts=1", ""].map do |suffix|
+          env = Rack::MockRequest.env_for("/api/sessions/#{session.id}#{suffix}")
+          env["HTTP_HOST"] = "127.0.0.1:4567"
+          env["REMOTE_ADDR"] = peer
+          env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+          status, _headers, chunks = web.call(env)
+          [status, chunks.join]
+        end
+        reads.first(2).each { |status, body| expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"]), peer }
+        reads.last(2).each do |status, body|
+          expect([status, JSON.parse(body)["session"].keys]).to eq([200, %w[id title status participants]]), peer
+          expect(body).not_to include("deploy", "Yes.")
+        end
+      end
+    end
+
     it "reads no host path in a refusal or an error" do
       allow(Samagotchi::Session).to receive(:load).and_raise(ArgumentError, "bad session file #{root}/x.json")
       status, body = get("/api/sessions/#{session.id}/review")

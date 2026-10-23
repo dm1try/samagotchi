@@ -193,7 +193,7 @@ module Samagotchi
         error_line("#{command_name}: warning: #{invitation.warning} (#{@access.invocation.command("review --from #{id[0, 8]}")} starts one)")
       end
       unless invitation.lan
-        @stdout.puts("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only")
+        @stdout.puts("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only, as the participant")
       end
       @stdout.puts(Web::QR.lines(invitation.link)) if @tty
     end
