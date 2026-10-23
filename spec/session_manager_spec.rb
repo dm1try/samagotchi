@@ -36,12 +36,7 @@ RSpec.describe Samagotchi::SessionManager do
       sleep 30
     RUBY
     @owner_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", script, session_dir)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
-    until described_class.session_owner(session.id, state_dir: tmpdir)
-      raise "owner never took the lock" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-      sleep 0.02
-    end
+    wait_for("the owner to take the lock") { described_class.session_owner(session.id, state_dir: tmpdir) }
   end
 
   describe ".list_sessions" do
@@ -111,8 +106,8 @@ RSpec.describe Samagotchi::SessionManager do
         allow(bridge).to receive(:cancel) do |reason:|
           calls << [:cancel, reason, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
           # The worker's Engine ends the turn and saves the session.
-          Thread.new do
-            sleep 0.2
+          @saver = Thread.new do
+            sleep 0.2 # sleep-ok: the save comes a moment after the cancel (the stop waits for it)
             loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
             loaded.status = Samagotchi::Session::STATUS_IDLE
             loaded.save(state_dir: tmpdir)
@@ -121,6 +116,7 @@ RSpec.describe Samagotchi::SessionManager do
         end
 
         described_class.stop_session(session.id, state_dir: tmpdir, wait: 1)
+        join!(@saver, "the worker's save")
 
         expect(calls).to eq([[:cancel, "session_stopped", Samagotchi::Session::STATUS_RUNNING]])
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
@@ -130,9 +126,10 @@ RSpec.describe Samagotchi::SessionManager do
         allow(bridge).to receive(:cancel).and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: nil))
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        described_class.stop_session(session.id, state_dir: tmpdir, wait: 1)
+        described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)
 
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+        # Not the 3 s cancel wait (STOP_CANCEL_WAIT), nor the 5 s one for the owner.
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2.5
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
       end
     end
@@ -1355,11 +1352,11 @@ RSpec.describe Samagotchi::SessionManager do
         # The worker (the starter's child) from here on.
         starter_pid = Process.ppid
         writer.puts("worker #{Process.pid} sid #{Process.getsid} starter #{Process.ppid}")
-        sleep 0.3 # still starting: the starter waits
+        sleep 0.3 # sleep-ok: still starting: the starter waits
         lock = Samagotchi::OwnerLock.acquire(dir, kind: "worker", wait: 0)
         writer.puts("locked #{Process.clock_gettime(Process::CLOCK_MONOTONIC)}")
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
-        sleep 0.05 while Process.ppid == starter_pid && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        # wait-ok: the parent checks the ppid this then reports
+        wait_until(interval: 0.05) { Process.ppid != starter_pid }
         writer.puts("reparented #{Process.ppid}")
         writer.close
         lock&.release
@@ -2162,8 +2159,8 @@ RSpec.describe Samagotchi::SessionManager do
       new_file = File.join(output_dir, "new.txt")
       File.write(old_file, "old")
       boundary = Time.now
-      sleep(0.01)
       File.write(new_file, "new")
+      distinct_mtime(new_file)
 
       responses = described_class.read_responses(session.id, since_time: boundary, state_dir: tmpdir)
       expect(responses).to eq(["new"])

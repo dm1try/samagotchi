@@ -40,6 +40,14 @@ module SpecWaiting
     end
   end
 
+  # Moves +path+'s mtime 1 s on, so it sorts after (is newer than) anything
+  # written before it, whatever the file system's mtime granularity, without
+  # a sleep between the writes.
+  # @return [Time] the new mtime
+  def distinct_mtime(path)
+    (File.mtime(path) + 1).tap { |time| File.utime(time, time, path) }
+  end
+
   # #eventually's message: a matcher's that starts on its own line
   # ("\nexpected: …") stays there.
   def still_failing(waited, message)
