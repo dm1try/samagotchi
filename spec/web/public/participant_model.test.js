@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, endedText, cursorSeq, streamURL, reloads,
+  authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
   retries, retryDelay,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
@@ -31,18 +31,38 @@ test("participant: a tool row is its name and project path; several fold into a 
   assert.equal(toolsSummary([]), "");
 });
 
-test("participant: a refusal in words: not_permitted always ours, else the server's detail, else by code", () => {
-  assert.match(refusalText(403, { error: "not_permitted", detail: "a participant can't do that" }), /can't start with “!” or “\/”/);
-  assert.equal(refusalText(429, { error: "too_many_turns", detail: "server words" }), "server words");
-  assert.match(refusalText(429, { error: "cap_reached" }), /spending cap .* reached/);
-  assert.match(refusalText(429, { error: "too_many_turns" }), /too many comments waiting/);
+test("participant: a refusal in the server's words, as a sentence; with none, the status", () => {
+  const server = {
+    not_permitted: "a participant can't do that: only the session's owner can",
+    too_many_turns: "this participant has too many turns waiting: wait for one to finish",
+    cap_reached: "this participant's spending cap is reached: ask the session's owner to raise it",
+  };
+  assert.equal(refusalText(403, { error: "not_permitted", detail: server.not_permitted }),
+    "A participant can't do that: only the session's owner can.");
+  assert.equal(refusalText(429, { error: "too_many_turns", detail: server.too_many_turns }),
+    "This participant has too many turns waiting: wait for one to finish.");
+  assert.equal(refusalText(429, { error: "cap_reached", detail: server.cap_reached }),
+    "This participant's spending cap is reached: ask the session's owner to raise it.");
+  assert.equal(refusalText(504, { error: "worker_timeout", detail: "the session didn't answer in time." }),
+    "The session didn't answer in time.");
+  assert.equal(refusalText(429, { error: "cap_reached" }), "Not sent (HTTP 429).");
   assert.equal(refusalText(500, null), "Not sent (HTTP 500).");
 });
 
-test("participant: an ended link says why", () => {
-  assert.match(endedText({ error: "token_revoked" }), /revoked/);
-  assert.match(endedText({ error: "token_expired" }), /expired/);
-  assert.match(endedText(null), /expired or was revoked/);
+test("participant: a take-back refused: the server's words, an already started turn, or the status", () => {
+  assert.equal(dequeueText(409, { error: "already_started", enqueued_id: "q1" }), "Not taken back: it already started.");
+  assert.equal(dequeueText(403, { error: "not_permitted", detail: "a participant can't do that: only the session's owner can" }),
+    "A participant can't do that: only the session's owner can.");
+  assert.equal(dequeueText(503, null), "Not taken back (HTTP 503).");
+  assert.equal(dequeueText(0, null), "Not taken back: can't reach the session.");
+});
+
+test("participant: an ended link says why in the server's words", () => {
+  assert.equal(endedText({ error: "token_revoked", detail: "this review link was revoked by the session's owner" }),
+    "This review link was revoked by the session's owner.");
+  assert.equal(endedText({ error: "token_expired", detail: "this review link expired: ask the session's owner for a new one" }),
+    "This review link expired: ask the session's owner for a new one.");
+  assert.equal(endedText(null), "Ask the session's owner for a new link.");
 });
 
 test("participant: the stream goes on from the review's cursor, or joins with a snapshot; the owner's asks for the filter", () => {

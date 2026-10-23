@@ -104,7 +104,7 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   // A shell line is refused in words, before it reaches the session.
   await page.locator("#comment").fill("!ls");
   await page.locator("#send").click();
-  await expect(page.locator("#error")).toContainText("can't start with");
+  await expect(page.locator("#error")).toHaveText("A participant can't do that: only the session's owner can.");
 
   await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
   // Apply under the review turn's reply: the owner's turn in the composer,

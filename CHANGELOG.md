@@ -81,6 +81,9 @@ and commands may change between minor versions. How releases are made:
 - The participant page's live reply no longer loses the text that streams while the page re-reads the review (another
   participant's comment queuing mid-turn left a hole until the turn ended): it streams again from the re-read's
   cursor, and an older re-read answering last no longer overwrites a newer one.
+- The participant page shows chi web's own words for a refused comment or take-back ("A participant can't do that:
+  only the session's owner can.", too many turns, the spending cap) and for an ended link (revoked or expired),
+  instead of its own second wording.
 
 ## [0.106.0] - 2026-10-23
 
