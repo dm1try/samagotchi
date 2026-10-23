@@ -116,13 +116,20 @@ module Samagotchi
     #   last status line's bucket is where rises count from)
     # @param llm_context [LLMContextStrategy::Resolved, nil] the turn's
     #   strategy (its budget)
-    def initialize(conversation: [], llm_context: nil)
+    # @param counted_chars_per_token [Float, nil] the last turn's
+    #   #counted_chars_per_token: the turn's estimate before its first count
+    #   uses it instead of the configured ratio, so the value doesn't dip at
+    #   a turn's start (the chat loop's chars leave out the tool schemas the
+    #   server counts)
+    def initialize(conversation: [], llm_context: nil, counted_chars_per_token: nil)
       @budget = llm_context&.budget_tokens
       @forget = llm_context&.forget? || false
       @offered = self.class.last_line(conversation).to_s.include?(OFFER_TOOL)
       @enabled = self.class.enabled?
       chars_per_token = Config.get("context.chars_per_token").to_f
       @chars_per_token = chars_per_token.positive? ? chars_per_token : DEFAULT_CHARS_PER_TOKEN
+      @estimate_chars_per_token = counted_chars_per_token.to_f.positive? ? counted_chars_per_token.to_f : @chars_per_token
+      @counted_chars_per_token = nil
       parsed = Config.get("context.status_thresholds").to_s.split(",").map { |value| value.strip.to_i }
                      .select { |value| value.between?(1, 99) }.uniq.sort
       @thresholds = parsed.empty? ? DEFAULT_THRESHOLDS : parsed
@@ -137,6 +144,10 @@ module Samagotchi
     # @return [Hash, nil] the status line's value ({est_pct:, bucket:});
     #   nil with context.status off or before the first request
     attr_reader :display
+    # @return [Float, nil] the chars per token of the last request the
+    #   server counted (its prompt chars over its prompt tokens, images
+    #   aside), for the next turn's tracker; nil before a count
+    attr_reader :counted_chars_per_token
 
     def enabled? = @enabled
 
@@ -212,6 +223,8 @@ module Samagotchi
 
       @counted = { chars: prompt_chars, image_tokens: image_tokens }
       @edited = false
+      text_tokens = usage[:prompt_tokens].to_i - image_tokens.to_i
+      @counted_chars_per_token = prompt_chars.to_f / text_tokens if prompt_chars.positive? && text_tokens.positive?
       value = display_for(used_tokens: usage[:total_tokens], window_tokens: usage[:context_window_tokens] || window&.tokens)
       @display = value if value
     end
@@ -243,7 +256,7 @@ module Samagotchi
         source = "server"
       else
         window_tokens = counted_against(window.tokens)
-        used_tokens = (prompt_chars / @chars_per_token).ceil + image_tokens
+        used_tokens = (prompt_chars / @estimate_chars_per_token).ceil + image_tokens
         source = "estimate"
       end
 

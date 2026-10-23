@@ -874,6 +874,26 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
       end
 
+      it "starts the next turn's estimate from the last count's chars per token: no dip at the turn's start" do
+        ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "100000"
+        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+        # The server counts 2,000 tokens for a 400-char prompt: the tool
+        # schemas it is sent, which the chars leave out.
+        counted = Samagotchi::LLM::Usage.new(prompt_tokens: 2_000, completion_tokens: 10, source: :server)
+        backend.adapter = FakeChatAdapter.new(text("ok", usage: counted), text("ok again"))
+        first = [{ role: "user", content: "x" * 400 }]
+
+        run(first)
+        events.clear
+        run(first + [{ role: "model", content: "ok" }, { role: "user", content: "and" }])
+
+        status = events.find { |event| event[:type] == :context_status }
+        expect(status[:usage][:source]).to eq("estimate")
+        expect(status[:usage][:estimated_used_tokens]).to be >= 2_000
+      ensure
+        ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
+      end
+
       it "is nil with context.status off" do
         ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
         backend.adapter = FakeChatAdapter.new(text("ok", usage: Samagotchi::LLM::Usage.new(prompt_tokens: 3_000, completion_tokens: 1_000,

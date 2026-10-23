@@ -12,8 +12,12 @@ resumed session's line already names):
 
 Both loops do this, before each request (`ContextStatus`, one per turn). The
 chat loop's estimate counts the conversation's text and tool calls, not the
-tool schemas it sends, until the host's first count (its `usage`). The event
-carries a `status` string using this prefix:
+tool schemas it sends, until the host's first count (its `usage`). So that a
+turn's first request doesn't dip below the last turn's count (the schemas are
+thousands of tokens), the loop keeps the last counted request's chars per token
+(`ContextStatus#counted_chars_per_token`, on `KernelLoop` / `ChatLoop`) and the
+next turn's estimate before its first count uses it instead of
+`context.chars_per_token`. The event carries a `status` string using this prefix:
 
 `CONTEXT_STATUS ...`
 

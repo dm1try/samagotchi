@@ -79,6 +79,21 @@ RSpec.describe Samagotchi::ContextStatus do
     expect(tracker.display).to eq(est_pct: 20.0, bucket: "20plus")
   end
 
+  it "learns a counted request's chars per token, which the next tracker's first estimate uses" do
+    tracker = described_class.new
+    expect(tracker.counted_chars_per_token).to be_nil
+    counts = tracker.capture({ "usage" => { "prompt_tokens" => 300, "completion_tokens" => 10 } })
+    tracker.generation_done(counts, prompt_chars: 600, image_tokens: 100, window: window)
+    expect(tracker.counted_chars_per_token).to eq(3.0)
+
+    following = described_class.new(counted_chars_per_token: tracker.counted_chars_per_token)
+    following.observe(900, iteration_index: 0, window: window)
+    expect(following.display).to eq(est_pct: 30.0, bucket: "20plus")
+    described_class.new.tap { |fresh| fresh.observe(900, iteration_index: 0, window: window) }.then do |fresh|
+      expect(fresh.display).to eq(est_pct: 22.5, bucket: "20plus")
+    end
+  end
+
   it "says whether the status line's value is in the top bucket" do
     tracker = described_class.new
     expect(tracker).not_to be_top_bucket

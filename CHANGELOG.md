@@ -33,6 +33,9 @@ and commands may change between minor versions. How releases are made:
 
 - `/queue TEXT` (or `/cut TEXT`) with no turn running says `(nothing is running: sent now)` in the REPL and the
   attached terminal, instead of sending without a word.
+- The ctx % no longer dips at the start of each turn on a chat host (`api: openai` / `anthropic`): the turn's first
+  estimate, made before the host counts anything, left out the tool schemas; it now uses the last count's chars per
+  token.
 
 ## [0.103.0] - 2026-10-23
 

@@ -63,6 +63,11 @@ module Samagotchi
       # The session every request is for; Engine sets it with the adapter.
       # Goes out as a Session-Id header (OpenAIChat#chat).
       attr_accessor :session_id
+      # The last counted request's chars per token
+      # (ContextStatus#counted_chars_per_token), carried to the next turn's
+      # tracker: its first estimate counts the tool schemas the chars leave
+      # out, so the ctx value doesn't dip at each turn's start.
+      attr_accessor :counted_chars_per_token
 
       # @param kernel [KernelLoop] tool dispatch, thought stripping, hooks
       # @param adapter [OpenAIChat, nil] the host to talk to; Engine sets it
@@ -585,7 +590,8 @@ module Samagotchi
           @recovery_repeated = false
           # The names the last request declared deferred.
           @deferred = []
-          @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context)
+          @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context,
+                                       counted_chars_per_token: loop.counted_chars_per_token)
           loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context,
                                                              emit: method(:emit))
         end
@@ -976,6 +982,7 @@ module Samagotchi
                                                    "completion_tokens" => usage.completion_tokens } })
           @context.generation_done(counts, prompt_chars: @request_chars.to_i, image_tokens: @request_image_tokens.to_i,
                                            window: window)
+          @loop.counted_chars_per_token = @context.counted_chars_per_token || @loop.counted_chars_per_token
         end
 
         # The model's answer at debug level, as the native loop dumps its

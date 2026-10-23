@@ -147,6 +147,11 @@ module Samagotchi
     #   write; the Engine's own (it hands it to a kernel it was given).
     attr_accessor :reminder_store
 
+    # @return [Float, nil] the last counted request's chars per token
+    #   (ContextStatus#counted_chars_per_token), for the next turn's first
+    #   estimate (no dip at a turn's start)
+    attr_accessor :counted_chars_per_token
+
     # @return [ModelProfile] the active prompt profile
     attr_reader :profile
 
@@ -309,7 +314,8 @@ module Samagotchi
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:, reasoning_since: nil)
       conversation = prepare_conversation(messages, keep_thought_from: ReasoningHistory.run_start(messages, reasoning_since))
-      context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context)
+      context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context,
+                                  counted_chars_per_token: @counted_chars_per_token)
       emit = ->(event) { emit_stream_event(on_stream_event, event) }
       @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit)
       Turn.new(
@@ -609,6 +615,7 @@ module Samagotchi
       response = generation.response.to_s
       turn.context.generation_done(generation.usage, prompt_chars: request.prompt.length, image_tokens: request.image_tokens,
                                                      window: request.window)
+      @counted_chars_per_token = turn.context.counted_chars_per_token || @counted_chars_per_token
       emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: response.length,
                  thinking_chars: thinking_chars(response, generation.streamed_thinking),
                  served_model: generation.served_model, requested_model: turn.model_name,
