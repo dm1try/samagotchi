@@ -33,12 +33,11 @@ module Samagotchi
       # A /continue yes (or bare /continue) from a parent agent's process.
       def self.parent_continue?(prompt) = TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?
 
-      # @return [String, nil] the first target's refusal of a parent's
-      #   /continue yes; nil for any other line, or when none refuses
-      def continue_refusal(prompt)
-        return nil unless self.class.parent_continue?(prompt)
-
-        target_values.each do |value|
+      # The first refusal of a parent's /continue yes among targets whose
+      # own parent_answers are +values+, held to this process's config.yml
+      # (chi web's for a remote chi send); nil when none refuses.
+      def self.continue_refusal_for(values)
+        values.each do |value|
           strategy = Guardrails::ParentPolicy.effective(value)
           refusal = Guardrails::ParentPolicy.continue_refusal(strategy: strategy)
           return refusal if refusal
@@ -46,12 +45,26 @@ module Samagotchi
         nil
       end
 
+      # Whether +prompt+ is a /parent-answers line.
+      def self.parent_answers_line?(prompt) = SessionCommands.builtin_registry.lookup(prompt)&.id == :parent_answers
+
+      # Whether +prompt+ is a /parent-answers line that loosens one of
+      # +values+ (targets' own parent_answers).
+      def self.loosens_any?(prompt, values)
+        parent_answers_line?(prompt) && values.any? { |value| ParentAnswersCommand.loosens?(prompt, value) }
+      end
+
+      # @return [String, nil] the first target's refusal of a parent's
+      #   /continue yes; nil for any other line, or when none refuses
+      def continue_refusal(prompt)
+        return nil unless self.class.parent_continue?(prompt)
+
+        self.class.continue_refusal_for(target_values)
+      end
+
       # Whether +prompt+ is a /parent-answers line that loosens a target's
       # own value.
-      def loosens?(prompt)
-        SessionCommands.builtin_registry.lookup(prompt)&.id == :parent_answers &&
-          target_values.any? { |value| ParentAnswersCommand.loosens?(prompt, value) }
-      end
+      def loosens?(prompt) = self.class.parent_answers_line?(prompt) && self.class.loosens_any?(prompt, target_values)
 
       private
 

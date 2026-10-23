@@ -53,6 +53,11 @@ module Samagotchi
     # command source, whose text is its command's).
     ContextPush = Data.define(:status, :before, :revision) do
       def initialize(status:, before: nil, revision: nil) = super
+
+      # Why a push to +name+ was refused as :not_push: a command source's
+      # text is its command's, and a push between two fetches would read
+      # as a change and then vanish.
+      def self.not_push_message(name) = "#{name} runs a command, which writes its text: push goes to a --push source"
     end
   end
 end

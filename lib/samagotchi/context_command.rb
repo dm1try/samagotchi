@@ -77,6 +77,10 @@ module Samagotchi
       def project? = session_id.nil?
     end
 
+    # Why chi context rm NAME ID (and chi web's DELETE …/context/NAME?own=1)
+    # leaves a source the session's project has.
+    def self.project_source_message(name) = "#{name} is the project's: chi context rm #{name} --project, or mute it for this session"
+
     # @param argv [Array<String>] the arguments after "context"
     # @param clock [#call] now, for ls's ages ("4s ago")
     # @param access [SessionAccess::Local, nil] where the sessions are;
@@ -183,7 +187,7 @@ module Samagotchi
         when :not_push
           # A command source's text is its command's (R2): a push between
           # two fetches would read as a change and then vanish.
-          error_line("#{command_name}: #{name} runs a command, which writes its text: push goes to a --push source")
+          error_line("#{command_name}: #{SessionAccess::ContextPush.not_push_message(name)}")
           next false
         end
 
@@ -281,7 +285,7 @@ module Samagotchi
           @stdout.puts("#{target.label}  detached #{name}")
           next true
         when :project
-          error_line("#{command_name}: #{name} is the project's: chi context rm #{name} --project, or mute it for this session")
+          error_line("#{command_name}: #{self.class.project_source_message(name)}")
         else
           error_line("#{command_name}: no source #{name} for #{target.label}")
         end

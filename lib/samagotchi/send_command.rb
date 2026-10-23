@@ -25,6 +25,7 @@ require_relative "cli/flags"
 require_relative "cli/parent_wait"
 require_relative "send_command/parent_gate"
 require_relative "send_command/wait_target"
+require_relative "send_command/busy"
 require_relative "session_access/local"
 
 module Samagotchi
@@ -206,6 +207,29 @@ module Samagotchi
     end
 
     UNKNOWN_VISION = VisionSupport::Answer.new(value: nil, reason: nil)
+
+    # What to say when +answer+ (.vision_answer's for +model_name+) is a
+    # no, or nil: the words chi send and chi web's turn and create routes
+    # refuse images with.
+    def self.vision_refusal(model_name, answer)
+      return nil unless answer.no?
+
+      name = model_name.to_s.strip
+      name = Samagotchi::Config.get("default.model").to_s.strip if name.empty?
+      name = "the model" if name.empty?
+      "#{name} can't take images (#{answer.reason}); send text only or switch the model (/model)"
+    end
+
+    # The model a --continues link of +previous+ runs, for the images
+    # check: +model+'s (blank: the previous link's, else the default it
+    # falls back to; SessionContinue.model_for).
+    # @return [Array(String, String)] [model_name, model_typed]
+    # @raise [ModelProfile::MissingModel] a model it can't start on
+    def self.continued_model(previous, model)
+      choice = SessionContinue.model_for(previous, model)
+      inherited = model.to_s.strip.empty? && choice.warning.nil?
+      inherited ? [previous.model_name, previous.model_typed] : [choice.model, nil]
+    end
 
     # A no from the config (models: / hosts: vision: false) holds without
     # the server.
@@ -486,9 +510,7 @@ module Samagotchi
       return [options[:model], nil] unless options[:continues]
 
       previous = Session.load(SessionChain.resolve(options[:continues], state_dir: @state_dir), state_dir: @state_dir)
-      choice = SessionContinue.model_for(previous, options[:model])
-      inherited = options[:model].to_s.strip.empty? && choice.warning.nil?
-      inherited ? [previous.model_name, previous.model_typed] : [choice.model, nil]
+      self.class.continued_model(previous, options[:model])
     rescue ModelProfile::MissingModel => e
       error_line("chi send: could not start a session: #{e.message}")
       false
@@ -517,26 +539,10 @@ module Samagotchi
       session = @access.show(id)
       # Machine-local reads (the owner lock, this machine's
       # parent_answers for the question's advice): remotely the server's
-      # (P2: its prepare route says busy or waiting).
-      if session.status == Session::STATUS_RUNNING && (owner = @access.owner(id)) &&
-         (!@queue || session.waiting_question(live: owner.worker?))
-        # The turn waits on a question: the message would only queue
-        # behind it, and the answer goes in with chi answer.
-        if (waiting = session.waiting_question(live: owner.worker?))
-          # The whole question (its options, its tags) for what a parent may
-          # give: config.yml tightened by the session's own parent_answers.
-          strategy = Guardrails::ParentPolicy.for_session(session)
-          question = ParentReport.question(session.pending_question, strategy: strategy)
-          if ParentReport.approval?(waiting)
-            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport.approval_advice(question, strategy: strategy)} " \
-                       "(#{ParentReport.answer_with(id, question)})")
-          else
-            error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, question)} (or --text); " \
-                       "chi --attach #{id} shows it")
-          end
-        else
-          error_line("#{id[0, 8]}  busy: a turn is running; wait or attach")
-        end
+      # (its wait prepare route says busy or waiting, Busy's words).
+      owner = @access.owner(id) if session.status == Session::STATUS_RUNNING
+      if (busy = Busy.for(session, owner: owner, queue: @queue))
+        error_line("#{id[0, 8]}  #{busy.message}")
         return 1
       end
 
@@ -765,12 +771,7 @@ module Samagotchi
     def vision_refusal(model_name, typed: nil)
       @vision ||= {}
       answer = @vision[[model_name.to_s, typed.to_s]] ||= self.class.vision_answer(model_name, typed: typed)
-      return nil unless answer.no?
-
-      name = model_name.to_s.strip
-      name = Samagotchi::Config.get("default.model").to_s.strip if name.empty?
-      name = "the model" if name.empty?
-      "#{name} can't take images (#{answer.reason}); send text only or switch the model (/model)"
+      self.class.vision_refusal(model_name, answer)
     end
 
     # Each --image read, converted and downscaled once, into a scratch
