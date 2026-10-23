@@ -335,8 +335,8 @@ module Samagotchi
         ].freeze
         # The value after an Authorization header or a token=/key= pair.
         VALUES = [
-          /(\bAuthorization:\s*(?:Bearer\s+|Basic\s+|Token\s+)?)[^\s"']+/i,
-          /(\b(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)\s*[=:]\s*["']?)[^\s"'&]+/i
+          /(\bAuthorization:\s*(?:Bearer\s+|Basic\s+|Token\s+)?)[^\s"'`]+/i,
+          /(\b(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)\s*[=:]\s*["']?)[^\s"'&`]+/i
         ].freeze
 
         module_function

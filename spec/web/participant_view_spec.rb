@@ -155,6 +155,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
              "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY----- /home/oscar stays"
       out = described_class::Redact.text(text, viewer)
       expect(out).not_to include("sk-ant", "ghp_", "AKIA", "xoxb", "chp_", "abc.def", "zzz", "OWNERTOKEN", "MIIE", "/home/o/")
+      expect(described_class::Redact.text("`API_KEY=sk-ant-abcdefghijklmnopqrstu` here", viewer)).to eq("`API_KEY=[redacted]` here")
       expect(out).to include("Authorization: Bearer [redacted]", "token=[redacted]", "at a.rb in ., ~/notes", "/home/oscar stays")
     end
   end

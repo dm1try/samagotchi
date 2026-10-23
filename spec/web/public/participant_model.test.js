@@ -68,3 +68,20 @@ test("participant: the live turn: text by step, a restarted step voided, tool ro
   assert.deepEqual(live.tools.map((row) => [row.tool, row.status]), [["read", "ok"], ["execute", "error"]]);
   assert.equal(applyLive(live, { type: "something_else" }), live);
 });
+
+test("participant: a run of tool-only steps folds into the next reply's rows, or stands alone before a prompt", async () => {
+  const { withToolSteps } = await import("../../../lib/samagotchi/web/public/participant_model.js");
+  const r = (tool) => ({ tool });
+  const out = withToolSteps([
+    { role: "user", content: "go" },
+    { role: "assistant", content: "", tools: [r("execute")] },
+    { role: "assistant", content: " ", tools: [r("read")] },
+    { role: "assistant", content: "Done.", tools: [r("memory_read")] },
+    { role: "assistant", content: "", tools: [r("ask_user_question")] },
+    { role: "user", content: "next" },
+  ]);
+  assert.deepEqual(out.map((m) => [m.role, m.content, (m.tools || []).map((t) => t.tool)]), [
+    ["user", "go", []], ["assistant", "Done.", ["execute", "read", "memory_read"]], ["assistant", "", ["ask_user_question"]],
+    ["user", "next", []],
+  ]);
+});
