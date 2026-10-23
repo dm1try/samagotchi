@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Web, dark theme: the working set's rail (its rule and count), the list's header rows (`files · 2`) and its ops
+  text and buttons (drop, pin, add) are easier to read.
 - Web: `!rollback` (and a canceled continue) updates the working set at once; one that emptied it no longer leaves
   the dropped items in the rail and the list until the next turn.
 

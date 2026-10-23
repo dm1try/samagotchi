@@ -90,3 +90,23 @@ test("theme: no web JS module sets a raw colour", () => {
   }
   assert.deepEqual(hits, []);
 });
+
+// The working set's secondary text (the rail's count, the list's header rows
+// and ops text, the drop/pin buttons) and the rail's rule: one step brighter
+// on the dark palette, where text-faint and border read as almost nothing;
+// the light palette keeps the base tokens.
+test("theme: the working set's faint text and rule are a step brighter on dark, unchanged on light", () => {
+  assert.equal(DARK["--ws-faint"], "var(--text-muted)");
+  assert.equal(DARK["--ws-muted"], "var(--text-3)");
+  assert.equal(DARK["--ws-rule"], "var(--border-strong)");
+  assert.equal(LIGHT["--ws-faint"], "var(--text-faint)");
+  assert.equal(LIGHT["--ws-muted"], "var(--text-muted)");
+  assert.equal(LIGHT["--ws-rule"], "var(--border)");
+  const rule = (selector) => HTML.slice(HTML.indexOf(`${selector}{`)).split("}")[0];
+  assert.match(rule(".ts-ws"), /border-left:1px solid var\(--ws-rule\)/);
+  assert.match(rule(".ws-count"), /color:var\(--ws-faint\)/);
+  assert.match(rule(".ws-popover .ctx-pop-meta"), /color:var\(--ws-muted\)/);
+  assert.match(rule(".ws-row .st"), /color:var\(--ws-faint\)/);
+  assert.match(rule(".ws-row .tk,.ws-row .c"), /color:var\(--ws-faint\)/);
+  assert.match(rule(".ws-act-b"), /color:var\(--ws-muted\)/);
+});

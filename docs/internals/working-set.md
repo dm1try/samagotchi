@@ -290,3 +290,7 @@ at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck o
 forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`
 in words (colour is never alone) and shows `~1.2k` tokens per row (`tokensText`). A footprint adds `n stale` (plain; a file the turn's
 end found changed shows there, the rail is gone by then) and `n forgotten`, struck. Titles add `(stale)` or `(forgotten)` per member.
+The secondary text and the rail's rule read through their own tokens, a step brighter on the dark palette and the
+base tokens on the light one: `--ws-faint` (the counts, the ops text, step tags; `--text-muted` on dark, `--text-faint`
+on light), `--ws-muted` (the rail's head, the list's `files · n` rows, the drop/pin buttons; `--text-3` / `--text-muted`),
+`--ws-rule` (the rail's left rule; `--border-strong` / `--border`) and `--ws-act-border` (the buttons' border).
