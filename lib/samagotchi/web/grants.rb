@@ -7,6 +7,7 @@ require "securerandom"
 require "time"
 require "rack/utils"
 require_relative "../atomic_file"
+require_relative "../participant_name"
 require_relative "../session"
 require_relative "../redacted_inspect"
 
@@ -48,7 +49,7 @@ module Samagotchi
       KINDS = %w[human agent].freeze
       # The only role in v1: a reviewer reads and (P3) comments.
       ROLES = %w[reviewer].freeze
-      NAME_MAX = 64
+      NAME_MAX = ParticipantName::MAX
       ID_RE = /\Ap_[0-9a-f]{8}\z/
 
       # The store's folder or file can be read by others (chi web refuses to
@@ -120,10 +121,10 @@ module Samagotchi
       def self.token?(value) = value.is_a?(String) && value.start_with?(PREFIX)
 
       # One line, at most NAME_MAX characters, no brackets (a name can't
-      # forge P3's "[Review contribution from …]" header).
+      # forge the "[Review contribution from …]" header; ParticipantName).
       # @raise [Invalid] nothing left
       def self.clean_name(name)
-        clean = name.to_s.gsub(/[[:cntrl:]\[\]]/, " ").squeeze(" ").strip[0, NAME_MAX].to_s.strip
+        clean = ParticipantName.clean(name)
         raise Invalid, "a participant needs a name" if clean.empty?
 
         clean

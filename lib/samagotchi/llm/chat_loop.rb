@@ -451,6 +451,7 @@ module Samagotchi
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           message[AnswerRefs::KEY] = entry[AnswerRefs::KEY] if entry[AnswerRefs::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
+          Steer::AUTHOR_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[ToolResponse::LOADED] = entry[ToolResponse::LOADED] if entry[ToolResponse::LOADED].is_a?(Array)
           message[TOOL_CHANGE] = entry[TOOL_CHANGE] if entry[TOOL_CHANGE].is_a?(Hash)
           message
