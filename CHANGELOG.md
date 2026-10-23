@@ -8,16 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-10-23
+
 ### Added
 
-- Participants (identity; the review itself comes later): `chi share ID --name NAME [--agent] [--expires 3d]`
-  invites someone, or an agent, to review a session through chi web on the LAN with a link of their own, printed once
-  with a QR code (chi keeps only a digest of its token). `chi share ls [ID]` lists participants and
-  `chi share revoke ID [P] | --all` ends links; all three work through `--remote`. A link works for 7 days (1 hour
-  to 30 days), until it is revoked, or until the session is archived or deleted. For now it opens a page with the
-  session's title and status; every other route answers it 403, and another session 404. chi web refuses to start
-  when another user can read its grants store. Through `--remote`, a revoked, expired or participant's token gets
-  its own message instead of "the token was refused". See [docs/cli.md](docs/cli.md#participants).
 - Remote attach: `chi --remote NAME --attach ID` (and `--resume ID`, `-p TEXT`, or `--dir DIR` for a new session
   there, that machine's absolute path) runs the attached TUI on another machine's session, through its chi web:
   the same lines and exit codes, every printed command spelled with `--remote NAME`, `@path` images from this
@@ -27,6 +21,14 @@ and commands may change between minor versions. How releases are made:
   `/exit --delete`, `/archive`, `/stats` and `/recap` work through a remote as here, the status row counts the
   session's delegates there, and a join shows the steps' durations and a failed turn's line from that machine's
   saved records. See [docs/cli.md](docs/cli.md#remote-sessions).
+- Participants (experimental: identity only, the review itself comes in a later release): `chi share ID --name NAME
+  [--agent] [--expires 3d]` invites someone, or an agent, to review a session through chi web on the LAN with a link
+  of their own, printed once with a QR code (chi keeps only a digest of its token). `chi share ls [ID]` lists
+  participants and `chi share revoke ID [P] | --all` ends links; all three work through `--remote`. A link works for 7
+  days (1 hour to 30 days), until it is revoked, or until the session is archived or deleted. For now it opens a page
+  with the session's title and status; every other route answers it 403, and another session 404. chi web refuses to
+  start when another user can read its grants store. Through `--remote`, a revoked, expired or participant's token
+  gets its own message instead of "the token was refused". See [docs/cli.md](docs/cli.md#participants).
 - The bundle test kit (experimental) waits with `wait_for(what) { … }`, which raises
   `Samagotchi::Testing::Waiting::TimedOut` naming what it waited for (and, with `seen:`, what it last saw), plus
   `join!` and `pop!` with the same message. Every helper deadline is multiplied by `SPEC_TIME_SCALE` (default 1).
@@ -55,6 +57,8 @@ and commands may change between minor versions. How releases are made:
   here (chi web waited 2 s, so a slow worker read "still shutting down" more often); the page's Stop still waits 2 s.
 - The terminal's status line, cut to the terminal's width, ends at a word with `…` instead of mid-word (in a pipe
   too).
+
+Update with `chi update`.
 
 ## [0.103.0] - 2026-10-23
 
@@ -3940,7 +3944,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.103.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.104.0...HEAD
+[0.104.0]: https://github.com/dm1try/samagotchi/compare/v0.103.0...v0.104.0
 [0.103.0]: https://github.com/dm1try/samagotchi/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/dm1try/samagotchi/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/dm1try/samagotchi/compare/v0.100.1...v0.101.0
