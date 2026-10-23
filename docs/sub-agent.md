@@ -164,6 +164,14 @@ An answer typed into `chi --attach` or the REPL counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
 `CODEX_THREAD_ID`, `SAMAGOTCHI_PARENT_SESSION`) is set.
 
+The same holds for another machine's session in this terminal (`chi --remote
+NAME --attach ID`, `--resume ID`, `--dir DIR -p TEXT` from a pipe): the answers
+go as chi answer's and are held to that machine's `guardrails.parent_answers`;
+a question left waiting at the pipe's end is exit 3, its report read with that
+machine's parent strategy (asked again then) and its commands spelled `chi
+--remote NAME answer …`. For one turn and no terminal, use `chi --remote NAME
+send --new --dir D -m TEXT --wait` (`--non-interactive` is this machine's only).
+
 Through `chi web` (`POST /api/sessions/:id/answer`, what chi answer uses against
 another machine's sessions) the answer keeps chi answer's mark: the route passes
 on `client_id: "cli:answer"` and drops any other id, so a forwarded answer can

@@ -595,7 +595,8 @@ only by the user: these change a model's system prompt for later sessions (see
 [Model notes](memory.md#model-notes); a shell command reaches them only under
 `shell-touches-chi`'s text heuristic); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
-pipe, a here-string or a file, not `/dev/null` (`chi-answer-piped`), and `curl`/`wget` to a
+pipe, a here-string or a file, not `/dev/null` (`chi-answer-piped`, which also sees
+`chi --remote NAME --attach|--resume|-p` and `CHI_REMOTE=NAME chi …`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session, and only by the
 user (a parent agent allowing one would answer as the user).
 `chi answer` itself isn't asked about. It denies writes into `.git/hooks`.

@@ -1,7 +1,8 @@
 # Remote sessions
 
 `chi --remote NAME <command>` (or `CHI_REMOTE=NAME`) runs chi's session commands (`send`, `answer`, `note`, a
-session's `context`, `sessions list/stop/restart/archive/unarchive/delete`) against another machine's sessions. The
+session's `context`, `sessions list/stop/restart/archive/unarchive/delete`) against another machine's sessions, and
+`chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR`, `-p TEXT`) runs the attached TUI on one of them. The
 sessions, workers, memories and code stay on that machine; this one only sends requests and prints the answers.
 User-facing behaviour is in [cli.md](../cli.md#remote-sessions). This page is the code's shape, for changing it.
 
@@ -44,8 +45,14 @@ subcommand:
 - `here?`: `chi remote …` (`ALWAYS_HERE`), and a bare `--version` / `-h` / `--help`, run locally as usual.
 - `#run`: an unknown command exits 1. `#refusal` is the single local-only message, `chi <words> runs on this machine
   only: run it on <remote>` (exit 2). `<words>` comes from `Contract`: a `MACHINE` command, an unlisted command, a
-  `:local_only` command, subcommand or long flag, or a run flag (`RUN_FLAGS`: `--attach`, `--resume`, `-p`,
-  `--shared`, `--no-shared`; with no command at all it reads "(a session in this terminal)").
+  `:local_only` command, subcommand or long flag, or a run flag `Contract::RUN` lists local-only (`chi --verbose`;
+  `--non-interactive` adds "(chi --remote NAME send --new --dir D -m TEXT --wait runs one turn there)"). A flag's
+  value (`-p TEXT`, `--model NAME`: `RunOptions.value_switches`) is never read as a flag.
+- **Run flags** (`#run_flags?`: no subcommand, the first word a flag or nothing) don't go to `#run`: bin/chi refuses
+  the local-only ones, parses the rest with `RunOptions.parse` (the one run-flag parser) and, before any of its own
+  checks (`Session.resolve_id`, the scratch check, `--memory`, `--append-system-prompt`, `Toolkit.from_flags`, …: all
+  this machine's), runs `RemoteAttachCommand.new(options, access: Remote.new(entry)).run`. A word left over exits 1.
+  Without a remote, `--dir` exits 2 ("--dir goes with --remote; cd there instead").
 - Otherwise it calls `Remotes.find`, then `Samagotchi.const_get(klass).new(argv, access: Remote.new(entry)).run`.
   `Remotes::Invalid` (including `NotFound`) exits 2. A `RemoteFailed` that escapes the command prints
   `chi <cmd>: <message>` and exits 1.
@@ -58,6 +65,14 @@ non-session commands (`bootstrap update models desktop memory bundle remote`). `
 reads bin/chi's `SUBCOMMANDS` and each command's `FLAGS`. It fails when a subcommand, a subcommand of a supported
 command, or a flag of a supported command is missing from both lists, or when the table lists something that doesn't
 exist. **A new session command or flag fails that spec until you choose one.**
+
+`Contract::RUN` does the same for bin/chi's run flags (`RunOptions.switches`): `SUPPORTED` (`--attach`, `--resume`,
+`-p`, `--shared`, `--model`, `--thinking`, `--llm-context*`, `--toolkit`, `--tool`, `--no-tool`, `--set`,
+`--parent-answers`, `--no-interrupt`, `--no-default-input`, `--dir`, `--help`, `--version`) or `LOCAL_ONLY`
+(`--no-shared`, `--non-interactive` and `--verbose`: the in-process REPL, P4-D4; `--memory`, `--mute`,
+`--append-system-prompt`: this machine's memories and files, P4-D2/D3; `chi web`'s flags; `--profile`). A config
+registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` without being listed
+(`Contract.run_status`). The contract spec fails on a run flag in neither.
 
 ## One request, end to end
 
@@ -120,6 +135,14 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
 - **Auth.** `Remote.auth_failure`: a 401 → "the token was refused (… chi remote add NAME URL --token-file FILE)". A 403
   `forbidden` (the Host check) → "chi web answers its LAN IP only: use the LAN IP <ip>, not a hostname", with the IP
   taken from the 403's detail. `chi remote add` uses the same words through `Remote.info_problem`.
+- **A remote attach.** Before the loop runs (resolve, create, wake, the feature check) every failure is
+  `AttachLauncher::Error` or the command's own line, exit 1 (`BadRequest`: exit 2): the wake's 409 `owned_by_tui`
+  is `OwnedByTUI` (its message is the one `chi --attach` prints here too: `AttachLauncher.connect` now uses it), its
+  409 `scratch` and 504 `worker_timeout` are `Refused` with `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE`'s words
+  (`Remote#attach_wake`). Once the loop runs, `WebBridgeClient` turns every `RemoteFailed` into `Unreachable`
+  (an `IOError`), so the loop's rescues catch it and `AttachedLoop#worker_down` prints its message as is ("could not
+  send the prompt (remote studio (http://…): the token was refused …)"); the stream's end is worded by its reason
+  (*Remote attach*, below). A refused token is `AuthRefused < RemoteFailed`, so rediscovery can tell it apart.
 - **Version skew.** The check is by feature, not by version: `/api/info`'s `features` must include `session_commands`
   (`SessionAccessRoutes::FEATURE`, mirrored as `Remote::FEATURE` so chi web needn't be loaded). If it's missing,
   `RemoteTooOld` says "remote NAME runs chi X, too old for this command through --remote: update chi there (chi
@@ -149,6 +172,11 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 | `context`'s default session (`SAMAGOTCHI_PARENT_SESSION`, `ContextCommand#inside_session`) | client | no default: ids are required (`added_by` still reads it) |
 | A context URL's provider (`ContextProviders.resolve`) | client's bundles | server's bundles (`Remote#context_add_url`) |
 | UI-only slash commands (`SessionCommands.ui_only_entry`), `--image` ingest, note text (`SessionInbox.checked_text`), push text (`ContextSources.parse_output`) | client | client too (the server checks note and push text again) |
+| A remote attach's `--attach`/`--resume` id (`Session.resolve_id`), the leftover scratch check, the "open in a chi REPL" refusal | client (bin/chi, `AttachLauncher.connect`) | server: `Remote#resolve`, then `POST …/wake`'s 409s |
+| A new attached session's `--toolkit`, `--set`, `--thinking`, `--llm-context*`, `--parent-answers`, `--model` | client (bin/chi) | server: `POST /api/sessions` with `idle: true` and `SetupWords`; its warnings printed as `send --new` prints them |
+| The status row's default model, the newest chi for the version line, what a parent may pick (exit 3) | client | server: the wake's `default_model`, `installed`, `parent_strategy` (the last read again from `GET …/worker` at report time) |
+| `@path` images (ingest, convert, downscale) | client, into the session's `images/` | client, into a scratch dir, then uploaded (`POST …/images`) |
+| Prompt history (↑), the `no_interrupt` / `no_default_input` baselines, Tab's `@path` | client | client (this terminal's; `history: false` on every POST); no memory-name completion remotely (P4-D11) |
 
 ## Trust model
 
@@ -166,6 +194,11 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 - **`client_id` only tightens.** `handle_question_answer` forwards `client_id` only when it is `ClientId::CLI_ANSWER`
   and drops any other value, so a remote answer is held to the parent rules and can't pass for the user's own. On
   create and turn, a `cli:send` / `cli:answer` id adds checks (`CLI_SEND_IDS`) and never removes any.
+- **A remote attach's `client_id`** (`tui:<pid>@<host>`, P4-D6) is forwarded as given on `/turn` and `/command`, as
+  the page's is: the token is the owner. Only the cli ids (`cli:send`, `cli:answer`) add checks there; a parent
+  agent driving the TUI from a pipe answers as `cli:answer`, held to that machine's `guardrails.parent_answers`.
+  `POST …/wake` spawns a worker, which `/turn` already did. `!cmd` typed in a remote TUI runs on that machine, under
+  its guardrails.
 - **Context push is an inbound path.** A remote `context push` writes text that can wake a session. It carries the same
   trust as a local `chi context push` on that machine, the owner's token ([guardrails.md](../guardrails.md)). A remote
   `context add --cmd` runs its command on the session's machine.
@@ -197,14 +230,30 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   (`spec/support/web_server.rb`) followed through a `WebBridgeClient` (join, a turn, a restart, a stop). It runs
   over loopback, so chi web's token gate is skipped there; `spec/web/lan_auth_spec.rb` covers the gate on the
   stream, wake and worker routes.
+- The remote TUI: `spec/terminal_ui/remote_link_spec.rb` (rediscovery reasons, the wake on a reconnect, images, the
+  `NOT_YET` coverage of every attached terminal command), `spec/terminal_ui/attached_loop_remote_spec.rb` (the
+  loop's `--remote` lines, `NOT_YET`, `Unreachable` mid-session, the reasons' and reconnect lines),
+  `spec/terminal_ui/remote_connector_spec.rb`, `spec/remote_attach_command_spec.rb`,
+  `spec/session_access/remote_attach_spec.rb` (wake, worker, feature check through `RackTransport`), and bin/chi's
+  branch in `spec/session_access_dispatch_spec.rb`.
 - By hand: the smoke-run skill (`.claude/skills/smoke-run`, kept in the checkout, not in git) covers chi web.
   It has no remote recipe yet. The real lane is laptop → Studio over the LAN: `chi remote add`, `send --new --wait`,
   an exit-3 `answer`, `context push`, `note`, then `CHI_REMOTE=studio sh scripts/pair <id>` from the laptop's Claude.
 
-## Remote attach (the plumbing)
+## Remote attach
 
-What a remote attached TUI (`chi --remote NAME --attach ID`, not wired yet) will run on. The TUI still talks to a
-worker's Bridge interface; chi web relays each request to that Bridge on loopback.
+`chi --remote NAME --attach ID`: the attached TUI (`AttachedLoop`) on a session of another machine. The TUI still
+talks to a worker's Bridge interface; chi web relays each request to that Bridge on loopback.
+
+```
+bin/chi ── RunOptions.parse ── a remote, run flags ──> RemoteAttachCommand ── AttachLauncher.run(connector: RemoteConnector)
+                                                                                        │ POST …/wake
+                                                         AttachedLoop.new(link: RemoteLink) ── link.client: WebBridgeClient
+                                                                                        │ one-shots and the stream
+                                                                       chi web (that machine) ── the worker's Bridge
+```
+
+### The plumbing
 
 **chi web's routes** (tabled in [architecture.md](../architecture.md)): `POST …/wake` (`Local#wake`: the live worker
 as is, else `SessionManager.resume_session` and `BridgeClient.wait_for`, at most `WAKE_MAX_WAIT` 10 s, the attach's
@@ -253,18 +302,59 @@ passes none):
   sidecar before it ends the open streams: the reconnect finds no sidecar, chi web waits for the next worker's
   (`await_bridge_port`) and proxies the cursor to it. A sidecar still naming the dead port would get an empty 200
   (the proxy's connects refused), and the stream would move by rediscovery (`worker_changed`, then a `snapshot`).
-- `announce_retries:` `stream_retrying` once a reconnect fails, `stream_resumed` at the next frame.
+- `announce_retries:` `stream_retrying` once a reconnect fails, `stream_resumed` once a stream answers again (a replay may bring no frame).
 
 `EventStream` compares a rediscovered client's key with the key it last followed, not with the client object's, so a
 rediscovery that updates the same client in place is a move. Rediscovery may give a reason with its answer
 (`[nil, reason]` while it retries, `[:gone, reason]` to stop, `AttachLink#live_worker`'s shape), and `stream_closed`
-carries the last one (`unreachable` without). `LocalLink#live_worker` gives `stopped` for a stopped session, but
-`AttachedLoop#live_worker` passes only the client on, so the local closing line is unchanged.
+carries the last one (`unreachable` without). `AttachedLoop#live_worker` passes the link's pair on; on this machine
+the closing line reads `stopped` as `unreachable`, the words it always had.
+
+### The remote TUI
+
+- **`RemoteAttachCommand`** (`remote_attach_command.rb`) takes RunOptions' parsed options: `LaunchMode.attached_conflict`
+  (exit 1, the same words); `--attach`/`--resume` resolved there (`Remote#resolve`); without them a new session,
+  which needs `--dir`, that machine's absolute path (exit 2, before anything is asked): `Remote#create` with
+  `NewSession(idle: true)` and the setup flags as typed (`SetupWords`), its warnings printed as `send --new` prints
+  them, its `-p` sent once attached. An existing session prints the ignored-flags line (`--dir` among them) and gets
+  `--model`/`--llm-context*`/`--thinking` as first commands, as here. `Remote#require_feature!("remote_attach")` comes
+  first (without it, `Remote.too_old_message`). Then `AttachLauncher.run(connector: RemoteConnector)` and
+  `AttachLauncher.exit_status`.
+- **`RemoteConnector`** (`terminal_ui/remote_connector.rb`): `#connect` is `Remote#attach_wake` (`POST …/wake`,
+  `WakeReply`) and the `RemoteLink`; `#client_id` is `tui:<pid>@<short hostname>` (P4-D6).
+- **`RemoteLink`** (`terminal_ui/remote_link.rb`), the `AttachLink`:
+  - `client`: one `WebBridgeClient` for the attach; `switched(event)` keeps it (its key the event's epoch) and reads
+    the new worker's features (`GET …/worker`).
+  - `live_worker`: `Remote#attach_worker` (`WorkerReply`) with a reason (M5): `stopped` and `unknown_session` (gone),
+    `auth_failed` (`AuthRefused`) and `too_old` (`RemoteTooOld`) end at once; `unreachable` (a transport
+    `RemoteFailed`) and `worker_gone` (chi web answers, no live worker, not stopped) retry through
+    `RECONNECT_DELAYS` (about a minute, P4-D5). A worker gone for `WAKE_AFTER` (3 s, so a restart's new worker isn't
+    raced) is woken once per outage with `POST …/wake` (P4-D9). `failure` keeps the last message for the closing line.
+  - `queues?`/`unqueues?`: the worker's `features`. `ingest_images`: `ImageStore.ingest` into a scratch dir here, then
+    `Remote#upload_images`; `close` (`AttachLauncher.run`'s `ensure`) removes the dir.
+  - `installed_version`, `default_model_name`: the wake's (that machine's). `parent_strategy`: `GET …/worker`'s, read
+    at report time (L4), the wake's when that fails.
+  - `completions`: `@path` (this machine's files: images are ingested here), no memory names (P4-D11).
+  - `via`: `Remote#invocation`, so every printed command reads `chi --remote NAME …` (`ChiInvocation#attach` and
+    `#resume` have their remote forms; `shows`/`open_it` name the attach too).
+  - **`NOT_YET`** (temporary): `/exit`, `/exit --delete`, `/archive`, `/stats`, `/recap` get one line, "(/exit isn't
+    available through a remote yet: /detach leaves the session running)" (`#unavailable`, asked by
+    `AttachedLoop#submit` before any terminal command); saved turn records and children counts are empty. chi web has
+    no route for them yet (P4b). `rake release:check` fails while `NOT_YET` is defined
+    (`ReleaseTools.remote_not_yet?`). `HANDLED_COMMANDS` + `NOT_YET_COMMANDS` must cover every `local: true`
+    command shown in the attached TUI (`remote_link_spec`).
+- **The loop's lines.** `stream_retrying` → "(lost the connection to NAME; reconnecting…)", `stream_resumed` →
+  "(reconnected)". `stream_closed`, by reason: "The session was stopped on NAME. Resume it with: chi --remote NAME
+  --resume ID"; "Lost the session: <the auth or too-old words>"; "Lost the connection to NAME (connection refused).
+  Re-attach with: chi --remote NAME --attach ID"; "The session's worker on NAME is gone. Resume it with: …"; "The
+  session is gone from NAME (deleted)." A restart is one "chi> the session's worker restarted on chi X" (the epoch's
+  `worker_changed`, then the new Bridge's `reset`). The version line across machines (P4-D10,
+  `VersionLines.across_machines`): "chi> the session's worker runs chi W; NAME has I installed: chi --remote NAME
+  sessions restart ID" and "chi> this terminal runs chi T (NAME has I): chi update here".
 
 ## Extension points (not built yet)
 
-- **Remote attach.** `--attach`, `-p` and `--resume` are refused today (`Dispatch::RUN_FLAGS`). The seams it plugs into
-  are in place:
+- **Remote attach** is built (*Remote attach*, above); its seams, for another kind of link:
   - `TerminalUI::AttachLink` (terminal_ui/attach_link.rb): what `AttachedLoop` knows about *where* the session is,
     beside its client: `live_worker` (`[client, nil]`, `[nil, nil]`, `[:gone, reason]`) and `switched(event)` for
     the stream's rediscovery and a restart; `queues?` / `unqueues?`; `stats_metrics`; `ingest_images`; the saved
@@ -285,8 +375,8 @@ carries the last one (`unreachable` without). `LocalLink#live_worker` gives `sto
     branch can take the parsed options before bin/chi's local checks; `LaunchMode.attached_conflict` and
     `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE` are the words both would print.
 
-  The plumbing below (*Remote attach*) is built; `RemoteLink`, the connector and bin/chi's branch are not. chi web
-  still has no route for exit, recap, stats or a turn's saved records.
+  chi web still has no route for exit, recap, stats, children counts or a turn's saved records (`RemoteLink::NOT_YET`,
+  P4b). An https chi web (a pod behind a proxy) needs TLS and chunked decoding in `StreamRequest`.
 - **Shared sessions (guests, roles).** The only access point is `App#token_gate`: one token, the owner's. Roles would
   attach there and to the routes. The claude-peer / codex-peer inbox leg (chi → this machine's Claude or Codex) would
   need a relay through chi web.
@@ -295,6 +385,12 @@ carries the last one (`unreachable` without). `LocalLink#live_worker` gives `sto
   `Remote` raises the same class. A route's own 404 never looks like a missing route.
 
 ## Known gaps
+
+- A remote attach's `/exit`, `/exit --delete`, `/archive`, `/stats` and `/recap` answer `RemoteLink::NOT_YET` until
+  chi web has their routes (P4b); the join shows no step durations and the status row no children.
+- A prompt typed while a remote stream reconnects is usually accepted (chi web's `/turn` resumes the worker, else
+  writes an input file) where a local one fails "could not send the prompt". A POST whose reply is lost reads as
+  "could not send", yet ran: sending it again runs it twice (no idempotency key yet).
 
 - Through a remote the pair scripts (`bundles/{claude,codex}-peer/scripts/pair`) detect `CHI_REMOTE` or `--remote` in
   `CHI` the way Dispatch does, and attach only `*-outbox`: chi there can't reach this machine's Claude socket or Codex

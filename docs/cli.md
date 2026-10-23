@@ -23,6 +23,7 @@
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). What a parent may pick follows `guardrails.parent_answers`, or the session's own `parent_answers` when stricter (`soft`, the default: a deny, a plain answer, Continue and "Allow once"; `standard`: no allow; `hard`: no Continue either), never a wider scope or an allow on chi's own config; a refused pick exits 1 with what to answer instead (a convention, not a security boundary; see [Guardrails](guardrails.md#answers-from-a-parent-agent))
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
 - `chi --remote NAME send|answer|note|context|sessions …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
+- `chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR [-p TEXT]`) — the attached TUI on a session of that machine (see [Remote sessions](#remote-sessions))
 - `chi memory ls [--scope project|system] [--format text|json]` — the memories of both scopes (this folder's project first), one row each: scope, name, size, date, `from <bundle>`, the index description and its model overlays; `chi memory rm NAME [--scope project|system]` removes one as `memory_write` with `remove: true` does: its file and model overlays go to the bundle trash (the line names the dir; `chi bundle trash` lists and empties it) and its index line is dropped. NAME in both scopes without `--scope` exits 2 naming both; a missing NAME or a bundle's memory (`chi bundle uninstall` removes it) exits 1 (see [Memory: Listing and removing from the shell](memory.md#listing-and-removing-from-the-shell))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
@@ -280,7 +281,8 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it: the default, and the way to get it when `session.shared` is off. See [Sharing a session](#sharing-a-session). |
 | `--no-shared` | Run the plain in-process REPL for this run. |
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
-| `--remote NAME` | Before a session command (`chi --remote studio send …`): run it against that remote's sessions, through its chi web; beats `CHI_REMOTE`. Commands and flags that run on this machine only exit 2. See [Remote sessions](#remote-sessions). |
+| `--remote NAME` | Before a session command (`chi --remote studio send …`) or the run flags (`chi --remote studio --attach ID`, `--resume ID`, `--dir DIR -p TEXT`): run it against that remote's sessions, through its chi web; beats `CHI_REMOTE`. Commands and flags that run on this machine only exit 2. See [Remote sessions](#remote-sessions). |
+| `--dir DIR` | With `--remote`: a new session's folder on that machine, its absolute path (required for a new session there). Without `--remote` it exits 2: cd there instead. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--thinking LEVEL` | This session's own thinking level: `off`, `low`, `medium` or `high`, saved in the session and first in the order (`default` unsets it). On `--resume` or `--attach` it is set at once, through a `/thinking` on an attached worker. With `chi web` it is instead the default for the sessions its workers run, below a session's own (as env `SAMAGOTCHI_THINKING_LEVEL` is). See "Thinking" in configuration.md. |
 | `--toolkit NAME`, `--tool NAME`, `--no-tool NAME` | A new session's toolkit, the tools its prompts declare: `full` (every built-in), `lean`, `child`, one of config's `toolkit.kits` or a bundle's (without `--toolkit`: config's `toolkit.default`), with tools declared on top of it (`--tool`) or left out (`--no-tool`); both repeatable, a comma list too. Saved in the session as given; a respawned worker, a fork and a continue keep it. Ignored with `--attach`/`--resume` (one line, as `--memory`); `/toolkit` changes it. Not on `chi web` (config's `toolkit.default` covers its sessions). See [Toolkits](configuration.md#toolkits). |
@@ -1189,10 +1191,9 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   list|stop|restart|archive|unarchive|delete`. The rest runs on this machine
   only and exits 2 with `chi <command> runs on this machine only: run it on
   <remote>`: `context refresh|mute|unmute` and `--project`, `sessions
-  stats|prune|clean`, `broadcast`, the machine's own commands (`bundle`,
-  `memory`, `update`, …) and a session in this terminal (`--attach`, `-p`,
-  `--resume`: remote attach comes later). `chi remote`, `--version` and
-  `--help` always run here.
+  stats|prune|clean`, `broadcast` and the machine's own commands (`bundle`,
+  `memory`, `update`, …). `chi remote`, `--version` and `--help` always run
+  here.
 - `send --new` needs `--dir`, that machine's absolute path (no folder of this
   one is guessed); `--toolkit`, `--set` and `--parent-answers` are checked
   against that machine's config and bundles. `sessions list` lists every
@@ -1208,14 +1209,51 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   `--timeout`; exit codes are the same. The commands chi prints for what to
   do next work as pasted: they carry `--remote NAME` (`chi --remote studio
   answer ab12 --question q1 --option N`, `chi --remote studio send --wait …`),
-  under `CHI_REMOTE` too. What runs on this machine only isn't offered:
-  where chi says `chi --attach ID` here it names that machine's chi web
-  (`chi web on studio shows it`), and `sessions stop` names no `chi
-  --resume`.
+  under `CHI_REMOTE` too, an attach as well (`chi --remote studio --attach
+  ab12 shows it`, `sessions stop`'s `chi --remote studio --resume ab12`).
 - A remote that can't be reached names itself and why (`chi send: remote
   studio (http://192.168.1.29:4567): connection refused`, exit 1; with
   `--format json` an `error` object).
 - Plain http, the same as the phone's: use it on your home network.
+
+A session there in this terminal (the attached TUI, through that machine's
+chi web; its worker stays there):
+
+```sh
+chi --remote studio --attach ab12                      # attach (wakes its worker if it exited)
+chi --remote studio --resume ab12 -p "go on"           # resume there, run one turn, stay attached
+chi --remote studio --dir /Users/me/app -p "hi"        # a new session there (--dir required), one turn, stay
+```
+
+- The same TUI and exit codes (0 detached, 3 a question left waiting with
+  input from a pipe, 1 otherwise), every printed command with `--remote
+  studio`. Prompts, session commands, `/model`, `!cmd` (a shell command **on
+  that machine**, under its guardrails), `/queue`, `/cut`, `/unqueue` and
+  `/detach` work as here. `/exit`, `/exit --delete`, `/archive`, `/stats` and
+  `/recap` aren't available through a remote yet (one line says so; `/detach`
+  leaves the session running), and the status row has no children segment.
+- A new session needs `--dir`, that machine's absolute path; `--model`,
+  `--thinking`, `--llm-context*`, `--toolkit`, `--tool`, `--no-tool`, `--set`
+  and `--parent-answers` are checked there (exit 2 for a bad one). With
+  `--attach`/`--resume` they work as here (`--model`, `--thinking`,
+  `--llm-context*` change the session; the others are named as ignored).
+  `--non-interactive` (use `chi --remote studio send --new --dir D -m TEXT
+  --wait`), `--verbose`, `--no-shared`, `--memory`, `--mute` and
+  `--append-system-prompt` run on this machine only (exit 2).
+- `@path` images are this machine's files (read and downscaled here, then
+  uploaded); Tab completes `/` commands and `@path`, not memory names. The
+  prompt history (↑) and `no_interrupt` / `no_default_input` are this
+  terminal's.
+- When chi web can't be reached the TUI says "(lost the connection to
+  studio; reconnecting…)" and tries for about a minute, then "(reconnected)";
+  what it missed is replayed or resynced. A prompt typed meanwhile is usually
+  accepted there and runs when a worker reads it. A worker that went away
+  (not stopped) is woken again. The end is worded by why: "The session was
+  stopped on studio. Resume it with: chi --remote studio --resume ab12", the
+  token refused, chi web unreachable, the worker gone, the session deleted.
+- The version line names both machines: the worker older than what studio
+  has installed (`chi --remote studio sessions restart ab12`), this terminal
+  older than studio (`chi update` here).
 
 How it works inside (`SessionAccess`, chi web's routes, where each check runs):
 [internals/remote-sessions.md](internals/remote-sessions.md).

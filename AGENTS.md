@@ -43,6 +43,11 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). See docs/cli.md (Remote sessions).
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
+- `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that
+  machine's session, through its chi web (`RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse` and
+  before the local checks). A new session there needs `--dir DIR` (that machine's absolute path; `--dir` is
+  remote-only). `--non-interactive`, `--verbose`, `--no-shared`, `--memory`, `--mute`, `--append-system-prompt`
+  are this machine's (exit 2; `Contract::RUN`).
 - `--model NAME` (this run, not saved), `--thinking LEVEL` and `--llm-context`
   (`--llm-context-apply`, `--llm-context-budget`): the session's own thinking level and
   LLM context strategy, saved in the session.
