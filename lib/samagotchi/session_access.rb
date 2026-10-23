@@ -35,27 +35,27 @@ module Samagotchi
     class AuthRefused < RemoteFailed; end
 
     # The errors a participant's token meets (docs/internals/participants.md),
-    # one message each, built from the remote's label ("remote studio
-    # (http://…)"). chi web's code for each is its CODE.
+    # each the server's own words (ParticipantMessages) led by the remote's
+    # label ("remote studio (http://…)"). chi web's code for each is its CODE.
 
     # 401 token_revoked: the owner revoked the grant, or archived or
     # deleted its session.
     class TokenRevoked < AuthRefused
       CODE = "token_revoked"
-      def initialize(label) = super("#{label}: this review link was revoked by the session's owner")
+      def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_REVOKED}")
     end
 
     # 401 token_expired: the grant's time ran out.
     class TokenExpired < AuthRefused
       CODE = "token_expired"
-      def initialize(label) = super("#{label}: this review link expired: ask the session's owner for a new one")
+      def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_EXPIRED}")
     end
 
     # 403 not_permitted: a participant's token on a route only the session's
     # owner may use.
     class NotPermitted < RemoteFailed
       CODE = "not_permitted"
-      def initialize(label) = super("#{label}: this token is a participant's: only the session's owner can do that")
+      def initialize(label) = super("#{label}: #{ParticipantMessages::NOT_PERMITTED}")
     end
 
     # 429 too_many_turns (P3b): the participant's turns already wait in the

@@ -6,6 +6,10 @@ module Samagotchi
   # SessionAccess errors a chi --remote client raises for the same codes.
   # No requires, so any file can use it.
   module ParticipantMessages
+    # 401 token_revoked: the owner revoked the grant, or archived or deleted its session.
+    TOKEN_REVOKED = "this review link was revoked by the session's owner"
+    # 401 token_expired: the grant's time ran out.
+    TOKEN_EXPIRED = "this review link expired: ask the session's owner for a new one"
     # 403 not_permitted: a route, a command or a shell line only the owner may use.
     NOT_PERMITTED = "a participant can't do that: only the session's owner can"
     # 429 too_many_turns: their running turn and its queue are full.

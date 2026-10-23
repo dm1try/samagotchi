@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
       Samagotchi::Remotes.put(RemoteBackend.entry(token: token), path: File.join(tmpdir, "config", "samagotchi", "remotes.yml"))
       participant = RemoteBackend::RackTransport.new(app, token: token)
       expect(described_class.new(%w[share ls], remote: "studio").run(subcommands, stderr: err, transport: participant)).to eq(1)
-      expect(err.string).to eq("chi share: #{RemoteBackend.entry.label}: this token is a participant's: only the session's owner can do that\n")
+      expect(err.string).to eq("chi share: #{RemoteBackend.entry.label}: a participant can't do that: only the session's owner can\n")
     end
   end
 

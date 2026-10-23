@@ -1288,8 +1288,8 @@ chi share revoke --all          # every link to every session
   participant; opening it sets their browser's cookie, as the owner's LAN link does. `--agent` marks an agent
   participant, which uses the token as `Authorization: Bearer` (e.g. `chi --remote` with that token).
 - It works for 7 days (`--expires Nh` or `Nd`, 1 hour to 30 days; `web.participants.expires`), until it is revoked,
-  or until the session is archived or deleted. A revoked or expired link shows "This review link has expired or was
-  revoked."
+  or until the session is archived or deleted. A revoked link shows "This review link was revoked by the session's
+  owner.", an expired one "This review link expired: ask the session's owner for a new one."
 - **Review turns (experimental).** A participant can ask questions and comment through chi web's `POST …/turn`: each
   message is a turn of its own, queued behind the running one, that the model answers **read-only**. It may read the
   project (never its secret files or chi's own), and proposes changes as text or a diff for you to apply; it can't

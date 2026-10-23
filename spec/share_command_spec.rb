@@ -238,7 +238,7 @@ RSpec.describe Samagotchi::ShareCommand do
       access = RemoteBackend.access(state_dir: state_dir, token: issued.token)
       expect { described_class.new(["ls", session.id], stdout: out, stderr: err, access: access).run }
         .to raise_error(Samagotchi::SessionAccess::NotPermitted,
-                        "#{RemoteBackend.entry.label}: this token is a participant's: only the session's owner can do that")
+                        "#{RemoteBackend.entry.label}: a participant can't do that: only the session's owner can")
     end
   end
 end

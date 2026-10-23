@@ -49,6 +49,9 @@ and commands may change between minor versions. How releases are made:
   whose link opens on that machine only) is the participant, no longer the owner: a `chp_` token is the participant's
   from any peer, an ended one is refused, and the owner's browser that opened a participant link is the owner's again
   once that link ends.
+- Participants: each refusal has one wording wherever it is met: a participant's `chi --remote` refused an
+  owner's command says "a participant can't do that: only the session's owner can", as chi web does, and an ended
+  link's page says whether it was revoked or expired.
 
 ## [0.106.0] - 2026-10-23
 

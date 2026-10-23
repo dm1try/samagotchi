@@ -53,8 +53,9 @@ participant** and **one role**, until it expires or is revoked.
    (below), never the owner.
 3. No `chp_` token from a loopback peer, or on a chi web not on the LAN: the **owner** (unchanged).
 4. Anything else: nil. `#token_gate` answers an ended grant's token **401 `token_revoked`** or **401
-   `token_expired`** (the page: "This review link has expired or was revoked. Ask the session's owner for a new
-   one."), any other **401 `unauthorized`** as before.
+   `token_expired`** (the page says the same words as a sentence: "This review link was revoked by the session's
+   owner." / "This review link expired: ask the session's owner for a new one."), any other **401
+   `unauthorized`** as before.
 
 The `?token=` trade sets the `chi_token` cookie to the token that was presented, the owner's or the participant's
 (one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
@@ -363,18 +364,20 @@ The residual injection risk (an owner turn that says "do what Alex said") is in
 
 ## Errors through `--remote`
 
-Each condition has one message, owned by its `SessionAccess` class and built from the remote's label
-(`Remote.access_error`, keyed by chi web's error code, for any route):
+Each condition has one message, `ParticipantMessages`' (chi web's `detail`, the Bridge's and the worker's words
+too); its `SessionAccess` class leads it with the remote's label (`Remote.access_error`, keyed by chi web's error
+code, for any route):
 
 | Code | Class | Message |
 |---|---|---|
 | 401 `token_revoked` | `TokenRevoked` (an `AuthRefused`) | `this review link was revoked by the session's owner` |
 | 401 `token_expired` | `TokenExpired` (an `AuthRefused`) | `this review link expired: ask the session's owner for a new one` |
-| 403 `not_permitted` | `NotPermitted` | `this token is a participant's: only the session's owner can do that` |
+| 403 `not_permitted` | `NotPermitted` | `a participant can't do that: only the session's owner can` |
 | 429 `too_many_turns` | `TooManyTurns` | `this participant has too many turns waiting: wait for one to finish` |
 | 429 `cap_reached` | `CapReached` | `this participant's spending cap is reached: ask the session's owner to raise it` |
 
-The server's details are the same words (`ParticipantMessages`), with no label.
+The server's details are the same words, with no label. A participant's `wait` on a failed turn answers 200 with
+`text` `this turn failed: the session's owner can see why` (`TURN_FAILED`).
 
 A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
 

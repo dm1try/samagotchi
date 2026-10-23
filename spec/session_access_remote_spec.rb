@@ -161,7 +161,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       label = RemoteBackend.entry.label
       expect { as_participant.summaries }
         .to raise_error(Samagotchi::SessionAccess::NotPermitted,
-                        "#{label}: this token is a participant's: only the session's owner can do that")
+                        "#{label}: #{Samagotchi::ParticipantMessages::NOT_PERMITTED}")
       expect { as_participant.participants(session.id) }.to raise_error(Samagotchi::SessionAccess::NotPermitted)
 
       token = issued.token
@@ -223,20 +223,23 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: true))
     end
 
-    it "words each code once, whatever the route (P3b's too_many_turns and cap_reached included)" do
+    it "words each code once, whatever the route, in the server's own words (ParticipantMessages)" do
       label = RemoteBackend.entry.label
+      messages = Samagotchi::ParticipantMessages
       {
-        [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, "this review link expired: ask the session's owner for a new one"],
-        [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, "this review link was revoked by the session's owner"],
-        [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, "this token is a participant's: only the session's owner can do that"],
-        [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, "this participant has too many turns waiting: wait for one to finish"],
-        [429, "cap_reached"] => [Samagotchi::SessionAccess::CapReached, "this participant's spending cap is reached: ask the session's owner to raise it"],
+        [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, messages::TOKEN_EXPIRED],
+        [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, messages::TOKEN_REVOKED],
+        [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, messages::NOT_PERMITTED],
+        [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, messages::TOO_MANY_TURNS],
+        [429, "cap_reached"] => [Samagotchi::SessionAccess::CapReached, messages::CAP_REACHED],
         [401, "unauthorized"] => [Samagotchi::SessionAccess::AuthRefused, "the token was refused"]
       }.each do |(status, code), (klass, words)|
         remote, = scripted([status, { error: code, detail: "server words" }])
         expect { remote.summaries }.to raise_error(klass) { |e| expect(e.message).to start_with("#{label}: #{words}") }
       end
       expect(Samagotchi::SessionAccess::TokenExpired.ancestors).to include(Samagotchi::SessionAccess::AuthRefused)
+      expect(Samagotchi::Web::ParticipantAccess::ENDED)
+        .to eq(revoked: ["token_revoked", messages::TOKEN_REVOKED], expired: ["token_expired", messages::TOKEN_EXPIRED])
     end
   end
 

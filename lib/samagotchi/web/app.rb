@@ -518,11 +518,6 @@ module Samagotchi
         error_response(403, "cross_origin", "requests from other websites are refused")
       end
 
-      # A route the request's principal may not use (Principal#permits?).
-      def not_permitted
-        error_response(403, "not_permitted", "only the session's owner can do that")
-      end
-
       def forbidden
         names = @lan ? "127.0.0.1, [::1], localhost and #{@lan[:ip]}" : "127.0.0.1, [::1] and localhost"
         error_response(403, "forbidden", "only the host names #{names} are answered")

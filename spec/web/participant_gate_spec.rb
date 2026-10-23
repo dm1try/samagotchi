@@ -231,7 +231,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect([status, body["error"], body["detail"]]).to eq([401, "token_revoked", "this review link was revoked by the session's owner"])
       status, _h, page = call("/")
       expect(status).to eq(401)
-      expect(page).to include("This review link has expired or was revoked. Ask the session's owner for a new one.")
+      expect(page).to include("This review link was revoked by the session's owner.")
     end
 
     it "answers 401 token_expired after its expiry (an injected clock), and audits it once" do
@@ -243,6 +243,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
           .to eq([401, "token_expired", "this review link expired: ask the session's owner for a new one"])
       end
       expect(audit.count { |line| line["event"] == "expired" }).to eq(1)
+      expect(call("/")[2]).to include("This review link expired: ask the session's owner for a new one.")
     end
 
     it "is revoked when its session was archived or is gone, whoever did it" do

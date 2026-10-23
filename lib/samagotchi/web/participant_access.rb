@@ -33,10 +33,10 @@ module Samagotchi
       REFUSED_AUDIT_INTERVAL = 60.0
 
       ENDED = {
-        revoked: ["token_revoked", "this review link was revoked by the session's owner"],
-        expired: ["token_expired", "this review link expired: ask the session's owner for a new one"]
+        revoked: ["token_revoked", ParticipantMessages::TOKEN_REVOKED],
+        expired: ["token_expired", ParticipantMessages::TOKEN_EXPIRED]
       }.freeze
-      NOT_PERMITTED = Participants::NOT_PERMITTED
+      NOT_PERMITTED = ParticipantMessages::NOT_PERMITTED
 
       private
 
@@ -90,7 +90,7 @@ module Samagotchi
       end
 
       # 401 token_revoked / token_expired for an ended grant's token (the
-      # page's HTML says the same), nil when none was presented.
+      # page's HTML says the same words), nil when none was presented.
       def grant_ended_response(req)
         grant, state = req.env[ENDED_GRANT_ENV]
         return nil unless grant
@@ -99,7 +99,7 @@ module Samagotchi
         code, detail = ENDED.fetch(state)
         return error_response(401, code, detail) if req.path_info.start_with?("/api/")
 
-        html_response(401, ENDED_PAGE)
+        html_response(401, ENDED_PAGE.sub(ENDED_SENTENCE, "#{detail[0].upcase}#{detail[1..]}."))
       end
 
       def audit_expired(grant)
@@ -133,11 +133,9 @@ module Samagotchi
         error_response(404, "not_found", "Session not found: #{id.to_s[0, 80]}")
       end
 
-      # 403 not_permitted, worded for the principal's role; a participant's
-      # refusal is audited.
+      # 403 not_permitted for a participant (the owner is never refused by
+      # role), audited.
       def not_permitted_for(req, principal)
-        return not_permitted if principal.owner?
-
         audit_refused(req, principal.grant)
         error_response(403, "not_permitted", NOT_PERMITTED)
       end
@@ -481,6 +479,7 @@ module Samagotchi
         .meta { opacity: .75; }
       CSS
 
+      ENDED_SENTENCE = "{sentence}"
       ENDED_PAGE = <<~HTML
         <!doctype html>
         <html lang="en"><head><meta charset="utf-8">
@@ -489,7 +488,7 @@ module Samagotchi
         <style>#{PAGE_STYLE}</style></head>
         <body>
         <h1>chi</h1>
-        <p>This review link has expired or was revoked. Ask the session's owner for a new one.</p>
+        <p>{sentence}</p>
         </body></html>
       HTML
     end
