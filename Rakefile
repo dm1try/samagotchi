@@ -131,7 +131,8 @@ namespace :release do
       puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
     end
     bumped.profiles.each do |p|
-      puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{p.old_version} → #{p.version}: " \
+      moved = p.old_version == p.version ? "#{p.version} (already bumped since the last tag)" : "#{p.old_version} → #{p.version}"
+      puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{moved}; " \
            "name it in the CHANGELOG's `chi update` line"
     end
     puts "Review with `git diff`, then run rake release:check and commit."

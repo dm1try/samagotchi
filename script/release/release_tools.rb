@@ -268,12 +268,14 @@ module ReleaseTools
   # The profiles left below a member once +texts+ ({path => text}, the
   # members' raised manifests) are written: {path => text} with each one's
   # requires_chi raised to that member's floor and its version patch-bumped,
-  # and the [RaisedProfile]s.
-  def raised_profile_floors(root, texts)
+  # and the [RaisedProfile]s. A profile whose version already moved since
+  # +tag+ (a member joined it this release), or that is new since it, keeps
+  # its version: one release, one bump.
+  def raised_profile_floors(root, texts, tag: last_tag(root))
     lows = low_profiles(root, texts)
     out = lows.to_h do |low|
-      text = texts.fetch(low.path) { File.read(low.path) }
-      [low.path, patch_bump(raise_requires_chi(text, low.floor), low.name)]
+      text = raise_requires_chi(texts.fetch(low.path) { File.read(low.path) }, low.floor)
+      [low.path, bumped_since?(root, tag, low.path, text) ? text : patch_bump(text, low.name)]
     end
     profiles = lows.map do |low|
       RaisedProfile.new(name: low.name, old_version: manifest_version(texts.fetch(low.path) { File.read(low.path) }),
@@ -283,6 +285,18 @@ module ReleaseTools
   end
 
   def manifest_version(text) = (YAML.safe_load(text) || {})["version"].to_s
+
+  # Whether the manifest at +path+ (now +text+) is new since +tag+ or has a
+  # higher version than at it; false without a tag.
+  def bumped_since?(root, tag, path, text)
+    return false unless tag
+
+    rel = File.expand_path(path).delete_prefix("#{File.expand_path(root)}/")
+    old_text, existed = git(root, "show", "#{tag}:#{rel}")
+    return true unless existed
+
+    Gem::Version.new(manifest_version(text)) > Gem::Version.new(manifest_version(old_text))
+  end
 
   # The manifest text with its version's patch number raised (0.7.1 → 0.7.2).
   def patch_bump(text, name)
@@ -361,8 +375,8 @@ module ReleaseTools
   # the CHANGELOG, the requires_chi of every bundle marked requires_chi_next
   # (raised to ">= version", the marker dropped), and then every profile
   # below a member's requires_chi (raised to it, with a patch bump of the
-  # profile's version). No other requires_chi is touched. No commit; a
-  # Bumped.
+  # profile's version unless it moved since the last tag). No other
+  # requires_chi is touched. No commit; a Bumped.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
 

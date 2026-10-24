@@ -36,7 +36,7 @@ can run the whole release; the user approves the notes before the tag and the
   - a profile's `requires_chi` is its members' highest: a member's raised
     floor raises its profile's too, with the profile's version. `release:bump`
     does both for a profile its `requires_chi_next` raises leave below a
-    member (a patch bump of the profile's version); a floor raised by hand
+    member (a patch bump of the profile's version, once per release); a floor raised by hand
     needs the profile raised by hand (`bundles:check` notes a profile below a
     member);
   - the release notes say "run `chi update`" and name the bundles whose
@@ -70,7 +70,7 @@ as the GitHub release body.
 | `rake lint` / `rake lint:fix` | RuboCop over the repo (must report no offenses; CI runs it) / its safe autocorrect (`rubocop -a`). |
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
-| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version. No commit. |
+| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag). No commit. |
 | `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
@@ -89,8 +89,8 @@ The agent does each step and stops where the user has to say yes.
 4. **Bump.** `bundle exec rake "release:bump[X.Y.Z]"`, review `git diff`: it
    names the bundles whose `requires_chi` it raised (their `requires_chi_next`
    markers are gone) and the profiles it raised with them (a patch bump of
-   each one's version: name it in the CHANGELOG's "Update with `chi update`"
-   line).
+   each one's version, none for a profile already bumped since the last tag:
+   name it in the CHANGELOG's "Update with `chi update`" line).
 5. **Check.** Commit first (the check wants a clean tree), then run it:
    `git commit -am "Release X.Y.Z"` and `bundle exec rake release:check`.
    Fix anything it finds in new commits and run it again.

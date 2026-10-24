@@ -362,6 +362,27 @@ RSpec.describe ReleaseTools do
       expect(described_class.low_meta_floors(tmp)).to eq([])
     end
 
+    # A member joined dev this release (dev 0.7.1 -> 0.7.2 by hand) and
+    # another one's marker raises dev's floor: one release, one bump.
+    it "raises a profile's floor but keeps its version when it already moved since the last tag" do
+      write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
+      write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7.1\nrequires_chi: \">= 0.1.37\"\nincludes:\n- coord\n")
+      write("lib/samagotchi/bundles/core/manifest.yml", "name: core\nversion: 0.2.0\nincludes:\n- coord\n")
+      git("init", "-q")
+      git("add", ".")
+      git("commit", "-q", "-m", "one")
+      git("tag", "v0.1.37")
+      write("lib/samagotchi/bundles/dev/manifest.yml",
+            "name: dev\nversion: 0.7.2\nrequires_chi: \">= 0.1.37\"\nincludes:\n- coord\n- mcp\n")
+      write("lib/samagotchi/bundles/fresh/manifest.yml", "name: fresh\nversion: 0.1.0\nincludes:\n- coord\n")
+
+      bumped = described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+      expect(bumped.profiles.map { |p| [p.name, p.old_version, p.version] })
+        .to eq([%w[core 0.2.0 0.2.1], %w[dev 0.7.2 0.7.2], %w[fresh 0.1.0 0.1.0]])
+      expect(read("lib/samagotchi/bundles/dev/manifest.yml"))
+        .to eq("name: dev\nversion: 0.7.2\nrequires_chi: \">= 0.2.0\"\nincludes:\n- coord\n- mcp\n")
+    end
+
     it "changes nothing when a profile to raise has a version it can't patch-bump" do
       write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
       write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7\nincludes:\n- coord\n")
