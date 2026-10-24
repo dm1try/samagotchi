@@ -27,7 +27,7 @@ module Samagotchi
         @ended_before = ended_before
         @deadline = timeout && (ReplyWait.monotonic + timeout.to_f)
         @turn = turn.to_s.empty? ? nil : turn.to_s
-        @session_dir = Session.session_dir(id, state_dir: state_dir) if @turn
+        @session_dir = Session.session_dir(id, state_dir: state_dir)
         # Whether the turn's input file has been taken (latched): looked at
         # before each load, so a running session seen after it is that turn
         # or a later one, never the turn that ran when the message was sent.
@@ -40,6 +40,11 @@ module Samagotchi
         @seen_own = false
         @own_base = nil
         @seen_running = false
+        # A turn seen running with its checkpoint mark (a wait with no
+        # turn:): last_turn's ended_at then and the input files claimed
+        # then, so its settle by a next worker (#settled_running) tells
+        # from a turn that ended or an input that runs next.
+        @running_look = nil
         @gone_since = nil
       end
 
@@ -216,8 +221,13 @@ module Samagotchi
 
         if running?(session)
           @seen_running = true
+          note_running(session)
           return nil
         end
+        if (settled = settled_running(session))
+          return settled
+        end
+
         # It ran and is idle again with no new reply: canceled, failed or
         # empty. Before it was ever seen running, idle means a
         # file-delivered message its worker has not picked up yet. With a
@@ -252,6 +262,34 @@ module Samagotchi
         return Result.new(status: :no_reply, session: session) if @seen_own && ReplyWait.past_own?(session, @turn, @own_base)
 
         nil
+      end
+
+      RunningLook = Data.define(:last_end, :claimed)
+
+      def note_running(session)
+        return unless session.interrupted_turn
+
+        @running_look = RunningLook.new(last_end: session.last_turn&.ended_at,
+                                        claimed: SessionInbox.claimed_input_files(@session_dir))
+      end
+
+      # The turn seen running is gone with no turn's end: its worker died
+      # in it and the next one settled it (TurnCheckpoint.settle: idle, the
+      # mark gone, last_turn left alone), which ends a wait for it (chi
+      # send --wait with no message, a message merged into it as a steer)
+      # as canceled, worker_stopped, rather than at the timeout. Not while
+      # an input waits or a new one was claimed since (the sent message,
+      # unmerged, runs as its own turn next: its end is the answer), nor
+      # for a settle never seen running (a message sent to a session a dead
+      # worker left running goes in after the settle).
+      def settled_running(session)
+        look = @running_look
+        return nil unless look && session.status == Session::STATUS_IDLE && session.interrupted_turn.nil? &&
+                          session.last_turn&.ended_at == look.last_end
+        return nil unless SessionInbox.find_new_input_files(@session_dir).empty?
+        return nil unless (SessionInbox.claimed_input_files(@session_dir) - look.claimed).empty?
+
+        Result.new(status: :no_reply, outcome: "canceled", cancel_reason: TurnCheckpoint::WORKER_STOPPED, session: session)
       end
 
       def owner_gone(session)

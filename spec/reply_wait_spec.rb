@@ -634,15 +634,78 @@ RSpec.describe Samagotchi::ReplyWait do
         expect(a.value.to_h).to include(status: :no_reply, cancel_reason: "worker_stopped")
       end
 
-      it "leaves a wait with no turn: (a plain send's) to its own turn: the settle is no turn's end there" do
+      it "leaves a wait with no turn: to its own turn on a settle it never saw running (a send after the settle)" do
         base = baseline
         queue_input("a1")
+        run_turn("a1")
+        die_and_settle
+
+        expect(wait(baseline: base, timeout: 0.5).status).to eq(:timeout)
+      end
+
+      # A turn with no id (a session's first prompt, a reminder or wake
+      # turn) seen running by chi send --wait with no message: own_turn has
+      # no id to wait for, so the wait is a plain one.
+      it "ends a wait with no turn: on the settle of the turn it saw running (chi send --wait, nothing sent)" do
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-10-04T10:00:00.000+00:00")
+        s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 2)
+        s.save(state_dir: tmpdir)
+        base = baseline
         later do
-          run_turn("a1")
+          looked(2)
           die_and_settle
         end
 
-        expect(wait(baseline: base, timeout: 0.5).status).to eq(:timeout)
+        result = wait(baseline: base, timeout: 5)
+        expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+        expect(Samagotchi::ParentReport.status(result)).to eq("canceled")
+      end
+
+      describe "with a message sent into the running turn (a steer)" do
+        def plain_input(id) = Samagotchi::SessionInbox.write_input(dir, prompt: "also", enqueued_id: id)
+
+        before do
+          queue_input("a1")
+          run_turn("a1")
+          plain_input("y1")
+        end
+
+        it "ends on the settle once the turn merged it (its file gone), with turn: or without" do
+          base = baseline
+          later do
+            looked(2)
+            FileUtils.rm_f(claim("y1")) # the drain merges it
+            looked(2)
+            die_and_settle
+          end
+
+          plain = Thread.new { wait(baseline: base, timeout: 5) }
+          result = wait(baseline: base, turn: "y1", timeout: 5)
+          expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+          join!(plain, "the plain wait")
+          expect(plain.value.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+        end
+
+        it "waits on past the settle while it is still to run (unmerged): its own turn's end is the answer" do
+          base = baseline
+          later do
+            looked(2)
+            die_and_settle
+            looked(2)
+            claim("y1") # the next worker runs it
+            looked(2)
+            s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+            s.status = "running"
+            s.save(state_dir: tmpdir)
+            looked(2)
+            write_reply("answer to y1")
+            end_turn("y1")
+          end
+
+          expect(wait(baseline: base, timeout: 5).to_h).to include(status: :done, text: "answer to y1")
+        end
       end
 
       it "takes the turn's reply when its worker died after writing it (one outcome: the reply)" do

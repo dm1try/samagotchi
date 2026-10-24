@@ -371,10 +371,14 @@ module Samagotchi
       claimed_input?(session_dir, id) ? [:claimed, nil] : [:none, nil]
     end
 
-    # Whether a claimed input file (*.json.processing: a turn's, now or
-    # left by a crash, or a removal's before it deletes it) carries +id+.
+    # The claimed input files (*.json.processing: a turn's, now or left by
+    # a crash, or a removal's before it deletes it).
+    # @return [Array<String>] their paths
+    def self.claimed_input_files(session_dir) = Dir.glob(File.join(session_dir, INPUT_DIR, "*.json.processing"))
+
+    # Whether a claimed input file carries +id+.
     def self.claimed_input?(session_dir, id)
-      Dir.glob(File.join(session_dir, INPUT_DIR, "*.json.processing")).any? do |file|
+      claimed_input_files(session_dir).any? do |file|
         data = JSON.parse(File.read(file))
         data.is_a?(Hash) && data["enqueued_id"] == id
       rescue JSON::ParserError, SystemCallError
