@@ -193,7 +193,10 @@ fields: a field added to an event later reaches nobody until it is named there.
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
   the session's folder when it is inside it; never when that folder is home or `/`), `tool_call_completed` (its status word), and bare markers (the type
   alone) for the queue (`turn_enqueued`, `turn_dequeued`, `input_merged`), the owner's question, approval or Continue
-  offer and their answers, and `snapshot` / `reset`: the page re-reads its review data at each. Every other type,
+  offer and their answers, and `snapshot` / `reset`: the page re-reads its review data at each (the latest read
+  wins), draws no live event from a turn's start or end until that re-read, and then streams again from the data's
+  `last_event_id`, so the events after its snapshot replay onto it; a read that fails (unreachable, a 5xx) keeps the
+  page and is retried with a backoff under a "retrying" line. Refusals show the server's `detail`. Every other type,
   known (`DROPPED`) or new, is dropped. `spec/web/participant_view_spec.rb` scans every `type: :name` chi emits and
   every handler of the web's stream, and fails until a new one is named in `EVENTS` or `DROPPED`.
 - **The frames** (`Web::ParticipantStreamFilter`). The Bridge's chunks are cut into frames (`\r?\n\r?\n`, a partial
