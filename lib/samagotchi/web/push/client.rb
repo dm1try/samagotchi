@@ -53,6 +53,10 @@ module Samagotchi
           @monotonic = monotonic
         end
 
+        # Never the key.
+        def inspect = "#<#{self.class.name} #{@contact}>"
+        alias to_s inspect
+
         # @param sub [Store::Sub]
         # @param payload [Hash] the JSON the service worker reads
         # @param ttl [Integer] seconds the push service keeps it for an

@@ -88,7 +88,9 @@ test("a tap with no window opens one, and only at a path of chi web's", async ()
   await w.fire("notificationclick", { notification: { data: { url: "/#/s/s1" }, close() {} } });
   await w.fire("notificationclick", { notification: { data: { url: "https://evil.example/" }, close() {} } });
   await w.fire("notificationclick", { notification: { data: { url: "//evil.example/" }, close() {} } });
-  assert.deepEqual(w.log.filter((e) => e[0] === "openWindow"), [["openWindow", "/#/s/s1"], ["openWindow", "/"], ["openWindow", "/"]]);
+  await w.fire("notificationclick", { notification: { data: { url: "/\\evil.example/" }, close() {} } });
+  assert.deepEqual(w.log.filter((e) => e[0] === "openWindow"),
+    [["openWindow", "/#/s/s1"], ["openWindow", "/"], ["openWindow", "/"], ["openWindow", "/"]]);
 });
 
 test("install skips waiting and activate claims the clients; no fetch handler", async () => {

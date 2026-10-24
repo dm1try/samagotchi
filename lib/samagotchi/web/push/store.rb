@@ -39,6 +39,9 @@ module Samagotchi
                          ".notify.windows.com"].freeze
         ENDPOINT_MAX = 2048
         LABEL_MAX = 40
+        # Devices a store keeps (every subscribe adds one until it is turned
+        # off): a bound on what one push fans out to.
+        MAX_SUBS = 50
 
         # The store's folder or a file in it can be read by others: chi web
         # refuses to start (Server.launch).
@@ -112,6 +115,10 @@ module Samagotchi
           @key = nil
         end
 
+        # Never the key.
+        def inspect = "#<#{self.class.name} #{@dir}>"
+        alias to_s inspect
+
         def key_path = File.join(@dir, KEY_FILE)
         def subs_path = File.join(@dir, SUBS_FILE)
 
@@ -159,7 +166,12 @@ module Samagotchi
           sub = Sub.new(id: Store.short_id(endpoint), endpoint: endpoint, p256dh: p256dh, auth: auth, origin: origin,
                         label: label.to_s[0, LABEL_MAX], created_at: at, last_ok_at: nil, last_error: nil,
                         prefs: { "done" => false })
-          update { |subs| [subs.reject { |old| old.endpoint == endpoint } + [sub], sub] }
+          update do |subs|
+            kept = subs.reject { |old| old.endpoint == endpoint }
+            raise Invalid, "chi web already pushes to #{MAX_SUBS} devices: turn the bell off on one first" if kept.size >= MAX_SUBS
+
+            [kept + [sub], sub]
+          end
         end
 
         # Removes the subscription with this short id or endpoint.

@@ -93,6 +93,17 @@ RSpec.describe Samagotchi::Web::Push::Store do
     end
   end
 
+  it "keeps at most MAX_SUBS devices, and never shows its key" do
+    stub_const("#{described_class}::MAX_SUBS", 2)
+    store.add(receiver.subscription("#{endpoint}1"), origin: origin, label: "a")
+    store.add(receiver.subscription("#{endpoint}2"), origin: origin, label: "b")
+    store.add(receiver.subscription("#{endpoint}2"), origin: origin, label: "b again")
+    expect { store.add(receiver.subscription("#{endpoint}3"), origin: origin, label: "c") }
+      .to raise_error(described_class::Invalid, "chi web already pushes to 2 devices: turn the bell off on one first")
+    store.vapid_key
+    expect(store.inspect).to eq("#<#{described_class} #{dir}>")
+  end
+
   describe "#mark" do
     it "stamps a delivery, or keeps its error" do
       sub = store.add(receiver.subscription(endpoint), origin: origin, label: "a")
