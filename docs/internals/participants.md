@@ -321,7 +321,9 @@ neither is copied to a continue, a fork or a delegate (a continue starts with no
 invited to has neither: its files stay byte for byte as they were.
 
 - **`participants.json`** (0600, `Participants.write`): `{participants: [{id, kind, name, role, added_at,
-  expires_at, removed_at, cap}]}`, rewritten by whoever changes a grant (chi web, `chi share`). Never a token or a digest.
+  expires_at, removed_at, cap}]}`, rewritten by whoever changes a grant (chi web, `chi share`), inside the grants
+  store's lock (`Grants#update`'s `on_write`), so two writers can't finish out of order and lose a revoke here. Never
+  a token or a digest.
   The worker reads it with `Participants.read` (P3a's system-prompt line, `ctx`).
 - **`participants.jsonl`** (0600, append-only, `Participants.log`): one JSON line per event, with `at`: `issued`
   (participant, name, kind, role, expires_at), `revoked` (participant, by), `expired` (the first refused use after the

@@ -219,9 +219,10 @@ module Samagotchi
       # A new grant for +session_id+, written before the token is handed out.
       # @param ttl [Integer, nil] seconds (nil: Grants.default_ttl; at most MAX_TTL)
       # @param cap [Numeric, nil] dollars (nil: Grants.default_cap)
+      # @param on_write [#call, nil] see #update
       # @return [Issued]
       # @raise [Invalid]
-      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil)
+      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, on_write: nil)
         Session.check_id!(session_id)
         ttl ||= Grants.default_ttl
         cap = Grants.default_cap if cap.nil?
@@ -233,7 +234,7 @@ module Samagotchi
         clean = Grants.clean_name(name)
         token = "#{PREFIX}#{SecureRandom.urlsafe_base64(BYTES)}"
         issued = now
-        update do |grants|
+        update(on_write) do |grants|
           id = fresh_id(grants)
           grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
                             role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
@@ -268,9 +269,10 @@ module Samagotchi
       # Revokes the active grants of +session_id+ (just +id+ when given), or
       # every session's when +session_id+ is nil.
       # @param by [String] why: "owner", "archive", "delete", "gone"
+      # @param on_write [#call, nil] see #update
       # @return [Array<Grant>] the grants it revoked (already ended ones are
       #   left as they were)
-      def revoke(session_id: nil, id: nil, by: "owner")
+      def revoke(session_id: nil, id: nil, by: "owner", on_write: nil)
         at = now
         matches = lambda do |grant|
           grant.active?(at) && (session_id.nil? || grant.session_id == session_id) && (id.nil? || grant.id == id)
@@ -279,7 +281,7 @@ module Samagotchi
         # no write, no store made.
         return [] unless current.any?(&matches)
 
-        update do |grants|
+        update(on_write) do |grants|
           revoked = []
           grants = grants.map do |grant|
             next grant unless matches.call(grant)
@@ -295,12 +297,13 @@ module Samagotchi
       # Sets the active grant +id+'s cap to +cap+ dollars.
       # @return [Grant, nil] the changed grant; nil when +id+ isn't an
       #   active grant (of +session_id+, when given)
+      # @param on_write [#call, nil] see #update
       # @raise [Invalid] a cap out of range
-      def set_cap(id, cap, session_id: nil)
+      def set_cap(id, cap, session_id: nil, on_write: nil)
         raise Invalid, CAP_RANGE unless Grants.cap?(cap)
 
         at = now
-        update do |grants|
+        update(on_write) do |grants|
           changed = nil
           grants = grants.map do |grant|
             next grant unless grant.id == id && grant.active?(at) && (session_id.nil? || grant.session_id == session_id)
@@ -354,7 +357,11 @@ module Samagotchi
       # Read, change and write the store under its lock (another process
       # may write it too). The block takes the grants and returns
       # [new grants, result]. Ended grants older than KEEP_ENDED go.
-      def update
+      # +on_write+ is called with (the grants written, result) once the store
+      # is written, still under the lock: Participants writes the sidecars
+      # there, so two writers can't finish out of order and lose a revoke in
+      # one.
+      def update(on_write = nil)
         dir = File.dirname(@path)
         FileUtils.mkdir_p(dir, mode: 0o700)
         File.chmod(0o700, dir)
@@ -366,6 +373,7 @@ module Samagotchi
           body = JSON.pretty_generate({ "version" => 1, "grants" => kept.map(&:to_store) })
           AtomicFile.write(@path, "#{body}\n", perm: 0o600)
           @mutex.synchronize { @stamp = nil }
+          on_write&.call(kept, result)
           result
         end
       end

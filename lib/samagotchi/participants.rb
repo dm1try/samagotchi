@@ -77,6 +77,16 @@ module Samagotchi
       AtomicFile.write(File.join(dir, FILE), "#{JSON.pretty_generate({ "participants" => entries })}\n", perm: 0o600)
     end
 
+    # Web::Grants' on_write for a change to +session_ids+ (nil: the sessions
+    # of the grants it changed, a revoke's result): their sidecars rewritten
+    # from the grants just written, under the store's lock (two writers, chi
+    # web and chi share, can't finish out of order and lose a revoke here).
+    def sidecar_writer(state_dir, session_ids = nil)
+      lambda do |all, result|
+        (session_ids || result.map(&:session_id).uniq).each { |sid| write(sid, all.select { |grant| grant.session_id == sid }, state_dir: state_dir) }
+      end
+    end
+
     # One audit line: {"at", "event", …fields}. Nothing for a session whose
     # dir is gone (deleted, pruned).
     def log(session_id, event, state_dir: Session.default_state_dir, at: Time.now, **fields)
@@ -98,8 +108,8 @@ module Samagotchi
         raise Web::Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
       end
 
-      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap)
-      write(session_id, grants.list(session_id: session_id), state_dir: state_dir)
+      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap,
+                            on_write: sidecar_writer(state_dir, [session_id]))
       grant = issued.grant
       log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name, kind: grant.kind,
                                role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap)
@@ -111,9 +121,9 @@ module Samagotchi
     # @return [Web::Grants::Grant, nil] nil when +id+ isn't an active grant there
     # @raise [Web::Grants::Invalid] a cap out of range
     def set_cap(grants, session_id:, id:, cap:, state_dir: Session.default_state_dir)
-      grant = grants.set_cap(id, cap, session_id: session_id) or return nil
+      grant = grants.set_cap(id, cap, session_id: session_id, on_write: sidecar_writer(state_dir, [session_id]))
+      return nil unless grant
 
-      write(session_id, grants.list(session_id: session_id), state_dir: state_dir)
       log(session_id, :cap, state_dir: state_dir, participant: grant.id, cap: grant.spend_cap)
       grant
     end
@@ -126,9 +136,8 @@ module Samagotchi
     # affected session's sidecar and audit trail along.
     # @return [Array<Web::Grants::Grant>] the grants it revoked
     def revoke(grants, session_id: nil, id: nil, by: "owner", state_dir: Session.default_state_dir)
-      revoked = grants.revoke(session_id: session_id, id: id, by: by)
+      revoked = grants.revoke(session_id: session_id, id: id, by: by, on_write: sidecar_writer(state_dir))
       revoked.group_by(&:session_id).each do |sid, ended|
-        write(sid, grants.list(session_id: sid), state_dir: state_dir)
         ended.each { |grant| log(sid, :revoked, state_dir: state_dir, participant: grant.id, by: by) }
       end
       revoked

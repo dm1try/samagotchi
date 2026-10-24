@@ -80,4 +80,56 @@ RSpec.describe Samagotchi::Participants do
                                                                    "by" => "archive")
     end
   end
+
+  # L-P2: chi web and a chi share run each change the grants store under its
+  # lock; the sidecar the worker reads must be written under the same lock,
+  # or two writers finishing out of order can lose a revoke there.
+  describe "the sidecar and the grants lock" do
+    def lock_held?
+      lock = File.join(File.dirname(grants.path), Samagotchi::Web::Grants::LOCK)
+      File.open(lock, File::RDWR | File::CREAT, 0o600) do |io|
+        # Another open file description: refused while the lock is held.
+        !io.flock(File::LOCK_EX | File::LOCK_NB)
+      end
+    end
+
+    def sidecar_writes_under_lock
+      seen = []
+      allow(described_class).to receive(:write).and_wrap_original do |original, *args, **kwargs|
+        seen << lock_held?
+        original.call(*args, **kwargs)
+      end
+      yield
+      seen
+    end
+
+    before { FileUtils.mkdir_p(dir) }
+
+    it "is written while the store's lock is held: invite, set_cap and revoke" do
+      id = nil
+      expect(sidecar_writes_under_lock do
+        id = described_class.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir).grant.id
+      end).to eq([true])
+      expect(sidecar_writes_under_lock do
+        described_class.set_cap(grants, session_id: session.id, id: id, cap: 5, state_dir: state_dir)
+      end).to eq([true])
+      expect(sidecar_writes_under_lock do
+        described_class.revoke(grants, session_id: session.id, state_dir: state_dir)
+      end).to eq([true])
+      expect(described_class.read(session.id, state_dir: state_dir).first.removed_at).not_to be_nil
+    end
+
+    it "writes each revoked session's sidecar under the lock (a revoke of every session's)" do
+      other = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: root)
+      other.save(state_dir: state_dir)
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(other.id, state_dir: state_dir))
+      described_class.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      described_class.invite(grants, session_id: other.id, name: "Sam", state_dir: state_dir)
+
+      expect(sidecar_writes_under_lock { described_class.revoke(grants, state_dir: state_dir) }).to eq([true, true])
+      [session.id, other.id].each do |sid|
+        expect(described_class.read(sid, state_dir: state_dir).map(&:removed_at)).to all(be_a(String))
+      end
+    end
+  end
 end
