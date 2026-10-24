@@ -58,7 +58,9 @@ participant** and **one role**, until it expires or is revoked.
 
 `App#principal_for` resolves every request to a `Web::Principal`:
 
-0. With `web.public_url` (`Web::ProxyGate`), a **proxied** request (a proxy trace: `X-Forwarded-*`, `Forwarded`,
+0. With `web.public_url` (`Web::ProxyGate`; `chi web --tunnel tailscale` sets the same for its run, never in config:
+   public_url = the machine's `ts.net` name, identity_header `Tailscale-User-Login`, owner `web.proxy.owner` else this
+   machine's Tailscale login, `Web::Tunnel::Tailscale`), a **proxied** request (a proxy trace: `X-Forwarded-*`, `Forwarded`,
    `X-Real-IP`, a known identity header, the configured one, or the public Host) is `#proxied_principal`'s: the owner
    only with the owner's token **and**, when `web.proxy.identity_header` is set, that header being one clean value
    (not repeated, no comma, not empty, under one name with no underscore: the raw header names) equal to
