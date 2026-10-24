@@ -117,6 +117,9 @@ and commands may change between minor versions. How releases are made:
   a phone's sheet it sat one tap away beside Cap.
 - A participant's older prompt drawn before the participants list came (no name saved with it) no longer says
   "a participant" until the page is reloaded: its badge takes the name when the list comes.
+- The start page's `review…` chip can name a file with a space in its path: in double quotes (`"docs/my plan.md"`);
+  an unclosed quote is said in its form. A file Start refuses (a secret, outside the project) is said in that form,
+  opened again at the files chosen, instead of a blocking alert.
 
 ## [0.106.0] - 2026-10-23
 

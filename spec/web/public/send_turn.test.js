@@ -14,7 +14,7 @@ function failure(code, message = "boom", body = null) {
 }
 
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
-function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null,
+function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
                    sendTurn = async () => ({ enqueued_id: "e1" }), createIdleSession = async () => ({ id: "new1" }) } = {}) {
   const world = { selected: open, state: { owner: "worker", commands: [], firstPreview: "first", ...state }, chips };
   const log = [];
@@ -45,6 +45,8 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       chosenModel: () => "qwen",
       newChoices: () => ({ llm_context: undefined, thinking: "high" }),
       clearChoices: () => log.push("clearChoices"),
+      ...(reviewSubjects ? { reviewSubjects: () => reviewSubjects,
+                             reviewRefused: (message) => { log.push(["reviewRefused", message]); return true; } } : {}),
     },
     takeDelivery: () => null,
     composer: {
@@ -113,6 +115,15 @@ test("the start page: a failed create is an alert; the line and the choices stay
   assert.deepEqual(h.log, [["alert", "no room"]]);
   assert.equal(h.promptEl.value, "hello");
   assert.equal(h.button.disabled, false);
+});
+
+test("the start page: a refused review file is said in the review form, not an alert", async () => {
+  const refusal = Object.assign(new Error(".env can't be a review subject"), { code: "invalid_review" });
+  for (const text of ["", "hello"]) {
+    const h = harness({ open: null, text, reviewSubjects: [".env"], createIdleSession: async () => { throw refusal; } });
+    await h.send();
+    assert.deepEqual(h.log, [["reviewRefused", ".env can't be a review subject"]], text);
+  }
 });
 
 test("the start page's own reply is a notice; nothing is made or sent", async () => {
