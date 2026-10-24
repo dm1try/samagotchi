@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- Experimental: `chi web --tunnel tailscale`: chi web on your phone anywhere on your tailnet over https (Tailscale
+  Serve on this machine's `ts.net` name, never Funnel), with your Tailscale login as the owner (or
+  `web.proxy.owner`), for this run only (nothing written to config.yml). It checks Tailscale, the certificate and
+  what Serve already has on port 443 before it changes anything, adopts a serve left by an earlier run, refuses
+  anything else on 443, prints the owner link's QR code, warns when Tailnet Lock is off, and turns the serve off on
+  exit (only while 443 still serves exactly what it set). The proxied start line (`web.public_url`) also shows its
+  link's QR code at a terminal now. See docs/configuration.md (Tailscale Serve).
 - Sessions record when each message happened: prompts, lines merged into a turn, reminders, notes and the model's
   replies carry `at` in the session file (never sent to the model); plugins see it in `ctx.messages`.
 - Reminders tell the model the local time they came due (`[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]`), so it

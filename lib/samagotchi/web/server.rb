@@ -16,6 +16,7 @@ require_relative "qr"
 require_relative "running"
 require_relative "session_hub"
 require_relative "token"
+require_relative "tunnel"
 require_relative "../config"
 require_relative "../project_scope"
 require_relative "../log"
@@ -71,19 +72,24 @@ module Samagotchi
       # @param scope ["project", "all"] "all": the plain page, every session
       # @param new_token [Boolean] replace the LAN access token first
       #   (--new-token): a running server takes the new one at once
+      # @param tunnel [String, nil] --tunnel's provider (Tunnel.for): this
+      #   run's public_url is the tunnel's, never config's, and the tunnel is
+      #   on while the server runs
       # @return [Integer] the exit status
       def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
-                      working_set: Config::BY_KEY["web.working_set"].default)
+                      working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil)
         rotate_token if new_token
-        public_url = public_url_setting
+        public_url = public_url_setting unless tunnel
         setting = host_setting(host)
         lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
         host = resolve_host(setting)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
         found = probe(host, port)
+        raise Tunnel::AlreadyRunning, port if tunnel && found.is_a?(Hash)
+
         case found
         when Hash
           if lan && !found["lan"]
@@ -101,21 +107,30 @@ module Samagotchi
           warn in_use_message(port)
           1
         else
+          if tunnel
+            provider = Tunnel.for(tunnel)
+            plan = provider.prepare(port: port, config_owner: Samagotchi::Config.get("web.proxy.owner"),
+                                    config_public_url: Samagotchi::Config.get("web.public_url"),
+                                    config_identity_header: Samagotchi::Config.get("web.proxy.identity_header"))
+            public_url = plan.public_url
+          end
           if new_token && !lan && !public_url
             puts lan_off_line(setting)
             return 0
           end
           # The participants' grants: never served from a store others can read.
           Grants.check_permissions!(Grants.path)
-          if start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
-                   annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
-                   public_url: public_url)
-            0
-          else
-            1
-          end
+          options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
+                      annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
+                      public_url: public_url }
+          started = if plan
+                      with_tunnel(provider, plan) { start(**options, public_notes: provider.start_lines(plan)) }
+                    else
+                      start(**options)
+                    end
+          started ? 0 : 1
         end
-      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid => e
+      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused => e
         warn "Error: #{e.message}"
         1
       rescue Interrupt
@@ -125,18 +140,52 @@ module Samagotchi
         CLI::Exit::INTERRUPTED
       end
 
+      # The tunnel on while the block runs (the server), off after it
+      # whatever ends it (Ctrl-C, SIGTERM, SIGHUP, a port taken), and only
+      # once #up succeeded: a refusal before it, or a failed #up, turns off
+      # nothing (a live tunnel of another chi web stays).
+      def self.with_tunnel(provider, plan)
+        provider.up(plan)
+        upped = true
+        yield
+      ensure
+        tunnel_down(provider, plan) if upped
+      end
+
+      # The tunnel's teardown, before any line (a hung-up terminal can't
+      # write): a failure is one warning line, never a crash or another exit
+      # status, and a second Ctrl-C during it only cuts it short.
+      def self.tunnel_down(provider, plan)
+        line = begin
+          provider.down_line(plan, provider.down(plan))
+        rescue Tunnel::Refused, SignalException => e
+          provider.down_warning(plan, e)
+        end
+        say(line) if line
+      end
+
+      # A line that may meet a terminal gone (SIGHUP): never an error.
+      def self.say(line)
+        puts line
+        $stdout.flush
+      rescue IOError, SystemCallError
+        nil
+      end
+
       # @param hub [SessionHub, nil] the session projection the page streams
       #   from; built over the app's state dir unless given
       # @param lan [Lan::Choice, nil] also listen on this LAN address, where
       #   every request but this machine's needs the access token
       # @param token_path [String] the LAN access token's file
       # @param public_url [PublicUrl, nil] behind an auth proxy
-      #   (web.public_url): every request needs the access token
+      #   (web.public_url, or --tunnel's): every request needs the access token
+      # @param public_notes [Array<String>] lines after the proxied link's
+      #   (the tunnel's)
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
-                     working_set: Config::BY_KEY["web.working_set"].default, public_url: nil)
+                     working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [])
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -167,7 +216,9 @@ module Samagotchi
           record_running(running_path, port)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
-          puts public_lines(public_url, token: Token.read(token_path), codes: owner_codes(state_dir)) if public_url
+          if public_url
+            puts public_lines(public_url, token: Token.read(token_path), codes: owner_codes(state_dir), notes: public_notes)
+          end
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
@@ -251,24 +302,28 @@ module Samagotchi
                               owner: Samagotchi::Config.get("web.proxy.owner"))
       end
 
-      # What web.public_url adds to the start lines: the proxied link (the
-      # token in its fragment) and who the owner is. On this machine the
+      # What web.public_url adds to the start lines: the proxied link (a
+      # one-time code in its fragment), who the owner is, +notes+ (the
+      # tunnel's) and, at a terminal, the link's QR code. On this machine the
       # page opens through the proxy too; a direct request takes the token
       # as Authorization: Bearer only (no cookie for 127.0.0.1, which every
       # local port would get).
-      def self.public_lines(public_url, token:, codes: owner_codes)
+      def self.public_lines(public_url, token:, codes: owner_codes, notes: [], qr: $stdout.tty?)
         unless token
-          return ["Proxied: #{public_url.origin}/ (no access token: its file is gone; chi web --new-token makes one)"]
+          return ["Proxied: #{public_url.origin}/ (no access token: its file is gone; chi web --new-token makes one)",
+                  *notes]
         end
 
         who = if public_url.identity_header.nil? then "token only, no identity header"
               elsif public_url.owner then "owner #{public_url.owner} by #{public_url.identity_header}, and the token"
               else "nobody is the owner by identity: web.proxy.owner is unset"
               end
-        code = codes.issue(kind: :owner, ttl: LinkCodes::OWNER_TTL)
-        ["Proxied: #{public_url.link(code)}   ← opens chi web as you once, within #{LinkCodes::OWNER_TTL / 60} minutes " \
-         "(chi web again prints a new one)",
-         "         (#{who}; on this machine the page opens through the proxy too)"]
+        link = public_url.link(codes.issue(kind: :owner, ttl: LinkCodes::OWNER_TTL))
+        lines = ["Proxied: #{link}   ← opens chi web as you once, within #{LinkCodes::OWNER_TTL / 60} minutes " \
+                 "(chi web again prints a new one)",
+                 "         (#{who}; on this machine the page opens through the proxy too)", *notes]
+        lines.concat(QR.lines(link)) if qr
+        lines
       end
 
       # The owner's one-time link codes, next to the grants.

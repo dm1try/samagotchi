@@ -13,6 +13,7 @@
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
+- `chi web --tunnel tailscale` — the Web UI over https on your tailnet, for your phone anywhere: Tailscale Serve (never Funnel) on this machine's `<machine>.<tailnet>.ts.net` name for this run, the owner your Tailscale login, turned off on exit (see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet)); `--tunnel` without `web` exits 2
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply
 - `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
 - `chi web --no-web-working-set` — turns the stage view's working set off (on by default; `--web-working-set` turns a config's `web.working_set: false` back on): what each turn brought into the model's context, in the stage and under each finished turn; `?working_set=1|0` on the page URL overrides it (see [The working set](#the-working-set))
@@ -1174,8 +1175,9 @@ access token", paste the token there (the part of the link after
   office guest network), and run `chi web --new-token` if a link leaks.
 - On http the browser has no notifications: the bell is hidden on the phone,
   and the tab title still counts what needs you.
-- Off the home Wi-Fi: Tailscale Serve gives chi web an https name on your
-  tailnet; see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet).
+- Off the home Wi-Fi: `chi web --tunnel tailscale` gives chi web an https
+  name on your tailnet (Tailscale Serve) for its run and prints its link's QR
+  code; see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet).
 
 ### Remote sessions
 

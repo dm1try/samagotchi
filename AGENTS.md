@@ -53,6 +53,11 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   `Guardrails::ReviewPaths`, a `--from` fork starts from ID's recap and leaves ID running. Participants read the
   subjects as the Plan (`GET …/review`'s `subjects`); the owner's Apply quotes a review turn's proposal
   (`ReviewApply`, `GET …/apply`). See docs/sessions.md (Review sessions).
+- `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`): Tailscale Serve 443 → chi web's port for this run (never
+  Funnel), public_url = this machine's ts.net name, identity `Tailscale-User-Login`, owner `web.proxy.owner` else
+  this machine's login; never written to config.yml. Adopts only its own exact handler, refuses anything else on 443,
+  turns 443 off on exit only while it is still exactly that. Specs: a fake tailscale via `SAMAGOTCHI_TAILSCALE_CLI`
+  (spec_helper points it at a missing file). See docs/configuration.md (Tailscale Serve).
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that

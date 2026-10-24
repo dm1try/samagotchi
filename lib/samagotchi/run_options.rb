@@ -14,7 +14,7 @@ module Samagotchi
   module RunOptions
     # The flags an underscored spelling is refused for (--recap_base_url),
     # with the config registry's.
-    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token].freeze
+    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel].freeze
 
     module_function
 
@@ -219,6 +219,9 @@ module Samagotchi
         opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
         opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
         opts.on("--new-token", "`chi web`: replace the LAN access token (web.host: lan); links and QR codes made with the old one stop working") { options[:new_token] = true }
+        opts.on("--tunnel PROVIDER", %w[tailscale],
+                "`chi web`: reach it over https from your tailnet through Tailscale Serve (never Funnel), for this run; " \
+                "turned off on exit") { |v| options[:tunnel] = v }
         opts.on("--scope VALUE", %w[project all],
                 "Which sessions `chi web` and `chi sessions list` show: project (the default: this folder's git project; " \
                 "every session outside a repo) or all") { |v| options[:scope] = v }

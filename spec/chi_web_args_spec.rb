@@ -28,6 +28,11 @@ RSpec.describe "chi web arguments" do
       .to eq(["", "Error: unexpected argument --port (see chi --help)\n", 1])
   end
 
+  it "takes --tunnel with chi web only, and only a provider it knows" do
+    expect(fork_chi("--tunnel", "tailscale")).to eq(["", "Error: --tunnel goes with chi web (chi web --tunnel tailscale)\n", 2])
+    expect(fork_chi("web", "--tunnel", "ngrok")).to eq(["", "Error: invalid argument: --tunnel ngrok (see chi --help)\n", 1])
+  end
+
   it "refuses an unknown --web-view value after web" do
     expect(fork_chi("web", "--web-view", "bogus")).to eq(["", "Error: invalid argument: --web-view bogus (see chi --help)\n", 1])
     expect(fork_chi("web", "--web-view=bogus")).to eq(["", "Error: invalid argument: --web-view=bogus (see chi --help)\n", 1])

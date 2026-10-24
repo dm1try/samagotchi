@@ -1680,7 +1680,8 @@ Keep the state dir (`web-token`, the grants) out of any folder others can read, 
 chi web on your phone away from the home Wi-Fi: [Tailscale](https://tailscale.com) Serve gives this Mac an https
 name on your tailnet, `https://<machine>.<tailnet>.ts.net`, with a real certificate, and tells chi web who is asking
 (your Tailscale login, next to chi's token). Only devices on your tailnet reach it: with Tailscale off on the phone the
-name doesn't load. By hand, on the Mac that runs chi web:
+name doesn't load. By hand, on the Mac that runs chi web (or steps 1–2, then
+[`chi web --tunnel tailscale`](#chi-web---tunnel-tailscale) does 3–5 for one run):
 
 1. Install Tailscale on the Mac and the phone and sign both in with the same login. **Rename the machines first**
    (admin console → Machines): HTTPS certificates go into the public Certificate Transparency log, so the
@@ -1714,6 +1715,42 @@ name doesn't load. By hand, on the Mac that runs chi web:
    AirDrop or type it). The code works once, within 10 minutes (`chi web` again prints a new one); the phone then
    keeps the `__Host-chi_token` cookie.
 
+#### `chi web --tunnel tailscale`
+
+Steps 3–5 in one command, after steps 1–2 (Tailscale signed in, HTTPS certificates on):
+
+```sh
+chi web --tunnel tailscale
+```
+
+```
+Chi Web on http://127.0.0.1:4567/ (public: …)
+Proxied: https://chi-host.example-tailnet.ts.net/#code=chc_…   ← opens chi web as you once, within 10 minutes (…)
+         (owner owner@example.com by Tailscale-User-Login, and the token; …)
+         via Tailscale Serve (tailnet only), owner owner@example.com (this machine's Tailscale login)
+Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reach this page; tailscale lock init turns it on (…)
+<the link's QR code>
+```
+
+- It checks before it changes anything: Tailscale is connected, this machine has its `ts.net` name and a certificate
+  for it, and what Serve already has on port 443. Nothing there: it runs
+  `tailscale serve --bg --https=443 http://127.0.0.1:<port>`. Exactly that one handler for this port (a leftover of an
+  earlier run killed hard, or step 3 done by hand): it adopts it. Anything else on 443 (another port, other paths, TCP
+  forwarding, Funnel) is refused and left alone. Serve's other ports are never touched.
+- The owner is `web.proxy.owner` if config.yml has it, else this machine's own Tailscale login (a tagged machine has
+  none: set `web.proxy.owner`). `public_url` and `identity_header` are the tunnel's for this run, never written to
+  config.yml: a `web.public_url` or `web.proxy.identity_header` that says otherwise (in config.yml or the environment)
+  is refused, so a config from step 4 with this machine's name works as it is.
+- On exit (Ctrl-C, a kill, closing the terminal) it runs `tailscale serve --https=443 off`, but only while 443 still
+  serves exactly what it set; if you changed 443 meanwhile it leaves it and says so. Killed hard (`kill -9`, a power
+  loss) the serve stays on: Serve answers 502 for the name while nothing listens on the port, and whatever later
+  listens on 127.0.0.1:<port> is reachable from your tailnet; the next `chi web --tunnel tailscale` adopts it and
+  turns it off on exit, a plain `chi web` doesn't look.
+- A chi web already on the port is refused ("stop that one first"): `--tunnel` starts its own.
+- The `tailscale` it runs: `SAMAGOTCHI_TAILSCALE_CLI` if set, else `tailscale` on PATH, else the macOS app's
+  `/Applications/Tailscale.app/Contents/MacOS/Tailscale`.
+- Tailnet Lock off is a warning line, never a refusal.
+
 - **Never Funnel** (`tailscale funnel`): it puts the name on the public internet. This recipe was checked on the
   tailnet only; Funnel requests weren't.
 - Recommended: **Tailnet Lock** (`tailscale lock init`, see Tailscale's docs): new devices then need a signature from a
@@ -1722,8 +1759,9 @@ name doesn't load. By hand, on the Mac that runs chi web:
   `Tailscale-User-Name`, `X-Forwarded-For` and `X-Forwarded-Host` (never appends); `X-Forwarded-For` is the
   requesting device's tailnet IP, Host the public name, and chi web's peer is 127.0.0.1. A process on this Mac can
   still reach 127.0.0.1:4567 directly with headers of its own: there the token decides, as with any proxy.
-- Not checked yet: requests from a tagged device (expect no user login, so refused with `identity_header` set),
-  whether the serve stays on across a reboot, and what Serve answers while chi web isn't running.
+- While chi web isn't running Serve answers 502 for the name (checked). Not checked yet: requests from a tagged
+  device (expect no user login, so refused with `identity_header` set), and whether the serve stays on across a
+  reboot.
 - A participant's link (`chi share`, the Invite dialog) is a `https://<machine>.<tailnet>.ts.net/…` link too: it opens
   only on a device on your tailnet (or one you shared this machine with in Tailscale); the grant still decides.
 - Without Serve, a plain tailnet IP (`web.host: 100.x.y.z`) works like the LAN (see

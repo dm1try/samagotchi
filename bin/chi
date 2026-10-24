@@ -120,6 +120,10 @@ if options[:new_token] && !web
   warn "Error: --new-token goes with chi web (chi web --new-token)"
   exit 1
 end
+if options[:tunnel] && !web
+  warn "Error: --tunnel goes with chi web (chi web --tunnel tailscale)"
+  exit 2
+end
 if options[:sets] && web
   warn "Error: --set is a new session's (chi --set, chi send --new --set), not chi web's"
   exit 2
@@ -208,7 +212,7 @@ if options[:web]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
   view = Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
-                                      markdown: markdown, view: view, new_token: options[:new_token],
+                                      markdown: markdown, view: view, new_token: options[:new_token], tunnel: options[:tunnel],
                                       working_set: Samagotchi::Config.get("web.working_set"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"))
