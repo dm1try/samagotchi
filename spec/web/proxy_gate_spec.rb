@@ -140,6 +140,31 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     end
   end
 
+  # web.host lan + web.public_url: a phone on the LAN keeps the LAN's
+  # token link and cookie; Bearer-only is this machine's (a 127.0.0.1
+  # cookie goes to every local port), not a LAN peer's.
+  describe "a LAN peer with both LAN mode and public_url" do
+    let(:lan_app) do
+      described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
+                          hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir), lan: { ip: "192.168.1.55", token: owner_token },
+                          public_url: public_url, public_token: owner_token)
+    end
+
+    def phone(path, **) = lan_app.call(env_for(path, host: "192.168.1.55:4567", peer: "192.168.1.77", **))
+
+    it "trades the LAN link's ?token= for the chi_token cookie, and takes that cookie" do
+      status, headers, = phone("/?token=#{owner_token}")
+      expect(status).to eq(303)
+      expect(headers["Set-Cookie"]).to start_with("chi_token=#{owner_token}; HttpOnly")
+      expect(phone("/api/sessions", headers: [["Cookie", "chi_token=#{owner_token}"]]).first).to eq(200)
+    end
+
+    it "keeps this machine's loopback Bearer-only" do
+      expect(lan_app.call(env_for("/api/sessions", host: "127.0.0.1:4567", headers: [["Cookie", "chi_token=#{owner_token}"]])).first)
+        .to eq(401)
+    end
+  end
+
   describe "token only (web.proxy.identity_header unset)" do
     let(:identity_header) { nil }
     let(:owner) { nil }

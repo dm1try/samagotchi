@@ -1616,7 +1616,8 @@ What changes once `web.public_url` is set:
   start; `chi web --new-token` replaces it). A proxy that adds no header and rewrites Host (nginx's `proxy_pass` with
   its defaults) would otherwise look like this machine. On this machine the page opens through the proxy too: a
   request that didn't come through it takes the token only as `Authorization: Bearer` (no cookie: a cookie for
-  127.0.0.1 would go to every server on any local port). chi's own probe of the port (a second `chi web`, `chi share`,
+  127.0.0.1 would go to every server on any local port; a phone on the LAN, with `web.host: lan`, keeps its LAN link
+  and cookie). chi's own probe of the port (a second `chi web`, `chi share`,
   `chi update`) sends no token; chi web answers it the few fields it checks. Links and the start line come from this
   machine's config, never from whatever answers on the port.
 - **A request through the proxy** (it carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, a known identity header,

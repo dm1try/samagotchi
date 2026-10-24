@@ -456,10 +456,11 @@ module Samagotchi
         participant_principal(req, grant_tokens)
       end
 
-      # With web.public_url a request that didn't come through the proxy
-      # (this machine: curl, chi's own callers) presents the Bearer header
-      # only: no cookie, and no trade that would set one. A cookie for
-      # 127.0.0.1 goes to every server on any of its ports.
+      # With web.public_url a request from this machine that didn't come
+      # through the proxy (curl, chi's own callers) presents the Bearer
+      # header only: no cookie, and no trade that would set one. A cookie for
+      # 127.0.0.1 goes to every server on any of its ports. A LAN peer
+      # (web.host lan) keeps the LAN's token link and cookie.
       def presented_tokens(req)
         return [traded_token(req)] if token_trade?(req)
         return [bearer_token(req)] if direct_public?(req)
@@ -467,7 +468,9 @@ module Samagotchi
         [bearer_token(req), req.cookies[token_cookie_name(req)]]
       end
 
-      def direct_public?(req) = !@public_url.nil? && !proxied?(req)
+      def direct_public?(req)
+        !@public_url.nil? && LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s) && !proxied?(req)
+      end
 
       # The token a trade presents: the page's ?token=, or POST /api/token's
       # body's (read once): its token, or the token a one-time link code
