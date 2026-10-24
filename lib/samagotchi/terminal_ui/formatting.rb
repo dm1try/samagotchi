@@ -251,7 +251,7 @@ module Samagotchi
       def participant_prefix(author, name)
         return "" unless Steer.participant_author?(author)
 
-        id = author.to_s.delete_prefix("p:")
+        id = Steer.participant_id(author)
         "#{paint("#{participant_display_name(id, name)} ▸", participant_colour(id))} "
       end
 
@@ -632,7 +632,7 @@ module Samagotchi
         return nil unless rows.is_a?(Hash) && !rows.empty?
 
         rows.map do |author, row|
-          name = row[:name].to_s.empty? ? author.to_s.delete_prefix("p:") : row[:name]
+          name = row[:name].to_s.empty? ? Steer.participant_id(author) : row[:name]
           turns = row[:turns].to_i
           format("%<name>s $%<cost>.2f (%<turns>d turn%<s>s)", name: name, cost: row[:cost].to_f, turns: turns,
                                                                s: turns == 1 ? "" : "s")

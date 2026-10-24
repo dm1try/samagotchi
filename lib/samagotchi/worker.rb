@@ -657,7 +657,7 @@ module Samagotchi
     def participant_refusal(author)
       author = Steer.sender_author(author) or return nil
 
-      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| "p:#{e.id}" == author }
+      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
       return "revoked" unless entry&.active?(Time.now)
 
       cap = entry.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
@@ -674,7 +674,7 @@ module Samagotchi
       return if (@cap_noticed ||= Set.new).include?(key)
 
       @cap_noticed << key
-      id = author.delete_prefix("p:")
+      id = Steer.participant_id(author)
       who = ParticipantName.clean(name)
       @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
                        text: format(CAP_NOTICE, name: who.empty? ? id : who, cap: cap, session: @session_id[0, 8], id: id))

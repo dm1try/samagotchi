@@ -3,6 +3,7 @@
 require "digest"
 require "fileutils"
 require "json"
+require_relative "../steer"
 require "securerandom"
 require "time"
 require "rack/utils"
@@ -104,7 +105,7 @@ module Samagotchi
         def queue_limit = queue.is_a?(Integer) ? queue : Grants.default_queue
 
         # The author a participant's turn carries (Principal#author).
-        def author = "p:#{id}"
+        def author = Steer.author_for(id)
 
         # :active, :revoked or :expired at +now+ (a Time).
         def state(now)

@@ -1040,7 +1040,7 @@ module Samagotchi
     # 403 not_permitted for a participant's +what+ (a command, a shell
     # line), with its audit line.
     def participant_refused(sid, author, what)
-      Participants.log(sid, :refused, state_dir: File.dirname(session_dir), participant: author.delete_prefix("p:"), what: what,
+      Participants.log(sid, :refused, state_dir: File.dirname(session_dir), participant: Steer.participant_id(author), what: what,
                                       reason: "not_permitted")
       [{}, 403, { error: "not_permitted", detail: Participants::NOT_PERMITTED }]
     end

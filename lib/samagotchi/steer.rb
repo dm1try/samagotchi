@@ -128,6 +128,9 @@ module Samagotchi
     PARTICIPANT_SOURCE = "participant"
     # The owner's author, when one is written out; absent means the same.
     OWNER_AUTHOR = "owner"
+    # A participant's author: this prefix, then its id (Web::Grants'
+    # grant id), "p:<id>" (#author_for, #participant_id).
+    PARTICIPANT_PREFIX = "p:"
     # A participant's message's keys, which every message copy keeps.
     AUTHOR_KEYS = %i[author author_name].freeze
 
@@ -187,7 +190,7 @@ module Samagotchi
     # again (ParticipantName), or the participant's id when it has none.
     def review_header(message)
       name = ParticipantName.clean(message[:author_name] || message["author_name"])
-      name = ParticipantName.clean((message[:author] || message["author"]).to_s.delete_prefix("p:")) if name.empty?
+      name = ParticipantName.clean(participant_id(message[:author] || message["author"])) if name.empty?
       format(REVIEW_HEADER, name.empty? ? "a participant" : name)
     end
 
@@ -218,6 +221,13 @@ module Samagotchi
 
     # +author+ when it is a participant's, else nil (the owner).
     def sender_author(author) = participant_author?(author) ? author.to_s : nil
+
+    # The author a participant's turns and messages carry: "p:<id>".
+    def author_for(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"
+
+    # The participant id in +author+ ("p:<id>" → "<id>"); a string without
+    # the prefix as it is ("" for nil).
+    def participant_id(author) = author.to_s.delete_prefix(PARTICIPANT_PREFIX)
 
     # The text a steer or merged input goes out as: its header, a newline,
     # then +text+ (the message's content by default). Other messages: +text+.

@@ -38,7 +38,7 @@ module Samagotchi
       def with_spend(id, grants)
         rows = SessionMetrics.saved_by_author(Session.session_dir(id, state_dir: default_state_dir))
         grants.map do |grant|
-          row = rows["p:#{grant[:id]}"] || { turns: 0, cost: 0.0 }
+          row = rows[Steer.author_for(grant[:id])] || { turns: 0, cost: 0.0 }
           grant.merge(spend: row[:cost].round(4), turns: row[:turns])
         end
       end

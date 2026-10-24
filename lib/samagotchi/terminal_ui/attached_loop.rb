@@ -1757,7 +1757,7 @@ module Samagotchi
       end
 
       def learn_participants(rows)
-        Array(rows).each { |row| @participant_names["p:#{row[:id]}"] = row[:name] if row.is_a?(Hash) && row[:id] }
+        Array(rows).each { |row| @participant_names[Steer.author_for(row[:id])] = row[:name] if row.is_a?(Hash) && row[:id] }
       end
 
       # The prompt line's author keywords for the +author+ of an event, an

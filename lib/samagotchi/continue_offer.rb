@@ -210,7 +210,7 @@ module Samagotchi
       enqueued_id = offer_turn_id
       @engine.announce(type: :continue_resolved, decision: "refused", reason: reason.to_s, client_id: command.client_id)
       @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
-                       text: format(REFUSED_NOTICE, who: author.to_s.delete_prefix("p:"), reason: REFUSED_WHY.fetch(reason.to_s, reason.to_s)))
+                       text: format(REFUSED_NOTICE, who: Steer.participant_id(author), reason: REFUSED_WHY.fetch(reason.to_s, reason.to_s)))
       @turn_flow.abort_continue!
       session = @engine.session
       session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3), enqueued_id: enqueued_id) if session

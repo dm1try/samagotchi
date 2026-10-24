@@ -38,7 +38,7 @@ module Samagotchi
       return nil unless Steer.participant_author?(author)
 
       refresh!(session) if session && session.id != @session_id
-      id = author.to_s.delete_prefix("p:")
+      id = Steer.participant_id(author)
       entry = @entries.find { |e| e.id == id } || (@entries = read).find { |e| e.id == id }
       entry&.name
     end

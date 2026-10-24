@@ -34,8 +34,9 @@ module Samagotchi
     # The author when a participant's (Steer.sender_author), else nil.
     def participant_author = Steer.sender_author(author)
 
-    # The participant's id (its author without "p:"), nil for the owner's.
-    def participant_id = participant_author&.delete_prefix("p:")
+    # The participant's id (Steer.participant_id: its author without "p:"),
+    # nil for the owner's.
+    def participant_id = participant_author && Steer.participant_id(participant_author)
 
     # What sent the turn, by its client (ClientId.origin): "client",
     # "reminder", "delegate", "review"...

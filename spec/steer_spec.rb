@@ -251,4 +251,10 @@ RSpec.describe Samagotchi::Steer do
     expect(described_class.prompt?({ "role" => "user", "kind" => "steer" })).to be(false)
     expect(described_class.prompt?({ role: "model", content: "x" })).to be(false)
   end
+
+  it ".author_for and .participant_id turn a participant id into its author and back" do
+    expect(described_class.author_for("abc")).to eq("p:abc")
+    expect(described_class.participant_id("p:abc")).to eq("abc")
+    expect([described_class.participant_id("abc"), described_class.participant_id(nil)]).to eq(["abc", ""])
+  end
 end
