@@ -270,15 +270,24 @@ module ReleaseTools
   # requires_chi raised to that member's floor and its version patch-bumped,
   # and the [RaisedProfile]s. A profile whose version already moved since
   # +tag+ (a member joined it this release), or that is new since it, keeps
-  # its version: one release, one bump.
+  # its version: one release, one bump. Repeated until none is left below a
+  # member, so a profile that is a member of another raises that one too
+  # (floors only go up, so it ends).
   def raised_profile_floors(root, texts, tag: last_tag(root))
-    lows = low_profiles(root, texts)
-    out = lows.to_h do |low|
-      text = raise_requires_chi(texts.fetch(low.path) { File.read(low.path) }, low.floor)
-      [low.path, bumped_since?(root, tag, low.path, text) ? text : patch_bump(text, low.name)]
+    original = ->(path) { texts.fetch(path) { File.read(path) } }
+    current = texts.dup
+    out = {}
+    raised = {}
+    until (lows = low_profiles(root, current)).empty?
+      lows.each do |low|
+        text = raise_requires_chi(current.fetch(low.path) { File.read(low.path) }, low.floor)
+        text = patch_bump(text, low.name) unless out.key?(low.path) || bumped_since?(root, tag, low.path, text)
+        current[low.path] = out[low.path] = text
+        raised[low.path] = low
+      end
     end
-    profiles = lows.map do |low|
-      RaisedProfile.new(name: low.name, old_version: manifest_version(texts.fetch(low.path) { File.read(low.path) }),
+    profiles = raised.values.sort_by(&:name).map do |low|
+      RaisedProfile.new(name: low.name, old_version: manifest_version(original.call(low.path)),
                         version: manifest_version(out[low.path]), floor: low.floor.to_s)
     end
     [out, profiles]

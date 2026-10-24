@@ -362,6 +362,21 @@ RSpec.describe ReleaseTools do
       expect(described_class.low_meta_floors(tmp)).to eq([])
     end
 
+    # A profile in a profile: raising dev (its member coord was raised)
+    # leaves all, which includes dev, below dev until a second pass.
+    it "raises a profile whose member profile it raised, until none is left below a member" do
+      write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
+      write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7.1\nrequires_chi: \">= 0.1.37\"\nincludes:\n- coord\n")
+      write("lib/samagotchi/bundles/all/manifest.yml", "name: all\nversion: 1.0.0\nrequires_chi: \">= 0.1.37\"\nincludes:\n- dev\n")
+      bumped = described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+      expect(bumped.profiles).to eq([ReleaseTools::RaisedProfile.new(name: "all", old_version: "1.0.0", version: "1.0.1", floor: "0.2.0"),
+                                     ReleaseTools::RaisedProfile.new(name: "dev", old_version: "0.7.1", version: "0.7.2", floor: "0.2.0")])
+      expect(read("lib/samagotchi/bundles/all/manifest.yml"))
+        .to eq("name: all\nversion: 1.0.1\nrequires_chi: \">= 0.2.0\"\nincludes:\n- dev\n")
+      expect(read("lib/samagotchi/bundles/dev/manifest.yml")).to include("version: 0.7.2\n")
+      expect(described_class.low_meta_floors(tmp)).to eq([])
+    end
+
     # A member joined dev this release (dev 0.7.1 -> 0.7.2 by hand) and
     # another one's marker raises dev's floor: one release, one bump.
     it "raises a profile's floor but keeps its version when it already moved since the last tag" do
