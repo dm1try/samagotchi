@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, chipModel, chipTemplate, inviteBody, panelTemplate, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, participantName, setParticipantNames } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
@@ -117,4 +117,97 @@ test("participants: a working session's warning comes before the Invite, with St
   assert.match(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", reviewing: true })), /disabled[^>]*>Starting…</);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s" })), /pp-working/);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", invite: { name: "A", link: "x", lan: true } })), /pp-working/);
+});
+
+// The control on the shim's document: the chip in +el+, an api whose
+// answers the test settles (deferred), a stub window.
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+};
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+function panelControl({ api: over = {}, win: winOver = {}, ...opts } = {}) {
+  const el = document.createElement("div");
+  el.innerHTML = '<button type="button" class="participants-chip">invite</button>';
+  document.body.append(el);
+  let open = "s1";
+  const pending = [];
+  const api = {
+    list: async () => ({ participants: [grant()] }),
+    invite: () => { const d = deferred(); pending.push(d); return d.promise; },
+    cap: () => { const d = deferred(); pending.push(d); return d.promise; },
+    revoke: () => { const d = deferred(); pending.push(d); return d.promise; },
+    ...over,
+  };
+  const win = { innerWidth: 1000, innerHeight: 800, navigator: {}, confirm: () => true, ...winOver };
+  const ctl = createParticipantsControl({ el, session: () => open, api, clock: () => NOW, win, ...opts });
+  // This control's (a failed test leaves its own behind).
+  const pop = [...document.querySelectorAll("#participantsPopover")].pop();
+  const chip = el.querySelector(".participants-chip");
+  const submit = (form) => form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  return {
+    ctl, pop, chip, pending, submit,
+    switchTo: (id) => { open = id; },
+    done: () => { el.remove(); pop.remove(); },
+  };
+}
+
+// An invite answered after its panel closed (or another session opened)
+// is dropped: its one-time link never shows in a later panel.
+test("participants panel: an invite answered after the panel closed doesn't show its link in the next panel", async () => {
+  const c = panelControl();
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  assert.ok(c.ctl.isOpen());
+  c.pop.querySelector("form.pp-invite").elements.name.value = "Kim";
+  c.submit(c.pop.querySelector("form.pp-invite"));
+  c.ctl.close();
+  c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
+  await tick();
+  c.chip.click();
+  await tick();
+  assert.ok(c.ctl.isOpen());
+  assert.ok(!c.pop.querySelector(".pp-invite-done"), "the late link isn't in the reopened panel");
+  assert.ok(c.pop.querySelector("form.pp-invite"));
+  c.done();
+});
+
+test("participants panel: a revoke's refusal after another session opened doesn't land in that session's panel", async () => {
+  const c = panelControl();
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  c.pop.querySelector('[data-act="revoke"]').click();
+  c.ctl.close();
+  c.switchTo("s2");
+  await c.ctl.load("s2");
+  c.pending[0].reject(new Error("revoke failed"));
+  await tick();
+  c.chip.click();
+  await tick();
+  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, "");
+  c.done();
+});
+
+test("participants panel: a failed list for another session drops the previous session's warning and rows", async () => {
+  let fail = false;
+  const c = panelControl({ api: { list: async () => {
+    if (fail) throw new Error("down");
+    return { participants: [grant()], warning: "s1 is a working session" };
+  } }, startReview: async () => null });
+  await c.ctl.load();
+  fail = true;
+  c.switchTo("s2");
+  await c.ctl.load("s2");
+  // The panel s2 opens: no s1 rows, no s1 warning.
+  c.chip.click();
+  await tick();
+  assert.ok(c.ctl.isOpen());
+  assert.ok(c.pop.querySelector("form.pp-invite"));
+  assert.doesNotMatch(c.pop.innerHTML, /s1 is a working session/);
+  assert.doesNotMatch(c.pop.innerHTML, /pp-row/);
+  c.done();
 });

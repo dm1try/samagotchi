@@ -108,6 +108,9 @@ and commands may change between minor versions. How releases are made:
 - The web info bar's session clock, speed and ctx chips keep one width while a turn runs (tabular digits in a
   reserved width), and the speed and the clock show from the session's start as muted placeholders: a tick or the
   first generation's speed no longer widens the line and wraps a chip onto a new row.
+- The participants panel drops an Invite, Cap or Revoke answered after it closed or another session opened: a
+  one-time link no longer shows the next time a panel opens, under another session, and a failed list no longer
+  keeps the previous session's working-session warning.
 
 ## [0.106.0] - 2026-10-23
 
