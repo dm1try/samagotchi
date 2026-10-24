@@ -68,7 +68,10 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       key = name.downcase
       names[key] = names.key?(key) ? "#{names[key]}, #{value}" : value
     end
-    names.each { |name, value| env[name == "host" ? "HTTP_HOST" : Samagotchi::Web::PublicUrl.env_key(name)] = value }
+    names.each do |name, value|
+      key = { "host" => "HTTP_HOST", "content-type" => "CONTENT_TYPE" }.fetch(name) { Samagotchi::Web::PublicUrl.env_key(name) }
+      env[key] = value
+    end
     env[Samagotchi::Web::ProxyGate::RAW_NAMES_ENV] = names.keys if raw
     env
   end
@@ -289,6 +292,25 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       status, _, body = call("/", headers: proxied)
       expect(status).to eq(401)
       expect(body).to include('import { tradeFragmentCode } from "/token_fragment.js";')
+    end
+  end
+
+  # A GET form would put a pasted token in the URL: the proxy's access log,
+  # the history, the IdP's state on a sign-in redirect.
+  describe "the 401 page's paste box" do
+    it "posts the token in the body to /api/token, never as a GET query" do
+      _, _, body = call("/", headers: proxied)
+      expect(body).to include('<form method="post" action="/api/token">')
+      expect(body).not_to include('method="get"')
+    end
+
+    it "trades a pasted owner token for the cookie and a 303 to the public page" do
+      status, headers, = call("/api/token", method: "POST", body: "token=#{owner_token}",
+                                            headers: proxied(owner, [%w[Content-Type application/x-www-form-urlencoded],
+                                                                     ["Origin", origin]]))
+      expect(status).to eq(303)
+      expect(headers["Location"]).to eq("#{origin}/")
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{owner_token};")
     end
   end
 

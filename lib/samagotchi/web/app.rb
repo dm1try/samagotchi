@@ -404,7 +404,10 @@ module Samagotchi
         # participant's grant's.
         if token_trade?(req)
           token = req.env[GRANT_TOKEN_ENV] || current_token
-          return [nil, fragment_trade?(req) ? token_cookie_response(req, token) : token_redirect(req, token)]
+          return [nil, token_redirect(req, token)] unless fragment_trade?(req)
+          return [nil, form_trade_redirect(req, token)] if form_post?(req)
+
+          return [nil, token_cookie_response(req, token)]
         end
 
         [principal, nil]
@@ -453,7 +456,10 @@ module Samagotchi
 
         req.env.fetch(TRADED_TOKEN_ENV) do
           raw = request_body(req, TRADE_BODY_LIMIT).to_s
-          value = (parse_json(raw) if raw.bytesize < TRADE_BODY_LIMIT)
+          value = if raw.bytesize >= TRADE_BODY_LIMIT then nil
+                  elsif form_post?(req) then Rack::Utils.parse_query(raw)
+                  else parse_json(raw)
+                  end
           value = {} unless value.is_a?(Hash)
           req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(value["code"]) : string_or_nil(value["token"])
         end
@@ -469,6 +475,9 @@ module Samagotchi
       TRADED_TOKEN_ENV = "samagotchi.traded_token"
 
       def fragment_trade?(req) = req.post? && req.path_info == TOKEN_TRADE_PATH
+
+      # The 401 page's paste box, posted as a form (no script needed).
+      def form_post?(req) = req.media_type == "application/x-www-form-urlencoded"
 
       def owner_token?(given) = given.any? { |value| token_match?(value, current_token) }
 
@@ -547,6 +556,14 @@ module Samagotchi
                 "Cache-Control" => "no-store", "Content-Length" => "0" }, []]
       end
 
+      # The paste box's trade: the cookie and a 303 to the page (absolute
+      # from web.public_url when proxied, as #token_redirect).
+      def form_trade_redirect(req, token)
+        location = proxied?(req) ? "#{@public_url.origin}/" : "/"
+        [303, { "Location" => location, "Set-Cookie" => token_cookie(req, token), "Cache-Control" => "no-store",
+                "Content-Length" => "0" }, []]
+      end
+
       # The fragment trade's answer: the cookie, no body.
       def token_cookie_response(req, token)
         [204, { "Set-Cookie" => token_cookie(req, token), "Cache-Control" => "no-store" }, []]
@@ -561,7 +578,7 @@ module Samagotchi
         log_refused(req.get_header("REMOTE_ADDR").to_s, req.path_info, reason)
         return error_response(401, "unauthorized", unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
 
-        body = UNAUTHORIZED_PAGE
+        body = @public_url ? PUBLIC_UNAUTHORIZED_PAGE : UNAUTHORIZED_PAGE
         [401, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" },
          [body]]
       end
@@ -583,6 +600,17 @@ module Samagotchi
           (last.nil? || now - last >= REFUSED_LOG_INTERVAL).tap { |fresh| @refused_logged[peer] = now if fresh }
         end
         Log.warn(:web, "unauthorized", peer: peer, path: path, **(reason ? { reason: reason } : {})) if due
+      end
+
+      # Behind a proxy (web.public_url) the paste box posts the token in the
+      # body (POST /api/token): a GET would put it in the URL, the proxy's
+      # access log and the history. On this machine the page opens through
+      # the proxy too.
+      def self.public_unauthorized_page(page)
+        page.sub('<form method="get" action="/">', '<form method="post" action="/api/token">')
+            .sub("Open the link chi web printed in its terminal (LAN, or Proxied behind an\nauth proxy), or scan its QR code.",
+                 "Open the Proxied link chi web printed in its terminal (it works once; chi web again prints a new " \
+                 "one), or paste the token from its web-token file.")
       end
 
       # What a phone sees without the token. The field is for a home-screen
@@ -618,6 +646,8 @@ module Samagotchi
         </script>
         </body></html>
       HTML
+      PUBLIC_UNAUTHORIZED_PAGE = public_unauthorized_page(UNAUTHORIZED_PAGE).freeze
+      private_class_method :public_unauthorized_page
 
       # Another website's page in the desktop browser can send "simple"
       # requests here (a text/plain POST needs no preflight) and would start
