@@ -418,6 +418,16 @@ RSpec.describe ReleaseTools do
           .to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2, mcp 0.3.1).")
       end
 
+      it "finds the line inside a bullet, wrapped too, when the section has none of its own" do
+        expect(bump_with("- guardrails (0.9.3): a fix. Update with `chi update`.\n- mcp: a fix. Update with\n  `chi update` (mcp 0.3.2).\n"))
+          .to eq("- guardrails (0.9.3): a fix. Update with `chi update` (the dev profile 0.7.2).\n" \
+                 "- mcp: a fix. Update with\n  `chi update` (mcp 0.3.2).")
+        expect(bump_with("- mcp: a fix. Update with\n  `chi update` (mcp 0.3.2).\n"))
+          .to eq("- mcp: a fix. Update with `chi update` (mcp 0.3.2, the dev profile 0.7.2).")
+        expect(bump_with("- mcp: a fix. Update with `chi update`.\n\nUpdate with `chi update`, then restart `chi web`.\n"))
+          .to eq("- mcp: a fix. Update with `chi update`.\n\nUpdate with `chi update` (the dev profile 0.7.2), then restart `chi web`.")
+      end
+
       it "gives a bare line parentheses, and a section without one the line" do
         expect(bump_with("- chi.\n\nUpdate with `chi update`.\n")).to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2).")
         expect(bump_with("- chi.\n")).to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2).")

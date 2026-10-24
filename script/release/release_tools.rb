@@ -374,13 +374,14 @@ module ReleaseTools
     end
   end
 
-  UPDATE_LINE = /^Update with `chi update`(?: \(([^)\n]*)\))?/
+  UPDATE_LINE = /Update\s+with\s+`chi update`(?: \(([^)]*)\))?/
 
   # The CHANGELOG with each raised profile (+profiles+, [RaisedProfile])
   # named in +version+'s "Update with `chi update`" line as "the NAME
   # profile X.Y.Z": added inside its parentheses (or a version it names
   # there replaced), parentheses added to a bare line, the line added at the
-  # section's end when it has none.
+  # section's end when it has none. A line of its own wins over one inside a
+  # bullet (the first such); either may wrap.
   def name_profiles_in_changelog(text, version, profiles)
     return text if profiles.empty?
 
@@ -395,8 +396,11 @@ module ReleaseTools
         list.match?(pattern) ? list.sub(pattern, item) : [list, item].reject(&:empty?).join(", ")
       end
     end
-    section = if section.match?(UPDATE_LINE)
-                section.sub(UPDATE_LINE) { "Update with `chi update` (#{named.call(::Regexp.last_match(1).to_s)})" }
+    # The section's own line (at a line's start) first, else the first one
+    # inside a bullet.
+    found = section.match(/^#{UPDATE_LINE}/) || section.match(UPDATE_LINE)
+    section = if found
+                "#{found.pre_match}Update with `chi update` (#{named.call(found[1].to_s)})#{found.post_match}"
               else
                 "#{section.rstrip}\n\nUpdate with `chi update` (#{named.call("")}).\n\n"
               end
