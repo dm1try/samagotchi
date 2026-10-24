@@ -36,10 +36,8 @@ RSpec.describe "ModelProfile.resolve" do
 
   # entry() calls the helper above; without the () the default would be the
   # parameter itself (a circular argument reference).
-  # rubocop:disable Style/MethodCallWithoutArgsParentheses
   def resolve(names: ["ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M"], entry: entry(), client: FakePropsClient.new(answered(ornith_props)),
               bare_model: names.first, override: [nil, :default], models: {})
-    # rubocop:enable Style/MethodCallWithoutArgsParentheses
     Samagotchi::ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare_model,
                                      override: override, models: models)
   end

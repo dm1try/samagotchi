@@ -22,7 +22,7 @@ group :test do
 end
 
 group :lint do
-  gem "rubocop", "~> 1.91", require: false
+  gem "rubocop", "~> 1.92", require: false
   gem "rubocop-performance", require: false
   gem "rubocop-rspec", require: false
 end
