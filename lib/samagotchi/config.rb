@@ -316,6 +316,10 @@ module Samagotchi
       Entry.new(key: "web.participants.expires", yaml_path: %w[web participants expires], type: :string, default: "7d", expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       Entry.new(key: "web.participants.cap",     yaml_path: %w[web participants cap],     type: :float,  default: 2.0,  expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       Entry.new(key: "web.participants.queue",   yaml_path: %w[web participants queue],   type: :integer, default: 3,   expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
+      # chi web behind an auth proxy (Web::PublicUrl, docs/configuration.md "Behind an auth proxy").
+      Entry.new(key: "web.public_url",           yaml_path: %w[web public_url],           type: :string, default: nil,  expose: %i[env config], lifecycle: :web_start),
+      Entry.new(key: "web.proxy.identity_header", yaml_path: %w[web proxy identity_header], type: :string, default: nil, expose: %i[env config], lifecycle: :web_start),
+      Entry.new(key: "web.proxy.owner",          yaml_path: %w[web proxy owner],          type: :string, default: nil,  expose: %i[env config], lifecycle: :web_start),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
