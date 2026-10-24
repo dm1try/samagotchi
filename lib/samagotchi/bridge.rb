@@ -26,6 +26,7 @@ require_relative "turn_origin"
 require_relative "participants"
 require_relative "image_store"
 require_relative "log"
+require_relative "proxy_trace"
 require_relative "version"
 require_relative "worker_sidecar"
 require_relative "relay_verifier"
@@ -438,6 +439,10 @@ module Samagotchi
           break
         elsif browser_request?(headers)
           write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
+        elsif proxied_request?(headers)
+          Log.warn(:bridge, "proxied_refused", path: request[:path])
+          write_json(io, 403, nil, { error: "proxied", detail: "the bridge answers chi's own clients on this machine, " \
+                                                               "never a request through a proxy" })
         elsif route.nil?
           write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })
@@ -524,6 +529,13 @@ module Samagotchi
     # no Sec-Fetch-Site. A browser page always sends one of them (another
     # website's text/plain POST needs no preflight), and a DNS-rebound page
     # also has a foreign Host. Headers are the raw ones, lowercased.
+    # A request through a proxy (an auth proxy forwarding every port, as a
+    # work pod's does) carries a trace chi's own clients never send
+    # (ProxyTrace: X-Forwarded-*, Forwarded, X-Real-IP, X-Auth-Request-*…,
+    # underscore twins too): refused, whoever signed in to the proxy. chi
+    # web's stream proxy forwards Last-Event-ID only (ProxyStreamBody).
+    def proxied_request?(headers) = headers.keys.any? { |name| ProxyTrace.header?(name) }
+
     def browser_request?(headers)
       return true if headers.key?("origin")
       return true if headers.key?("sec-fetch-site") && headers["sec-fetch-site"].downcase != "none"

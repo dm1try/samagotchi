@@ -137,6 +137,29 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     expect(@bridge).not_to have_received(:serve_sse)
   end
 
+  it "refuses a request through a proxy (any trace a proxy adds, an underscore twin too) before any route" do
+    [
+      ["POST", "/session/abc/turn", { "X-Forwarded-For" => "203.0.113.9" }],
+      ["GET", "/session/abc/state", { "X_Forwarded_For" => "203.0.113.9" }],
+      ["GET", "/session/abc/snapshot", { "X-Forwarded-Email" => "alex@pod.test" }],
+      ["GET", "/session/abc/stream", { "Forwarded" => "for=203.0.113.9" }],
+      ["GET", "/session/abc/state", { "X-Real-IP" => "203.0.113.9" }],
+      ["GET", "/session/abc/state", { "X-Auth-Request-Email" => "a@b" }],
+      ["GET", "/session/abc/state", { "Cf-Connecting-Ip" => "203.0.113.9" }],
+      ["GET", "/nope", { "Tailscale-User-Login" => "a@b" }]
+    ].each do |method, path, headers|
+      status, _, body = request(method, path, headers: headers, body: method == "POST" ? "{}" : nil)
+      expect([status, body["error"]]).to eq([403, "proxied"]), headers.keys.first
+    end
+    handlers.each { |name| expect(@bridge).not_to have_received(name) }
+    expect(@bridge).not_to have_received(:serve_sse)
+  end
+
+  it "answers chi's own requests, which carry no proxy trace (Last-Event-ID, Authorization, Content-Type)" do
+    _, _, body = request("GET", "/session/abc/stream", headers: { "Last-Event-ID" => "3-1" })
+    expect(body["handler"]).to eq("serve_sse")
+  end
+
   it "answers a body over the limit with 413 before the browser check" do
     big = "x" * (described_class::MAX_BODY_BYTES + 1)
     status, headers, body = request("POST", "/session/abc/turn", headers: { "Origin" => "https://evil.example" }, body: big)

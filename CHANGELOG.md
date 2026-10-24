@@ -22,6 +22,12 @@ and commands may change between minor versions. How releases are made:
   a 401, a redirect to the sign-in page, the session list's stream giving up) and reloads once, then says "Signed out"
   with Reload instead of going quietly stale. The page's API calls ask for JSON (`Accept: application/json`).
 
+### Changed
+
+- A session's Bridge refuses any request that came through a proxy (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`,
+  `X-Auth-Request-*` and the like, underscore twins too: 403 `proxied`): an auth proxy that forwards every local port
+  no longer reaches a worker's unauthenticated Bridge. chi's own clients never send these headers.
+
 ## [0.108.0] - 2026-10-24
 
 ### Added
