@@ -12,6 +12,7 @@ require_relative "lan"
 require_relative "link_codes"
 require_relative "proxy_gate"
 require_relative "public_url"
+require_relative "push"
 require_relative "qr"
 require_relative "running"
 require_relative "session_hub"
@@ -121,6 +122,10 @@ module Samagotchi
           end
           # The participants' grants: never served from a store others can read.
           Grants.check_permissions!(Grants.path)
+          # Web Push (with an https public_url): a contact the push services
+          # would refuse, or a key store others can read, stops it here,
+          # before any tunnel goes up.
+          Push.preflight!(public_url)
           options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
                       annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
                       public_url: public_url }
@@ -131,7 +136,7 @@ module Samagotchi
                     end
           started ? 0 : 1
         end
-      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused => e
+      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused, Push::Refused, Push::Store::Insecure => e
         warn "Error: #{e.message}"
         1
       rescue Interrupt
@@ -198,9 +203,10 @@ module Samagotchi
         Token.load_or_create(token_path) if lan || public_url
         lan_option = { ip: lan.ip, token: Token::Source.new(token_path) } if lan
         public_token = Token::Source.new(token_path) if public_url
+        push = push_runtime(public_url, state_dir)
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
-                      public_url: public_url, public_token: public_token)
+                      public_url: public_url, public_token: public_token, push: push)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
         if public_url
@@ -209,6 +215,13 @@ module Samagotchi
         end
         # Subscribed before the first scan, which makes the first check.
         hub.subscribe(method(:on_hub_event))
+        if push
+          # The Notifier seeds from the hub's snapshot, which is empty before
+          # a scan: one now, so what is already open never pushes.
+          hub.scan
+          notifier = Push::Notifier.new(store: push.store, client: push.client, origin: push.origin).start(hub)
+          Samagotchi::Log.info(:web, "push", devices: push.store.for_origin(push.origin).size)
+        end
         hub.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
@@ -249,11 +262,22 @@ module Samagotchi
       ensure
         Running.clear(path: running_path) if running_path
         config_restart_unsubscribe&.call
+        notifier&.stop
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end
 
       class LanListenError < StandardError; end
+
+      # This run's Web Push (Push.runtime), nil when off. launch checked it
+      # (Push.preflight!); a store that broke since leaves chi web running
+      # without pushes, said in one line.
+      def self.push_runtime(public_url, state_dir)
+        Push.runtime(public_url, state_dir: state_dir)
+      rescue Push::Refused, Push::Store::Insecure, SystemCallError => e
+        Samagotchi::Log.warn(:web, "push_off", echo: "Warning: #{e.message}; phone notifications are off")
+        nil
+      end
 
       # Where this chi web listens, and its public_url (config's or the
       # tunnel's), for chi share's link (Web::Running); a write that fails

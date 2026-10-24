@@ -64,6 +64,7 @@ require_relative "message_display"
 require_relative "session_show"
 require_relative "session_create"
 require_relative "session_control"
+require_relative "push_routes"
 require_relative "proxy_gate"
 require_relative "../log"
 require_relative "../paths"
@@ -89,6 +90,7 @@ module Samagotchi
       include SessionShow
       include SessionCreate
       include SessionControl
+      include PushRoutes
       include ProxyGate
 
       DEFAULT_HOST = BridgeClient::HOST
@@ -141,6 +143,8 @@ module Samagotchi
       #   (web.public_url, ProxyGate): every request needs a token
       # @param public_token [String, Token::Source, nil] the access token
       #   with +public_url+ (the LAN one when both are set)
+      # @param push [Push::Runtime, nil] Web Push for this run (PushRoutes);
+      #   nil: off (no https public_url, or web.push.enabled false)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
@@ -148,7 +152,7 @@ module Samagotchi
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
-                     grants: nil, public_url: nil, public_token: nil)
+                     grants: nil, public_url: nil, public_token: nil, push: nil)
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -172,6 +176,7 @@ module Samagotchi
         @refused_mutex = Mutex.new
         @refused_logged = {}
         @wait_poll_interval = wait_poll_interval
+        @push = push
         init_participant_access(grants, state_dir)
         init_proxy_gate(public_url, public_token)
       end
@@ -263,6 +268,10 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/apply\z}, :handle_apply, :owner, :session],
         ["GET", %r{\A/api/participants\z}, :handle_participants_list, :owner],
         ["DELETE", %r{\A/api/participants\z}, :handle_participants_revoke, :owner],
+        ["GET", %r{\A/api/push\z}, :handle_push_info, :owner],
+        ["POST", %r{\A/api/push/subscriptions\z}, :handle_push_subscribe, :owner],
+        ["DELETE", %r{\A/api/push/subscriptions\z}, :handle_push_unsubscribe, :owner],
+        ["POST", %r{\A/api/push/test\z}, :handle_push_test, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
@@ -398,7 +407,13 @@ module Samagotchi
       # form) for the cookie.
       TOKEN_TRADE_PATH = "/api/token"
       TRADE_BODY_LIMIT = 4096
-      GATE_FREE_PATHS = ["/token_fragment.js"].freeze
+      # Exact paths served before the token gate (still after the Host,
+      # cross-site and frame checks), none holding a secret: the 401 page's
+      # fragment trade script, and what a Home Screen app fetches without
+      # the cookie (Chrome fetches a manifest without credentials): the
+      # manifest, the service worker and the icons (Web Push).
+      GATE_FREE_PATHS = ["/token_fragment.js", "/manifest.webmanifest", "/sw.js", "/apple-touch-icon.png",
+                         "/icons/chi-180.png", "/icons/chi-192.png", "/icons/chi-512.png"].freeze
 
       # The request's Principal, as #route resolved it.
       def principal(req) = req.env.fetch(PRINCIPAL_ENV)
@@ -1475,6 +1490,8 @@ module Samagotchi
         when ".css" then "text/css; charset=utf-8"
         when ".json" then "application/json; charset=utf-8"
         when ".svg" then "image/svg+xml"
+        when ".png" then "image/png"
+        when ".webmanifest" then "application/manifest+json"
         else "application/octet-stream"
         end
       end

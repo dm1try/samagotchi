@@ -54,7 +54,12 @@ RSpec.describe Samagotchi::Web::Server do
   # The hub logs nothing of its own: the web log's start and stop lines
   # are the server's. Server.start starts it before WEBrick and stops it
   # after.
-  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, subscribe: nil) }
+  # subscribe answers as with snapshot: true (the push Notifier's; the
+  # chi line's subscribe ignores it), scan as a pass that found nothing.
+  let(:hub) do
+    instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, scan: nil,
+                                                 subscribe: [instance_double(Samagotchi::Web::SessionHub::Subscription, unsubscribe: true), []])
+  end
 
   # Where Web::Running records the port: this example's own folder.
   let(:start_state) { File.join(start_root, "samagotchi", "sessions") }
@@ -293,6 +298,34 @@ RSpec.describe Samagotchi::Web::Server do
         expect(codes.redeem(printed)).to eq([:owner, nil])
         expect(codes.redeem(printed)).to be_nil
       end
+    end
+
+    it "starts Web Push with the public_url: the app gets it, the hub is scanned before the Notifier seeds from it" do
+      app = nil
+      allow(Samagotchi::Web::App).to receive(:new) { |**kw| app = kw; double("app", "server_running=": nil) }
+      allow(Rackup::Handler::WEBrick).to receive(:run)
+      order = []
+      allow(hub).to receive(:scan) { order << :scan }
+      allow(hub).to receive(:subscribe) { |sink, **kw| order << [:subscribe, kw[:snapshot] ? sink.class : :chi]; [instance_double(Samagotchi::Web::SessionHub::Subscription, unsubscribe: true), []] }
+      allow(hub).to receive(:start) { order << :start }
+
+      described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: File.join(start_root, "web-token"), state_dir: start_state)
+      expect(order).to eq([%i[subscribe chi], :scan, [:subscribe, Samagotchi::Web::Push::Notifier], :start])
+      expect(app[:push]).to have_attributes(origin: "https://4999.pod.test")
+      expect(app[:push].store.dir).to eq(File.join(start_root, "samagotchi", "web-push"))
+      expect(File.stat(app[:push].store.key_path).mode & 0o777).to eq(0o600)
+    end
+
+    it "starts no push without a public_url, or with web.push.enabled false" do
+      apps = []
+      allow(Samagotchi::Web::App).to receive(:new) { |**kw| apps << kw; double("app", "server_running=": nil) }
+      allow(Rackup::Handler::WEBrick).to receive(:run)
+      described_class.start(port: 4999, hub: hub, state_dir: start_state)
+      with_env("SAMAGOTCHI_WEB_PUSH_ENABLED" => "false") do
+        described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: File.join(start_root, "web-token"), state_dir: start_state)
+      end
+      expect(apps.map { |kw| kw[:push] }).to eq([nil, nil])
+      expect(hub).not_to have_received(:scan)
     end
 
     it "says token only or nobody-by-identity in the start line" do

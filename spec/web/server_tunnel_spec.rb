@@ -99,6 +99,26 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect(fake.argv).not_to include("serve --https=443 off")
   end
 
+  it "refuses a web.push.contact the push services would refuse, or a push store others can read, before the tunnel" do
+    allow(described_class).to receive(:start)
+    with_env("SAMAGOTCHI_WEB_PUSH_CONTACT" => "chi@localhost") do
+      expect { expect(launch).to eq(1) }
+        .to output("Error: web.push.contact must be a mailto: address or an https URL (the push services refuse " \
+                   "anything else), not chi@localhost\n").to_stderr
+    end
+    allow(Samagotchi::Web::Push).to receive(:preflight!).and_raise(Samagotchi::Web::Push::Store::Insecure, "0644 push")
+    expect { expect(launch).to eq(1) }.to output("Error: 0644 push\n").to_stderr
+    expect(described_class).not_to have_received(:start)
+    expect(fake.argv.grep(/serve --bg/)).to eq([])
+  end
+
+  it "runs without push checks when web.push.enabled is false" do
+    allow(described_class).to receive(:start).and_return(true)
+    with_env("SAMAGOTCHI_WEB_PUSH_ENABLED" => "false", "SAMAGOTCHI_WEB_PUSH_CONTACT" => "chi@localhost") do
+      expect { expect(launch).to eq(0) }.to output.to_stdout
+    end
+  end
+
   it "warns when the off fails, without changing the exit status" do
     allow(described_class).to receive(:start).and_return(true)
     fake.fail!("serve-off", "permission denied")

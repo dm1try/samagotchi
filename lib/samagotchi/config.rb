@@ -320,6 +320,10 @@ module Samagotchi
       Entry.new(key: "web.public_url",           yaml_path: %w[web public_url],           type: :string, default: nil,  expose: %i[env config], lifecycle: :web_start),
       Entry.new(key: "web.proxy.identity_header", yaml_path: %w[web proxy identity_header], type: :string, default: nil, expose: %i[env config], lifecycle: :web_start),
       Entry.new(key: "web.proxy.owner",          yaml_path: %w[web proxy owner],          type: :string, default: nil,  expose: %i[env config], lifecycle: :web_start),
+      # Phone notifications (Web::Push, docs/configuration.md "Phone notifications (Web Push)"): on with an https
+      # public URL once a device turned the bell on; contact is the VAPID sub (a mailto: or https URL; nil: the public origin).
+      Entry.new(key: "web.push.enabled",         yaml_path: %w[web push enabled],         type: :bool,   default: true, expose: %i[env config], lifecycle: :web_start),
+      Entry.new(key: "web.push.contact",         yaml_path: %w[web push contact],         type: :string, default: nil,  expose: %i[env config], lifecycle: :web_start),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :next_cli_run),
