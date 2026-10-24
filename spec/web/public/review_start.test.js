@@ -47,6 +47,7 @@ function reviewControl() {
 test("review start: an open quote stays in the form with its error; Start's refusal opens the form with the server's words", () => {
   const c = reviewControl();
   c.el.click();
+  assert.equal(c.pop.getAttribute("aria-label"), "Review files");
   c.set('"docs/my plan');
   assert.equal(c.pop.hidden, false);
   assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, 'A quote isn\'t closed: "docs/my plan');

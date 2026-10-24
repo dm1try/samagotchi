@@ -308,3 +308,21 @@ test("participants panel: Revoke asks first, naming them; a No sends nothing", a
   assert.deepEqual(revoked, [["s1", "p_0001abcd"]]);
   c.done();
 });
+
+// The owner's controls name themselves: the dialog, each row's Cap and
+// Revoke (several rows: which participant), and Cap's field takes the focus.
+test("participants panel: the dialog and each row's Cap and Revoke are named; Cap's field takes the focus", async () => {
+  const c = panelControl({ api: { list: async () => ({ participants: [grant(), grant({ id: "p_2", name: "Kim" })] }) } });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  assert.equal(c.pop.getAttribute("role"), "dialog");
+  assert.equal(c.pop.getAttribute("aria-label"), "Participants");
+  const labels = [...c.pop.querySelectorAll(".pp-actions button")].map((b) => b.getAttribute("aria-label"));
+  assert.deepEqual(labels, ["Cap Alex's spending", "Revoke Alex's link", "Cap Kim's spending", "Revoke Kim's link"]);
+  c.pop.querySelectorAll('[data-act="cap"]')[1].click();
+  const field = c.pop.querySelector(".pp-cap-form input");
+  assert.equal(field.getAttribute("aria-label"), "New cap for Kim, dollars");
+  assert.equal(document.activeElement, field);
+  c.done();
+});
