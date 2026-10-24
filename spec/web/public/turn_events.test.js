@@ -514,6 +514,20 @@ test("streamDropEnd ends the turn view now only for a stop or a stream that neve
   });
 });
 
+// The re-read a dropped stream asked for can itself fail (the phone is still
+// offline): it is tried again, backing off, and then left to the hub's next
+// event for the session.
+import { resyncRetry } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("resyncRetry backs off three times, then stops", () => {
+  assert.deepEqual(resyncRetry({ attempts: 0 }), { attempt: 1, delayMs: 3000 });
+  assert.deepEqual(resyncRetry({ attempts: 1 }), { attempt: 2, delayMs: 6000 });
+  assert.deepEqual(resyncRetry({ attempts: 2 }), { attempt: 3, delayMs: 9000 });
+  assert.deepEqual(resyncRetry({ attempts: 3 }), { attempt: 3, delayMs: null });
+  assert.deepEqual(resyncRetry({ attempts: 3, max: 1, baseMs: 1000 }), { attempt: 3, delayMs: null });
+  assert.deepEqual(resyncRetry({ attempts: 0, max: 1, baseMs: 1000 }), { attempt: 1, delayMs: 1000 });
+});
+
 // 4.14: the worker can die between turn_completed and answer_display, so the
 // wait for the display must end by itself (workerGone, a re-render, the
 // timeout) instead of holding the turn's answer bubble forever.

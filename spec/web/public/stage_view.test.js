@@ -187,6 +187,25 @@ test("the stage's skeleton, right after it is made", () => {
   assert.equal(htmlOf(view.root), SKELETON);
 });
 
+// The stage lets go of a turn (a re-render, a new session): the slots empty,
+// and the status row and chip say nothing either — left as they were, a
+// hidden stage still reads "thinking · step 1", the stale stage of a turn
+// the page stopped following.
+test("resetting the stage clears the status row and the chip, not only the slots", async () => {
+  const { view } = page({ taskStop: fakeTaskStop });
+  view.turnStarted({});
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, thinking: "I look at the file first. Then I read it." });
+  await frame();
+  assert.equal($(view, ".ts-phase").textContent, "thinking");
+  assert.equal($(view, ".ts-step").textContent, "step 1");
+  view.turnEnded({ kind: "completed" });
+  await frame();
+  view.reset();
+  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+  assert.equal($(view, ".ts-chip-label").textContent, "");
+});
+
 test("slots: a thinking headline, the quiet word and an empty trail", async () => {
   const { view } = slotsPage();
   try {

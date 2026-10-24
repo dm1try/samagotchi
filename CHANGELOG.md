@@ -11,7 +11,9 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: a session's stream dropping mid-turn (a phone briefly offline) no longer shows "canceled (worker exited)"
-  while the worker runs on; the page re-reads first and shows it only when no worker took the turn.
+  while the worker runs on; the page re-reads first and shows it only when no worker took the turn. A re-read that
+  fails (the network still down) is retried with a backoff, and a stage that lets go of a turn clears its status row
+  and chip, so it no longer reads "thinking · step 1" for a turn it stopped following.
 
 ## [0.110.0] - 2026-10-24
 
