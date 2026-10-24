@@ -10,6 +10,10 @@ module Samagotchi
     TOKEN_REVOKED = "this review link was revoked by the session's owner"
     # 401 token_expired: the grant's time ran out.
     TOKEN_EXPIRED = "this review link expired: ask the session's owner for a new one"
+    # Either of those, where only that the link ended is known: the
+    # worker's cancel_reason "revoked" (participants.json reads them
+    # removed or past expires_at), as their chi send --wait reports it.
+    TOKEN_ENDED = "this review link was revoked or expired"
     # 403 not_permitted: a route, a command or a shell line only the owner may use.
     NOT_PERMITTED = "a participant can't do that: only the session's owner can"
     # 429 too_many_turns: their running turn and its queue are full.

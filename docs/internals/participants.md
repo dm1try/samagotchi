@@ -396,7 +396,9 @@ code, for any route):
 | 429 `cap_reached` | `CapReached` | `this participant's spending cap is reached: ask the session's owner to raise it` |
 
 The server's details are the same words, with no label. A participant's `wait` on a failed turn answers 200 with
-`text` `this turn failed: the session's owner can see why` (`TURN_FAILED`).
+`text` `this turn failed: the session's owner can see why` (`TURN_FAILED`). A queued turn the worker refused
+because the link ended (`cancel_reason` `revoked`: participants.json reads it removed or expired, which it doesn't
+tell apart) is `ParentReport`'s `refused` with `this review link was revoked or expired` (`TOKEN_ENDED`).
 
 A 401 `unauthorized` stays `AuthRefused`'s "the token was refused".
 

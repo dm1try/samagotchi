@@ -77,7 +77,7 @@ module Samagotchi
 
     # The reasons a worker refuses a participant's queued turn
     # (Worker#participant_refusal), as its settled record's cancel_reason.
-    REFUSED_LINES = { "revoked" => "this review link was revoked or expired",
+    REFUSED_LINES = { "revoked" => ParticipantMessages::TOKEN_ENDED,
                       "cap_reached" => ParticipantMessages::CAP_REACHED }.freeze
 
     # A participant's turn the worker refused before it ran: by its
