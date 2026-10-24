@@ -57,6 +57,7 @@ require_relative "session_summary"
 require_relative "session_access_routes"
 require_relative "principal"
 require_relative "participant_access"
+require_relative "participants_admin"
 require_relative "participant_review"
 require_relative "../log"
 require_relative "../paths"
@@ -76,6 +77,7 @@ module Samagotchi
       include RedactedInspect
       include SessionAccessRoutes
       include ParticipantAccess
+      include ParticipantsAdmin
       include ParticipantReview
 
       DEFAULT_HOST = BridgeClient::HOST

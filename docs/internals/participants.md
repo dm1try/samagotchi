@@ -306,6 +306,9 @@ the owner sees the text before it runs (docs/guardrails.md, the review boundary)
 
 ## The owner's routes
 
+`Web::ParticipantsAdmin` (`web/participants_admin.rb`, mixed into `App` beside `ParticipantAccess`, the participant's own
+gate and routes) answers these.
+
 | Route | Body / params | Answer | Refusals |
 |---|---|---|---|
 | `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it | |
