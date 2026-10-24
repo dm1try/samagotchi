@@ -19,10 +19,12 @@ module Samagotchi
   module Web
     # What a participant (a Web::Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
-    # (token_revoked, token_expired, another session's 404, not_permitted
-    # by role), the trimmed answers of the :participant routes, their turns,
-    # and the running check that ends their streams when the grant does
-    # (what they read is ParticipantReview's). See
+    # (token_revoked, token_expired with its ended page, another session's
+    # 404, not_permitted by role), the trimmed answers of their own routes
+    # (info, the session, resolve, a wait on their turn), their turns, and
+    # the running check that ends their streams when the grant does. What
+    # they read is ParticipantReview's; the owner's routes for them (invite,
+    # list, revoke, cap, Apply) are ParticipantsAdmin's. See
     # docs/internals/participants.md.
     module ParticipantAccess
       # A participant's refused routes are audited at most this often per
