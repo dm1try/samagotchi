@@ -184,12 +184,30 @@ module Samagotchi
 
       def call(env)
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        response = route(env)
+        response = unframed(route(env))
         log_request(env, response, started)
         response
       end
 
       private
+
+      # No page of chi web's may be framed by another (clickjacking): every
+      # HTML answer says so. The page's full CSP is a later change.
+      FRAME_HEADERS = { "X-Frame-Options" => "DENY", "Content-Security-Policy" => "frame-ancestors 'none'" }.freeze
+      FRAME_DESTS = %w[iframe frame embed object].freeze
+
+      def unframed(response)
+        status, headers, body = response
+        return response unless headers["Content-Type"].to_s.start_with?("text/html")
+
+        [status, headers.merge(FRAME_HEADERS), body]
+      end
+
+      # A frame/embed/object load from anything but the page's own origin.
+      def framed?(env)
+        FRAME_DESTS.include?(env["HTTP_SEC_FETCH_DEST"].to_s.downcase) &&
+          env["HTTP_SEC_FETCH_SITE"].to_s.downcase != "same-origin"
+      end
 
       # The routes, first match wins: a handler takes the request and the
       # path's captures (the session id, an image's name). The fourth column
@@ -259,6 +277,7 @@ module Samagotchi
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
         return cross_origin if cross_site?(env)
+        return error_response(403, "framed", "chi web's pages can't be framed by another page") if framed?(env)
         # The fragment trade's script, which the 401 page loads: no secret in it.
         return serve_static(req) if req.get? && GATE_FREE_PATHS.include?(req.path_info)
         return probe_info if probe_info?(req)
