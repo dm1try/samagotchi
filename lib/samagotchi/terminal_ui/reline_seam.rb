@@ -77,6 +77,20 @@ module Samagotchi
           Thread.current[:samagotchi_reline_echo] = was
         end
 
+        # Run a read (on this thread) whose submitted line may echo with a
+        # line above it: +above+ is called with the echoed text at Enter, a
+        # String goes above the echo (a gap's divider before a typed
+        # prompt), nil adds nothing. Only a read drawn on a screen; a read
+        # without echo calls nothing.
+        # @param above [#call] (text) -> String or nil
+        def echo_above(above)
+          was = Thread.current[:samagotchi_reline_echo_above]
+          Thread.current[:samagotchi_reline_echo_above] = above
+          yield
+        ensure
+          Thread.current[:samagotchi_reline_echo_above] = was
+        end
+
         # @api private
         attr_writer :reading
 
@@ -228,9 +242,13 @@ module Samagotchi
       def clear_screen(key) = ed_clear_screen(key)
 
       # The typed lines, or the echo's text after the prompt (#echo_as).
+      # A line above them when the read has one (#echo_above).
       def seam_echo_lines
-        text = Thread.current[:samagotchi_reline_echo]&.call(@buffer_of_lines.join("\n"))
-        text ? [Reline::Unicode.strip_non_printing_start_end(prompt_list[0]) + text] : seam_final_lines
+        typed = @buffer_of_lines.join("\n")
+        text = Thread.current[:samagotchi_reline_echo]&.call(typed)
+        lines = text ? [Reline::Unicode.strip_non_printing_start_end(prompt_list[0]) + text] : seam_final_lines
+        above = Thread.current[:samagotchi_reline_echo_above]&.call(text || typed)
+        above ? [above, *lines] : lines
       end
 
       # The prompt and the text as render_finished writes them: one line per

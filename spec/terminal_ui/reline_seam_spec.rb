@@ -178,6 +178,35 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     expect(term.lines).to eq(["> /unqueue", "> fix it", "ctx 12%"])
   end
 
+  it "puts a read's line above its echo when it says one, given the text echoed" do
+    screen.set_slot(:status, ["ctx 12%"])
+    seen = []
+    above = ->(text) { (seen << text) && (text == "fix it" ? "── 14:32 · 47 min later ──" : nil) }
+    echo = ->(typed) { typed.end_with?("/unqueue") ? "/unqueue" : nil }
+    open_prompt
+    type("fix it")
+    described_class.echo_above(above) { editor.render_finished }
+    editor.finalize
+
+    open_prompt
+    type("fix it/unqueue")
+    described_class.echo_as(echo) { described_class.echo_above(above) { editor.render_finished } }
+    editor.finalize
+
+    expect(term.lines).to eq(["── 14:32 · 47 min later ──", "> fix it", "> /unqueue", "ctx 12%"])
+    expect(seen).to eq(["fix it", "/unqueue"])
+  end
+
+  it "calls no line above for a read without echo" do
+    called = false
+    open_prompt
+    type("2")
+    described_class.without_echo { described_class.echo_above(->(_) { called = true }) { editor.render_finished } }
+    editor.finalize
+
+    expect(called).to be(false)
+  end
+
   it "takes the prompt of a dropped read out of the region" do
     screen.set_slot(:status, ["ctx 12%"])
     open_prompt
