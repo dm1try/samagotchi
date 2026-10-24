@@ -63,7 +63,10 @@ module Samagotchi
     # takes) passes join: false: the thread finishes its tick and exits by
     # itself, and a later joining stop (Engine#shutdown, the worker's
     # teardown) still joins it. From the scheduler's own thread (a job's
-    # tick) it never joins.
+    # tick) it never joins. A thread that died of an error #run_loop doesn't
+    # rescue (a SystemStackError, a job's `exit`) is logged here, not raised
+    # again by the join into the caller (Engine#shutdown would skip the rest
+    # of its teardown: plugin tasks, MCP servers).
     def stop(join: true)
       @stopped = true
       @wake << :stop
@@ -72,7 +75,7 @@ module Samagotchi
       @unjoined = join ? nil : thread
       return if thread.nil? || !join || thread == Thread.current
 
-      thread.kill unless thread.join(STOP_JOIN_SECONDS)
+      thread.kill unless join_thread(thread)
       nil
     end
 
@@ -103,6 +106,18 @@ module Samagotchi
     end
 
     private
+
+    # The thread joined within STOP_JOIN_SECONDS (truthy) or not (nil).
+    def join_thread(thread)
+      thread.join(STOP_JOIN_SECONDS)
+    rescue Exception => e # rubocop:disable Lint/RescueException -- the thread's own death, re-raised by join
+      # A status of nil: the thread ended with this exception. Anything else
+      # (an interrupt of the caller's own while it waited) is the caller's.
+      raise unless thread.status.nil?
+
+      Log.exception(:idle, "scheduler_died", e, echo: "[IdleScheduler] scheduler thread died: #{e.class}: #{e.message}")
+      thread
+    end
 
     def run_loop
       until @stopped

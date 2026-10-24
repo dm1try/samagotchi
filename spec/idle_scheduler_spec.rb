@@ -169,6 +169,22 @@ RSpec.describe Samagotchi::IdleScheduler do
       gate << true
     end
 
+    # Engine#shutdown calls #stop first: a raise here would skip the rest of
+    # its teardown (plugin tasks, MCP servers).
+    it "logs a thread that died of a non-StandardError instead of raising it again from the join" do
+      fatal = Class.new(Exception) # rubocop:disable Lint/InheritException -- what run_loop doesn't rescue
+      report = Thread.report_on_exception
+      Thread.report_on_exception = false
+      allow(job_a).to receive(:tick).and_raise(fatal, "deep")
+      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60).start
+      thread = scheduler.instance_variable_get(:@thread)
+      wait_for("the scheduler's thread to die") { !thread.alive? }
+
+      expect { expect(scheduler.stop).to be_nil }.to output(/scheduler thread died: .*deep/).to_stderr
+    ensure
+      Thread.report_on_exception = report
+    end
+
     it "is safe from inside a tick: it doesn't join its own thread, which ends after the tick" do
       scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
       stopped = Queue.new
