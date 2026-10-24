@@ -13,6 +13,7 @@ require_relative "../log"
 require_relative "../participant_name"
 require_relative "../session"
 require_relative "../redacted_inspect"
+require_relative "private_files"
 
 module Samagotchi
   module Web
@@ -201,20 +202,10 @@ module Samagotchi
       end
 
       # Refuses a store others could read: the grants folder must be 0700
-      # and the file 0600, both this user's. Only these two: the state dir
-      # above them is often 0755, and that is fine. A folder not made yet
-      # passes (it is made 0700).
+      # and the file 0600, both this user's (PrivateFiles).
       # @raise [Insecure]
       def self.check_permissions!(path)
-        [File.dirname(path), path].each do |target|
-          stat = File.stat(target)
-          next if stat.mode.nobits?(0o077) && stat.uid == Process.uid
-
-          raise Insecure, "#{target} can be read by other users: chmod 700 #{File.dirname(path)} and 600 #{path} " \
-                          "(it holds the participants' grants)"
-        rescue Errno::ENOENT
-          next
-        end
+        PrivateFiles.check!(File.dirname(path), [path], holds: "the participants' grants", error: Insecure)
       end
 
       attr_reader :path
