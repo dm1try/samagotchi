@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-10-24
+
 ### Added
 
 - Review sessions for participants (experimental). `chi review docs/plan.md …` starts a session made to be shared:
@@ -122,6 +124,8 @@ and commands may change between minor versions. How releases are made:
   opened again at the files chosen, instead of a blocking alert.
 - The participants panel no longer closes on its own Cap or Invite another (the button, redrawn away by its own
   click, read as a click outside the panel).
+
+Update with `chi update` (the system bundle 0.107.0, the coordinator bundle 0.6.0), then restart `chi web`.
 
 ## [0.106.0] - 2026-10-23
 
@@ -4126,7 +4130,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.106.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.107.0...HEAD
+[0.107.0]: https://github.com/dm1try/samagotchi/compare/v0.106.0...v0.107.0
 [0.106.0]: https://github.com/dm1try/samagotchi/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/dm1try/samagotchi/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/dm1try/samagotchi/compare/v0.103.0...v0.104.0
