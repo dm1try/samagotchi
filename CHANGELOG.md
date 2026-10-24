@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- work-cap 0.1.2: a session's state file that doesn't read (not JSON) no longer drops its `/workcap` cap silently:
+  it is logged and you get one notice naming the file and the cap used instead (the config's).
+
 ## [0.107.0] - 2026-10-24
 
 ### Added

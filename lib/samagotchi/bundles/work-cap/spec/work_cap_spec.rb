@@ -288,6 +288,37 @@ RSpec.describe "The work-cap bundle", :bundle do
       expect(bundle.command("/workcap")).to start_with("work-cap: 7 of 20 tool calls")
     end
 
+    it "logs a state file that doesn't read and tells the user once, falling back to the settings' caps" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "{\"tool_calls\": {\"cap\": 9")
+      bundle = plugin(usage: calls(100))
+      allow(bundle.ctx.log).to receive(:warn)
+      2.times { generation(bundle) }
+      expect(bundle.ctx.log).to have_received(:warn).once
+                                                    .with(:workcap_state_unreadable, path: state_file, error: be_a(String))
+      expect(notices(bundle)).to eq([["work-cap: #{state_file} doesn't read, its /workcap caps are ignored; " \
+                                      "using default.tool_calls: (400)", :warn]])
+      expect(bundle.questions).to be_empty
+      expect(bundle.command("/workcap")).to start_with("work-cap: 100 of 400 tool calls")
+    end
+
+    it "takes a state file that is JSON but not a mapping as one that doesn't read" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "[]")
+      bundle = plugin({}, usage: calls(1))
+      generation(bundle)
+      expect(notices(bundle)).to eq([["work-cap: #{state_file} doesn't read, its /workcap caps are ignored; no cap",
+                                      :warn]])
+    end
+
+    it "says nothing without a state file" do
+      bundle = plugin(usage: calls(1))
+      allow(bundle.ctx.log).to receive(:warn)
+      generation(bundle)
+      expect(bundle.notices).to be_empty
+      expect(bundle.ctx.log).not_to have_received(:warn)
+    end
+
     it "works with no session (the totals zero), and /workcap can't set a cap then" do
       bundle = plugin(usage: nil)
       bundle.set(session_id: nil)

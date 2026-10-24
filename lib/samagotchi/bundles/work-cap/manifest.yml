@@ -1,12 +1,12 @@
 ---
 name: work-cap
-version: 0.1.1
+version: 0.1.2
 scope: system
 description: "A per-session work cap (tool calls, active minutes) across turns: at a cap the turn pauses on Continue (another cap's worth) / Stop with the session's totals, a warning at 80% goes to the user only; /workcap shows or sets it"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:f4ce7ea7f5801490a29e232c41c7bca2007c140d21f1a78bbfb60e6b6fd4f64b
+  sha256: sha256:202ec5126cbb836e6a447e290e6a1ffb3308cadc858ce5086f4696b809fdf0b8
 # ask_user's effects: are in chi 0.92.0; ctx.usage is new in the next chi
 requires_chi: ">= 0.100.0"
 # chi --set work-cap.tool_calls=400 / work-cap.minutes=60: the session's own caps, a number or off

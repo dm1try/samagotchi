@@ -63,6 +63,7 @@ class Plugin
     @resolved = nil        # {session:, settings:, meters: {meter => {cap:, step:, key:}}, unreadable: {name => value}}
     @warned = {}           # meter => [session id, cap] the share warning was given for
     @unread_warned = nil   # the session id the "isn't a number" notice was given for
+    @corrupt_warned = nil  # the session id the "state file doesn't read" notice was given for
   end
 
   def register(chi)
@@ -126,6 +127,7 @@ class Plugin
   def check(ctx)
     resolved = resolve(ctx)
     unreadable(ctx, resolved)
+    corrupt(ctx, resolved)
     capped = resolved[:meters].select { |_meter, meter_cap| meter_cap[:cap] }
     return if capped.empty?
 
@@ -161,11 +163,26 @@ class Plugin
     return if bad.empty? || !first_time?(:@unread_warned, resolved[:session])
 
     named = bad.map { |key, value| "#{key}: #{value.inspect}" }.join(" and ")
+    ctx.notify("work-cap: #{named} #{bad.size == 1 ? "isn't" : "aren't"} a number or off; #{using(resolved)}",
+               level: :warn)
+  end
+
+  # Once per session: a state file that is there but doesn't read (not
+  # JSON, or not a mapping) holds no /workcap caps, so the settings' are
+  # used; said rather than a /workcap cap silently gone.
+  def corrupt(ctx, resolved)
+    path = resolved[:corrupt]
+    return unless path && first_time?(:@corrupt_warned, resolved[:session])
+
+    ctx.notify("work-cap: #{path} doesn't read, its /workcap caps are ignored; #{using(resolved)}", level: :warn)
+  end
+
+  # "using tool_calls: (400), minutes: (60)", or "no cap".
+  def using(resolved)
     used = resolved[:meters].values.filter_map do |meter_cap|
       "#{meter_cap[:key]}: (#{count(meter_cap[:cap])})" if meter_cap[:cap]
     end
-    using = used.empty? ? "no cap" : "using #{used.join(", ")}"
-    ctx.notify("work-cap: #{named} #{bad.size == 1 ? "isn't" : "aren't"} a number or off; #{using}", level: :warn)
+    used.empty? ? "no cap" : "using #{used.join(", ")}"
   end
 
   def at_cap(ctx, resolved, reached, usage, used)
@@ -280,29 +297,37 @@ class Plugin
     cached = @mutex.synchronize { @resolved }
     return cached if cached && cached[:session] == session && cached[:settings] == settings
 
-    saved = state(ctx, session)
+    saved, corrupt = state(ctx, session)
     configured = configured(ctx)
     meters = METERS.to_h { |meter| [meter, saved[meter] || configured[:meters][meter]] }
-    resolved = { session: session, settings: settings, meters: meters, unreadable: configured[:unreadable] }
+    resolved = { session: session, settings: settings, meters: meters, unreadable: configured[:unreadable],
+                 corrupt: corrupt }
     @mutex.synchronize { @resolved = resolved }
   end
 
-  # The state file's meters ({meter => {cap:, step:}}), {} without one.
+  # The state file's meters ({meter => {cap:, step:}}), {} without one,
+  # and the file's path when it is there but doesn't read (logged; the
+  # user is told by #corrupt), else nil.
   def state(ctx, session)
-    return {} unless session
+    return [{}, nil] unless session
 
-    saved = JSON.parse(File.read(state_path(ctx, session)))
-    return {} unless saved.is_a?(Hash)
+    path = state_path(ctx, session)
+    saved = JSON.parse(File.read(path))
+    raise JSON::ParserError, "not a JSON object" unless saved.is_a?(Hash)
 
-    METERS.each_with_object({}) do |meter, meters|
+    meters = METERS.each_with_object({}) do |meter, found|
       entry = saved[meter]
       next unless entry.is_a?(Hash) && entry.key?("cap")
 
       cap = self.class.amount(entry["cap"], meter)
-      meters[meter] = { cap: cap, step: self.class.amount(entry["step"], meter) || cap, key: "/workcap" }
+      found[meter] = { cap: cap, step: self.class.amount(entry["step"], meter) || cap, key: "/workcap" }
     end
-  rescue Errno::ENOENT, JSON::ParserError
-    {}
+    [meters, nil]
+  rescue Errno::ENOENT
+    [{}, nil]
+  rescue JSON::ParserError => e
+    ctx.log.warn(:workcap_state_unreadable, path: path, error: e.message.to_s[0, 200])
+    [{}, path]
   end
 
   # Per meter the first of its own value, child:'s (a delegate's) and

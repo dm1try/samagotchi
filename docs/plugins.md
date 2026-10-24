@@ -1766,7 +1766,10 @@ bundles:
 - `/workcap off` (or `/workcap 0`): no work cap for this session, over the config.
 
 The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"tool_calls": {"cap": 800, "step":
-400}}`, a meter's `"cap": null` for off).
+400}}`, a meter's `"cap": null` for off). A file that is there but doesn't read (not JSON, or not a mapping) is
+logged (`workcap_state_unreadable`) and gets one notice, `work-cap: <path> doesn't read, its /workcap caps are
+ignored; using default.tool_calls: (400)`: the settings' caps are used, never a silent drop; the next `/workcap` or
+Continue rewrites it.
 
 ## The check-in bundle
 
