@@ -75,15 +75,18 @@ ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
 require "samagotchi/host_keys"
 # Loaded here so the before hook below always pins rg (a light file).
 require "samagotchi/bundle_needs"
-at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
+# The suite's temp homes go at exit with rm_rf: a late thread or a child
+# still writing (a tmp file renamed away mid-walk) must not turn the cleanup
+# into an Errno::ENOENT that fails a green run.
+at_exit { FileUtils.rm_rf(SPEC_XDG_CONFIG_HOME) }
 SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")
-at_exit { FileUtils.remove_entry(SPEC_INTEGRATION_XDG_CONFIG_HOME) if SPEC_INTEGRATION_XDG_CONFIG_HOME && File.directory?(SPEC_INTEGRATION_XDG_CONFIG_HOME) }
+at_exit { FileUtils.rm_rf(SPEC_INTEGRATION_XDG_CONFIG_HOME) if SPEC_INTEGRATION_XDG_CONFIG_HOME }
 
 # Likewise keep sessions/*.json and history.json out of the developer's
 # ~/.local/state/samagotchi. Unlike config, :integration examples stay here too.
 SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
-at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
+at_exit { FileUtils.rm_rf(SPEC_XDG_STATE_HOME) }
 
 # And keep the peer bundles (claude-peer, codex-peer) off the developer's
 # Claude Code and Codex config folders: their status card and install-skill
@@ -93,7 +96,7 @@ at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XD
 SPEC_PEER_HOME = Dir.mktmpdir("samagotchi-spec-peer-home")
 ENV["CLAUDE_CONFIG_DIR"] = File.join(SPEC_PEER_HOME, "claude")
 ENV["CODEX_HOME"] = File.join(SPEC_PEER_HOME, "codex")
-at_exit { FileUtils.remove_entry(SPEC_PEER_HOME) if File.directory?(SPEC_PEER_HOME) }
+at_exit { FileUtils.rm_rf(SPEC_PEER_HOME) }
 
 # An exit between examples (a thread's `exit` raised again in the main thread
 # while the reporter runs, a before(:context) hook's) unwinds the whole run
