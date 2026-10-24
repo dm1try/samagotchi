@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import {
   authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
-  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor,
+  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
 test("participant: a participant's author is the prefix and its id, the server's Steer::PARTICIPANT_PREFIX", () => {
@@ -150,4 +150,28 @@ test("participant: a failed read is retried when chi web is unreachable or answe
 test("participant: a turn's start or end (or the stream starting over) holds the live reply until the re-read", () => {
   for (const type of ["turn_started", "turn_completed", "turn_canceled", "turn_failed", "snapshot", "reset"]) assert.ok(endsLiveTurn(type), type);
   for (const type of ["turn_enqueued", "question_requested", "generation_chunk"]) assert.ok(!endsLiveTurn(type), type);
+});
+
+test("participant: threadGaps marks a quiet stretch before a person's message or the turn in progress, never inside a turn", () => {
+  const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
+  const now = new Date(2026, 9, 24, 23, 0).getTime();
+  const messages = [
+    { role: "user", content: "one", at: at(9, 0) },
+    { role: "assistant", content: "a", at: at(9, 50) },
+    { role: "user", content: "two", at: at(9, 55) },
+    { role: "assistant", content: "b", at: at(9, 56) },
+    { role: "user", content: "old" },
+    { role: "user", content: "three", at: at(10, 30) },
+  ];
+  assert.deepEqual(threadGaps(messages, { now }), {
+    before: [null, null, null, null, null, "── 10:30 · 34 min later ──"], current: null,
+  });
+  assert.equal(threadGaps(messages, { currentAt: at(11, 0), now }).current, "── 11:00 · 30 min later ──");
+  assert.equal(threadGaps([], { currentAt: at(11, 0), now }).current, null);
+});
+
+test("participant: a folded run of tool steps with no reply after it keeps its last step's time", () => {
+  const at = "2026-10-24T09:00:00.000Z";
+  assert.deepEqual(withToolSteps([{ role: "assistant", content: "", tools: [{ tool: "read" }], at }]),
+    [{ role: "assistant", content: "", tools: [{ tool: "read" }], at }]);
 });
