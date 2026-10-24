@@ -83,8 +83,10 @@ module Samagotchi
         root = ReviewStart.root_for(session.working_directory)
         check = Guardrails::ReviewPaths.new(root: root)
         review.subjects.map do |path|
-          # The real path is checked and read: a symlink swapped in after
-          # the check isn't followed by the read.
+          # The real path is checked and read, the file with O_NOFOLLOW: a
+          # symlink swapped in for it after the check isn't followed. Only
+          # the last component: a folder swapped for a symlink in between
+          # still is, which takes write access to the project (the owner's).
           real = File.realpath(File.expand_path(path, root))
           next { path: path, missing: true } unless File.file?(real) && check.refusal([real]).nil?
 

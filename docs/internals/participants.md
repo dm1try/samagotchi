@@ -238,7 +238,10 @@ fields: a field added to an event later reaches nobody until it is named there.
   true}`. Every read checks the path again with `Guardrails::ReviewPaths` (a review turn's own check: under the
   project root, as given and as it resolves, never a secret file or chi's own), so a subject that became a symlink
   out of the project, or a session file edited to name `.env` or `../x`, is `missing`, never read. The text is cut
-  at 256 KiB (`SUBJECT_BYTES`) and redacted. The real path is what is checked and opened (`O_NOFOLLOW`), so a symlink swapped in after the check isn't read.
+  at 256 KiB (`SUBJECT_BYTES`) and redacted. The real path is what is checked and opened, with `O_NOFOLLOW`: a
+  symlink swapped in for the file itself after the check isn't read. That guards the last path component only: a
+  folder on the way swapped for a symlink between the check and the open is still followed. Doing that takes write
+  access to the project tree, the owner's, so it isn't a participant's way out; the next read checks again.
   `[]` for a session that isn't a review session. The page's title for a
   review session with no title of its own is `review of docs/plan.md` (`+N` for more), never the first prompt. The
   page shows them as the Plan: beside the thread on a wide screen (≥ 1100 px), a Plan | Thread toggle on a narrower
