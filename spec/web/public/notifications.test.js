@@ -132,3 +132,119 @@ test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapsh
   page.noticeList([session()]);
   assert.equal(doc.title, "Chi", "answered: the badge goes");
 });
+
+// ── The Home Screen app: Web Push ─────────────────────────────────────────
+// A standalone app (push.js pushSupported) with a service worker whose
+// pushManager the test holds, and chi web's push routes as a fake api.
+function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null } = {}) {
+  const calls = [];
+  let current = subscribed ? fakeSub("https://web.push.apple.com/have") : null;
+  function fakeSub(endpoint, key = new Uint8Array([1, 2, 3])) {
+    return {
+      endpoint,
+      options: { applicationServerKey: key.buffer },
+      unsubscribe: async () => { calls.push(["unsubscribe", endpoint]); current = null; return true; },
+      toJSON: () => ({ endpoint, keys: { p256dh: "P", auth: "A" } }),
+    };
+  }
+  const reg = {
+    pushManager: {
+      getSubscription: async () => current,
+      subscribe: async (opts) => { calls.push(["subscribe", [...opts.applicationServerKey]]); current = fakeSub("https://web.push.apple.com/new"); return current; },
+    },
+  };
+  const nav = { serviceWorker: { register: async (url, opts) => { calls.push(["register", url, opts.scope]); return reg; } } };
+  const api = async (method, path, body) => {
+    calls.push([method, path, body]);
+    if (method === "GET") return { enabled, public_key: enabled ? "AQID" : null, origin: "https://s.example", this: known ? { id: "abcd1234", label: "iPhone" } : null };
+    if (method === "POST" && path === "/api/push/subscriptions" && failPost) throw new Error(failPost);
+    return method === "POST" && path === "/api/push/subscriptions" ? { id: "abcd1234", label: "iPhone" } : null;
+  };
+  const listeners = {};
+  const on = (target) => (type, fn) => { (listeners[`${target}:${type}`] ||= []).push(fn); };
+  const doc = { title: "", visibilityState: "hidden", hasFocus: () => false, addEventListener: on("doc") };
+  const win = {
+    isSecureContext: true, location: { hash: "" }, PushManager: function PushManager() {},
+    matchMedia: () => ({ matches: true }), focus() {}, addEventListener: on("win"),
+  };
+  const button = { hidden: false, dataset: {}, title: "", setAttribute() {}, addEventListener: on("button") };
+  const shown = [];
+  function NotificationApi(title, opts) { shown.push({ title, opts }); this.close = () => {}; }
+  NotificationApi.permission = permission;
+  NotificationApi.requestPermission = async () => { calls.push(["requestPermission"]); NotificationApi.permission = grant; return grant; };
+  const page = createNotifications({ button, doc, win, nav, api, storage: () => ({ getItem: () => "1", setItem() {} }), channel: null, NotificationApi });
+  const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
+  return { page, button, calls, shown, doc, tap, NotificationApi };
+}
+
+test("in the Home Screen app the bell subscribes this device: permission from the tap, chi web's key, a test push", async () => {
+  const app = fakeApp();
+  await app.page.pushReady;
+  assert.equal(app.button.dataset.state, "off");
+  assert.match(app.button.title, /^Notify this phone/);
+  assert.deepEqual(app.calls.slice(0, 2), [["register", "/sw.js", "/"], ["GET", "/api/push", undefined]]);
+
+  app.calls.length = 0;
+  await app.tap();
+  assert.deepEqual(app.calls, [
+    ["requestPermission"],
+    ["subscribe", [1, 2, 3]],
+    ["POST", "/api/push/subscriptions", { subscription: { endpoint: "https://web.push.apple.com/new", keys: { p256dh: "P", auth: "A" } } }],
+    ["POST", "/api/push/test", { endpoint: "https://web.push.apple.com/new" }],
+  ]);
+  assert.equal(app.button.dataset.state, "on");
+  assert.match(app.button.title, /^Notifications to this phone: on/);
+});
+
+test("a device chi web already has is on; a tap unsubscribes it and tells chi web", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted" });
+  await app.page.pushReady;
+  assert.deepEqual(app.calls[1], ["GET", `/api/push?endpoint=${encodeURIComponent("https://web.push.apple.com/have")}`, undefined]);
+  assert.equal(app.button.dataset.state, "on");
+  app.calls.length = 0;
+  await app.tap();
+  assert.deepEqual(app.calls, [["unsubscribe", "https://web.push.apple.com/have"],
+    ["DELETE", "/api/push/subscriptions", { endpoint: "https://web.push.apple.com/have" }]]);
+  assert.equal(app.button.dataset.state, "off");
+});
+
+test("a subscription chi web doesn't have (another origin, a reset store) shows off and subscribes again", async () => {
+  const app = fakeApp({ subscribed: true, known: false, permission: "granted" });
+  await app.page.pushReady;
+  assert.equal(app.button.dataset.state, "off");
+  await app.tap();
+  assert.equal(app.button.dataset.state, "on");
+  assert.ok(app.calls.some((c) => c[1] === "/api/push/subscriptions" && c[0] === "POST"));
+});
+
+test("permission refused leaves it off; blocked shows denied", async () => {
+  const refused = fakeApp({ grant: "denied" });
+  await refused.page.pushReady;
+  await refused.tap();
+  assert.equal(refused.button.dataset.state, "denied");
+  assert.equal(refused.calls.filter((c) => c[0] === "subscribe").length, 0);
+});
+
+test("a refusal from chi web is said on the bell, which stays off", async () => {
+  const app = fakeApp({ permission: "granted", failPost: "chi web only pushes to the browsers' push services, not x" });
+  await app.page.pushReady;
+  await app.tap();
+  assert.equal(app.button.dataset.state, "off");
+  assert.match(app.button.title, /failed: chi web only pushes/);
+});
+
+test("chi web without push (no https public URL): the bell is the in-tab one", async () => {
+  const app = fakeApp({ enabled: false, permission: "granted" });
+  await app.page.pushReady;
+  assert.match(app.button.title, /while this tab is in the background/);
+  assert.equal(app.calls.filter((c) => c[0] === "subscribe").length, 0);
+});
+
+test("in the app the tab's own OS notification is left to the push; the title still counts", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted" });
+  await app.page.pushReady;
+  app.page.noticeSessions("snapshot", { sessions: [session()] });
+  app.page.noticeSessions("session", { session: asking });
+  assert.equal(app.shown.length, 0);
+  assert.equal(app.doc.title, "(1) Chi");
+});

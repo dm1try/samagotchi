@@ -21,6 +21,11 @@ export default [
     }
   },
   {
+    // The service worker: a classic script in the worker's scope (self, clients).
+    files: ["lib/samagotchi/web/public/sw.js"],
+    languageOptions: { sourceType: "script", globals: globals.serviceworker },
+  },
+  {
     files: ["spec/e2e/**/*.js"],
     linterOptions: { reportUnusedDisableDirectives: "error" },
     languageOptions: { ecmaVersion: "latest", sourceType: "module" },
