@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "steer"
+
 module Samagotchi
   # Loaded only when a session is read: it brings Web::Grants (and Rack).
   autoload :Participants, File.expand_path("participants", __dir__)

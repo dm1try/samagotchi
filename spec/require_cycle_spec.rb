@@ -40,4 +40,14 @@ RSpec.describe "loading session_manager and terminal_ui" do
       expect(err.lines.grep(%r{/lib/samagotchi/.*warning:})).to be_empty
     end
   end
+
+  # A file that names a helper module requires it: loaded alone, its
+  # methods run (not just its constant resolves).
+  it "loads samagotchi/session_participants on its own: name_for reaches Steer" do
+    script = 'require "samagotchi/session_participants"; ' \
+             'abort "named" unless Samagotchi::SessionParticipants.new(state_dir: -> { "/nonexistent" }).name_for("owner").nil?'
+    _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", script)
+
+    expect(status).to be_success, err
+  end
 end
