@@ -91,8 +91,10 @@ module Samagotchi
       # grant from before them, which takes the config's (#spend_cap,
       # #queue_limit).
       Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                          :revoked_by, :last_used_at, :cap, :queue) do
-        def initialize(cap: nil, queue: nil, **) = super
+                          :revoked_by, :last_used_at, :cap, :queue, :identity) do
+        # identity: the proxy identity (an email, lower case) the grant is
+        # bound to, nil for any (ProxyGate; issued from shared-sessions P6).
+        def initialize(cap: nil, queue: nil, identity: nil, **) = super
 
         def self.from_h(hash)
           new(**members.to_h { |key| [key, hash[key.to_s]] })
@@ -132,7 +134,8 @@ module Samagotchi
             state: state(now).to_s, cap: spend_cap, queue: queue_limit }
         end
 
-        def to_store = to_h.transform_keys(&:to_s)
+        # A grant bound to no identity is stored as before identity existed.
+        def to_store = to_h.transform_keys(&:to_s).tap { |hash| hash.delete("identity") if identity.nil? }
 
         def inspect = "#<Grant #{id} #{session_id[0, 8]} #{name.inspect}>"
         alias_method :to_s, :inspect

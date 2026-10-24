@@ -60,7 +60,7 @@ module Samagotchi
         link = participant_link(req, id, issued.token)
         warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
-                             link: link, lan: !@lan.nil?, qr_svg: QR.svg(link), warning: warning })
+                             link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: warning })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
       end
@@ -115,10 +115,14 @@ module Samagotchi
         error_response(400, "invalid_participant", e.message)
       end
 
-      # The link a participant opens: this chi web's LAN address when it has
-      # one (the owner may be asking on loopback), else the Host asked; the
-      # token traded for the cookie, the session in the fragment.
+      # The link a participant opens: web.public_url's, the token in the
+      # fragment too (no proxy or IdP sees it; the page trades it,
+      # POST /api/token); else this chi web's LAN address when it has one
+      # (the owner may be asking on loopback), else the Host asked; the token
+      # traded for the cookie, the session in the fragment.
       def participant_link(req, id, token)
+        return @public_url.link(token, "s=#{id}") if @public_url
+
         host = req.get_header("HTTP_HOST").to_s
         port = host[/:(\d+)\z/, 1] || req.port.to_s
         name = @lan ? @lan[:ip] : host.sub(/:\d*\z/, "")

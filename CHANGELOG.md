@@ -8,6 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Experimental: `chi web` behind an auth proxy (oauth2-proxy, nginx `auth_request`, Caddy `forward_auth`, Cloudflare
+  Access, Tailscale Serve, or a plain TLS proxy). `web.public_url` (an https origin) makes every request need the
+  access token, this machine's too; `web.proxy.identity_header` + `web.proxy.owner` also check the signed-in email
+  the proxy sends (owner = that identity AND the token; a repeated, comma, empty or underscore-twin header is
+  refused). Through the proxy the cookie is `__Host-chi_token` (Secure), the token trade's redirect is absolute from
+  `web.public_url`, and invite links (the web's and `chi share`'s) are `https://…/#token=…&s=ID`. See
+  docs/configuration.md (Behind an auth proxy).
+
 ## [0.108.0] - 2026-10-24
 
 ### Added

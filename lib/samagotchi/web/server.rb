@@ -9,6 +9,8 @@ require "webrick"
 require_relative "app"
 require_relative "info_probe"
 require_relative "lan"
+require_relative "proxy_gate"
+require_relative "public_url"
 require_relative "qr"
 require_relative "running"
 require_relative "session_hub"
@@ -58,6 +60,10 @@ module Samagotchi
       # How long `chi web` waits for a server already on its port to answer.
       PROBE_TIMEOUT = 0.3
 
+      # The raw header names next to Rack's env (ProxyGate's identity check):
+      # chi web is the only WEBrick server chi runs.
+      WEBrick::HTTPRequest.prepend(ProxyGate::RawHeaderNames) unless WEBrick::HTTPRequest < ProxyGate::RawHeaderNames
+
       # `chi web`: one server serves every project, the scope is in the page
       # URL. If a chi web already runs on the port, print (and with --open,
       # open) its page for +dir+ and leave it be; else start one.
@@ -70,6 +76,7 @@ module Samagotchi
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
                       working_set: Config::BY_KEY["web.working_set"].default)
         rotate_token if new_token
+        public_url = public_url_setting
         setting = host_setting(host)
         lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
         host = resolve_host(setting)
@@ -85,6 +92,7 @@ module Samagotchi
           end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
           puts running_lan_lines(found["lan"], port) if found["lan"]
+          puts running_public_lines(found["public_url"], port) if found["public_url"]
           puts lan_off_line(setting) if new_token && !found["lan"]
           open_url(url) if open_browser
           0
@@ -92,20 +100,21 @@ module Samagotchi
           warn in_use_message(port)
           1
         else
-          if new_token && !lan
+          if new_token && !lan && !public_url
             puts lan_off_line(setting)
             return 0
           end
           # The participants' grants: never served from a store others can read.
           Grants.check_permissions!(Grants.path)
           if start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
-                   annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set)
+                   annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
+                   public_url: public_url)
             0
           else
             1
           end
         end
-      rescue Lan::Error, Grants::Insecure => e
+      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid => e
         warn "Error: #{e.message}"
         1
       rescue Interrupt
@@ -120,11 +129,13 @@ module Samagotchi
       # @param lan [Lan::Choice, nil] also listen on this LAN address, where
       #   every request but this machine's needs the access token
       # @param token_path [String] the LAN access token's file
+      # @param public_url [PublicUrl, nil] behind an auth proxy
+      #   (web.public_url): every request needs the access token
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
-                     working_set: Config::BY_KEY["web.working_set"].default)
+                     working_set: Config::BY_KEY["web.working_set"].default, public_url: nil)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -133,14 +144,18 @@ module Samagotchi
         url ||= "http://#{url_host(host)}:#{port}/"
 
         hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
-        if lan
-          Token.load_or_create(token_path)
-          lan_option = { ip: lan.ip, token: Token::Source.new(token_path) }
-        end
+        Token.load_or_create(token_path) if lan || public_url
+        lan_option = { ip: lan.ip, token: Token::Source.new(token_path) } if lan
+        public_token = Token::Source.new(token_path) if public_url
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
-                      annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set)
+                      annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
+                      public_url: public_url, public_token: public_token)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
+        if public_url
+          Samagotchi::Log.info(:web, "public_url", origin: public_url.origin, identity_header: public_url.identity_label,
+                                                   owner: public_url.owner ? "set" : "none")
+        end
         # Subscribed before the first scan, which makes the first check.
         hub.subscribe(method(:on_hub_event))
         hub.start
@@ -151,12 +166,15 @@ module Samagotchi
           record_running(running_path, port)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
+          puts public_lines(public_url, url: url, token: Token.read(token_path)) if public_url
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
+            # With web.public_url this machine needs the token too.
+            open_target = public_url ? with_token(url, Token.read(token_path)) : url
             Thread.new do
               sleep 0.8
-              open_url(url)
+              open_url(open_target)
             end
           end
         end
@@ -222,6 +240,45 @@ module Samagotchi
       rescue Errno::EADDRNOTAVAIL, Errno::EADDRINUSE, SocketError => e
         server.listeners.each(&:close)
         raise LanListenError, e.message
+      end
+
+      # web.public_url as Server runs it, nil when unset.
+      # @raise [PublicUrl::Invalid]
+      def self.public_url_setting
+        PublicUrl.from_config(url: Samagotchi::Config.get("web.public_url"),
+                              identity_header: Samagotchi::Config.get("web.proxy.identity_header"),
+                              owner: Samagotchi::Config.get("web.proxy.owner"))
+      end
+
+      # What web.public_url adds to the start lines: the proxied link (the
+      # token in its fragment), who the owner is, and this machine's link
+      # (it needs the token too).
+      def self.public_lines(public_url, url:, token:)
+        unless token
+          return ["Proxied: #{public_url.origin}/ (no access token: its file is gone; chi web --new-token makes one)"]
+        end
+
+        who = if public_url.identity_header.nil? then "token only, no identity header"
+              elsif public_url.owner then "owner #{public_url.owner} by #{public_url.identity_header}, and the token"
+              else "nobody is the owner by identity: web.proxy.owner is unset"
+              end
+        ["Proxied: #{public_url.link(token)}   ← anyone with this link who passes the proxy can run commands as you",
+         "         (#{who})",
+         "This machine: #{with_token(url, token)}"]
+      end
+
+      # A second chi web, when the running one is behind a proxy.
+      def self.running_public_lines(origin, port, token_path: Token.path)
+        token = Token.read(token_path)
+        return ["Proxied: #{origin}/"] unless token
+
+        ["Proxied: #{origin}/#token=#{token}", "This machine: http://127.0.0.1:#{port}/?token=#{token}"]
+      end
+
+      def self.with_token(url, token)
+        return url unless token
+
+        "#{url}#{url.include?("?") ? "&" : "?"}token=#{token}"
       end
 
       def self.host_setting(host)

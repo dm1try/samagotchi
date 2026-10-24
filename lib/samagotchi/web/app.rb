@@ -59,6 +59,7 @@ require_relative "principal"
 require_relative "participant_access"
 require_relative "participants_admin"
 require_relative "participant_review"
+require_relative "proxy_gate"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
@@ -79,6 +80,7 @@ module Samagotchi
       include ParticipantAccess
       include ParticipantsAdmin
       include ParticipantReview
+      include ProxyGate
 
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
@@ -141,6 +143,10 @@ module Samagotchi
       #   loopback only, no token
       # @param grants [Grants, nil] the participants' grants (default: the
       #   store next to +state_dir+, Grants.path)
+      # @param public_url [PublicUrl, nil] behind an auth proxy
+      #   (web.public_url, ProxyGate): every request needs a token
+      # @param public_token [String, Token::Source, nil] the access token
+      #   with +public_url+ (the LAN one when both are set)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
@@ -148,7 +154,7 @@ module Samagotchi
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
-                     grants: nil)
+                     grants: nil, public_url: nil, public_token: nil)
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -173,6 +179,7 @@ module Samagotchi
         @refused_logged = {}
         @wait_poll_interval = wait_poll_interval
         init_participant_access(grants, state_dir)
+        init_proxy_gate(public_url, public_token)
       end
 
       def call(env)
@@ -328,8 +335,11 @@ module Samagotchi
       # A viewer on this machine, whose editor can open the session's
       # paths: a loopback peer, or this Mac on its own LAN address (the LAN
       # URL or its QR code opened here). The phone isn't. An SSH tunnel or
-      # a local reverse proxy looks like loopback too (a known gap).
+      # a local reverse proxy looks like loopback too (a known gap), unless
+      # it leaves a trace and web.public_url is set (#proxied?).
       def local_viewer?(req)
+        return false if proxied?(req)
+
         peer = req.get_header("REMOTE_ADDR").to_s
         LOOPBACK_PEERS.include?(peer) || (!@lan.nil? && peer == @lan[:ip])
       end
@@ -342,10 +352,12 @@ module Samagotchi
       # check stops DNS-rebinding pages. It reads the raw Host header:
       # Rack's req.host trusts X-Forwarded-Host, which such a page could
       # set. A request with no Host (HTTP/1.0) is answered only for a
-      # loopback peer.
+      # loopback peer. With web.public_url its host (with its port, exactly)
+      # is answered too.
       def local_host_header?(env)
         host = env["HTTP_HOST"].to_s
         return LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s) if host.empty?
+        return true if @public_url && host.downcase == @public_url.host
 
         name = host.downcase.sub(/:\d*\z/, "")
         LOOPBACK_NAMES.include?(name) || (!@lan.nil? && name == @lan[:ip])
@@ -394,9 +406,12 @@ module Samagotchi
       # machine's loopback), else nil. An ended or unknown grant's token is
       # nil anywhere: it never falls back to the owner.
       # @return [Principal, nil]
+      # With web.public_url (ProxyGate) every request needs a token, and a
+      # proxied one is #proxied_principal's.
       def principal_for(req)
         given = presented_tokens(req)
-        return Principal::OWNER if @lan && owner_token?(given)
+        return proxied_principal(req, given) if proxied?(req)
+        return Principal::OWNER if (@lan || @public_url) && owner_token?(given)
 
         grant_tokens = given.select { |value| Grants.token?(value) }
         return Principal::OWNER if grant_tokens.empty? && !token_required?(req)
@@ -411,9 +426,13 @@ module Samagotchi
       def owner_token?(given) = given.any? { |value| token_match?(value, current_token) }
 
       # The cookie a request's token rides in, its name and attributes per
-      # request.
-      def token_cookie_name(_req) = TOKEN_COOKIE
-      def token_cookie_attributes(_req) = TOKEN_COOKIE_ATTRIBUTES
+      # request: a proxied request's is ProxyGate::SECURE_COOKIE, Secure (the
+      # public URL is https). A browser may hold both.
+      def token_cookie_name(req) = proxied?(req) ? SECURE_COOKIE : TOKEN_COOKIE
+
+      def token_cookie_attributes(req)
+        proxied?(req) ? "Secure; #{TOKEN_COOKIE_ATTRIBUTES}" : TOKEN_COOKIE_ATTRIBUTES
+      end
 
       def token_cookie(req, value)
         "#{token_cookie_name(req)}=#{value}; #{token_cookie_attributes(req)}"
@@ -423,7 +442,11 @@ module Samagotchi
         "#{token_cookie_name(req)}=; #{token_cookie_attributes(req).sub(/Max-Age=\d+/, "Max-Age=0")}"
       end
 
-      def token_required?(req) = @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+      def token_required?(req)
+        return true if @public_url
+
+        @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+      end
 
       # The page opened with ?token= (a gated request, or a grant's token
       # anywhere): its token is traded for the cookie, whatever else the
@@ -449,7 +472,7 @@ module Samagotchi
       def bearer_token(req) = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]
 
       def current_token
-        token = @lan[:token]
+        token = @lan ? @lan[:token] : @public_token
         token.respond_to?(:current) ? token.current : token
       end
 
@@ -460,32 +483,45 @@ module Samagotchi
       end
 
       # The same page (and its other parameters, as they were written), the
-      # token traded for the cookie.
+      # token traded for the cookie. Proxied, the Location is absolute from
+      # web.public_url: WEBrick would make a relative one absolute from the
+      # first X-Forwarded-Host/-Proto, which a client sets through
+      # oauth2-proxy (an open redirect).
       def token_redirect(req, token)
         query = req.query_string.split("&").reject { |pair| pair.split("=", 2).first == "token" }.join("&")
         location = query.empty? ? req.path_info : "#{req.path_info}?#{query}"
+        location = "#{@public_url.origin}#{location}" if proxied?(req)
         [303, { "Location" => location, "Set-Cookie" => token_cookie(req, token),
                 "Cache-Control" => "no-store", "Content-Length" => "0" }, []]
       end
 
       def unauthorized(req)
-        log_refused(req.get_header("REMOTE_ADDR").to_s, req.path_info)
-        return error_response(401, "unauthorized", "chi web on the LAN needs its access token") if req.path_info.start_with?("/api/")
+        reason = req.env[REFUSED_ENV]
+        log_refused(req.get_header("REMOTE_ADDR").to_s, req.path_info, reason)
+        return error_response(401, "unauthorized", unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
 
         body = UNAUTHORIZED_PAGE
         [401, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" },
          [body]]
       end
 
+      def unauthorized_detail(req, reason)
+        return "chi web behind the proxy: #{reason || "needs its access token"}" if proxied?(req)
+        return "chi web with web.public_url needs its access token, on this machine too" if @public_url
+
+        "chi web on the LAN needs its access token"
+      end
+
       # At most once a minute per peer: a phone with an old link retries.
-      def log_refused(peer, path)
+      # Behind a proxy every peer is loopback: the first reason a minute.
+      def log_refused(peer, path, reason = nil)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @refused_mutex.synchronize do
           @refused_logged.delete_if { |_, at| now - at >= REFUSED_LOG_INTERVAL } if @refused_logged.size > 64
           last = @refused_logged[peer]
           (last.nil? || now - last >= REFUSED_LOG_INTERVAL).tap { |fresh| @refused_logged[peer] = now if fresh }
         end
-        Log.warn(:web, "unauthorized", peer: peer, path: path) if due
+        Log.warn(:web, "unauthorized", peer: peer, path: path, **(reason ? { reason: reason } : {})) if due
       end
 
       # What a phone sees without the token. The field is for a home-screen
@@ -524,18 +560,22 @@ module Samagotchi
       def cross_site?(env)
         foreign = %w[cross-site same-site].include?(env["HTTP_SEC_FETCH_SITE"].to_s.downcase)
         origin = env["HTTP_ORIGIN"]
-        foreign ||= !origin.nil? && origin.downcase != "http://#{env["HTTP_HOST"].to_s.downcase}"
+        foreign ||= !origin.nil? && origin.downcase != "http://#{env["HTTP_HOST"].to_s.downcase}" && !public_origin?(origin)
         return false unless foreign
 
         !%w[GET HEAD].include?(env["REQUEST_METHOD"]) || env["PATH_INFO"].to_s.start_with?("/api/")
       end
+
+      # The page served through web.public_url (Origin https://<public host>).
+      def public_origin?(origin) = !@public_url.nil? && origin.downcase == @public_url.origin
 
       def cross_origin
         error_response(403, "cross_origin", "requests from other websites are refused")
       end
 
       def forbidden
-        names = @lan ? "127.0.0.1, [::1], localhost and #{@lan[:ip]}" : "127.0.0.1, [::1] and localhost"
+        names = ["127.0.0.1", "[::1]", "localhost", @lan && @lan[:ip], @public_url&.host].compact
+        names = "#{names[0..-2].join(", ")} and #{names.last}"
         error_response(403, "forbidden", "only the host names #{names} are answered")
       end
 
@@ -590,13 +630,15 @@ module Samagotchi
       # session_commands: the routes chi --remote needs
       # (SessionAccessRoutes::FEATURE); remote_attach: the ones a remote
       # attached TUI needs (ATTACH_FEATURE). lan: its LAN address, nil when it
-      # listens on loopback only. A participant gets app, version and
-      # features only (#participant_info).
+      # listens on loopback only; public_url: web.public_url's origin, nil
+      # without one. A participant gets app, version and features only
+      # (#participant_info).
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
+                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip],
+                             public_url: @public_url&.origin })
       end
 
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE].freeze

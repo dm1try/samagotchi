@@ -262,6 +262,68 @@ RSpec.describe Samagotchi::Web::Server do
     end
   end
 
+  describe "behind an auth proxy (web.public_url)" do
+    let(:public_url) do
+      Samagotchi::Web::PublicUrl.from_config(url: "https://4999.pod.test", identity_header: "X-Forwarded-Email",
+                                             owner: "me@pod.test")
+    end
+
+    it "makes the token without LAN mode, gives the app both, and prints the proxied and local links" do
+      Dir.mktmpdir do |dir|
+        token_path = File.join(dir, "web-token")
+        app = nil
+        allow(Samagotchi::Web::App).to receive(:new) { |**kw| app = kw; double("app", "server_running=": nil) }
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts, &block| opts[:StartCallback].call; block.call(double(status: :Running)) }
+
+        out = nil
+        expect { out = described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: token_path, state_dir: start_state) }
+          .to output(Regexp.new('Proxied: https://4999\\.pod\\.test/#token=.{43}   .*\\n +\\(owner me@pod\\.test by X-Forwarded-Email, ' \
+                                'and the token\\)\\nThis machine: http://127\\.0\\.0\\.1:4999/\\?token=.{43}\\n')).to_stdout
+        expect(out).to be true
+        token = Samagotchi::Web::Token.read(token_path)
+        expect(app[:lan]).to be_nil
+        expect(app[:public_url]).to eq(public_url)
+        expect(app[:public_token].current).to eq(token)
+      end
+    end
+
+    it "says token only or nobody-by-identity in the start line" do
+      token_only = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test")
+      expect(described_class.public_lines(token_only, url: "http://127.0.0.1:1/?dir=/r", token: "T"))
+        .to eq(["Proxied: https://p.test/#token=T   ← anyone with this link who passes the proxy can run commands as you",
+                "         (token only, no identity header)", "This machine: http://127.0.0.1:1/?dir=/r&token=T"])
+      nobody = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test", identity_header: "X-Forwarded-Email")
+      expect(described_class.public_lines(nobody, url: "u", token: "T")[1]).to include("nobody is the owner by identity")
+    end
+
+    it "refuses to start on a public_url that isn't an https origin, before probing" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("http://pod.test")
+      allow(described_class).to receive(:probe)
+      allow(described_class).to receive(:start)
+
+      result = nil
+      expect { result = described_class.launch(port: 4999, dir: "/") }.to output(/Error: web.public_url must be an https origin/).to_stderr
+      expect(result).to eq(1)
+      expect(described_class).not_to have_received(:probe)
+      expect(described_class).not_to have_received(:start)
+    end
+
+    it "passes a public_url to start, and a second chi web prints the running one's proxied link" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("https://4999.pod.test")
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_return(true)
+      expect(described_class.launch(port: 4999, dir: "/")).to eq(0)
+      expect(described_class).to have_received(:start).with(hash_including(public_url: Samagotchi::Web::PublicUrl.from_config(url: "https://4999.pod.test")))
+
+      allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "public_url" => "https://4999.pod.test" })
+      allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
+      expect { described_class.launch(port: 4999, dir: "/", scope: "all") }
+        .to output(%r{Proxied: https://4999\.pod\.test/#token=T\nThis machine: http://127\.0\.0\.1:4999/\?token=T\n}).to_stdout
+    end
+  end
+
   describe "the LAN lines" do
     let(:token) { "t" * 43 }
     let(:others) { [Samagotchi::Web::Lan::Address.new(ip: "10.0.0.4", interface: "en5")] }
@@ -440,7 +502,7 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class.launch(port: 4567, markdown: true, view: "stage", annotate_presets: "Yes|No", editor: "zed", working_set: true)).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, view: "stage",
-              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true)
+              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, public_url: nil)
     end
 
     it "stops on Ctrl-C with one line and status 130, no backtrace" do

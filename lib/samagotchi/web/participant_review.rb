@@ -39,7 +39,7 @@ module Samagotchi
       # paths; the owner's token is never shown.
       def participant_viewer(req, session)
         author = principal(req).owner? ? nil : principal(req).grant.author
-        ParticipantView::Viewer.new(author: author, cwd: session.working_directory, secrets: [@lan && current_token].compact)
+        ParticipantView::Viewer.new(author: author, cwd: session.working_directory, secrets: [(@lan || @public_url) && current_token].compact)
       end
 
       # GET /api/sessions/:id/review: the participant page's data, always

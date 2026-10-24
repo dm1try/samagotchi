@@ -107,6 +107,16 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(out.string).not_to include("isn't on the LAN")
       end
 
+      it "names chi web's public_url behind a proxy, the token in the fragment", local_only: "the probe is this machine's" do
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4567, timeout: anything)
+                                                           .and_return({ "app" => "chi-web", "lan" => nil,
+                                                                         "public_url" => "https://4567.pod.test" })
+
+        run(session.id, "--name", "Alex")
+        expect(out.string.lines[1]).to match(%r{\Ahttps://4567\.pod\.test/#token=chp_\S+&s=#{session.id}$})
+        expect(out.string).not_to include("isn't on the LAN")
+      end
+
       it "falls back to web.port when nothing answers on the recorded port", local_only: "the probe is this machine's" do
         Samagotchi::Web::Running.record(port: 4999, path: Samagotchi::Web::Running.path(state_dir: state_dir))
         allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4567, timeout: anything)

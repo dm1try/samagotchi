@@ -57,11 +57,18 @@ module Samagotchi
       # request's env for #token_gate's answer (#grant_ended_response). A
       # grant whose session was archived or is gone is revoked here (archive
       # and delete revoke too; this catches retention's prune and a delete
-      # from another process).
+      # from another process). A grant bound to an identity (Grant#identity)
+      # is honoured only on a proxied request with that identity
+      # (ProxyGate): never on the LAN or this machine.
+      # @param identity [String, nil] the proxied request's identity
       # @return [Principal, nil]
-      def participant_principal(req, tokens)
+      def participant_principal(req, tokens, identity: nil, proxied: false)
         tokens.each do |token|
           grant = @grants.lookup(token) or next
+          if grant.identity && !(proxied && identity == grant.identity)
+            req.env[ProxyGate::REFUSED_ENV] = "grant #{grant.id} is bound to another identity than #{identity || "(none)"}"
+            next
+          end
           grant = settle_grant(grant)
           state = grant.state(@grants.now)
           if state == :active
