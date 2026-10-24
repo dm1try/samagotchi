@@ -23,6 +23,13 @@ RSpec.describe Samagotchi::WorkerSidecar do
     expect(JSON.parse(File.read(described_class.path(dir)))).not_to include("input_format", "epoch")
   end
 
+  # Only this user's chi reads it (chi web, the TUI, chi send): no other
+  # account on a shared host learns a worker's port from it.
+  it "writes bridge.json readable by this user only (0600)" do
+    described_class.new(port: 4321, session_id: "s1").write(dir)
+    expect(File.stat(described_class.path(dir)).mode & 0o777).to eq(0o600)
+  end
+
   it "reads what an older worker wrote (no version, no epoch, a string port) and is nil for none, a broken one or a non-object" do
     File.write(described_class.path(dir), JSON.generate(port: "4321", session_id: "s1"))
     expect(described_class.read(dir)).to have_attributes(port: 4321, version: nil, input_format: nil, features: [],

@@ -26,7 +26,8 @@ and commands may change between minor versions. How releases are made:
 
 - A session's Bridge refuses any request that came through a proxy (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`,
   `X-Auth-Request-*` and the like, underscore twins too: 403 `proxied`): an auth proxy that forwards every local port
-  no longer reaches a worker's unauthenticated Bridge. chi's own clients never send these headers.
+  and adds such a header no longer reaches a worker's unauthenticated Bridge (a forward that adds none still does).
+  chi's own clients never send these headers. A worker's `bridge.json` is now 0600.
 
 ## [0.108.0] - 2026-10-24
 

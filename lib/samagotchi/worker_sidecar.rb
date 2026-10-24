@@ -70,14 +70,15 @@ module Samagotchi
     def initialize(port:, bind: nil, session_id: nil, started_at: nil, version: nil, input_format: nil, features: [],
                    epoch: nil) = super
 
-    # Written whole or not at all; input_format and epoch only when they
-    # name one.
+    # Written whole or not at all, readable by this user only (0600: no
+    # other account learns the worker's port from it); input_format and
+    # epoch only when they name one.
     def write(session_dir)
       FileUtils.mkdir_p(session_dir)
       record = to_h.transform_keys(&:to_s)
       record.delete("input_format") if input_format.nil?
       record.delete("epoch") if epoch.nil?
-      AtomicFile.write(self.class.path(session_dir), "#{JSON.pretty_generate(record)}\n")
+      AtomicFile.write(self.class.path(session_dir), "#{JSON.pretty_generate(record)}\n", perm: 0o600)
     end
   end
 end

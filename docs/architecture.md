@@ -389,7 +389,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (`Bridge#browser_request?`, before any route); there is no CORS and no `OPTIONS` route. The browser reaches a
   worker only through `chi web`. A request carrying any trace a proxy adds (`ProxyTrace`: `X-Forwarded-*`,
   `Forwarded`, `X-Real-IP`, `X-Auth-Request-*`, `Cf-*`…, underscore twins too) is `403 proxied`
-  (`Bridge#proxied_request?`): an auth proxy that forwards every local port (a work pod's) doesn't reach a worker.
+  (`Bridge#proxied_request?`): an auth proxy that forwards every local port and adds such a header doesn't reach a
+  worker. A heuristic: a forward that adds none still does, until Bridges have a secret (shared-sessions P6).
+  `bridge.json` is 0600.
 
 The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` frames
 (`SessionMetrics#snapshot`) carry the session's totals and only the recent timing records: the

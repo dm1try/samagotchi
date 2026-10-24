@@ -1633,8 +1633,13 @@ What changes once `web.public_url` is set:
 - When the proxy's sign-in or chi's token ends, the page says so: it reloads once (the proxy's sign-in brings you
   back), and within a minute of that shows "Signed out … Reload" instead of a list that quietly stopped updating. Its
   API calls ask for JSON, so oauth2-proxy answers an ended sign-in with 401 instead of a redirect.
-- A session's Bridge (its worker's own port) refuses any request that carries a proxy header (403 `proxied`): a
-  proxy that forwards every port doesn't reach a worker.
+- A session's Bridge (its worker's own port, unauthenticated) refuses a request that carries a proxy header such as
+  `X-Forwarded-For` or `Forwarded` (403 `proxied`). That is a heuristic, not a lock: a forward that adds no such header
+  (nginx's `proxy_pass` with its defaults, a plain TCP forward) still reaches a worker, as the owner.
+
+> **Warning.** Until Bridges get a secret of their own (planned), don't run chi web behind a proxy or tunnel that can
+> reach any local port, such as a pod forwarding every `https://<port>.<pod>…`, unless it adds `X-Forwarded-For` or
+> `Forwarded` to every request; and never one that also lets other people through its sign-in.
 - `chi --remote` to a chi web behind a sign-in proxy isn't supported yet.
 
 Which header to trust: only one the proxy **sets** on every signed-in request **and replaces** when a client sends
