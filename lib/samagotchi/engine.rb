@@ -66,6 +66,7 @@ require_relative "used_memories"
 require_relative "turn_state"
 require_relative "steer_cut"
 require_relative "engine_peers"
+require_relative "engine_snapshots"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "model_notes"
@@ -259,6 +260,9 @@ module Samagotchi
       # the single background thread and isolates per-job failures.
       @idle_scheduler = build_idle_scheduler
       subscribe_session_observers
+      # The UIs' read model (/state, /stats). Built last: nothing calls a
+      # snapshot while the Engine is built.
+      @engine_snapshots = build_engine_snapshots
     end
 
     # ── initialize's collaborators ──────────────────────────────────────────
@@ -420,6 +424,37 @@ module Samagotchi
       )
     end
     private :build_event_fanout
+
+    # The snapshots the UIs read (see #initialize for when).
+    def build_engine_snapshots
+      EngineSnapshots.new(
+        session: -> { @session },
+        metrics: -> { @metrics },
+        observer: -> { @session_observer },
+        question_desk: -> { @question_desk },
+        used_memories: -> { @used_memories },
+        muted: -> { @muted_memory_names },
+        prompt_builder: -> { @prompt_builder },
+        participants: -> { @participants },
+        participants_watch: -> { @participants_watch },
+        recap: -> { @recap },
+        last_context_status: -> { @last_context_status },
+        model_settings: -> { @model_settings },
+        effective_model: -> { effective_model },
+        effective_model_name: -> { effective_model_name },
+        effective_model_ref: -> { effective_model_ref },
+        bare_model_name: ->(ref) { bare_model_name(ref) },
+        served_model: ->(probe:) { served_model(probe: probe) },
+        prompt_notes: -> { prompt_notes },
+        preloaded: -> { preloaded_memory_names },
+        saved_context_status: ->(context, **opts) { saved_context_status(context, **opts) },
+        context_window: ->(model) { current_context_window(model) },
+        profile_resolution: -> { profile_resolution },
+        toolkit_summary: -> { toolkit_summary },
+        toolkit_explained: -> { toolkit_explained }
+      )
+    end
+    private :build_engine_snapshots
 
     # The question flow (see #initialize for when).
     def build_question_desk
@@ -1224,53 +1259,10 @@ module Samagotchi
     # @return [ReminderStore] the reminder store for inspection
     attr_reader :reminder_store
 
-    # The metrics for /stats. Before the first generation reports them, the
-    # context window, the served model and (on a native host) the prompt
-    # profile come from the effective model's server, so this may make one
-    # short /props GET; the cheap #session_state_snapshot never does.
-    # price_host: the effective model's host, whose hosts.<name>.models
-    # prices the cost estimate names. kit_prompt: the next turn's kit
-    # prompt text ({kit:, tokens:}), only when its toolkit has one.
-    # settings: the session's own settings ({"recap.enabled" => false}),
-    # only when it has some.
+    # The metrics for /stats, which may make one short /props GET
+    # (EngineSnapshots#stats_snapshot).
     # @return [Hash] @metrics.snapshot, filled in
-    def stats_snapshot
-      snapshot = @metrics.snapshot
-      # One resolve for the whole snapshot (its readers' rescues stay theirs);
-      # a model that doesn't resolve raises here, as it always has.
-      model = effective_model
-      served, served_for = served_model_for(snapshot, model: model)
-      snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
-                                served_expected_by: model.served_expected_by(served),
-                                **setting_chips(SessionSetting::STATS, model),
-                                prompt_notes: prompt_notes.map(&:to_h), prompt_files: @prompt_builder.prompt_files,
-                                price_host: model.host_name)
-      kit_prompt = kit_prompt_stats
-      snapshot = snapshot.merge(kit_prompt: kit_prompt) if kit_prompt
-      # Each participant's spend under their name (participants.json's).
-      if (spend = snapshot[:spend_by_author])
-        named = spend.to_h { |author, row| [author, row.merge(name: @participants.name_for(author, session: @session))] }
-        snapshot = snapshot.merge(spend_by_author: named)
-      end
-      # The session's own settings (chi --set), as --set names them.
-      settings = @session&.settings&.flat || {}
-      snapshot = snapshot.merge(settings: settings) unless settings.empty?
-      unless snapshot.dig(:context, :window_tokens)
-        window = current_context_window(model)
-        if window
-          snapshot = snapshot.merge(context: snapshot[:context].merge(window_tokens: window.tokens,
-                                                                      window_source: window.source.to_s))
-        end
-      end
-      # The chat loop uses no prompt profile: drop one a native turn reported.
-      return snapshot.except(:profile, :profile_source) if model.chat?
-
-      unless snapshot[:profile]
-        resolution = profile_resolution
-        snapshot = snapshot.merge(profile: resolution.profile.name, profile_source: resolution.label)
-      end
-      snapshot
-    end
+    def stats_snapshot = @engine_snapshots.stats_snapshot
 
     # ── The session's model settings (SessionModelSettings) ──────────────────
 
@@ -1341,67 +1333,14 @@ module Samagotchi
     # else [nil, nil].
     # @return [Array(String, String), Array(nil, nil)]
     def served_model(probe: true)
-      served_model_for(@metrics.served_report, model: probe ? effective_model : nil)
+      @engine_snapshots.served_model_for(@metrics.served_report, model: probe ? effective_model : nil)
     end
 
     # Read-only snapshot of the engine's view of the current session plus the
-    # live event sequence. Cheap primitive used by the bridge's reconnect-too-
-    # old reset marker and the GET /session/:id/state read surface. Orthogonal
-    # to the transport — safe to call before the first turn (nil session).
-    #
-    # @return [Hash] with keys:
-    #   :status        [String, nil] current session status
-    #   :message_count [Integer]   number of messages in the session
-    #   :last_prompt   [String, nil] the last user prompt (empty string if none)
-    #   :event_seq     [Integer]   @session_observer.event_count
-    #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
-    #   :pending_question [Hash, nil] the pending question (PendingQuestion#to_h)
-    #   :used_memory_names [Array<String>] deduped memory names active this session
-    #   :prompt_notes  [Array<Hash>] the model notes the prompt carried
-    #     ({name:, scope:, chars:, digest:}; #prompt_notes)
-    #   :parent_id     [String, nil] the session that delegated this one
-    #   :model_name    [String]    the model turns run on now (after /model)
-    #   :served_model, :served_model_for [String, nil] what a generation of
-    #     that model reported serving, and the name asked (#served_model
-    #     without the probe)
-    #   :served_expected_by [String, nil] the host whose models: entry names
-    #     that served model under served: (#served_expected_by)
-    #   :recap_enabled [Boolean]   whether an idle recap is configured, with
-    #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
-    #   :participants  [Array<Hash>] who is in the review now ({id:, name:,
-    #     kind:}; ParticipantsWatch#active), [] for nobody
-    def session_state_snapshot
-      served_pair = served_model(probe: false)
-      metrics = @metrics.snapshot
-      # One resolve for the model's fields; nil when it doesn't resolve (the
-      # Bridge's /state and reset frames rely on this never raising): those
-      # fields are nil then, as their own rescues always gave.
-      model = @model_settings.model_setting(nil) { |resolved| resolved }
-      {
-        status: @session&.status,
-        message_count: (@session&.messages || []).size,
-        last_prompt: @session&.last_prompt,
-        event_seq: @session_observer&.event_count,
-        metrics: metrics,
-        pending_question: @question_desk.pending&.to_h,
-        used_memory_names: @used_memories.names,
-        preloaded_memory_names: preloaded_memory_names,
-        muted_memory_names: @muted_memory_names.dup,
-        prompt_notes: prompt_notes.map(&:to_h),
-        parent_id: @session&.parent_id,
-        title: @session&.title,
-        model_name: effective_model_ref,
-        served_model: served_pair[0],
-        served_model_for: served_pair[1],
-        served_expected_by: model&.served_expected_by(served_pair[0]),
-        context_status: @last_context_status&.dup || saved_context_status(metrics[:context], model: model),
-        **setting_chips(SessionSetting::ALL, model),
-        recap_enabled: !@recap.nil?,
-        recap_min_user_turns: @recap&.min_user_turns,
-        recap_inactivity_seconds: @recap&.inactivity&.to_i,
-        participants: @participants_watch.active
-      }
-    end
+    # live event sequence; cheap, never probes, never raises
+    # (EngineSnapshots#session_state_snapshot has its keys).
+    # @return [Hash]
+    def session_state_snapshot = @engine_snapshots.session_state_snapshot
 
     # @return [Array<String>] deduped used memory names (thread-safe copy)
     def used_memory_names
@@ -3056,39 +2995,15 @@ module Samagotchi
     def turn_window_setting = @model_settings.turn_window_setting
     def turn_price = @model_settings.turn_price
 
-    # See #served_model. A report for another name (before a /model switch)
-    # doesn't count. Without a model (EffectiveModel), no probe. A remote
-    # chat host has no /props: nil until a turn. The name asked is never
-    # resolved (HostRegistry#bare_name), so it holds on a broken resolve.
-    def served_model_for(snapshot, model: nil)
-      asked = bare_model_name(model ? model.name : effective_model_name)
-      return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
-      return [nil, nil] unless model
-
-      model.served_from_props(asked)
-    # Only bare_model_name and the snapshot lookup are left to fail here:
-    # the probe's failure is EffectiveModel#served_from_props's.
-    rescue StandardError
-      [nil, nil]
-    end
-
-    # The next turn's kit prompt text for /stats: its kit and its estimated
-    # tokens (chars / 4), nil when its toolkit has none.
-    def kit_prompt_stats
-      resolved = toolkit_explained.resolved
-      return nil unless resolved.prompt
-
-      { kit: resolved.name, tokens: (resolved.prompt.length / TokenUsage::CHARS_PER_TOKEN).ceil }
-    end
+    # The snapshots' helpers are EngineSnapshots' (#build_engine_snapshots);
+    # these forward to it.
+    def served_model_for(...) = @engine_snapshots.served_model_for(...)
+    def kit_prompt_stats = @engine_snapshots.kit_prompt_stats
 
     # The window as +model+'s loop would see it (EffectiveModel#context_window).
     def current_context_window(model) = model.context_window
 
-    # +settings+' chips (SessionSetting), the model's from +model+ (nil
-    # when it doesn't resolve): /stats, the session state, a :command_ran.
-    def setting_chips(settings, model)
-      settings.to_h { |setting| [setting.key, setting.model? ? setting.chip_for(model, @session) : toolkit_summary] }
-    end
+    def setting_chips(settings, model) = @engine_snapshots.setting_chips(settings, model)
 
     # The effective model now, resolved on each call, never kept
     # (SessionModelSettings#effective_model). Raises as HostRegistry#resolve does.
