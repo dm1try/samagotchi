@@ -115,6 +115,8 @@ and commands may change between minor versions. How releases are made:
   the open panel, said there, instead of the panel closing on a toast.
 - The participants panel's Revoke asks first (`Revoke Alex's link? …`), as a delete does: it can't be undone, and on
   a phone's sheet it sat one tap away beside Cap.
+- A participant's older prompt drawn before the participants list came (no name saved with it) no longer says
+  "a participant" until the page is reloaded: its badge takes the name when the list comes.
 
 ## [0.106.0] - 2026-10-23
 

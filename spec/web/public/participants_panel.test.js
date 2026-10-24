@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   agoText, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
-import { authorBadge, participantName, setParticipantNames } from "../../../lib/samagotchi/web/public/participant_names.js";
+import { authorBadge, nameUnnamedBadges, participantName, setParticipantNames, UNNAMED } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -88,7 +88,45 @@ test("participants: names and badges for the owner's bubbles", () => {
   assert.equal(authorBadge("p:p_0001abcd").name, "Alex");
   assert.equal(authorBadge("p:p_0001abcd", "Alexandra").name, "Alexandra");
   assert.equal(authorBadge("p:p_unknown").name, "a participant");
+  assert.equal(authorBadge("p:p_unknown").unnamed, true);
+  assert.equal(setParticipantNames([grant()]), false, "the same names: nothing to redraw");
+  assert.equal(setParticipantNames([grant(), grant({ id: "p_2", name: "Kim" })]), true);
   setParticipantNames([]);
+});
+
+// A prompt drawn before the panel's list came (neither its own author_name
+// nor a known name) says "a participant"; the list's names name it then.
+test("participants: a badge drawn before the names came is named when they come", async () => {
+  const { userBubbleTemplate, elementOf } = await import("../../../lib/samagotchi/web/public/turn_html.js");
+  setParticipantNames([]);
+  const root = document.createElement("div");
+  root.append(elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") })),
+              elementOf(userBubbleTemplate({ content: "r" }, { author: authorBadge("p:p_0001abcd", "Alex B") })));
+  const [early, own] = root.querySelectorAll(".author-badge");
+  assert.equal(early.textContent, `${UNNAMED} · review`);
+  assert.equal(early.dataset.unnamed, "1");
+  assert.equal(own.dataset.unnamed, undefined);
+  assert.equal(nameUnnamedBadges(root), 0, "no names yet: left as it is");
+  setParticipantNames([grant()]);
+  assert.equal(nameUnnamedBadges(root), 1);
+  assert.equal(early.textContent, "Alex · review");
+  assert.match(early.title, /^A review comment from Alex, /);
+  assert.equal(early.dataset.unnamed, undefined);
+  assert.equal(own.textContent, "Alex B · review");
+  setParticipantNames([]);
+});
+
+test("participants panel: a list with new names asks for the badges to be named; the same list doesn't", async () => {
+  let named = 0;
+  setParticipantNames([]);
+  const c = panelControl({ onNames: () => { named += 1; } });
+  await c.ctl.load();
+  assert.equal(named, 1);
+  await c.ctl.load();
+  assert.equal(named, 1);
+  await c.ctl.load(null);
+  assert.equal(participantName("p:p_0001abcd"), null, "no session, no names");
+  c.done();
 });
 
 test("participants: a participant's queued or started prompt carries their badge; the owner's ops stay as they were", async () => {
