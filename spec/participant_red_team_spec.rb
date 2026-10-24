@@ -243,6 +243,22 @@ RSpec.describe "a participant red-teaming a session" do
         .to eq([401, { "error" => "token_revoked", "detail" => Samagotchi::ParticipantMessages::TOKEN_REVOKED }])
     end
 
+    # L-P9: their wait/prepare carries what their wait needs, never the
+    # owner's wait state (a reply cursor, a message count, a question).
+    it "can't read the owner's wait state through /wait/prepare" do
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      Samagotchi::SessionInbox.write_output(dir, "the owner's reply", enqueued_id: "owner-eid")
+      session.messages = [{ role: "user", content: "owner" }, { role: "assistant", content: "the owner's reply" }]
+      session.save(state_dir: state_dir)
+      enqueued_id = turn({ prompt: "is step 3 safe?" }).last["enqueued_id"]
+
+      status, body = post("/api/sessions/#{session.id}/wait/prepare", { turn: enqueued_id })
+      expect(status).to eq(200)
+      expect(body.keys - %w[session_id baseline known_turn live last_turn_id]).to eq([])
+      expect(body["baseline"].keys - %w[last_turn]).to eq([])
+      expect(JSON.generate(body)).not_to include("owner")
+    end
+
     it "can't send images" do
       expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] })).to eq(not_permitted)
     end

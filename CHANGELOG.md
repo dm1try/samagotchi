@@ -68,6 +68,8 @@ and commands may change between minor versions. How releases are made:
   makes every participant request a 500.
 - Participants: revoking a participant (or their link expiring) ends their `chi send --wait` already waiting at chi
   web, refused as their link's end, instead of handing them the reply that came within the next 30 s.
+- Participants: an agent participant's `chi send --wait` no longer gets the owner's wait state from chi web (the
+  owner's newest reply file, message count, pending question, running turn), only what waiting on its own turn needs.
 - `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
   as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
 - A remote whose address answers something other than HTTP (another server on that port, an SSH banner), or a

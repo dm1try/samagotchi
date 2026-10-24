@@ -201,12 +201,28 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       allow(access).to receive(:parent_strategy)
 
       status, body = call("/api/sessions/#{session.id}/wait/prepare", body: { turn: "e-1", busy: true })
-      expect([status, body["cursor"]]).to eq([200, "c1"])
+      expect([status, body]).to eq([200, { "session_id" => session.id, "baseline" => {}, "known_turn" => true, "live" => true }])
       expect(access).to have_received(:prepare_wait).with(session.id, session: session, question_id: :pending, turn: "e-1")
 
       expect(call("/api/sessions/#{session.id}/wait", body: { turn: "e-1", cursor: "c1" }))
         .to eq([200, { "status" => "done", "text" => "Yes.", "turn_id" => "t9" }])
       expect(access).to have_received(:wait_reply).with(session.id, hash_including(turn: "e-1", queued: true, cursor: nil))
+    end
+
+    # L-P9: what their wait needs (the last turn's end, whether their turn
+    # is known or was the last to end, whether a worker runs it), never the
+    # owner's cursor, question, message count or running turn.
+    it "prepares their wait with only what it needs, none of the owner's wait state" do
+      turn({ prompt: "q" })
+      owner_state = start.with(baseline: Samagotchi::ReplyWait::Baseline.new(messages: 7, question_id: "q-owner",
+                                                                             last_turn: "2026-10-24T10:00:00Z"),
+                               own_turn: "e-owner", running: true, settled: true, last_turn_id: "e-owner")
+      allow(access).to receive(:prepare_wait).and_return(owner_state, owner_state.with(last_turn_id: "e-1"))
+
+      expect(call("/api/sessions/#{session.id}/wait/prepare", body: { turn: "e-1" }))
+        .to eq([200, { "session_id" => session.id, "baseline" => { "last_turn" => "2026-10-24T10:00:00Z" },
+                       "known_turn" => true, "live" => true }])
+      expect(call("/api/sessions/#{session.id}/wait/prepare", body: { turn: "e-1" }).last["last_turn_id"]).to eq("e-1")
     end
 
     def wait_on(result)

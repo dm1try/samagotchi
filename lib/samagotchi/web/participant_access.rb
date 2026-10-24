@@ -303,13 +303,22 @@ module Samagotchi
       # POST …/wait/prepare for a participant (an agent's chi --remote
       # send --wait, D11): only for a turn of theirs (+turn+, the enqueued
       # id their POST …/turn answered); the body's busy, queue and created
-      # don't count.
+      # don't count. The answer is what their wait on that turn needs
+      # (SendCommand's WaitTarget.after with the turn asked, the wait's
+      # baseline), never the owner's wait state: the last turn's end (the
+      # baseline's last_turn), whether their turn is known, whether a worker
+      # runs it, and last_turn_id only when it is their turn. No cursor
+      # (their wait ignores it), message count, pending question or running
+      # turn.
       def participant_wait_prepare(req, id, body)
         grant = principal(req).grant
-        return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, body["turn"])
+        turn = body["turn"]
+        return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, turn)
 
-        start = session_access.prepare_wait(id, session: session_access.show(id), question_id: :pending, turn: body["turn"])
-        json_response(200, wait_start_json(id, start))
+        start = session_access.prepare_wait(id, session: session_access.show(id), question_id: :pending, turn: turn)
+        json_response(200, { session_id: id, baseline: { last_turn: start.baseline.last_turn }.compact,
+                             known_turn: start.known_turn, live: start.live,
+                             last_turn_id: (turn if start.last_turn_id == turn) }.compact)
       end
 
       # POST …/wait for a participant: only on a turn of theirs, and the
