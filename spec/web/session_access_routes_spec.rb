@@ -185,8 +185,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       own(waiting)
 
       status, body = call("/api/sessions/#{busy.id}/wait/prepare", method: "POST", body: { busy: true })
-      expect([status, body]).to eq([409, { "error" => "busy", "detail" => "busy: a turn is running; wait or attach",
-                                           "message" => "busy: a turn is running; wait or attach", "session_id" => busy.id }])
+      expect([status, body]).to eq([409, { "error" => "busy", "detail" => "busy: a turn is running; --queue runs the message after it, chi send --wait #{busy.id} waits for it, chi --attach #{busy.id} shows it",
+                                           "message" => "busy: a turn is running; --queue runs the message after it, chi send --wait #{busy.id} waits for it, chi --attach #{busy.id} shows it", "session_id" => busy.id }])
       expect(call("/api/sessions/#{busy.id}/wait/prepare", method: "POST", body: { busy: true, queue: true }).first).to eq(200)
 
       status, body = call("/api/sessions/#{waiting.id}/wait/prepare", method: "POST", body: { busy: true, queue: true })

@@ -40,9 +40,12 @@ module Samagotchi
       # What the user is told, after the session's short id.
       # @param via [ChiInvocation] how its commands are spelled
       def message(via: ChiInvocation::HERE)
-        return "busy: a turn is running; wait or #{via.remote? ? "open it in #{via.web}" : "attach"}" unless error == "waiting"
-
         id = session_id
+        unless error == "waiting"
+          return "busy: a turn is running; --queue runs the message after it, " \
+                 "#{via.command("send --wait #{id}")} waits for it, #{via.attach(id)} shows it"
+        end
+
         # The whole question (its options, its tags) for what a parent may
         # give.
         q = ParentReport.question(question, strategy: strategy)

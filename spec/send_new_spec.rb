@@ -598,7 +598,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       busy = make(status: "running")
 
       expect(run("--wait", "-m", "and?", busy.id)).to eq(1)
-      expect(err.string).to eq("#{busy.id[0, 8]}  busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}\n")
+      expect(err.string).to eq("#{busy.id[0, 8]}  busy: a turn is running; --queue runs the message after it, #{via.chi} send --wait #{busy.id} waits for it, #{via.attach(busy.id)} shows it\n")
       expect(delivered).to be_empty
     end
 
@@ -1067,7 +1067,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         busy = make(status: "running")
         expect(run("--wait", "--format", "json", "-m", "and?", busy.id)).to eq(1)
         expect(json_out).to eq("status" => "error", "session_id" => busy.id,
-                               "detail" => "#{busy.id[0, 8]}  busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}")
+                               "detail" => "#{busy.id[0, 8]}  busy: a turn is running; --queue runs the message after it, #{via.chi} send --wait #{busy.id} waits for it, #{via.attach(busy.id)} shows it")
 
         out.truncate(0)
         out.rewind

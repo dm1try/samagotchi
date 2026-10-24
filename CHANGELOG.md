@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 - `chi send --wait` and `chi answer` left with the turn still running (`--timeout`, Ctrl-C) offer the command that waits
   again: `chi send --wait --turn T ID`, or `chi send --wait ID` when the turn's id isn't known (with the attach that
   shows it); under `--remote NAME` both carry it.
+- `chi send --wait` into a running turn is refused with what to do next: `--queue` runs the message after it,
+  `chi send --wait ID` waits for it, `chi --attach ID` shows it (under `--remote NAME` the attach, no longer "open it
+  in chi web").
 
 ### Fixed
 

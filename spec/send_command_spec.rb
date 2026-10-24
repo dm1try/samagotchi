@@ -411,7 +411,7 @@ RSpec.describe Samagotchi::SendCommand do
         serve(a, cut: :now)
 
         expect(run("--cut", "--wait", "-m", "go", a.id)).to eq(1)
-        expect(err.string).to include("busy: a turn is running; wait or #{backend == :remote ? "open it in chi web on studio" : "attach"}")
+        expect(err.string).to include("busy: a turn is running; --queue runs the message after it, #{backend == :remote ? "chi --remote studio" : "chi"} send --wait #{a.id} waits for it")
         expect(inputs_of(a)).to be_empty
       end
     end
