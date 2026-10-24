@@ -396,7 +396,7 @@ module Samagotchi
       # @return [Principal, nil]
       def principal_for(req)
         given = presented_tokens(req)
-        return Principal::OWNER if @lan && given.any? { |value| token_match?(value, current_token) }
+        return Principal::OWNER if @lan && owner_token?(given)
 
         grant_tokens = given.select { |value| Grants.token?(value) }
         return Principal::OWNER if grant_tokens.empty? && !token_required?(req)
@@ -405,7 +405,22 @@ module Samagotchi
       end
 
       def presented_tokens(req)
-        token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[TOKEN_COOKIE]]
+        token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[token_cookie_name(req)]]
+      end
+
+      def owner_token?(given) = given.any? { |value| token_match?(value, current_token) }
+
+      # The cookie a request's token rides in, its name and attributes per
+      # request.
+      def token_cookie_name(_req) = TOKEN_COOKIE
+      def token_cookie_attributes(_req) = TOKEN_COOKIE_ATTRIBUTES
+
+      def token_cookie(req, value)
+        "#{token_cookie_name(req)}=#{value}; #{token_cookie_attributes(req)}"
+      end
+
+      def cleared_token_cookie(req)
+        "#{token_cookie_name(req)}=; #{token_cookie_attributes(req).sub(/Max-Age=\d+/, "Max-Age=0")}"
       end
 
       def token_required?(req) = @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
@@ -425,11 +440,10 @@ module Samagotchi
       # owner's, who opened a participant link) is the owner's again.
       def refused_token(req)
         response = grant_ended_response(req) || unauthorized(req)
-        return response if token_required?(req) || !Grants.token?(req.cookies[TOKEN_COOKIE])
+        return response if token_required?(req) || !Grants.token?(req.cookies[token_cookie_name(req)])
 
         status, headers, body = response
-        [status, headers.merge("Set-Cookie" => "#{TOKEN_COOKIE}=; #{TOKEN_COOKIE_ATTRIBUTES.sub(/Max-Age=\d+/, "Max-Age=0")}"),
-         body]
+        [status, headers.merge("Set-Cookie" => cleared_token_cookie(req)), body]
       end
 
       def bearer_token(req) = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]
@@ -450,7 +464,7 @@ module Samagotchi
       def token_redirect(req, token)
         query = req.query_string.split("&").reject { |pair| pair.split("=", 2).first == "token" }.join("&")
         location = query.empty? ? req.path_info : "#{req.path_info}?#{query}"
-        [303, { "Location" => location, "Set-Cookie" => "#{TOKEN_COOKIE}=#{token}; #{TOKEN_COOKIE_ATTRIBUTES}",
+        [303, { "Location" => location, "Set-Cookie" => token_cookie(req, token),
                 "Cache-Control" => "no-store", "Content-Length" => "0" }, []]
       end
 
