@@ -140,6 +140,25 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(out.string).not_to include("isn't on the LAN")
       end
 
+      # chi web --tunnel's public_url is no config's: the one its web.json
+      # records, only while that same process answers on its port.
+      it "names a running chi web --tunnel's recorded public_url while that chi web answers", local_only: "the probe is this machine's" do
+        running = Samagotchi::Web::Running.path(state_dir: state_dir)
+        Samagotchi::Web::Running.record(port: 4999, path: running, public_url: "https://chi-host.example-tailnet.ts.net")
+        answer = { "app" => "chi-web", "pid" => Process.pid, "lan" => nil }
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4999, timeout: anything) { answer }
+
+        run(session.id, "--name", "Alex")
+        expect(out.string.lines[1]).to match(%r{\Ahttps://chi-host\.example-tailnet\.ts\.net/#code=chc_\S+&s=#{session.id}$})
+
+        # Another process on the port (a reused pid, another state dir's chi web): today's link.
+        answer = { "app" => "chi-web", "pid" => Process.pid + 1, "lan" => nil }
+        out.truncate(0)
+        out.rewind
+        run(session.id, "--name", "Sam")
+        expect(out.string.lines[1]).to start_with("http://127.0.0.1:4999/?token=chp_")
+      end
+
       it "falls back to web.port when nothing answers on the recorded port", local_only: "the probe is this machine's" do
         Samagotchi::Web::Running.record(port: 4999, path: Samagotchi::Web::Running.path(state_dir: state_dir))
         allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4567, timeout: anything)

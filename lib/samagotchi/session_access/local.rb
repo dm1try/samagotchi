@@ -364,8 +364,9 @@ module Samagotchi
       end
 
       # The link names this machine's chi web: web.public_url from this
-      # machine's config (never what the port answers) when it is set (the
-      # token in the fragment, as chi web's own invite), else its LAN address
+      # machine's config (never what the port answers) when it is set, or
+      # the one a running chi web --tunnel recorded (the code in the
+      # fragment, as chi web's own invite), else its LAN address
       # and port when one runs on the LAN (the port it recorded, else
       # web.port), else 127.0.0.1 (+lan+ false: the link opens on this
       # machine only).
@@ -431,10 +432,15 @@ module Samagotchi
         Web::LinkCodes.for_grants(grants.path).issue(kind: :grant, token: issued.token, ttl: ttl)
       end
 
-      # web.public_url as this machine's config has it; nil when unset or
-      # not a valid one (chi web refuses to start on that).
+      # web.public_url as this machine's config has it (nil when not a
+      # valid one: chi web refuses to start on that), else the one the
+      # running chi web recorded (chi web --tunnel's), only while that same
+      # process answers on its port (Web::Running.live_public_url).
       def configured_public_url
-        Web::PublicUrl.from_config(url: Config.get("web.public_url"))
+        configured = Config.get("web.public_url")
+        return Web::Running.live_public_url(path: Web::Running.path(state_dir: state_dir!)) if configured.to_s.strip.empty?
+
+        Web::PublicUrl.from_config(url: configured)
       rescue Web::PublicUrl::Invalid
         nil
       end

@@ -99,7 +99,8 @@ module Samagotchi
           end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
           puts running_lan_lines(found["lan"], port) if found["lan"]
-          puts running_public_lines(public_url) if public_url
+          running_public = public_url || Running.live_public_url(probe: ->(at) { probe(host, at) })
+          puts running_public_lines(running_public) if running_public
           puts lan_off_line(setting) if new_token && !found["lan"]
           open_url(url) if open_browser
           0
@@ -213,7 +214,7 @@ module Samagotchi
         # the in-use line instead.
         running_path = Running.path(state_dir: state_dir)
         started = lambda do
-          record_running(running_path, port)
+          record_running(running_path, port, public_url)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
           if public_url
@@ -254,11 +255,11 @@ module Samagotchi
 
       class LanListenError < StandardError; end
 
-      # Where this chi web listens, for chi share's link (Web::Running); a
-      # write that fails leaves the server running and the readers on
-      # web.port.
-      def self.record_running(path, port)
-        Running.record(port: port, path: path)
+      # Where this chi web listens, and its public_url (config's or the
+      # tunnel's), for chi share's link (Web::Running); a write that fails
+      # leaves the server running and the readers on web.port and config.
+      def self.record_running(path, port, public_url = nil)
+        Running.record(port: port, path: path, public_url: public_url&.origin)
       rescue SystemCallError => e
         Samagotchi::Log.warn(:web, "running_record_failed", error: e.class.name)
       end
@@ -329,9 +330,9 @@ module Samagotchi
       # The owner's one-time link codes, next to the grants.
       def self.owner_codes(state_dir = nil) = LinkCodes.for_grants(Grants.path(state_dir: state_dir))
 
-      # A second chi web, when this machine's config has web.public_url: the
-      # link from this config and the token file, never from what answered
-      # on the port.
+      # A second chi web, when this machine's config has web.public_url (or
+      # the running chi web recorded one: Running.live_public_url): the link
+      # from there and the token file, never from what answered on the port.
       def self.running_public_lines(public_url, token_path: Token.path, codes: owner_codes)
         return ["Proxied: #{public_url.origin}/"] unless Token.read(token_path)
 

@@ -115,6 +115,20 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect(fake.argv).not_to include("serve --https=443 off")
   end
 
+  it "records its public_url, so a plain chi web on its port prints the proxied link while it runs" do
+    expect(described_class.record_running(Samagotchi::Web::Running.path, 4567,
+                                          Samagotchi::Web::PublicUrl.from_config(url: "https://#{name}"))).to be_a(String)
+    allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => Process.pid })
+    allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
+    allow(described_class).to receive(:owner_codes).and_return(double("codes", issue: "chc_C"))
+    expect { described_class.launch(port: 4567, dir: "/", scope: "all") }
+      .to output(a_string_including("Proxied: https://#{name}/#code=chc_C ")).to_stdout
+    allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => Process.pid + 1 })
+    expect { described_class.launch(port: 4567, dir: "/", scope: "all") }.not_to output(/Proxied/).to_stdout
+  ensure
+    Samagotchi::Web::Running.clear
+  end
+
   it "adds the tunnel's lines and, at a terminal, the link's QR code to the start lines" do
     url = Samagotchi::Web::PublicUrl.from_config(url: "https://#{name}", identity_header: "Tailscale-User-Login",
                                                  owner: "owner@example.com")
