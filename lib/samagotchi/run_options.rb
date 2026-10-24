@@ -80,6 +80,19 @@ module Samagotchi
         warn "Error: missing argument: --no-tool (see chi --help)"
         exit 1
       end
+      # A flag's whole name only, as the subcommands' CLI::Flags take them:
+      # an abbreviation (--verb, --mem x) is an unknown option, never read
+      # past chi --remote's Contract::RUN. Checked here rather than with
+      # OptionParser#require_exact: Ruby 3.3's optparse (0.4) refuses both
+      # spellings of a --[no-]x switch with it, and crashes on a bare "--".
+      long_flags = switch_flags.flat_map { |flag| flag.include?("[no-]") ? [flag.sub("[no-]", ""), flag.sub("[no-]", "no-")] : [flag] }
+                               .select { |flag| flag.start_with?("--") }.push("--no-tool")
+      reject_abbreviation = lambda do |arg|
+        return unless arg.start_with?("--") && !long_flags.include?(arg.split("=", 2).first)
+
+        warn "Error: invalid option: #{arg} (see chi --help)"
+        exit 1
+      end
       index = 0
       while index < argv.size && argv[index] != "--"
         arg = argv[index]
@@ -94,6 +107,7 @@ module Samagotchi
           options[:no_tools] = (options[:no_tools] || []) << value
           argv.delete_at(index)
         else
+          reject_abbreviation.call(arg)
           index += takes_value.include?(arg) ? 2 : 1
         end
       end
@@ -135,10 +149,6 @@ module Samagotchi
     # @param cli_overrides [Hash] the config keys the flags set
     def build_parser(options, cli_overrides)
       OptionParser.new do |opts|
-        # A flag's whole name only, as the subcommands' CLI::Flags take
-        # them: an abbreviation (--verb, --mem x) is an unknown option,
-        # never read past chi --remote's Contract::RUN.
-        opts.require_exact = true
         opts.banner = <<~BANNER
           Usage: chi [options]
                  chi bootstrap [HOST[:PORT]|URL]  first setup: find the model server, write config.yml
