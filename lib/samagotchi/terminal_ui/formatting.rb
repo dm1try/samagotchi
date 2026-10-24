@@ -11,6 +11,7 @@ require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
 require_relative "../prompt_files"
 require_relative "../session_config"
+require_relative "../message_time"
 require_relative "../tools/task_record"
 require_relative "model_segments_text"
 
@@ -513,18 +514,25 @@ module Samagotchi
 
       private
 
-      # The recap shown on return: dim, one "recap>" block, noting how many
-      # turns came since it was written.
-      def recap_block(text, turns_since: 0)
+      # The recap shown on return: dim, one "recap>" block, with the local
+      # time it was written ("recap 14:32>") when known, noting how many
+      # turns came since.
+      # @param at [String, nil] its created_at (an ISO time, any offset)
+      def recap_block(text, turns_since: 0, at: nil)
         n = turns_since.to_i
         note = if n == 1 then " (before the last turn)"
                elsif n > 1 then " (before the last #{n} turns)"
                else ""
                end
+        clock = MessageTime.clock(at)
+        head = clock ? "recap #{clock}#{note}>" : "recap#{note}>"
         text.to_s.strip.lines.map(&:chomp).each_with_index.map do |line, i|
-          paint(i.zero? ? "recap#{note}> #{line}" : line, 90)
+          paint(i.zero? ? "#{head} #{line}" : line, 90)
         end.join("\n")
       end
+
+      # A quiet gap's divider (MessageTime.gap_line, GapClock#join_line): dim.
+      def gap_divider(text) = paint(text, 2)
 
       RECAP_OFF_TEXT = "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false; /recap on turns it on here)"
       # Off by the session's own recap.enabled (/recap off, --set recap.enabled=false).
@@ -540,7 +548,7 @@ module Samagotchi
 
         saved = saved&.transform_keys(&:to_sym)
         lines = []
-        lines << recap_block(saved[:text], turns_since: saved[:turns_since]) if saved
+        lines << recap_block(saved[:text], turns_since: saved[:turns_since], at: saved[:created_at]) if saved
         lines << case request&.to_sym
                  when :started, :in_flight then "writing a recap…"
                  when :nothing_new then saved ? "(nothing new since this recap)" : "no recap yet: nothing to recap"

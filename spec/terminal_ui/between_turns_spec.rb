@@ -2,6 +2,7 @@
 
 require "samagotchi/terminal_ui/between_turns"
 require "samagotchi/terminal_ui/attached_view"
+require "samagotchi/terminal_ui/gap_clock"
 require_relative "../support/recording_surface"
 
 # The REPL's prints between turns, on their own; terminal_ui_commands_spec
@@ -57,6 +58,21 @@ RSpec.describe Samagotchi::TerminalUI::BetweenTurns do
       between_turns.observe({ type: :guardrail_warning, label: "g", message: "boom" })
       between_turns.flush_cards
       expect(surface.lines).to be_empty
+    end
+  end
+
+  it "prints an idle recap with the local time it was written, after a quiet gap's divider" do
+    with_env("TZ" => "Europe/Berlin") do
+      wall = [Time.utc(2026, 10, 24, 12, 0, 0)]
+      gaps = Samagotchi::TerminalUI::GapClock.new(now: -> { wall.first })
+      flusher = described_class.new(surface: surface, view: view, renderer: Samagotchi::TerminalUI::EventRenderer.new(view),
+                                    turn_running: -> { false }, gaps: gaps)
+      gaps.touch
+      wall[0] += 15 * 60
+      flusher.take_recap({ type: :recap_ready, recap: "Did Y.", created_at: "2026-10-24T12:14:30Z" })
+      flusher.flush_recap
+
+      expect(surface.lines).to eq(["── 14:15 · 15 min later ──", "recap 14:14> Did Y."])
     end
   end
 

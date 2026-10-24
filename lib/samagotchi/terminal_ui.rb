@@ -30,6 +30,7 @@ require_relative "terminal_ui/attached_view"
 require_relative "terminal_ui/between_turns"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
+require_relative "terminal_ui/gap_clock"
 require_relative "terminal_ui/input_support"
 require_relative "terminal_ui/image_input"
 require_relative "terminal_ui/plain_surface"
@@ -114,7 +115,8 @@ module Samagotchi
     #   +toolkit_flags+ then)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
-                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil)
+                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
+                   now: -> { MessageTime.now })
       @scratch        = scratch
       @parent_answers = parent_answers
       @toolkit        = toolkit
@@ -190,8 +192,12 @@ module Samagotchi
       @renderer = EventRenderer.new(@view)
       # Cards, notices and a recap announced between turns, printed by the
       # main thread at the open prompt (#poll_input_with_reminder_check).
+      # The session's last activity, for the gap dividers (+now+: the wall
+      # clock, a Time).
+      @gaps = GapClock.new(now: now)
       @between_turns = BetweenTurns.new(surface: @surface, view: @view, renderer: @renderer,
-                                        turn_running: -> { @engine.turn_running? }, quiet: @non_interactive)
+                                        turn_running: -> { @engine.turn_running? }, quiet: @non_interactive,
+                                        gaps: @gaps)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine = Engine.new(
         client: client,
@@ -593,7 +599,9 @@ module Samagotchi
         messages = ContextNote.with_system_head(session.messages.dup, system_message)
         banner("Resumed session: #{session.id}")
         saved = @engine.saved_recap
-        banner(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved
+        banner(recap_block(saved[:text], turns_since: saved[:turns_since], at: saved[:created_at])) if saved
+        # The first prompt after a quiet gap has its divider.
+        @gaps.seed(session.messages, fallback: saved&.dig(:created_at))
       elsif @scratch
         messages = [system_message]
         banner("Scratch session: nothing is kept, it is deleted when you leave.")
@@ -721,6 +729,8 @@ module Samagotchi
     ensure
       @active_cancel_controller = nil
       @view.finish_thinking_spinner
+      # The turn's end is the last activity.
+      @gaps.touch
     end
 
     # How the REPL leaves its session once the loop ended (#run): :scratch
@@ -909,6 +919,9 @@ module Samagotchi
 
       @turn_flow.before_prompt_turn
       persist_recent_history(input)
+      # Off a live region (no echo seam) the divider comes here; after
+      # #gap_above_echo it marks none.
+      mark_activity
       begin
         # Engine#run_turn injects due reminders as a tail message, appends
         # the prompt, and renders through @renderer via on_event.
@@ -1051,6 +1064,7 @@ module Samagotchi
         sync_continue_slot(false)
         @surface.commit(QuestionSlot.continue_summary("(dropped: a reminder ran)", paint: method(:paint)))
       end
+      mark_activity
       @surface.commit(reminder_line(names))
       hint = "#{reminder_line(names)} · Ctrl-C cancels it"
       @surface.set_slot(:hints, [color_output? ? paint(hint, 90) : hint])
@@ -1147,11 +1161,32 @@ module Samagotchi
     # a question's ? prompt. +prefill+ is typed in first.
     def read_repl_line(prompt, prefill)
       queue_input_prefill(prefill) if prefill
-      return read_prompt_line(prompt) if prompt == paint("> ", 92)
+      return RelineSeam.echo_above(method(:gap_above_echo)) { read_prompt_line(prompt) } if prompt == paint("> ", 92)
 
       read = -> { with_next_input_prefill { Reline.readline(prompt, true) }&.strip }
       # A question's answer leaves only its summary line.
       prompt == paint(QUESTION_PROMPT, 33) ? RelineSeam.without_echo(&read) : read.call
+    end
+
+    # Activity starts now: a gap's divider first when one passed since the
+    # last (none while a turn runs: a steer is no gap; none in a
+    # --non-interactive run, whose stdout is the answer's alone).
+    def mark_activity
+      line = @gaps.divider(quiet: @non_interactive || @engine.turn_running?)
+      @surface.commit(gap_divider(line)) if line
+    end
+
+    # The divider above a typed line's echo (RelineSeam.echo_above, on the
+    # reader thread): a prompt typed at the idle prompt after a quiet gap.
+    # It marks the activity, so #run_input_line marks none.
+    def gap_above_echo(text)
+      return nil if @engine.turn_running? || @turn_flow.awaiting_continue?
+
+      route = ComposerRoute.call(text.to_s.strip, running: false, registry: command_registry)
+      return nil unless %i[prompt deliver].include?(route.kind)
+
+      line = @gaps.divider
+      line && gap_divider(line)
     end
 
     # Lines come from a pipe or a file (`chi -p X </dev/null`, `echo … | chi`),

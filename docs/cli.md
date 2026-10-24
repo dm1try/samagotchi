@@ -1433,6 +1433,28 @@ working on, what came of it and what is still open, not a turn-by-turn log.
 - It uses the session's own model unless `recap:` names one;
   `recap: false` turns it off. See configuration.md.
 
+## Time gaps (terminal)
+
+Both terminals (attached and the REPL) show when things happened without a
+time on every line:
+
+- A dim divider marks a quiet gap of 10 minutes or more, before what comes
+  next: `── 14:32 · 47 min later ──`, the date added when the day changed
+  (`── Sat 24 Oct 09:10 · 13 h later ──`). The gap runs from the end of the
+  last activity (a turn's end, a reminder, a context note, a recap) to the
+  start of the next (a prompt, yours above its line or another UI's, a
+  reminder turn, a note, a recap), so nothing is marked during a turn or
+  between turns run back to back. A command (`/stats`, `!cmd`) is no
+  activity.
+- Attaching to a session whose last activity was 10 minutes ago or more
+  says when, after the join block: `── last activity 14:32 · 47 min ago ──`
+  (from the newest timed message, else the saved recap's time). With
+  `--resume` the REPL marks the gap before the first prompt instead.
+- A recap names the local time it was written: `recap 14:32>`, `recap 14:32
+  (before the last 2 turns)>`.
+- Only live activity and the join: neither terminal replays the history, so
+  older gaps aren't marked. `--non-interactive` prints none.
+
 ## Tool Activity Log
 
 Samagotchi now prints a concise, human-friendly tool activity log in normal

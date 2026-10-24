@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   replies carry `at` in the session file (never sent to the model); plugins see it in `ctx.messages`.
 - Reminders tell the model the local time they came due (`[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]`), so it
   can reason about how long ago something happened.
+- Terminal (attached and the REPL): a dim `── 14:32 · 47 min later ──` divider before what comes after 10 minutes
+  or more of quiet, a `── last activity 14:32 · 47 min ago ──` line when attaching after such a gap, and the recap's
+  time in its head (`recap 14:32>`). See docs/cli.md (Time gaps).
 
 ### Fixed
 

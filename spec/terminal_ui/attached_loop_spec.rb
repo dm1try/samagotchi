@@ -622,6 +622,102 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     end
   end
 
+  describe "the time between activity" do
+    # Local times: one zone, so a 47-minute gap stays on one local day.
+    around { |example| with_env("TZ" => "Europe/Berlin") { example.run } }
+
+    let(:wall) { [Time.utc(2026, 10, 24, 14, 0, 0)] }
+    let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", now: -> { wall.first }) }
+
+    def pass(minutes) = wall[0] += minutes * 60
+    def clock_of(time) = time.localtime.strftime("%H:%M")
+    def stamp(minutes_ago) = (wall.first - (minutes_ago * 60)).iso8601(3)
+    def dividers = screen.lines.grep(/──/)
+
+    def web_turn(prompt)
+      feed({ type: :turn_started, prompt: prompt, origin: { client_id: "web:tab1" } },
+           { type: :turn_completed, turn_summary: summary("ok") })
+    end
+
+    it "marks a quiet gap of 10 minutes or more before another client's prompt, from the end of the last turn" do
+      feed(snapshot)
+      web_turn("first")
+      pass(15)
+      web_turn("second")
+
+      expect(dividers).to eq(["── #{clock_of(wall.first)} · 15 min later ──"])
+      expect(screen.lines.index(dividers.first)).to eq(screen.lines.index("web> second") - 1)
+    end
+
+    it "marks nothing after a short pause, nor inside a long turn" do
+      feed(snapshot)
+      web_turn("first")
+      pass(2)
+      feed({ type: :turn_started, prompt: "second", origin: { client_id: "web:tab1" } })
+      pass(30)
+      feed({ type: :reminder_injected, reminders: ["heartbeat"] }, { type: :turn_completed, turn_summary: summary("ok") })
+
+      expect(dividers).to be_empty
+    end
+
+    it "marks a gap before a reminder, a context note and a recap between turns, the recap with its time" do
+      feed(snapshot)
+      web_turn("first")
+      pass(11)
+      feed({ type: :context_added, label: "slack", text: "deploy frozen" })
+      pass(12)
+      created = wall.first.utc.iso8601
+      feed({ type: :recap_ready, recap: "We fixed the bug.", created_at: created })
+
+      expect(dividers.size).to eq(2)
+      expect(screen.lines.last(2)).to eq(["── #{clock_of(wall.first)} · 12 min later ──",
+                                          "recap #{clock_of(wall.first)}> We fixed the bug."])
+    end
+
+    it "says when the last activity was after the join block, and marks no second gap at the next prompt" do
+      joined = snapshot(messages: [{ role: "user", content: "hi", at: stamp(48) }, { role: "model", content: "hello", at: stamp(47) }])
+      joined[:snapshot][:saved_recap] = { text: "We said hi.", covered: 2, turns_since: 0, created_at: stamp(45) }
+      feed(joined)
+      web_turn("back")
+
+      last = wall.first - (47 * 60)
+      expect(screen.lines.first(4)).to eq(["recap #{clock_of(wall.first - (45 * 60))}> We said hi.", "user> hi", "hello",
+                                           "── last activity #{clock_of(last)} · 47 min ago ──"])
+      expect(dividers.size).to eq(1)
+    end
+
+    it "names the day of a last activity on another day, and falls back to the saved recap's time" do
+      joined = snapshot(messages: [{ role: "user", content: "hi" }])
+      joined[:snapshot][:saved_recap] = { text: "We said hi.", covered: 1, turns_since: 0, created_at: stamp(26 * 60) }
+      feed(joined)
+
+      last = (wall.first - (26 * 3600)).localtime
+      expect(dividers).to eq(["── last activity #{last.strftime("%a %-d %b %H:%M")} · 1 d ago ──"])
+    end
+
+    it "prints no join line after a short pause or while a turn runs, but the next prompt still marks the gap" do
+      feed(snapshot(messages: [{ role: "user", content: "hi", at: stamp(5) }, { role: "model", content: "hello", at: stamp(4) }]))
+      expect(dividers).to be_empty
+
+      pass(8)
+      web_turn("later")
+      expect(dividers).to eq(["── #{clock_of(wall.first)} · 12 min later ──"])
+    end
+
+    it "puts the divider of a typed prompt above its echo, once, and none for a command or a steer" do
+      feed(snapshot)
+      web_turn("first")
+      pass(20)
+      expect(attached.send(:gap_above_echo, "/stats")).to be_nil
+      expect(attached.send(:gap_above_echo, "fix it")).to eq("── #{clock_of(wall.first)} · 20 min later ──")
+      feed({ type: :turn_started, prompt: "fix it", origin: { client_id: "tui:1" } })
+      pass(20)
+      expect(attached.send(:gap_above_echo, "and this")).to be_nil
+
+      expect(dividers).to be_empty
+    end
+  end
+
   it "shows the guardrail load warning a snapshot carries when joining" do
     joined = snapshot
     joined[:snapshot][:guardrail_warning] = "hook g.rb (config) failed to load (LoadError: x)"

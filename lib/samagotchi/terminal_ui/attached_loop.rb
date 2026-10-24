@@ -14,6 +14,7 @@ require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "version_lines"
+require_relative "gap_clock"
 require_relative "participant_commands"
 require_relative "local_link"
 require_relative "../bridge/turn_accumulator"
@@ -100,6 +101,7 @@ module Samagotchi
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
       #   the first read (a new session with no -p, as the REPL)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
+      # @param now [#call] the wall clock, a Time (the gap dividers)
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
       # @param archive_session [#call] session id -> archives it (/archive);
       #   SessionManager.archive_session's result
@@ -114,7 +116,7 @@ module Samagotchi
       #   +client+ and the keywords that make a LocalLink
       def initialize(screen:, client_id:, client: nil, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, as_parent: false,
-                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, now: -> { MessageTime.now },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: LocalLink::DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: LocalLink::DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
@@ -152,6 +154,8 @@ module Samagotchi
         @no_interrupt = no_interrupt
         @no_default_input = !default_input
         @clock = clock
+        # The session's last activity, for the gap dividers (GapClock).
+        @gaps = GapClock.new(now: now)
         @last_idle_interrupt_at = nil
         @next_input_prefill = nil
         # Prompts this run sent, by enqueued_id: only those come back into
@@ -208,7 +212,12 @@ module Samagotchi
         end
         read = input || method(:read_input_line)
         # A command typed after /unqueue's text echoes as the command alone.
-        echoed_read = ->(prompt, prefill) { RelineSeam.echo_as(method(:prefilled_echo)) { read.call(prompt, prefill) } }
+        # A typed prompt after a quiet gap has its divider above its echo.
+        echoed_read = lambda do |prompt, prefill|
+          RelineSeam.echo_as(method(:prefilled_echo)) do
+            RelineSeam.echo_above(method(:gap_above_echo)) { read.call(prompt, prefill) }
+          end
+        end
         @reader = LineReader.new(queue, prompt: method(:prompt_text), read: echoed_read, prefill: default_input_text).start
         loop do
           kind, payload = next_item(queue)
@@ -280,10 +289,12 @@ module Samagotchi
         when :turn_dequeued then turn_dequeued(event)
         when :turn_started
           @status.take_event(event)
+          mark_activity
           start_turn(event)
         when :turn_completed
           @status.take_event(event)
           complete_turn(event)
+          @gaps.touch
           refresh_children
           own_turn_ended(event)
         # The renderer says how it ended (the REPL's words too).
@@ -291,6 +302,7 @@ module Samagotchi
           @status.take_event(event)
           @renderer.call(event)
           end_turn
+          @gaps.touch
           refresh_children
           own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
@@ -307,10 +319,14 @@ module Samagotchi
         when :command_ran
           command_ran(event)
           return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
-        when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
+        when :reminder_injected
+          mark_activity
+          @screen.commit(reminder_line(event[:reminders]))
         # A context note joined the conversation (between turns). One dim
         # line in the scrollback; the notes slot is for question choices.
-        when :context_added then @screen.commit(context_note_line(event[:label], event[:text]))
+        when :context_added
+          mark_activity
+          @screen.commit(context_note_line(event[:label], event[:text]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
         # The note comes with the kernel's :pending_input_merged (EventRenderer),
@@ -331,7 +347,7 @@ module Samagotchi
         when :question_relay then question_relayed(event)
         # Written while the session sat idle: shown at the open prompt. One
         # collected just as a turn started describes the chat before it.
-        when :recap_ready then @screen.commit(recap_block(event[:recap])) unless @running || event[:recap].to_s.strip.empty?
+        when :recap_ready then show_recap_ready(event) unless @running || event[:recap].to_s.strip.empty?
         when :guardrail_warning then @screen.commit(EventRenderer.load_warning_line(event))
         # A plugin's slow setup: the activity row turns while it runs; a
         # line when it is done (a failure is a warn card).
@@ -358,6 +374,32 @@ module Samagotchi
       end
 
       private
+
+      # A recap written while idle, with the time it was written.
+      def show_recap_ready(event)
+        mark_activity
+        @screen.commit(recap_block(event[:recap], at: event[:created_at]))
+      end
+
+      # Activity starts now: a gap's divider first when one passed since the
+      # last (none while a turn runs: its steps are no gap).
+      def mark_activity
+        line = @gaps.divider(quiet: @running)
+        @screen.commit(gap_divider(line)) if line
+      end
+
+      # The divider above a typed line's echo (RelineSeam.echo_above, on the
+      # reader thread): a prompt typed after a quiet gap, at an idle prompt.
+      # It marks the activity, so the turn's start marks no second one.
+      def gap_above_echo(text)
+        return nil if @running
+
+        route = ComposerRoute.call(text.to_s.strip, running: false, registry: command_registry)
+        return nil unless %i[prompt deliver].include?(route.kind)
+
+        line = @gaps.divider
+        line && gap_divider(line)
+      end
 
       # The newest chi installed, looked at once, at the join.
       def installed_version
@@ -936,6 +978,9 @@ module Samagotchi
         return own_prompt_failed if images.nil?
 
         running = @running
+        # Off a live region (no echo seam) the divider comes here; after
+        # #gap_above_echo it marks none.
+        mark_activity
         options = { prompt: text, client_id: client_id_for(text) }
         options[:no_interrupt] = true if @no_interrupt
         options[:images] = images unless images.empty?
@@ -1315,8 +1360,9 @@ module Samagotchi
           @attached = true
           # The recap first: what the session was about, then where it stopped.
           saved = snapshot[:saved_recap]
-          @screen.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved && !saved[:text].to_s.strip.empty?
+          @screen.commit(recap_block(saved[:text], turns_since: saved[:turns_since], at: saved[:created_at])) if saved && !saved[:text].to_s.strip.empty?
           render_join_header(Array(snapshot[:messages]))
+          render_join_gap(snapshot, saved)
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
           @screen.commit("plugins> #{snapshot[:plugin_warning]}") if snapshot[:plugin_warning]
           version_line = VersionLines.at_attach(worker: snapshot[:chi_version], installed: installed_version,
@@ -1429,6 +1475,17 @@ module Samagotchi
         else
           send_prompt(text)
         end
+      end
+
+      # Where the session's last activity was: its newest stamped entry,
+      # else its saved recap's time. A gap ago (and no turn running): one
+      # line after the join block says when.
+      def render_join_gap(snapshot, saved)
+        @gaps.seed(snapshot[:messages], fallback: saved&.dig(:created_at))
+        return if snapshot[:current_turn]
+
+        line = @gaps.join_line
+        @screen.commit(gap_divider(line)) if line
       end
 
       def render_join_header(messages)
@@ -1660,6 +1717,8 @@ module Samagotchi
       def show_enqueued(event)
         return if own?(event[:client_id])
 
+        # Another client's prompt shows here, before its turn starts.
+        mark_activity
         @shown_enqueued << event[:enqueued_id]
         line = prompt_line(event[:client_id], event[:prompt], **author_of(event[:author]))
         @screen.commit(event[:delivery] == Delivery::QUEUE ? "#{line} #{QUEUED_NOTE}" : line)

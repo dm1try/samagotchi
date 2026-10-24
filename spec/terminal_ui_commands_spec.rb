@@ -662,6 +662,44 @@ RSpec.describe Samagotchi::TerminalUI do
         agent.messages_for(session)
         expect(surface.lines).to eq(["Resumed session: s-9", "recap> Did X."])
       end
+
+      describe "the time since the session's last activity" do
+        around { |example| with_env("TZ" => "Europe/Berlin") { example.run } }
+
+        let(:wall) { [Time.utc(2026, 10, 24, 12, 0, 0)] }
+        let(:agent) { described_class.new(client: client, surface: surface, now: -> { wall.first }) }
+
+        it "shows the resumed recap's time, and marks the gap before the first prompt and a reminder turn" do
+          session = instance_double(Samagotchi::Session, id: "s-9",
+                                                         messages: [{ role: "user", content: "hi", at: "2026-10-24T11:13:00.000Z" }])
+          agent.instance_variable_set(:@resume_session, session)
+          allow(engine).to receive(:saved_recap).and_return({ text: "Did X.", covered: 1, turns_since: 0,
+                                                              created_at: "2026-10-24T11:14:00Z" })
+          agent.messages_for(session)
+          agent.send(:mark_activity)
+          agent.send(:mark_activity)
+          wall[0] += 20 * 60
+          allow(engine).to receive_messages(due_reminder_names: ["stretch"], reminders_due?: true)
+          allow(engine).to receive(:clear_due_reminder_names!)
+          allow(agent).to receive(:run_engine_turn).and_return(nil)
+          agent.send(:run_reminder_turn, nil)
+
+          expect(surface.lines.first(3)).to eq(["Resumed session: s-9", "recap 13:14> Did X.", "── 14:00 · 47 min later ──"])
+          expect(surface.lines.grep(/──/)).to eq(["── 14:00 · 47 min later ──", "── 14:20 · 20 min later ──"])
+        end
+
+        it "puts a typed prompt's divider above its echo, and none for a command or during a turn" do
+          agent.send(:mark_activity)
+          wall[0] += 30 * 60
+          expect(agent.send(:gap_above_echo, "/stats")).to be_nil
+          allow(engine).to receive(:turn_running?).and_return(true)
+          expect(agent.send(:gap_above_echo, "steer this")).to be_nil
+          allow(engine).to receive(:turn_running?).and_return(false)
+          expect(agent.send(:gap_above_echo, "fix it")).to eq("── 14:30 · 30 min later ──")
+          agent.send(:mark_activity)
+          expect(surface.lines.grep(/──/)).to be_empty
+        end
+      end
     end
   end
 

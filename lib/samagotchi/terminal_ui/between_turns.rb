@@ -26,7 +26,9 @@ module Samagotchi
       # @param renderer [EventRenderer] draws cards
       # @param turn_running [#call] whether a turn runs now
       # @param quiet [Boolean] a --non-interactive run: no init lines
-      def initialize(surface:, view:, renderer:, turn_running:, quiet: false)
+      # @param gaps [GapClock, nil] the session's last activity: a recap
+      #   after a quiet gap has its divider
+      def initialize(surface:, view:, renderer:, turn_running:, quiet: false, gaps: nil)
         @surface = surface
         @view = view
         @renderer = renderer
@@ -34,6 +36,7 @@ module Samagotchi
         @quiet = quiet
         @cards = Queue.new
         @recap = nil
+        @gaps = gaps
       end
 
       attr_writer :surface
@@ -84,7 +87,7 @@ module Samagotchi
         return unless event[:type] == :recap_ready
         return if event[:recap].to_s.strip.empty? || turn_running?
 
-        @recap = event[:recap].to_s
+        @recap = { text: event[:recap].to_s, at: event[:created_at] }
       end
 
       # Print a recap written while idle (main thread, at the open prompt).
@@ -93,7 +96,9 @@ module Samagotchi
         return unless recap
 
         @recap = nil
-        @surface.commit(recap_block(recap))
+        line = @gaps&.divider
+        @surface.commit(gap_divider(line)) if line
+        @surface.commit(recap_block(recap[:text], at: recap[:at]))
       end
 
       # Print the cards, notices and anytime commands' output kept since the
