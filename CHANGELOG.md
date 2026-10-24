@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-10-24
+
 ### Added
 
 - Experimental: `chi web` behind an auth proxy (oauth2-proxy, nginx `auth_request`, Caddy `forward_auth`, Cloudflare
@@ -34,6 +36,8 @@ and commands may change between minor versions. How releases are made:
   chi's own clients never send these headers. A worker's `bridge.json` is now 0600.
 - `chi share`'s LAN link names the LAN address the running chi web reports only if it is one of this machine's own
   addresses; else the link names 127.0.0.1 (whatever answers on chi web's port may be another user's listener).
+
+Update with `chi update` (the system bundle 0.109.0), then restart `chi web`.
 
 ## [0.108.0] - 2026-10-24
 
@@ -4192,7 +4196,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.108.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.109.0...HEAD
+[0.109.0]: https://github.com/dm1try/samagotchi/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/dm1try/samagotchi/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/dm1try/samagotchi/compare/v0.106.0...v0.107.0
 [0.106.0]: https://github.com/dm1try/samagotchi/compare/v0.105.0...v0.106.0
