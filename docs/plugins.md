@@ -2373,7 +2373,7 @@ skill install card) works the same.
 
 `chi bundle install ruby` (or the `dev` profile) installs the bundle shipped
 with chi (`lib/samagotchi/bundles/ruby/plugin.rb`): one `chi.on` hook
-(`:after_tool_call`), the `ruby_symbol` tool, and no memory file.
+(`:after_tool_call`), and no memory file.
 
 An RSpec run that finds no examples prints `0 examples, 0 failures`, which
 reads green: the model takes the suite as passing and moves on with code no
@@ -2408,48 +2408,6 @@ can say why the run was empty. It never runs anything.
 Nothing is remembered, so the next 0-example run hints again: it can be
 the same mistake on another command, or a different one. A hint the model
 answers before joining the turn is dropped, as any steer is.
-
-### The `ruby_symbol` tool
-
-A tool that finds a Ruby method or class by name and returns its source, or
-gives a file's outline: one call in place of a `grep` for `def name` and a
-`read` of the lines it found. It parses with Prism, each call afresh (no
-index; chi's own `lib/` takes about 0.25 s).
-
-| `path` | `name` | result |
-|---|---|---|
-| a file | none | the outline: one line per class, module and def, nested by indentation, `start-end  def name(params)` |
-| a file | given | each match: a `path:start-end` header, then its lines as the file has them |
-| a directory (default: the session's directory) | given | the same across its `.rb` files, up to 3 matches with their source; more, a list of `path:start-end  Namespace#name` |
-
-- **Names.** `bar` (any def `bar`), `Foo#bar` (an instance method),
-  `Foo.bar` (a `def self.bar`, a def in `class << self`, a `def Foo.bar`),
-  `Foo` and `Foo::Bar` (a class or module, or a constant made by
-  `Data.define`, `Struct.new`, `Class.new` or `Module.new`, whose block's
-  defs count as its methods). The namespace matches as a suffix:
-  `Bridge#start` finds `Samagotchi::Bridge#start`. No match is an `Error:`
-  naming up to 5 near names: the same name in another namespace.
-- **The lines** are the file's raw lines, no line-number prefixes, as
-  `read` returns a range, so an `edit` can copy them as its old text.
-- **A directory's files** are `git ls-files` (tracked and untracked, the
-  ignored ones left out) in a work tree, else a glob that skips `vendor/`,
-  `node_modules/`, `tmp/` and dot folders; at most 5000, each at most 1 MB.
-- **The cut.** A result over 8000 characters is cut at a line boundary,
-  with a note to narrow the name or `read` a `path:start-end` given (under
-  the tool output limit, whose "read it in parts" doesn't fit here).
-- **Guardrails.** Its `targets:` is the `path` (the session's directory
-  with none), so `path:` and `outside_repo` rules see it; the shipped rules
-  ask nothing of it (theirs key on `write` and `edit`), and protected paths
-  don't apply to plugin tools.
-- **Prism 1.0 or newer.** Ruby 3.4 ships it; Ruby 3.3's default gem is
-  0.19, but a 3.3 with rubocop or minitest 6 installed has a 1.x. Below 1.0
-  (or with no Prism) the tool isn't registered and the load logs
-  `ruby_symbol_unavailable` once; the rspec hint still works.
-- **Known limits.** A participant's review turn denies it (the review
-  boundary allows only `read` and `memory_read`). Its results get no
-  working-set stamp and the `stale` layer doesn't see them: those are
-  `read`'s. It is declared in every toolkit unless a kit's `remove:` names
-  it.
 
 ## Shutdown
 

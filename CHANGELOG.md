@@ -8,13 +8,6 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Added
-
-- ruby 0.2.0: a `ruby_symbol` tool finds a Ruby method or class by name and returns its source (`bar`, `Foo#bar`,
-  `Foo.bar`, `Foo::Bar`, the namespace matching as a suffix), in a file or across a directory's `.rb` files, or
-  gives a file's outline, in place of a grep for `def bar` then a ranged read. It needs Prism 1.0 or newer (Ruby
-  3.4+, or a 3.3 with rubocop or minitest 6 installed); below it the bundle loads without the tool.
-
 ### Fixed
 
 - work-cap 0.1.2: a session's state file that doesn't read (not JSON) no longer drops its `/workcap` cap silently:
