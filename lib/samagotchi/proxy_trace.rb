@@ -10,16 +10,20 @@ module Samagotchi
   module ProxyTrace
     # Any name starting with one of these: X-Forwarded-For/-Host/-Proto/
     # -Email/-User…, oauth2-proxy's X-Auth-Request-*, Cloudflare's Cf-*,
-    # Tailscale Serve's Tailscale-User-*, Authentik's X-Authentik-*.
-    PREFIXES = %w[x-forwarded- x-auth-request- cf- tailscale- x-authentik- remote-].freeze
+    # Tailscale Serve's Tailscale-User-*, Authentik's X-Authentik-*, Google
+    # IAP's X-Goog-*, Azure App Service's X-MS-Client-Principal*, AWS ALB's
+    # X-Amzn-Oidc-*, Envoy's X-Envoy-*.
+    PREFIXES = %w[x-forwarded- x-auth-request- cf- tailscale- x-authentik- remote- x-goog- x-ms-client-principal
+                  x-amzn-oidc- x-envoy- x-original-forwarded-].freeze
     # And these whole names.
-    NAMES = %w[forwarded x-real-ip via true-client-ip x-original-url x-original-uri].freeze
+    NAMES = %w[forwarded x-real-ip via true-client-ip x-client-ip x-original-url x-original-uri].freeze
 
     # The identity headers known setups send (docs/configuration.md's
     # table): chi web's hint when the proxy sends one of them but not the
     # one configured.
     IDENTITY_HEADERS = %w[X-Forwarded-Email X-Auth-Request-Email Cf-Access-Authenticated-User-Email Tailscale-User-Login
-                          Remote-Email X-Authentik-Email X-Forwarded-User X-Auth-Request-User Remote-User].freeze
+                          Remote-Email X-Authentik-Email X-Goog-Authenticated-User-Email X-MS-Client-Principal-Name
+                          X-Amzn-Oidc-Identity X-Forwarded-User X-Auth-Request-User Remote-User].freeze
 
     module_function
 

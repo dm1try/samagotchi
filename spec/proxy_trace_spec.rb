@@ -12,6 +12,14 @@ RSpec.describe Samagotchi::ProxyTrace do
     end
   end
 
+  it "knows the cloud proxies' and meshes' headers (IAP, App Service, ALB, Envoy)" do
+    %w[X-Goog-Authenticated-User-Email X-Goog-IAP-JWT-Assertion X-MS-Client-Principal-Name X-MS-Client-Principal
+       X-Amzn-Oidc-Identity X-Amzn-Oidc-Data X-Client-IP X-Envoy-External-Address X-Original-Forwarded-For].each do |name|
+      expect(described_class.header?(name)).to be(true), name
+    end
+    expect(described_class::IDENTITY_HEADERS).to include("X-Goog-Authenticated-User-Email", "X-MS-Client-Principal-Name")
+  end
+
   it "leaves chi's own clients' headers alone" do
     %w[Host Content-Type Content-Length Authorization Last-Event-ID Accept Cookie Connection User-Agent Origin].each do |name|
       expect(described_class.header?(name)).to be(false), name
