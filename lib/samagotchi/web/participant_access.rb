@@ -319,7 +319,9 @@ module Samagotchi
       # says waiting_for_owner), no origin, no parent strategy. It waits as
       # for a queued turn (theirs always is: never merged), so it never
       # falls back to the next reply past a cursor, which would be anyone's;
-      # the body's cursor doesn't count.
+      # the body's cursor doesn't count. A revoke or the expiry ends a wait
+      # already running (the gate checked the grant when it began): 401
+      # token_revoked / token_expired, as their next request would get.
       def participant_wait(req, id, options)
         grant = principal(req).grant
         return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
@@ -327,8 +329,13 @@ module Samagotchi
         options = options.merge(queued: true, cursor: nil)
         session = session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
-                                               cancelled: -> { !@server_running.call })
-        return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
+                                               cancelled: -> { !@server_running.call || !@grants.active?(grant.id) })
+        if result.status == :canceled
+          ended = @grants.find(grant.id)&.state(@grants.now)
+          return error_response(401, *ENDED.fetch(ended)) if ENDED.key?(ended)
+
+          return error_response(503, "server_stopping", "chi web is stopping; wait again")
+        end
 
         json_response(200, participant_wait_json(result, participant_viewer(req, session)))
       end

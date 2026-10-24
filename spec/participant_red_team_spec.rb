@@ -226,6 +226,23 @@ RSpec.describe "a participant red-teaming a session" do
       expect(failed).to eq([200, { "status" => "error", "text" => Samagotchi::ParticipantMessages::TURN_FAILED }])
     end
 
+    # L-P3: a wait already running when the link is revoked ends there (the
+    # gate checked the grant only when it began), as their stream does.
+    it "can't read its reply through a /wait that was running when its link was revoked" do
+      enqueued_id = turn({ prompt: "is step 3 safe?" }).last["enqueued_id"]
+      started = Queue.new
+      allow(app.send(:session_access)).to receive(:wait_reply).and_wrap_original do |original, *args, **options|
+        started << true
+        original.call(*args, **options, poll_interval: 0.01)
+      end
+      waiting = Thread.new { post("/api/sessions/#{session.id}/wait", { turn: enqueued_id, timeout: 20 }) }
+      pop!(started, "the participant's wait to start")
+      Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, by: "owner", state_dir: state_dir)
+
+      expect(join!(waiting, "the participant's wait after the revoke").value)
+        .to eq([401, { "error" => "token_revoked", "detail" => Samagotchi::ParticipantMessages::TOKEN_REVOKED }])
+    end
+
     it "can't send images" do
       expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] })).to eq(not_permitted)
     end

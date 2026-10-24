@@ -66,6 +66,8 @@ and commands may change between minor versions. How releases are made:
   invite, which kept only the new grant and dropped every other link's; `chi share` and chi web refuse invite, ls,
   cap and revoke with one line naming the file (exit 1), and a grant row without its digest or expiry no longer
   makes every participant request a 500.
+- Participants: revoking a participant (or their link expiring) ends their `chi send --wait` already waiting at chi
+  web, refused as their link's end, instead of handing them the reply that came within the next 30 s.
 - `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
   as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
 - A remote whose address answers something other than HTTP (another server on that port, an SSH banner), or a
