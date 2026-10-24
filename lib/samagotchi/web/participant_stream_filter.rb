@@ -15,7 +15,8 @@ module Samagotchi
     #
     # The reply's text is sent by whole lines: a secret the model streams
     # over two chunks is redacted as one (Redact sees the line), and a
-    # private key block is withheld from its BEGIN line to its END line.
+    # private key block is withheld from its BEGIN line to its END line (a
+    # block left open, to the turn's end: TURN_BOUNDARY).
     # The rest of a line waits for its end, a boundary (a tool call, the
     # turn's end, the owner's question) or MAX_HELD characters (then up to
     # its last space). A cut never splits a secret: never inside what
@@ -38,6 +39,10 @@ module Samagotchi
       # The events before which the held text goes out.
       FLUSH_BEFORE = %w[tool_call_started turn_completed turn_canceled turn_failed question_requested continue_offered
                         snapshot reset].freeze
+      # A turn's start and end: a private key block the reply left open is
+      # withheld to here (fail closed within the turn), not to the stream's
+      # end.
+      TURN_BOUNDARY = %w[turn_started turn_completed turn_canceled turn_failed].freeze
       PEM_BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/
       PEM_END = /-----END [A-Z0-9 ]*PRIVATE KEY-----/
 
@@ -101,9 +106,12 @@ module Samagotchi
           @dropped = nil
           return frame(id, shown)
         end
-        return flush + frame(id, shown) if FLUSH_BEFORE.include?(shown["type"])
+        boundary = TURN_BOUNDARY.include?(shown["type"])
+        return frame(id, shown) unless boundary || FLUSH_BEFORE.include?(shown["type"])
 
-        frame(id, shown)
+        out = flush
+        @in_key = @dropped_key = false if boundary
+        out + frame(id, shown)
       end
 
       # A reply chunk: its text joins the held line; the whole lines go out.

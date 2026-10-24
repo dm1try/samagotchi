@@ -209,7 +209,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   written again (`id:` the Bridge's cursor when it looks like one, `event:` the filtered type); a comment is a
   `: ping`; anything that doesn't parse is dropped. The reply's text goes out by whole lines, so a secret the model
   streams over two chunks is redacted as one, and a private key block is withheld from its BEGIN line to its END
-  line; the rest of a line waits for its end, a tool call, the turn's end or the owner's question (or 400
+  line (or, left open, to the turn's end); the rest of a line waits for its end, a tool call, the turn's end or the owner's question (or 400
   characters: then it is cut at its last space that splits no secret, never inside what `Redact` would redact
   and never after a key word whose value is still to come, `Redact::OPEN_VALUE`; past 1600 with no such space,
   the line's last unbroken run and the rest of that line go out as one `[redacted]`). The owner's stream never

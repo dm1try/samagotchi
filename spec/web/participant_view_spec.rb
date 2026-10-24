@@ -267,6 +267,20 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
     expect(texts(out)).to eq("[redacted]\nafter\n")
   end
 
+  # L-P6: a key block the turn never closed is withheld to the turn's end
+  # (fail closed), not to the stream's: the next turn's reply is sent.
+  it "withholds an unclosed private key block to its turn's end, and sends the next turn's reply" do
+    out = [frame("1", { type: "turn_started", prompt: "go" }),
+           frame("2", { type: "generation_chunk", text: "Here:\n-----BEGIN RSA PRIVATE KEY-----\nMIIE\n" }),
+           frame("3", { type: "generation_chunk", text: "still the key\n" }),
+           frame("4", { type: "turn_completed" })].map { |bytes| filter.call(bytes) }.join
+    expect(texts(out)).to eq("Here:\n[redacted]\n")
+    out = [frame("5", { type: "turn_started", prompt: "again" }),
+           frame("6", { type: "generation_chunk", text: "A new reply\n" }),
+           frame("7", { type: "turn_completed" })].map { |bytes| filter.call(bytes) }.join
+    expect(texts(out)).to eq("A new reply\n")
+  end
+
   it "sends the held rest of a line before a tool row or the turn's end, and drops it at a restarted step" do
     out = filter.call(frame("1", { type: "generation_chunk", text: "Let me look", iteration: 1 })) +
           filter.call(frame("2", { type: "tool_call_started", tool: "read", iteration: 1, call_index: 0 }))
