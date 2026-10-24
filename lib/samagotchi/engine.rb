@@ -58,6 +58,7 @@ require_relative "hook_routes"
 require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "reminder_queue"
+require_relative "memory_orphans"
 require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "used_memories"
@@ -985,7 +986,8 @@ module Samagotchi
 
     # Announce what failed to load and what plugins showed while loading,
     # once, as soon as the owner can show it (the worker's Bridge is up, the
-    # REPL renders events): the guardrail and plugin warnings, then the
+    # REPL renders events): the guardrail and plugin warnings, an orphaned
+    # project memory folder (label: "memory", MemoryOrphans), then the
     # held notices (between_turns) and cards (in_turn: false, so late
     # joiners get them). Without this call the first turn announces them
     # (#announce_guardrail_failures).
@@ -998,6 +1000,8 @@ module Samagotchi
         announce({ type: :guardrail_warning, message: message }) if message
         plugins = @plugin_failures.message
         announce({ type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
+        memory = MemoryOrphans.message
+        announce({ type: :guardrail_warning, message: memory, label: "memory" }) if memory
         @extension_load.held_events.each do |event|
           announce(event[:type] == :card ? event.merge(in_turn: false) : event.merge(between_turns: true))
         end
@@ -1449,8 +1453,8 @@ module Samagotchi
 
     # Once per Engine, on its first turn: what failed to load, so every UI
     # (REPL, attached TUI, web) shows it: the guardrails, then the plugins
-    # (label: "plugins"; the UIs say guardrails without one), then the
-    # notices and cards plugins showed as they loaded.
+    # (label: "plugins"; the UIs say guardrails without one), an orphaned
+    # project memory folder (label: "memory"), then the notices and cards plugins showed as they loaded.
     def announce_guardrail_failures(on_event)
       return if @guardrail_failures_announced
 
@@ -1459,6 +1463,8 @@ module Samagotchi
       emit_event(on_event, { type: :guardrail_warning, message: message }) if message
       plugins = @plugin_failures.message
       emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
+      memory = MemoryOrphans.message
+      emit_event(on_event, { type: :guardrail_warning, message: memory, label: "memory" }) if memory
       @extension_load.held_events.each { |event| emit_event(on_event, event) }
     end
     private :announce_guardrail_failures
