@@ -256,6 +256,18 @@ RSpec.describe AffectedSpecs::Picker do
         .to all(be(true))
     end
 
+    it "skips a role's verb several classes define (report, render, emit), keeps a specific name" do
+      files["lib/samagotchi/gauge.rb"] = "class Gauge\n  def report\n    1\n  end\n\n  def report_cells\n    2\n  end\nend\n"
+      files["spec/noisy_spec.rb"] = "parent.report; view.render; bus.emit"
+      files["spec/cells_spec.rb"] = "g.report_cells"
+      lines["lib/samagotchi/gauge.rb"] = [3, 7]
+
+      expect(pick("lib/samagotchi/gauge.rb").ruby.map { |p| [p.path, p.reason] })
+        .to eq([["spec/cells_spec.rb", "calls report_cells (lib/samagotchi/gauge.rb)"]])
+      expect(%w[report render emit dispatch].map { |name| described_class.new(changed: [], tree: nil).send(:generic_method?, name) })
+        .to all(be(true))
+    end
+
     it "counts a pure deletion inside a def as a change to that def" do
       lines["lib/samagotchi/widget.rb"] = [14] # a line deleted after `def pad_cells`
 

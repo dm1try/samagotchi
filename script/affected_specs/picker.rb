@@ -56,10 +56,16 @@ module AffectedSpecs
   HUB_SPECS = 40
 
   # Method names too common to say who calls a changed method: a spec
-  # naming one names something else. Names under MIN_CALLER_NAME
-  # characters and the methods every Object or Enumerable has are skipped too.
-  GENERIC_METHODS = %w[initialize call to_s to_h inspect run read path name pick parse check start fetch value
-                       result].freeze
+  # naming one names something else. Most are a role's verb or noun that
+  # several lib/ classes define (report, render, emit…). Names under
+  # MIN_CALLER_NAME characters and the methods every Object or Enumerable
+  # has are skipped too.
+  GENERIC_METHODS = %w[initialize call to_s to_h to_a inspect run read write path name pick parse check start stop
+                       fetch value result report render emit dispatch handle process build apply update load save
+                       close wait list show format summary label text message line status kind state error source
+                       entry entries register resolve normalize install remove reset refresh record count note
+                       notify fire tick post request answer finish feed attach cancel push drop take keep merge split
+                       generate delete create append scan store commit complete open flush wrap watch].freeze
   MIN_CALLER_NAME = 4
   # At most this many changed method names go to the callers grep.
   MAX_CALLER_NAMES = 12
