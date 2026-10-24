@@ -44,6 +44,7 @@ class Plugin
     @warned = nil          # [session id, cap] the share warning was given for
     @unknown_warned = nil  # the session id the "can't be enforced" notice was given for
     @unread_warned = nil   # the session id the "isn't a number" notice was given for
+    @corrupt_warned = nil  # the session id the "state file doesn't read" notice was given for
   end
 
   def register(chi)
@@ -104,6 +105,7 @@ class Plugin
   def check(ctx)
     resolved = resolve(ctx)
     unreadable(ctx, resolved)
+    corrupt(ctx, resolved)
     cap = resolved[:cap]
     return unless cap
 
@@ -140,9 +142,22 @@ class Plugin
     return if bad.nil? || bad.empty? || !first_time?(:@unread_warned, resolved[:session])
 
     named = bad.map { |key, value| "#{key}: #{value.inspect}" }.join(" and ")
-    used = resolved[:cap] ? "using #{resolved[:key]}: (#{money(resolved[:cap])})" : "no cap"
-    ctx.notify("cost-cap: #{named} #{bad.size == 1 ? "isn't" : "aren't"} a number or off; #{used}", level: :warn)
+    ctx.notify("cost-cap: #{named} #{bad.size == 1 ? "isn't" : "aren't"} a number or off; #{using(resolved)}",
+               level: :warn)
   end
+
+  # Once per session: a state file that is there but doesn't read (not
+  # JSON, or not a mapping) holds no /cap cap, so the settings' is used;
+  # said rather than a /cap cap silently gone.
+  def corrupt(ctx, resolved)
+    path = resolved[:corrupt]
+    return unless path && first_time?(:@corrupt_warned, resolved[:session])
+
+    ctx.notify("cost-cap: #{path} doesn't read, its /cap cap is ignored; #{using(resolved)}", level: :warn)
+  end
+
+  # "using default: ($5.00)", or "no cap".
+  def using(resolved) = resolved[:cap] ? "using #{resolved[:key]}: (#{money(resolved[:cap])})" : "no cap"
 
   def at_cap(ctx, resolved, cost)
     cap = resolved[:cap]
@@ -222,20 +237,29 @@ class Plugin
     cached = @mutex.synchronize { @resolved }
     return cached if cached && cached[:session] == session
 
-    resolved = { session: session, **(state(ctx, session) || configured(ctx)) }
+    saved, corrupt = state(ctx, session)
+    resolved = { session: session, **(saved || configured(ctx)), corrupt: corrupt }
     @mutex.synchronize { @resolved = resolved }
   end
 
+  # The state file's cap and step ({cap:, step:}), nil without one (or
+  # one without a "cap"), and the file's path when it is there but
+  # doesn't read (logged; the user is told by #corrupt), else nil.
   def state(ctx, session)
-    return nil unless session
+    return [nil, nil] unless session
 
-    saved = JSON.parse(File.read(state_path(ctx, session)))
-    return nil unless saved.is_a?(Hash) && saved.key?("cap")
+    path = state_path(ctx, session)
+    saved = JSON.parse(File.read(path))
+    raise JSON::ParserError, "not a JSON object" unless saved.is_a?(Hash)
+    return [nil, nil] unless saved.key?("cap")
 
     cap = self.class.amount(saved["cap"])
-    { cap: cap, step: self.class.amount(saved["step"]) || cap }
-  rescue Errno::ENOENT, JSON::ParserError
-    nil
+    [{ cap: cap, step: self.class.amount(saved["step"]) || cap }, nil]
+  rescue Errno::ENOENT
+    [nil, nil]
+  rescue JSON::ParserError => e
+    ctx.log.warn(:costcap_state_unreadable, path: path, error: e.message.to_s[0, 200])
+    [nil, path]
   end
 
   # The first of cap:, child: (a delegate's) and default: that is set and

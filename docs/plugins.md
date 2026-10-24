@@ -1708,7 +1708,9 @@ parent may Continue: nothing restricts it, as with the step limit. A background 
 its own card and doesn't wake its parent ([sessions.md](sessions.md#delegating)).
 
 The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"cap": 3.0, "step": 3.0}`), removed
-with the session.
+with the session. A file that is there but doesn't read (not JSON, or not a mapping) is logged
+(`costcap_state_unreadable`) and gets one notice, `cost-cap: <path> doesn't read, its /cap cap is ignored; using
+default: ($5.00)`: the settings' cap is used, never a silent drop; the next `/cap` or Continue rewrites it.
 
 Its sibling for work instead of money, tool calls and active minutes across the session's turns, is
 [the work-cap bundle](#the-work-cap-bundle): the cap a local model (no cost) can have.

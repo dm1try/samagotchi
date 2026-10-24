@@ -246,6 +246,36 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(bundle.command("/cap")).to eq("cost-cap: no cap ($9.00 spent)")
     end
 
+    it "logs a state file that doesn't read and tells the user once, falling back to the settings' cap" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "{\"cap\": 9")
+      bundle = plugin(cost: 1.0)
+      allow(bundle.ctx.log).to receive(:warn)
+      2.times { generation(bundle) }
+      expect(bundle.ctx.log).to have_received(:warn).once
+                                                    .with(:costcap_state_unreadable, path: state_file, error: be_a(String))
+      expect(notices(bundle)).to eq([["cost-cap: #{state_file} doesn't read, its /cap cap is ignored; " \
+                                      "using default: ($3.00)", :warn]])
+      expect(bundle.questions).to be_empty
+      expect(bundle.command("/cap")).to start_with("cost-cap: $1.00 spent of $3.00")
+    end
+
+    it "takes a state file that is JSON but not a mapping as one that doesn't read" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "[]")
+      bundle = plugin({}, cost: 1.0)
+      generation(bundle)
+      expect(notices(bundle)).to eq([["cost-cap: #{state_file} doesn't read, its /cap cap is ignored; no cap", :warn]])
+    end
+
+    it "says nothing without a state file" do
+      bundle = plugin(cost: 1.0)
+      allow(bundle.ctx.log).to receive(:warn)
+      generation(bundle)
+      expect(bundle.notices).to be_empty
+      expect(bundle.ctx.log).not_to have_received(:warn)
+    end
+
     it "resolves the cap once per session: delegate? is read once across generations" do
       bundle = plugin({ "default" => 3.0, "child" => 2.0 }, cost: 1.0)
       allow(bundle.ctx).to receive(:delegate?).and_return(false)
