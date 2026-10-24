@@ -204,12 +204,13 @@ made by `chi share revoke` in another process; the page then reads a 401 and sho
 D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states.
 Not tool output or arguments, thinking, approvals' and questions' content, memories (text or names), context notes,
 plugin steers, automatic and delegate input, cards, command output, the working set (the user decided: not), cost,
-timing, host paths or the owner's prompt history. Every read a participant reaches goes through one module,
+timing (durations, records: only the wall time `at` of each prompt, reply and turn start, for the page's gap lines
+and hover times, D6 of the session-time-gaps plan), host paths or the owner's prompt history. Every read a participant reaches goes through one module,
 `Web::ParticipantView` (`lib/samagotchi/web/participant_view.rb`), whose every answer is a new hash built from named
 fields: a field added to an event later reaches nobody until it is named there.
 
 - **Events** (`.event`, the stream). `EVENTS` names the types a participant gets, each rebuilt by its own method:
-  `turn_started` (turn id, the author and name, `mine` for their own, the prompt only when a person sent the turn:
+  `turn_started` (turn id, its wall time `at`, the author and name, `mine` for their own, the prompt only when a person sent the turn:
   `ClientId.human?`, else `automatic`; `continue`), the turn's end (`turn_completed`, `turn_canceled`, `turn_failed`:
   type and turn id), `generation_chunk` (its visible `text` only; a thinking-only chunk is dropped),
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to

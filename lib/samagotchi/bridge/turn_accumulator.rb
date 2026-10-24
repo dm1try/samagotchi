@@ -46,7 +46,7 @@ module Samagotchi
       end
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
-      #   continue, ordered parts (generation / thinking / text / tool /
+      #   continue, at (its wall time), ordered parts (generation / thinking / text / tool /
       #   input / steer / reminder / notice), pending_question and the last event_seq folded
       #   in. A finished tool part keeps the live row's action and duration_ms
       #   too, a running one the time it has run so far (elapsed_ms), so a
@@ -275,6 +275,8 @@ module Samagotchi
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }
           @turn[:resumed] = true if event[:resumed]
+          # Its wall time (MessageTime): a joining page's gap divider.
+          @turn[:at] = event[:at] if event[:at]
           @tool_started_at = {}
           @working_set = nil
           @turn[:images] = event[:images] if event[:images]

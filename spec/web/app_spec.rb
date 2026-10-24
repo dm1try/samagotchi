@@ -719,10 +719,10 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(JSON.parse(body.first)["messages"]).to eq([
         { "role" => "user", "content" => "hi" },
-        { "role" => "note", "content" => "deploy frozen", "label" => "slack" },
-        { "role" => "note", "content" => "api moved", "label" => "session 3f2a1c (/work/foo)" }
+        { "role" => "note", "content" => "deploy frozen", "label" => "slack", "at" => message_at },
+        { "role" => "note", "content" => "api moved", "label" => "session 3f2a1c (/work/foo)", "at" => message_at }
       ])
-      expect(app.send(:messages_for_display, [note])).to eq([{ role: "note", content: "deploy frozen", label: "slack" }])
+      expect(app.send(:messages_for_display, [note])).to eq([{ role: "note", content: "deploy frozen", label: "slack", at: message_at }])
     end
 
     it "marks a context wake turn's note as its turn's start, with the turn's id" do
@@ -731,7 +731,7 @@ RSpec.describe Samagotchi::Web::App do
       app = build_app(state_dir: Dir.mktmpdir)
 
       expect(app.send(:messages_for_display, [note]))
-        .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", turn_start: true, turn_id: "T2" }])
+        .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", at: message_at, turn_start: true, turn_id: "T2" }])
     end
 
     it "shows a plugin's steer as role steer with its source and the step that answered it, never as a prompt" do
@@ -774,6 +774,18 @@ RSpec.describe Samagotchi::Web::App do
       expect(shown[1][:parts][:tools].first).to include(tool_id: "t1", edit: { kind: "forget", note: "a.rb is empty" })
     end
 
+    it "forwards each entry's wall time (at: the page's hover and gap dividers), string-keyed (a snapshot) too, and none when unstamped" do
+      at = "2026-10-24T14:32:05.000+02:00"
+      messages = [{ role: "user", content: "look", turn_id: "T1", at: at },
+                  { "role" => "model", "content" => "found it", "at" => at },
+                  { role: "user", content: "old one" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown).to eq([{ role: "user", content: "look", at: at, turn_id: "T1" }, { role: "assistant", content: "found it", at: at },
+                           { role: "user", content: "old one" }])
+    end
+
     it "keeps a prompt's turn id, which pairs it with its turn record" do
       messages = [{ role: "user", content: "look", turn_id: "T1" }, { "role" => "user", "content" => "again", "turn_id" => "T2" }]
 
@@ -792,8 +804,8 @@ RSpec.describe Samagotchi::Web::App do
       shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
 
       expect(shown).to eq([{ role: "user", content: "look" }, { role: "assistant", content: "reading" },
-                           { role: "user", content: "also the typos", merged: true, step: 2 },
-                           { role: "steer", content: "status?", source: "check-in", step: 2 },
+                           { role: "user", content: "also the typos", at: message_at, merged: true, step: 2 },
+                           { role: "steer", content: "status?", source: "check-in", step: 2, at: message_at },
                            { role: "assistant", content: "found it" }])
     end
 
@@ -807,9 +819,9 @@ RSpec.describe Samagotchi::Web::App do
       shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
 
       expect(shown).to eq([{ role: "user", content: "look", turn_id: "T1" }, { role: "assistant", content: "ok" },
-                           { role: "user", content: "session: c1\nstatus: answered", source: "delegate_report", turn_id: "T2" },
+                           { role: "user", content: "session: c1\nstatus: answered", at: message_at, source: "delegate_report", turn_id: "T2" },
                            { role: "assistant", content: "the child found it" },
-                           { role: "user", content: "sent", merged: true, step: 2, source: "chi_send" }])
+                           { role: "user", content: "sent", at: message_at, merged: true, step: 2, source: "chi_send" }])
     end
 
     it "includes last_event_seq = nil when no bridge is live" do
@@ -953,7 +965,7 @@ RSpec.describe Samagotchi::Web::App do
       # The cursor to stream on from: it names the worker (its epoch).
       expect(payload["last_event_id"]).to eq("40-e1")
       expect(payload["recap"]).to eq("We did things.")
-      expect(payload["saved_recap"]).to eq("text" => "We did things.", "turns_since" => 0)
+      expect(payload["saved_recap"]).to eq("text" => "We did things.", "turns_since" => 0, "created_at" => "t")
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload["guardrail_warning"]).to eq("hook g.rb (config) failed to load (x)")
       expect(payload["plugin_warning"]).to eq("plugin plugin.rb (bundle b) failed to load (x)")
@@ -1129,14 +1141,16 @@ RSpec.describe Samagotchi::Web::App do
       state_dir = Dir.mktmpdir
       FileUtils.mkdir_p(File.join(state_dir, "s1"))
       # StubSessionLoader's session: user "hello", assistant "hi there".
-      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "We said hello.", covered: 1, covered_digest: "x"))
+      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "We said hello.", covered: 1, covered_digest: "x",
+                                                                         created_at: "2026-10-24T12:32:00Z"))
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: state_dir)
 
       payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
 
       expect(payload["recap"]).to be_nil
-      expect(payload["saved_recap"]).to eq("text" => "We said hello.", "turns_since" => 0)
+      # When it was written: the recap's label time.
+      expect(payload["saved_recap"]).to eq("text" => "We said hello.", "turns_since" => 0, "created_at" => "2026-10-24T12:32:00Z")
       expect(manager.resume_calls).to be_empty
 
       File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "Earlier.", covered: 0, covered_digest: "x"))

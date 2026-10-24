@@ -108,7 +108,7 @@ module Samagotchi
       def turn_started(event, viewer)
         origin = TurnOrigin.of(field(event, :origin))
         author = field(event, :author) || origin.author
-        out = { "type" => "turn_started", **id_fields(event) }
+        out = { "type" => "turn_started", **id_fields(event), **time_field(event) }
         out.merge!(author_fields(author, field(event, :author_name), viewer))
         prompt = field(event, :prompt)
         if field(event, :continue)
@@ -164,8 +164,8 @@ module Samagotchi
       #   analytics records' +automatic+, and the running one's): their
       #   prompt is shown as an automatic turn, without its text
       # @return [Array<Hash>] {role: "user", content, turn_id, author,
-      #   author_name, mine, automatic, images} and {role: "assistant",
-      #   content, tools: [{tool, path}]}; no notes, steers, automatic
+      #   author_name, mine, automatic, images, at} and {role: "assistant",
+      #   content, tools: [{tool, path}], at}; no notes, steers, automatic
       #   input or empty-answer markers. html is added by the caller, from
       #   this (redacted) content.
       def messages(shown, viewer, automatic: [])
@@ -194,7 +194,7 @@ module Samagotchi
         merged = field(message, :merged)
         return nil unless turn_id || merged
 
-        out = { "role" => "user" }
+        out = { "role" => "user", **time_field(message) }
         if turn_id && automatic.include?(turn_id.to_s)
           out.merge!("content" => "", "automatic" => true, "turn_id" => turn_id.to_s)
           return out
@@ -215,7 +215,7 @@ module Samagotchi
         content = field(message, :content).to_s
         return nil if content.strip.empty? && rows.empty?
 
-        out = { "role" => "assistant", "content" => content }
+        out = { "role" => "assistant", "content" => content, **time_field(message) }
         out["tools"] = rows unless rows.empty?
         out
       end
@@ -285,6 +285,13 @@ module Samagotchi
         out["author_name"] = name.to_s if name.is_a?(String) && !name.empty?
         out["mine"] = true if viewer.own?(author)
         out
+      end
+
+      # When it happened (MessageTime's stamp, a turn's start): the page's
+      # hover and gap dividers. A wall time only, nothing of what was done.
+      def time_field(item)
+        at = field(item, :at)
+        at.is_a?(String) && !at.empty? ? { "at" => at } : {}
       end
 
       def id_fields(event)

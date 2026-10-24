@@ -38,6 +38,7 @@ require_relative "../version"
 require_relative "../config"
 require_relative "../output_formatter"
 require_relative "../image_store"
+require_relative "../message_time"
 require_relative "../context_note"
 require_relative "../context_sources"
 require_relative "../context_providers"
@@ -2683,11 +2684,12 @@ module Samagotchi
       # a live worker's (it counts against its Engine's messages), else
       # recap.json against the session file. A stopped session gets its
       # recap without a worker being woken.
-      # @return [Hash, nil] {text:, turns_since:}
+      # @return [Hash, nil] {text:, turns_since:, created_at:} (created_at:
+      #   when it was written, UTC ISO; absent from an older recap)
       def saved_recap_for(id, session, turn_snapshot)
         if turn_snapshot
           saved = turn_snapshot["saved_recap"]
-          return saved && { text: saved["text"], turns_since: saved["turns_since"].to_i }
+          return saved && { text: saved["text"], turns_since: saved["turns_since"].to_i, created_at: saved["created_at"] }.compact
         end
 
         saved = RecapStore.read(@session_class.session_dir(id, state_dir: default_state_dir))
@@ -2695,7 +2697,7 @@ module Samagotchi
 
         messages = Array(session.messages)
         since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.turn_prompt?(m) }
-        { text: saved[:text], turns_since: since }
+        { text: saved[:text], turns_since: since, created_at: saved[:created_at] }.compact
       rescue StandardError
         nil
       end
@@ -2732,7 +2734,7 @@ module Samagotchi
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
-            note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m), **time_of(m) }
             # A context wake turn's note starts that turn (Steer.turn_prompt?):
             # the page opens the turn with it and pairs it with its record.
             if Samagotchi::Steer.turn_prompt?(m)
@@ -2745,7 +2747,7 @@ module Samagotchi
           # A plugin's steer: a row of the step that answered it, which the
           # page finds by `step`.
           if Samagotchi::Steer.steer?(m)
-            filtered << { role: "steer", content: content, source: (m[:source] || m["source"]).to_s, step: steer_step(list, index) }
+            filtered << { role: "steer", content: content, source: (m[:source] || m["source"]).to_s, step: steer_step(list, index), **time_of(m) }
             next
           end
           # A turn that ended with no answer (TurnNote.empty's marker): its
@@ -2768,7 +2770,7 @@ module Samagotchi
           norm_role = "user" if norm_role == "user"
           next unless %w[user assistant].include?(norm_role)
 
-          message = { role: norm_role, content: stripped }
+          message = { role: norm_role, content: stripped, **time_of(m) }
           # Merged into the running turn (Steer::INPUT_KIND): part of it,
           # read by step +step+; a wake turn's report starts its turn
           # (Steer.turn_prompt?). Its sender (a delegate report, chi send):
@@ -2806,6 +2808,13 @@ module Samagotchi
         filtered
       rescue StandardError
         []
+      end
+
+      # The entry's wall time (MessageTime: the page's hover and gap
+      # dividers) as {at:}, or nothing for an entry saved without one.
+      def time_of(message)
+        at = Samagotchi::MessageTime.of(message)
+        at.is_a?(String) && !at.empty? ? { at: at } : {}
       end
 
       # A no-answer turn's marker as display items: each empty step that

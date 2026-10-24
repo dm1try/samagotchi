@@ -139,6 +139,24 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
   end
 
+  describe "wall times" do
+    it "keeps a prompt's, a reply's and a turn start's `at` (the page's hover and gap dividers), and nothing else of a time" do
+      at = "2026-10-24T14:32:05.000+02:00"
+      list = [{ role: "user", content: "look", turn_id: "t1", at: at },
+              { role: "assistant", content: "Done.", at: at },
+              { role: "user", content: "also", merged: true, at: 42 }]
+      expect(described_class.messages(list, viewer)).to eq([
+        { "role" => "user", "at" => at, "content" => "look", "turn_id" => "t1" },
+        { "role" => "assistant", "content" => "Done.", "at" => at },
+        { "role" => "user", "content" => "also", "merged" => true }
+      ])
+      expect(shown({ type: "turn_started", turn_id: "t2", prompt: "go", at: at, started_at: at })).to eq(
+        "type" => "turn_started", "turn_id" => "t2", "at" => at, "prompt" => "go"
+      )
+      expect(described_class.current_turn({ "prompt" => "go", "at" => at, "parts" => [] }, viewer)).to include("at" => at)
+    end
+  end
+
   describe ".current_turn" do
     it "shows the turn so far: its prompt, the reply's text, tool rows, and waiting for the owner" do
       turn = { "prompt" => "go", "origin" => { "client_id" => "web:1" }, "pending_question" => { "question" => "Allow?" },

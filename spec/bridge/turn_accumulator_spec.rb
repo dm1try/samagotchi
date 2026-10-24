@@ -80,6 +80,14 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued).to eq([])
   end
 
+  it "keeps the turn's wall time from :turn_started (a joining page's gap divider), and no key when the event has none" do
+    feed({ type: :turn_started, prompt: "hi", at: "2026-10-24T14:32:05.000+02:00" })
+    expect(acc.current_turn[:at]).to eq("2026-10-24T14:32:05.000+02:00")
+
+    feed({ type: :turn_started, prompt: "next" })
+    expect(acc.current_turn).not_to have_key(:at)
+  end
+
   it "keeps the turn's cut wait from :turn_started in the snapshot, and no key when the event has none" do
     feed({ type: :turn_started, prompt: "hi", cut_after: 0 })
     expect(acc.current_turn[:cut_after]).to eq(0)
