@@ -111,6 +111,8 @@ and commands may change between minor versions. How releases are made:
 - The participants panel drops an Invite, Cap or Revoke answered after it closed or another session opened: a
   one-time link no longer shows the next time a panel opens, under another session, and a failed list no longer
   keeps the previous session's working-session warning.
+- The participants panel's **Start a review of it** closes the panel only once the review is made; a refusal stays in
+  the open panel, said there, instead of the panel closing on a toast.
 
 ## [0.106.0] - 2026-10-23
 

@@ -33,6 +33,7 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
       continueSession: wrap("continueSession", async () => ({ id: "s2bbbbbbbb", continues: "s1aaaaaaaa" })),
       archiveSession: wrap("archiveSession", async (id) => ({ archived: [id], stopped: [] })),
       unarchiveSession: wrap("unarchiveSession", async (id) => ({ unarchived: [id] })),
+      startReview: wrap("startReview", async () => ({ id: "s3cccccccc", review: { from: "s1aaaaaaaa" } })),
     },
     eventsLive: () => eventsLive,
     refresh: () => log.push("refresh"),
@@ -215,4 +216,20 @@ test("toggleArchiveSelected: archives the open session, or unarchives an archive
   const none = harness({ open: null });
   none.actions.toggleArchiveSelected();
   assert.deepEqual(none.calls, []);
+});
+
+test("reviewSelected: the created review session, opened; a refusal goes to onError when it says it, else a sticky toast", async () => {
+  const h = harness();
+  const created = await h.actions.reviewSelected();
+  assert.equal(created.id, "s3cccccccc");
+  assert.equal(h.world.selected, "s3cccccccc");
+  const refused = harness({ api: { startReview: async () => { throw failure(400, "invalid_review", "the folder is gone"); } } });
+  const said = [];
+  assert.equal(await refused.actions.reviewSelected({ onError: (text) => said.push(text) }), null);
+  assert.deepEqual(said, ["Can't start a review of s1aaaaaa: the folder is gone"]);
+  assert.deepEqual(refused.toasts, []);
+  assert.equal(await refused.actions.reviewSelected({ onError: () => false }), null);
+  assert.equal(refused.toasts.length, 1);
+  assert.equal(refused.toasts[0].options.sticky, true);
+  assert.equal(refused.actions.reviewing.size, 0);
 });

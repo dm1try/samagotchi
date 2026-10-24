@@ -211,3 +211,38 @@ test("participants panel: a failed list for another session drops the previous s
   assert.doesNotMatch(c.pop.innerHTML, /pp-row/);
   c.done();
 });
+
+// Start a review of it: closed once the review is made; a refusal stays in
+// the open panel, said there. "Starting…" while one is under way.
+test("participants panel: Start a review closes the panel when made, and keeps it open with the refusal when not", async () => {
+  const under = new Set();
+  let answer = deferred();
+  const c = panelControl({
+    api: { list: async () => ({ participants: [], warning: "s1 is a working session" }) },
+    reviewing: () => under.has("s1"),
+    startReview: ({ onError }) => {
+      under.add("s1");
+      return answer.promise.then((made) => {
+        under.delete("s1");
+        if (!made && !onError("Can't start a review of s1: the folder is gone")) throw new Error("not shown");
+        return made;
+      });
+    },
+  });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  c.pop.querySelector('[data-act="start-review"]').click();
+  assert.match(c.pop.innerHTML, /Starting…/);
+  answer.resolve(null);
+  await tick();
+  assert.ok(c.ctl.isOpen(), "a refused review leaves the panel open");
+  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, "Can't start a review of s1: the folder is gone");
+  assert.match(c.pop.innerHTML, /Start a review of it</);
+  answer = deferred();
+  c.pop.querySelector('[data-act="start-review"]').click();
+  answer.resolve({ id: "s3" });
+  await tick();
+  assert.ok(!c.ctl.isOpen());
+  c.done();
+});
