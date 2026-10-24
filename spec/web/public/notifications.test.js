@@ -136,8 +136,13 @@ test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapsh
 // ── The Home Screen app: Web Push ─────────────────────────────────────────
 // A standalone app (push.js pushSupported) with a service worker whose
 // pushManager the test holds, and chi web's push routes as a fake api.
-function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null } = {}) {
+// +tags+ are the notifications already on the device (its getNotifications);
+// +device+ logs what the page did to them and to the app's badge.
+function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null,
+  tags = [], scoped = false, visible = false } = {}) {
   const calls = [];
+  const device = [];
+  const delivered = tags.map((tag) => ({ tag, closed: false }));
   let current = subscribed ? fakeSub("https://web.push.apple.com/have") : null;
   function fakeSub(endpoint, key = new Uint8Array([1, 2, 3])) {
     return {
@@ -148,12 +153,18 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     };
   }
   const reg = {
+    getNotifications: async () => delivered.filter((n) => !n.closed)
+      .map((n) => ({ tag: n.tag, close: () => { n.closed = true; device.push(["close", n.tag]); } })),
     pushManager: {
       getSubscription: async () => current,
       subscribe: async (opts) => { calls.push(["subscribe", [...opts.applicationServerKey]]); current = fakeSub("https://web.push.apple.com/new"); return current; },
     },
   };
-  const nav = { serviceWorker: { register: async (url, opts) => { calls.push(["register", url, opts.scope]); return reg; } } };
+  const nav = {
+    serviceWorker: { register: async (url, opts) => { calls.push(["register", url, opts.scope]); return reg; } },
+    setAppBadge: async (n) => { device.push(["badge", n]); },
+    clearAppBadge: async () => { device.push(["badge", 0]); },
+  };
   const api = async (method, path, body) => {
     calls.push([method, path, body]);
     if (method === "GET") return { enabled, public_key: enabled ? "AQID" : null, origin: "https://s.example", this: known ? { id: "abcd1234", label: "iPhone" } : null };
@@ -162,7 +173,7 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
   };
   const listeners = {};
   const on = (target) => (type, fn) => { (listeners[`${target}:${type}`] ||= []).push(fn); };
-  const doc = { title: "", visibilityState: "hidden", hasFocus: () => false, addEventListener: on("doc") };
+  const doc = { title: "", visibilityState: visible ? "visible" : "hidden", hasFocus: () => false, addEventListener: on("doc") };
   const win = {
     isSecureContext: true, location: { hash: "" }, PushManager: function PushManager() {},
     matchMedia: () => ({ matches: true }), focus() {}, addEventListener: on("win"),
@@ -172,9 +183,11 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
   function NotificationApi(title, opts) { shown.push({ title, opts }); this.close = () => {}; }
   NotificationApi.permission = permission;
   NotificationApi.requestPermission = async () => { calls.push(["requestPermission"]); NotificationApi.permission = grant; return grant; };
-  const page = createNotifications({ button, doc, win, nav, api, storage: () => ({ getItem: () => "1", setItem() {} }), channel: null, NotificationApi });
+  const page = createNotifications({ button, doc, win, nav, api, storage: () => ({ getItem: () => "1", setItem() {} }), channel: null, NotificationApi, scoped });
   const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
-  return { page, button, calls, shown, doc, tap, NotificationApi };
+  const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
+  const synced = async () => { await page.syncing(); };
+  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced };
 }
 
 test("in the Home Screen app the bell subscribes this device: permission from the tap, chi web's key, a test push", async () => {
@@ -247,4 +260,75 @@ test("in the app the tab's own OS notification is left to the push; the title st
   app.page.noticeSessions("session", { session: asking });
   assert.equal(app.shown.length, 0);
   assert.equal(app.doc.title, "(1) Chi");
+});
+
+// ── The device's tidy-up (no close push: WebKit's silent-push quota) ─────
+const approval = (id, q) => session({ id, pending_question: { id: q, kind: "approval" } });
+
+test("the app tidies the device only after the first snapshot: closes answered question tags, keeps chi's own, sets the badge", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1", "b:q2", "chi:test"] });
+  await app.page.pushReady;
+  await app.synced();
+  assert.deepEqual(app.device, [], "nothing before the snapshot");
+
+  app.doc.visibilityState = "visible";
+  app.page.noticeSessions("snapshot", { sessions: [approval("b", "q2"), session({ id: "a" })] });
+  await app.synced();
+  assert.deepEqual(app.device, [["close", "a:q1"], ["badge", 1]]);
+  assert.deepEqual(app.delivered.map((n) => n.closed), [true, false, false]);
+});
+
+test("the app tidies again when it comes back to the front, and after a session frame while visible", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1", "b:q2"] });
+  await app.page.pushReady;
+  app.page.noticeSessions("snapshot", { sessions: [approval("a", "q1"), approval("b", "q2")] });
+  await app.synced();
+  assert.deepEqual(app.device, [], "hidden: no tidy on the frame");
+
+  app.doc.visibilityState = "visible";
+  app.fire("doc:visibilitychange");
+  await app.synced();
+  assert.deepEqual(app.device, [["badge", 2]]);
+
+  app.device.length = 0;
+  app.page.noticeSessions("session", { session: session({ id: "a" }) });
+  await app.synced();
+  assert.deepEqual(app.device, [["close", "a:q1"], ["badge", 1]]);
+});
+
+test("a tidy asked for while one runs runs once more after it", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1", "b:q2"], visible: true });
+  await app.page.pushReady;
+  await app.synced();
+  app.page.noticeSessions("snapshot", { sessions: [approval("a", "q1"), approval("b", "q2")] });
+  app.page.noticeSessions("session", { session: session({ id: "a" }) });
+  app.page.noticeSessions("session", { session: session({ id: "b" }) });
+  await app.synced();
+  assert.deepEqual(app.delivered.map((n) => n.closed), [true, true]);
+  assert.deepEqual(app.device.at(-1), ["badge", 0]);
+});
+
+test("a project's page (?dir=) never tidies the device", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1"], scoped: true, visible: true });
+  await app.page.pushReady;
+  app.page.noticeSessions("snapshot", { sessions: [session({ id: "b" })] });
+  app.fire("doc:visibilitychange");
+  await app.synced();
+  assert.deepEqual(app.device, []);
+});
+
+test("with the bell off the app neither tidies nor badges; turning it off clears the badge", async () => {
+  const off = fakeApp({ permission: "granted", tags: ["a:q1"], visible: true });
+  await off.page.pushReady;
+  off.page.noticeSessions("snapshot", { sessions: [approval("b", "q2")] });
+  await off.synced();
+  assert.deepEqual(off.device, []);
+
+  const on = fakeApp({ subscribed: true, permission: "granted", visible: true });
+  await on.page.pushReady;
+  on.page.noticeSessions("snapshot", { sessions: [approval("b", "q2")] });
+  await on.synced();
+  on.device.length = 0;
+  await on.tap();
+  assert.deepEqual(on.device, [["badge", 0]]);
 });
