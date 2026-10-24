@@ -94,8 +94,9 @@ module Samagotchi
     # A stale stub that an edit (not a later read) made: the model wrote
     # the file, so what it has of it is still current (llm_context.stale_edits).
     BY_EDIT = /superseded by a later (?:edit|write)\z/
-    # A partial memory_read's last part (Tools::MemoryRead.call).
-    MISSING = /\AError: memory not found: (.*)\z/m
+    # A partial memory_read's last part (Tools::MemoryRead.call): its first
+    # line only, since an orphaned-folder hint may follow on the next.
+    MISSING = /\AError: memory not found: ([^\n]*)/
 
     # What one paired run touched: its item's identity and op, whether its
     # output is content, its stored and sent texts, its stamp.

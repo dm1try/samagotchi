@@ -26,7 +26,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - `name: "entry", scope: "system"|"project"` — scoped read.
 - `name: "a, b, c"` — comma-separated, concatenated with `\n\n---\n\n`.
 - `name: ""` (optionally with `scope`) — reads the index. Empty name with no scope returns both indexes concatenated (`Project memories:` / `System memories:`). Use this at start to discover what exists.
-- Returns `Error: memory not found: …` on miss — treat as missing, not fatal.
+- Returns `Error: memory not found: …` on miss — treat as missing, not fatal. A `Hint:` line after it means this project's memory folder looks orphaned (moved from another path); tell the user the folders it names, don't rename them yourself.
 
 ### `memory_write` — write/update entries
 

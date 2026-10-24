@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A project's memories copied from another machine or path (their folder keyed by the old path's hash) are no
+  longer missing without a word: when this project's folder is missing or empty and one of the same name with
+  another hash exists, chi warns at session start (`memory>`) and under a project `memory_read` miss, naming both
+  folders and the `mv` that fixes it. See docs/memory.md (Moving memories to another machine).
+
 ### Fixed
 
 - work-cap 0.1.2: a session's state file that doesn't read (not JSON) no longer drops its `/workcap` cap silently:

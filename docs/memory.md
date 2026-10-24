@@ -21,6 +21,26 @@ Tool behavior:
 - `chi memory ls` and `chi memory rm NAME` are the user's side of the same (see [Listing and removing from the shell](#listing-and-removing-from-the-shell)).
 - `write`/`edit` that change a `*.md` right in a scope dir refresh its managed `index.md` line (date, bytes; the description is kept), as `memory_write` does. A memory created with `write` gets a line with no description; any other `.md` written there gets a line too. Model overlays (`<name>.<key>.md` next to `<name>.md`), files in another project's folder and files changed by `execute` are left out.
 
+## Moving memories to another machine
+
+A project's folder is keyed by its root's absolute path (`<basename>_<8 hex of MD5(root)>`), so project
+memories copied to a machine (or a path) where the repository lives elsewhere sit in a folder chi no
+longer reads. Rename the folder to the new key, or move memories with a bundle zip (see
+[What a bundle owns](#what-a-bundle-owns)).
+
+Inside a git repository, when this project's folder is missing or holds no `*.md` while the projects
+dir has a folder of the same basename with another hash, chi says so, naming both folders and the
+`mv` that fixes it (a name match can't prove it's the same project, so nothing is renamed for you):
+
+- at session start, a `memory>` load warning (a `:guardrail_warning` with label `memory`; the attached
+  TUI, the REPL, `--non-interactive` and the web show it; a UI that attaches later gets it from the
+  worker's cards), once per worker or REPL process, so a respawn or resume says it again;
+- under a `memory_read` miss that looked in project scope (`scope: "project"` or none), and under the
+  project index read, on a `Hint:` line after `Error: memory not found: …`. A system-scope read never
+  gets it.
+
+Neither enters the system prompt.
+
 ## Listing and removing from the shell
 
 `chi memory ls [--scope project|system] [--format text|json]` lists the

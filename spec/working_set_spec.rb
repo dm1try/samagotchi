@@ -351,6 +351,16 @@ RSpec.describe Samagotchi::WorkingSet do
       expect(build(conversation).items.map(&:key)).to eq(%w[style tone])
     end
 
+    it "reads the missing names off the first line when the orphaned-folder hint follows" do
+      hint = "\nHint: no project memories in /new, but /old has the same project name"
+      conversation = [head, chat_model(chat_call("c1", "memory_read", { "name" => "style, gone" }),
+                                       chat_call("c2", "memory_read", { "name" => "lost" })),
+                      chat_result("c1", "memory_read", "be brief\n\n---\n\nError: memory not found: gone#{hint}", "t1"),
+                      chat_result("c2", "memory_read", "Error: memory not found: lost#{hint}", "t2")]
+
+      expect(build(conversation).items.map(&:key)).to eq(%w[style])
+    end
+
     it "lists no memory for an index listing (an empty name)" do
       conversation = [head, chat_model(chat_call("c1", "memory_read", { "name" => "" })),
                       chat_result("c1", "memory_read", "Project memories:", "t1")]

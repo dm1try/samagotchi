@@ -166,6 +166,40 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
       end
     end
   end
+
+  describe "the hint for an orphaned project memory folder (MemoryOrphans)" do
+    let(:hint) { "no project memories in /new, but /old has the same project name" }
+
+    before { allow(Samagotchi::MemoryOrphans).to receive(:message).and_return(hint) }
+
+    it "follows a project-scope miss on the next line" do
+      expect(described_class.call("gone", scope: "project")).to eq("Error: memory not found: gone\nHint: #{hint}")
+    end
+
+    it "follows a miss with no scope (project, then system)" do
+      expect(described_class.call("a, b")).to eq("Error: memory not found: a, b\nHint: #{hint}")
+    end
+
+    it "follows the miss after the found bodies of a mixed read" do
+      File.write(File.join(system_memories_dir, "found.md"), "found-content")
+      expect(described_class.call("found, gone")).to eq("found-content\n\n---\n\nError: memory not found: gone\nHint: #{hint}")
+    end
+
+    it "follows the project index" do
+      expect(described_class.call("", scope: "project")).to eq("No memories stored yet.\nHint: #{hint}")
+      expect(described_class.call("")).to start_with("Project memories:\nNo memories stored yet.\nHint: #{hint}\n\nSystem memories:")
+    end
+
+    it "is left out of a system-scope miss and the system index" do
+      expect(described_class.call("gone", scope: "system")).to eq("Error: memory not found: gone")
+      expect(described_class.call("", scope: "system")).to eq("No memories stored yet.")
+    end
+
+    it "is left out of a read that found everything" do
+      File.write(File.join(project_memories_dir, "here.md"), "here")
+      expect(described_class.call("here")).to eq("here")
+    end
+  end
 end
 
 RSpec.describe Samagotchi::Tools::MemoryWrite do

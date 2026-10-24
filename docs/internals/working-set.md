@@ -52,7 +52,8 @@ is left out. So is a failed run (`LLMContextStale`'s rule: an `Error` after the 
   add op `edit`.
 - `memory_read` gives one memory per name (`Tools::MemoryRead.parse_names`; an empty name, the index listing, gives
   none). A partial read ("a,b" where b is missing: the found bodies, then `Error: memory not found: b`) keeps the
-  found names only, and its tokens are split evenly among them.
+  found names only, and its tokens are split evenly among them. The names come off that line alone
+  (`WorkingSet::MISSING`): an orphaned-folder hint may follow it on the next line.
 - `memory_write` gives the memory `call[:path]`, op `write`. A `remove: true` write stays in the set.
 - `web_fetch` gives the URL with its whitespace collapsed.
 

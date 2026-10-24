@@ -4,6 +4,7 @@ require "fileutils"
 require "digest"
 require "date"
 require_relative "../atomic_file"
+require_relative "../memory_orphans"
 require_relative "../memory_paths"
 require_relative "../model_match"
 
@@ -30,9 +31,9 @@ module Samagotchi
         scope = normalize_scope(scope)
 
         if entry_name.empty?
-          return scoped_index(scope) if scope
+          return scoped_index(scope) + (scope == "project" ? orphan_hint : "") if scope
 
-          project = scoped_index("project")
+          project = scoped_index("project") + orphan_hint
           system = scoped_index("system")
           return [
             "Project memories:",
@@ -79,17 +80,23 @@ module Samagotchi
           missing << name unless found
         end
 
-        if results.empty? && !missing.empty?
-          "Error: memory not found: #{missing.join(", ")}"
-        elsif missing.empty?
-          results.join(SEPARATOR)
-        else
-          results.join(SEPARATOR) + SEPARATOR + "Error: memory not found: #{missing.join(", ")}"
-        end
+        return results.join(SEPARATOR) if missing.empty?
+
+        # The hint goes after the first line: WorkingSet reads the missing
+        # names off it (WorkingSet::MISSING) and a failure off its "Error".
+        miss = "Error: memory not found: #{missing.join(", ")}#{orphan_hint if resolved_scopes.include?("project")}"
+        results.empty? ? miss : results.join(SEPARATOR) + SEPARATOR + miss
       rescue Errno::ENOENT => e
         "Error: #{e.message}"
       rescue StandardError => e
         "Error: #{e.message}"
+      end
+
+      # "\nHint: …" when this project's memory folder looks orphaned
+      # (MemoryOrphans), else "".
+      def self.orphan_hint
+        message = MemoryOrphans.message
+        message ? "\nHint: #{message}" : ""
       end
 
       # A memory is a flat file in its scope dir: a name with a path in it
