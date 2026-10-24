@@ -1536,7 +1536,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
-        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil, max_iterations: Samagotchi::IterationLimit::DEFAULT, images: []) do
+        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: Samagotchi::TurnOrigin::NONE, max_iterations: Samagotchi::IterationLimit::DEFAULT, images: []) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
           result
         end
@@ -2154,7 +2154,7 @@ RSpec.describe Samagotchi::SessionManager do
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
-        runs << [prompt, origin&.to_h]
+        runs << [prompt, origin.wire]
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
         instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: false)
       end

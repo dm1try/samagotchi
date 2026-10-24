@@ -106,7 +106,7 @@ module Samagotchi
       # or no origin, an in-process turn: the owner's; TurnOrigin#human?).
       # +mine+ when the viewer queued it.
       def turn_started(event, viewer)
-        origin = TurnOrigin.from(field(event, :origin)) || TurnOrigin::NONE
+        origin = TurnOrigin.of(field(event, :origin))
         author = field(event, :author) || origin.author
         out = { "type" => "turn_started", **id_fields(event) }
         out.merge!(author_fields(author, field(event, :author_name), viewer))

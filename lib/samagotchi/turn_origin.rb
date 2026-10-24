@@ -24,8 +24,21 @@ module Samagotchi
 
       field = ->(key) { value.key?(key) ? value[key] : value[key.to_s] }
       origin = new(client_id: field.call(:client_id), enqueued_id: field.call(:enqueued_id), author: field.call(:author))
-      origin.to_h.empty? ? nil : origin
+      origin.empty? ? nil : origin
     end
+
+    # An origin either way: .from's, or NONE when the value names no
+    # sender (nil, {}). In-process an owner's turn has NONE, never nil.
+    # @return [TurnOrigin]
+    def self.of(value) = from(value) || self::NONE
+
+    # Whether it names no sender (NONE): its wire form is left out.
+    def empty? = to_h.empty?
+
+    # The wire form where a field may carry no origin: #to_h, nil for NONE
+    # (an event's origin:, a hook's context).
+    # @return [Hash, nil]
+    def wire = empty? ? nil : to_h
 
     # Whether a participant queued the turn (Steer.participant_author?: any
     # author but none or the owner's).
@@ -49,6 +62,7 @@ module Samagotchi
     def to_h = super.compact
   end
 
-  # No sender named: for a reader that wants an origin either way.
+  # No sender named: an owner's turn with no client, run_turn's default
+  # (TurnOrigin.of).
   TurnOrigin::NONE = TurnOrigin.new
 end

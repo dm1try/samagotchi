@@ -278,6 +278,24 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
         expect(session.last_turn.origin).to eq(expected)
       end
     end
+
+    it "takes no origin, nil, {} and TurnOrigin::NONE alike: no sender, no origin on the boundary events" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      events = []
+      engine.subscribe(observer: ->(e) { events << e if %i[turn_started turn_completed].include?(e[:type]) })
+
+      [{}, { origin: nil }, { origin: {} }, { origin: Samagotchi::TurnOrigin::NONE }].each do |args|
+        events.clear
+        engine.run_turn(session, "hi", **args)
+        expect(events.map { |e| e[:type] }).to eq(%i[turn_started turn_completed])
+        expect(events).to all(satisfy { |e| !e.key?(:origin) })
+        expect(session.last_turn.to_file).to include("origin" => "client")
+        expect(session.last_turn.to_file).not_to have_key("author")
+      end
+
+      engine.run_turn(session, "hi", origin: Samagotchi::TurnOrigin.new(client_id: "web:tab-1"))
+      expect(events.last[:origin]).to eq(client_id: "web:tab-1")
+    end
   end
 
   describe "when the turn's end is announced" do

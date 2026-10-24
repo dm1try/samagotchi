@@ -37,4 +37,10 @@ RSpec.describe Samagotchi::LastTurn do
     expect(described_class.new(outcome: "completed").stop_facts).to eq({})
     expect(described_class::STOP_FACTS).to all(satisfy { |fact| described_class.members.include?(fact) })
   end
+
+  it "names a participant's turn by its author (participant_author), nobody for the owner's" do
+    expect(described_class.new(outcome: "completed", author: "p:p_1").participant_author).to eq("p:p_1")
+    expect(described_class.new(outcome: "completed").participant_author).to be_nil
+    expect(described_class.new(outcome: "completed", author: "owner").participant_author).to be_nil
+  end
 end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "steer"
+
 module Samagotchi
   # How a session's last turn ended (Session#last_turn), saved as
   # session.json's "last_turn" and sent in the web's session summary.
@@ -44,6 +46,11 @@ module Samagotchi
     # The stop facts this turn has (LastTurn::STOP_FACTS), symbol keys.
     # @return [Hash{Symbol => Object}]
     def stop_facts = to_h.slice(*self.class::STOP_FACTS).compact
+
+    # The turn's author when a participant's (Steer.sender_author, as
+    # TurnOrigin#participant_author reads a running turn's), else nil.
+    # @return [String, nil]
+    def participant_author = Steer.sender_author(author)
   end
 
   # Why a turn stopped, for a parent agent's wait (ReplyWait::Result takes

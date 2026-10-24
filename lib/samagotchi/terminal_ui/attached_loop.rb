@@ -1787,7 +1787,7 @@ module Samagotchi
       end
 
       # An event's origin (its wire Hash) as a TurnOrigin, NONE for none.
-      def origin_of(value) = TurnOrigin.from(value) || TurnOrigin::NONE
+      def origin_of(value) = TurnOrigin.of(value)
       def reminder_origin?(origin) = origin.client_id.to_s.start_with?(ClientId::SYSTEM_PREFIX)
       def report_origin?(origin) = origin.source == "delegate_report"
       def context_origin?(origin) = origin.source == "context"

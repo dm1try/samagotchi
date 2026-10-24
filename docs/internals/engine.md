@@ -524,8 +524,12 @@ and `author`): `SessionInbox.read_input` makes it from an input file's own field
 make theirs, and `Engine#run_turn`, the Worker and `GuardrailWiring` pass it on. Its readers say what callers ask
 (`#participant?`, `#participant_author`, `#participant_id`, `#source` = `ClientId.origin`, `#human?` =
 `ClientId.human?`). At a boundary it is turned once: `#to_h` writes the wire Hash (only the fields set, as before),
-`TurnOrigin.from` reads a Hash back (symbol or string keys; nil for none), and `run_turn(origin:)` still takes a
-Hash. The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry
+`TurnOrigin.from` reads a Hash back (symbol or string keys; nil for none). In-process an origin is never nil:
+`TurnOrigin.of` gives `TurnOrigin::NONE` (no sender: an owner's turn with no client) for nil or `{}`, and NONE is
+`run_turn(origin:)`'s default (a Hash is still read as one). NONE has no wire form (`#empty?`; `#wire` is nil, or
+`#to_h` for any other origin), so the events and the hooks' `context` carry no origin for it, as before.
+`LastTurn#author` stays the session file's string; `LastTurn#participant_author` reads it as
+`TurnOrigin#participant_author` does. The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry
 `origin` when the turn was queued with one: `{client_id:, enqueued_id:}`, plus `author:` when someone other than
 the session's owner wrote it (its input file's `author`, stamped by chi web from the request's `Web::Principal`).
 An owner's turn has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn`

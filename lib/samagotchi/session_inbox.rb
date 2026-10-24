@@ -230,7 +230,7 @@ module Samagotchi
     # older chi wrote, so nil).
     Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery) do
       def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil)
-        super(prompt:, origin: TurnOrigin.from(origin), no_interrupt:, images:, delivery:)
+        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:)
       end
     end
     # A file that doesn't parse, or isn't a JSON object: no prompt.

@@ -1033,7 +1033,7 @@ module Samagotchi
     # +author+'s turns running or waiting: the running turn when it is
     # theirs, and their queued ones. Read with the event log held.
     def pending_turns(author)
-      running = TurnOrigin.from(@accumulator.current_turn&.dig(:origin))&.participant_author == author ? 1 : 0
+      running = TurnOrigin.of(@accumulator.current_turn&.dig(:origin)).participant_author == author ? 1 : 0
       running + @accumulator.queued.count { |row| row[:author] == author }
     end
 

@@ -72,7 +72,7 @@ module Samagotchi
 
     # A prompt (or a reminder turn) taken while a continue is offered
     # replaces the answer (D2): the offer goes, the partial turn stays.
-    # @param origin [TurnOrigin, nil] the taken turn's
+    # @param origin [TurnOrigin] the taken turn's
     def drop(origin)
       return unless awaiting?
 
@@ -80,7 +80,7 @@ module Samagotchi
       close("dropped")
       @engine.synchronize_events do
         @turn_flow.drop_offer!
-        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.client_id)
+        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin.client_id)
       end
       @engine.record_activity
     end
@@ -151,7 +151,7 @@ module Samagotchi
       offer = @turn_flow.offer
       resume_from = @turn_flow.resume_from
       enqueued_id = offer_turn_id
-      author = Steer.sender_author(@engine.session&.last_turn&.author)
+      author = @engine.session&.last_turn&.participant_author
       close("answered")
       if author && (reason = @participant_refused.call(author))
         @continue_steer = nil
@@ -194,7 +194,7 @@ module Samagotchi
     private
 
     def refusal_of_offer_author
-      author = Steer.sender_author(@engine.session&.last_turn&.author)
+      author = @engine.session&.last_turn&.participant_author
       author && @participant_refused.call(author)
     end
 
@@ -206,7 +206,7 @@ module Samagotchi
     # participant turns go on). The question goes with the next close.
     # Called with the event log held.
     def refuse_continue(reason, command)
-      author = @engine.session&.last_turn&.author
+      author = @engine.session&.last_turn&.participant_author
       enqueued_id = offer_turn_id
       @engine.announce(type: :continue_resolved, decision: "refused", reason: reason.to_s, client_id: command.client_id)
       @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,

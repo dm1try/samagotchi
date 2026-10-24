@@ -42,7 +42,7 @@ module Samagotchi
     # next_step); +origin+: a TurnOrigin (a Hash is read as one).
     Prompt = Data.define(:text, :origin, :no_interrupt, :images, :delivery) do
       def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil)
-        super(text:, origin: TurnOrigin.from(origin), no_interrupt:, images:, delivery:)
+        super(text:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:)
       end
     end
 
@@ -195,7 +195,7 @@ module Samagotchi
     # running for a turn that won't run.
     # @return [Boolean] whether it was one
     def initial_command?(prompt)
-      return false unless queue_as_command(prompt, nil)
+      return false unless queue_as_command(prompt, TurnOrigin::NONE)
 
       @session.status = Session::STATUS_IDLE
       save(:initial_command, unless_stopped: true)
@@ -249,14 +249,14 @@ module Samagotchi
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
 
-      if origin&.participant?
+      if origin.participant?
         Log.warn(:worker, "participant_command_refused", participant: origin.participant_author)
         Participants.log(@session.id, :refused, state_dir: @state_dir, participant: origin.participant_id,
                                                 what: "command", reason: "not_permitted")
         return true
       end
 
-      @queue_command.call(text, origin&.client_id, after_file, origin&.enqueued_id)
+      @queue_command.call(text, origin.client_id, after_file, origin.enqueued_id)
       true
     end
 

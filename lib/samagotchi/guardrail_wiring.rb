@@ -56,6 +56,7 @@ module Samagotchi
       @failures = Guardrails::LoadFailures.new
       @rules_mutex = Mutex.new
       @git = Guardrails::GitInfo.new
+      @origin = TurnOrigin::NONE
     end
 
     # Who can answer an approval: :repl, :worker or :non_interactive (the
@@ -84,10 +85,10 @@ module Samagotchi
       @protected = nil
     end
 
-    # A turn starts: its origin (Engine#run_turn's TurnOrigin, or nil; a
-    # Hash is read as one), and the git facts read afresh.
+    # A turn starts: its origin (Engine#run_turn's TurnOrigin; nil or a
+    # Hash is read as one, TurnOrigin.of), and the git facts read afresh.
     def begin_turn(origin)
-      @origin = TurnOrigin.from(origin)
+      @origin = TurnOrigin.of(origin)
       @git = Guardrails::GitInfo.new
     end
 
@@ -95,7 +96,7 @@ module Samagotchi
     # origin's participant author); nil for the owner's turns and every
     # other origin.
     # @return [String, nil]
-    def turn_author = @origin&.participant_author
+    def turn_author = @origin.participant_author
 
     # The gate every tool call asks first.
     # @return [Guardrails::Gate]
@@ -231,7 +232,7 @@ module Samagotchi
     # @return [Guardrails::Context]
     def context
       Guardrails::Context.new(cwd: Dir.pwd, session_id: @session_lookup.call&.id, interface: interface,
-                              origin: @origin&.to_h, git: @git)
+                              origin: @origin.wire, git: @git)
     end
 
     # Ask the user to approve a call the gate voted `ask` on, through the

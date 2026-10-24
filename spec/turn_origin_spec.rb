@@ -26,6 +26,25 @@ RSpec.describe Samagotchi::TurnOrigin do
     end
   end
 
+  describe ".of" do
+    it "is .from's origin, or NONE when nothing names a sender: in-process an origin is never nil" do
+      origin = described_class.new(client_id: "web:1")
+
+      expect(described_class.of(origin)).to equal(origin)
+      expect(described_class.of({ "client_id" => "web:1" })).to eq(origin)
+      [nil, {}, { author: nil }].each { |value| expect(described_class.of(value)).to equal(described_class::NONE) }
+    end
+  end
+
+  describe "#empty? and #wire" do
+    it "NONE names no sender: no wire form, where every other origin's is its #to_h" do
+      expect(described_class::NONE).to be_empty
+      expect(described_class::NONE.wire).to be_nil
+      expect(described_class.new(client_id: "web:1")).not_to be_empty
+      expect(described_class.new(client_id: "web:1").wire).to eq(client_id: "web:1")
+    end
+  end
+
   describe "#to_h" do
     it "is the wire Hash: only the fields set, so an origin goes out as it always did" do
       expect(described_class.new(client_id: "cli:send").to_h).to eq(client_id: "cli:send")
