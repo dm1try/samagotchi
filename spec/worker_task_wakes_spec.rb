@@ -186,7 +186,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     finish("t1")
     prompt, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
     expect(prompt).to be_nil
-    expect(kwargs).to include(continue: true, origin: { client_id: "task:t1" })
+    expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     expect(last).to include(role: "system", kind: "note", note_id: "task-t1", turn_start: true, turn_id: kwargs[:id])
     expect(last[:content]).to start_with("[TASK FINISHED from task t1, ").and include("Background task t1 finished: exit 0")
     expect(last[:content]).to include("command: sleep 20; echo done", "output_tail:\nbuilding\ndone",
@@ -209,7 +209,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     finish("t2")
     _, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
-    expect(kwargs[:origin]).to eq({ client_id: "task:t2" })
+    expect(kwargs[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t2"))
     expect(last[:content]).to include("(handed over by execute at its 5s limit).")
   end
 
@@ -291,7 +291,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     run_prompt("build")
 
     finish("t1")
-    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     finish("t2")
     wait_for("t2's note to be saved") { saved_task_notes.size == 2 }
     finish("t3")
@@ -311,7 +311,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     @fail_next = true
     finish("t1")
-    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     wait_for("the failed wake turn's turn note") { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" }
     expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
       .to include("The wake turn for a finished background task (t1) was not answered")
@@ -344,7 +344,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     prompt, kwargs, = pop!(turns, "the /continue turn", timeout: 15)
     expect(prompt).to be_nil
     expect(kwargs).to include(continue: true)
-    expect(kwargs.dig(:origin, :client_id)).not_to start_with("task:")
+    expect(kwargs[:origin]&.client_id).not_to start_with("task:")
   end
 
   it "writes a plain note, no wake turn, for a task that finishes as an exit is asked for" do
@@ -374,7 +374,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
 
     finish("t1")
     _, kwargs, last = pop!(turns, "the wake turn", timeout: 15)
-    expect(kwargs[:origin]).to eq({ client_id: "task:t1" })
+    expect(kwargs[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     expect(last).to include(note_id: "task-t1", turn_start: true)
   end
 
@@ -407,7 +407,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     expect(@thread).to be_alive
     expect(idle_exit.hold).to eq(:background_tasks)
     finish("t1")
-    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 
@@ -428,7 +428,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     end
     run_prompt("build")
 
-    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq({ client_id: "task:t1" })
+    expect(pop!(turns, "the wake turn", timeout: 15).dig(1, :origin)).to eq(Samagotchi::TurnOrigin.new(client_id: "task:t1"))
     expect(join!(@thread, "the worker").value).to eq(:idle_exit)
   end
 

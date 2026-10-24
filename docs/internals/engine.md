@@ -424,7 +424,7 @@ The turn as the Engine sees it (the KernelLoop has its own `Turn` struct):
 Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
                   :settings, :id, :limit, :resumed, :resume_from) do
   def resumed? = resumed ? true : false                           # a step-limit Continue
-  def tag(event) = origin ? event.merge(origin: origin) : event   # boundary events carry the origin
+  def tag(event) = origin ? event.merge(origin: origin.to_h) : event   # boundary events carry the origin's wire Hash
   def elapsed = ...                                               # seconds since started_at
 end
 ```
@@ -519,11 +519,18 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
 | `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |
 
-The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry `origin`
-when the turn was queued with one: `{client_id:, enqueued_id:}`, plus `author:` when someone other than the session's
-owner wrote it (its input file's `author`, stamped by chi web from the request's `Web::Principal`). An owner's turn
-has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn` gets the
-origin, and `#turn_author` reads its author for the gate's checks.
+A turn's origin is a `TurnOrigin` (`lib/samagotchi/turn_origin.rb`, a `Data.define` of `client_id`, `enqueued_id`
+and `author`): `SessionInbox.read_input` makes it from an input file's own fields, the wakes, reports and reminders
+make theirs, and `Engine#run_turn`, the Worker and `GuardrailWiring` pass it on. Its readers say what callers ask
+(`#participant?`, `#participant_author`, `#participant_id`, `#source` = `ClientId.origin`, `#human?` =
+`ClientId.human?`). At a boundary it is turned once: `#to_h` writes the wire Hash (only the fields set, as before),
+`TurnOrigin.from` reads a Hash back (symbol or string keys; nil for none), and `run_turn(origin:)` still takes a
+Hash. The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry
+`origin` when the turn was queued with one: `{client_id:, enqueued_id:}`, plus `author:` when someone other than
+the session's owner wrote it (its input file's `author`, stamped by chi web from the request's `Web::Principal`).
+An owner's turn has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn`
+gets the origin, and `#turn_author` reads its participant author for the gate's checks; the guardrails `Context`
+(the hooks' `context`) keeps the wire Hash.
 
 Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any author but none or `"owner"`) goes:
 

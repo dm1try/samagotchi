@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
         Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", client_id: "web:t", author: "p:p_2")
         kwargs[:pending_input].call
       end
-      turns << [prompt, kwargs[:origin]]
+      turns << [prompt, kwargs[:origin]&.to_h]
       result
     end
   end

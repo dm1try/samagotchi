@@ -19,6 +19,7 @@ require_relative "session_metrics/usage"
 require_relative "session_metrics/side_totals"
 require_relative "side_usage"
 require_relative "steer"
+require_relative "turn_origin"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -727,6 +728,7 @@ module Samagotchi
           load_persisted
         end
         @started_at ||= now.iso8601(3)
+        origin = TurnOrigin.from(event[:origin])
         @turn = TurnState.new(
           session_id: @session_id,
           iteration_count: 0,
@@ -766,8 +768,8 @@ module Samagotchi
           gen_switch: false,
           continue: event[:continue] ? true : false,
           resumed: event[:resumed] ? true : false,
-          author: Steer.sender_author(event[:origin].is_a?(Hash) ? event[:origin][:author] : nil),
-          automatic: automatic_origin?(event[:origin]),
+          author: origin&.participant_author,
+          automatic: automatic_origin?(origin),
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
@@ -818,11 +820,10 @@ module Samagotchi
       end
     end
 
-    # Whether a turn's +origin+ names a client that is no person's: false
-    # without one (an in-process turn is the owner's).
+    # Whether a turn's +origin+ (a TurnOrigin) names a client that is no
+    # person's: false without one (an in-process turn is the owner's).
     def automatic_origin?(origin)
-      client_id = origin.is_a?(Hash) ? origin[:client_id] : nil
-      !client_id.nil? && !ClientId.human?(client_id)
+      !origin&.client_id.nil? && !origin.human?
     end
 
     # The running turn's record so far, as end_turn would make it for a

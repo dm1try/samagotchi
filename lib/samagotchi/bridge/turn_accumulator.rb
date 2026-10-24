@@ -5,6 +5,7 @@ require_relative "../kernel_loop"
 require_relative "../steer"
 require_relative "../tool_output_cut"
 require_relative "../tool_row_fields"
+require_relative "../turn_origin"
 require_relative "turn_notice"
 
 module Samagotchi
@@ -70,7 +71,7 @@ module Samagotchi
       # Whether the turn in progress is a participant's review turn (its
       # author): the owner's input queues behind it then (Bridge's POST /turn).
       def participant_turn?
-        @mutex.synchronize { !@turn.nil? && Steer.participant_author?(@turn[:author] || @turn.dig(:origin, :author)) }
+        @mutex.synchronize { !@turn.nil? && Steer.participant_author?(@turn[:author] || TurnOrigin.from(@turn[:origin])&.author) }
       end
 
       # The turn in progress as conversation messages, for a plugin's
@@ -382,7 +383,7 @@ module Samagotchi
       end
 
       def dequeue(origins)
-        ids = origins.filter_map { |origin| origin.is_a?(Hash) ? origin[:enqueued_id] : nil }
+        ids = origins.filter_map { |origin| TurnOrigin.from(origin)&.enqueued_id }
         @queued.reject! { |entry| ids.include?(entry[:enqueued_id]) } unless ids.empty?
       end
     end

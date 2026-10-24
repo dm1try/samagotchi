@@ -135,8 +135,8 @@ lock), and its ack and `:turn_enqueued` say `queue`; the worker's drain takes no
 turn (`Worker#pending_input_drain`, for a file the Bridge never saw), so each runs as the owner's own turn after it.
 The web's delivery line says so (`participantTurn`: Enter queues, no cut), the TUI prints its queued note, `chi send`
 says `(queued: runs after the current turn)` and its `--wait` waits for that turn (`WaitTarget.message`). The owner's
-own turns steer as before. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin keeps
-their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; once their link ended or their cap is reached, the owner's Continue
+own turns steer as before. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin (a `TurnOrigin`,
+`#participant?`; see engine.md) keeps their author (`ContinueOffer#run_continue_turn`), so it runs inside the boundary and on their spend; once their link ended or their cap is reached, the owner's Continue
 ends the offer as a Stop instead (`ContinueOffer#refuse_continue`: decision `refused`, a notice, `not_continued`), so
 nothing waits on it. The step-limit Continue offer of the owner's turn is the
 owner's to answer: while one stands, the worker **holds** a participant's input file (`Worker#run_input_files`,

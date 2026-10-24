@@ -544,7 +544,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
         prompt, kwargs, lines = pop!(wake_turns, "the wake turn")
         expect(prompt).to be_nil
-        expect(kwargs).to include(continue: true, origin: { client_id: "child:#{child.id[0, 8]}" })
+        expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "child:#{child.id[0, 8]}"))
         # A new reason to act, not a step-limit Continue: it doesn't resume
         # the run before it (its reasoning isn't sent back).
         expect(kwargs).not_to have_key(:resume_from)

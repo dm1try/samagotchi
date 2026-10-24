@@ -12,6 +12,7 @@ require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "steer"
+require_relative "turn_origin"
 require_relative "participants"
 require_relative "tools/task_record"
 require_relative "worker_wakes"
@@ -38,9 +39,11 @@ module Samagotchi
     # +no_interrupt+: an offer its turn makes keeps it for its continue
     # turn; +images+: its image refs ({file:, name:}); +delivery+: the wire
     # value the sender asked for ("queue", or nil for the default
-    # next_step).
+    # next_step); +origin+: a TurnOrigin (a Hash is read as one).
     Prompt = Data.define(:text, :origin, :no_interrupt, :images, :delivery) do
-      def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil) = super
+      def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil)
+        super(text:, origin: TurnOrigin.from(origin), no_interrupt:, images:, delivery:)
+      end
     end
 
     # A context wake turn to run: the ContextAbsorber::Delivery that woke
@@ -53,7 +56,7 @@ module Samagotchi
       # Whether the wake counts toward context.peer_turns: a peer's answer
       # that agrees closes the round and counts toward session.max_wakes only.
       def peer_turn? = peer? && !delivery.agreed
-      def origin = { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" }
+      def origin = TurnOrigin.new(client_id: "#{ClientId::CONTEXT_PREFIX}#{name}")
       # The plain note #unmark_wake puts back.
       def note = delivery.note
     end
@@ -65,7 +68,7 @@ module Samagotchi
     # finished task it runs for (the others finished with it are plain notes).
     TaskWake = Data.define(:id, :turn_id, :plain_note) do
       def name = "task #{Tools::TaskRecord.short_id(id)}"
-      def origin = { client_id: "#{ClientId::TASK_PREFIX}#{id}" }
+      def origin = TurnOrigin.new(client_id: "#{ClientId::TASK_PREFIX}#{id}")
       def note = plain_note
     end
 
@@ -246,14 +249,14 @@ module Samagotchi
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
 
-      if (author = Steer.sender_author(origin&.dig(:author)))
-        Log.warn(:worker, "participant_command_refused", participant: author)
-        Participants.log(@session.id, :refused, state_dir: @state_dir, participant: author.delete_prefix("p:"),
+      if origin&.participant?
+        Log.warn(:worker, "participant_command_refused", participant: origin.participant_author)
+        Participants.log(@session.id, :refused, state_dir: @state_dir, participant: origin.participant_id,
                                                 what: "command", reason: "not_permitted")
         return true
       end
 
-      @queue_command.call(text, origin&.dig(:client_id), after_file, origin&.dig(:enqueued_id))
+      @queue_command.call(text, origin&.client_id, after_file, origin&.enqueued_id)
       true
     end
 

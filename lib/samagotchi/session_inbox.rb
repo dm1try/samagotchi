@@ -9,6 +9,7 @@ require_relative "delivery"
 require_relative "log"
 require_relative "session"
 require_relative "steer"
+require_relative "turn_origin"
 
 module Samagotchi
   # A session directory's file inbox and outbox (see SessionManager for the
@@ -221,13 +222,16 @@ module Samagotchi
       Dir.glob(File.join(input_dir, "*.json"))
     end
 
-    # A claimed input file as read: its +prompt+, +origin+ ({client_id:,
-    # enqueued_id:}, nil when it names no sender), whether its turn runs
-    # with the raised iteration limit (+no_interrupt+, --no-interrupt), its
-    # +images+ ({file:, name:} refs), and its +delivery+ ("queue" or nil; a
-    # file without the key is one an older chi wrote, so nil).
+    # A claimed input file as read: its +prompt+, +origin+ (a TurnOrigin
+    # from the file's client_id, enqueued_id and author; nil when it names
+    # no sender), whether its turn runs with the raised iteration limit
+    # (+no_interrupt+, --no-interrupt), its +images+ ({file:, name:} refs),
+    # and its +delivery+ ("queue" or nil; a file without the key is one an
+    # older chi wrote, so nil).
     Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery) do
-      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil) = super
+      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil)
+        super(prompt:, origin: TurnOrigin.from(origin), no_interrupt:, images:, delivery:)
+      end
     end
     # A file that doesn't parse, or isn't a JSON object: no prompt.
     UNREADABLE_INPUT = Input.new(prompt: nil)
@@ -239,9 +243,9 @@ module Samagotchi
       return UNREADABLE_INPUT unless data.is_a?(Hash)
 
       # author: only a file that names one (an owner's names none).
-      origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"], author: data["author"] }.compact
+      origin = TurnOrigin.from(data.slice("client_id", "enqueued_id", "author"))
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
-      Input.new(prompt: data["prompt"].to_s, origin: origin.empty? ? nil : origin, no_interrupt: data["no_interrupt"] == true,
+      Input.new(prompt: data["prompt"].to_s, origin: origin, no_interrupt: data["no_interrupt"] == true,
                 images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil)
     rescue JSON::ParserError
       UNREADABLE_INPUT

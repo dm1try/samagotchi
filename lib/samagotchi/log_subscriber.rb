@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "log"
+require_relative "turn_origin"
 
 module Samagotchi
   # The event trail: a SessionObserver subscriber (next to SessionMetrics)
@@ -181,7 +182,7 @@ module Samagotchi
     end
 
     def origin(event)
-      client = event.dig(:origin, :client_id) if event[:origin].is_a?(Hash)
+      client = TurnOrigin.from(event[:origin])&.client_id
       client ? { client_id: client } : {}
     end
 

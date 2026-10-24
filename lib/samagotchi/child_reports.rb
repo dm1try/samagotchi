@@ -7,6 +7,7 @@ require_relative "session"
 require_relative "session_inbox"
 require_relative "reply_wait"
 require_relative "steer"
+require_relative "turn_origin"
 require_relative "log"
 require_relative "config"
 require_relative "tools/delegate_wait"
@@ -138,7 +139,7 @@ module Samagotchi
       def initialize(relay: nil, **) = super
 
       def line(mark: nil) = Steer::Line.new(text: text, source: ChildReports::SOURCE, mark: mark)
-      def origin = { client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}" }
+      def origin = TurnOrigin.new(client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}")
     end
 
     # @param predecessor [String, nil] the link this session continues

@@ -218,7 +218,7 @@ RSpec.describe "delegate reports" do
       taken = box.take
       expect(taken.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
       expect(taken.first.line).to eq(Samagotchi::Steer::Line.new(text: taken.first.text, source: "delegate_report"))
-      expect(taken.first.origin).to eq(client_id: "child:#{child.id[0, 8]}")
+      expect(taken.first.origin).to eq(Samagotchi::TurnOrigin.new(client_id: "child:#{child.id[0, 8]}"))
       # Taken in this turn: not handed out again at the next boundary.
       expect(box.waiting?).to be(false)
       expect(box.take).to eq([])

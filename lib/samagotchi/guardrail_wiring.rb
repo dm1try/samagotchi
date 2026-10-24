@@ -11,6 +11,7 @@ require_relative "version"
 require_relative "hooks"
 require_relative "edit_preview"
 require_relative "tool_activity"
+require_relative "turn_origin"
 
 module Samagotchi
   # An Engine's tool guardrails: who can approve (the interface), the YAML
@@ -83,17 +84,18 @@ module Samagotchi
       @protected = nil
     end
 
-    # A turn starts: its origin (Engine#run_turn's: {client_id:,
-    # enqueued_id:, author:}, each optional), and the git facts read afresh.
+    # A turn starts: its origin (Engine#run_turn's TurnOrigin, or nil; a
+    # Hash is read as one), and the git facts read afresh.
     def begin_turn(origin)
-      @origin = origin
+      @origin = TurnOrigin.from(origin)
       @git = Guardrails::GitInfo.new
     end
 
     # Who wrote the running turn when it isn't the session's owner (its
-    # origin's author); nil for the owner's turns and every other origin.
+    # origin's participant author); nil for the owner's turns and every
+    # other origin.
     # @return [String, nil]
-    def turn_author = @origin.is_a?(Hash) ? @origin[:author] : nil
+    def turn_author = @origin&.participant_author
 
     # The gate every tool call asks first.
     # @return [Guardrails::Gate]
@@ -229,7 +231,7 @@ module Samagotchi
     # @return [Guardrails::Context]
     def context
       Guardrails::Context.new(cwd: Dir.pwd, session_id: @session_lookup.call&.id, interface: interface,
-                              origin: @origin, git: @git)
+                              origin: @origin&.to_h, git: @git)
     end
 
     # Ask the user to approve a call the gate voted `ask` on, through the

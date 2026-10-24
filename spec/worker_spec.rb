@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::Worker do
 
       prompt, started_at, kwargs = next_turn
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: { client_id: "system:reminder" })
+      expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "system:reminder"))
       expect(started_at - called_at).to be < 5
       expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty

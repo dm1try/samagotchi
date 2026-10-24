@@ -201,7 +201,8 @@ These are the Engine's raw events. The worker's SSE projection omits `call` from
 `:tool_call_started` and `result` from `:turn_completed`; the answer remains in
 `turn_summary.output`.
 
-A turn started with `origin:` carries it on each of these (and `:turn_failed`).
+A turn started with `origin:` (a `TurnOrigin`, or its Hash) carries it on each of these (and `:turn_failed`), as
+the Hash `{client_id:, enqueued_id:, author:}` with only the fields set (`TurnOrigin#to_h`).
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
 rescues sink errors). A new UI (web, API) supplies its own `on_event` and

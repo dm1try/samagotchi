@@ -13,6 +13,7 @@ require_relative "context_note"
 require_relative "context_status"
 require_relative "steer"
 require_relative "turn_note"
+require_relative "turn_origin"
 require_relative "model_profile"
 require_relative "effective_model"
 require_relative "session_setting"
@@ -623,7 +624,7 @@ module Samagotchi
     def side_author(kind)
       return nil unless turn_running? || kind.to_s == RECAP_SIDE_KIND
 
-      Steer.sender_author(@guardrail_wiring.turn_author)
+      @guardrail_wiring.turn_author
     end
 
     RECAP_SIDE_KIND = "recap"
@@ -631,7 +632,7 @@ module Samagotchi
     # The running turn's author when a participant wrote it, else nil
     # (ctx.turn_author, the hooks' author).
     # @return [String, nil]
-    def turn_author = turn_running? ? Steer.sender_author(@guardrail_wiring.turn_author) : nil
+    def turn_author = turn_running? ? @guardrail_wiring.turn_author : nil
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
@@ -1494,14 +1495,15 @@ module Samagotchi
     # @param limit [Integer, nil] the turn ran out of iterations at this
     #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
     #   answer the continue offer says so (ReplyWait, ParentReport "limit")
+    # @param origin [TurnOrigin, nil] the turn's (a Hash is read as one)
     # @param event [Hash] the turn's end event (#stop_facts)
     def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
-      source = ClientId.origin(origin.is_a?(Hash) ? origin[:client_id] : nil)
-      enqueued_id = origin.is_a?(Hash) ? origin[:enqueued_id] : nil
+      origin = TurnOrigin.from(origin)
+      enqueued_id = origin&.enqueued_id
       session.last_turn = LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), seconds: seconds.round(1),
-                                       origin: source, exhausted: limit ? true : nil, limit: limit,
+                                       origin: ClientId.origin(origin&.client_id), exhausted: limit ? true : nil, limit: limit,
                                        enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
-                                       author: Steer.sender_author(origin.is_a?(Hash) ? origin[:author] : nil),
+                                       author: origin&.participant_author,
                                        **stop_facts(event))
     end
 
@@ -1532,10 +1534,9 @@ module Samagotchi
     # author:, and author_name: from participants.json), {} for the owner.
     # The worker's drain names a participant's merged lines with it, and
     # its running save a participant's prompt.
-    # @param origin [Hash, String, nil] a turn's origin, or an author
+    # @param author [String, nil] a turn's or a line's author (TurnOrigin#author)
     # @param session [Session, nil] the session it is for (the turn's)
-    def author_fields(origin, session: @session)
-      author = origin.is_a?(Hash) ? origin[:author] : origin
+    def author_fields(author, session: @session)
       return {} unless Steer.participant_author?(author)
 
       Steer.author_fields(author, @participants.name_for(author, session: session))
@@ -1996,8 +1997,9 @@ module Samagotchi
       def resumed? = resumed ? true : false
 
       # The turn's boundary events carry the origin only when there is one,
-      # so payloads stay unchanged for callers that don't pass it.
-      def tag(event) = origin ? event.merge(origin: origin) : event
+      # so payloads stay unchanged for callers that don't pass it; as its
+      # wire Hash (TurnOrigin#to_h), which the Bridge and the UIs read.
+      def tag(event) = origin ? event.merge(origin: origin.to_h) : event
 
       # Seconds since the turn started (the cancel note says how long it ran).
       def elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
@@ -2032,11 +2034,12 @@ module Samagotchi
     #   run it resumes started (ModelResult#run_start, kept in the offer by
     #   TurnFlow), so it keeps that run's reasoning; nil starts cold (a
     #   model change while the offer stood, every other turn).
-    # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:},
-    #   and author: when someone other than the session's owner wrote it, from
-    #   its input file; absent for the owner); when given, the turn's boundary
-    #   events (:turn_started, :turn_completed, :turn_canceled, :turn_failed)
-    #   carry it as `origin:`, and GuardrailWiring#begin_turn gets it
+    # @param origin [TurnOrigin, Hash, nil] who queued the turn (client_id,
+    #   enqueued_id, and author when someone other than the session's owner
+    #   wrote it, from its input file; none for the owner; a Hash is read as
+    #   one, TurnOrigin.from); when given, the turn's boundary events
+    #   (:turn_started, :turn_completed, :turn_canceled, :turn_failed) carry
+    #   it as `origin:` (its wire Hash), and GuardrailWiring#begin_turn gets it
     # @param images [Array<Hash>] the prompt's images: {path:} (a file on this
     #   machine; in-process and attached-TUI callers only) or {file:, name:}
     #   (already in the session's images/, e.g. a web upload). They are
@@ -2108,6 +2111,7 @@ module Samagotchi
     # the turn flag, its cancel controller and sink. The cross-thread state
     # is set here and cleared in #release_turn only.
     def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil)
+      origin = TurnOrigin.from(origin)
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -2151,7 +2155,7 @@ module Samagotchi
       turn_started[:cut_after] = steer_cut_after
       # A participant's turn names them (author, author_name) for the UIs'
       # badge; the owner's turn_started stays as it was.
-      turn_started.merge!(author_fields(turn.origin, session: session))
+      turn_started.merge!(author_fields(turn.origin&.author, session: session))
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
@@ -2305,7 +2309,7 @@ module Samagotchi
       # system prompt invalidates cache for the entire prefix.
       # Not into a participant's turn: the owner's reminders are the owner's,
       # and would be used up there under the review boundary.
-      due_reminders = Steer.participant_author?(turn.origin&.dig(:author)) ? [] : @reminder_queue.inject!(turn.messages)
+      due_reminders = turn.origin&.participant? ? [] : @reminder_queue.inject!(turn.messages)
       if due_reminders.any?
         emit_event(turn.on_event, {
           type: :reminder_injected,
@@ -2314,7 +2318,7 @@ module Samagotchi
       end
 
       unless turn.continue
-        user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin) }
+        user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin&.author) }
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt

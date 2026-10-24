@@ -4,6 +4,7 @@ require "time"
 require_relative "last_turn"
 require_relative "log"
 require_relative "steer"
+require_relative "turn_origin"
 
 module Samagotchi
   # A session worker's continue offer: what it announces when a turn runs out
@@ -71,6 +72,7 @@ module Samagotchi
 
     # A prompt (or a reminder turn) taken while a continue is offered
     # replaces the answer (D2): the offer goes, the partial turn stays.
+    # @param origin [TurnOrigin, nil] the taken turn's
     def drop(origin)
       return unless awaiting?
 
@@ -78,7 +80,7 @@ module Samagotchi
       close("dropped")
       @engine.synchronize_events do
         @turn_flow.drop_offer!
-        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.dig(:client_id))
+        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.client_id)
       end
       @engine.record_activity
     end
@@ -166,7 +168,7 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
           return announce_offer(offer)
         end
-        origin = { client_id: command.client_id, enqueued_id: enqueued_id, author: author }.compact
+        origin = TurnOrigin.new(client_id: command.client_id, enqueued_id: enqueued_id, author: author)
         @run_turn.call(nil, continue: true, origin: origin, resumed: true, resume_from: resume_from,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error

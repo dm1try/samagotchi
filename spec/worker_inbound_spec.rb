@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::WorkerInbound do
       wake = inbound.absorb_context(wake: true)
 
       expect(wake.name).to eq("ci")
-      expect(wake.origin).to eq({ client_id: "context:ci" })
+      expect(wake.origin).to eq(Samagotchi::TurnOrigin.new(client_id: "context:ci"))
       expect(session.messages.last).to include(turn_start: true, turn_id: wake.turn_id)
       expect(absorber).to have_received(:commit) do |committed|
         expect(committed.deliveries.first.subscription.wakes_at).not_to be_nil

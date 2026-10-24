@@ -11,6 +11,7 @@ require_relative "session"
 require_relative "session_inbox"
 require_relative "turn_note"
 require_relative "steer"
+require_relative "turn_origin"
 require_relative "worker_idle_exit"
 require_relative "worker_wakes"
 require_relative "worker_inbound"
@@ -145,7 +146,7 @@ module Samagotchi
       @discard = false
       # The exit asked for is a restart (POST /exit restart: true).
       @exit_restart = false
-      # The lines the running turn's drain merged ([prompt, origin]), for a
+      # The lines the running turn's drain merged ([prompt, TurnOrigin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
       # A delegate child's side (ChildRing): whether the running turn is
@@ -624,7 +625,7 @@ module Samagotchi
       # A participant's turn queued before their link ended or their cap was
       # reached doesn't start (chi web refuses new ones; this is the
       # worker's check).
-      if (reason = participant_refusal(origin&.dig(:author)))
+      if (reason = participant_refusal(origin&.author))
         return refuse_participant_turn(origin, reason)
       end
 
@@ -632,7 +633,7 @@ module Samagotchi
       # background tasks that finished since the last look.
       absorb_context(before_turn: true)
       @task_wakes.absorb
-      user_input(origin&.dig(:client_id))
+      user_input(origin&.client_id)
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
       run_engine_turn(prompt.text, origin: origin, max_iterations: max_iterations(prompt.no_interrupt),
@@ -644,7 +645,7 @@ module Samagotchi
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
-      participant_refusal(origin&.dig(:author))
+      participant_refusal(origin&.author)
     end
 
     # Why the participant +author+ ("p:<id>") may run no more turns, nil
@@ -686,11 +687,12 @@ module Samagotchi
     # taken off the queue (:turn_dequeued, so every UI drops its bubble)
     # and audited; it never runs. Its settled record (canceled, the reason)
     # ends the sender's wait on it (chi send --wait, chi web's /wait).
+    # @param origin [TurnOrigin] a participant's
     def refuse_participant_turn(origin, reason)
-      TurnCheckpoint.record_refused(@session_dir, origin[:enqueued_id], reason: reason)
-      Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin[:author].delete_prefix("p:"),
-                                           enqueued_id: origin[:enqueued_id], status: "refused", reason: reason)
-      @engine.announce(type: :turn_dequeued, enqueued_id: origin[:enqueued_id], client_id: origin[:client_id])
+      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason)
+      Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
+                                           enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
+      @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
       nil
     end
 
@@ -705,14 +707,17 @@ module Samagotchi
       @engine.clear_due_reminder_names!
       return false unless @engine.reminders_due?
 
-      @continue_offer.drop({ client_id: ClientId::REMINDER })
+      @continue_offer.drop(REMINDER_ORIGIN)
       # A failure has no prompt to hand back (the Engine announced
       # :turn_failed). The offer went before the turn
       # (ContinueOffer#drop); either way the rollback window closes.
-      run_engine_turn(nil, continue: true, origin: { client_id: ClientId::REMINDER },
+      run_engine_turn(nil, continue: true, origin: REMINDER_ORIGIN,
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
     end
+
+    # A reminder turn's origin: chi's own (system:reminder).
+    REMINDER_ORIGIN = TurnOrigin.new(client_id: ClientId::REMINDER)
 
     # :due when an idle parent should run a turn for its delegate
     # children's reports now (session.delegate_reports: wake): rings wait,
@@ -1107,13 +1112,13 @@ module Samagotchi
       # Every kind of turn merges steering (a reminder turn too, which may be
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
-      @reporting_turn = reports_to_parent?(turn_args[:origin])
+      origin = TurnOrigin.from(turn_args[:origin])
+      @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
-      @participant_turn = Steer.participant_author?(turn_args[:origin]&.dig(:author))
+      @participant_turn = origin&.participant? || false
       restores = @turn_flow.restores
       begin
-        @checkpoint.begin_turn(prompt: prompt, enqueued_id: turn_args[:origin]&.dig(:enqueued_id),
-                               author: turn_author_fields(turn_args[:origin]))
+        @checkpoint.begin_turn(prompt: prompt, enqueued_id: origin&.enqueued_id, author: turn_author_fields(origin))
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's
@@ -1128,7 +1133,7 @@ module Samagotchi
         # (ReplyWait) tells a turn's end by last_turn.
         if @session.status == Session::STATUS_RUNNING
           @session.status = Session::STATUS_IDLE
-          @engine.record_last_turn(@session, "failed", 0, turn_args[:origin], { type: :turn_failed })
+          @engine.record_last_turn(@session, "failed", 0, origin, { type: :turn_failed })
           Log.warn(:worker, "turn_not_begun", error: e.class.name, msg: e.message)
         end
       ensure
@@ -1142,7 +1147,7 @@ module Samagotchi
       # no reply: its text is what came before its last tool calls, and a
       # wait (chi send --wait) gets the question instead.
       unless response.nil? || response.strip.empty? || @continue_offer.awaiting?
-        SessionInbox.write_output(@session_dir, response, enqueued_id: turn_args[:origin]&.dig(:enqueued_id))
+        SessionInbox.write_output(@session_dir, response, enqueued_id: origin&.enqueued_id)
       end
       save_or_log(:turn) { save_session }
       # The reports the turn merged were read unless its end took the turn
@@ -1200,7 +1205,7 @@ module Samagotchi
     def reports_to_parent?(origin)
       return false unless @session.delegate?
 
-      @initial_turn || @owes_parent || !ClientId.human?(origin&.dig(:client_id))
+      @initial_turn || @owes_parent || !ClientId.human?(origin&.client_id)
     end
 
     # The Engine published a question (after the question desk saved it).
@@ -1235,7 +1240,7 @@ module Samagotchi
     # or the restored ones, never the one without the other. A turn that
     # got somewhere stays instead (TurnFlow#prompt_turn_failed), with the
     # prompts it took: nothing goes back.
-    # @param prompts [Array<Array(String, Hash|nil, Array|nil)>] [prompt,
+    # @param prompts [Array<Array(String, TurnOrigin|nil, Array|nil)>] [prompt,
     #   origin, images] (a web client gets its image chips back)
     # @param error [Exception, nil] what failed: its one line stays in the
     #   conversation as a turn note
@@ -1245,7 +1250,7 @@ module Samagotchi
         next if @turn_flow.prompt_turn_failed(error: error) == :kept
 
         prompts.each do |prompt, origin, images|
-          restored = { type: :prompt_restored, prompt: prompt, origin: origin }
+          restored = { type: :prompt_restored, prompt: prompt, origin: origin&.to_h }
           restored[:images] = images unless Array(images).empty?
           @engine.announce(restored)
         end
@@ -1290,13 +1295,13 @@ module Samagotchi
             FileUtils.rm_f(claimed_file)
           end
         end
-        merged.each { |_prompt, origin| user_input(origin&.dig(:client_id)) }
+        merged.each { |_prompt, origin| user_input(origin&.client_id) }
         # Delegate children's reports: never handed back on a failure
         # (their rings stay for the next turn), so not in @merged_this_turn.
         reports, mark = take_child_reports
         unless merged.empty? && reports.empty?
           @engine.announce(type: :input_merged, count: merged.size + reports.size,
-                           origins: merged.filter_map(&:last) + reports.map(&:origin))
+                           origins: (merged.filter_map(&:last) + reports.map(&:origin)).map(&:to_h))
           @merged_this_turn.concat(merged)
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or
@@ -1315,12 +1320,12 @@ module Samagotchi
 
     # A participant's author fields (Engine#author_fields), {} for the owner.
     def turn_author_fields(origin)
-      Steer.participant_author?(origin&.dig(:author)) ? @engine.author_fields(origin[:author], session: @session) : {}
+      origin&.participant? ? @engine.author_fields(origin.author, session: @session) : {}
     end
 
     def merged_line(prompt, origin)
       author = turn_author_fields(origin)
-      Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id)),
+      Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.client_id),
                       author: author[:author], author_name: author[:author_name])
     end
 

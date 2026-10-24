@@ -82,7 +82,7 @@ RSpec.describe "a participant's author on delivery" do
       engine.session_state_dir = tmpdir
       prompts = Queue.new
       allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
-        prompts << [prompt, kwargs[:origin]&.dig(:author)]
+        prompts << [prompt, kwargs[:origin]&.author]
         if prompt == "first"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
@@ -109,7 +109,7 @@ RSpec.describe "a participant's author on delivery" do
       engine.session_state_dir = tmpdir
       prompts = Queue.new
       allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
-        prompts << [prompt, kwargs[:origin]&.dig(:author)]
+        prompts << [prompt, kwargs[:origin]&.author]
         if prompt == "is step 3 safe?"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o", delivery: "cut")

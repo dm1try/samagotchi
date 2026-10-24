@@ -149,7 +149,7 @@ RSpec.describe Samagotchi::ContinueOffer do
 
       recording.run_continue_turn(command_from("cli:answer"))
 
-      expect(args[:origin]).to eq(client_id: "cli:answer", enqueued_id: "q1")
+      expect(args[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "cli:answer", enqueued_id: "q1"))
     end
 
     it "keeps a participant's author: their turn continues as theirs, inside the review boundary" do
@@ -158,7 +158,7 @@ RSpec.describe Samagotchi::ContinueOffer do
 
       recording.run_continue_turn(command_from("web:owner"))
 
-      expect(args[:origin]).to eq(client_id: "web:owner", enqueued_id: "q1", author: "p:p_0123abcd")
+      expect(args[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "web:owner", enqueued_id: "q1", author: "p:p_0123abcd"))
     end
 
     it "doesn't continue a participant's turn they may no longer run (revoked, at the cap)" do
@@ -214,7 +214,7 @@ RSpec.describe Samagotchi::ContinueOffer do
 
       recording.run_continue_turn(command_from("web:2"))
 
-      expect(args[:origin]).to eq(client_id: "web:2")
+      expect(args[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "web:2"))
     end
 
     it "goes on a Stop's not_continued last_turn, so a wait on that turn ends" do

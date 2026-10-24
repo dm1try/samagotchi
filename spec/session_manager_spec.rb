@@ -2154,7 +2154,7 @@ RSpec.describe Samagotchi::SessionManager do
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
-        runs << [prompt, origin]
+        runs << [prompt, origin&.to_h]
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
         instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: false)
       end

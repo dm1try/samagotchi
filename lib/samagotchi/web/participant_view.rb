@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative "../client_id"
 require_relative "../output_formatter"
 require_relative "../steer"
+require_relative "../turn_origin"
 
 module Samagotchi
   module Web
@@ -102,17 +102,18 @@ module Samagotchi
 
       # A turn's start: who wrote it, and its prompt when a person sent it
       # (an automatic turn's prompt, a reminder's or a task's, is not
-      # shown). +mine+ when the viewer queued it.
+      # shown: a person is the owner's web or TUI, chi send, a participant,
+      # or no origin, an in-process turn: the owner's; TurnOrigin#human?).
+      # +mine+ when the viewer queued it.
       def turn_started(event, viewer)
-        origin = field(event, :origin)
-        origin = {} unless origin.is_a?(Hash)
-        author = field(event, :author) || field(origin, :author)
+        origin = TurnOrigin.from(field(event, :origin)) || TurnOrigin::NONE
+        author = field(event, :author) || origin.author
         out = { "type" => "turn_started", **id_fields(event) }
         out.merge!(author_fields(author, field(event, :author_name), viewer))
         prompt = field(event, :prompt)
         if field(event, :continue)
           out["continue"] = true
-        elsif person_turn?(origin)
+        elsif origin.human?
           out["prompt"] = prompt.to_s unless prompt.nil?
         else
           out["automatic"] = true
@@ -284,13 +285,6 @@ module Samagotchi
         out["author_name"] = name.to_s if name.is_a?(String) && !name.empty?
         out["mine"] = true if viewer.own?(author)
         out
-      end
-
-      # Sent by a person (the owner's web or TUI, chi send, a participant),
-      # or with no origin (an in-process turn: the owner's).
-      def person_turn?(origin)
-        client_id = field(origin, :client_id)
-        client_id.nil? || ClientId.human?(client_id)
       end
 
       def id_fields(event)

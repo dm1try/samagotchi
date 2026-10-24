@@ -34,14 +34,14 @@ RSpec.describe "a turn's author" do
       path = described_class.write_input(session_dir, prompt: "hi", client_id: "web:t", enqueued_id: "e1", author: "p:p_1")
 
       expect(read_file(path)).to eq("prompt" => "hi", "client_id" => "web:t", "enqueued_id" => "e1", "author" => "p:p_1")
-      expect(described_class.read_input(path).origin).to eq(client_id: "web:t", enqueued_id: "e1", author: "p:p_1")
+      expect(described_class.read_input(path).origin).to eq(Samagotchi::TurnOrigin.new(client_id: "web:t", enqueued_id: "e1", author: "p:p_1"))
     end
 
     it "writes no author for the owner (nil), so the file and the origin are as before" do
       path = described_class.write_input(session_dir, prompt: "hi", client_id: "web:t", enqueued_id: "e1", author: nil)
 
       expect(File.read(path)).to eq('{"prompt":"hi","client_id":"web:t","enqueued_id":"e1"}')
-      expect(described_class.read_input(path).origin).to eq(client_id: "web:t", enqueued_id: "e1")
+      expect(described_class.read_input(path).origin).to eq(Samagotchi::TurnOrigin.new(client_id: "web:t", enqueued_id: "e1"))
     end
   end
 

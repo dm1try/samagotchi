@@ -22,6 +22,7 @@ require_relative "../delivery"
 require_relative "../log"
 require_relative "../context_note"
 require_relative "../steer"
+require_relative "../turn_origin"
 require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
@@ -317,7 +318,7 @@ module Samagotchi
         when :input_merged
           merged_own_prompts(event)
           # A delegate's report: a child's state changed.
-          refresh_children if Array(event[:origins]).any? { |origin| report_origin?(origin) }
+          refresh_children if Array(event[:origins]).any? { |origin| report_origin?(origin_of(origin)) }
         when :question_requested
           # Nothing is left to answer it with.
           return unanswered_question(event[:pending_question]) if @input_ended
@@ -973,7 +974,7 @@ module Samagotchi
       def own_turn_ended(event)
         return unless @wait_at_eof
 
-        id = (event[:origin] || {})[:enqueued_id]
+        id = origin_of(event[:origin]).enqueued_id
         ours = @open_ids.include?(id) || !@merged_ids.empty?
         @own_failed = true if ours && event[:type] == :turn_failed
         @own_empty = true if ours && event[:type] == :turn_completed && event.dig(:turn_summary, :empty_answer)
@@ -986,9 +987,10 @@ module Samagotchi
 
       # Ours merged into the running turn: they end with it.
       def merged_own_prompts(event)
-        Array(event[:origins]).each do |origin|
-          id = origin[:enqueued_id]
-          @merged_ids << id if own?(origin[:client_id]) && @open_ids.include?(id)
+        Array(event[:origins]).each do |value|
+          origin = origin_of(value)
+          id = origin.enqueued_id
+          @merged_ids << id if own?(origin.client_id) && @open_ids.include?(id)
         end
         nil
       end
@@ -1188,8 +1190,8 @@ module Samagotchi
       # The worker rolled a failed turn back and handed its prompt back: ours
       # goes back into the input, as the REPL restores it for a retry.
       def restore_prompt(event)
-        origin = event[:origin] || {}
-        return unless own?(origin[:client_id]) && @sent_ids.include?(origin[:enqueued_id])
+        origin = origin_of(event[:origin])
+        return unless own?(origin.client_id) && @sent_ids.include?(origin.enqueued_id)
         # Lines from a pipe: nobody to retry it (the REPL's rule).
         return if @wait_at_eof
 
@@ -1342,7 +1344,7 @@ module Samagotchi
           next if own?(entry[:client_id])
 
           @shown_enqueued << entry[:enqueued_id]
-          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt], **author_of(entry))}")
+          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt], **author_of(entry[:author]))}")
         end
         # Commands waiting for the turn's end (their command_ran prints no
         # line); a resync prints only the ones it hadn't shown.
@@ -1606,9 +1608,9 @@ module Samagotchi
         return unless turn
 
         continues = turn[:prompt].nil?
-        unless continues && reminder_origin?(turn[:origin] || {})
-          origin = turn[:origin] || {}
-          @screen.commit(prompt_line(origin[:client_id], turn[:prompt] || continuing_text(origin), **author_of(origin)))
+        origin = origin_of(turn[:origin])
+        unless continues && reminder_origin?(origin)
+          @screen.commit(prompt_line(origin.client_id, turn[:prompt] || continuing_text(origin), **author_of(origin.author)))
         end
         tail = nil
         lane = :writing
@@ -1657,7 +1659,7 @@ module Samagotchi
         return if own?(event[:client_id])
 
         @shown_enqueued << event[:enqueued_id]
-        line = prompt_line(event[:client_id], event[:prompt], **author_of(event))
+        line = prompt_line(event[:client_id], event[:prompt], **author_of(event[:author]))
         @screen.commit(event[:delivery] == Delivery::QUEUE ? "#{line} #{QUEUED_NOTE}" : line)
       end
 
@@ -1684,18 +1686,18 @@ module Samagotchi
       def start_turn(event)
         @running = true
         @joined_mid_turn = false
-        origin = event[:origin] || {}
-        @my_queued.delete(origin[:enqueued_id])
+        origin = origin_of(event[:origin])
+        @my_queued.delete(origin.enqueued_id)
         if event[:prompt].nil?
           # A continue turn (after the offer's yes) has no prompt to show; a
           # reminder turn shows its reminders (:reminder_injected).
           # A turn run for delegate reports shows them as they merge; one
           # an attached context change started, its label (the note is above).
           unless reminder_origin?(origin) || report_origin?(origin)
-            @screen.commit(prompt_line(origin[:client_id], continuing_text(origin), **author_of(origin)))
+            @screen.commit(prompt_line(origin.client_id, continuing_text(origin), **author_of(origin.author)))
           end
-        elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
-          @screen.commit(prompt_line(origin[:client_id], event[:prompt], **author_of(origin)))
+        elsif !(own?(origin.client_id) || @shown_enqueued.include?(origin.enqueued_id))
+          @screen.commit(prompt_line(origin.client_id, event[:prompt], **author_of(origin.author)))
         end
         # The own-send echo already names an image-only prompt; another
         # client's prompt line does too, here or at its enqueue.
@@ -1758,11 +1760,11 @@ module Samagotchi
         Array(rows).each { |row| @participant_names["p:#{row[:id]}"] = row[:name] if row.is_a?(Hash) && row[:id] }
       end
 
-      # The prompt line's author keywords for an event, an origin or a
-      # queued row ({author: "p:<id>"}): their name as the worker named
+      # The prompt line's author keywords for the +author+ of an event, an
+      # origin or a queued row ("p:<id>"): their name as the worker named
       # them; {} for the owner's.
-      def author_of(row)
-        author = Steer.sender_author(row[:author]) or return {}
+      def author_of(author)
+        author = Steer.sender_author(author) or return {}
 
         { author: author, author_name: @participant_names[author] }
       end
@@ -1784,10 +1786,12 @@ module Samagotchi
         @default_model_name ||= @link.default_model_name
       end
 
-      def reminder_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::SYSTEM_PREFIX)
-      def report_origin?(origin) = ClientId.origin(origin[:client_id]) == "delegate_report"
-      def context_origin?(origin) = ClientId.origin(origin[:client_id]) == "context"
-      def task_origin?(origin) = ClientId.origin(origin[:client_id]) == "task"
+      # An event's origin (its wire Hash) as a TurnOrigin, NONE for none.
+      def origin_of(value) = TurnOrigin.from(value) || TurnOrigin::NONE
+      def reminder_origin?(origin) = origin.client_id.to_s.start_with?(ClientId::SYSTEM_PREFIX)
+      def report_origin?(origin) = origin.source == "delegate_report"
+      def context_origin?(origin) = origin.source == "context"
+      def task_origin?(origin) = origin.source == "task"
       # A turn with no prompt: "(continuing)"; a context wake's or a task
       # finish wake's label alone.
       def continuing_text(origin) = context_origin?(origin) || task_origin?(origin) ? nil : "(continuing)"

@@ -22,6 +22,7 @@ require_relative "engine"
 require_relative "session_commands"
 require_relative "queued_command"
 require_relative "steer"
+require_relative "turn_origin"
 require_relative "participants"
 require_relative "image_store"
 require_relative "log"
@@ -1032,7 +1033,7 @@ module Samagotchi
     # +author+'s turns running or waiting: the running turn when it is
     # theirs, and their queued ones. Read with the event log held.
     def pending_turns(author)
-      running = Steer.sender_author(@accumulator.current_turn&.dig(:origin, :author)) == author ? 1 : 0
+      running = TurnOrigin.from(@accumulator.current_turn&.dig(:origin))&.participant_author == author ? 1 : 0
       running + @accumulator.queued.count { |row| row[:author] == author }
     end
 
