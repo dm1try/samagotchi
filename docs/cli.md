@@ -1012,6 +1012,16 @@ steps saved before that have none, so they show no thinking. An `edit` or
 made (up to 120 lines or 8 KB), live and after a reload (see
 [Guardrails](guardrails.md#ask) for the diff an approval shows first).
 
+**When things happened**, in both views and on a participant's review page: where 10 minutes or
+more of quiet passed between the end of one activity and the start of the next (a turn, a context
+note, a reminder), the history has one dim centred line, `── 14:32 · 47 min later ──`; the date is
+added when the day changed or the turn wasn't today (`── Sat 24 Oct 09:10 · 13 h later ──`).
+Nothing marks active work: a long turn followed at once by the next has no line. Hovering a prompt,
+an answer, a note or a reminder shows its full local time, and the recap's label says when it was
+written (`recap · 14:32`). The times are the history entries' `at` (see
+[sessions.md](sessions.md)); a session saved before them takes its turns' times from their timing
+records, and shows no hover times.
+
 ### The working set
 
 The stage view shows what a turn brought into the model's context: the files

@@ -491,3 +491,44 @@ test("stepText: a reloaded block's step text by iteration (1-based), \"\" for a 
   assert.equal(stepText(block, 7), "");
   assert.equal(stepText(null, 1), "");
 });
+
+test("turnHistoryNodes: a gap divider between turns 10+ quiet minutes apart (its own element), and each bubble's time on hover", () => {
+  const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
+  const items = [
+    { role: "user", content: "one", turn_id: "T1", at: at(9, 0) },
+    { role: "assistant", content: "first", at: at(9, 1) },
+    { role: "user", content: "two", turn_id: "T2", at: at(9, 5) },
+    { role: "assistant", content: "second", at: at(9, 6) },
+    { role: "note", content: "deploy frozen", label: "slack", at: at(9, 36) },
+    { role: "user", content: "three", turn_id: "T3", at: at(9, 40) },
+    { role: "assistant", content: "third", at: at(9, 41) },
+  ];
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, normalizeTiming({}), { thumbs, now: new Date(2026, 9, 24, 23, 0).getTime() }));
+  const gaps = [...holder.querySelectorAll(".time-gap")];
+  assert.deepEqual(gaps.map((el) => el.textContent), ["── 09:36 · 30 min later ──"]);
+  assert.ok(gaps[0].nextElementSibling.matches(".bubble.note"));
+  assert.ok(!gaps[0].matches(".bubble, .turn-work"));
+  assert.equal(holder.querySelector(".bubble.user").getAttribute("title"), "Sat 24 Oct 2026 09:00:00");
+  assert.equal(holder.querySelector(".bubble.output").getAttribute("title"), "Sat 24 Oct 2026 09:01:00");
+  assert.equal(holder.querySelector(".bubble.note").getAttribute("title"), "Sat 24 Oct 2026 09:36:00");
+  // Unstamped (an old session): no title, no divider.
+  const old = document.createElement("div");
+  old.append(turnHistoryNodes([{ role: "user", content: "x" }, { role: "assistant", content: "y" }], normalizeTiming({}), { thumbs }));
+  assert.equal(old.querySelector(".bubble.user").hasAttribute("title"), false);
+  assert.equal(old.querySelector(".time-gap"), null);
+});
+
+test("turnHistoryNodes: an old session's turns get their divider from the turn records (started_at, duration_ms)", () => {
+  const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
+  const items = [{ role: "user", content: "one", turn_id: "T1" }, { role: "assistant", content: "a" },
+    { role: "user", content: "two", turn_id: "T2" }, { role: "assistant", content: "b" }];
+  const records = normalizeTiming({ turn_records: [
+    { id: "T1", status: "completed", started_at: at(9, 0), duration_ms: 60_000 },
+    { id: "T2", status: "completed", started_at: at(11, 1), duration_ms: 60_000 },
+  ] });
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, records, { thumbs, now: new Date(2026, 9, 24, 23, 0).getTime() }));
+  assert.deepEqual([...holder.querySelectorAll(".time-gap")].map((el) => el.textContent), ["── 11:01 · 2 h later ──"]);
+  assert.ok(holder.querySelector(".time-gap").nextElementSibling.matches(".bubble.user"));
+});

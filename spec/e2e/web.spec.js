@@ -1965,7 +1965,9 @@ test("the image button: picked images are chips, a non-image stays out with a to
 
 // A's turn-end re-read (?tail=1) lands after B started: B keeps its own
 // live line ("turn 2", ticking), A's line and answer are A's, and a reload
-// draws the same two lines.
+// draws the same two lines. B followed A at once: no gap divider; a reload
+// whose turn A happened 40 minutes earlier (its stamps and record moved
+// back) draws one, above B's prompt.
 test("a queued turn keeps its own live timing line when the turn before it re-reads late", { tag: "@turn" }, async ({ page, script }) => {
   script("queued");
   let release;
@@ -2009,10 +2011,26 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   expect(final).toHaveLength(2);
   expect(final[0]).toMatch(/^turn 1 · /);
   expect(final[1]).toMatch(/^turn 2 · /);
+  await expect(page.locator("#history .time-gap")).toHaveCount(0);
+  await page.route(/\/api\/sessions\/[^/?]+\?parts=1$/, async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    const earlier = (iso) => new Date(Date.parse(iso) - 40 * 60_000).toISOString();
+    const second = json.messages.findIndex((m) => m.role === "user" && /QUEUED-B/.test(m.content));
+    json.messages.forEach((m, i) => { if (i < second && m.at) m.at = earlier(m.at); });
+    const [first] = json.timing?.turn_records || [];
+    if (first?.started_at) first.started_at = earlier(first.started_at);
+    await route.fulfill({ response, json });
+  });
   await page.reload();
   await turnEnded(page, 2);
   const reloaded = await page.locator("#history .turn-timing").allTextContents();
   expect(reloaded).toHaveLength(2);
   expect(reloaded[0]).toMatch(/^turn 1 · /);
   expect(reloaded[1]).toMatch(/^turn 2 · /);
+  const gap = page.locator("#history > .time-gap");
+  await expect(gap).toHaveCount(1);
+  await expect(gap).toHaveText(/^── .+ · (39|40) min later ──$/);
+  expect(await gap.evaluate((el) => el.nextElementSibling?.matches(".bubble.user") && el.nextElementSibling.textContent.includes("QUEUED-B"))).toBe(true);
+  await expect(page.locator("#history .bubble.user").first()).toHaveAttribute("title", /^\w{3} \d+ \w{3} \d{4} \d\d:\d\d:\d\d$/);
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clip, leadTrimmed, previewOf, relativeTime, escapeHtml, normalize, modelLabel, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
+import { clip, leadTrimmed, previewOf, relativeTime, escapeHtml, normalize, modelLabel, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip, wallClock, fullTime, agoText, gapText, GAP_SECONDS } from "../../../lib/samagotchi/web/public/format.js";
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");
@@ -326,4 +326,51 @@ test("cantText: what failed and why", () => {
   assert.equal(cantText("detach notes", { message: "gone" }), "Can't detach notes: gone");
   // A server that sent no words: its status is all there is (api()'s message keeps it).
   assert.equal(cantText("stop 1234abcd", new Error("Bad Gateway (502)")), "Can't stop 1234abcd: Bad Gateway (502)");
+});
+
+// Wall times: built from local Date parts, so the expectations hold in any
+// time zone (package.json sets none; CI is UTC, the Mac isn't).
+const localIso = (h, m, { day = 24, s = 0 } = {}) => new Date(2026, 9, day, h, m, s).toISOString();
+const localMs = (h, m, opts) => Date.parse(localIso(h, m, opts));
+
+test("wallClock: local HH:MM; the day form on another day than now; '' for none", () => {
+  assert.equal(wallClock(localIso(14, 32)), "14:32");
+  assert.equal(wallClock(localMs(9, 5)), "09:05");
+  assert.equal(wallClock(localIso(14, 32), localMs(23, 0)), "14:32");
+  assert.equal(wallClock(localIso(9, 10), localMs(8, 0, { day: 25 })), "Sat 24 Oct 09:10");
+  assert.equal(wallClock(null), "");
+  assert.equal(wallClock("garbage"), "");
+});
+
+test("fullTime: the bubbles' hover, local date and time with seconds", () => {
+  assert.equal(fullTime(localIso(14, 32, { s: 5 })), "Sat 24 Oct 2026 14:32:05");
+  assert.equal(fullTime(undefined), "");
+});
+
+test("agoText: MessageTime.ago's scale, whole units rounded down", () => {
+  assert.equal(agoText(600), "10 min");
+  assert.equal(agoText(47 * 60 + 59), "47 min");
+  assert.equal(agoText(3 * 3600 + 59 * 60), "3 h");
+  assert.equal(agoText(2 * 86400 + 5), "2 d");
+});
+
+test("gapText: none below 10 minutes or without both times; the time and how long, the date across a day", () => {
+  const now = localMs(23, 0);
+  assert.equal(GAP_SECONDS, 600);
+  assert.equal(gapText(localIso(13, 45), localIso(13, 54, { s: 59 }), now), null);
+  assert.equal(gapText(localIso(13, 45), localIso(14, 32), now), "── 14:32 · 47 min later ──");
+  assert.equal(gapText(localMs(13, 45), localMs(13, 55), now), "── 13:55 · 10 min later ──");
+  assert.equal(gapText(localIso(20, 10, { day: 23 }), localIso(9, 10), now), "── Sat 24 Oct 09:10 · 13 h later ──");
+  // Read on a later day: the date too, so an old history's times aren't today's.
+  assert.equal(gapText(localIso(13, 45), localIso(14, 32), localMs(8, 0, { day: 26 })), "── Sat 24 Oct 14:32 · 47 min later ──");
+  assert.equal(gapText(null, localIso(14, 32), now), null);
+  assert.equal(gapText(localIso(14, 32), "bad", now), null);
+});
+
+test("recapLabel: the recap's time when it has one, before its turns", () => {
+  const now = localMs(23, 0);
+  assert.equal(recapLabel(0, false, localIso(14, 32), now), "recap · 14:32");
+  assert.equal(recapLabel(2, false, localIso(14, 32), now), "recap · 14:32 · before the last 2 turns");
+  assert.equal(recapLabel(0, true, localIso(14, 32), now), "recap · 14:32 · earlier");
+  assert.equal(recapLabel(1, false, null, now), "recap · before the last turn");
 });

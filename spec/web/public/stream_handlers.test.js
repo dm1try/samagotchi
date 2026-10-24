@@ -2,6 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStreamHandlers } from "../../../lib/samagotchi/web/public/stream_handlers.js";
+import { createGapClock } from "../../../lib/samagotchi/web/public/time_gaps.js";
 
 const ME = "tab-me";
 
@@ -445,4 +446,40 @@ test("question_requested: a question's refs go on its step before the card draws
   assert.deepEqual(page.names().slice(2), ["questionCards.renderQuestion"]);
   handlers.question_requested({ pending_question: null });
   assert.equal(page.names().length, 3);
+});
+
+test("live gap dividers: before a turn's prompt, a reminder or a note after a quiet stretch; a turn's end restarts the count", () => {
+  const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
+  let now = Date.parse(at(9, 0));
+  const gapClock = createGapClock(() => now);
+  gapClock.seed(at(8, 50));
+  const gaps = [];
+  const prompt = { title: "", setAttribute() {} };
+  const { deps, page } = fakePage();
+  const handlers = createStreamHandlers({ ...deps, applyPromptOps: () => prompt, gapClock, addTimeGap: (text, opts) => gaps.push([text, opts.before]) });
+  // 10 minutes after the history's last activity: a divider above the prompt, its time on the prompt's hover.
+  handlers.turn_started({ type: "turn_started", turn_id: "T1", at: at(9, 0) });
+  assert.deepEqual(gaps, [["── 09:00 · 10 min later ──", prompt]]);
+  assert.equal(prompt.title, "Sat 24 Oct 2026 09:00:00");
+  // The turn ran 40 minutes; the next starts at once: nothing (end to start).
+  now = Date.parse(at(9, 40));
+  handlers.turn_canceled({ cancellation_reason: "user" });
+  handlers.turn_started({ type: "turn_started", turn_id: "T2", at: at(9, 41) });
+  now = Date.parse(at(9, 42));
+  handlers.turn_failed({ message: "x" });
+  assert.equal(gaps.length, 1);
+  handlers.reminder_injected({ type: "reminder_injected", reminders: [], at: at(10, 30) });
+  handlers.context_added({ type: "context_added", label: "slack", text: "n", created_at: at(11, 0) });
+  assert.deepEqual(gaps.slice(1).map(([text, before]) => [text, before]), [
+    ["── 10:30 · 48 min later ──", null], ["── 11:00 · 30 min later ──", null],
+  ]);
+  // The reminder's and the note's bubbles know when they came (their hover).
+  assert.equal(page.calls.find((c) => c[0] === "addCommandBubble")[1].at, at(10, 30));
+  assert.equal(page.calls.find((c) => c[0] === "addNoteBubble")[1].at, at(11, 0));
+});
+
+test("recap_ready passes the recap's created_at (its label's time)", () => {
+  const { page, handlers } = fakePage();
+  handlers.recap_ready({ recap: "r", created_at: "2026-10-24T12:32:00Z" });
+  assert.deepEqual(page.calls.find((c) => c[0] === "showRecap"), ["showRecap", "r", 0, "2026-10-24T12:32:00Z"]);
 });

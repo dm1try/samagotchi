@@ -197,3 +197,25 @@ test("an end line scrolls to the end unless the stage holds the turn", () => {
   bubbles.addEndBubble("Canceled", { stopped: true });
   assert.equal(historyEl.children.length, 1);
 });
+
+test("a recap's label carries when it was written, a stale one too; a gap's divider goes above the bubble it precedes", () => {
+  const created = new Date(2026, 9, 24, 14, 32).toISOString();
+  assert.match(markupOf(recapTemplate("did things", 0, created, new Date(2026, 9, 24, 23, 0).getTime())),
+               /data-created-at="[^"]+".*<summary>recap · 14:32<\/summary>/);
+  const { historyEl, bubbles } = harness();
+  const first = bubbles.makeUserBubble("one");
+  bubbles.showRecap("summary", 0, created);
+  bubbles.markRecapStale();
+  assert.match(historyEl.querySelector(".bubble.recap summary").textContent, /^recap · (14:32|Sat 24 Oct 14:32) · earlier$/);
+  const gap = bubbles.addTimeGap("── 14:32 · 47 min later ──", { before: first });
+  assert.equal(gap.nextElementSibling, first);
+  assert.ok(gap.matches(".time-gap") && !gap.matches(".bubble"));
+  // It is no turn prompt: the recap's place counts the same.
+  assert.deepEqual(turnPromptBubbles(historyEl), [first]);
+  assert.equal(bubbles.addTimeGap(null), null);
+  bubbles.addTimeGap("── 15:00 · 20 min later ──");
+  assert.ok(historyEl.lastElementChild.matches(".time-gap"));
+  // A stale recap goes above the divider of the first turn it doesn't cover.
+  bubbles.showRecap("older", 1, created);
+  assert.equal(historyEl.querySelector(".bubble.recap").nextElementSibling, gap);
+});

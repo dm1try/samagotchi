@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 - Terminal (attached and the REPL): a dim `── 14:32 · 47 min later ──` divider before what comes after 10 minutes
   or more of quiet, a `── last activity 14:32 · 47 min ago ──` line when attaching after such a gap, and the recap's
   time in its head (`recap 14:32>`). See docs/cli.md (Time gaps).
+- Web: a dim `── 14:32 · 47 min later ──` line in the history where 10 minutes or more of quiet passed between
+  turns, notes or reminders (live and after a reload, the participant's review page too), each prompt, answer and
+  note's full time on hover, and the recap's time in its label (`recap · 14:32`).
 
 ### Fixed
 
