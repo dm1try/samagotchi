@@ -18,9 +18,10 @@ module Samagotchi
       # The header's name as people write it, or "none".
       def identity_label = identity_header || "none"
 
-      # https://host[:port]/#token=TOKEN: the owner's link (the token rides
-      # in the fragment, which no proxy or IdP sees).
-      def link(token, fragment = nil) = "#{origin}/##{["token=#{token}", fragment].compact.join("&")}"
+      # https://host[:port]/#code=CODE[&FRAGMENT]: a link with a one-time
+      # code (LinkCodes) in its fragment, never a token: a fragment outlives
+      # the sign-in redirects and stays in the browser's history.
+      def link(code, fragment = nil) = "#{origin}/##{["code=#{code}", fragment].compact.join("&")}"
     end
 
     class PublicUrl

@@ -5,18 +5,20 @@
 import fs from "node:fs";
 import { test, expect } from "./support/fixtures.js";
 
-test("the owner's fragment link signs in through the proxy, a turn streams, and a lost sign-in says so", async ({ chi, context, script }) => {
+test("the owner's one-time link signs in through the proxy, a turn streams, and a lost sign-in says so", async ({ chi, context, script }) => {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const token = fs.readFileSync(chi.tokenPath, "utf8").trim();
+  // chi web's start line: the owner's link with a one-time code.
+  const link = fs.readFileSync(chi.webLogPath, "utf8").match(/Proxied: (\S+#code=chc_\S+)/)[1];
 
   // The proxy's sign-in (an IdP with a session) keeps the fragment; chi's
-  // 401 page trades it for the __Host- cookie and loads the page without it.
+  // 401 page trades the code for the __Host- cookie and loads the page
+  // without it.
   // The start page's model list: app.js runs (every module comes through
   // the proxy, a TLS connection each).
   const started = page.waitForResponse((r) => r.url().endsWith("/api/models") && r.status() === 200);
-  await page.goto(`${chi.publicURL}/#token=${token}`);
+  await page.goto(link);
   await started;
   await expect(page.locator("#actionBtn")).toHaveText("Start");
   expect(page.url()).toBe(`${chi.publicURL}/`);

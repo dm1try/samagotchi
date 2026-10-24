@@ -446,15 +446,24 @@ module Samagotchi
       def direct_public?(req) = !@public_url.nil? && !proxied?(req)
 
       # The token a trade presents: the page's ?token=, or POST /api/token's
-      # body's (read once).
+      # body's (read once): its token, or the token a one-time link code
+      # stands for (LinkCodes#redeem: used up here, whatever the gate says).
       def traded_token(req)
         return req.params["token"] unless fragment_trade?(req)
 
         req.env.fetch(TRADED_TOKEN_ENV) do
           raw = request_body(req, TRADE_BODY_LIMIT).to_s
           value = (parse_json(raw) if raw.bytesize < TRADE_BODY_LIMIT)
-          req.env[TRADED_TOKEN_ENV] = value.is_a?(Hash) && value["token"].is_a?(String) ? value["token"] : nil
+          value = {} unless value.is_a?(Hash)
+          req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(value["code"]) : string_or_nil(value["token"])
         end
+      end
+
+      def string_or_nil(value) = value.is_a?(String) ? value : nil
+
+      def code_token(code)
+        kind, token = @link_codes.redeem(code)
+        kind == :owner ? current_token : token
       end
 
       TRADED_TOKEN_ENV = "samagotchi.traded_token"
@@ -600,8 +609,8 @@ module Samagotchi
           <button type="submit">Open</button>
         </form>
         <script type="module">
-          import { tradeFragmentToken } from "/token_fragment.js";
-          tradeFragmentToken({ onRefused: (words) => {
+          import { tradeFragmentCode } from "/token_fragment.js";
+          tradeFragmentCode({ onRefused: (words) => {
             const line = document.getElementById("trade");
             line.textContent = words;
             line.hidden = false;

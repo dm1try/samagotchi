@@ -57,7 +57,7 @@ module Samagotchi
 
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
                                               ttl: ttl, cap: cap, state_dir: default_state_dir)
-        link = participant_link(req, id, issued.token)
+        link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
         warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
                              link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: warning })
@@ -115,13 +115,16 @@ module Samagotchi
         error_response(400, "invalid_participant", e.message)
       end
 
-      # The link a participant opens: web.public_url's, the token in the
-      # fragment too (no proxy or IdP sees it; the page trades it,
-      # POST /api/token); else this chi web's LAN address when it has one
-      # (the owner may be asking on loopback), else the Host asked; the token
-      # traded for the cookie, the session in the fragment.
-      def participant_link(req, id, token)
-        return @public_url.link(token, "s=#{id}") if @public_url
+      # The link a participant opens: web.public_url's with a one-time code
+      # for the token in the fragment (LinkCodes, until the grant expires;
+      # the page trades it, POST /api/token); else this chi web's LAN address
+      # when it has one (the owner may be asking on loopback), else the Host
+      # asked; the token traded for the cookie, the session in the fragment.
+      def participant_link(req, id, token, expires_at: nil)
+        if @public_url
+          ttl = expires_at ? [Time.iso8601(expires_at) - @grants.now, 1].max : LinkCodes::OWNER_TTL
+          return @public_url.link(@link_codes.issue(kind: :grant, token: token, ttl: ttl), "s=#{id}")
+        end
 
         host = req.get_header("HTTP_HOST").to_s
         port = host[/:(\d+)\z/, 1] || req.port.to_s

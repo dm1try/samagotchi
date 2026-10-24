@@ -197,7 +197,8 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
-    const webLog = fs.openSync(path.join(root, "web.log"), "a");
+    env.webLogPath = path.join(root, "web.log");
+    const webLog = fs.openSync(env.webLogPath, "a");
     env.tokenPath = path.join(dirs.state, "samagotchi", "web-token");
     const authHeaders = () => (proxy && fs.existsSync(env.tokenPath)
       ? { Authorization: `Bearer ${fs.readFileSync(env.tokenPath, "utf8").trim()}` } : {});

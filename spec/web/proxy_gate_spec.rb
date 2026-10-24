@@ -231,9 +231,38 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     end
   end
 
-  describe "the fragment trade (POST /api/token: a link's #token=, which no proxy or IdP sees)" do
+  describe "the fragment trade (POST /api/token: a link's one-time #code=, or a pasted token)" do
     def trade(token, headers: proxied, **) = call("/api/token", method: "POST", body: JSON.generate(token: token),
                                                                   headers: [["Content-Type", "application/json"], *headers], **)
+
+    def trade_code(code, headers: proxied) = call("/api/token", method: "POST", body: JSON.generate(code: code),
+                                                                  headers: [["Content-Type", "application/json"], *headers])
+
+    def codes = app.instance_variable_get(:@link_codes)
+
+    it "trades an owner's code once, for the owner's cookie, with the owner's identity" do
+      code = codes.issue(kind: :owner, ttl: 600)
+      status, headers, = trade_code(code)
+      expect(status).to eq(204)
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{owner_token};")
+      expect(trade_code(code).first).to eq(401)
+    end
+
+    it "uses up an owner's code someone else presents, and gives them nothing" do
+      code = codes.issue(kind: :owner, ttl: 600)
+      status, headers, = trade_code(code, headers: proxied("alex@pod.test"))
+      expect([status, headers["Set-Cookie"]]).to eq([401, nil])
+      expect(trade_code(code).first).to eq(401)
+    end
+
+    it "trades a grant's code for the participant's cookie, and refuses an unknown or expired one" do
+      code = codes.issue(kind: :grant, token: issued.token, ttl: 600)
+      _, headers, = trade_code(code, headers: proxied("alex@pod.test"))
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{issued.token};")
+      expect(trade_code("chc_#{"x" * 43}").first).to eq(401)
+      expired = codes.issue(kind: :owner, ttl: -1)
+      expect(trade_code(expired).first).to eq(401)
+    end
 
     it "sets the __Host- cookie for the owner's token with the owner's identity, 204 and no body" do
       status, headers, body = trade(owner_token)
@@ -259,7 +288,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(call("/app.js", headers: proxied).first).to eq(401)
       status, _, body = call("/", headers: proxied)
       expect(status).to eq(401)
-      expect(body).to include('import { tradeFragmentToken } from "/token_fragment.js";')
+      expect(body).to include('import { tradeFragmentCode } from "/token_fragment.js";')
     end
   end
 
@@ -309,13 +338,16 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(call(path, host: "127.0.0.1:4567", headers: [bearer(issued.token)]).first).to eq(401)
     end
 
-    it "makes the invite link the public one, the token in the fragment" do
+    it "makes the invite link the public one, a one-time code for the grant in the fragment, never the token" do
       status, _, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: '{"name":"Sam"}',
                                                                          headers: proxied(owner, [bearer]))
       expect(status).to eq(201)
       answer = JSON.parse(body)
-      expect(answer["link"]).to eq("#{origin}/#token=#{answer["token"]}&s=#{session.id}")
+      expect(answer["link"]).to match(%r{\A#{Regexp.escape(origin)}/#code=(chc_[A-Za-z0-9_-]{43})&s=#{session.id}\z})
+      expect(answer["link"]).not_to include(answer["token"])
       expect(answer["lan"]).to be(true)
+      code = answer["link"][/code=([^&]+)/, 1]
+      expect(app.instance_variable_get(:@link_codes).redeem(code)).to eq([:grant, answer["token"]])
     end
 
     it "keeps the owner's token out of what a participant reads (a secret of their view)" do

@@ -38,9 +38,9 @@ RSpec.describe Samagotchi::Web::PublicUrl do
       .to raise_error(described_class::Invalid, /needs web.proxy.identity_header/)
   end
 
-  it "puts the token in the link's fragment" do
+  it "puts a one-time code in the link's fragment" do
     public_url = build("https://p.example")
-    expect(public_url.link("T")).to eq("https://p.example/#token=T")
-    expect(public_url.link("chp_x", "s=abc")).to eq("https://p.example/#token=chp_x&s=abc")
+    expect(public_url.link("chc_C")).to eq("https://p.example/#code=chc_C")
+    expect(public_url.link("chc_C", "s=abc")).to eq("https://p.example/#code=chc_C&s=abc")
   end
 end

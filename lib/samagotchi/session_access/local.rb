@@ -19,6 +19,7 @@ require_relative "../config"
 require_relative "../web/grants"
 require_relative "../web/info_probe"
 require_relative "../web/public_url"
+require_relative "../web/link_codes"
 require_relative "../web/running"
 
 module Samagotchi
@@ -373,7 +374,7 @@ module Samagotchi
         issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap, state_dir: state_dir!)
         public_url = configured_public_url
         web = public_url ? nil : local_web
-        link = if public_url then public_url.link(issued.token, "s=#{id}")
+        link = if public_url then public_url.link(link_code(issued), "s=#{id}")
                else "http://#{web.ip || "127.0.0.1"}:#{web.port}/?token=#{issued.token}#s=#{id}"
                end
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
@@ -412,6 +413,12 @@ module Samagotchi
       # (nil without one) and the port the running one recorded
       # (Web::Running) when a chi web answers there, else config's web.port.
       LocalWeb = Data.define(:ip, :port)
+
+      # A one-time code for the grant's link (Web::LinkCodes), until it expires.
+      def link_code(issued)
+        ttl = [Time.iso8601(issued.grant.expires_at) - grants.now, 1].max
+        Web::LinkCodes.for_grants(grants.path).issue(kind: :grant, token: issued.token, ttl: ttl)
+      end
 
       # web.public_url as this machine's config has it; nil when unset or
       # not a valid one (chi web refuses to start on that).

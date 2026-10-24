@@ -109,14 +109,19 @@ RSpec.describe Samagotchi::ShareCommand do
 
       # From this machine's config, never from what answers on the port (it
       # may be another user's listener).
-      it "names this config's web.public_url behind a proxy, the token in the fragment", local_only: "the probe is this machine's" do
+      it "names this config's web.public_url behind a proxy, a one-time code in the fragment", local_only: "the probe is this machine's" do
         allow(Samagotchi::Config).to receive(:get).and_call_original
         allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("https://4567.pod.test")
         allow(Samagotchi::Web::InfoProbe).to receive(:call)
           .and_return({ "app" => "chi-web", "lan" => "192.0.2.66", "public_url" => "https://evil.example" })
 
         run(session.id, "--name", "Alex")
-        expect(out.string.lines[1]).to match(%r{\Ahttps://4567\.pod\.test/#token=chp_\S+&s=#{session.id}$})
+        link = out.string.lines[1]
+        expect(link).to match(%r{\Ahttps://4567\.pod\.test/#code=chc_\S+&s=#{session.id}$})
+        token = out.string[/chp_[A-Za-z0-9_-]{43}/]
+        expect(link).not_to include("chp_") if token
+        code = link[/code=([^&]+)/, 1]
+        expect(Samagotchi::Web::LinkCodes.for_grants(grants.path).redeem(code)&.first).to eq(:grant)
         expect(out.string).not_to include("isn't on the LAN")
       end
 

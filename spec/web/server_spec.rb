@@ -277,23 +277,33 @@ RSpec.describe Samagotchi::Web::Server do
 
         out = nil
         expect { out = described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: token_path, state_dir: start_state) }
-          .to output(Regexp.new('Proxied: https://4999\\.pod\\.test/#token=.{43}   .*\\n +\\(owner me@pod\\.test by X-Forwarded-Email, ' \
+          .to output(Regexp.new('Proxied: https://4999\\.pod\\.test/#code=(chc_.{43})   .*\\n +\\(owner me@pod\\.test by X-Forwarded-Email, ' \
                                 'and the token; on this machine the page opens through the proxy too\\)\\nPress')).to_stdout
         expect(out).to be true
         token = Samagotchi::Web::Token.read(token_path)
         expect(app[:lan]).to be_nil
         expect(app[:public_url]).to eq(public_url)
         expect(app[:public_token].current).to eq(token)
+        # The printed link's code: the owner's, once.
+        printed = nil
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts, &block| opts[:StartCallback].call; block.call(double(status: :Running)) }
+        expect { described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: token_path, state_dir: start_state) }
+          .to output(satisfy { |o| printed = o[/#code=(chc_\S+)/, 1] }).to_stdout
+        codes = described_class.owner_codes(start_state)
+        expect(codes.redeem(printed)).to eq([:owner, nil])
+        expect(codes.redeem(printed)).to be_nil
       end
     end
 
     it "says token only or nobody-by-identity in the start line" do
       token_only = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test")
-      expect(described_class.public_lines(token_only, token: "T"))
-        .to eq(["Proxied: https://p.test/#token=T   ← anyone with this link who passes the proxy can run commands as you",
+      codes = double("codes", issue: "chc_C")
+      expect(described_class.public_lines(token_only, token: "T", codes: codes))
+        .to eq(["Proxied: https://p.test/#code=chc_C   ← opens chi web as you once, within 10 minutes (chi web again prints a new one)",
                 "         (token only, no identity header; on this machine the page opens through the proxy too)"])
+      expect(codes).to have_received(:issue).with(kind: :owner, ttl: 600)
       nobody = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test", identity_header: "X-Forwarded-Email")
-      expect(described_class.public_lines(nobody, token: "T")[1]).to include("nobody is the owner by identity")
+      expect(described_class.public_lines(nobody, token: "T", codes: codes)[1]).to include("nobody is the owner by identity")
     end
 
     it "refuses to start on a public_url that isn't an https origin, before probing" do
@@ -321,8 +331,9 @@ RSpec.describe Samagotchi::Web::Server do
 
       allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "public_url" => "https://evil.example" })
       allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
+      allow(described_class).to receive(:owner_codes).and_return(double("codes", issue: "chc_C"))
       expect { described_class.launch(port: 4999, dir: "/", scope: "all") }
-        .to output(a_string_including("Proxied: https://4999.pod.test/#token=T\n").and(satisfy { |o| !o.include?("evil") })).to_stdout
+        .to output(a_string_including("Proxied: https://4999.pod.test/#code=chc_C ").and(satisfy { |o| !o.include?("evil") && !o.include?("token=") })).to_stdout
     end
   end
 

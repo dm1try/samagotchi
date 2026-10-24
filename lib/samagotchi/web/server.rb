@@ -9,6 +9,7 @@ require "webrick"
 require_relative "app"
 require_relative "info_probe"
 require_relative "lan"
+require_relative "link_codes"
 require_relative "proxy_gate"
 require_relative "public_url"
 require_relative "qr"
@@ -166,12 +167,12 @@ module Samagotchi
           record_running(running_path, port)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
-          puts public_lines(public_url, token: Token.read(token_path)) if public_url
+          puts public_lines(public_url, token: Token.read(token_path), codes: owner_codes(state_dir)) if public_url
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
             # With web.public_url the page opens through the proxy.
-            open_target = public_url ? public_url.link(Token.read(token_path)) : url
+            open_target = public_url ? public_url.link(owner_codes(state_dir).issue(kind: :owner, ttl: LinkCodes::OWNER_TTL)) : url
             Thread.new do
               sleep 0.8
               open_url(open_target)
@@ -255,7 +256,7 @@ module Samagotchi
       # page opens through the proxy too; a direct request takes the token
       # as Authorization: Bearer only (no cookie for 127.0.0.1, which every
       # local port would get).
-      def self.public_lines(public_url, token:)
+      def self.public_lines(public_url, token:, codes: owner_codes)
         unless token
           return ["Proxied: #{public_url.origin}/ (no access token: its file is gone; chi web --new-token makes one)"]
         end
@@ -264,18 +265,23 @@ module Samagotchi
               elsif public_url.owner then "owner #{public_url.owner} by #{public_url.identity_header}, and the token"
               else "nobody is the owner by identity: web.proxy.owner is unset"
               end
-        ["Proxied: #{public_url.link(token)}   ← anyone with this link who passes the proxy can run commands as you",
+        code = codes.issue(kind: :owner, ttl: LinkCodes::OWNER_TTL)
+        ["Proxied: #{public_url.link(code)}   ← opens chi web as you once, within #{LinkCodes::OWNER_TTL / 60} minutes " \
+         "(chi web again prints a new one)",
          "         (#{who}; on this machine the page opens through the proxy too)"]
       end
+
+      # The owner's one-time link codes, next to the grants.
+      def self.owner_codes(state_dir = nil) = LinkCodes.for_grants(Grants.path(state_dir: state_dir))
 
       # A second chi web, when this machine's config has web.public_url: the
       # link from this config and the token file, never from what answered
       # on the port.
-      def self.running_public_lines(public_url, token_path: Token.path)
-        token = Token.read(token_path)
-        return ["Proxied: #{public_url.origin}/"] unless token
+      def self.running_public_lines(public_url, token_path: Token.path, codes: owner_codes)
+        return ["Proxied: #{public_url.origin}/"] unless Token.read(token_path)
 
-        ["Proxied: #{public_url.link(token)}"]
+        ["Proxied: #{public_url.link(codes.issue(kind: :owner, ttl: LinkCodes::OWNER_TTL))}   (once, within " \
+         "#{LinkCodes::OWNER_TTL / 60} minutes)"]
       end
 
       def self.host_setting(host)

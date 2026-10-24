@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "link_codes"
 require_relative "principal"
 require_relative "public_url"
 require_relative "../log"
@@ -47,6 +48,7 @@ module Samagotchi
       def init_proxy_gate(public_url, token)
         @public_url = public_url
         @public_token = token
+        @link_codes = LinkCodes.for_grants(@grants.path)
         @proxy_hint_mutex = Mutex.new
         @proxy_hint_logged = false
       end
