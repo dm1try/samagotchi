@@ -13,30 +13,35 @@ module Samagotchi
     WaitTarget = Data.define(:turn, :report_turn_id, :queued, :ended_before) do
       def initialize(turn: nil, report_turn_id: nil, queued: false, ended_before: false) = super
 
-      # A --new session's first message. A file-delivered one's own turn
-      # (its id also names the outcome of a session command that runs no
-      # turn); through the Bridge, the next reply.
+      # A --new session's first message: its own turn, the ack's id (a
+      # file-delivered one's also names the outcome of a session command
+      # that runs no turn), so a worker that dies in it and the next one's
+      # settle end the wait (TurnCheckpoint.settled_turn). A message merged
+      # into a turn starting then falls back to that turn's reply
+      # (ReplyWait's turn: without queued:); no id (an older worker), the
+      # next reply.
       # @param delivered [SessionManager::DeliverResult, nil] nil when the
       #   message started the session itself (no delivery)
       def self.first_message(delivered)
         return new unless delivered
 
-        new(turn: delivered.file? ? delivered.enqueued_id : nil, report_turn_id: delivered.enqueued_id)
+        new(turn: delivered.enqueued_id, report_turn_id: delivered.enqueued_id)
       end
 
       # A message to an existing session. --queue: its own turn, the ack's
       # id, also when the turn running at the check ended before it went in
       # (an idle worker's ack says next_step, and the file still runs as
-      # that turn). A file fallback's id names its turn too. Otherwise the
-      # next reply, reported as the turn that was running when it went in
-      # (+running_turn+, ReplyWait.own_turn), or as its own on an idle one.
-      # A plain message the worker queued (its ack says queue: a
-      # participant's review turn was running, which takes no steer) is a
-      # --queue's.
+      # that turn). A file fallback's id names its turn too, and so does a
+      # plain message to an idle session, as #first_message's. Otherwise
+      # (a session left running by a dead worker, the busy check's owner
+      # gone) the next reply, reported as the turn that was running when it
+      # went in (+running_turn+, ReplyWait.own_turn). A plain message the
+      # worker queued (its ack says queue: a participant's review turn was
+      # running, which takes no steer) is a --queue's.
       # @param running [Boolean] the session was running when it went in
       def self.message(delivered, queue:, running:, running_turn:)
         queue ||= delivered.delivery == Delivery::QUEUE
-        turn = delivered.enqueued_id if queue || delivered.file?
+        turn = delivered.enqueued_id if queue || delivered.file? || !running
         report = if queue then turn
                  elsif running then running_turn
                  else delivered.enqueued_id

@@ -508,6 +508,61 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       expect(err.string).to eq("#{old.id[0, 8]}  sent\n")
     end
 
+    # The ack names the message's input (enqueued_id): its turn is the one
+    # waited for, so a worker that dies in it ends the wait once the next
+    # one settles it, instead of the wait sitting to its timeout.
+    describe "a plain message to an idle session (its own turn, the ack's id)" do
+      let(:idle) { make(status: "idle") }
+      let(:dir) { Samagotchi::Session.session_dir(idle.id, state_dir: tmpdir) }
+
+      before do
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|
+          delivered << [id, prompt]
+          @on_deliver&.call
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge,
+                                                        ack: { "status" => "accepted", "enqueued_id" => "m1", "session_id" => id })
+        end
+      end
+
+      def run_turn(id)
+        s = Samagotchi::Session.load(idle.id, state_dir: tmpdir)
+        s.status = "running"
+        s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 1, enqueued_id: id)
+        s.save(state_dir: tmpdir)
+      end
+
+      it "prints its own turn's reply" do
+        @on_deliver = lambda do
+          later do
+            run_turn("m1")
+            looked(2)
+            Samagotchi::SessionInbox.write_output(dir, "its answer", enqueued_id: "m1")
+            update(idle, status: "idle")
+          end
+        end
+
+        expect(run("--wait", "--format", "json", "-m", "go", idle.id)).to eq(0), err.string
+        expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "its answer", "turn_id" => "m1")
+      end
+
+      it "ends canceled (worker_stopped) when its worker died in the turn and the next one settled it" do
+        @on_deliver = lambda do
+          later do
+            run_turn("m1")
+            looked(2)
+            # Killed; a worker woken at once (a live owner throughout) settles it.
+            s = Samagotchi::Session.load(idle.id, state_dir: tmpdir)
+            Samagotchi::TurnCheckpoint.settle(s, session_dir: dir)
+            s.save(state_dir: tmpdir)
+          end
+        end
+
+        expect(run("--wait", "--format", "json", "--timeout", "5", "-m", "go", idle.id)).to eq(1), err.string
+        expect(JSON.parse(out.string)).to include("status" => "canceled", "cancel_reason" => "worker_stopped",
+                                                  "turn_id" => "m1")
+      end
+    end
+
     describe "a session command as the message (no reply comes for it)" do
       before do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|

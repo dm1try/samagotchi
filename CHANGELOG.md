@@ -34,6 +34,9 @@ and commands may change between minor versions. How releases are made:
   `/cap` cap silently; it is logged and you get one notice naming the file and the cap used instead (the config's).
 - cost-cap 0.2.3, work-cap 0.1.3: the next `/cap`, `/workcap` or Continue that writes over such a file says so (a
   notice naming it, and a log line) instead of replacing it silently.
+- `chi send --wait -m` to an idle session (and `--new --wait`) waits for its message's own turn: a worker that dies
+  in that turn ends the wait `canceled` (`worker_stopped`) once the next worker settles it, instead of sitting to
+  the timeout; the `turn_id` it reports was already that turn's.
 - A `delegate` follow-up's wait (or delegate report) to an idle child no longer takes the child's previous turn's
   reply for its own when it looks just as the follow-up's own turn starts.
 

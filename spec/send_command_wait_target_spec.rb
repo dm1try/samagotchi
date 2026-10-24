@@ -11,9 +11,11 @@ RSpec.describe Samagotchi::SendCommand::WaitTarget do
   end
 
   describe ".first_message" do
-    it "waits for a file-delivered message's own turn, and the next reply through the Bridge" do
+    it "waits for the message's own turn, file-delivered or through the Bridge, not queued (a merge falls back)" do
       expect(described_class.first_message(delivered(:file)).to_h).to include(turn: "e1", report_turn_id: "e1")
-      expect(described_class.first_message(delivered(:bridge)).to_h).to include(turn: nil, report_turn_id: "e1")
+      expect(described_class.first_message(delivered(:bridge)).to_h).to include(turn: "e1", report_turn_id: "e1",
+                                                                                queued: false)
+      expect(described_class.first_message(delivered(:bridge, nil)).to_h).to include(turn: nil, report_turn_id: nil)
       expect(described_class.first_message(nil)).to eq(described_class.new)
     end
   end
@@ -34,11 +36,13 @@ RSpec.describe Samagotchi::SendCommand::WaitTarget do
         .to eq(turn: "e1", report_turn_id: "e1", queued: true, ended_before: false)
     end
 
-    it "takes the next reply for a plain message, reported as the running turn's, or its own when idle" do
+    it "waits for a plain message's own turn on an idle session; on a running one, the next reply, reported as its turn's" do
       expect(described_class.message(delivered(:bridge), queue: false, running: true, running_turn: "r0").to_h)
         .to include(turn: nil, report_turn_id: "r0", queued: false)
       expect(described_class.message(delivered(:bridge), queue: false, running: false, running_turn: nil).to_h)
-        .to include(turn: nil, report_turn_id: "e1")
+        .to include(turn: "e1", report_turn_id: "e1", queued: false)
+      expect(described_class.message(delivered(:bridge, nil), queue: false, running: false, running_turn: nil).to_h)
+        .to include(turn: nil, report_turn_id: nil)
       expect(described_class.message(delivered(:file), queue: false, running: false, running_turn: nil).to_h)
         .to include(turn: "e1", queued: false)
     end
