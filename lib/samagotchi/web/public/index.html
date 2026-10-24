@@ -1064,6 +1064,13 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
+/* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and wrap a chip onto a new row. The speed and the clock show from the session's start, a muted placeholder until there is a number. */
+:root{--info-clock-w:14ch;--info-speed-w:9ch;--info-ctx-w:7ch}
+#infoBar .meta :is(.session-time,.speed,.ctx){font-variant-numeric:tabular-nums;white-space:nowrap;text-align:center}
+#infoBar .meta .session-time{min-width:var(--info-clock-w)}
+#infoBar .meta .speed{min-width:var(--info-speed-w)}
+#infoBar .meta .ctx{min-width:var(--info-ctx-w)}
+#infoBar .meta :is(.session-time,.speed).empty{color:var(--text-faint);background:transparent;border-color:var(--border)}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
 /* The open session's worker runs an older chi: its version, and Restart when it can. */
 #infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}

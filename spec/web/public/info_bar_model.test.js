@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chainLinkView, infoBarModel, infoButtons, sessionBar, workerBadgeFor,
+  chainLinkView, infoBarModel, infoButtons, sessionBar, SPEED_NONE, workerBadgeFor,
 } from "../../../lib/samagotchi/web/public/info_bar_model.js";
 import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
 
@@ -137,7 +137,17 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
                              restarting: false, running: true, now: Date.now() });
   assert.match(bar.clock, /^session /);
   assert.equal(typeof bar.ctx.text, "string");
-  assert.equal(bar.speed, null);
+  // No generation yet: the speed chip's placeholder (it shows from the start).
+  assert.deepEqual(bar.speed, { text: SPEED_NONE, tip: "Decode speed of the last generation: none yet", empty: true });
+});
+
+test("the speed chip takes the last generation's speed, no longer empty", () => {
+  const state = { ...emptySessionState(), timing: { ...emptySessionState().timing, tokens: { last_decode_tps: 42.4, avg_decode_tps: 40 } } };
+  const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
+                             restarting: false, running: false, now: Date.now() });
+  assert.equal(bar.speed.text, "42 tok/s");
+  assert.equal(bar.speed.empty, false);
+  assert.match(bar.speed.tip, /session average 40 tok\/s$/);
 });
 
 // The ctx tooltip's side requests line, from the open session's timing.

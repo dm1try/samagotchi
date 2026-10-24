@@ -105,6 +105,9 @@ and commands may change between minor versions. How releases are made:
   URL bar instead of under it.
 - The participant page no longer adds the next turn's first words to the reply of the turn that just ended while it
   reads the review again (a queued turn starting): the live reply waits for the re-read, whose stream replays them.
+- The web info bar's session clock, speed and ctx chips keep one width while a turn runs (tabular digits in a
+  reserved width), and the speed and the clock show from the session's start as muted placeholders: a tick or the
+  first generation's speed no longer widens the line and wraps a chip onto a new row.
 
 ## [0.106.0] - 2026-10-23
 

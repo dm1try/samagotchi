@@ -1,7 +1,7 @@
 import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chainLinkTemplate, infoBarHtml, memoriesTooltip, NEXT, PREV, renderInfoBar } from "../../../lib/samagotchi/web/public/info_bar.js";
+import { chainLinkTemplate, CLOCK_NONE, infoBarHtml, memoriesTooltip, NEXT, PREV, renderInfoBar } from "../../../lib/samagotchi/web/public/info_bar.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
 
@@ -25,8 +25,28 @@ test("infoBarHtml: a bare session's line, as the string builder wrote it", () =>
     `<div class="meta"><span class="id" title="${ID}">01234567</span>` +
     `<button type="button" class="copy-attach" title="Copy &quot;chi --attach ${ID}&quot; to attach a terminal">copy chi --attach</button>` +
     `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span>` +
-    `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span></div>`,
+    `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span>` +
+    `<span class="model session-time empty" title="This session's time: no turn yet">session –</span></div>`,
   ));
+});
+
+// The chips a turn rewrites keep their place: the clock and the speed show
+// before their first number (muted placeholders), so neither joins the line
+// mid-turn; the same nodes then take the numbers.
+test("infoBarHtml: the clock and the speed show as placeholders before their numbers, in the same nodes", () => {
+  const el = document.createElement("div");
+  renderInfoBar(el, { ...bare, speed: { text: "– tok/s", tip: "none yet", empty: true } });
+  const speed = el.querySelector(".speed");
+  const clock = el.querySelector(".session-time");
+  assert.equal(speed.className, "model speed empty");
+  assert.equal(clock.className, "model session-time empty");
+  assert.equal(clock.textContent, CLOCK_NONE);
+  renderInfoBar(el, { ...bare, speed: { text: "42 tok/s", tip: "last", empty: false }, clock: "session 9.5s" });
+  assert.equal(el.querySelector(".speed"), speed);
+  assert.equal(el.querySelector(".session-time"), clock);
+  assert.equal(speed.className, "model speed");
+  assert.equal(clock.className, "model session-time");
+  assert.equal(`${speed.textContent} ${clock.textContent}`, "42 tok/s session 9.5s");
 });
 
 test("infoBarHtml: every part, in the bar's order", () => {
