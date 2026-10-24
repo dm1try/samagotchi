@@ -283,12 +283,30 @@ class Plugin
     share.is_a?(Numeric) && share.positive? ? share : nil
   end
 
+  # A state file there that doesn't read (#state) is written over: logged
+  # and said, never a silent replace.
   def save(ctx, session, data)
     path = state_path(ctx, session)
     FileUtils.mkdir_p(File.dirname(path))
+    replacing = unreadable_file?(path)
     Samagotchi::AtomicFile.write(path, "#{JSON.generate(data)}\n")
+    replaced(ctx, path) if replacing
     cap = self.class.amount(data["cap"])
     @mutex.synchronize { @resolved = { session: session, cap: cap, step: self.class.amount(data["step"]) || cap } }
+  end
+
+  # Whether +path+ is there but doesn't read (not JSON, or not a mapping).
+  def unreadable_file?(path)
+    !JSON.parse(File.read(path)).is_a?(Hash)
+  rescue Errno::ENOENT
+    false
+  rescue JSON::ParserError
+    true
+  end
+
+  def replaced(ctx, path)
+    ctx.log.warn(:costcap_state_replaced, path: path)
+    ctx.notify("cost-cap: #{path} didn't read; replaced with the new cap", level: :warn)
   end
 
   def state_path(ctx, session) = File.join(ctx.data_dir, "sessions", "#{session.gsub(/[^A-Za-z0-9_.-]/, "_")}.json")

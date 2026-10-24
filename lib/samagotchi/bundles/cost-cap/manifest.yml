@@ -1,12 +1,12 @@
 ---
 name: cost-cap
-version: 0.2.2
+version: 0.2.3
 scope: system
 description: "A per-session $ cap: at the cap the turn pauses on Continue (another cap's worth) / Stop, a warning at 80% goes to the user only; /cap shows or sets it"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:c6f0fae461054691289469ef7814ce7d88715b154def561cecf402e7ef2868fe
+  sha256: sha256:57362669f6b499fb70103a11eb6582e261b69103f51ee1ac36496a04717f5d9b
 # ctx.cost is new in chi 0.83.0; ask_user's effects: in the next chi
 requires_chi: ">= 0.92.0"
 # session_settings: as a mapping of keys to types is new

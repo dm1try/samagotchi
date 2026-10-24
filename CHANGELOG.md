@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   it is logged and you get one notice naming the file and the cap used instead (the config's).
 - cost-cap 0.2.2: the same for a session's cost-cap state file: one that doesn't read (not JSON) no longer drops its
   `/cap` cap silently; it is logged and you get one notice naming the file and the cap used instead (the config's).
+- cost-cap 0.2.3, work-cap 0.1.3: the next `/cap`, `/workcap` or Continue that writes over such a file says so (a
+  notice naming it, and a log line) instead of replacing it silently.
 
 ## [0.107.0] - 2026-10-24
 

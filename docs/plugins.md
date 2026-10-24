@@ -1710,7 +1710,8 @@ its own card and doesn't wake its parent ([sessions.md](sessions.md#delegating))
 The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"cap": 3.0, "step": 3.0}`), removed
 with the session. A file that is there but doesn't read (not JSON, or not a mapping) is logged
 (`costcap_state_unreadable`) and gets one notice, `cost-cap: <path> doesn't read, its /cap cap is ignored; using
-default: ($5.00)`: the settings' cap is used, never a silent drop; the next `/cap` or Continue rewrites it.
+default: ($5.00)`: the settings' cap is used, never a silent drop; the next `/cap` or Continue rewrites it, logged
+(`costcap_state_replaced`) and said (`cost-cap: <path> didn't read; replaced with the new cap`).
 
 Its sibling for work instead of money, tool calls and active minutes across the session's turns, is
 [the work-cap bundle](#the-work-cap-bundle): the cap a local model (no cost) can have.
@@ -1771,7 +1772,8 @@ The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"t
 400}}`, a meter's `"cap": null` for off). A file that is there but doesn't read (not JSON, or not a mapping) is
 logged (`workcap_state_unreadable`) and gets one notice, `work-cap: <path> doesn't read, its /workcap caps are
 ignored; using default.tool_calls: (400)`: the settings' caps are used, never a silent drop; the next `/workcap` or
-Continue rewrites it.
+Continue rewrites it, logged (`workcap_state_replaced`) and said (`work-cap: <path> didn't read; replaced with the
+new cap`).
 
 ## The check-in bundle
 

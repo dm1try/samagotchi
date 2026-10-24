@@ -311,6 +311,21 @@ RSpec.describe "The work-cap bundle", :bundle do
                                       :warn]])
     end
 
+    it "says it replaces a state file that doesn't read when /workcap writes over it; a good one is kept quietly" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "[]")
+      bundle = plugin(usage: calls(1))
+      allow(bundle.ctx.log).to receive(:warn)
+      bundle.command("/workcap 20")
+      expect(state).to eq("tool_calls" => { "cap" => 20, "step" => 20 })
+      expect(bundle.ctx.log).to have_received(:warn).with(:workcap_state_replaced, path: state_file)
+      expect(notices(bundle)).to eq([["work-cap: #{state_file} didn't read; replaced with the new cap", :warn]])
+
+      bundle.command("/workcap 30m")
+      expect(bundle.notices.size).to eq(1)
+      expect(state.keys).to eq(%w[tool_calls minutes])
+    end
+
     it "says nothing without a state file" do
       bundle = plugin(usage: calls(1))
       allow(bundle.ctx.log).to receive(:warn)

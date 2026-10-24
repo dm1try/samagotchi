@@ -268,6 +268,20 @@ RSpec.describe "The cost-cap bundle", :bundle do
       expect(notices(bundle)).to eq([["cost-cap: #{state_file} doesn't read, its /cap cap is ignored; no cap", :warn]])
     end
 
+    it "says it replaces a state file that doesn't read when /cap writes over it; a good one is replaced quietly" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, "{\"cap\": 9")
+      bundle = plugin(cost: 1.0)
+      allow(bundle.ctx.log).to receive(:warn)
+      expect(bundle.command("/cap 4")).to eq("cost-cap: cap set to $4.00 ($1.00 spent)")
+      expect(state).to eq("cap" => 4.0, "step" => 4.0)
+      expect(bundle.ctx.log).to have_received(:warn).with(:costcap_state_replaced, path: state_file)
+      expect(notices(bundle)).to eq([["cost-cap: #{state_file} didn't read; replaced with the new cap", :warn]])
+
+      bundle.command("/cap 5")
+      expect(bundle.notices.size).to eq(1)
+    end
+
     it "says nothing without a state file" do
       bundle = plugin(cost: 1.0)
       allow(bundle.ctx.log).to receive(:warn)

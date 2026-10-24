@@ -383,19 +383,30 @@ class Plugin
   end
 
   # Write one meter's cap into the session's state file (the other kept).
+  # One there that doesn't read (#state) is written over: logged and said,
+  # never a silent replace.
   def save_meter(ctx, session, meter, data)
     path = state_path(ctx, session)
     FileUtils.mkdir_p(File.dirname(path))
     saved = begin
       JSON.parse(File.read(path))
-    rescue Errno::ENOENT, JSON::ParserError
+    rescue Errno::ENOENT
       {}
+    rescue JSON::ParserError
+      nil
     end
-    saved = {} unless saved.is_a?(Hash)
+    replacing = !saved.is_a?(Hash)
+    saved = {} if replacing
     saved[meter] = data.transform_values { |value| whole(value) }
     Samagotchi::AtomicFile.write(path, "#{JSON.generate(saved)}\n")
+    replaced(ctx, path) if replacing
     # Resolved again at the next use, from the file now holding the meter.
     @mutex.synchronize { @resolved = nil }
+  end
+
+  def replaced(ctx, path)
+    ctx.log.warn(:workcap_state_replaced, path: path)
+    ctx.notify("work-cap: #{path} didn't read; replaced with the new cap", level: :warn)
   end
 
   # 800.0 as 800 (a whole cap is saved as an Integer), 2.5 as it is.
