@@ -15,6 +15,15 @@ module Samagotchi
       # nil without one.
       def identity_env = identity_header && PublicUrl.env_key(identity_header)
 
+      # Whether a Host header names the public host: any case, a trailing
+      # dot, and an explicit :443 for a 443 origin are the same host.
+      def host?(header)
+        name, port = header.to_s.downcase.match(/\A(.*?)(?::(\d+))?\z/).captures
+        name = name.delete_suffix(".")
+        port = nil if port == "443"
+        host == (port ? "#{name}:#{port}" : name)
+      end
+
       # The header's name as people write it, or "none".
       def identity_label = identity_header || "none"
 

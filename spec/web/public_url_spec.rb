@@ -43,4 +43,16 @@ RSpec.describe Samagotchi::Web::PublicUrl do
     expect(public_url.link("chc_C")).to eq("https://p.example/#code=chc_C")
     expect(public_url.link("chc_C", "s=abc")).to eq("https://p.example/#code=chc_C&s=abc")
   end
+
+  it "knows its host in a Host header: any case, a trailing dot, an explicit :443 for a 443 origin" do
+    default = build("https://chi.corp.test")
+    %w[chi.corp.test CHI.Corp.Test chi.corp.test. chi.corp.test:443 chi.corp.test.:443].each do |host|
+      expect(default.host?(host)).to be(true), host
+    end
+    %w[chi.corp.test:8443 evil.corp.test chi.corp.test.evil].each { |host| expect(default.host?(host)).to be(false), host }
+    other = build("https://chi.corp.test:8443")
+    expect(other.host?("chi.corp.test.:8443")).to be(true)
+    expect(other.host?("chi.corp.test")).to be(false)
+    expect(other.host?("chi.corp.test:443")).to be(false)
+  end
 end

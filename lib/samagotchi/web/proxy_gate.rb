@@ -57,7 +57,7 @@ module Samagotchi
         return false unless @public_url
 
         env = req.env
-        return true if @public_url.host == env["HTTP_HOST"].to_s.downcase
+        return true if @public_url.host?(env["HTTP_HOST"])
         return true if @public_url.identity_env && env.key?(@public_url.identity_env)
 
         names = env[RAW_NAMES_ENV] || env.keys.filter_map { |key| ProxyTrace.env_name(key) }

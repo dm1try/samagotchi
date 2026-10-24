@@ -322,6 +322,23 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect([status, detail(body)]).to eq([403, "only the host names 127.0.0.1, [::1], localhost and #{public_host} are answered"])
     end
 
+    it "takes the public host with an explicit default port or a trailing dot (a 443 public_url)" do
+      public_url = Samagotchi::Web::PublicUrl.from_config(url: "https://chi.corp.test", identity_header: identity_header, owner: owner)
+      app = described_class.new(state_dir: state_dir, public_dir: public_dir, grants: grants, public_url: public_url,
+                                public_token: owner_token, hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir))
+      ["chi.corp.test", "chi.corp.test:443", "chi.corp.test.", "CHI.corp.test.:443"].each do |host|
+        expect(app.call(env_for("/api/sessions", host: host, headers: proxied(owner, [bearer]))).first).to eq(200), host
+      end
+      expect(app.call(env_for("/api/sessions", host: "chi.corp.test:8443", headers: proxied(owner, [bearer]))).first).to eq(403)
+    end
+
+    it "takes only the public https origin on a proxied request, never http://<public host>" do
+      status, _, body = call("/api/render", method: "POST", body: '{"text":"x"}',
+                                            headers: proxied(owner, [bearer, ["Origin", "http://#{public_host}"],
+                                                                     ["Content-Type", "application/json"]]))
+      expect([status, JSON.parse(body)["error"]]).to eq([403, "cross_origin"])
+    end
+
     it "takes a POST from the public origin, refuses a sibling port on the same site" do
       ok = call("/api/render", method: "POST", body: '{"text":"x"}',
                                headers: proxied(owner, [bearer, ["Origin", origin], %w[Sec-Fetch-Site same-origin],

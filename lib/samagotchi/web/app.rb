@@ -380,7 +380,7 @@ module Samagotchi
       def local_host_header?(env)
         host = env["HTTP_HOST"].to_s
         return LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s) if host.empty?
-        return true if @public_url && host.downcase == @public_url.host
+        return true if @public_url&.host?(host)
 
         name = host.downcase.sub(/:\d*\z/, "")
         LOOPBACK_NAMES.include?(name) || (!@lan.nil? && name == @lan[:ip])
@@ -680,10 +680,18 @@ module Samagotchi
       def cross_site?(env)
         foreign = %w[cross-site same-site].include?(env["HTTP_SEC_FETCH_SITE"].to_s.downcase)
         origin = env["HTTP_ORIGIN"]
-        foreign ||= !origin.nil? && origin.downcase != "http://#{env["HTTP_HOST"].to_s.downcase}" && !public_origin?(origin)
+        foreign ||= !origin.nil? && !same_origin?(env, origin.downcase)
         return false unless foreign
 
         !%w[GET HEAD].include?(env["REQUEST_METHOD"]) || env["PATH_INFO"].to_s.start_with?("/api/")
+      end
+
+      # The page's own origin: through the proxy only web.public_url's
+      # (https), else http://<Host> (or the public origin).
+      def same_origin?(env, origin)
+        return origin == @public_url.origin if @public_url && proxied?(Rack::Request.new(env))
+
+        origin == "http://#{env["HTTP_HOST"].to_s.downcase}" || public_origin?(origin)
       end
 
       # The page served through web.public_url (Origin https://<public host>).
