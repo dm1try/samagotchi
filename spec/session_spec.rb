@@ -66,10 +66,12 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
 
       session.review = { "subjects" => ["docs/plan.md"], "from" => "abc" }
+      session.first_turn_id = "turn-1"
       session.save(state_dir: tmpdir)
       data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
       expect(data.keys).to eq(described_class::FIELDS.keys)
       expect(data["review"]).to eq("subjects" => ["docs/plan.md"], "from" => "abc")
+      expect(data["first_turn_id"]).to eq("turn-1")
       expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
     end
 

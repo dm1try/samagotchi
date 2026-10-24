@@ -521,7 +521,8 @@ module Samagotchi
 
       start = @access.prepare_wait(session.id, session: session, created: true)
       wait_for_reply(session.id, cursor: start.cursor, baseline: start.baseline,
-                                 timeout: options[:timeout], **WaitTarget.first_message(@delivered).to_h)
+                                 timeout: options[:timeout],
+                                 **WaitTarget.first_message(@delivered, direct_turn: session.first_turn_id).to_h)
     end
 
     # What chi send --new asks to create: through the worker (images, a

@@ -19,11 +19,18 @@ module Samagotchi
       # settle end the wait (TurnCheckpoint.settled_turn). A message merged
       # into a turn starting then falls back to that turn's reply
       # (ReplyWait's turn: without queued:); no id (an older worker), the
-      # next reply.
+      # next reply. A prompt the session was created with has no delivery:
+      # its turn is the id the create gave it (+direct_turn+,
+      # Session#first_turn_id), and nothing can merge into it, so the wait
+      # is for that turn alone (ReplyWait's queued:).
       # @param delivered [SessionManager::DeliverResult, nil] nil when the
       #   message started the session itself (no delivery)
-      def self.first_message(delivered)
-        return new unless delivered
+      # @param direct_turn [String, nil] that first turn's id, for a direct
+      #   start
+      def self.first_message(delivered, direct_turn: nil)
+        return new unless delivered || !direct_turn.to_s.strip.empty?
+
+        return new(turn: direct_turn, report_turn_id: direct_turn, queued: true) if delivered.nil?
 
         new(turn: delivered.enqueued_id, report_turn_id: delivered.enqueued_id)
       end

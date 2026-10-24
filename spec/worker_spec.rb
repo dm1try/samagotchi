@@ -384,6 +384,27 @@ RSpec.describe Samagotchi::Worker do
       expect(result.file).to end_with("-#{ack["enqueued_id"]}.txt")
     end
 
+    # The prompt a session was created with is not an input file, but its
+    # turn has the id spawn_session gave it, so a wait can name it (chi send
+    # --new --wait, chi web's create).
+    it "runs the first prompt as a turn with the id the session was created with" do
+      session.last_prompt = "the first thing"
+      session.first_turn_id = "first-1"
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+      answered = instance_double(Samagotchi::LLM::ModelResult, output: "the answer", canceled?: false, resumable?: false)
+      allow(engine).to receive(:run_turn) do |turn_session, *|
+        turn_session.status = Samagotchi::Session::STATUS_IDLE
+        answered
+      end
+      start_worker
+
+      result = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 2, poll_interval: 0.02,
+                                                      turn: "first-1", queued: true)
+      expect(result.to_h).to include(status: :done, text: "the answer")
+      expect(result.file).to end_with("-first-1.txt")
+    end
+
     it "records a turn that failed before the Engine began it as last_turn, so a wait ends with no_reply" do
       allow(engine).to receive(:run_turn).and_raise(RuntimeError, "boom before the turn")
       start_worker

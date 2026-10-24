@@ -18,6 +18,19 @@ RSpec.describe Samagotchi::SendCommand::WaitTarget do
       expect(described_class.first_message(delivered(:bridge, nil)).to_h).to include(turn: nil, report_turn_id: nil)
       expect(described_class.first_message(nil)).to eq(described_class.new)
     end
+
+    # A session created with the prompt: no delivery, but the create gave
+    # that turn an id (Session#first_turn_id), so the wait and the give-up's
+    # hint name it.
+    it "waits for a direct start's first turn by the id the create gave it" do
+      expect(described_class.first_message(nil, direct_turn: "t1").to_h)
+        .to eq(turn: "t1", report_turn_id: "t1", queued: true, ended_before: false)
+      expect(described_class.first_message(nil, direct_turn: nil)).to eq(described_class.new)
+      # Through the worker (images, a command) the ack's id is the turn, not
+      # the create's.
+      expect(described_class.first_message(delivered(:bridge), direct_turn: "t1").to_h)
+        .to include(turn: "e1", report_turn_id: "e1")
+    end
   end
 
   describe ".message" do

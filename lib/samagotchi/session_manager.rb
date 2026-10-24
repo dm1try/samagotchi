@@ -197,6 +197,11 @@ module Samagotchi
       # the prompts), so the session starts idle.
       session.status = prompt.to_s.strip.empty? ? Session::STATUS_IDLE : Session::STATUS_RUNNING
       session.last_prompt = prompt
+      # The first prompt's turn gets an id like a sent message's, so a wait
+      # for it can name it (chi send --new --wait, chi web's create): the
+      # worker runs it with that origin, and its reply file and last_turn
+      # carry the id.
+      session.first_turn_id = SecureRandom.uuid unless prompt.to_s.strip.empty?
       # The worker takes last_prompt and clears it, and messages are saved at
       # the turn's end: until then this is the only preview a list has.
       session.first_preview = Session.preview_of(preview.to_s.strip.empty? ? prompt : preview)

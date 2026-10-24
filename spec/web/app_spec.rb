@@ -36,6 +36,9 @@ class FakeResponsesManager
     @spawn_calls << { prompt: prompt, state_dir: state_dir, extra: kw }
     Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
       s.last_prompt = prompt
+      # SessionManager.spawn_session gives a session created with a prompt
+      # the id of its first turn; the fake mirrors it.
+      s.first_turn_id = "turn-1" unless prompt.to_s.strip.empty?
     end
   end
 
@@ -2045,6 +2048,18 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(201)
       expect(manager.spawn_calls.last[:prompt]).to eq("hi")
       expect(JSON.parse(body.first)).to have_key("id")
+    end
+
+    # The id the first prompt's turn gets, so a remote chi send --new --wait
+    # can name it (chi send --wait --turn T ID).
+    it "reports the first turn's id, and none for an idle create" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager)
+      _status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
+      expect(JSON.parse(body.first)["first_turn_id"]).to eq("turn-1")
+
+      _status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"idle": true, "preview": "hi"}'))
+      expect(JSON.parse(body.first)["first_turn_id"]).to be_nil
     end
 
     it "reports the bridge port once the worker bridge comes up" do

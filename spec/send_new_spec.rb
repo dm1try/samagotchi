@@ -378,7 +378,9 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1)
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
     allow(Samagotchi::SessionManager).to receive(:spawn_session) do |prompt:, **|
-      make(status: "running", prompt: prompt).tap { |s| @started = s }
+      # As spawn_session does: the prompt a session starts with is given its
+      # turn's id, so the wait is for that turn by name.
+      make(status: "running", prompt: prompt, turn: "first-1").tap { |s| @started = s }
     end
     allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|
       delivered << [id, prompt]
@@ -401,11 +403,12 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: tmpdir, access: backend_access(tmpdir)).run
   end
 
-  def make(status:, prompt: "hi", pending_question: nil, parent_answers: nil)
+  def make(status:, prompt: "hi", pending_question: nil, parent_answers: nil, turn: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w").tap do |s|
       s.parent_answers = parent_answers
       s.status = status
       s.last_prompt = prompt
+      s.first_turn_id = turn
       s.pending_question = pending_question
       s.save(state_dir: tmpdir)
     end
@@ -421,7 +424,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   end
 
   def write_reply(session, text)
-    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
+    # A worker names a turn's reply after its input's id, so a wait for
+    # that turn (--wait --turn T) finds it: the fixture does the same.
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text,
+                                          enqueued_id: session.first_turn_id)
   end
 
   # The worker's step on another thread, once the wait has looked (+delay+
@@ -875,14 +881,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
     it "gives up after --timeout with exit 4, the session still running" do
       expect(run("--new", "--wait", "--timeout", "0.1", "-m", "x")).to eq(4)
-      expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it\n")
+      expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait --turn first-1 #{@started.id}\n")
     end
 
     it "leaves the turn running on Ctrl-C and exits 130" do
       allow(Samagotchi::ReplyWait).to receive(:call).and_raise(Interrupt)
 
       expect(run("--new", "--wait", "-m", "x")).to eq(130)
-      expect(err.string).to end_with("chi send: still running: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it\n")
+      expect(err.string).to end_with("chi send: still running: #{via.chi} send --wait --turn first-1 #{@started.id}\n")
       expect(Samagotchi::Session.load(@started.id, state_dir: tmpdir).status).to eq("running")
     end
 
@@ -1090,7 +1096,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         later { write_reply(@started, "done\nsecond line") }
 
         expect(run("--new", "--wait", "--format", "json", "-m", "go")).to eq(0), err.string
-        expect(json_out).to eq("status" => "answered", "session_id" => @started.id, "text" => "done\nsecond line")
+        expect(json_out).to eq("status" => "answered", "session_id" => @started.id, "text" => "done\nsecond line",
+                               "turn_id" => "first-1")
         expect(err.string).to eq("#{@started.id}  started\n")
       end
 
@@ -1099,7 +1106,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
         expect(run("--new", "--wait", "--format=json", "-m", "go")).to eq(3)
         expect(json_out).to eq(
-          "status" => "question", "session_id" => @started.id,
+          "status" => "question", "session_id" => @started.id, "turn_id" => "first-1",
           "question" => { "id" => "q1", "kind" => "question", "text" => "Which file?", "options" => %w[README.md Gemfile],
                           "multi_select" => false, "allow_freeform" => false },
           "answer_with" => "#{via.chi} answer #{@started.id} --question q1 --option N"
@@ -1108,8 +1115,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       it "prints running on a timeout (exit 4) and the other ends with a detail (exit 1)" do
         expect(run("--new", "--wait", "--format", "json", "--timeout", "0.1", "-m", "x")).to eq(4)
-        expect(json_out).to eq("status" => "running", "session_id" => @started.id,
-                               "detail" => "still running after 0.1 s: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it")
+        expect(json_out).to eq("status" => "running", "session_id" => @started.id, "turn_id" => "first-1",
+                               "detail" => "still running after 0.1 s: #{via.chi} send --wait --turn first-1 #{@started.id}")
 
         out.truncate(0)
         out.rewind

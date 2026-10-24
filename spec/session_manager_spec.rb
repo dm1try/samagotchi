@@ -577,6 +577,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
+    it "gives the prompt a session starts with the turn id a sent message would have" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      started = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir)
+      idle = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+
+      expect(Samagotchi::Session.load(started.id, state_dir: tmpdir).first_turn_id)
+        .to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+      expect(started.first_turn_id).to eq(Samagotchi::Session.load(started.id, state_dir: tmpdir).first_turn_id)
+      expect(Samagotchi::Session.load(idle.id, state_dir: tmpdir).first_turn_id).to be_nil
+    end
+
     describe "the toolkit, stored as named when the session is created" do
       before do
         allow(Process).to receive(:spawn).and_return(12_345)

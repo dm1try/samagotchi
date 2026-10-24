@@ -135,7 +135,8 @@ module Samagotchi
         @hub&.touch(session.id)
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning,
-                                                          parent_answers_warning: Guardrails::ParentPolicy.capped_note(parent_answers)))
+                                                          parent_answers_warning: Guardrails::ParentPolicy.capped_note(parent_answers),
+                                                          first_turn_id: session.first_turn_id))
       end
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
@@ -178,7 +179,8 @@ module Samagotchi
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
                                                           model_warning: session.model_warning,
-                                                          opener: session.opener))
+                                                          opener: session.opener,
+                                                          first_turn_id: session.first_turn_id))
       end
 
       # The create's review: {subjects: [paths], from: id} (chi review, the

@@ -160,9 +160,13 @@ module Samagotchi
 
     # What chi send --new created (Remote; Local gives the Session): its
     # id, a model warning, the session it continues, the delegates it took
-    # over, and the server's word on a --parent-answers looser than its
-    # config.yml's (capped).
-    Created = Data.define(:id, :model_warning, :continues, :moved_children, :parent_answers_warning)
+    # over, the server's word on a --parent-answers looser than its
+    # config.yml's (capped), and the id the prompt it started with gets for
+    # its first turn (nil for one created idle).
+    Created = Data.define(:id, :model_warning, :continues, :moved_children, :parent_answers_warning, :first_turn_id) do
+      def initialize(id:, model_warning: nil, continues: nil, moved_children: [], parent_answers_warning: nil,
+                     first_turn_id: nil) = super
+    end
 
     # A session's worker as an attach finds it (Local#worker, chi web's GET
     # …/worker): +sidecar+ the live worker's WorkerSidecar (port, version,

@@ -54,6 +54,13 @@ module Samagotchi
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
                   :used_memory_names
+    # The id the prompt a session is created with gets (SessionManager
+    # .spawn_session), so its first turn is a turn with an id like one sent
+    # later: the worker's first turn takes it as its origin, its reply file
+    # and last_turn carry it, and a wait for it (`chi send --new --wait`,
+    # chi web's create) can name it (`--wait --turn T ID`). nil for a
+    # session created idle, and for one saved before the field existed.
+    attr_accessor :first_turn_id
     # Memories the session was started with (--memory) and memories hidden
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
@@ -310,7 +317,7 @@ module Samagotchi
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
-                   first_preview: "", test_run: false, pending_question: nil,
+                   first_preview: "", first_turn_id: nil, test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
@@ -329,6 +336,7 @@ module Samagotchi
       @status = status
       @last_prompt = last_prompt
       @first_preview = first_preview
+      @first_turn_id = first_turn_id
       @title = title
       @test_run = !!test_run
       self.pending_question = pending_question
@@ -525,12 +533,13 @@ module Samagotchi
       "interrupted_turn" => nil,
       "parent_answers" => nil,
       "working_set_pins" => [],
-      "review" => nil
+      "review" => nil,
+      "first_turn_id" => nil
     }.freeze
 
     # FIELDS a session file has only when set: a session without them saves
     # as it did before they existed.
-    OPTIONAL_FIELDS = %w[review].freeze
+    OPTIONAL_FIELDS = %w[review first_turn_id].freeze
 
     # A session from a parsed session file. +messages+ false leaves the
     # conversation out (the lists' lightweight summaries).

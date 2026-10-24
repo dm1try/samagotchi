@@ -607,10 +607,11 @@ module Samagotchi
     end
 
     # The first prompt (spawn_session's): a delegate child's task, which is
-    # its parent's although no client sent it.
+    # its parent's although no client sent it. Its turn carries the id
+    # spawn_session gave it, so a wait for it (--new --wait) names it.
     def run_initial_prompt(prompt)
       @initial_turn = true
-      run_prompt(WorkerInbound::Prompt.new(text: prompt))
+      run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: TurnOrigin.new(enqueued_id: @session.first_turn_id)))
     ensure
       @initial_turn = false
     end

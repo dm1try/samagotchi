@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi send --new --wait` now knows the id of the turn the new session's first prompt runs, so a `--timeout` or
+  Ctrl-C there says `still running: chi send --wait --turn <T> <ID>` instead of the vaguer "waits again", and
+  `chi send --wait --turn <T> <ID>` gets that turn's reply (`--format json` carries its `turn_id`). chi web's
+  create answers the first turn's id as `first_turn_id`, so the same holds for `chi --remote … send --new --wait`.
 - Web: a session's stream dropping mid-turn (a phone briefly offline) no longer shows "canceled (worker exited)"
   while the worker runs on; the page re-reads first and shows it only when no worker took the turn. A re-read that
   fails (the network still down) is retried with a backoff, and a stage that lets go of a turn clears its status row
