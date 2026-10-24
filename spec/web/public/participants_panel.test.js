@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, participantName, setParticipantNames } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
@@ -244,5 +244,29 @@ test("participants panel: Start a review closes the panel when made, and keeps i
   answer.resolve({ id: "s3" });
   await tick();
   assert.ok(!c.ctl.isOpen());
+  c.done();
+});
+
+// Revoke can't be undone: it asks first, as a delete does.
+test("participants panel: Revoke asks first, naming them; a No sends nothing", async () => {
+  const asked = [];
+  let yes = false;
+  const revoked = [];
+  const c = panelControl({
+    api: { revoke: async (id, pid) => { revoked.push([id, pid]); } },
+    win: { confirm: (text) => { asked.push(text); return yes; } },
+  });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  c.pop.querySelector('[data-act="revoke"]').click();
+  await tick();
+  assert.deepEqual(asked, [revokeConfirmText("Alex")]);
+  assert.match(asked[0], /^Revoke Alex's link\? .*can't be undone/);
+  assert.deepEqual(revoked, []);
+  yes = true;
+  c.pop.querySelector('[data-act="revoke"]').click();
+  await tick();
+  assert.deepEqual(revoked, [["s1", "p_0001abcd"]]);
   c.done();
 });

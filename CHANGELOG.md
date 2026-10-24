@@ -113,6 +113,8 @@ and commands may change between minor versions. How releases are made:
   keeps the previous session's working-session warning.
 - The participants panel's **Start a review of it** closes the panel only once the review is made; a refusal stays in
   the open panel, said there, instead of the panel closing on a toast.
+- The participants panel's Revoke asks first (`Revoke Alex's link? …`), as a delete does: it can't be undone, and on
+  a phone's sheet it sat one tap away beside Cap.
 
 ## [0.106.0] - 2026-10-23
 
