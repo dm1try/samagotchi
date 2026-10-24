@@ -121,13 +121,19 @@ end
 
 namespace :release do
   desc "Bump VERSION, the system bundle, Gemfile.lock and the CHANGELOG (Unreleased → [VERSION] - today), and raise " \
-       "the requires_chi of bundles marked requires_chi_next; no commit"
+       "the requires_chi of bundles marked requires_chi_next, then of a profile left below a member's (with a patch " \
+       "bump of its version); no commit"
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
-    marked = ReleaseTools.requires_chi_next(ROOT).keys.map { |dir| File.basename(dir) }
-    old = ReleaseTools.bump!(ROOT, version)
-    puts "Bumped #{old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, Gemfile.lock, CHANGELOG.md"
-    puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{marked.join(", ")}" unless marked.empty?
+    bumped = ReleaseTools.bump!(ROOT, version)
+    puts "Bumped #{bumped.old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, Gemfile.lock, CHANGELOG.md"
+    unless bumped.raised.empty?
+      puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
+    end
+    bumped.profiles.each do |p|
+      puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{p.old_version} → #{p.version}: " \
+           "name it in the CHANGELOG's `chi update` line"
+    end
     puts "Review with `git diff`, then run rake release:check and commit."
   rescue ReleaseTools::Error => e
     abort "release:bump: #{e.message}"

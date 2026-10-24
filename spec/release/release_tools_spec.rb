@@ -319,7 +319,8 @@ RSpec.describe ReleaseTools do
     def read(rel) = File.read(File.join(tmp, rel))
 
     it "moves VERSION, the system manifest, Gemfile.lock and the CHANGELOG; never a requires_chi" do
-      expect(described_class.bump!(tmp, "0.2.0", date: "2026-09-28")).to eq("0.1.37")
+      expect(described_class.bump!(tmp, "0.2.0", date: "2026-09-28"))
+        .to eq(ReleaseTools::Bumped.new(old: "0.1.37", raised: [], profiles: []))
       expect(described_class.gem_version(tmp)).to eq("0.2.0")
       expect(described_class.system_bundle_version(tmp)).to eq("0.2.0")
       expect(read("Gemfile.lock")).to eq("PATH\n  specs:\n    samagotchi (0.2.0)\n      reline\n\nCHECKSUMS\n  samagotchi (0.2.0)\n  webmock (3.26.2) sha256=ab\n")
@@ -338,6 +339,35 @@ RSpec.describe ReleaseTools do
       expect(read("lib/samagotchi/bundles/mcp/manifest.yml")).to eq("name: mcp\nversion: 0.3.1\nrequires_chi: \">= 0.2.0\"\n")
       expect(read("lib/samagotchi/bundles/skills/manifest.yml")).to include('">= 0.1.30"')
       expect(described_class.requires_chi_next(tmp)).to be_empty
+    end
+
+    # The dev profile 0.7.2 by hand at 0.107.0 (its member coordinator was
+    # raised): release:bump raises a profile left below a member with it.
+    it "raises a profile left below a raised member to that member's floor, with a patch bump of its version" do
+      write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi: \">= 0.1.30\"\nrequires_chi_next: true\n")
+      write("lib/samagotchi/bundles/dev/manifest.yml",
+            "---\nname: dev\nversion: 0.7.1\nrequires_chi: \">= 0.1.37\"\nincludes:\n- mcp\n- coord\n")
+      write("lib/samagotchi/bundles/bare/manifest.yml", "name: bare\nversion: 0.1.0\nincludes:\n- coord\n")
+      write("lib/samagotchi/bundles/core/manifest.yml",
+            "name: core\nversion: 0.2.0\nrequires_chi: \">= 0.1.37\"\nincludes:\n- mcp\n")
+      bumped = described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+      expect(bumped.raised).to eq(["coord"])
+      expect(bumped.profiles).to eq([ReleaseTools::RaisedProfile.new(name: "bare", old_version: "0.1.0", version: "0.1.1", floor: "0.2.0"),
+                                     ReleaseTools::RaisedProfile.new(name: "dev", old_version: "0.7.1", version: "0.7.2", floor: "0.2.0")])
+      expect(read("lib/samagotchi/bundles/dev/manifest.yml"))
+        .to eq("---\nname: dev\nversion: 0.7.2\nrequires_chi: \">= 0.2.0\"\nincludes:\n- mcp\n- coord\n")
+      expect(read("lib/samagotchi/bundles/bare/manifest.yml"))
+        .to eq("name: bare\nversion: 0.1.1\nrequires_chi: \">= 0.2.0\"\nincludes:\n- coord\n")
+      expect(read("lib/samagotchi/bundles/core/manifest.yml")).to include("version: 0.2.0\nrequires_chi: \">= 0.1.37\"")
+      expect(described_class.low_meta_floors(tmp)).to eq([])
+    end
+
+    it "changes nothing when a profile to raise has a version it can't patch-bump" do
+      write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
+      write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7\nincludes:\n- coord\n")
+      expect { described_class.bump!(tmp, "0.2.0") }.to raise_error(ReleaseTools::Error, /dev: version "0.7" isn't x.y.z/)
+      expect([described_class.gem_version(tmp), read("lib/samagotchi/bundles/coord/manifest.yml")])
+        .to eq(["0.1.37", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n"])
     end
 
     it "changes nothing when a marker can't be rewritten" do

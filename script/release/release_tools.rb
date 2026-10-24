@@ -156,28 +156,43 @@ module ReleaseTools
   # member's: [notes]. Nothing breaks (installing it checks each member's
   # own requires_chi, Profile.install_member), but the profile then claims
   # a chi its members don't run on. A note, not a failure: release:bump
-  # raises a requires_chi_next member's floor and not its profile's, and
+  # raises such a profile with its members (raised_profile_floors), and
   # release:check, right after it, runs bundles:check in full.
   def low_meta_floors(root)
+    low_profiles(root).map do |low|
+      have = low.requires ? low.requires.to_s.inspect : "(none)"
+      "#{low.name}: requires_chi #{have} is below member #{low.member}'s #{low.member_requires.inspect}: " \
+        "raise it to \">= #{low.floor}\" (and bump #{low.name}'s version)"
+    end
+  end
+
+  # A profile below its highest member: its manifest path, name and
+  # requires_chi (nil for none), that member, its requires_chi and floor.
+  LowProfile = Data.define(:path, :name, :requires, :member, :member_requires, :floor)
+
+  # The profiles whose requires_chi is below a member's, as [LowProfile].
+  # +texts+: {manifest path => text} read in place of the file (release:bump's
+  # manifests before it writes them).
+  def low_profiles(root, texts = {})
+    read = ->(path) { YAML.safe_load(texts.fetch(path) { File.read(path) }) || {} }
     bundle_dirs(root).filter_map do |dir|
-      manifest = YAML.safe_load_file(File.join(dir, "manifest.yml")) || {}
+      path = File.join(dir, "manifest.yml")
+      manifest = read.call(path)
       members = manifest["includes"] or next
 
       member, requires, floor = Array(members).filter_map do |name|
-        path = File.join(root, BUNDLES_DIR, name.to_s, "manifest.yml")
-        next unless File.file?(path)
+        member_path = File.join(root, BUNDLES_DIR, name.to_s, "manifest.yml")
+        next unless File.file?(member_path)
 
-        member_requires = (YAML.safe_load_file(path) || {})["requires_chi"]
+        member_requires = read.call(member_path)["requires_chi"]
         member_floor = requires_floor(member_requires)
         [name.to_s, member_requires.to_s, member_floor] if member_floor
       end.max_by(&:last)
       own = requires_floor(manifest["requires_chi"])
       next unless floor && (own.nil? || own < floor)
 
-      name = File.basename(dir)
-      have = manifest["requires_chi"] ? manifest["requires_chi"].to_s.inspect : "(none)"
-      "#{name}: requires_chi #{have} is below member #{member}'s #{requires.inspect}: " \
-        "raise it to \">= #{floor}\" (and bump #{name}'s version)"
+      LowProfile.new(path: path, name: File.basename(dir), requires: manifest["requires_chi"],
+                     member: member, member_requires: requires, floor: floor)
     end
   end
 
@@ -246,6 +261,38 @@ module ReleaseTools
     end
   end
 
+  # A profile raised with its members: its name, version before and after
+  # (a patch bump) and its new requires_chi floor.
+  RaisedProfile = Data.define(:name, :old_version, :version, :floor)
+
+  # The profiles left below a member once +texts+ ({path => text}, the
+  # members' raised manifests) are written: {path => text} with each one's
+  # requires_chi raised to that member's floor and its version patch-bumped,
+  # and the [RaisedProfile]s.
+  def raised_profile_floors(root, texts)
+    lows = low_profiles(root, texts)
+    out = lows.to_h do |low|
+      text = texts.fetch(low.path) { File.read(low.path) }
+      [low.path, patch_bump(raise_requires_chi(text, low.floor), low.name)]
+    end
+    profiles = lows.map do |low|
+      RaisedProfile.new(name: low.name, old_version: manifest_version(texts.fetch(low.path) { File.read(low.path) }),
+                        version: manifest_version(out[low.path]), floor: low.floor.to_s)
+    end
+    [out, profiles]
+  end
+
+  def manifest_version(text) = (YAML.safe_load(text) || {})["version"].to_s
+
+  # The manifest text with its version's patch number raised (0.7.1 → 0.7.2).
+  def patch_bump(text, name)
+    old = manifest_version(text)
+    raise Error, "#{name}: version #{old.inspect} isn't x.y.z" unless old.match?(/\A\d+\.\d+\.\d+\z/)
+
+    major, minor, patch = old.split(".").map(&:to_i)
+    text.sub(/^version:[^\n]*$/, "version: #{major}.#{minor}.#{patch + 1}")
+  end
+
   # [problems, notes] for `rake bundles:check`. +ci+ (`rake
   # bundles:check[ci]`, the CI workflow): the changed-bundle version check
   # leaves out the system bundle, whose version moves only with VERSION at
@@ -306,10 +353,16 @@ module ReleaseTools
 
   # --- bump ---------------------------------------------------------------
 
+  # What bump! changed: the version before, the bundles whose
+  # requires_chi_next it turned into requires_chi, and the [RaisedProfile]s.
+  Bumped = Data.define(:old, :raised, :profiles)
+
   # VERSION, the system manifest's version, Gemfile.lock's samagotchi lines,
-  # the CHANGELOG, and the requires_chi of every bundle marked
-  # requires_chi_next (raised to ">= version", the marker dropped). No other
-  # requires_chi is touched. No commit.
+  # the CHANGELOG, the requires_chi of every bundle marked requires_chi_next
+  # (raised to ">= version", the marker dropped), and then every profile
+  # below a member's requires_chi (raised to it, with a patch bump of the
+  # profile's version). No other requires_chi is touched. No commit; a
+  # Bumped.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
 
@@ -319,13 +372,14 @@ module ReleaseTools
     changelog = File.join(root, CHANGELOG)
     new_changelog = release_changelog(File.read(changelog), version, date)
     raised = raised_requires_chi(root, version)
+    profile_texts, profiles = raised_profile_floors(root, raised)
 
     edit(root, VERSION_FILE) { |t| t.sub(/VERSION = "[^"]+"/, %(VERSION = "#{version}")) }
     edit(root, SYSTEM_MANIFEST) { |t| t.sub(/^version: .*$/, "version: #{version}") }
     edit(root, "Gemfile.lock") { |t| t.gsub(/^(\s+)samagotchi \(#{Regexp.escape(current)}\)$/, "\\1samagotchi (#{version})") }
     File.write(changelog, new_changelog)
-    raised.each { |path, text| File.write(path, text) }
-    current
+    raised.merge(profile_texts).each { |path, text| File.write(path, text) }
+    Bumped.new(old: current, raised: raised.keys.map { |path| File.basename(File.dirname(path)) }, profiles: profiles)
   end
 
   def edit(root, rel)
