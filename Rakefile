@@ -133,7 +133,7 @@ namespace :release do
     bumped.profiles.each do |p|
       moved = p.old_version == p.version ? "#{p.version} (already bumped since the last tag)" : "#{p.old_version} → #{p.version}"
       puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{moved}; " \
-           "name it in the CHANGELOG's `chi update` line"
+           "named in the CHANGELOG's `chi update` line"
     end
     puts "Review with `git diff`, then run rake release:check and commit."
   rescue ReleaseTools::Error => e

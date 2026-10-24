@@ -365,6 +365,35 @@ module ReleaseTools
     end
   end
 
+  UPDATE_LINE = /^Update with `chi update`(?: \(([^)\n]*)\))?/
+
+  # The CHANGELOG with each raised profile (+profiles+, [RaisedProfile])
+  # named in +version+'s "Update with `chi update`" line as "the NAME
+  # profile X.Y.Z": added inside its parentheses (or a version it names
+  # there replaced), parentheses added to a bare line, the line added at the
+  # section's end when it has none.
+  def name_profiles_in_changelog(text, version, profiles)
+    return text if profiles.empty?
+
+    start = text.match(/^## \[#{Regexp.escape(version)}\][^\n]*\n/) or return text
+    rest = text[start.end(0)..]
+    stop = [rest =~ /^## \[/, rest =~ LINK_REF, rest.length].compact.min
+    section = rest[0...stop]
+    named = lambda do |items|
+      profiles.reduce(items) do |list, p|
+        item = "the #{p.name} profile #{p.version}"
+        pattern = /the #{Regexp.escape(p.name)} profile [\d.]+/
+        list.match?(pattern) ? list.sub(pattern, item) : [list, item].reject(&:empty?).join(", ")
+      end
+    end
+    section = if section.match?(UPDATE_LINE)
+                section.sub(UPDATE_LINE) { "Update with `chi update` (#{named.call(::Regexp.last_match(1).to_s)})" }
+              else
+                "#{section.rstrip}\n\nUpdate with `chi update` (#{named.call("")}).\n\n"
+              end
+    text[0...start.end(0)] + section + rest[stop..]
+  end
+
   # --- bump ---------------------------------------------------------------
 
   # What bump! changed: the version before, the bundles whose
@@ -375,8 +404,9 @@ module ReleaseTools
   # the CHANGELOG, the requires_chi of every bundle marked requires_chi_next
   # (raised to ">= version", the marker dropped), and then every profile
   # below a member's requires_chi (raised to it, with a patch bump of the
-  # profile's version unless it moved since the last tag). No other
-  # requires_chi is touched. No commit; a Bumped.
+  # profile's version unless it moved since the last tag; named in the
+  # CHANGELOG's "Update with `chi update`" line). No other requires_chi is
+  # touched. No commit; a Bumped.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
 
@@ -387,6 +417,7 @@ module ReleaseTools
     new_changelog = release_changelog(File.read(changelog), version, date)
     raised = raised_requires_chi(root, version)
     profile_texts, profiles = raised_profile_floors(root, raised)
+    new_changelog = name_profiles_in_changelog(new_changelog, version, profiles)
 
     edit(root, VERSION_FILE) { |t| t.sub(/VERSION = "[^"]+"/, %(VERSION = "#{version}")) }
     edit(root, SYSTEM_MANIFEST) { |t| t.sub(/^version: .*$/, "version: #{version}") }

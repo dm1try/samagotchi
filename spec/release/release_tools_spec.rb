@@ -383,6 +383,34 @@ RSpec.describe ReleaseTools do
         .to eq("name: dev\nversion: 0.7.2\nrequires_chi: \">= 0.2.0\"\nincludes:\n- coord\n- mcp\n")
     end
 
+    describe "naming the raised profiles in the CHANGELOG's `chi update` line" do
+      def bump_with(changelog_body)
+        write(ReleaseTools::VERSION_FILE, %(module Samagotchi\n  VERSION = "0.1.37"\nend\n))
+        write(ReleaseTools::SYSTEM_MANIFEST, "---\nname: samagotchi-system\nversion: 0.1.37\nfiles: {}\n")
+        write("Gemfile.lock", "PATH\n  specs:\n    samagotchi (0.1.37)\n")
+        write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n#{changelog_body}\n## [0.1.37] - 2026-09-01\n\n- old.\n" \
+                              "Update with `chi update` (the dev profile 0.7.0).\n")
+        write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
+        write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7.1\nincludes:\n- coord\n")
+        described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+        described_class.changelog_section(read("CHANGELOG.md"), "0.2.0")
+      end
+
+      it "adds it inside the line's parentheses, or replaces the version it names there" do
+        expect(bump_with("- chi.\n\nUpdate with `chi update` (the system bundle 0.2.0), then restart `chi web`.\n"))
+          .to eq("- chi.\n\nUpdate with `chi update` (the system bundle 0.2.0, the dev profile 0.7.2), then restart `chi web`.")
+        expect(bump_with("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.1, mcp 0.3.1).\n"))
+          .to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2, mcp 0.3.1).")
+      end
+
+      it "gives a bare line parentheses, and a section without one the line" do
+        expect(bump_with("- chi.\n\nUpdate with `chi update`.\n")).to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2).")
+        expect(bump_with("- chi.\n")).to eq("- chi.\n\nUpdate with `chi update` (the dev profile 0.7.2).")
+        expect(read("CHANGELOG.md")).to include("(the dev profile 0.7.2).\n\n## [0.1.37] - 2026-09-01\n\n- old.\n" \
+                                                "Update with `chi update` (the dev profile 0.7.0).\n")
+      end
+    end
+
     it "changes nothing when a profile to raise has a version it can't patch-bump" do
       write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
       write("lib/samagotchi/bundles/dev/manifest.yml", "name: dev\nversion: 0.7\nincludes:\n- coord\n")
