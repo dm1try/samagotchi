@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-10-24
+
 ### Added
 
 - A project's memories copied from another machine or path (their folder keyed by the old path's hash) are no
@@ -28,17 +30,18 @@ and commands may change between minor versions. How releases are made:
 
 - `chi -p … --non-interactive` prints the load warnings (a guardrail or plugin that failed to load, the orphaned
   project memory folder) on stderr as `<label>> …` lines; it used to drop them.
-- work-cap 0.1.2: a session's state file that doesn't read (not JSON) no longer drops its `/workcap` cap silently:
-  it is logged and you get one notice naming the file and the cap used instead (the config's).
-- cost-cap 0.2.2: the same for a session's cost-cap state file: one that doesn't read (not JSON) no longer drops its
-  `/cap` cap silently; it is logged and you get one notice naming the file and the cap used instead (the config's).
-- cost-cap 0.2.3, work-cap 0.1.3: the next `/cap`, `/workcap` or Continue that writes over such a file says so (a
-  notice naming it, and a log line) instead of replacing it silently.
+- cost-cap 0.2.3, work-cap 0.1.3: a session's state file that doesn't read (not JSON) no longer drops its `/cap` or
+  `/workcap` cap silently: it is logged and you get one notice naming the file and the cap used instead (the
+  config's), and the next `/cap`, `/workcap` or Continue that writes over it says so instead of replacing it silently.
 - `chi send --wait -m` to an idle session (and `--new --wait`) waits for its message's own turn: a worker that dies
   in that turn ends the wait `canceled` (`worker_stopped`) once the next worker settles it, instead of sitting to
   the timeout; the `turn_id` it reports was already that turn's.
 - A `delegate` follow-up's wait (or delegate report) to an idle child no longer takes the child's previous turn's
   reply for its own when it looks just as the follow-up's own turn starts.
+- A scheduled job that dies of an error outside Ruby's StandardError (a stack overflow, a job calling `exit`) no
+  longer cuts chi's shutdown short: the rest of it (plugin tasks, MCP servers) still stops.
+
+Update with `chi update` (the system bundle 0.108.0, the cost-cap bundle 0.2.3, the work-cap bundle 0.1.3), then restart `chi web`.
 
 ## [0.107.0] - 2026-10-24
 
@@ -4162,7 +4165,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.107.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.108.0...HEAD
+[0.108.0]: https://github.com/dm1try/samagotchi/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/dm1try/samagotchi/compare/v0.106.0...v0.107.0
 [0.106.0]: https://github.com/dm1try/samagotchi/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/dm1try/samagotchi/compare/v0.104.0...v0.105.0
