@@ -20,7 +20,11 @@ RSpec.describe Samagotchi::ShareCommand do
   let(:session) { new_session }
 
   # No chi web of this machine's answers (a real one may run on the port).
-  before { allow(Samagotchi::Web::InfoProbe).to receive(:call).and_return(:free) }
+  before do
+    allow(Samagotchi::Web::InfoProbe).to receive(:call).and_return(:free)
+    # This machine's own addresses: the LAN IP a probe answers must be one.
+    allow(Socket).to receive(:ip_address_list).and_return([Addrinfo.ip("127.0.0.1"), Addrinfo.ip("192.0.2.5")])
+  end
 
   after { FileUtils.rm_rf(tmpdir) }
 
@@ -95,6 +99,17 @@ RSpec.describe Samagotchi::ShareCommand do
         run(session.id, "--name", "Alex")
         expect(out.string.lines[1]).to start_with("http://127.0.0.1:4567/?token=chp_")
         expect(out.string).to include("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only")
+      end
+
+      # Whatever answers on the port may be another user's listener: a LAN
+      # address that isn't this machine's never goes into a link.
+      it "doesn't name a LAN address the probe answers unless it is this machine's", local_only: "the probe is this machine's" do
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).and_return({ "app" => "chi-web", "lan" => "192.0.2.66" })
+
+        run(session.id, "--name", "Alex")
+        expect(out.string.lines[1]).to start_with("http://127.0.0.1:4567/?token=chp_")
+        expect(out.string).not_to include("192.0.2.66")
+        expect(out.string).to include("this link opens on that machine only")
       end
 
       it "names the port the running chi web recorded, not web.port's", local_only: "the probe is this machine's" do

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "socket"
+
 require_relative "../session"
 require_relative "../session_access"
 require_relative "../reply_wait"
@@ -414,6 +416,15 @@ module Samagotchi
       # (Web::Running) when a chi web answers there, else config's web.port.
       LocalWeb = Data.define(:ip, :port)
 
+      # The LAN address a probe answered, only if it is one of this
+      # machine's: whatever listens on the port may be another user's
+      # listener naming its own (nil then: the link names 127.0.0.1).
+      def own_address(ip)
+        return nil unless ip.is_a?(String)
+
+        Socket.ip_address_list.any? { |addr| addr.ip_address == ip } ? ip : nil
+      end
+
       # A one-time code for the grant's link (Web::LinkCodes), until it expires.
       def link_code(issued)
         ttl = [Time.iso8601(issued.grant.expires_at) - grants.now, 1].max
@@ -434,7 +445,7 @@ module Samagotchi
         recorded = Web::Running.port(path: Web::Running.path(state_dir: state_dir!))
         [recorded, configured].compact.uniq.each do |port|
           info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
-          return LocalWeb.new(ip: info["lan"], port: port) if info.is_a?(Hash)
+          return LocalWeb.new(ip: own_address(info["lan"]), port: port) if info.is_a?(Hash)
         end
         LocalWeb.new(ip: nil, port: configured)
       end

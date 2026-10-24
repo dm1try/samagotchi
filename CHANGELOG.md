@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   `X-Auth-Request-*` and the like, underscore twins too: 403 `proxied`): an auth proxy that forwards every local port
   and adds such a header no longer reaches a worker's unauthenticated Bridge (a forward that adds none still does).
   chi's own clients never send these headers. A worker's `bridge.json` is now 0600.
+- `chi share`'s LAN link names the LAN address the running chi web reports only if it is one of this machine's own
+  addresses; else the link names 127.0.0.1 (whatever answers on chi web's port may be another user's listener).
 
 ## [0.108.0] - 2026-10-24
 
