@@ -436,10 +436,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                      "It was denied."])
         end
 
-        it "reads it from the saved text when the session has no record of it" do
+        it "reads it from the saved text when the session has no record of it: blocked too" do
           feed(snapshot(messages: messages))
 
-          expect(plain_lines).to eq(["user> clean up", 'tool> running command (execute command="rm -rf build"): error',
+          expect(plain_lines).to eq(["user> clean up", 'tool> running command (execute command="rm -rf build"): blocked',
                                      "It was denied."])
         end
       end

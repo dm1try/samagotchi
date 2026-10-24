@@ -43,6 +43,17 @@ module Samagotchi
     # Without a "[tool]" lead (an older or hand-made output) it stays as it is.
     def saved_result_text(output) = output.to_s.sub(SAVED_LEAD, "")
 
+    # A call the guardrails denied, as its saved text reads after the
+    # "[tool]" lead (ToolRunner#denied, Guardrails::Verdict#deny_text): a
+    # rule's or hook's deny, a legacy hook veto, or the user declining (or
+    # cancelling) the approval.
+    GUARDRAIL_DENIED = /\AError: (?:(?:denied|blocked) by guardrail\b|The (?:user declined this call|approval was cancelled)\b.*? It needed approval \()/m
+
+    # Whether a saved result text (#saved_result_text) is a guardrail's
+    # deny: "blocked" as live (its activity's status), not "error", for a
+    # call with no saved tool record.
+    def guardrail_denied?(text) = text.to_s.scrub.match?(GUARDRAIL_DENIED)
+
     # @param registry [Tools::Registry, nil] the session's tools
     # @param cwd [String, nil] what a file tool's title is relative to (the
     #   worker runs in its session's working directory)

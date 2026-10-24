@@ -114,6 +114,27 @@ RSpec.describe Samagotchi::ToolActivity do
     expect(events.find { |e| e[:type] == :tool_call_completed }[:activity]).to include(params: 'query="bug"', status: "ok")
   end
 
+  describe ".guardrail_denied? (a saved deny's text)" do
+    def verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "rm -rf build" })
+
+    it "reads every deny ToolRunner saves: a rule's or hook's, a legacy veto, the user's" do
+      rule = verdict.deny!("not here", rule: "rm", source: "core")
+      asked = verdict.ask!("rm needs a yes", rule: "rm", source: "core")
+                     .settle!(:deny, decided_by: "user", note: "The user declined this call: \"no\nnot now\".")
+      cancelled = verdict.ask!("rm needs a yes", rule: "rm").settle!(:deny, decided_by: "user", note: "The approval was cancelled.")
+      no_one = verdict.ask!("rm needs a yes", rule: "rm").settle!(:deny, decided_by: "no one", note: "No one to approve it.")
+      [rule, asked, cancelled, no_one].each do |denied|
+        expect(described_class.guardrail_denied?("Error: #{denied.deny_text}")).to be(true), denied.deny_text
+      end
+      expect(described_class.guardrail_denied?("Error: blocked by guardrail: blocked by hook")).to be(true)
+    end
+
+    it "leaves a tool's own error alone" do
+      expect(described_class.guardrail_denied?("Error: No such file: build")).to be(false)
+      expect(described_class.guardrail_denied?("stdout:\nError: denied by guardrail (x): y\nexit: 0")).to be(false)
+    end
+  end
+
   describe "status" do
     it "counts an execute that exited non-zero as an error" do
       expect(described_class.tool_activity_status("stderr:\nls: /nonexistent: No such file\nexit: 1", "execute")).to eq("error")

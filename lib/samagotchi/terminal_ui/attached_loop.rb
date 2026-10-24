@@ -1537,17 +1537,19 @@ module Samagotchi
       # A saved call's row; "no result" for a call the turn never answered
       # (it ended first). Its status is the saved record's, as live and the
       # web's reload (a guardrail's "blocked" is no error), else read from
-      # its result.
+      # its result (a guardrail's deny text reads blocked too).
       def join_tool_line(part, duration_ms: nil, saved_status: nil)
         output = part[:output]
         command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
+        text = ToolActivity.saved_result_text(output) unless output.nil?
         status = if output.nil?
                    "no result"
                  elsif !saved_status.to_s.empty?
                    saved_status.to_s
+                 elsif ToolActivity.guardrail_denied?(text)
+                   "blocked"
                  else
-                   ToolActivity.tool_activity_status(ToolActivity.saved_result_text(output), part[:tool],
-                                                     command: command)
+                   ToolActivity.tool_activity_status(text, part[:tool], command: command)
                  end
         activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
                      params: part[:params], status: status,

@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - `chi send --wait` with no message on a running turn that has no turn id (a session's first prompt, a reminder
   turn), and a `chi send --wait -m` whose message merged into the running turn, end `canceled` (`worker_stopped`)
   when that turn's worker dies and the next worker settles it, instead of waiting until `--timeout`.
+- Attached TUI: joining an older session (one with no saved record of the call) shows a call the guardrails denied
+  as `blocked`, not `error`.
 
 ## [0.109.0] - 2026-10-24
 
