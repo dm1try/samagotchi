@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: push notifications to a phone's Home Screen app (approvals and questions) over an https public URL
+  (`chi web --tunnel tailscale`): add chi web to the Home Screen, tap the bell. The notification goes away when the
+  question is answered anywhere. New settings `web.push.enabled` (default on) and `web.push.contact`. See
+  docs/configuration.md (Phone notifications).
+
 ### Fixed
 
 - `chi send --new --wait` now knows the id of the turn the new session's first prompt runs, so a `--timeout` or

@@ -1178,6 +1178,9 @@ access token", paste the token there (the part of the link after
 - Off the home Wi-Fi: `chi web --tunnel tailscale` gives chi web an https
   name on your tailnet (Tailscale Serve) for its run and prints its link's QR
   code; see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet).
+- Notifications on the phone, also while chi web isn't open there: on the tunnel's https link, Add to Home Screen,
+  open the Chi app and tap its bell; approvals and questions then push to the phone (see
+  [Phone notifications](configuration.md#phone-notifications-web-push)).
 
 ### Remote sessions
 

@@ -1768,6 +1768,46 @@ Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reac
   [chi web on your phone](cli.md#chi-web-on-your-phone)): token only, plain http in the browser (WireGuard encrypts
   the path) so no `Secure` cookie and no notifications, and no identity.
 
+### Phone notifications (Web Push)
+
+chi web as an app on your iPhone's Home Screen that buzzes (the Watch too) when a session waits on an **approval** or
+a **question**, also while the app is closed. A tap opens that session; when it is answered anywhere (the Mac, the
+phone, `chi answer`), the notification goes away by itself.
+
+What it needs:
+
+- chi web on an **https** public URL: `chi web --tunnel tailscale` ([above](#chi-web---tunnel-tailscale)) or a
+  `web.public_url`. On the LAN's plain http there is no push (no secure context: the bell is hidden); use the tunnel.
+- iOS 16.4 or later, and chi web **added to the Home Screen**: iOS gives push to a Home Screen app only.
+- No Apple account or registration: chi web signs its pushes with a key of its own (VAPID).
+
+Turning it on, on the phone: open the `Proxied:` link in Safari → Share → **Add to Home Screen** → open the **Chi**
+app → tap the **bell** at the top → Allow. A test notification arrives at once. Tap the
+bell again to turn it off on that phone. In a browser tab the bell stays the tab's own notifications (while the tab
+is in the background), as before.
+
+- **What is sent**: the session's name and the reason ("needs approval", "needs an answer"), never the question or
+  the command, as the tab's notification on the Mac. The session's name shows on the lock screen and the Watch.
+- **What Apple sees**: the push is end-to-end encrypted to the phone; Apple's push service sees that this machine
+  pushes to that device, and when. A subscription holds no device name and no personal data (an opaque address on
+  `web.push.apple.com` and two keys); chi names it itself ("iPhone · 2026-10-24", from the User-Agent's device class
+  and the date).
+- **When**: an approval or a question that is still open 3 s after it was asked (3.5 s for a delegated child's
+  approval, which its parent may relay instead); one push per question; a step-limit question, a failed or a long
+  turn don't push yet. A push arrives even while you look at the page (the phone can't tell chi web that it is in
+  front yet).
+- **The files**: `$XDG_STATE_HOME/samagotchi/web-push/` (next to `web-token`): `vapid.pem` (chi web's key) and
+  `subscriptions.json` (the devices), 0600 in a 0700 folder; chi web refuses to start when others can read them.
+  Subscriptions belong to the public URL they were made on: after renaming the machine or the tailnet, turn the bell
+  on again on the phone (the old ones are never sent to).
+- `web.push.enabled: false` turns it off; `web.push.contact` (a `mailto:` address or an `https://` URL; default:
+  the public URL) is the contact the push services see in chi web's key. A value that is neither stops `chi web`
+  (Apple refuses it); a `[chi web] the push service refused chi's VAPID token` line means the contact or the key was
+  refused, and pushes stop until chi web restarts.
+- The app keeps its own cookie (iOS copies Safari's when it is added, 400 days): `chi web --new-token` logs it out
+  (it shows the "needs chi web's access token" page; paste the token there). Pushes keep coming meanwhile.
+- chi web not running: no pushes (Serve answers 502; a tap couldn't open the page anyway).
+
 ## All settings
 
 Every setting below takes the three forms described in
@@ -1898,7 +1938,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `web.public_url` | | | Experimental. The https origin people open `chi web` at through an auth proxy (`https://host` or `https://host:port`, no path); set, every request needs the access token, this machine's too, and links use it. A value that isn't an https origin stops `chi web` from starting. See [Behind an auth proxy](#behind-an-auth-proxy). |
 | `web.proxy.identity_header` | | | Experimental. The request header the proxy puts the signed-in user's email in (`X-Forwarded-Email` for oauth2-proxy), checked next to the token: only one the proxy sets *and* replaces. Unset or `none`: the token alone decides. See [Behind an auth proxy](#behind-an-auth-proxy). |
 | `web.proxy.owner` | | | Experimental. Your email as the identity header carries it (any case): a proxied request is the owner only with this identity and the token. Unset: nobody is the owner by identity. Needs `web.proxy.identity_header`. |
-| `web.push.enabled` | `true` | | Push notifications to a phone's Home Screen app (approvals and questions) when the bell there is on. Does anything only with an https public URL (`web.public_url`, or `chi web --tunnel tailscale`'s) and once a device subscribed; `false` turns the pushes and the routes off. |
+| `web.push.enabled` | `true` | | Push notifications to a phone's Home Screen app (approvals and questions) when the bell there is on. Does anything only with an https public URL (`web.public_url`, or `chi web --tunnel tailscale`'s) and once a device subscribed; `false` turns the pushes and the routes off. See [Phone notifications](#phone-notifications-web-push). |
 | `web.push.contact` | the public URL | | The contact the push services see in chi web's VAPID token: a `mailto:` address or an `https://` URL. Anything else stops `chi web` from starting (Apple refuses it). |
 | `history.file` | state dir | | Prompt history path, shared by the TUI and the web composer. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the step limit of a turn to 1000 (or `turn.max_iterations`, when larger); a top-level key. |
