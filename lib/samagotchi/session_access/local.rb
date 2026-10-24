@@ -18,6 +18,7 @@ require_relative "../participants"
 require_relative "../config"
 require_relative "../web/grants"
 require_relative "../web/info_probe"
+require_relative "../web/public_url"
 require_relative "../web/running"
 
 module Samagotchi
@@ -359,22 +360,24 @@ module Samagotchi
         grants.list(session_id: id).map { |grant| ParticipantView.from_h(grant.public_h(grants.now)) }
       end
 
-      # The link names this machine's chi web: its web.public_url when it
-      # runs behind a proxy (the token in the fragment, as chi web's own
-      # invite), else its LAN address and port when one runs on the LAN (the
-      # port it recorded, else web.port), else 127.0.0.1 (+lan+ false: the
-      # link opens on this machine only).
+      # The link names this machine's chi web: web.public_url from this
+      # machine's config (never what the port answers) when it is set (the
+      # token in the fragment, as chi web's own invite), else its LAN address
+      # and port when one runs on the LAN (the port it recorded, else
+      # web.port), else 127.0.0.1 (+lan+ false: the link opens on this
+      # machine only).
       # @return [Invitation]
       # @raise [ArgumentError] no such session
       # @raise [BadRequest] a bad name, kind or ttl, an archived session
       def invite(id, name:, kind:, ttl: nil, cap: nil)
         issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap, state_dir: state_dir!)
-        web = local_web
-        link = if web.public_url then "#{web.public_url}/#token=#{issued.token}&s=#{id}"
+        public_url = configured_public_url
+        web = public_url ? nil : local_web
+        link = if public_url then public_url.link(issued.token, "s=#{id}")
                else "http://#{web.ip || "127.0.0.1"}:#{web.port}/?token=#{issued.token}#s=#{id}"
                end
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
-                       link: link, lan: !web.ip.nil? || !web.public_url.nil?,
+                       link: link, lan: !public_url.nil? || !web.ip.nil?,
                        warning: ReviewStart.share_warning(Session.load(id, **dir)))
       rescue Web::Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
@@ -406,10 +409,17 @@ module Samagotchi
       LOCAL_PROBE_TIMEOUT = 1.0
 
       # Where this machine's chi web answers (GET /api/info): its LAN ip
-      # and public_url (each nil without one) and the port the running one
-      # recorded (Web::Running) when a chi web answers there, else config's
-      # web.port.
-      LocalWeb = Data.define(:ip, :port, :public_url)
+      # (nil without one) and the port the running one recorded
+      # (Web::Running) when a chi web answers there, else config's web.port.
+      LocalWeb = Data.define(:ip, :port)
+
+      # web.public_url as this machine's config has it; nil when unset or
+      # not a valid one (chi web refuses to start on that).
+      def configured_public_url
+        Web::PublicUrl.from_config(url: Config.get("web.public_url"))
+      rescue Web::PublicUrl::Invalid
+        nil
+      end
 
       def local_web
         configured = Config.get("web.port").to_s.to_i
@@ -417,9 +427,9 @@ module Samagotchi
         recorded = Web::Running.port(path: Web::Running.path(state_dir: state_dir!))
         [recorded, configured].compact.uniq.each do |port|
           info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
-          return LocalWeb.new(ip: info["lan"], port: port, public_url: info["public_url"]) if info.is_a?(Hash)
+          return LocalWeb.new(ip: info["lan"], port: port) if info.is_a?(Hash)
         end
-        LocalWeb.new(ip: nil, port: configured, public_url: nil)
+        LocalWeb.new(ip: nil, port: configured)
       end
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}

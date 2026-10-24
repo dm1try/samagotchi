@@ -268,7 +268,7 @@ RSpec.describe Samagotchi::Web::Server do
                                              owner: "me@pod.test")
     end
 
-    it "makes the token without LAN mode, gives the app both, and prints the proxied and local links" do
+    it "makes the token without LAN mode, gives the app both, and prints the proxied link (no local one)" do
       Dir.mktmpdir do |dir|
         token_path = File.join(dir, "web-token")
         app = nil
@@ -278,7 +278,7 @@ RSpec.describe Samagotchi::Web::Server do
         out = nil
         expect { out = described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: token_path, state_dir: start_state) }
           .to output(Regexp.new('Proxied: https://4999\\.pod\\.test/#token=.{43}   .*\\n +\\(owner me@pod\\.test by X-Forwarded-Email, ' \
-                                'and the token\\)\\nThis machine: http://127\\.0\\.0\\.1:4999/\\?token=.{43}\\n')).to_stdout
+                                'and the token; on this machine the page opens through the proxy too\\)\\nPress')).to_stdout
         expect(out).to be true
         token = Samagotchi::Web::Token.read(token_path)
         expect(app[:lan]).to be_nil
@@ -289,11 +289,11 @@ RSpec.describe Samagotchi::Web::Server do
 
     it "says token only or nobody-by-identity in the start line" do
       token_only = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test")
-      expect(described_class.public_lines(token_only, url: "http://127.0.0.1:1/?dir=/r", token: "T"))
+      expect(described_class.public_lines(token_only, token: "T"))
         .to eq(["Proxied: https://p.test/#token=T   ← anyone with this link who passes the proxy can run commands as you",
-                "         (token only, no identity header)", "This machine: http://127.0.0.1:1/?dir=/r&token=T"])
+                "         (token only, no identity header; on this machine the page opens through the proxy too)"])
       nobody = Samagotchi::Web::PublicUrl.from_config(url: "https://p.test", identity_header: "X-Forwarded-Email")
-      expect(described_class.public_lines(nobody, url: "u", token: "T")[1]).to include("nobody is the owner by identity")
+      expect(described_class.public_lines(nobody, token: "T")[1]).to include("nobody is the owner by identity")
     end
 
     it "refuses to start on a public_url that isn't an https origin, before probing" do
@@ -309,7 +309,9 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class).not_to have_received(:start)
     end
 
-    it "passes a public_url to start, and a second chi web prints the running one's proxied link" do
+    # The link from this machine's config, never from what answered on the
+    # port (another user's listener could name its own public_url).
+    it "passes a public_url to start, and a second chi web prints this config's proxied link" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("https://4999.pod.test")
       allow(described_class).to receive(:probe).and_return(:free)
@@ -317,10 +319,10 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class.launch(port: 4999, dir: "/")).to eq(0)
       expect(described_class).to have_received(:start).with(hash_including(public_url: Samagotchi::Web::PublicUrl.from_config(url: "https://4999.pod.test")))
 
-      allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "public_url" => "https://4999.pod.test" })
+      allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "public_url" => "https://evil.example" })
       allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
       expect { described_class.launch(port: 4999, dir: "/", scope: "all") }
-        .to output(%r{Proxied: https://4999\.pod\.test/#token=T\nThis machine: http://127\.0\.0\.1:4999/\?token=T\n}).to_stdout
+        .to output(a_string_including("Proxied: https://4999.pod.test/#token=T\n").and(satisfy { |o| !o.include?("evil") })).to_stdout
     end
   end
 

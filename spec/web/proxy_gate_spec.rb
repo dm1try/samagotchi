@@ -179,14 +179,28 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       status, _, body = local("/api/sessions")
       expect([status, detail(body)]).to eq([401, "chi web with web.public_url needs its access token, on this machine too"])
       expect(local("/api/sessions", headers: [bearer]).first).to eq(200)
-      expect(local("/api/info", headers: [["Cookie", "chi_token=#{owner_token}"]]).first).to eq(200)
     end
 
-    it "trades ?token= for the http cookie with a relative Location" do
+    # A cookie for 127.0.0.1 would go to every server on any local port.
+    it "takes the Bearer header only: no cookie, and no trade that would set one" do
+      expect(local("/api/sessions", headers: [["Cookie", "chi_token=#{owner_token}"]]).first).to eq(401)
       status, headers, = local("/?token=#{owner_token}&dir=/r")
-      expect(status).to eq(303)
-      expect(headers["Location"]).to eq("/?dir=/r")
-      expect(headers["Set-Cookie"]).to start_with("chi_token=#{owner_token}; HttpOnly")
+      expect([status, headers["Set-Cookie"]]).to eq([401, nil])
+      status, headers, = local("/api/token", method: "POST", body: JSON.generate(token: owner_token),
+                                             headers: [["Content-Type", "application/json"]])
+      expect([status, headers["Set-Cookie"]]).to eq([401, nil])
+    end
+
+    # InfoProbe sends no token (whatever listens on the port may not be chi
+    # web): the fields it checks, nothing secret.
+    it "answers chi's token-less probe of /api/info with its checked fields only" do
+      status, _, body = local("/api/info")
+      expect(status).to eq(200)
+      expect(JSON.parse(body).keys).to contain_exactly("app", "version", "pid", "features", "lan")
+      expect(JSON.parse(local("/api/info", headers: [bearer]).last).keys).to include("cwd")
+      expect(local("/api/info", headers: [%w[Cookie x=1]]).first).to eq(401)
+      expect(call("/api/info", headers: proxied).first).to eq(401)
+      expect(local("/api/info", peer: "192.0.2.4").first).to eq(401)
     end
 
     it "takes the public Host as proxied even without any other trace (a proxy that passes Host and adds nothing)" do
@@ -238,11 +252,6 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     it "is refused from another site like any POST" do
       expect(trade(owner_token, headers: proxied(owner, [%w[Origin https://evil.example], %w[Sec-Fetch-Site cross-site]])).first)
         .to eq(403)
-    end
-
-    it "trades on this machine too (the http cookie)" do
-      _, headers, = trade(owner_token, host: "127.0.0.1:4567", headers: [])
-      expect(headers["Set-Cookie"]).to start_with("chi_token=#{owner_token}; HttpOnly")
     end
 
     it "serves the trade's script without a token, and the 401 page runs it" do
@@ -314,11 +323,6 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       req.env[described_class::PRINCIPAL_ENV] = app.send(:principal_for, req)
       expect(app.send(:participant_viewer, req, session).secrets).to eq([owner_token])
     end
-  end
-
-  it "tells the owner's /api/info the public origin" do
-    _, _, body = call("/api/info", headers: proxied(owner, [bearer]))
-    expect(JSON.parse(body)["public_url"]).to eq(origin)
   end
 
   describe "the WEBrick hook (Server prepends ProxyGate::RawHeaderNames)" do

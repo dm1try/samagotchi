@@ -92,7 +92,7 @@ module Samagotchi
           end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
           puts running_lan_lines(found["lan"], port) if found["lan"]
-          puts running_public_lines(found["public_url"], port) if found["public_url"]
+          puts running_public_lines(public_url) if public_url
           puts lan_off_line(setting) if new_token && !found["lan"]
           open_url(url) if open_browser
           0
@@ -166,12 +166,12 @@ module Samagotchi
           record_running(running_path, port)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
-          puts public_lines(public_url, url: url, token: Token.read(token_path)) if public_url
+          puts public_lines(public_url, token: Token.read(token_path)) if public_url
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
-            # With web.public_url this machine needs the token too.
-            open_target = public_url ? with_token(url, Token.read(token_path)) : url
+            # With web.public_url the page opens through the proxy.
+            open_target = public_url ? public_url.link(Token.read(token_path)) : url
             Thread.new do
               sleep 0.8
               open_url(open_target)
@@ -251,9 +251,11 @@ module Samagotchi
       end
 
       # What web.public_url adds to the start lines: the proxied link (the
-      # token in its fragment), who the owner is, and this machine's link
-      # (it needs the token too).
-      def self.public_lines(public_url, url:, token:)
+      # token in its fragment) and who the owner is. On this machine the
+      # page opens through the proxy too; a direct request takes the token
+      # as Authorization: Bearer only (no cookie for 127.0.0.1, which every
+      # local port would get).
+      def self.public_lines(public_url, token:)
         unless token
           return ["Proxied: #{public_url.origin}/ (no access token: its file is gone; chi web --new-token makes one)"]
         end
@@ -263,22 +265,17 @@ module Samagotchi
               else "nobody is the owner by identity: web.proxy.owner is unset"
               end
         ["Proxied: #{public_url.link(token)}   ← anyone with this link who passes the proxy can run commands as you",
-         "         (#{who})",
-         "This machine: #{with_token(url, token)}"]
+         "         (#{who}; on this machine the page opens through the proxy too)"]
       end
 
-      # A second chi web, when the running one is behind a proxy.
-      def self.running_public_lines(origin, port, token_path: Token.path)
+      # A second chi web, when this machine's config has web.public_url: the
+      # link from this config and the token file, never from what answered
+      # on the port.
+      def self.running_public_lines(public_url, token_path: Token.path)
         token = Token.read(token_path)
-        return ["Proxied: #{origin}/"] unless token
+        return ["Proxied: #{public_url.origin}/"] unless token
 
-        ["Proxied: #{origin}/#token=#{token}", "This machine: http://127.0.0.1:#{port}/?token=#{token}"]
-      end
-
-      def self.with_token(url, token)
-        return url unless token
-
-        "#{url}#{url.include?("?") ? "&" : "?"}token=#{token}"
+        ["Proxied: #{public_url.link(token)}"]
       end
 
       def self.host_setting(host)

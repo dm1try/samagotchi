@@ -261,6 +261,7 @@ module Samagotchi
         return cross_origin if cross_site?(env)
         # The fragment trade's script, which the 401 page loads: no secret in it.
         return serve_static(req) if req.get? && GATE_FREE_PATHS.include?(req.path_info)
+        return probe_info if probe_info?(req)
 
         principal, denied = token_gate(req)
         return denied if denied
@@ -431,9 +432,18 @@ module Samagotchi
         participant_principal(req, grant_tokens)
       end
 
+      # With web.public_url a request that didn't come through the proxy
+      # (this machine: curl, chi's own callers) presents the Bearer header
+      # only: no cookie, and no trade that would set one. A cookie for
+      # 127.0.0.1 goes to every server on any of its ports.
       def presented_tokens(req)
-        token_trade?(req) ? [traded_token(req)] : [bearer_token(req), req.cookies[token_cookie_name(req)]]
+        return [traded_token(req)] if token_trade?(req)
+        return [bearer_token(req)] if direct_public?(req)
+
+        [bearer_token(req), req.cookies[token_cookie_name(req)]]
       end
+
+      def direct_public?(req) = !@public_url.nil? && !proxied?(req)
 
       # The token a trade presents: the page's ?token=, or POST /api/token's
       # body's (read once).
@@ -482,6 +492,8 @@ module Samagotchi
       # POST /api/token is the same trade for a token the page found in its
       # URL's fragment.
       def token_trade?(req)
+        return false if direct_public?(req)
+
         page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
         return false unless page || fragment_trade?(req)
 
@@ -687,8 +699,7 @@ module Samagotchi
         return participant_info unless principal(req).owner?
 
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip],
-                             public_url: @public_url&.origin })
+                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
       end
 
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE].freeze
