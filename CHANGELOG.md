@@ -11,8 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - chi web: push notifications to a phone's Home Screen app (approvals and questions) over an https public URL
-  (`chi web --tunnel tailscale`): add chi web to the Home Screen, tap the bell. The notification goes away when the
-  question is answered anywhere. New settings `web.push.enabled` (default on) and `web.push.contact`. See
+  (`chi web --tunnel tailscale`): add chi web to the Home Screen, tap the bell. An answered question's notification goes
+  when the app opens or the next push arrives (every push shows one: iOS drops an app that pushes silently). New settings `web.push.enabled` (default on) and `web.push.contact`. See
   docs/configuration.md (Phone notifications).
 
 ### Fixed

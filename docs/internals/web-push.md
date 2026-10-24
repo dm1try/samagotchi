@@ -12,8 +12,15 @@ SessionHub ──emit──▶ Notifier#call(event) ──Queue──▶ sender 
                          Attention rules               hold 3 s → still open?
                                                        Crypto.encrypt + VAPID → Client#deliver(endpoint)
                                                        201 ok · 404/410 drop the device · 403 BadJwtToken stop + log
-service worker ◀── Apple (web.push.apple.com) ◀──────── {v, kind: show|close, tag, title, body, url, badge}
+service worker ◀── Apple (web.push.apple.com) ◀──────── {v, kind: show, tag, title, body, url, badge, open?}
 ```
+
+**Every push chi sends shows a notification.** WebKit removes a subscription after 3 pushes that show no
+notification ("Enforce silent push quota", WebKit commit 108ccb44), and Apple keeps answering 201 for it (Apple
+Developer Forums 719990), so chi can't see it happen. The user check of 2026-10-24 lost its subscription this way:
+7 question pushes and 6 close pushes in ~6 min, then a question push and a test push both answered 201 and never
+showed. So there is no close push and no badge-only push: answered notifications leave the lock screen through the
+next show's `open` list (the service worker) or when the app opens (the page).
 
 ## The crypto (`web/push/crypto.rb`)
 
@@ -70,15 +77,22 @@ injected transport) that decrypts each body with the device's key and checks the
 
 ## The payload and the service worker
 
-The service worker is the only reader of the payload (JSON, < 1 KB):
+The service worker is the only reader of the payload (JSON, at most `Notifier::OPEN_LIMIT`, 3000 bytes, with
+`open`; one aes128gcm record leaves 3993 bytes of plaintext under Web Push's 4096: 86 header, 1 delimiter, 16 tag):
 
-- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":"/#/s/<id>","badge":N}`: TTL 12 h, `Urgency: high`.
-- `{"v":1,"kind":"close","tags":[KEY…],"badge":N}`: TTL 10 min, `Urgency: normal`.
+- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":"/#/s/<id>","badge":N,"open":[KEY…]}`: TTL 12 h,
+  `Urgency: high`. `open` only while the whole list fits the limit; the test push (`chi:test`) has neither `open`
+  nor `badge`.
 
-`badge` is how many waiting attentions the Notifier holds open. `public/sw.js` is a classic script (module service
-workers on iOS are unverified) at scope `/`: a show calls `showNotification(title, {body, tag, icon, data: {url}})`
-and `setAppBadge`; a close closes `getNotifications({tag})` for each tag and sets the badge, showing nothing; a tap
-focuses the app's first window and navigates it to the url, else opens one (only a path of chi web's); `install`
+`badge` and `open` are the keys still open in the Notifier's summaries (`Attention.open_keys`: a pending approval
+or question, a hook's too, not relayed), so an approval pushed by an earlier chi web run still counts after a
+restart. `public/sw.js` is a classic script (module service workers on iOS are unverified) at scope `/`. Every push
+event ends in `showNotification`: a payload that isn't a readable v1 show (no data, bad JSON, another `v`, a stale
+`close` from an older chi web, any other kind) shows a fallback (`chi` / "open chi", tag `chi:other`, url `/`), and a
+show iOS refuses is shown once more without its icon and data. A show calls `showNotification(title, {body, tag,
+icon, data: {url}})` first; then, when `open` is an array, closes every `getNotifications()` whose tag is a
+question's `"<sid>:<qid>"` (never `chi:*`), isn't the new one and isn't in `open` (after the show: closing before it
+fails on iOS; errors are swallowed); then `setAppBadge(badge)` when `badge` is a number. A tap focuses the app's first window and navigates it to the url, else opens one (only a path of chi web's); `install`
 skips waiting, `activate` claims the clients. No fetch handler and no caching: chi web has no offline mode, and a
 fetch handler would change how the page loads. `spec/web/public/sw.test.js` runs it in a `vm` with a fake worker
 scope.
@@ -105,16 +119,18 @@ notification ring for the same thing under the same key:
 `Notifier#call(event)` is a `SessionHub` sink. **The hub calls it under its Monitor**, from the tick thread and also
 from chi web's request threads (`SessionHub#touch`, from the stop/archive/delete routes), so it only enqueues: a push
 is a 0.5 s https call. `emit` already rescues a raising sink. The sink keeps the last summary per session and turns
-each `session` / `session_gone` event into a `Show` (with its text) or a `Close` on a Queue.
+each `session` / `session_gone` event into a `Show` (with its text) or a `Close` (it was answered anywhere) on a
+Queue.
 
 **Seeding**: `Notifier#start(hub)` subscribes with `snapshot: true` and takes the summaries as the seed, so what is
 open already never pushes. The hub's projection is empty before its first scan, so `Server.start` runs `hub.scan`
 once after the `chi` line's subscribe and before `notifier.start(hub)`, then `hub.start`. Events that reach the sink
 before the seed is in (they are newer than the snapshot) are applied after it.
 
-The sender thread holds each show (`HOLD` 3 s, or the event's own), then pushes it only while its key is still open,
-to every subscription on this run's origin; a key pushed is "sent". A close drops the keys from the open and pending
-sets and pushes a close for the ones sent; a close for keys never sent is dropped. Results: `:ok` stamps the device's
+The sender thread holds each show (`HOLD` 3 s, or the event's own), then pushes it only while its key is still in
+`Attention.open_keys` of the summaries (read under the sink's mutex at flush time), to every subscription on this
+run's origin, with that list as `open` and its size as `badge`. A close only drops a show still in its hold: it
+pushes nothing. Results: `:ok` stamps the device's
 `last_ok_at`; `:gone` removes it; `:failed` keeps its code in `last_error` and logs `push_failed`; `:bad_jwt` logs
 one `push_bad_jwt` warning (on chi web's terminal too) and stops all pushes until chi web restarts. Log lines carry
 `device:` (the short id), `code:`, `ms:`, `kind:`: never the endpoint, keys or text. `#stop` drops pending holds and
@@ -148,15 +164,29 @@ and is "push to this phone" when chi web pushes: on while chi web has this devic
 deletes. The tab's own OS notification is left to the push there; the title count stays. In a browser tab, or with
 chi web not pushing, the bell is the in-tab one, unchanged (no duplicate desktop pushes).
 
+**The device's tidy-up** (`syncDevice`, the Home Screen app with the bell on): closes the shown notifications whose
+tag is a question's (`push.js isQuestionTag`, so `chi:test` stays) and isn't open in the page's `byId`
+(`push.js openPushKeys`: `Attention.open_keys`'s rule, with notify.js's `questionReason`), and sets or clears the app
+badge (`navigator.setAppBadge` / `clearAppBadge`); the bell turned off clears it. It runs once push is known, when
+the page comes back in front, and after each hub frame while visible (so answering on the Mac with the app open
+clears it at once), one at a time with one rerun. Never before the first snapshot (an empty `byId` would close
+everything) and never on a project's page (`createNotifications({scoped})`, app.js passes `!!scope.dir`: its
+`/api/events?dir=` leaves out the other projects' sessions).
+
+Accepted staleness: an approval answered elsewhere keeps its banner until the app opens or the next push arrives
+(or a swipe), and the icon badge may be too high until then; a show already handed to Apple just before its answer
+can land after the page's tidy-up and stay until the next one. Unverified on iOS: `getNotifications()` and
+`setAppBadge` from the page (a Window); the worker's cleanup still runs on the next push if they do nothing.
+
 ## iOS facts (the spike, 2026-10-24, on an iPhone)
 
 - **No replace by `tag`**: two notifications with one tag both stay, and closing same-tag ones inside the push
-  handler before `showNotification` doesn't remove the older one. A **separate close push** that only closes
-  `getNotifications({tag})` and sets the badge does: hence the close push.
+  handler before `showNotification` doesn't remove the older one. A separate close push that only closed
+  `getNotifications({tag})` did, but it shows nothing (see the quota below), so the worker now closes after its show.
 - **The service worker can't see the app in front** (`clients.matchAll` gave 0 windows with the app open) and a
   banner shows anyway: "don't push while I'm looking" has to be decided server-side, from the pages' presence (P2).
-- **Silent pushes**: 4 close pushes in a row (no notification shown) didn't revoke the subscription; WebKit is said
-  to revoke after repeated silent pushes, so a close push goes only for a key that was pushed, never as a heartbeat.
+- **Silent pushes**: the spike's 4 close pushes in a row didn't revoke the subscription, but that was luck or lazy
+  enforcement: the user check's 6 did (WebKit's quota is 3 pushes that show nothing; see the top of this page).
 - iOS sent the cookie with the manifest, `sw.js` and icon fetches, but Chrome fetches manifests without credentials:
   they are gate-free rather than relying on that.
 - `navigator.setAppBadge(n)` from the service worker sets the icon's badge; a push mirrors to the Watch.
