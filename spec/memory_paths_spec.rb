@@ -64,6 +64,7 @@ RSpec.describe Samagotchi::MemoryPaths do
       FileUtils.mkdir_p(dir)
       expect(described_class.project_root(dir)).to eq(dir)
       expect(described_class.project_key(dir)).to eq("plain_#{Digest::MD5.hexdigest(dir)[0..7]}")
+      expect(described_class.key_for_root(dir)).to eq(described_class.project_key(dir))
     end
 
     it "is the checkout for the repo root and a nested subdirectory" do

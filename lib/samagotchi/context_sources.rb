@@ -359,12 +359,7 @@ module Samagotchi
     def project_location_for(project_root, state_dir: nil)
       return nil if project_root.to_s.empty?
 
-      project_location(project_key_of(project_root), state_dir: state_dir)
-    end
-
-    # MemoryPaths.project_key for a root already resolved.
-    def project_key_of(root)
-      "#{File.basename(root)}_#{Digest::MD5.hexdigest(root)[0..7]}"
+      project_location(MemoryPaths.key_for_root(project_root), state_dir: state_dir)
     end
 
     # A session's sources: its own, then the project's it doesn't shadow

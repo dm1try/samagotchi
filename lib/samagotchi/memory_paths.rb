@@ -23,10 +23,10 @@ module Samagotchi
     end
 
     # One folder per project root: basename + 8 hex chars of MD5(full root path).
-    def project_key(cwd = Dir.pwd)
-      root = project_root(cwd)
-      "#{File.basename(root)}_#{Digest::MD5.hexdigest(root)[0..7]}"
-    end
+    def project_key(cwd = Dir.pwd) = key_for_root(project_root(cwd))
+
+    # #project_key for a root already resolved (a session's project_root).
+    def key_for_root(root) = "#{File.basename(root)}_#{Digest::MD5.hexdigest(root)[0..7]}"
 
     # The repository's common git directory identifies the project; every linked
     # worktree shares it. Returns the checkout holding it when it is named .git,

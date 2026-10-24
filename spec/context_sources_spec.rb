@@ -157,6 +157,7 @@ RSpec.describe Samagotchi::ContextSources do
 
     it "keys a project by MemoryPaths' project key" do
       expect(project.key).to eq("app_#{Digest::MD5.hexdigest(root)[0..7]}")
+      expect(project.key).to eq(Samagotchi::MemoryPaths.key_for_root(root))
     end
 
     it "lists the session's own sources, then the project's; a session source shadows a project one" do
