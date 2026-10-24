@@ -42,6 +42,38 @@ module AffectedSpecs
       added.fetch(path, [])
     end
 
+    # The new-side line numbers a change to the code file +path+ (lib/,
+    # script/, bin/chi) touches since the base: each hunk's lines, a pure
+    # deletion's line before it (so the def around it still counts). One
+    # `git diff -U0` for all the code files; an untracked file touches all
+    # of its lines; with no base, none.
+    def changed_lines(path)
+      return [] unless @base
+      return (1..read(path).to_s.lines.size).to_a if untracked_code.include?(path)
+
+      changed.fetch(path, [])
+    end
+
+    # { word => { path => count } } of +paths+ whose text has each of
+    # +words+ as a whole word: one `git grep -o` for them all. A Perl regex
+    # (an alternation, ~3x faster than as many -F -w patterns); a git built
+    # without PCRE gets the -F -w patterns.
+    def mentions_each(words, paths)
+      return {} if words.empty? || paths.empty?
+
+      alternation = words.map { |word| Regexp.escape(word) }.join("|")
+      out = grep_o(["-P", "-e", "(?<!\\w)(?:#{alternation})(?!\\w)"], paths) ||
+            grep_o(["-w", "-F", *words.flat_map { |word| ["-e", word] }], paths)
+      out.to_s.lines(chomp: true).each_with_object({}) do |line, found|
+        line = line.delete_prefix("#{@rev}:") if @rev
+        path, word = line.split(":", 2)
+        next unless word
+
+        counts = (found[word] ||= Hash.new(0))
+        counts[path] += 1
+      end
+    end
+
     # { path => count } of +paths+ whose text has +text+ (a whole word when
     # +word+).
     def mentions(text, paths, word: false)
@@ -63,6 +95,18 @@ module AffectedSpecs
 
     private
 
+    # `git grep -o` output for +pattern_args+ over +paths+ (empty when
+    # nothing matches); nil when git refuses them (no PCRE).
+    def grep_o(pattern_args, paths)
+      args = ["grep", "-o", "-I"]
+      args << "--untracked" unless @rev
+      args += pattern_args
+      args << @rev if @rev
+      args += ["--", *paths]
+      out, status = Open3.capture2("git", *args, chdir: @root, err: File::NULL)
+      out if status.success? || status.exitstatus == 1
+    end
+
     def numbered(text) = text.lines(chomp: true).each_with_index.map { |line, index| [index + 1, line] }
 
     def untracked
@@ -70,6 +114,37 @@ module AffectedSpecs
     end
 
     SPEC_DIRS = %w[spec lib/samagotchi/bundles].freeze
+    CODE_DIRS = %w[lib script bin/chi].freeze
+
+    def untracked_code
+      @untracked_code ||= @rev ? [] : git("ls-files", "--others", "--exclude-standard", "--", *CODE_DIRS).lines(chomp: true)
+    end
+
+    # { path => [line number, …] } from one diff of the code folders.
+    def changed
+      @changed ||= begin
+        diff = git("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", @base, *@rev, "--", *CODE_DIRS)
+        parse_changed(diff)
+      end
+    end
+
+    # A hunk header's new side is +start[,count]+ (no count: 1); a count of
+    # 0 is a pure deletion after line +start+.
+    def parse_changed(diff)
+      path = nil
+      diff.lines(chomp: true).each_with_object({}) do |line, changed|
+        if line.start_with?("diff --git ")
+          path = nil
+        elsif path.nil? && line.start_with?("+++ ")
+          path = line.delete_prefix("+++ ").delete_prefix("b/")
+        elsif path && (hunk = line.match(/\A@@ -\S+ \+(\d+)(?:,(\d+))? @@/))
+          start = hunk[1].to_i
+          count = hunk[2] ? hunk[2].to_i : 1
+          lines = count.zero? ? [[start, 1].max] : (start...(start + count)).to_a
+          (changed[path] ||= []).concat(lines)
+        end
+      end
+    end
 
     # { path => [[line number, text], …] } from one diff of the spec folders.
     def added
