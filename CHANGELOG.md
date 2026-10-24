@@ -17,6 +17,10 @@ and commands may change between minor versions. How releases are made:
   refused). Through the proxy the cookie is `__Host-chi_token` (Secure), the token trade's redirect is absolute from
   `web.public_url`, and invite links (the web's and `chi share`'s) are `https://…/#token=…&s=ID`. See
   docs/configuration.md (Behind an auth proxy).
+- Experimental, with `web.public_url`: a link's `#token=` is traded for the cookie by the page (`POST /api/token`),
+  so neither the proxy nor its IdP sees it; the page notices a lost sign-in (the proxy's session or chi's token ended:
+  a 401, a redirect to the sign-in page, the session list's stream giving up) and reloads once, then says "Signed out"
+  with Reload instead of going quietly stale. The page's API calls ask for JSON (`Accept: application/json`).
 
 ## [0.108.0] - 2026-10-24
 

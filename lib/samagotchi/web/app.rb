@@ -207,6 +207,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :participant],
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
         ["GET", %r{\A/api/info\z}, :handle_info, :participant],
+        ["POST", %r{\A/api/token\z}, :handle_token, :participant],
         ["GET", %r{\A/api/models\z}, :handle_models, :owner],
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
@@ -258,6 +259,8 @@ module Samagotchi
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
         return cross_origin if cross_site?(env)
+        # The fragment trade's script, which the 401 page loads: no secret in it.
+        return serve_static(req) if req.get? && GATE_FREE_PATHS.include?(req.path_info)
 
         principal, denied = token_gate(req)
         return denied if denied
@@ -375,6 +378,11 @@ module Samagotchi
       # Where #route keeps the request's Principal for its handlers.
       PRINCIPAL_ENV = "samagotchi.principal"
       PAGE_PATHS = ["/", "/index.html"].freeze
+      # POST {token}: the page trades a link's fragment token (#token=, which
+      # no proxy or IdP sees) for the cookie (token_fragment.js).
+      TOKEN_TRADE_PATH = "/api/token"
+      TRADE_BODY_LIMIT = 4096
+      GATE_FREE_PATHS = ["/token_fragment.js"].freeze
 
       # The request's Principal, as #route resolved it.
       def principal(req) = req.env.fetch(PRINCIPAL_ENV)
@@ -390,9 +398,13 @@ module Samagotchi
       def token_gate(req)
         principal = principal_for(req)
         return [nil, refused_token(req)] if principal.nil?
+
         # The cookie gets the token that was presented: the owner's, or the
         # participant's grant's.
-        return [nil, token_redirect(req, req.env[GRANT_TOKEN_ENV] || current_token)] if token_trade?(req)
+        if token_trade?(req)
+          token = req.env[GRANT_TOKEN_ENV] || current_token
+          return [nil, fragment_trade?(req) ? token_cookie_response(req, token) : token_redirect(req, token)]
+        end
 
         [principal, nil]
       end
@@ -420,8 +432,24 @@ module Samagotchi
       end
 
       def presented_tokens(req)
-        token_trade?(req) ? [req.params["token"]] : [bearer_token(req), req.cookies[token_cookie_name(req)]]
+        token_trade?(req) ? [traded_token(req)] : [bearer_token(req), req.cookies[token_cookie_name(req)]]
       end
+
+      # The token a trade presents: the page's ?token=, or POST /api/token's
+      # body's (read once).
+      def traded_token(req)
+        return req.params["token"] unless fragment_trade?(req)
+
+        req.env.fetch(TRADED_TOKEN_ENV) do
+          raw = request_body(req, TRADE_BODY_LIMIT).to_s
+          value = (parse_json(raw) if raw.bytesize < TRADE_BODY_LIMIT)
+          req.env[TRADED_TOKEN_ENV] = value.is_a?(Hash) && value["token"].is_a?(String) ? value["token"] : nil
+        end
+      end
+
+      TRADED_TOKEN_ENV = "samagotchi.traded_token"
+
+      def fragment_trade?(req) = req.post? && req.path_info == TOKEN_TRADE_PATH
 
       def owner_token?(given) = given.any? { |value| token_match?(value, current_token) }
 
@@ -451,10 +479,13 @@ module Samagotchi
       # The page opened with ?token= (a gated request, or a grant's token
       # anywhere): its token is traded for the cookie, whatever else the
       # request carries.
+      # POST /api/token is the same trade for a token the page found in its
+      # URL's fragment.
       def token_trade?(req)
-        return false unless req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+        return false unless page || fragment_trade?(req)
 
-        token_required?(req) || Grants.token?(req.params["token"])
+        token_required?(req) || Grants.token?(traded_token(req))
       end
 
       # The 401 for a request #principal_for refused: an ended grant's, else
@@ -494,6 +525,15 @@ module Samagotchi
         [303, { "Location" => location, "Set-Cookie" => token_cookie(req, token),
                 "Cache-Control" => "no-store", "Content-Length" => "0" }, []]
       end
+
+      # The fragment trade's answer: the cookie, no body.
+      def token_cookie_response(req, token)
+        [204, { "Set-Cookie" => token_cookie(req, token), "Cache-Control" => "no-store" }, []]
+      end
+
+      # POST /api/token past the gate without a trade (nothing to trade here:
+      # no token is asked of this request): nothing to do.
+      def handle_token(_req) = [204, { "Cache-Control" => "no-store" }, []]
 
       def unauthorized(req)
         reason = req.env[REFUSED_ENV]
@@ -539,12 +579,22 @@ module Samagotchi
         </style></head>
         <body>
         <h1>chi web</h1>
-        <p>This page needs chi web's access token. Open the LAN link chi web printed in its terminal, or scan its QR code.</p>
+        <p>This page needs chi web's access token. Open the link chi web printed in its terminal (LAN, or Proxied behind an
+        auth proxy), or scan its QR code.</p>
+        <p id="trade" hidden></p>
         <form method="get" action="/">
           <label for="token">Or paste the token:</label>
           <input id="token" name="token" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="submit">Open</button>
         </form>
+        <script type="module">
+          import { tradeFragmentToken } from "/token_fragment.js";
+          tradeFragmentToken({ onRefused: (words) => {
+            const line = document.getElementById("trade");
+            line.textContent = words;
+            line.hidden = false;
+          } });
+        </script>
         </body></html>
       HTML
 

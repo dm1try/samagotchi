@@ -72,15 +72,33 @@ test("onError fires only when the browser gave up before the first frame (no hub
 
 test("after the first frame an error is the browser's to reconnect from: no fallback, still live", () => {
   const errors = [];
-  const { es, control } = open({ snapshot: () => {} }, { onError: () => errors.push(1) });
+  const closed = [];
+  const { es, control } = open({ snapshot: () => {} }, { onError: () => errors.push(1), onClosed: () => closed.push(1) });
   es.dispatch("snapshot", JSON.stringify({ sessions: [] }));
-  es.readyState = 2;
+  es.readyState = 0; // CONNECTING: the browser retries on its own
   es.onerror();
   assert.deepEqual(errors, []);
+  assert.deepEqual(closed, []);
   assert.equal(control.live, true);
   assert.equal(es.closed, false);
 
   control.close();
   assert.equal(es.closed, true);
   assert.equal(control.live, false);
+});
+
+// An auth proxy's sign-in page answering the reconnect (302 → HTML): the
+// browser gives up for good, and the page was left showing a stale list.
+test("CLOSED after the first frame is onClosed (the caller probes and reopens), never the fetch fallback", () => {
+  const errors = [];
+  const closed = [];
+  const { es, control } = open({ snapshot: () => {} }, { onError: () => errors.push(1), onClosed: () => closed.push(1) });
+  es.dispatch("snapshot", JSON.stringify({ sessions: [] }));
+  es.readyState = 2;
+  es.onerror();
+  es.onerror();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(closed, [1]);
+  assert.equal(control.live, false);
+  assert.equal(es.closed, true);
 });

@@ -79,10 +79,11 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
       end
     end
 
-    it "lets a participant use only the page, the info, their session's show, review and filtered stream, its turns and waits (P2, P3b, P4a)" do
+    it "lets a participant use only the page, the info, their session's show, review and filtered stream, its turns and waits (P2, P3b, P4a), and the fragment trade" do
       participant = described_class.const_get(:ROUTES).select { |row| row[3] == :participant }.map { |row| row[2] }
+      # handle_token: POST /api/token, a link's #token= traded for the cookie (a no-op 204 past the gate).
       expect(participant).to contain_exactly(:serve_index, :handle_info, :handle_show, :handle_review, :handle_stream, :handle_turn,
-                                             :handle_dequeue_turn, :handle_resolve, :handle_wait_prepare, :handle_wait)
+                                             :handle_dequeue_turn, :handle_resolve, :handle_wait_prepare, :handle_wait, :handle_token)
     end
   end
 

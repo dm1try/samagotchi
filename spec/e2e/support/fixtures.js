@@ -21,9 +21,11 @@ export const test = base.extend({
   lan: [false, { option: true, scope: "worker" }],
   // The newest chi chi web believes installed (versions.spec.js).
   installed: [null, { option: true, scope: "worker" }],
+  // The proxy project: chi web behind support/pod_proxy.rb (proxy.spec.js).
+  authProxy: [false, { option: true, scope: "worker" }],
 
-  chi: [async ({ lan, installed }, use) => {
-    const env = await startEnv({ lan, installed });
+  chi: [async ({ lan, installed, authProxy }, use) => {
+    const env = await startEnv({ lan, installed, proxy: authProxy });
     try {
       await use(env);
     } finally {

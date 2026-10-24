@@ -33,6 +33,8 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     Dir.mktmpdir("web-proxy-public").tap do |dir|
       File.write(File.join(dir, "index.html"), "<html><body>owner page</body></html>")
       File.write(File.join(dir, "participant.html"), "<html><body>participant page</body></html>")
+      File.write(File.join(dir, "token_fragment.js"), "export function tradeFragmentToken() {}")
+      File.write(File.join(dir, "app.js"), "// app")
     end
   end
   let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
@@ -212,6 +214,43 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
 
     it "trades nothing for a refused identity" do
       expect(call("/?token=#{owner_token}", headers: proxied("alex@pod.test")).first).to eq(401)
+    end
+  end
+
+  describe "the fragment trade (POST /api/token: a link's #token=, which no proxy or IdP sees)" do
+    def trade(token, headers: proxied, **) = call("/api/token", method: "POST", body: JSON.generate(token: token),
+                                                                  headers: [["Content-Type", "application/json"], *headers], **)
+
+    it "sets the __Host- cookie for the owner's token with the owner's identity, 204 and no body" do
+      status, headers, body = trade(owner_token)
+      expect([status, body]).to eq([204, ""])
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/")
+    end
+
+    it "sets a participant's grant as their cookie, and refuses a token the gate refuses" do
+      _, headers, = trade(issued.token, headers: proxied("alex@pod.test"))
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{issued.token};")
+      status, headers, body = trade(owner_token, headers: proxied("alex@pod.test"))
+      expect([status, headers["Set-Cookie"], JSON.parse(body)["error"]]).to eq([401, nil, "unauthorized"])
+      expect(trade("nope").first).to eq(401)
+    end
+
+    it "is refused from another site like any POST" do
+      expect(trade(owner_token, headers: proxied(owner, [%w[Origin https://evil.example], %w[Sec-Fetch-Site cross-site]])).first)
+        .to eq(403)
+    end
+
+    it "trades on this machine too (the http cookie)" do
+      _, headers, = trade(owner_token, host: "127.0.0.1:4567", headers: [])
+      expect(headers["Set-Cookie"]).to start_with("chi_token=#{owner_token}; HttpOnly")
+    end
+
+    it "serves the trade's script without a token, and the 401 page runs it" do
+      expect(call("/token_fragment.js", headers: proxied).first).to eq(200)
+      expect(call("/app.js", headers: proxied).first).to eq(401)
+      status, _, body = call("/", headers: proxied)
+      expect(status).to eq(401)
+      expect(body).to include('import { tradeFragmentToken } from "/token_fragment.js";')
     end
   end
 

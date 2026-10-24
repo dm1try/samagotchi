@@ -21,7 +21,8 @@ export const EDIT_ASK_FILE = "e2e-settings.conf";
 
 // @param extra YAML appended (a scenario's own settings: useTurnLimit)
 // @param mainModels YAML for hosts.main.models (useHostModels), "" for none
-function config(fakePort, extra = "", mainModels = "") {
+// @param web YAML lines under web: (the proxy project's public_url)
+function config(fakePort, extra = "", mainModels = "", web = "") {
   return `default:
   model: fake-script
 hosts:
@@ -37,7 +38,7 @@ bundles:
     every: 100
 web:
   markdown: true
-guardrails:
+${web}guardrails:
   rules:
     - id: e2e-ask
       tool: shell
@@ -64,12 +65,14 @@ export function freePort() {
   });
 }
 
-async function waitFor(url, what, proc, timeoutMs = 20000) {
+// headers(): the request's headers, asked at each try (chi web's token,
+// once its file is there).
+async function waitFor(url, what, proc, timeoutMs = 20000, headers = () => ({})) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (proc.exitCode !== null) throw new Error(`${what} exited (${proc.exitCode}) before it answered ${url}`);
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: headers() });
       if (res.ok) return;
     } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 100));
@@ -121,7 +124,10 @@ export function privateIPv4() {
 //   env.tokenPath its access token's file
 // @param installed the newest chi chi web believes installed
 //   (SAMAGOTCHI_INSTALLED_VERSION; null: what really is)
-export async function startEnv({ lan = false, installed = null } = {}) {
+// @param proxy chi web behind support/pod_proxy.rb (web.public_url, the
+//   owner owner@pod.test by X-Forwarded-Email): env.publicURL is its https
+//   origin, env.tokenPath its access token's file (asked on loopback too)
+export async function startEnv({ lan = false, installed = null, proxy = false } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "chi-e2e-")));
   const dirs = {
     root,
@@ -192,6 +198,23 @@ export async function startEnv({ lan = false, installed = null } = {}) {
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
+    env.tokenPath = path.join(dirs.state, "samagotchi", "web-token");
+    const authHeaders = () => (proxy && fs.existsSync(env.tokenPath)
+      ? { Authorization: `Bearer ${fs.readFileSync(env.tokenPath, "utf8").trim()}` } : {});
+    if (proxy) {
+      const proxyPort = await freePort();
+      env.publicURL = `https://${webPort}.pod.localhost:${proxyPort}`;
+      env.proxyOwner = "owner@pod.test";
+      env.webYaml = `  public_url: ${env.publicURL}\n  proxy:\n    identity_header: X-Forwarded-Email\n    owner: ${env.proxyOwner}\n`;
+      writeConfig(env);
+      const pod = spawn("ruby", [path.join(HERE, "pod_proxy.rb"), "--port", String(proxyPort), "--cert-dir", root, "--auto", env.proxyOwner],
+        { stdio: ["ignore", "pipe", fs.openSync(path.join(root, "pod_proxy.log"), "a")] });
+      env.procs.push(pod);
+      await new Promise((resolve, reject) => {
+        pod.stdout.once("data", resolve);
+        pod.once("exit", (code) => reject(new Error(`pod_proxy.rb exited (${code})`)));
+      });
+    }
     const webArgs = ["web", "--port", String(webPort), ...(lan ? ["--web-host", "lan"] : [])];
     const webEnv = installed ? { ...childEnv, SAMAGOTCHI_INSTALLED_VERSION: installed } : childEnv;
     env.baseURL = `http://127.0.0.1:${webPort}`;
@@ -201,14 +224,13 @@ export async function startEnv({ lan = false, installed = null } = {}) {
         { cwd: dirs.project, env: webEnv, stdio: ["ignore", webLog, webLog] });
       env.procs.push(web);
       env.web = web;
-      await waitFor(`${env.baseURL}/api/models`, "chi web", web);
+      await waitFor(`${env.baseURL}/api/models`, "chi web", web, 20000, authHeaders);
     };
     await env.startWeb();
     if (lan) {
       const info = await (await fetch(`${env.baseURL}/api/info`)).json();
       if (!info.lan) throw new Error("chi web --web-host lan answers without a LAN address");
       env.lanURL = `http://${info.lan}:${webPort}`;
-      env.tokenPath = path.join(dirs.state, "samagotchi", "web-token");
     }
     return env;
   } catch (e) {
@@ -233,7 +255,7 @@ export function useConfigExtra(env, extra, key = "extra") {
 
 function writeConfig(env) {
   fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"),
-    config(env.fakePort, Object.values(env.configExtras || {}).join(""), env.mainModels || ""));
+    config(env.fakePort, Object.values(env.configExtras || {}).join(""), env.mainModels || "", env.webYaml || ""));
 }
 
 // hosts.main.models (YAML, e.g. a price for fake-script) for the sessions

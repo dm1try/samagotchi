@@ -33,9 +33,11 @@ export default defineConfig({
   // running turn in #turnStage, then handed off into #history); the turn
   // project runs the ones tagged @turn again on ?view=turn.
   projects: [
-    { name: "chromium", testIgnore: "lan.spec.js" },
-    { name: "turn", grep: /@turn/, use: { view: "turn" }, testIgnore: ["lan.spec.js", "stage.spec.js"] },
+    { name: "chromium", testIgnore: ["lan.spec.js", "proxy.spec.js"] },
+    { name: "turn", grep: /@turn/, use: { view: "turn" }, testIgnore: ["lan.spec.js", "stage.spec.js", "proxy.spec.js"] },
     // chi web --web-host lan, reached at the LAN address: the access token.
     { name: "lan", testMatch: "lan.spec.js", use: { lan: true } },
+    // chi web behind an auth proxy (support/pod_proxy.rb, web.public_url).
+    { name: "proxy", testMatch: "proxy.spec.js", use: { authProxy: true, ignoreHTTPSErrors: true } },
   ],
 });
