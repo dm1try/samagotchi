@@ -10,7 +10,8 @@ module AffectedSpecs
 
   # What Picker#pick returns: the Ruby specs and the node tests, best first
   # and uncapped, the hints to print, the changed code files nothing
-  # matched and the notes on skipped tiers (both shown with --why).
+  # matched and the notes (a skipped tier, a hub method: these three shown
+  # only with --why).
   Result = Data.define(:ruby, :node, :hints, :unmatched, :notes)
 
   # Specs that read docs or source as text, or print a file's words through
@@ -316,7 +317,8 @@ module AffectedSpecs
     # a changed line), for every changed Ruby code file outside the bundles
     # at once: one grep for up to MAX_CALLER_NAMES names, the first files'
     # first. Per name, most mentions first; a name in more than HUB_SPECS
-    # spec files gets a hint instead. Generic names (#generic_method?) skip.
+    # spec files gets a note instead (--why: a method hub is common, a
+    # constant hub's hint is not). Generic names (#generic_method?) skip.
     def add_callers
       files = code_files.select { |path| ruby_code?(path) && !bundle?(path) }
       return if files.empty?
@@ -339,7 +341,7 @@ module AffectedSpecs
       wanted.each do |name, path|
         specs = hits.fetch(name, {})
         if specs.size > HUB_SPECS
-          @hints << "hub: method #{name} (#{path}) is named in #{specs.size} spec files"
+          @notes << "hub: method #{name} (#{path}) is named in #{specs.size} spec files"
           next
         end
         specs.sort_by { |spec, count| [-count, spec] }.each { |spec, _| add(spec, "calls #{name} (#{path})", path) }

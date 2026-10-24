@@ -276,13 +276,14 @@ RSpec.describe AffectedSpecs::Picker do
                                                                 ["spec/pads_spec.rb", "calls pad_cells (lib/samagotchi/widget.rb)"]])
     end
 
-    it "gives a method named in more than HUB_SPECS spec files a hint instead of its specs" do
+    it "gives a method named in more than HUB_SPECS spec files a note (for --why) instead of its specs" do
       (1..(AffectedSpecs::HUB_SPECS + 1)).each { |i| files["spec/hub#{i}_spec.rb"] = "pad_cells" }
       lines["lib/samagotchi/widget.rb"] = [14]
       result = pick("lib/samagotchi/widget.rb")
 
       expect(paths(result.ruby)).not_to include("spec/pads_spec.rb")
-      expect(result.hints).to include("hub: method pad_cells (lib/samagotchi/widget.rb) is named in 42 spec files")
+      expect(result.notes).to eq(["hub: method pad_cells (lib/samagotchi/widget.rb) is named in 42 spec files"])
+      expect(result.hints.grep(/hub/)).to eq([])
     end
 
     it "skips the tier with a note when Prism 1.0 isn't there" do

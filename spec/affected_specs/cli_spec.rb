@@ -98,6 +98,24 @@ RSpec.describe AffectedSpecs::CLI do
     expect(ranged.lines.grep(/timing:/).size).to eq(3)
   end
 
+  it "prints a hub method's line and a skipped tier's note only with --why, a hub class's hint always" do
+    write("lib/samagotchi/widget.rb", "module Samagotchi\n  class Widget\n    def spin_all = 1\n  end\nend\n")
+    (1..(AffectedSpecs::HUB_SPECS + 1)).each { |i| write("spec/hub#{i}_spec.rb", "Widget.new.spin_all") }
+    commit("hubs")
+    write("lib/samagotchi/widget.rb", "module Samagotchi\n  class Widget\n    def spin_all = 2\n  end\nend\n")
+    method_hub = "affected-specs: hub: method spin_all (lib/samagotchi/widget.rb) is named in 41 spec files\n"
+    class_hub = "affected-specs: hub: Widget (lib/samagotchi/widget.rb) is named in 43 spec files; the full run covers it\n"
+
+    _, _, plain = run_cli("HEAD")
+    expect(plain).to eq(class_hub)
+    _, _, why = run_cli("HEAD", "--why")
+    expect(why).to eq(class_hub + method_hub)
+
+    allow(AffectedSpecs::ChangedDefs).to receive(:available?).and_return(false)
+    expect(run_cli("HEAD")[2]).to eq(class_hub)
+    expect(run_cli("HEAD", "--why")[2]).to eq("#{class_hub}affected-specs: callers tier skipped: needs prism >= 1.0\n")
+  end
+
   it "caps the list and says how many more there are" do
     write("spec/widget_spec.rb", "edited")
     write("spec/gadget_spec.rb", "edited")
