@@ -122,7 +122,7 @@ smaller set reaches the page then, not at the next request. It goes out whatever
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
 **The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
-and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` reads them, keys
+and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` (`Web::SessionShow`) reads them, keys
 symbolized) and the worker's llm ctx chip. Without one it builds from the session file and its saved chip
 (`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
 snapshot has a turn in progress (`current_turn`).

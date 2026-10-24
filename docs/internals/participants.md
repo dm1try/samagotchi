@@ -234,7 +234,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   and never after a key word whose value is still to come, `Redact::OPEN_VALUE`; past 1600 with no such space,
   the line's last unbroken run and the rest of that line go out as one `[redacted]`). The owner's stream never
   goes through it (a byte pipe).
-- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`): a user message only when it is a
+- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`, `Web::MessageDisplay`): a user message only when it is a
   turn's prompt (it has the turn's id) or a person's merged line, and never one from a source that isn't a person's;
   so the owner's `!` line and its output, a delegate's report (a wake turn's too), and the notes chi adds (a declined
   Continue) never show. A turn no person sent (its record's `automatic`, `SessionMetrics`: a task's or a plugin's,

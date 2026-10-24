@@ -166,12 +166,12 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 | Check | Local (in the command) | Under `--remote` |
 |---|---|---|
 | Images to a model that can't see them (`SendCommand#vision_refusal`) | client | server: `check_vision: true` on the create and turn routes → 422 `no_vision` |
-| A parent's `/continue yes`, a loosening `/parent-answers` (`SendCommand::ParentGate`) | client, before any target | server: `App#parent_gate` on create/turn for a `cli:send`/`cli:answer` `client_id` → 403; each target refuses its own |
+| A parent's `/continue yes`, a loosening `/parent-answers` (`SendCommand::ParentGate`) | client, before any target | server: `App#parent_gate` (`Web::SessionCreate`) on create/turn for a `cli:send`/`cli:answer` `client_id` → 403; each target refuses its own |
 | `--parent-answers` looser than config.yml (`Guardrails::ParentPolicy.capped_note`) | client | server: the create's `parent_answers_warning` |
 | A parent's option on `chi answer` (`AnswerCommand#parent_refusal`) | client, then the worker | skipped on the client; the worker checks (the answer route forwards `cli:answer`), and its 403 `parent_answer_refused` passes through |
 | What a parent may pick, for the report (`ParentReport.strategy_for`) | client | server: the wait route's `parent_strategy` |
 | `send --wait` busy check (`SendCommand::Busy`) | client | server: `wait/prepare` with `busy: true` → 409 `busy`/`waiting` with the `Busy` fields (`question`, `parent_strategy`); the client words it (`Busy#message(via:)`) |
-| `--continues`' previous link and model (`SendCommand#continued_model`) | client | server: `handle_continue` |
+| `--continues`' previous link and model (`SendCommand#continued_model`) | client | server: `handle_continue` (`Web::SessionCreate`) |
 | `--toolkit`, `--tool`, `--set` (`Toolkit.from_flags`, `SessionConfig.from_flags`) | client | server: sent as `SetupWords` → 400 `invalid_*` → exit 2 |
 | `--dir` (default: the cwd) | client, `File.directory?` | required and absolute on the client (`remote_new_options`); chi web's `scope_dir` checks it exists |
 | `sessions list`'s default project (`ProjectScope.root_for(Dir.pwd)`) | client | every project's; `--scope=project` needs `--cwd` (a folder there) |
@@ -212,7 +212,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   `web.public_url`, its host exactly, port included). `http://studio.local`
   gets a 403 `forbidden`, which the client words as "use the LAN IP". The check guards against DNS rebinding.
   `cross_site?` lets CLI clients through because they send no `Origin` or `Sec-Fetch-Site`.
-- **`client_id` only tightens.** `handle_question_answer` forwards `client_id` only when it is `ClientId::CLI_ANSWER`
+- **`client_id` only tightens.** `handle_question_answer` (`Web::SessionControl`) forwards `client_id` only when it is `ClientId::CLI_ANSWER`
   and drops any other value, so a remote answer is held to the parent rules and can't pass for the user's own. On
   create and turn, a `cli:send` / `cli:answer` id adds checks (`CLI_SEND_IDS`) and never removes any.
 - **A remote attach's `client_id`** (`tui:<pid>@<host>`, P4-D6) is forwarded as given on `/turn` and `/command`, as
