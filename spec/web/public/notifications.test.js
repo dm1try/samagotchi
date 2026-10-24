@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NOTIFY_KEY, createNotifications } from "../../../lib/samagotchi/web/public/notifications.js";
+import { NOTIFY_KEY, PUSH_DEVICE_KEY, createNotifications } from "../../../lib/samagotchi/web/public/notifications.js";
 
 // A fake page: a document whose visibility and focus the test sets, a
 // window, a bell, localStorage and the Notification API.
@@ -139,7 +139,7 @@ test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapsh
 // +tags+ are the notifications already on the device (its getNotifications);
 // +device+ logs what the page did to them and to the app's badge.
 function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null,
-  tags = [], scoped = false, visible = false } = {}) {
+  tags = [], scoped = false, visible = false, saved = {}, throwingStorage = false } = {}) {
   const calls = [];
   const device = [];
   const delivered = tags.map((tag) => ({ tag, closed: false }));
@@ -183,11 +183,18 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
   function NotificationApi(title, opts) { shown.push({ title, opts }); this.close = () => {}; }
   NotificationApi.permission = permission;
   NotificationApi.requestPermission = async () => { calls.push(["requestPermission"]); NotificationApi.permission = grant; return grant; };
-  const page = createNotifications({ button, doc, win, nav, api, storage: () => ({ getItem: () => "1", setItem() {} }), channel: null, NotificationApi, scoped });
+  // localStorage: the bell's in-tab choice on, and +saved+.
+  const kept = new Map([[NOTIFY_KEY, "1"], ...Object.entries(saved)]);
+  const storage = () => {
+    if (throwingStorage) throw new Error("SecurityError");
+    return { getItem: (k) => (kept.has(k) ? kept.get(k) : null), setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
+  };
+  const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped });
   const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
   const synced = async () => { await page.syncing(); };
-  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced };
+  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept,
+    revoke: () => { current = null; } };
 }
 
 test("in the Home Screen app the bell subscribes this device: permission from the tap, chi web's key, a test push", async () => {
@@ -331,4 +338,44 @@ test("with the bell off the app neither tidies nor badges; turning it off clears
   on.device.length = 0;
   await on.tap();
   assert.deepEqual(on.device, [["badge", 0]]);
+});
+
+// ── The device id: a subscription iOS revoked silently leaves the store ──
+test("the app keeps the device id chi web gave and sends it as replaces on the next subscribe", async () => {
+  const app = fakeApp({ permission: "granted" });
+  await app.page.pushReady;
+  await app.tap();
+  assert.equal(app.kept.get(PUSH_DEVICE_KEY), "abcd1234");
+
+  const again = fakeApp({ permission: "granted", saved: { [PUSH_DEVICE_KEY]: "dead0001" } });
+  await again.page.pushReady;
+  await again.tap();
+  const post = again.calls.find((c) => c[0] === "POST" && c[1] === "/api/push/subscriptions");
+  assert.equal(post[2].replaces, "dead0001");
+  assert.equal(again.kept.get(PUSH_DEVICE_KEY), "abcd1234");
+});
+
+test("turning the bell off forgets the device id; with no subscription left to delete it is kept", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", saved: { [PUSH_DEVICE_KEY]: "abcd1234" } });
+  await app.page.pushReady;
+  await app.tap();
+  assert.equal(app.kept.has(PUSH_DEVICE_KEY), false);
+
+  const revoked = fakeApp({ subscribed: true, permission: "granted", saved: { [PUSH_DEVICE_KEY]: "abcd1234" } });
+  await revoked.page.pushReady;
+  revoked.revoke(); // iOS dropped the subscription while the app was on
+  revoked.calls.length = 0;
+  await revoked.tap();
+  assert.deepEqual(revoked.calls, [], "nothing to unsubscribe or delete");
+  assert.equal(revoked.button.dataset.state, "off");
+  assert.equal(revoked.kept.get(PUSH_DEVICE_KEY), "abcd1234");
+});
+
+test("a storage that throws: the bell still subscribes, without replaces", async () => {
+  const app = fakeApp({ permission: "granted", throwingStorage: true });
+  await app.page.pushReady;
+  await app.tap();
+  assert.equal(app.button.dataset.state, "on");
+  const post = app.calls.find((c) => c[0] === "POST" && c[1] === "/api/push/subscriptions");
+  assert.equal("replaces" in post[2], false);
 });

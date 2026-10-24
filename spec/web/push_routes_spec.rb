@@ -100,6 +100,22 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       expect(store.subscriptions.map { |sub| [sub.id, sub.origin] }).to eq([[body["id"], origin]])
     end
 
+    it "drops the entry it replaces (the device's id before: iOS revoked it silently), logged, and never itself" do
+      dead = store.add(WebPushReceiver.new.subscription("#{endpoint}dead"), origin: origin, label: "dead")
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+      status, body = json("/api/push/subscriptions", method: "POST",
+                                                     body: { subscription: receiver.subscription(endpoint), replaces: dead.id })
+      expect(status).to eq(201)
+      expect(store.subscriptions.map(&:id)).to eq([body["id"]])
+      expect(Samagotchi::Log).to have_received(:info).with(:web, "push_replaced", device: dead.id)
+
+      _, again = json("/api/push/subscriptions", method: "POST",
+                                                 body: { subscription: receiver.subscription(endpoint), replaces: body["id"] })
+      expect(again["id"]).to eq(body["id"])
+      expect(store.subscriptions.map(&:id)).to eq([body["id"]])
+      expect(Samagotchi::Log).to have_received(:info).with(:web, "push_replaced", anything).once
+    end
+
     it "labels by the device class" do
       { "Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X)" => "iPad", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" => "Mac",
         "Mozilla/5.0 (X11; Linux x86_64)" => "Browser" }.each do |agent, kind|

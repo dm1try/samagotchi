@@ -59,6 +59,26 @@ RSpec.describe Samagotchi::Web::Push::Store do
       expect(store.subscriptions).to eq([])
     end
 
+    it "drops the entry it replaces (the device's id before, on this origin), never itself, and yields it" do
+      dead = store.add(receiver.subscription("#{endpoint}dead"), origin: origin, label: "dead")
+      elsewhere = store.add(WebPushReceiver.new.subscription("#{endpoint}far"), origin: "https://old.example", label: "far")
+      yielded = []
+      fresh = store.add(WebPushReceiver.new.subscription("#{endpoint}new"), origin: origin, label: "new",
+                                                                            replaces: dead.id) { |gone| yielded << gone.id }
+      expect(yielded).to eq([dead.id])
+      expect(store.subscriptions.map(&:label)).to eq(%w[far new])
+
+      # The same endpoint again names itself: kept, nothing yielded.
+      store.add(WebPushReceiver.new.subscription("#{endpoint}new"), origin: origin, label: "again",
+                                                                    replaces: fresh.id) { |gone| yielded << gone.id }
+      # Another origin's id, an unknown one and a non-string are ignored.
+      [elsewhere.id, "deadbeef", 42].each do |id|
+        store.add(WebPushReceiver.new.subscription("#{endpoint}new"), origin: origin, label: "again", replaces: id) { |gone| yielded << gone.id }
+      end
+      expect(yielded).to eq([dead.id])
+      expect(store.subscriptions.map(&:label)).to eq(%w[far again])
+    end
+
     it "lists by origin" do
       store.add(receiver.subscription(endpoint), origin: origin, label: "a")
       expect(store.for_origin(origin).size).to eq(1)
@@ -100,6 +120,9 @@ RSpec.describe Samagotchi::Web::Push::Store do
     store.add(receiver.subscription("#{endpoint}2"), origin: origin, label: "b again")
     expect { store.add(receiver.subscription("#{endpoint}3"), origin: origin, label: "c") }
       .to raise_error(described_class::Invalid, "chi web already pushes to 2 devices: turn the bell off on one first")
+    # The entry it replaces doesn't count: a full store takes its device back.
+    b = store.find(described_class.short_id("#{endpoint}2"))
+    expect(store.add(receiver.subscription("#{endpoint}3"), origin: origin, label: "c", replaces: b.id).label).to eq("c")
     store.vapid_key
     expect(store.inspect).to eq("#<#{described_class} #{dir}>")
   end

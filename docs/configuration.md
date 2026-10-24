@@ -1800,7 +1800,8 @@ is in the background), as before.
 - **The files**: `$XDG_STATE_HOME/samagotchi/web-push/` (next to `web-token`): `vapid.pem` (chi web's key) and
   `subscriptions.json` (the devices), 0600 in a 0700 folder; chi web refuses to start when others can read them.
   Subscriptions belong to the public URL they were made on: after renaming the machine or the tailnet, turn the bell
-  on again on the phone (the old ones are never sent to).
+  on again on the phone (the old ones are never sent to). iOS can drop a subscription without telling chi web; if
+  notifications stop arriving, turn the bell off and on again: the new subscription replaces the dead one.
 - `web.push.enabled: false` turns it off; `web.push.contact` (a `mailto:` address or an `https://` URL; default:
   the public URL) is the contact the push services see in chi web's key. A value that is neither stops `chi web`
   (Apple refuses it); a `[chi web] the push service refused chi's VAPID token` line means the contact or the key was

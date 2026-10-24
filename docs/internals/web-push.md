@@ -57,7 +57,11 @@ files, one per machine, never in config.yml:
 `invalid_subscription`): an endpoint and both keys; https on port 443 without userinfo, at most 2048 bytes; a host in
 `Store::PUSH_SERVICES` (Apple, Google's FCM, Mozilla, `*.notify.windows.com`; a `services:` seam for specs, not
 config): chi web POSTs to that URL, so it never takes an arbitrary host; `p256dh` a 65-byte uncompressed point,
-`auth` 16 bytes. The same endpoint again replaces the old entry. Every write is a read-change-write under
+`auth` 16 bytes. The same endpoint again replaces the old entry. `replaces:` (the device's id from its last
+subscribe, which the page keeps) drops that entry on this origin too, before the `MAX_SUBS` cap is counted, and
+yields it (the route logs `push_replaced`); its own endpoint is never dropped that way, and an unknown id is ignored.
+That is how a subscription iOS revoked silently (Apple keeps answering 201, so `:gone` never comes) leaves the store:
+the user turns the bell off and on, the page has no live subscription to delete, and the new one replaces it. Every write is a read-change-write under
 `store.lock` (chi web's request threads and the sender thread both write). A `subscriptions.json` that doesn't read
 lists no device and is never written over. `Store#check_permissions!` uses `Web::PrivateFiles.check!`, the check the
 grants use, worded with what the folder holds; `Server.launch` runs it (`Push.preflight!`, with the contact and the
@@ -145,8 +149,9 @@ public URL, or `web.push.enabled: false`):
 
 - `GET /api/push[?endpoint=E]` → `{enabled, public_key, origin, this: {id, label}|null}`; off: `enabled: false` and
   no key.
-- `POST /api/push/subscriptions {subscription: {endpoint, keys}}` → 201 `{id, label}`; the label is chi's own
-  ("iPhone · <date>", from the User-Agent's device class: iPhone, iPad, Mac, else Browser).
+- `POST /api/push/subscriptions {subscription: {endpoint, keys}, replaces?: id}` → 201 `{id, label}`; the label is
+  chi's own ("iPhone · <date>", from the User-Agent's device class: iPhone, iPad, Mac, else Browser); `replaces`
+  drops the device's earlier entry (`Store#add`).
 - `DELETE /api/push/subscriptions {endpoint}` → 204.
 - `POST /api/push/test {endpoint?}` → a test push to that device or every one on this origin, answered per device
   (`{devices: [{id, label, status, code, ms}]}`); the bell sends one after subscribing.
@@ -160,8 +165,10 @@ standalone app: `matchMedia("(display-mode: standalone)")` or iOS's `navigator.s
 `subscribe({reg, key, post})` (drops a subscription made with another key), `unsubscribe({reg, del})`. In the Home
 Screen app the bell (`notifications.js`) registers `/sw.js`, asks `GET /api/push` with its subscription's endpoint,
 and is "push to this phone" when chi web pushes: on while chi web has this device. A tap asks permission from the tap
-(iOS asks only from a user gesture), subscribes, posts it and sends a test push; a tap when on unsubscribes and
-deletes. The tab's own OS notification is left to the push there; the title count stays. In a browser tab, or with
+(iOS asks only from a user gesture), subscribes, posts it (with `replaces`: the id chi web answered last time,
+kept in localStorage as `chi_push_device`, `PUSH_DEVICE_KEY`; a storage that throws only loses the replace) and sends
+a test push; a tap when on unsubscribes and deletes, and forgets the id, unless there was no subscription left to
+delete (revoked meanwhile): then the id stays for the next subscribe to replace. The tab's own OS notification is left to the push there; the title count stays. In a browser tab, or with
 chi web not pushing, the bell is the in-tab one, unchanged (no duplicate desktop pushes).
 
 **The device's tidy-up** (`syncDevice`, the Home Screen app with the bell on): closes the shown notifications whose

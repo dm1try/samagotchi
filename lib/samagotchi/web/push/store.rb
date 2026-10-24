@@ -158,20 +158,30 @@ module Samagotchi
         # Adds the subscription a page's pushManager.subscribe gave (its
         # JSON: endpoint, keys {p256dh, auth}); the same endpoint again
         # replaces the old entry (a device subscribing again).
+        # +replaces+ is the short id this device had before (the page keeps
+        # it): that entry on +origin+ goes too, before the cap is counted,
+        # since the device has a new endpoint and the old one is dead (iOS
+        # revokes silently: its push service keeps answering 201). Yields
+        # the entry dropped that way, if any; an unknown id is ignored.
         # @return [Sub]
         # @raise [Invalid] one message per refusal
-        def add(subscription, origin:, label:)
+        def add(subscription, origin:, label:, replaces: nil)
           endpoint, p256dh, auth = validate(subscription)
           at = stamp(now)
           sub = Sub.new(id: Store.short_id(endpoint), endpoint: endpoint, p256dh: p256dh, auth: auth, origin: origin,
                         label: label.to_s[0, LABEL_MAX], created_at: at, last_ok_at: nil, last_error: nil,
                         prefs: { "done" => false })
-          update do |subs|
+          replaced = nil
+          added = update do |subs|
             kept = subs.reject { |old| old.endpoint == endpoint }
+            replaced = kept.find { |old| old.id == replaces && old.origin == origin } if replaces.is_a?(String)
+            kept -= [replaced] if replaced
             raise Invalid, "chi web already pushes to #{MAX_SUBS} devices: turn the bell off on one first" if kept.size >= MAX_SUBS
 
             [kept + [sub], sub]
           end
+          yield replaced if replaced && block_given?
+          added
         end
 
         # Removes the subscription with this short id or endpoint.

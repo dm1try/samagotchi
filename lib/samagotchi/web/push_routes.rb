@@ -29,14 +29,19 @@ module Samagotchi
                              origin: @push.origin, this: this && { id: this.id, label: this.label } })
       end
 
-      # {subscription: {endpoint, keys: {p256dh, auth}}} → 201 {id, label}.
+      # {subscription: {endpoint, keys: {p256dh, auth}}, replaces?: id} →
+      # 201 {id, label}. +replaces+ is the id this device was given before
+      # (the page keeps it): that entry goes (Store#add).
       def handle_push_subscribe(req)
         return push_off unless @push
 
         body = push_body(req)
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
-        sub = @push.store.add(body["subscription"], origin: @push.origin, label: device_label(req))
+        sub = @push.store.add(body["subscription"], origin: @push.origin, label: device_label(req),
+                                                    replaces: body["replaces"]) do |old|
+          Log.info(:web, "push_replaced", device: old.id)
+        end
         Log.info(:web, "push_subscribed", device: sub.id)
         json_response(201, { id: sub.id, label: sub.label })
       rescue Push::Store::Invalid => e

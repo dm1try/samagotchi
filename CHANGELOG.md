@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: turning the phone's bell off and on again now replaces a subscription iOS dropped silently, instead of
+  keeping the dead one in `subscriptions.json`.
+
 ## [0.111.0] - 2026-10-24
 
 ### Added
