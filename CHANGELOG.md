@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-10-24
+
 ### Added
 
 - chi web: push notifications to a phone's Home Screen app (approvals and questions) over an https public URL
@@ -25,6 +27,8 @@ and commands may change between minor versions. How releases are made:
   while the worker runs on; the page re-reads first and shows it only when no worker took the turn. A re-read that
   fails (the network still down) is retried with a backoff, and a stage that lets go of a turn clears its status row
   and chip, so it no longer reads "thinking · step 1" for a turn it stopped following.
+
+Update with `chi update` (the system bundle 0.111.0), then restart `chi web`.
 
 ## [0.110.0] - 2026-10-24
 
@@ -4246,7 +4250,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.110.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.111.0...HEAD
+[0.111.0]: https://github.com/dm1try/samagotchi/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/dm1try/samagotchi/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/dm1try/samagotchi/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/dm1try/samagotchi/compare/v0.107.0...v0.108.0
