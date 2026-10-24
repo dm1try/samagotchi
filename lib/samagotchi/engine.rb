@@ -68,6 +68,7 @@ require_relative "steer_cut"
 require_relative "engine_peers"
 require_relative "engine_snapshots"
 require_relative "bundle_needs"
+require_relative "model_binding"
 require_relative "model_overlay"
 require_relative "model_notes"
 require_relative "prompt_note"
@@ -158,22 +159,22 @@ module Samagotchi
       # is used (the REPL checks the model it starts on, #switch_model!).
       @default_model_name = ModelProfile.required_model_name(model_name)
       ModelProfile.check_host!(model_name, hosts: @host_registry.entries) unless model_name.to_s.strip.empty?
-      # Guards the model choice and the profile cached for it (#store_profile).
-      @profile_mutex = Mutex.new
+      # The model choice and the profile resolved for it, under one mutex.
+      # A caller's profile pins it (until a model switch); otherwise
+      # #profile_resolution decides on first need (see there), so building an
+      # Engine makes no network call.
       typed = model_typed.to_s.strip
-      @model_choice = ModelChoice.new(name: @default_model_name, typed: typed.empty? ? @default_model_name : typed)
+      @model_binding = build_model_binding(
+        ModelChoice.new(name: @default_model_name, typed: typed.empty? ? @default_model_name : typed),
+        profile ? ModelProfile.normalize(profile) : nil
+      )
       # The session's settings on its effective model (SessionModelSettings),
       # read at use: /model moves the choice, #session= the session.
-      @model_settings = SessionModelSettings.new(registry: @host_registry, choice: -> { @model_choice },
+      @model_settings = SessionModelSettings.new(registry: @host_registry, choice: -> { @model_binding.choice },
                                                  session: -> { @session })
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
       @client = effective_model.client
-      # A caller's profile pins it (until a model switch); otherwise
-      # #profile_resolution decides on first need (see there), so building an
-      # Engine makes no network call.
-      @given_profile = profile ? ModelProfile.normalize(profile) : nil
-      @profile_resolution = nil
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
       begin
@@ -347,7 +348,7 @@ module Samagotchi
     def wire_kernel(kernel, muted_memories)
       # A given kernel (specs) gets the Engine's store, hooks and tools, as
       # the one built here does.
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, model_name: effective_model_name,
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @model_binding.given_profile, model_name: effective_model_name,
                                          hooks: @hooks, reminder_store: @reminder_store, tools: @tools)
       @kernel.reminder_store = @reminder_store
       @kernel.hooks = @hooks
@@ -392,7 +393,7 @@ module Samagotchi
         hooks: -> { @hooks },
         tools: -> { @tools },
         session: -> { @session },
-        model_key: -> { @model_key },
+        model_key: -> { @model_binding.model_key },
         model_name: -> { guardrail_model_name },
         cancelled: -> { !!active_cancel_controller&.cancelled? },
         # An approval of the model's call: :question_asked first (QuestionAsked).
@@ -455,6 +456,14 @@ module Samagotchi
       )
     end
     private :build_engine_snapshots
+
+    # The model choice and its prompt profile (see #initialize for when).
+    def build_model_binding(choice, given_profile)
+      ModelBinding.new(choice: choice, given_profile: given_profile, registry: @host_registry,
+                       kernel: -> { @kernel }, prompt_builder: -> { @prompt_builder },
+                       bare_name: ->(name) { bare_model_name(name) })
+    end
+    private :build_model_binding
 
     # The question flow (see #initialize for when).
     def build_question_desk
@@ -706,10 +715,10 @@ module Samagotchi
     attr_reader :metrics
 
     # The model as given (maybe an alias; HostRegistry#resolve applies it).
-    def effective_model_name = @model_choice.name
+    def effective_model_name = @model_binding.choice.name
 
     # The model as typed at start or at the last /model.
-    def typed_model_name = @model_choice.typed
+    def typed_model_name = @model_binding.choice.typed
 
     # The resolved ref a session stores for the effective model (ModelRef#ref:
     # the alias applied, "host:id" when it names a host).
@@ -725,15 +734,15 @@ module Samagotchi
       model = effective_model
       entry = model.entry
       host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
-      SystemPrompt::ModelIdentity.new(ref: model.ref, host: host, key: @model_key,
-                                      served: model.prompt_served, fallback_key: @fallback_model_key)
+      SystemPrompt::ModelIdentity.new(ref: model.ref, host: host, key: @model_binding.model_key,
+                                      served: model.prompt_served, fallback_key: @model_binding.fallback_model_key)
     end
 
     # The model notes for the effective model (ModelNotes): matched on its
     # bare id and key, the session's mutes left out.
     # @return [Array<ModelNotes::Note>]
     def model_notes
-      ModelNotes.for(name: guardrail_model_name, key: @model_key, fallback_key: @fallback_model_key,
+      ModelNotes.for(name: guardrail_model_name, key: @model_binding.model_key, fallback_key: @model_binding.fallback_model_key,
                      muted: @muted_memory_names)
     end
 
@@ -796,28 +805,17 @@ module Samagotchi
     # The effective model's key (ModelOverlay.key_for its bare name): memory
     # overlays, guardrail rules' models:.
     # @return [String, nil]
-    attr_reader :model_key
+    def model_key = @model_binding.model_key
 
     # The prompt profile for the effective model (see #profile_resolution).
     # @return [ModelProfile]
     def profile = profile_resolution.profile
 
-    # Which profile the effective model gets and where that came from
-    # (ModelProfile.resolve: --profile/env, models:, hosts.<name>.profile,
-    # the server's chat template, the name, qwen36). Resolved on first need
-    # and kept, so the system prompt and the server's KV prefix stay stable;
-    # #switch_model! starts over, and a failed server probe is retried before
-    # the next turn (#refresh_profile!). The kernel follows each resolution.
-    # Kept with the model choice it was resolved for: one that finishes
-    # after a switch is neither kept nor applied (#store_profile).
+    # Which profile the effective model gets and where that came from,
+    # kept with the model choice it was resolved for
+    # (ModelBinding#profile_resolution).
     # @return [ModelProfile::Resolution]
-    def profile_resolution
-      choice = @model_choice
-      cached = @profile_resolution
-      return cached.last if cached&.first.equal?(choice)
-
-      store_profile(choice, resolve_profile(choice))
-    end
+    def profile_resolution = @model_binding.profile_resolution
     attr_reader :default_model_name, :host_registry, :client
 
     # @return [Commands::Registry] the commands this session runs: the
@@ -832,17 +830,8 @@ module Samagotchi
       @host_registry.bare_name(full_ref)
     end
 
-    # The memory overlay key follows the model sent (ModelOverlay.key_for
-    # its id). A model typed as an alias used to key overlays by the alias
-    # (before aliases were applied there): that key is read when the
-    # target's overlay is missing (KernelLoop#sync_model_key!).
-    def sync_model_key!
-      choice = @model_choice
-      @model_key = ModelOverlay.key_for(bare_model_name(choice.name))
-      typed_key = ModelOverlay.key_for(@host_registry.parse_qualified_model(choice.typed).last)
-      @fallback_model_key = typed_key == @model_key ? nil : typed_key
-      @kernel.sync_model_key!(@model_key, fallback: @fallback_model_key)
-    end
+    # The memory overlay keys follow the model sent (ModelBinding#sync_model_key!).
+    def sync_model_key! = @model_binding.sync_model_key!
     private :sync_model_key!
 
     # The effective model's bare name for the guardrails' models: rules;
@@ -1152,13 +1141,7 @@ module Samagotchi
       # once; checked here: an unknown host, an alias naming another host.
       resolved = ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries)
       choice = ModelChoice.new(name: resolved, typed: typed.to_s.strip.empty? ? model_name : typed.to_s.strip)
-      @profile_mutex.synchronize do
-        # One assignment: a reader on another thread sees the old pair or the new one.
-        @model_choice = choice
-        # A profile given to .new was for the starting model.
-        @given_profile = nil
-        @profile_resolution = nil
-      end
+      @model_binding.switch!(choice)
       sync_model_key!
       @prompt_builder.reset!
       # The notes the new model's prompt loads at its next build, so /model,
@@ -2860,7 +2843,7 @@ module Samagotchi
                                   model: model, source: source)
         },
         model_name: -> { effective_model_ref },
-        model_key: -> { @model_key },
+        model_key: -> { @model_binding.model_key },
         state_dir: -> { session_state_dir },
         scratch: -> { @scratch },
         setup: -> { SessionSetup.of(@session) },
@@ -3003,56 +2986,21 @@ module Samagotchi
     # The window as +model+'s loop would see it (EffectiveModel#context_window).
     def current_context_window(model) = model.context_window
 
+    # +settings+' chips (EngineSnapshots#setting_chips).
     def setting_chips(settings, model) = @engine_snapshots.setting_chips(settings, model)
 
     # The effective model now, resolved on each call, never kept
     # (SessionModelSettings#effective_model). Raises as HostRegistry#resolve does.
     # @return [EffectiveModel]
-    def effective_model(choice = @model_choice) = @model_settings.effective_model(choice)
+    def effective_model(choice = @model_binding.choice) = @model_settings.effective_model(choice)
 
     # ── Prompt profile ─────────────────────────────────────────────────────────
 
-    # +choice+'s profile (ModelProfile.resolve; may probe /props), or the
-    # one given to .new.
-    def resolve_profile(choice)
-      given = @given_profile
-      return ModelProfile::Resolution.new(profile: given, source: :given, detail: nil, retry: false) if given
-
-      EffectiveModel.of(@host_registry, choice).profile_resolution
-    end
-
-    # Keeps +resolution+ as +choice+'s and applies it, unless the model
-    # switched while it was resolved (a /stats on a Bridge thread probing
-    # as a /model ran): then it is only returned, and the new model's is
-    # resolved on its first need.
-    # @return [ModelProfile::Resolution]
-    def store_profile(choice, resolution)
-      @profile_mutex.synchronize do
-        return resolution unless @model_choice.equal?(choice)
-
-        apply_profile(resolution)
-        @profile_resolution = [choice, resolution]
-      end
-      resolution
-    end
-
-    # Everything that holds a profile follows the resolution: the kernel's
-    # prompt format and parser, and the system prompts built for the old one.
-    def apply_profile(resolution)
-      kept = @profile_resolution&.last
-      @prompt_builder&.reset! if kept && kept.profile.name != resolution.profile.name
-      @kernel.use_profile!(resolution)
-      resolution
-    end
-
-    # Before a turn: resolve now if nothing has yet, or again if the last
-    # server probe failed (unreachable, or 503 while loading a model). A
-    # profile that changes here drops the cached system prompts.
-    def refresh_profile!
-      choice, kept = @profile_resolution
-      return profile_resolution unless choice.equal?(@model_choice) && kept.retry?
-
-      store_profile(choice, resolve_profile(choice))
-    end
+    # The profile's resolve, keep, apply and retry are ModelBinding's
+    # (#build_model_binding); these forward to it.
+    def resolve_profile(choice) = @model_binding.resolve_profile(choice)
+    def store_profile(choice, resolution) = @model_binding.store_profile(choice, resolution)
+    def apply_profile(resolution) = @model_binding.apply_profile(resolution)
+    def refresh_profile! = @model_binding.refresh_profile!
   end
 end
