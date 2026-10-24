@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-10-24
+
 ### Added
 
 - Experimental: `chi web --tunnel tailscale`: chi web on your phone anywhere on your tailnet over https (Tailscale
@@ -35,6 +37,8 @@ and commands may change between minor versions. How releases are made:
   when that turn's worker dies and the next worker settles it, instead of waiting until `--timeout`.
 - Attached TUI: joining an older session (one with no saved record of the call) shows a call the guardrails denied
   as `blocked`, not `error`.
+
+Update with `chi update` (the system bundle 0.110.0), then restart `chi web`.
 
 ## [0.109.0] - 2026-10-24
 
@@ -4224,7 +4228,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.109.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.110.0...HEAD
+[0.110.0]: https://github.com/dm1try/samagotchi/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/dm1try/samagotchi/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/dm1try/samagotchi/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/dm1try/samagotchi/compare/v0.106.0...v0.107.0
