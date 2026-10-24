@@ -41,6 +41,11 @@ participant** and **one role**, until it expires or is revoked.
   be read by another user, or isn't this user's (`Grants.check_permissions!`, one message naming the `chmod`). Only
   those two are checked: the state dir above is often 0755, and that's fine. Never point `XDG_STATE_HOME` at a
   shared folder.
+- **A store that doesn't read** (not JSON, a grant without its id, digest or expiry) fails closed: its tokens find no
+  grant (a bare 401), it is logged (`grants_unreadable`, once per change of the file), and nothing writes over it, so
+  an invite can't keep only its own grant and lose every other digest. The owner's invite, cap, revoke and list are
+  refused with one message naming the file (`Grants::Corrupt`: `chi share` exits 1, chi web answers 500 with it);
+  an archive or delete still goes ahead. Fix the file, or move it aside to end every link.
 - Rotating the owner token (`chi web --new-token`) never touches grants; `chi share revoke --all` ends them all.
 
 ## The gate

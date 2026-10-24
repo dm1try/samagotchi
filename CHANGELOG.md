@@ -62,6 +62,10 @@ and commands may change between minor versions. How releases are made:
 - Participants: chi web and `chi share` revoking (inviting, changing a cap) at the same moment can no longer leave
   `participants.json` reading a revoked participant as active, so the worker refuses their queued turns: the file
   is written under the grants store's lock.
+- Participants: a grants store (`web-grants/grants.json`) that doesn't read is no longer overwritten by the next
+  invite, which kept only the new grant and dropped every other link's; `chi share` and chi web refuse invite, ls,
+  cap and revoke with one line naming the file (exit 1), and a grant row without its digest or expiry no longer
+  makes every participant request a 500.
 - `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
   as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
 - A remote whose address answers something other than HTTP (another server on that port, an SSH banner), or a

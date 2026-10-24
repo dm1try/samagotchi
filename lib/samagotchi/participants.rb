@@ -146,9 +146,14 @@ module Samagotchi
     # Ends the grants of sessions that were archived or deleted
     # (SessionManager): +by+ "archive" or "delete". Nothing is written for a
     # session nobody was invited to.
+    # A grants store that doesn't read (Web::Grants::Corrupt) doesn't stop
+    # the archive or delete: its links already find no grant, and the
+    # store itself says so (Log.warn) until it's fixed.
     def end_sessions(session_ids, by:, state_dir: Session.default_state_dir)
       grants = Web::Grants.new(Web::Grants.path(state_dir: state_dir))
       session_ids.each { |sid| revoke(grants, session_id: sid, by: by, state_dir: state_dir) }
+    rescue Web::Grants::Corrupt
+      nil
     end
   end
 end

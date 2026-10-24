@@ -93,6 +93,9 @@ module Samagotchi
       send(:"run_#{@sub || "invite"}", parsed.options, parsed.args)
     rescue SessionAccess::BadRequest => e
       usage_error(e.message)
+    rescue Web::Grants::Corrupt => e
+      error_line("#{command_name}: #{e.message}")
+      CLI::Exit::FAILED
     rescue ArgumentError => e
       error_line("#{command_name}: #{e.is_a?(Session::AmbiguousId) ? e.message : e.message.sub(/\ASession not found: /, "no session ")}")
       CLI::Exit::FAILED

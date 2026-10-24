@@ -130,6 +130,65 @@ RSpec.describe Samagotchi::Web::Grants do
     end
   end
 
+  # L-P5: a store that doesn't read is never written over (the next invite
+  # would keep only its own grant and lose every other digest); its grants
+  # find nothing (fail closed), and the owner's writes are refused with one
+  # error naming the file.
+  describe "a store that can't be read" do
+    def corrupt!(body)
+      issue
+      File.write(path, body)
+    end
+
+    shared_examples "fails closed and keeps the file" do
+      it "finds no grant, logs it once, and refuses issue, set_cap, revoke and list without touching the file" do
+        before = File.binread(path)
+        allow(Samagotchi::Log).to receive(:warn)
+        expect(grants.lookup(token)).to be_nil
+        expect(grants.find("p_00000000")).to be_nil
+        expect(grants.active?("p_00000000")).to be(false)
+        expect(Samagotchi::Log).to have_received(:warn).with(:web, "grants_unreadable", hash_including(path: path)).once
+
+        [-> { issue }, -> { grants.set_cap("p_00000000", 3) }, -> { grants.revoke }, -> { grants.list }].each do |call|
+          expect(&call).to raise_error(described_class::Corrupt, /#{Regexp.escape(path)} can't be read .*won't write over it/)
+        end
+        expect { grants.touch("p_00000000") }.not_to raise_error
+        expect(File.binread(path)).to eq(before)
+      end
+    end
+
+    let(:token) { "chp_whatever" }
+
+    context "when it isn't JSON" do
+      before { corrupt!("{\"version\": 1, \"grants\": [") }
+
+      it_behaves_like "fails closed and keeps the file"
+    end
+
+    context "when a grant lacks its digest or expiry (no 500 for every participant)" do
+      before do
+        issue
+        data = JSON.parse(File.read(path))
+        data["grants"] << data["grants"].first.merge("id" => "p_00000000", "digest" => nil)
+        data["grants"] << data["grants"].first.merge("id" => "p_00000001", "expires_at" => "soon")
+        File.write(path, JSON.generate(data))
+      end
+
+      it_behaves_like "fails closed and keeps the file"
+    end
+
+    it "reads again once the file is fixed" do
+      issued = issue
+      good = File.read(path)
+      File.write(path, "nope")
+      allow(Samagotchi::Log).to receive(:warn)
+      expect(grants.lookup(issued.token)).to be_nil
+      File.write(path, good)
+      expect(grants.lookup(issued.token)&.id).to eq(issued.grant.id)
+      expect { issue }.not_to raise_error
+    end
+  end
+
   describe ".check_permissions!" do
     it "passes a missing store and a 0700/0600 one" do
       expect { described_class.check_permissions!(path) }.not_to raise_error

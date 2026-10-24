@@ -81,6 +81,17 @@ RSpec.describe Samagotchi::Participants do
     end
   end
 
+  describe ".end_sessions" do
+    it "doesn't stop an archive or delete over a grants store that can't be read, and leaves the store as it was" do
+      FileUtils.mkdir_p(dir)
+      described_class.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      File.write(grants.path, "[broken")
+      allow(Samagotchi::Log).to receive(:warn)
+      expect { described_class.end_sessions([session.id], by: "archive", state_dir: state_dir) }.not_to raise_error
+      expect(File.read(grants.path)).to eq("[broken")
+    end
+  end
+
   # L-P2: chi web and a chi share run each change the grants store under its
   # lock; the sidecar the worker reads must be written under the same lock,
   # or two writers finishing out of order can lose a revoke there.

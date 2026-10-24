@@ -8,6 +8,7 @@ require "time"
 require "rack/utils"
 require_relative "../atomic_file"
 require_relative "../config"
+require_relative "../log"
 require_relative "../participant_name"
 require_relative "../session"
 require_relative "../redacted_inspect"
@@ -70,6 +71,16 @@ module Samagotchi
       # Not ArgumentError: the session commands read that as "no such
       # session".
       class Invalid < StandardError; end
+
+      # The store is there but doesn't read (not JSON, a grant without its
+      # digest or expiry): its grants find nothing (fail closed), and
+      # nothing writes over it, which would lose every other grant.
+      class Corrupt < StandardError
+        def initialize(path, reason)
+          super("#{path} can't be read (#{reason}): chi won't write over it; fix it, or move it aside to end " \
+                "every participant's link")
+        end
+      end
 
       # One participant's access to one session. +id+ (p_<8 hex>) names the
       # participant too: a turn they send is authored "p:<id>" (P3).
@@ -211,6 +222,7 @@ module Samagotchi
         @mutex = Mutex.new
         @stamp = nil
         @grants = []
+        @corrupt = nil
         @touched = {}
       end
 
@@ -262,8 +274,9 @@ module Samagotchi
 
       # @param session_id [String, nil] one session's, or every grant
       # @return [Array<Grant>]
+      # @raise [Corrupt] (the owner's view: an empty list would hide it)
       def list(session_id: nil)
-        current.select { |grant| session_id.nil? || grant.session_id == session_id }
+        current!.select { |grant| session_id.nil? || grant.session_id == session_id }
       end
 
       # Revokes the active grants of +session_id+ (just +id+ when given), or
@@ -279,7 +292,7 @@ module Samagotchi
         end
         # Nothing to revoke (an archive of a session nobody was invited to):
         # no write, no store made.
-        return [] unless current.any?(&matches)
+        return [] unless current!.any?(&matches)
 
         update(on_write) do |grants|
           revoked = []
@@ -314,7 +327,8 @@ module Samagotchi
         end
       end
 
-      # Records a use of grant +id+, at most once per TOUCH_INTERVAL.
+      # Records a use of grant +id+, at most once per TOUCH_INTERVAL; not
+      # while the store doesn't read (it found no grant then anyway).
       def touch(id)
         at = now
         @mutex.synchronize do
@@ -326,11 +340,14 @@ module Samagotchi
         update do |grants|
           [grants.map { |grant| grant.id == id ? grant.with(last_used_at: stamp(at)) : grant }, nil]
         end
+      rescue Corrupt
+        nil
       end
 
       private
 
-      # The grants on disk, re-read when the file changed (one stat a call).
+      # The grants on disk, re-read when the file changed (one stat a call);
+      # none while it doesn't read (logged once per change of the file).
       def current
         stamp = begin
           stat = File.stat(@path)
@@ -340,18 +357,65 @@ module Samagotchi
         end
         @mutex.synchronize do
           unless stamp == @stamp
-            @grants = stamp ? read : []
+            reload(stamp)
             @stamp = stamp
           end
           @grants
         end
       end
 
+      # #current, raising Corrupt for a store that doesn't read.
+      def current!
+        grants = current
+        corrupt = @mutex.synchronize { @corrupt }
+        raise corrupt if corrupt
+
+        grants
+      end
+
+      def reload(stamp)
+        @grants = stamp ? read : []
+        @corrupt = nil
+      rescue Corrupt => e
+        @grants = []
+        @corrupt = e
+        Log.warn(:web, "grants_unreadable", echo: "[chi web] #{e.message}", path: @path)
+      end
+
+      # @raise [Corrupt] the file is there but isn't a grants store
       def read
-        data = JSON.parse(File.read(@path))
-        Array(data.is_a?(Hash) ? data["grants"] : nil).filter_map { |hash| Grant.from_h(hash) if hash.is_a?(Hash) }
-      rescue Errno::ENOENT, JSON::ParserError, ArgumentError
-        []
+        data = begin
+          JSON.parse(File.read(@path))
+        rescue Errno::ENOENT
+          return []
+        rescue JSON::ParserError
+          raise Corrupt.new(@path, "not JSON")
+        end
+        rows = data.is_a?(Hash) ? data["grants"] : nil
+        raise Corrupt.new(@path, "no grants list") unless rows.is_a?(Array)
+
+        rows.each_with_index.map { |hash, index| grant_from(hash, index) }
+      end
+
+      # A stored grant the gate can compare and date, else Corrupt.
+      def grant_from(hash, index)
+        raise Corrupt.new(@path, "grant #{index + 1} isn't an object") unless hash.is_a?(Hash)
+
+        grant = Grant.from_h(hash)
+        problem = if !grant.id.is_a?(String) || !grant.session_id.is_a?(String) then "no id or session"
+                  elsif !grant.digest.is_a?(String) || grant.digest.empty? then "no digest"
+                  elsif !time?(grant.expires_at) then "no expiry"
+                  elsif !grant.revoked_at.nil? && !time?(grant.revoked_at) then "a bad revoked_at"
+                  end
+        raise Corrupt.new(@path, "grant #{index + 1} has #{problem}") if problem
+
+        grant
+      end
+
+      def time?(value)
+        value.is_a?(String) && Time.iso8601(value)
+      rescue ArgumentError
+        false
       end
 
       # Read, change and write the store under its lock (another process
@@ -367,6 +431,8 @@ module Samagotchi
         File.chmod(0o700, dir)
         File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
+          # Never over a store that didn't read (Corrupt): the next write
+          # would keep only this one's change.
           grants, result = yield(read)
           at = now
           kept = grants.reject { |grant| (ended = grant.ended_at(at)) && at - ended > KEEP_ENDED }

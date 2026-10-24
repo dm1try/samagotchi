@@ -232,6 +232,25 @@ RSpec.describe Samagotchi::ShareCommand do
     end
   end
 
+  # L-P5: a grants store that doesn't read is refused in one line, exit 1,
+  # and left as it was (never rewritten with only the new grant).
+  describe "a grants store that can't be read" do
+    it "refuses invite, ls and revoke in one line naming the file (exit 1), and keeps the file" do
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      File.write(grants.path, "{ not json")
+      allow(Samagotchi::Log).to receive(:warn)
+      [["--name", "Sam"], ["ls", session.id], ["revoke", session.id]].each do |words|
+        argv = words.first.start_with?("-") ? [session.id, *words] : words
+        err.truncate(0)
+        err.rewind
+        expect(described_class.new(argv, stdout: out, stderr: err, state_dir: state_dir).run).to eq(1)
+        expect(err.string.lines.size).to eq(1)
+        expect(err.string).to include("#{grants.path} can't be read (not JSON): chi won't write over it")
+      end
+      expect(File.read(grants.path)).to eq("{ not json")
+    end
+  end
+
   describe "a participant's token through --remote" do
     it "is refused the owner's share routes in its one message (Dispatch prints it, exit 1)" do
       issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bot", kind: "agent", state_dir: state_dir)
