@@ -396,6 +396,22 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     end
   end
 
+  # Every proxied request comes from 127.0.0.1: a per-peer limit would log
+  # one refusal a minute for everyone behind the proxy.
+  it "rate-limits the refusal's log line per client behind the proxy (its identity, else the proxy's X-Forwarded-For hop)" do
+    allow(Samagotchi::Log).to receive(:warn)
+    call("/api/sessions", headers: proxied("alex@pod.test"))
+    call("/api/sessions", headers: proxied("alex@pod.test"))
+    call("/api/sessions", headers: proxied("sam@pod.test"))
+    call("/api/sessions", headers: [["X-Forwarded-For", "6.6.6.6, 203.0.113.7"]])
+    call("/api/sessions", headers: [["X-Forwarded-For", "1.1.1.1, 203.0.113.7"]])
+    peers = []
+    expect(Samagotchi::Log).to have_received(:warn).with(:web, "unauthorized", anything).exactly(3).times do |*_, fields|
+      peers << fields[:peer]
+    end
+    expect(peers).to contain_exactly("proxy:alex@pod.test", "proxy:sam@pod.test", "proxy:203.0.113.7")
+  end
+
   describe "the WEBrick hook (Server prepends ProxyGate::RawHeaderNames)" do
     it "puts the raw header names next to the env, where the last of two folding names wins" do
       req = WEBrick::HTTPRequest.new(WEBrick::Config::HTTP)

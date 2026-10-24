@@ -394,6 +394,7 @@ module Samagotchi
       # the cross-site check already refuses what Strict would add.
       TOKEN_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000"
       REFUSED_LOG_INTERVAL = 60.0
+      REFUSED_LOG_KEYS = 256
 
       # Where #route keeps the request's Principal for its handlers.
       PRINCIPAL_ENV = "samagotchi.principal"
@@ -594,7 +595,7 @@ module Samagotchi
 
       def unauthorized(req)
         reason = req.env[REFUSED_ENV]
-        log_refused(req.get_header("REMOTE_ADDR").to_s, req.path_info, reason)
+        log_refused(refused_peer(req), req.path_info, reason)
         return error_response(401, "unauthorized", unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
 
         body = @public_url ? PUBLIC_UNAUTHORIZED_PAGE : UNAUTHORIZED_PAGE
@@ -609,12 +610,26 @@ module Samagotchi
         "chi web on the LAN needs its access token"
       end
 
+      # Who a refusal is logged as: the peer, or behind a proxy (every peer
+      # 127.0.0.1) the client: its identity, else the X-Forwarded-For hop the
+      # proxy appended (the last one).
+      def refused_peer(req)
+        return req.get_header("REMOTE_ADDR").to_s unless proxied?(req)
+
+        identity = @public_url.identity_env && req.env[@public_url.identity_env]
+        hop = req.get_header("HTTP_X_FORWARDED_FOR").to_s.split(",").last.to_s.strip
+        "proxy:#{[identity.to_s.strip, hop].find { |v| !v.empty? } || "?"}"[0, 200]
+      end
+
       # At most once a minute per peer: a phone with an old link retries.
-      # Behind a proxy every peer is loopback: the first reason a minute.
+      # At most REFUSED_LOG_KEYS peers a minute (rotating headers can't
+      # fill the log).
       def log_refused(peer, path, reason = nil)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @refused_mutex.synchronize do
           @refused_logged.delete_if { |_, at| now - at >= REFUSED_LOG_INTERVAL } if @refused_logged.size > 64
+          next false if @refused_logged.size >= REFUSED_LOG_KEYS && !@refused_logged.key?(peer)
+
           last = @refused_logged[peer]
           (last.nil? || now - last >= REFUSED_LOG_INTERVAL).tap { |fresh| @refused_logged[peer] = now if fresh }
         end

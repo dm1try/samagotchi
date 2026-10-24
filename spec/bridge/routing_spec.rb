@@ -155,6 +155,12 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     expect(@bridge).not_to have_received(:serve_sse)
   end
 
+  it "logs the proxied refusal at most once a minute (a scan through the forward would fill the log)" do
+    allow(Samagotchi::Log).to receive(:warn)
+    3.times { request("GET", "/session/abc/state", headers: { "X-Forwarded-For" => "203.0.113.9" }) }
+    expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "proxied_refused", anything).once
+  end
+
   it "answers chi's own requests, which carry no proxy trace (Last-Event-ID, Authorization, Content-Type)" do
     _, _, body = request("GET", "/session/abc/stream", headers: { "Last-Event-ID" => "3-1" })
     expect(body["handler"]).to eq("serve_sse")

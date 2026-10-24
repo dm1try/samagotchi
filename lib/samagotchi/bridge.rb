@@ -121,6 +121,8 @@ module Samagotchi
       @connection_threads = []
       @stopped = false
       @mutex = Monitor.new
+      @proxied_log_mutex = Mutex.new
+      @proxied_logged_at = nil
       @open_streams = 0
       # Open streams by the client_id a stream named (`?client_id=`); web
       # tabs, through the `chi web` proxy, name none.
@@ -440,7 +442,7 @@ module Samagotchi
         elsif browser_request?(headers)
           write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
         elsif proxied_request?(headers)
-          Log.warn(:bridge, "proxied_refused", path: request[:path])
+          note_proxied_refused(request[:path])
           write_json(io, 403, nil, { error: "proxied", detail: "the bridge answers chi's own clients on this machine, " \
                                                                "never a request through a proxy" })
         elsif route.nil?
@@ -535,6 +537,17 @@ module Samagotchi
     # underscore twins too): refused, whoever signed in to the proxy. chi
     # web's stream proxy forwards Last-Event-ID only (ProxyStreamBody).
     def proxied_request?(headers) = headers.keys.any? { |name| ProxyTrace.header?(name) }
+
+    PROXIED_LOG_INTERVAL = 60.0
+
+    # At most once a minute: a scan through a forward would fill the log.
+    def note_proxied_refused(path)
+      now = monotonic_now
+      due = @proxied_log_mutex.synchronize do
+        (@proxied_logged_at.nil? || now - @proxied_logged_at >= PROXIED_LOG_INTERVAL).tap { |fresh| @proxied_logged_at = now if fresh }
+      end
+      Log.warn(:bridge, "proxied_refused", path: path) if due
+    end
 
     def browser_request?(headers)
       return true if headers.key?("origin")
