@@ -15,6 +15,12 @@ and commands may change between minor versions. How releases are made:
   another hash exists, chi warns at session start (`memory>`) and under a project `memory_read` miss, naming both
   folders and the `mv` that fixes it. See docs/memory.md (Moving memories to another machine).
 
+### Changed
+
+- `chi send --wait` and `chi answer` left with the turn still running (`--timeout`, Ctrl-C) offer the command that waits
+  again: `chi send --wait --turn T ID`, or `chi send --wait ID` when the turn's id isn't known (with the attach that
+  shows it); under `--remote NAME` both carry it.
+
 ### Fixed
 
 - `chi -p … --non-interactive` prints the load warnings (a guardrail or plugin that failed to load, the orphaned

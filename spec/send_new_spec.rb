@@ -820,14 +820,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
     it "gives up after --timeout with exit 4, the session still running" do
       expect(run("--new", "--wait", "--timeout", "0.1", "-m", "x")).to eq(4)
-      expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.shows(@started.id)}\n")
+      expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it\n")
     end
 
     it "leaves the turn running on Ctrl-C and exits 130" do
       allow(Samagotchi::ReplyWait).to receive(:call).and_raise(Interrupt)
 
       expect(run("--new", "--wait", "-m", "x")).to eq(130)
-      expect(err.string).to end_with("chi send: still running: #{via.shows(@started.id)}\n")
+      expect(err.string).to end_with("chi send: still running: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it\n")
       expect(Samagotchi::Session.load(@started.id, state_dir: tmpdir).status).to eq("running")
     end
 
@@ -896,6 +896,11 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         out.rewind
         expect(run("--wait", "--turn", "running-1", "--timeout", "0.1", busy.id)).to eq(4)
         expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait --turn running-1 #{busy.id}\n")
+
+        # Ctrl-C offers the same wait for the turn.
+        allow(Samagotchi::ReplyWait).to receive(:call).and_raise(Interrupt)
+        expect(run("--wait", "--turn", "running-1", busy.id)).to eq(130)
+        expect(err.string).to end_with("chi send: still running: #{via.chi} send --wait --turn running-1 #{busy.id}\n")
       end
 
       it "rejects --turn with a message" do
@@ -1005,7 +1010,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
                                       "answer: #{via.chi} answer #{busy.id} --question q2 --option N")
 
         expect(run("--wait", "--timeout", "0.1", busy.id)).to eq(4)
-        expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.shows(busy.id)}\n")
+        expect(err.string).to end_with("chi send: still running after 0.1 s: #{via.chi} send --wait #{busy.id} waits again; #{via.shows(busy.id)} shows it\n")
         expect(delivered).to be_empty
       end
 
@@ -1049,7 +1054,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       it "prints running on a timeout (exit 4) and the other ends with a detail (exit 1)" do
         expect(run("--new", "--wait", "--format", "json", "--timeout", "0.1", "-m", "x")).to eq(4)
         expect(json_out).to eq("status" => "running", "session_id" => @started.id,
-                               "detail" => "still running after 0.1 s: #{via.shows(@started.id)}")
+                               "detail" => "still running after 0.1 s: #{via.chi} send --wait #{@started.id} waits again; #{via.shows(@started.id)} shows it")
 
         out.truncate(0)
         out.rewind

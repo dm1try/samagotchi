@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::ParentReport do
       Samagotchi::ReplyWait::Result.new(status: :error, text: "no model") => ["error", "the worker failed: no model; chi --attach #{id} shows what happened", 1],
       Samagotchi::ReplyWait::Result.new(status: :worker_gone) => ["worker_gone", "the worker is gone; chi --attach #{id} shows what happened", 1],
       Samagotchi::ReplyWait::Result.new(status: :stopped) => ["stopped", "the session was stopped (chi sessions stop)", 1],
-      Samagotchi::ReplyWait::Result.new(status: :timeout) => ["running", "still running after 2.5 s: chi --attach #{id}", 4]
+      Samagotchi::ReplyWait::Result.new(status: :timeout) => ["running", "still running after 2.5 s: chi send --wait #{id} waits again; chi --attach #{id} shows it", 4]
     }
     cases[Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "not_continued")] =
       ["not_continued", "the turn was not continued (Stop); its work so far stays; chi --attach #{id} shows it", 0]
@@ -392,6 +392,8 @@ RSpec.describe Samagotchi::ParentReport do
         .to eq("the worker is gone; chi --remote studio --attach #{id} shows what happened")
       expect(described_class.detail(Samagotchi::ReplyWait::Result.new(status: :timeout), session_id: id, turn_id: "t1", via: via))
         .to eq("still running: chi --remote studio send --wait --turn t1 #{id}")
+      expect(described_class.detail(Samagotchi::ReplyWait::Result.new(status: :timeout), session_id: id, via: via))
+        .to eq("still running: chi --remote studio send --wait #{id} waits again; chi --remote studio --attach #{id} shows it")
     end
   end
 end

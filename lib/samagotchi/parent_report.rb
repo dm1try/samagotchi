@@ -335,11 +335,19 @@ module Samagotchi
         turn = turn_id || result.turn_id
         turn.to_s.empty? ? WAITING_FOR_OWNER : "#{WAITING_FOR_OWNER}: #{via.command("send --wait --turn #{turn} #{session_id}")}"
       else
-        turn = turn_id || result.turn_id
-        wait_again = via.command("send --wait --turn #{turn} #{session_id}") unless turn.to_s.empty?
-        hint = wait_again || shows
+        hint = still_running_hint(session_id, turn_id || result.turn_id, via: via)
         timeout ? "still running after #{format("%g", timeout)} s: #{hint}" : "still running: #{hint}"
       end
+    end
+
+    # What a wait that left the turn running (a --timeout, a Ctrl-C) offers
+    # next: the wait for that turn when its id is known, else the wait for
+    # the session's running turn, with the attach that shows it.
+    # @param turn [String, nil] the waited turn's id
+    def still_running_hint(session_id, turn, via: ChiInvocation::HERE)
+      return via.command("send --wait --turn #{turn} #{session_id}") unless turn.to_s.empty?
+
+      "#{via.command("send --wait #{session_id}")} waits again; #{via.shows(session_id)} shows it"
     end
 
     # The whole question for stderr: header, text, numbered options, what

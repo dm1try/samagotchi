@@ -96,7 +96,7 @@ module Samagotchi
           @stdout.flush
           @reported = true
         end
-        error_line("#{command_name}: still running: #{@access.invocation.shows(id)}")
+        error_line("#{command_name}: still running: #{ParentReport.still_running_hint(id, report_turn_id, via: @access.invocation)}")
         Exit::INTERRUPTED
       rescue ArgumentError
         error_line("#{command_name}: the session is gone (deleted while waiting)")
