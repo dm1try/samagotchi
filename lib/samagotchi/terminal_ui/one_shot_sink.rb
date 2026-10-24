@@ -15,7 +15,10 @@ module Samagotchi
     # a failed request (:generation_retrying). And the hooks' notices
     # (:hook_notice): one during the turn as it comes, one the after_turn
     # hooks give (after :turn_completed; source-links' `sources:`) kept for
-    # #flush, which the caller runs after it has printed the answer.
+    # #flush, which the caller runs after it has printed the answer. And
+    # the load warnings the first turn announces (:guardrail_warning: the
+    # guardrails, the plugins, an orphaned project memory folder), as the
+    # REPL's "<label>> …" lines.
     class OneShotSink
       include Formatting
 
@@ -33,6 +36,7 @@ module Samagotchi
         when :llm_context_edited then line(format_llm_context_line(event))
         when :generation_retrying then line(format_generation_retry_line(event))
         when :turn_completed, :turn_canceled then @turn_over = true
+        when :guardrail_warning then line(EventRenderer.load_warning_line(event))
         when :hook_notice
           text = EventRenderer.hook_notice_line(event)
           @turn_over ? @held << text : line(text)

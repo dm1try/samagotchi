@@ -47,6 +47,13 @@ RSpec.describe Samagotchi::TerminalUI::OneShotSink do
     expect(err.string).to eq("loop-guard> warning: looping?\nsource-links> sources: JIRA-1\n")
   end
 
+  it "prints the load warnings the first turn announces, by label" do
+    sink.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (LoadError: x)" })
+    sink.call({ type: :guardrail_warning, message: "no project memories in /new", label: "memory" })
+
+    expect(err.string).to eq("guardrails> hook g.rb (config) failed to load (LoadError: x)\nmemory> no project memories in /new\n")
+  end
+
   it "prints nothing for the other events" do
     sink.call({ type: :generation_chunk, text: "hi" })
     sink.call({ type: :tool_call_started, tool: "read" })

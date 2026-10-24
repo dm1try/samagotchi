@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi -p … --non-interactive` prints the load warnings (a guardrail or plugin that failed to load, the orphaned
+  project memory folder) on stderr as `<label>> …` lines; it used to drop them.
 - work-cap 0.1.2: a session's state file that doesn't read (not JSON) no longer drops its `/workcap` cap silently:
   it is logged and you get one notice naming the file and the cap used instead (the config's).
 - cost-cap 0.2.2: the same for a session's cost-cap state file: one that doesn't read (not JSON) no longer drops its
