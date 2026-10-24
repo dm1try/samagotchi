@@ -1591,8 +1591,9 @@ web:
 - Only a viewer on this machine opens the editor: a loopback request, or this machine on its own LAN address
   (`web.host: lan`, the LAN URL or its QR code opened here). A phone gets the targets that need no editor (an
   answer's ref shows its row in the turn; see the refs in [sessions.md](sessions.md)); a row's title stays plain
-  text there. An SSH tunnel or a local reverse proxy (`tailscale serve`) looks like loopback, so a remote viewer
-  behind one gets an editor target that can't open.
+  text there. An SSH tunnel or a local reverse proxy (`tailscale serve`) looks like loopback unless `web.public_url`
+  is set (then a request through it is never this machine's viewer), so without it a remote viewer behind one gets an
+  editor target that can't open.
 - `GET /api/sessions/:id` (and its `?tail=1`) carries `capabilities.editor` (true for such a viewer) and
   `editor_url`, the template (null otherwise).
 
@@ -1668,11 +1669,66 @@ one.
 | nginx `auth_request` + oauth2-proxy (`--set-xauthrequest`) | `X-Auth-Request-Email` | Only as nginx sets it from the auth reply (`auth_request_set $email $upstream_http_x_auth_request_email; proxy_set_header X-Auth-Request-Email $email;`), which replaces a client's copy; nginx drops underscore spellings by default. Checked with nginx 1.27. |
 | Caddy `forward_auth` (`copy_headers X-Auth-Request-Email`) | the copied header | Replaced from the auth reply; Caddy passes an underscore spelling through, which chi refuses. Checked with Caddy 2.8. |
 | Cloudflare Access | `Cf-Access-Authenticated-User-Email` | Not checked yet: verify with an echo. chi trusts the header only; it doesn't validate the `Cf-Access-Jwt-Assertion` token. |
-| Tailscale Serve | `Tailscale-User-Login` | Not checked yet: verify with an echo. Funnel (public) requests carry no identity: with the header set they are refused, leave it unset to let the token decide. |
+| Tailscale Serve | `Tailscale-User-Login` | Replaced, not appended (`Tailscale-User-Name`, `X-Forwarded-For`, `X-Forwarded-Host` too); `X-Forwarded-For` = the requesting device's tailnet IP, Host = the public name. Tailnet only. Checked with Tailscale 1.104.2 (macOS). Not checked: Funnel and tagged-device requests; never use Funnel. See [Tailscale Serve](#tailscale-serve-your-tailnet). |
 | Authelia, Authentik (behind nginx, Caddy, Traefik) | `Remote-Email` (Authelia), `X-Authentik-Email` (Authentik) | Not checked yet; only as the front proxy copies it from the auth reply (the nginx and Caddy rows). |
 | A TLS proxy with no sign-in (nginx, Caddy, an SSH tunnel) | leave unset | The token alone decides. |
 
 Keep the state dir (`web-token`, the grants) out of any folder others can read, such as a team's shared folder.
+
+### Tailscale Serve (your tailnet)
+
+chi web on your phone away from the home Wi-Fi: [Tailscale](https://tailscale.com) Serve gives this Mac an https
+name on your tailnet, `https://<machine>.<tailnet>.ts.net`, with a real certificate, and tells chi web who is asking
+(your Tailscale login, next to chi's token). Only devices on your tailnet reach it: with Tailscale off on the phone the
+name doesn't load. By hand, on the Mac that runs chi web:
+
+1. Install Tailscale on the Mac and the phone and sign both in with the same login. **Rename the machines first**
+   (admin console → Machines): HTTPS certificates go into the public Certificate Transparency log, so the
+   `<machine>.<tailnet>.ts.net` name is public once a certificate is issued, and a later rename puts a new name there.
+2. Turn on HTTPS certificates (admin console → DNS; they need MagicDNS on).
+3. Serve chi web's port on the tailnet, never on the internet:
+
+   ```sh
+   tailscale serve --bg 4567
+   ```
+
+   On macOS the app's CLI is `/Applications/Tailscale.app/Contents/MacOS/Tailscale` unless you installed `tailscale`
+   on your PATH. `tailscale serve status` shows what it serves; `tailscale serve --https=443 off` turns it off. Turn
+   it off when you stop using it: while it is on, whatever listens on 127.0.0.1:4567 is reachable from your tailnet.
+4. Tell chi web its public name and whose login is the owner (config.yml; `chi web` reads it at start):
+
+   ```yaml
+   web:
+     public_url: https://chi-host.example-tailnet.ts.net
+     proxy:
+       identity_header: Tailscale-User-Login
+       owner: owner@example.com      # your Tailscale login
+   ```
+
+   Your login: `tailscale whois <the phone's 100.x IP>` (the User block), or `tailscale status --json`
+   (`User["<Self.UserID>"].LoginName`), or start without `owner` and read it off the 401 page's detail ("owner token
+   with identity …"). A login made with Sign in with Apple is a private-relay address (`…@privaterelay.appleid.com`):
+   it is stable, use it as it is. Every device signed in with that login (the phone, a laptop, an iPad) is the owner,
+   each with the token too.
+5. `chi web` prints `Proxied: https://chi-host.example-tailnet.ts.net/#code=chc_…`; open that link on the phone (copy,
+   AirDrop or type it). The code works once, within 10 minutes (`chi web` again prints a new one); the phone then
+   keeps the `__Host-chi_token` cookie.
+
+- **Never Funnel** (`tailscale funnel`): it puts the name on the public internet. This recipe was checked on the
+  tailnet only; Funnel requests weren't.
+- Recommended: **Tailnet Lock** (`tailscale lock init`, see Tailscale's docs): new devices then need a signature from a
+  device you trust before they join, not only Tailscale's coordination server's say-so. chi web works either way.
+- What Serve sends (checked with Tailscale 1.104.2 on macOS): it **replaces** a client's `Tailscale-User-Login`,
+  `Tailscale-User-Name`, `X-Forwarded-For` and `X-Forwarded-Host` (never appends); `X-Forwarded-For` is the
+  requesting device's tailnet IP, Host the public name, and chi web's peer is 127.0.0.1. A process on this Mac can
+  still reach 127.0.0.1:4567 directly with headers of its own: there the token decides, as with any proxy.
+- Not checked yet: requests from a tagged device (expect no user login, so refused with `identity_header` set),
+  whether the serve stays on across a reboot, and what Serve answers while chi web isn't running.
+- A participant's link (`chi share`, the Invite dialog) is a `https://<machine>.<tailnet>.ts.net/…` link too: it opens
+  only on a device on your tailnet (or one you shared this machine with in Tailscale); the grant still decides.
+- Without Serve, a plain tailnet IP (`web.host: 100.x.y.z`) works like the LAN (see
+  [chi web on your phone](cli.md#chi-web-on-your-phone)): token only, plain http in the browser (WireGuard encrypts
+  the path) so no `Secure` cookie and no notifications, and no identity.
 
 ## All settings
 

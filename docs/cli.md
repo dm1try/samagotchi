@@ -1174,6 +1174,8 @@ access token", paste the token there (the part of the link after
   office guest network), and run `chi web --new-token` if a link leaks.
 - On http the browser has no notifications: the bell is hidden on the phone,
   and the tab title still counts what needs you.
+- Off the home Wi-Fi: Tailscale Serve gives chi web an https name on your
+  tailnet; see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet).
 
 ### Remote sessions
 
