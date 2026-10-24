@@ -1614,33 +1614,42 @@ What changes once `web.public_url` is set:
 
 - **Every request needs the access token**, this machine's too (`$XDG_STATE_HOME/samagotchi/web-token`, made at
   start; `chi web --new-token` replaces it). A proxy that adds no header and rewrites Host (nginx's `proxy_pass` with
-  its defaults) would otherwise look like this machine. `chi web` prints `Proxied: https://…/#token=…` and
-  `This machine: http://127.0.0.1:PORT/?token=…`; chi's own local callers (a second `chi web`, `chi share`, `chi
-  update`) send the token from the file.
+  its defaults) would otherwise look like this machine. On this machine the page opens through the proxy too: a
+  request that didn't come through it takes the token only as `Authorization: Bearer` (no cookie: a cookie for
+  127.0.0.1 would go to every server on any local port). chi's own probe of the port (a second `chi web`, `chi share`,
+  `chi update`) sends no token; chi web answers it the few fields it checks. Links and the start line come from this
+  machine's config, never from whatever answers on the port.
 - **A request through the proxy** (it carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, a known identity header,
   or the public Host) is the owner only with the token **and**, when `web.proxy.identity_header` is set, that header
   being exactly `web.proxy.owner` (any case). A repeated, comma-separated or empty value, or the header sent under a
   second spelling (`X_Forwarded_Email` next to `X-Forwarded-Email`), is refused (401, the reason in the answer's
   detail). With `identity_header` unset the token alone decides: that works behind any proxy. `owner` without
   `identity_header` stops `chi web` from starting.
-- Through the proxy the cookie is `__Host-chi_token` (Secure, this host only; the LAN's `chi_token` is separate), the
-  token trade's redirect goes to the public URL (never to a client-sent `X-Forwarded-Host`), and the page accepts
-  `POST`s from the public origin only (a sibling port on the same domain is refused).
-- Links carry the token in the **fragment**: the owner's `https://<public url>/#token=…`, a participant's
-  (`chi share`, the Invite dialog) `https://<public url>/#token=chp_…&s=ID`. Neither the proxy nor its sign-in sees a
-  fragment; the page trades it for the cookie (`POST /api/token`) and drops it from the URL. (A `?token=` link still
-  works, but it rides through the sign-in redirect into the identity provider's logs.)
+- Through the proxy the cookie is `__Host-chi_token` (Secure, Path=/, no Domain: other host names under the domain,
+  such as a pod's other ports `https://<port>.<pod>…`, don't get it; the LAN's `chi_token` is separate). Cookies aren't
+  scoped by port: another server on the **same host name** and a different port does get it, so give chi web a host
+  name of its own, or port 443. The token trade's redirect goes to the public URL (never to a client-sent
+  `X-Forwarded-Host`), and the page accepts `POST`s from the public `https://` origin only (a sibling port on the same
+  domain, or `http://`, is refused). No page of chi web's may be framed by another (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'`, in every mode).
+- Links carry a **one-time code** in the fragment, never a token: `chi web` prints `Proxied: https://…/#code=chc_…`
+  (the owner's: once, within 10 minutes; `chi web` again prints a new one), and a participant's link (`chi share`,
+  the Invite dialog) is `https://<public url>/#code=chc_…&s=ID` (once, until the grant expires). A fragment isn't sent
+  to the proxy, but it outlives the sign-in's redirects: the sign-in page sits at that URL (its scripts can read it)
+  and it stays in the browser's history, which is why it holds a code that works once. The page trades the code for
+  the cookie (`POST /api/token`) and drops it from the URL; a page that already has a session asks first, since the
+  trade replaces it. The 401 page's paste box posts the token in the request's body, never in the URL.
 - When the proxy's sign-in or chi's token ends, the page says so: it reloads once (the proxy's sign-in brings you
   back), and within a minute of that shows "Signed out … Reload" instead of a list that quietly stopped updating. Its
   API calls ask for JSON, so oauth2-proxy answers an ended sign-in with 401 instead of a redirect.
 - A session's Bridge (its worker's own port, unauthenticated) refuses a request that carries a proxy header such as
   `X-Forwarded-For` or `Forwarded` (403 `proxied`). That is a heuristic, not a lock: a forward that adds no such header
   (nginx's `proxy_pass` with its defaults, a plain TCP forward) still reaches a worker, as the owner.
+- `chi --remote` to a chi web behind a sign-in proxy isn't supported yet.
 
 > **Warning.** Until Bridges get a secret of their own (planned), don't run chi web behind a proxy or tunnel that can
 > reach any local port, such as a pod forwarding every `https://<port>.<pod>…`, unless it adds `X-Forwarded-For` or
 > `Forwarded` to every request; and never one that also lets other people through its sign-in.
-- `chi --remote` to a chi web behind a sign-in proxy isn't supported yet.
 
 Which header to trust: only one the proxy **sets** on every signed-in request **and replaces** when a client sends
 it. Check before setting `identity_header`: run an echo on a free port behind the same proxy (`python3 -c` with

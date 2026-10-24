@@ -39,8 +39,10 @@ module Samagotchi
       RAW_NAMES_ENV = "samagotchi.raw_header_names"
       # Why the gate refused a proxied request, for the 401's detail.
       REFUSED_ENV = "samagotchi.proxy_refused"
-      # The token cookie on a proxied (https) request: host-only, Secure,
-      # Path=/ (a sibling port on the same domain can't set or read it).
+      # The token cookie on a proxied (https) request: Secure, Path=/, no
+      # Domain (other host names under the domain, a pod's other ports, don't
+      # get it). Cookies aren't port-scoped: a server on the same host name
+      # and another port does.
       SECURE_COOKIE = "__Host-chi_token"
 
       private

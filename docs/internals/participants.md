@@ -9,7 +9,8 @@ experimental. An agent participant waits on its own turns' replies through the A
 
 Participants reach chi web on the **LAN** (`web.host: lan`), or **behind an auth proxy** with `web.public_url`
 (experimental; docs/configuration.md, "Behind an auth proxy"): there every request needs a token, this machine's too,
-and invite links are `https://<public url>/#token=chp_…&s=ID`. Without either, a loopback peer with no token is the
+and invite links are `https://<public url>/#code=chc_…&s=ID`: a one-time code (`Web::LinkCodes`, until the grant
+expires; the grant's token sealed under the code, so the store keeps no token) that the page trades for the cookie. Without either, a loopback peer with no token is the
 owner, and a reverse proxy on the same machine would make every visitor loopback. A participant's token is the
 participant's wherever it comes from: their link opened on this machine (or on a chi web not on the LAN, whose link
 works on this machine only) is the participant, never the owner.
@@ -75,8 +76,8 @@ participant** and **one role**, until it expires or is revoked.
    owner." / "This review link expired: ask the session's owner for a new one."), any other **401
    `unauthorized`** as before.
 
-The `?token=` trade (and `POST /api/token {token}`, the page's trade of a link's `#token=` fragment, which no proxy
-or IdP sees) sets the `chi_token` cookie (`__Host-chi_token`, Secure, on a proxied request) to the token that was
+The `?token=` trade (and `POST /api/token`, with a link's one-time `{code}` or the 401 page's pasted `{token}`; with
+`web.public_url` only through the proxy, as a direct request takes Bearer only) sets the `chi_token` cookie (`__Host-chi_token`, Secure, on a proxied request) to the token that was
 presented, the owner's or the participant's
 (one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
 makes that browser the participant, on loopback too). A grant's token is traded on any peer; the owner's only where

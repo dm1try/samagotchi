@@ -399,8 +399,9 @@ module Samagotchi
       # Where #route keeps the request's Principal for its handlers.
       PRINCIPAL_ENV = "samagotchi.principal"
       PAGE_PATHS = ["/", "/index.html"].freeze
-      # POST {token}: the page trades a link's fragment token (#token=, which
-      # no proxy or IdP sees) for the cookie (token_fragment.js).
+      # POST {code} or {token}: the page trades a link's one-time code (its
+      # #code= fragment, token_fragment.js) or a pasted token (the 401 page's
+      # form) for the cookie.
       TOKEN_TRADE_PATH = "/api/token"
       TRADE_BODY_LIMIT = 4096
       GATE_FREE_PATHS = ["/token_fragment.js"].freeze

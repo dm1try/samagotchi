@@ -15,15 +15,19 @@ and commands may change between minor versions. How releases are made:
   access token, this machine's too; `web.proxy.identity_header` + `web.proxy.owner` also check the signed-in email
   the proxy sends (owner = that identity AND the token; a repeated, comma, empty or underscore-twin header is
   refused). Through the proxy the cookie is `__Host-chi_token` (Secure), the token trade's redirect is absolute from
-  `web.public_url`, and invite links (the web's and `chi share`'s) are `https://…/#token=…&s=ID`. See
+  `web.public_url`, links (the start line, the web's and `chi share`'s invites) are `https://…/#code=…` with a
+  one-time code, never a token, and on this machine a request takes the token as `Authorization: Bearer` only. See
   docs/configuration.md (Behind an auth proxy).
-- Experimental, with `web.public_url`: a link's `#token=` is traded for the cookie by the page (`POST /api/token`),
-  so neither the proxy nor its IdP sees it; the page notices a lost sign-in (the proxy's session or chi's token ended:
+- Experimental, with `web.public_url`: a link's `#code=` is traded for the cookie by the page (`POST /api/token`;
+  a page that already has a session asks first), and the 401 page's paste box posts the token, never puts it in the
+  URL; the page notices a lost sign-in (the proxy's session or chi's token ended:
   a 401, a redirect to the sign-in page, the session list's stream giving up) and reloads once, then says "Signed out"
   with Reload instead of going quietly stale. The page's API calls ask for JSON (`Accept: application/json`).
 
 ### Changed
 
+- chi web's HTML answers can't be framed by another page (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), and a
+  frame/embed/object load from another origin is refused (403 `framed`).
 - A session's Bridge refuses any request that came through a proxy (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`,
   `X-Auth-Request-*` and the like, underscore twins too: 403 `proxied`): an auth proxy that forwards every local port
   and adds such a header no longer reaches a worker's unauthenticated Bridge (a forward that adds none still does).
