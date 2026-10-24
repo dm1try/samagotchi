@@ -132,10 +132,13 @@ RSpec.describe Samagotchi::ReminderStore do
 
   describe "#mark_fired_batch" do
     it "marks multiple reminders as fired" do
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      allow(Process).to receive(:clock_gettime).and_return(now)
       store.register({ name: "health", description: "test", interval_minutes: 5 })
       store.register({ name: "cleanup", description: "test", interval_minutes: 10 })
       old_health = store.reminders["health"][:next_fire_at]
       old_cleanup = store.reminders["cleanup"][:next_fire_at]
+      allow(Process).to receive(:clock_gettime).and_return(now + 1)
       store.mark_fired_batch(%w[health cleanup])
       expect(store.reminders["health"][:next_fire_at]).to be > old_health
       expect(store.reminders["cleanup"][:next_fire_at]).to be > old_cleanup
