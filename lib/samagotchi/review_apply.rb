@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "participant_name"
 require_relative "steer"
 require_relative "output_formatter"
 
@@ -62,7 +63,9 @@ module Samagotchi
     # @param proposal [Proposal]
     # @return [String]
     def compose(proposal)
-      name = proposal.author_name.to_s.strip
+      # Cleaned as Steer's header cleans it: a name from a hand-edited
+      # session file can't break this line.
+      name = ParticipantName.clean(proposal.author_name)
       name = SOMEONE if name.empty?
       quoted = proposal.text.to_s.strip.split(LINE_BREAK).map { |line| line.rstrip.empty? ? ">" : "> #{line.rstrip}" }
       "Apply this proposal from #{name}'s review turn #{short(proposal.turn_id)}, as far as it fits the plan. " \
