@@ -56,7 +56,7 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   await context.close();
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, a comment gets its reply, the owner applies it", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, a comment (a double Enter) gets one reply, the owner applies it", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -96,10 +96,23 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(page.locator("#thread .p-msg.user").first()).toContainText("Say pong");
   await expect(page.locator("#actionBtn")).toHaveCount(0);
 
+  // A double Enter posts the comment once (the post held in flight, as on
+  // a phone's slow link).
+  const posts = [];
+  await page.route("**/turn", async (route) => {
+    posts.push(route.request().url());
+    const res = await route.fetch();
+    await page.waitForTimeout(400); // eslint-disable-line no-restricted-syntax -- a slow post is the case
+    await route.fulfill({ response: res });
+  });
   await page.locator("#comment").fill("Is step 3 safe?");
-  await page.locator("#send").click();
+  await page.locator("#comment").press("Enter");
+  await page.locator("#comment").press("Enter");
   await expect(page.locator("#thread .p-msg.user.mine")).toContainText("Is step 3 safe?");
   await expect(page.locator("#thread .p-msg.reply .p-bubble")).toHaveCount(2);
+  await expect(page.locator("#thread .p-msg.user.mine")).toHaveCount(1);
+  expect(posts).toHaveLength(1);
+  await page.unroute("**/turn");
   await expect(page.locator("#thread .p-msg.reply .p-bubble").last()).toHaveText(/PONG from the fake model/);
   // A shell line is refused in words, before it reaches the session.
   await page.locator("#comment").fill("!ls");
