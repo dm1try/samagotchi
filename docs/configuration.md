@@ -1772,7 +1772,7 @@ Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reac
 
 chi web as an app on your iPhone's Home Screen that buzzes (the Watch too) when a session waits on an **approval** or
 a **question**, also while the app is closed. A tap opens that session; once it is answered anywhere (the Mac, the
-phone, `chi answer`), its notification goes when the app opens or the next push arrives (or swipe it away). Every
+phone, `chi answer`), its notification goes when you open the app (or swipe it away). Every
 push shows a notification: iOS turns off an app's pushes after a few that show none.
 
 What it needs:

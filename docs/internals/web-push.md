@@ -173,7 +173,7 @@ clears it at once), one at a time with one rerun. Never before the first snapsho
 everything) and never on a project's page (`createNotifications({scoped})`, app.js passes `!!scope.dir`: its
 `/api/events?dir=` leaves out the other projects' sessions).
 
-Accepted staleness: an approval answered elsewhere keeps its banner until the app opens or the next push arrives
+Accepted staleness: an approval answered elsewhere keeps its banner until the app opens (the worker's cleanup on the next push doesn't work on iOS yet: see iOS facts)
 (or a swipe), and the icon badge may be too high until then; a show already handed to Apple just before its answer
 can land after the page's tidy-up and stay until the next one. Unverified on iOS: `getNotifications()` and
 `setAppBadge` from the page (a Window); the worker's cleanup still runs on the next push if they do nothing.
@@ -183,7 +183,10 @@ can land after the page's tidy-up and stay until the next one. Unverified on iOS
 - **Close by tag lookup** (the P1b phone check, 2026-10-24, iOS 26): inside a push handler, after `showNotification`,
   the unfiltered `getNotifications()` lists the shown ones with their tags, but `close()` on one from that list left
   it on the lock screen; one from `getNotifications({tag})` closed. So `sw.js`'s cleanup reads the tags from the list
-  and closes through the tag lookup. Not yet known whether that is a WebKit bug (unfiltered close never probed alone).
+  and closes through the tag lookup. Not yet known whether that is a WebKit bug (unfiltered close never probed alone). **But** on a real
+  question pair (A shown, answered, B pushed ~6 s later, the new worker confirmed) A's banner still stayed: the tag
+  lookup closed a banner minutes old (the probe) but not a seconds-old one. So the worker's cleanup doesn't work on iOS
+  yet (cause unknown: timing, or the banner still presenting); the page's cleanup when the app opens does.
 - **No replace by `tag`**: two notifications with one tag both stay, and closing same-tag ones inside the push
   handler before `showNotification` doesn't remove the older one. A separate close push that only closed
   `getNotifications({tag})` did, but it shows nothing (see the quota below), so the worker now closes after its show.
