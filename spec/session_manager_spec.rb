@@ -1994,6 +1994,37 @@ RSpec.describe Samagotchi::SessionManager do
         expect(input_files.size).to eq(2)
       end
 
+      # L-P4: two of a participant's turns at once (two chi web threads)
+      # can't both count the same waiting files and pass the limit.
+      it "counts and writes a participant's file under one lock, so two at once can't pass their pending limit" do
+        allow(described_class).to receive(:resume_session)
+        writing = Queue.new
+        release = Queue.new
+        calls = 0
+        allow(described_class).to receive(:write_turn_input).and_wrap_original do |original, *args, **options|
+          first = (calls += 1) == 1
+          if first
+            writing << true
+            pop!(release, "the first turn's release", timeout: 30)
+          end
+          original.call(*args, **options)
+        end
+        deliver = lambda do
+          described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 1,
+                                                   state_dir: tmpdir, bridge: -> {})
+        end
+        first = Thread.new { deliver.call }
+        pop!(writing, "the first turn's write")
+        second = Thread.new { deliver.call }
+        # wait-ok: unlocked, the second turn writes now; locked, it waits for the first (at most 0.5 s, fine to cut short)
+        wait_until(timeout: 0.5) { calls > 1 }
+        release << true
+
+        statuses = [join!(first, "the first turn").value, join!(second, "the second turn").value].map(&:status)
+        expect(statuses).to eq(%i[accepted refused])
+        expect(input_files.size).to eq(1)
+      end
+
       it "writes no participant's file while a worker holds the session with its Bridge gone (it may be an older one)" do
         own("worker")
         result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,

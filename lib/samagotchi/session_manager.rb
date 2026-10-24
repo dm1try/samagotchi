@@ -1287,18 +1287,23 @@ module Samagotchi
                                  ack: { "error" => "worker_timeout",
                                         "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
       end
-      # No worker: the participant's waiting files are all their turns.
-      if author && pending_limit && pending_files(session_dir, author) >= pending_limit
-        return DeliverResult.new(status: :refused, code: 429,
-                                 ack: { "error" => "too_many_turns", "detail" => ParticipantMessages::TOO_MANY_TURNS })
-      end
       enqueued_id = SecureRandom.uuid
       input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
       input[:images] = images unless images.empty?
       input[:delivery] = delivery unless Delivery.next_step?(delivery)
       input[:no_interrupt] = true if no_interrupt
       input[:author] = author if author
-      path = manager.write_turn_input(session_id, **input)
+      path = participant_queue_lock(session_dir, author && pending_limit) do
+        # No worker: the participant's waiting files are all their turns,
+        # counted and written under one lock (the Bridge counts under its).
+        next :too_many if author && pending_limit && pending_files(session_dir, author) >= pending_limit
+
+        manager.write_turn_input(session_id, **input)
+      end
+      if path == :too_many
+        return DeliverResult.new(status: :refused, code: 429,
+                                 ack: { "error" => "too_many_turns", "detail" => ParticipantMessages::TOO_MANY_TURNS })
+      end
       return DeliverResult.new(status: :failed) unless path
 
       owner = delivery_owner(manager, session_id, state_dir)
@@ -1329,6 +1334,20 @@ module Samagotchi
     end
 
     # The unclaimed input files +author+ wrote.
+    PARTICIPANT_QUEUE_LOCK = "participants.lock"
+
+    # The block under the session's participant queue lock (a file lock:
+    # chi web's threads, and another chi web), when +locked+; else as is.
+    private_class_method def self.participant_queue_lock(session_dir, locked)
+      return yield unless locked
+
+      FileUtils.mkdir_p(session_dir)
+      File.open(File.join(session_dir, PARTICIPANT_QUEUE_LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        yield
+      end
+    end
+
     private_class_method def self.pending_files(session_dir, author)
       SessionInbox.find_new_input_files(session_dir).count do |file|
         data = JSON.parse(File.read(file))

@@ -72,6 +72,8 @@ and commands may change between minor versions. How releases are made:
   owner's newest reply file, message count, pending question, running turn), only what waiting on its own turn needs.
 - Participants: a reply that opens a private key block and never closes it is withheld to that turn's end, no
   longer hiding every later turn's reply from the participant's stream until they reload.
+- Participants: two of a participant's turns sent at once while no worker runs the session can no longer both pass
+  their queue limit.
 - `chi --remote NAME` words a value the remote's chi web refuses (`sessions list --cwd rel/dir`, `note --source " "`)
   as one line naming the command, exit 2, instead of a Ruby backtrace; its other refusals are one line, exit 1.
 - A remote whose address answers something other than HTTP (another server on that port, an SSH banner), or a

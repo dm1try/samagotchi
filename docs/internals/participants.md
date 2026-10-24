@@ -112,7 +112,9 @@ input, origin `review`, source `participant`, labelled `review`); the body's `cl
 
 It goes out as `delivery: queue` (D6) with `pending_limit` = the grant's queue limit + 1 (the running one), never
 into the owner's prompt history. The Bridge counts the author's running and queued turns under its event lock and
-answers 429 `too_many_turns` past it; with no worker, their waiting input files are counted. The ack is 202 with
+answers 429 `too_many_turns` past it; with no worker, their waiting input files are counted, and the new one
+written, under the session dir's `participants.lock` (`SessionManager.deliver_turn`), so two at once can't both
+pass. The ack is 202 with
 `delivery: "queue"`; chi web keeps enqueued id → grant (the last 1000), which `dequeue` and `wait` check, falling
 back to a waiting file's author after a restart.
 
@@ -322,9 +324,9 @@ this machine only.
 
 ## Files in the session dir
 
-Neither is in the session JSON (chi web never saves that, and a worker would overwrite a field it added), and
-neither is copied to a continue, a fork or a delegate (a continue starts with no participants). A session nobody was
-invited to has neither: its files stay byte for byte as they were.
+None is in the session JSON (chi web never saves that, and a worker would overwrite a field it added), and
+none is copied to a continue, a fork or a delegate (a continue starts with no participants). A session nobody was
+invited to has none: its files stay byte for byte as they were.
 
 - **`participants.json`** (0600, `Participants.write`): `{participants: [{id, kind, name, role, added_at,
   expires_at, removed_at, cap}]}`, rewritten by whoever changes a grant (chi web, `chi share`), inside the grants
@@ -338,6 +340,8 @@ invited to has neither: its files stay byte for byte as they were.
   `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
   the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
   cap). It goes with the session (retention, delete).
+- **`participants.lock`** (0600, empty): the lock a participant's turn file is counted and written under when no
+  worker runs ([Turns](#turns)).
 
 ## Attribution
 
