@@ -63,8 +63,8 @@ and commands may change between minor versions. How releases are made:
   `participants.json` reading a revoked participant as active, so the worker refuses their queued turns: the file
   is written under the grants store's lock.
 - Participants: a grants store (`web-grants/grants.json`) that doesn't read is no longer overwritten by the next
-  invite, which kept only the new grant and dropped every other link's; `chi share` and chi web refuse invite, ls,
-  cap and revoke with one line naming the file (exit 1), and a grant row without its digest or expiry no longer
+  invite, which kept only the new grant and dropped every other link's; `chi share` (exit 1) and chi web refuse invite,
+  ls, cap and revoke with one line naming the file, and a grant row without its digest or expiry no longer
   makes every participant request a 500.
 - Participants: revoking a participant (or their link expiring) ends their `chi send --wait` already waiting at chi
   web, refused as their link's end, instead of handing them the reply that came within the next 30 s.
