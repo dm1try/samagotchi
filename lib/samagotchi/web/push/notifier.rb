@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "attention"
 require_relative "../../log"
 
@@ -9,22 +10,32 @@ module Samagotchi
       # chi web's one sender of pushes: a SessionHub subscriber that keeps
       # the summaries the page's trackAttention keeps (seeded by the
       # subscribe's snapshot, so what was open before never pushes), turns
-      # each change into a show (a new approval or question, Attention.for)
-      # or a close (it was answered anywhere, Attention.closed_keys), and
-      # hands them to its own sender thread through a Queue.
+      # each new approval or question (Attention.for) into a show, and
+      # hands it to its own sender thread through a Queue; one answered
+      # anywhere (Attention.closed_keys) only cancels its show's hold.
+      #
+      # Every push it sends shows a notification: WebKit removes a
+      # subscription after a few pushes that show none (its silent-push
+      # quota), so there is no close push. A show carries +open+, the keys
+      # still open, and the badge, both from the sink's summaries
+      # (Attention.open_keys): the service worker closes the answered ones
+      # when it shows the new one, and the page when it opens.
       #
       # #call is the hub's sink: it runs under the hub's Monitor, on the
       # tick thread and on chi web's request threads (SessionHub#touch), so
       # it only enqueues; a push is a 0.5 s https call, made on the sender
       # thread. There a show waits its hold (HOLD, or the event's own) and
       # is pushed only while still open, to every device subscribed on this
-      # run's public origin; a close is pushed only for keys that were. See
-      # docs/internals/web-push.md.
+      # run's public origin. See docs/internals/web-push.md.
       class Notifier
         HOLD = 3.0
         # Waiting kinds: kept 12 h for an offline phone, delivered at once.
         SHOW_TTL = 12 * 3600
-        CLOSE_TTL = 10 * 60
+        # A show carries +open+ only while its JSON stays this small: one
+        # aes128gcm record leaves 3993 bytes of plaintext under Web Push's
+        # 4096 (86 header, 1 delimiter, 16 tag). Longer, it goes without
+        # (and the worker cleans up nothing).
+        OPEN_LIMIT = 3000
         STOP_JOIN = 2.0
 
         Show = Data.define(:attention, :title, :body, :at)
@@ -48,9 +59,7 @@ module Samagotchi
           @seeded = false
           @early = []
           # The sender's side (its thread only, or #pump in a spec).
-          @pending = {}  # key → Show waiting its hold
-          @open = []     # keys of waiting attentions not closed yet (the badge)
-          @sent = []     # keys pushed and not closed yet
+          @pending = {} # key → Show waiting its hold
           @refused = false
           @thread = nil
           @handle = nil
@@ -154,18 +163,10 @@ module Samagotchi
 
         def handle(message)
           case message
-          when Show
-            key = message.attention.key
-            @open << key unless @open.include?(key)
-            @pending[key] = message
-          when Close
-            closed = message.keys.select { |key| @sent.include?(key) }
-            message.keys.each do |key|
-              @open.delete(key)
-              @pending.delete(key)
-              @sent.delete(key)
-            end
-            deliver({ v: 1, kind: "close", tags: closed, badge: @open.size }, kind: "close") unless closed.empty?
+          when Show then @pending[message.attention.key] = message
+          # Answered anywhere: a show still in its hold is dropped. Nothing
+          # is pushed (a push that shows nothing counts against the quota).
+          when Close then message.keys.each { |key| @pending.delete(key) }
           end
         end
 
@@ -174,24 +175,32 @@ module Samagotchi
         def flush
           now = @now.call
           due = @pending.values.select { |show| due_at(show) <= now }
+          return if due.empty?
+
+          due.each { |show| @pending.delete(show.attention.key) }
+          open = @mutex.synchronize { Attention.open_keys(@by_id) }
           due.each do |show|
             key = show.attention.key
-            @pending.delete(key)
-            next unless @open.include?(key)
+            next unless open.include?(key)
 
-            payload = { v: 1, kind: "show", tag: key, title: show.title, body: show.body,
-                        url: "/#/s/#{show.attention.session_id}", badge: @open.size }
-            @sent << key if deliver(payload, kind: show.attention.reason)
+            deliver(show_payload(show, open), kind: show.attention.reason)
           end
         end
 
+        def show_payload(show, open)
+          payload = { v: 1, kind: "show", tag: show.attention.key, title: show.title, body: show.body,
+                      url: "/#/s/#{show.attention.session_id}", badge: open.size }
+          with_open = payload.merge(open: open)
+          JSON.generate(with_open).bytesize <= OPEN_LIMIT ? with_open : payload
+        end
+
+        # @param kind [String] the reason, for the log line
         # @return [Boolean] whether any device took it
         def deliver(payload, kind:)
           return false if @refused
 
-          close = kind == "close"
           @store.for_origin(@origin).map do |sub|
-            result = @client.deliver(sub, payload, ttl: close ? CLOSE_TTL : SHOW_TTL, urgency: close ? "normal" : "high")
+            result = @client.deliver(sub, payload, ttl: SHOW_TTL, urgency: "high")
             record(sub, result, kind)
             result.ok?
           end.any?

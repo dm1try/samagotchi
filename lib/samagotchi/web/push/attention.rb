@@ -69,6 +69,21 @@ module Samagotchi
           gone ? [key(prev[:id], question[:id])] : []
         end
 
+        # Every key still open in +by_id+ (session id → summary): a
+        # pending question with an id, not relayed, of a reason P1 pushes.
+        # The rule push.js openPushKeys keeps, so the show's +open+ list,
+        # the page's cleanup and the badge agree.
+        # @return [Array<String>]
+        def open_keys(by_id)
+          by_id.each_value.filter_map do |summary|
+            question = summary[:pending_question]
+            next unless question.is_a?(Hash) && question[:id] && !question[:relayed_to]
+            next unless PUSHED.include?(reason_of(question))
+
+            key(summary[:id], question[:id])
+          end
+        end
+
         def key(session_id, question_id) = "#{session_id}:#{question_id}"
 
         # notify.js attentionText: the session's name (clipped) and the

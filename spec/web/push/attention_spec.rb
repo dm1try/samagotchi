@@ -44,6 +44,20 @@ RSpec.describe Samagotchi::Web::Push::Attention do
     end
   end
 
+  describe ".open_keys" do
+    it "is every pending approval or question (a hook's too), not a relayed one, a continue or no question" do
+      by_id = {
+        "a" => { id: "a", pending_question: { id: "q1", kind: "approval" } },
+        "h" => { id: "h", pending_question: { id: "h1", kind: "hook" } },
+        "r" => { id: "r", pending_question: { id: "q2", kind: "approval", relayed_to: "p1234567" } },
+        "c" => { id: "c", pending_question: { id: "c1", kind: "continue" } },
+        "n" => { id: "n" },
+        "x" => { id: "x", pending_question: { kind: "question" } }
+      }
+      expect(described_class.open_keys(by_id)).to eq(["a:q1", "h:h1"])
+    end
+  end
+
   describe ".text" do
     it "is the session's name clipped to 61 and the reason's words, never the question" do
       expect(described_class.text({ title: "fix it", first_preview: "x" }, "approval")).to eq(["fix it", "needs approval"])

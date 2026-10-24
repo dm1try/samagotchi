@@ -140,7 +140,7 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       store.add(WebPushReceiver.new.subscription("#{endpoint}3"), origin: "https://old.example", label: "stale")
       sent = []
       allow(client).to receive(:deliver) do |sub, payload, **opts|
-        sent << [sub.id, payload[:body], opts]
+        sent << [sub.id, payload[:body], opts, payload]
         Samagotchi::Web::Push::Client::Result.new(status: sub.id == pad.id ? :gone : :ok, code: sub.id == pad.id ? 410 : 201, ms: 7)
       end
 
@@ -152,6 +152,8 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       expect(body["devices"].map { |d| [d["label"], d["status"]] }).to eq([%w[phone ok], %w[pad gone]])
       expect(sent.map(&:first)).to eq([phone.id, phone.id, pad.id])
       expect(sent.first[1]).to eq("test notification")
+      # No badge (it would clear the app's) and no open list (no cleanup).
+      expect(sent.first[3].keys).not_to include(:badge, :open)
       expect(store.subscriptions.map(&:label)).to eq(%w[phone stale])
     end
   end

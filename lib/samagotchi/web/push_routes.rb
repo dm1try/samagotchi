@@ -65,7 +65,7 @@ module Samagotchi
         endpoint = body["endpoint"] if body.is_a?(Hash)
         subs = @push.store.for_origin(@push.origin)
         subs = subs.select { |sub| sub.endpoint == endpoint } if endpoint.is_a?(String) && !endpoint.empty?
-        payload = { v: 1, kind: "show", tag: "chi:test", title: "chi", body: "test notification", url: "/", badge: 0 }
+        payload = { v: 1, kind: "show", tag: "chi:test", title: "chi", body: "test notification", url: "/" }
         results = subs.map do |sub|
           result = @push.client.deliver(sub, payload, ttl: 600, urgency: "high")
           Log.info(:web, "push_test", device: sub.id, code: result.code, ms: result.ms)

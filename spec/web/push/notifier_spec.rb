@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "samagotchi/web/session_hub"
 require "samagotchi/web/push/client"
+require "samagotchi/web/push/crypto"
 require "samagotchi/web/push/notifier"
 require "samagotchi/web/push/store"
 require_relative "../../support/web_push_receiver"
@@ -58,6 +59,7 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
   after do
     notifier.stop
     FileUtils.rm_rf(root)
+    expect(client.calls.map { |c| c[:payload][:kind] }.uniq - ["show"]).to eq([])
   end
 
   def summary(id: "s1", question: nil, parent_id: nil, title: "fix the build")
@@ -75,6 +77,9 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
   def kinds = client.calls.map { |c| c[:payload][:kind] }
 
+  # Every push shows a notification (WebKit's silent-push quota): whatever
+  # an example did, the client only ever got shows.
+
   context "when started on a hub" do
     before { notifier.start(PushNotifierSpecHub.new, sender: false) }
 
@@ -88,7 +93,7 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
       expect(client.calls).to eq([{ sub: phone.id, ttl: 12 * 3600, urgency: "high",
                                     payload: { v: 1, kind: "show", tag: "s1:q1", title: "fix the build",
-                                               body: "needs approval", url: "/#/s/s1", badge: 1 } }])
+                                               body: "needs approval", url: "/#/s/s1", badge: 1, open: ["s1:q1"] } }])
       expect(store.find(phone.id).last_ok_at).not_to be_nil
     end
 
@@ -100,28 +105,59 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(client.calls).to eq([])
     end
 
-    it "sends a close push when a pushed one is answered anywhere" do
+    it "pushes nothing when a pushed one is answered anywhere (no close push)" do
       session(question: { id: "q1", kind: "question" })
       advance(3)
       session
-      notifier.pump
+      advance(10)
 
-      expect(kinds).to eq(%w[show close])
-      expect(client.calls.last).to include(ttl: 600, urgency: "normal",
-                                           payload: { v: 1, kind: "close", tags: ["s1:q1"], badge: 0 })
+      expect(kinds).to eq(%w[show])
     end
 
-    it "counts the open waiting ones in the badge" do
+    it "counts the open waiting ones in the badge and lists them in open" do
       session(id: "a", question: { id: "q1", kind: "approval" })
       session(id: "b", question: { id: "q2", kind: "approval" })
       advance(3)
-      expect(client.calls.map { |c| c[:payload][:badge] }).to eq([2, 2])
-      notifier.call(hub_event(type: "session", seq: 2, data: { session: summary(id: "a") }))
-      notifier.pump
-      expect(client.calls.last[:payload]).to include(kind: "close", tags: ["a:q1"], badge: 1)
+      expect(client.calls.map { |c| c[:payload].values_at(:badge, :open) }).to eq([[2, %w[a:q1 b:q2]]] * 2)
     end
 
-    it "pushes nothing for one already relayed to its parent, and closes one relayed after it was pushed" do
+    it "leaves an answered one out of the next show's open list and badge" do
+      session(id: "a", question: { id: "q1", kind: "approval" })
+      advance(3)
+      notifier.call(hub_event(type: "session", seq: 2, data: { session: summary(id: "a") }))
+      session(id: "b", question: { id: "q2", kind: "approval" })
+      advance(3)
+      expect(client.calls.last[:payload]).to include(tag: "b:q2", open: ["b:q2"], badge: 1)
+    end
+
+    it "sends a show without open when the list would make it too long" do
+      many = (1..80).map { |i| format("%08d-0000-4000-8000-%012d", i, i) }
+      many.each { |id| session(id: id, question: { id: "q_#{id}", kind: "approval" }) }
+      advance(3)
+      last = client.calls.last[:payload]
+      expect(last).not_to have_key(:open)
+      expect(last[:badge]).to eq(80)
+    end
+
+    it "keeps the largest show it sends with open inside one Web Push record" do
+      title = "😀" * 61
+      ids = (1..60).map { |i| format("%08d-0000-4000-8000-%012d", i, i) }
+      # One at a time, so each show's list is one longer, up to the limit and past it.
+      ids.each do |id|
+        session(id: id, title: title, question: { id: "q_#{id}_long_question_id", kind: "approval" })
+        advance(3)
+      end
+      with_open = client.calls.map { |c| c[:payload] }.select { |p| p.key?(:open) }
+      expect(with_open).not_to be_empty
+      receiver = WebPushReceiver.new
+      largest = with_open.map { |p| JSON.generate(p) }.max_by(&:bytesize)
+      expect(largest.bytesize).to be > described_class::OPEN_LIMIT - 120
+      expect(client.calls.last[:payload]).not_to have_key(:open)
+      body = Samagotchi::Web::Push::Crypto.encrypt(largest, p256dh: receiver.p256dh, auth: receiver.auth)
+      expect(body.bytesize).to be <= 4096
+    end
+
+    it "pushes nothing for one already relayed to its parent, nor when one is relayed after it was pushed" do
       session(id: "child", parent_id: "p", question: { id: "q1", kind: "approval", relayed_to: "p1234567" })
       advance(10)
       expect(client.calls).to eq([])
@@ -129,8 +165,10 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       session(id: "c2", question: { id: "q2", kind: "question" })
       advance(3)
       session(id: "c2", question: { id: "q2", kind: "question", relayed_to: "p1234567" })
-      notifier.pump
-      expect(kinds).to eq(%w[show close])
+      session(id: "c3", question: { id: "q3", kind: "question" })
+      advance(3)
+      expect(kinds).to eq(%w[show show])
+      expect(client.calls.last[:payload][:open]).to eq(["c3:q3"])
     end
 
     it "holds a delegated child's approval 3.5 s, and a child's hook question too" do
@@ -149,21 +187,14 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(client.calls.map { |c| c[:payload].values_at(:tag, :body) }).to eq([["h:h1", "needs an answer"]])
     end
 
-    it "closes on session_gone" do
+    it "pushes nothing on session_gone, and drops a show still in its hold" do
       session(question: { id: "q1", kind: "approval" })
       advance(3)
+      session(id: "s2", question: { id: "q2", kind: "approval" })
       notifier.call(hub_event(type: "session_gone", seq: 3, data: { id: "s1" }))
-      notifier.pump
-      expect(client.calls.last[:payload]).to include(kind: "close", tags: ["s1:q1"])
-    end
-
-    it "sends no close for a key it never pushed" do
-      session(question: { id: "q1", kind: "approval" })
-      session
+      notifier.call(hub_event(type: "session_gone", seq: 4, data: { id: "s2" }))
       advance(10)
-      notifier.call(hub_event(type: "session_gone", seq: 3, data: { id: "s1" }))
-      notifier.pump
-      expect(client.calls).to eq([])
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["s1:q1"])
     end
 
     it "sends only to this origin's devices and drops a gone one" do
@@ -203,6 +234,14 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     session(question: { id: "q1", kind: "approval" })
     advance(10)
     expect(client.calls).to eq([])
+  end
+
+  it "keeps an approval the seed had open in a new show's open list and badge (a chi web restart)" do
+    hub = PushNotifierSpecHub.new([summary(id: "a", question: { id: "q1", kind: "approval" })])
+    notifier.start(hub, sender: false)
+    session(id: "b", question: { id: "q2", kind: "approval" })
+    advance(3)
+    expect(client.calls.map { |c| c[:payload].values_at(:tag, :open, :badge) }).to eq([["b:q2", %w[a:q1 b:q2], 2]])
   end
 
   it "seeds from a real hub that has scanned (an open approval there pushes nothing)" do
