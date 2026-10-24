@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "changed_defs"
 require_relative "timing_hints"
 
 module AffectedSpecs
@@ -8,9 +9,9 @@ module AffectedSpecs
   Pick = Data.define(:path, :reason)
 
   # What Picker#pick returns: the Ruby specs and the node tests, best first
-  # and uncapped, the hints to print, and the changed code files nothing
-  # matched (shown with --why).
-  Result = Data.define(:ruby, :node, :hints, :unmatched)
+  # and uncapped, the hints to print, the changed code files nothing
+  # matched and the notes on skipped tiers (both shown with --why).
+  Result = Data.define(:ruby, :node, :hints, :unmatched, :notes)
 
   # Specs that read docs or source as text, or print a file's words through
   # another layer (the REPL golden), which no name points at: a changed path
@@ -53,6 +54,15 @@ module AffectedSpecs
   # helps no one, the full run covers it.
   HUB_SPECS = 40
 
+  # Method names too common to say who calls a changed method: a spec
+  # naming one names something else. Names under MIN_CALLER_NAME
+  # characters and the methods every Object or Enumerable has are skipped too.
+  GENERIC_METHODS = %w[initialize call to_s to_h inspect run read path name pick parse check start fetch value
+                       result].freeze
+  MIN_CALLER_NAME = 4
+  # At most this many changed method names go to the callers grep.
+  MAX_CALLER_NAMES = 12
+
   WEB_HINT = "web changed: also run npm run e2e before handing over"
   # A frontend module changed: the lint catches a dropped import before e2e does.
   WEB_JS_HINT = "web frontend changed: also run npm run lint and npm run e2e before handing over"
@@ -60,10 +70,12 @@ module AffectedSpecs
   # Maps changed paths to the spec files a builder should run, in rank
   # order: (1) changed specs, (2) specs named after a changed file,
   # (3) RULES and the goldens of a changed file's layer, (4) weaker name matches (a spec matching more of the changed
-  # files first, then one beside the file, see #place), (5) specs naming the
-  # changed file's main constant. +tree+ answers spec_files, node_tests,
-  # read(path), mentions(word, paths, word:) (spec path => count) and
-  # added_lines(path) (TimingHints).
+  # files first, then one beside the file, see #place), (5) specs naming a
+  # method the change touches (#add_callers, Prism 1.0+), (6) specs naming
+  # the changed file's main constant. +tree+ answers spec_files, node_tests,
+  # read(path), mentions(word, paths, word:) (spec path => count),
+  # mentions_each(words, paths) (word => { spec path => count }),
+  # changed_lines(path) and added_lines(path) (TimingHints).
   class Picker
     # The kind of name match a spec in the changed file's mirrored folder is.
     FOLDER = 2
@@ -78,6 +90,7 @@ module AffectedSpecs
       @node = {}
       @hints = []
       @unmatched = []
+      @notes = []
       @changed.each { |path| add_changed(path) }
       code_files.each { |path| add_strong(path) }
       @changed.each { |path| add_bundle_specs(path) }
@@ -87,11 +100,12 @@ module AffectedSpecs
       # every weak name match before any grep hit.
       code_files.each { |path| add_weak(path) } # rubocop:disable Style/CombinableLoops
       add_name_matches
+      add_callers
       code_files.each { |path| add_mentions(path) }
       @unmatched = code_files.reject { |path| matched?(path) }
       @hints << web_hint if @changed.any? { |path| web?(path) }
       @hints.concat(TimingHints.new(changed: @changed, tree: @tree).hints)
-      Result.new(ruby: @ruby.values, node: @node.values, hints: @hints.uniq, unmatched: @unmatched)
+      Result.new(ruby: @ruby.values, node: @node.values, hints: @hints.uniq, unmatched: @unmatched, notes: @notes)
     end
 
     private
@@ -298,7 +312,48 @@ module AffectedSpecs
       @tree.mentions(key, spec_files + node_tests).keys.sort.each { |spec| add(spec, "uses #{path}", path) unless spec == path }
     end
 
-    # 5: specs naming the file's main constant, most mentions first; a
+    # 5: specs naming a method the change touches (the innermost def around
+    # a changed line), for every changed Ruby code file outside the bundles
+    # at once: one grep for up to MAX_CALLER_NAMES names, the first files'
+    # first. Per name, most mentions first; a name in more than HUB_SPECS
+    # spec files gets a hint instead. Generic names (#generic_method?) skip.
+    def add_callers
+      files = code_files.select { |path| ruby_code?(path) && !bundle?(path) }
+      return if files.empty?
+
+      unless ChangedDefs.available?
+        @notes << "callers tier skipped: needs prism >= #{ChangedDefs::MIN_PRISM}"
+        return
+      end
+
+      wanted = files.flat_map do |path|
+        lines = @tree.changed_lines(path)
+        next [] if lines.empty?
+
+        ChangedDefs.names(source(path).to_s, lines).reject { |name| generic_method?(name) }.map { |name| [name, path] }
+      end
+      wanted = wanted.uniq(&:first).first(MAX_CALLER_NAMES)
+      return if wanted.empty?
+
+      hits = @tree.mentions_each(wanted.map(&:first), spec_files)
+      wanted.each do |name, path|
+        specs = hits.fetch(name, {})
+        if specs.size > HUB_SPECS
+          @hints << "hub: method #{name} (#{path}) is named in #{specs.size} spec files"
+          next
+        end
+        specs.sort_by { |spec, count| [-count, spec] }.each { |spec, _| add(spec, "calls #{name} (#{path})", path) }
+      end
+    end
+
+    def generic_method?(name)
+      name.size < MIN_CALLER_NAME || GENERIC_METHODS.include?(name) ||
+        Object.method_defined?(name) || Object.private_method_defined?(name) || Enumerable.method_defined?(name)
+    end
+
+    def source(path) = (@sources ||= {}).fetch(path) { @sources[path] = @tree.read(path) }
+
+    # 6: specs naming the file's main constant, most mentions first; a
     # constant in more than HUB_SPECS spec files gets a hint instead.
     def add_mentions(path)
       return unless ruby_code?(path) && !bundle?(path)
@@ -318,12 +373,12 @@ module AffectedSpecs
     # also LLM/UI spellings), read from the file. A short name (CLI, Log)
     # comes with its parent (AffectedSpecs::CLI), or it names half the suite.
     def main_constant(path)
-      source = @tree.read(path)
-      return unless source
+      text = source(path)
+      return unless text
 
       want = File.basename(path, ".rb").delete("_-").downcase
       stack = []
-      source.each_line do |line|
+      text.each_line do |line|
         next unless (m = line.match(/^(\s*)(?:class|module)\s+((?:\w+::)*\w+)/))
 
         stack.pop while stack.any? && stack.last[0] >= m[1].size

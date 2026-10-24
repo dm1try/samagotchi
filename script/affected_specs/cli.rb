@@ -46,8 +46,9 @@ module AffectedSpecs
           usage: script/affected-specs [RANGE] [options]
 
           Lists the spec files to run for a change, best first: changed specs, specs named
-          after a changed file, the rules for specs that read docs or source as text, then
-          specs that name the changed file's class. Ruby specs on stdout (for
+          after a changed file, the rules for specs that read docs or source as text, the
+          other name matches, specs that name a changed method (prism >= 1.0), then specs
+          that name the changed file's class. Ruby specs on stdout (for
           `bundle exec rspec $(script/affected-specs)`); node tests and hints on stderr.
 
           RANGE: A..B, A...B (from their merge-base), or a base REV (compared with the
@@ -126,7 +127,10 @@ module AffectedSpecs
         end
       end
       result.hints.each { |hint| @err.puts "affected-specs: #{hint}" }
-      result.unmatched.each { |path| @err.puts "affected-specs: no spec found for #{path}" } if options[:why]
+      if options[:why]
+        result.unmatched.each { |path| @err.puts "affected-specs: no spec found for #{path}" }
+        result.notes.each { |note| @err.puts "affected-specs: #{note}" }
+      end
       return 0 unless options[:run] && !ruby.empty?
 
       @out.flush

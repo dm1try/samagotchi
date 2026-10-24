@@ -223,9 +223,13 @@ docs or source as text (its `RULES`: add one when a full run catches what the na
 file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `turn_flow.rb` and `turn_note.rb`, whose
 words the REPL prints, pick it by a rule), then the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
-`spec/guardrails/context_spec.rb`), then the specs that name a changed file's class. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
+`spec/guardrails/context_spec.rb`), then the specs that name a method the change touches (the innermost `def` around a
+changed line, read with Prism; one `git grep` for up to 12 names; names under 4 characters, `initialize`, `to_s`,
+`call`… and `Object`'s or `Enumerable`'s methods skip), then the specs that name a changed file's class. The method tier
+needs Prism 1.0 or later: Ruby 3.4+ ships it, a 3.3 install has it only beside rubocop or minitest 6; below that it is
+skipped, which `--why` says. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
 The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" (with `npm run lint` too when a frontend module changed) and a
-hint for a hub class (named in too many specs to list) go to stderr, and so do the `timing:` hints, from the lines a
+hint for a hub class or method (named in too many specs to list) go to stderr, and so do the `timing:` hints, from the lines a
 changed spec adds (`git diff -U0` against the base; an untracked spec, all its lines): a `Thread.new`, `.start`,
 `spawn` or `fork` with no `join!`, `wait_for`, `with_task_dir` or `Process.wait` added in the same file, and a
 sub-second `be < 0.x` bound ([Waiting and time](#waiting-and-time), rules 3 and 5). Nothing printed means nothing

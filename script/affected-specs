@@ -3,8 +3,8 @@
 
 # The spec files to run for a change, best first and capped: the specs it
 # changed, the specs named after the files it changed, the rules for specs
-# that read docs or source as text, then the specs that name a changed
-# file's class. For builders while they work; the coordinator still runs
+# that read docs or source as text, the specs that name a method the change
+# touches (Prism 1.0+), then the specs that name a changed file's class. For builders while they work; the coordinator still runs
 # the full suite at merge.
 #
 #   script/affected-specs [RANGE] [--why] [--all] [--cap N] [--run]   # --help says more
