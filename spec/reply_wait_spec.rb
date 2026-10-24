@@ -751,8 +751,9 @@ RSpec.describe Samagotchi::ReplyWait do
     describe "an input another turn merged (a steer)" do
       def plain_input(id) = Samagotchi::SessionInbox.write_input(dir, prompt: "also", enqueued_id: id)
 
+      # A drain merges it: the claimed file goes as it is read.
       def absorb(id, by:)
-        claim(id)
+        FileUtils.rm_f(claim(id))
         s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
         s.status = "running"
         s.interrupted_turn = { "iteration" => 1, "enqueued_id" => by }.compact
@@ -801,11 +802,33 @@ RSpec.describe Samagotchi::ReplyWait do
       it "takes an absorbing turn that ran and ended between two looks (idle, a turn not its ended since)" do
         plain_input("y1")
         base = baseline
-        claim("y1")
+        FileUtils.rm_f(claim("y1"))
         write_reply("a1 answer")
         end_turn("a1")
 
         expect(wait(baseline: base, turn: "y1", timeout: 2).text).to eq("a1 answer")
+      end
+
+      # Its own turn keeps the claimed file until it ends: a look between
+      # the claim and the turn's running save sees idle with an earlier
+      # turn's end since the baseline, which is not the input's merge.
+      it "waits on its own turn in its claim-to-save window, not an earlier turn's reply" do
+        plain_input("y1")
+        base = baseline
+        later do
+          write_reply("x0 answer")
+          end_turn("x0")
+          claim("y1")
+          looked(2) # the look between the claim and the turn's running save
+          s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          s.status = "running"
+          s.interrupted_turn = { "iteration" => 1, "enqueued_id" => "y1" }
+          s.save(state_dir: tmpdir)
+          write_turn_reply("y1 answer", "y1")
+          end_turn("y1")
+        end
+
+        expect(wait(baseline: base, turn: "y1").text).to eq("y1 answer")
       end
 
       it "never takes another turn for a queued input: taken, it waits through the idle moment before its own turn" do
