@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - chi web: turning the phone's bell off and on again now replaces a subscription iOS dropped silently, instead of
   keeping the dead one in `subscriptions.json`.
+- chi web: a Home Screen app left open for days picks up a newer service worker (after `chi update`) when it comes
+  back to the front.
 
 ## [0.111.0] - 2026-10-24
 

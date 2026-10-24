@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NOTIFY_KEY, PUSH_DEVICE_KEY, createNotifications } from "../../../lib/samagotchi/web/public/notifications.js";
+import { NOTIFY_KEY, PUSH_DEVICE_KEY, SW_UPDATE_MS, createNotifications } from "../../../lib/samagotchi/web/public/notifications.js";
 
 // A fake page: a document whose visibility and focus the test sets, a
 // window, a bell, localStorage and the Notification API.
@@ -139,7 +139,7 @@ test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapsh
 // +tags+ are the notifications already on the device (its getNotifications);
 // +device+ logs what the page did to them and to the app's badge.
 function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null,
-  tags = [], scoped = false, visible = false, saved = {}, throwingStorage = false } = {}) {
+  tags = [], scoped = false, visible = false, saved = {}, throwingStorage = false, failUpdate = false } = {}) {
   const calls = [];
   const device = [];
   const delivered = tags.map((tag) => ({ tag, closed: false }));
@@ -153,6 +153,7 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     };
   }
   const reg = {
+    update: async () => { calls.push(["update"]); if (failUpdate) throw new Error("offline"); },
     getNotifications: async () => delivered.filter((n) => !n.closed)
       .map((n) => ({ tag: n.tag, close: () => { n.closed = true; device.push(["close", n.tag]); } })),
     pushManager: {
@@ -189,11 +190,12 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     if (throwingStorage) throw new Error("SecurityError");
     return { getItem: (k) => (kept.has(k) ? kept.get(k) : null), setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
   };
-  const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped });
+  const clock = { ms: 1_000_000 };
+  const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped, now: () => clock.ms });
   const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
   const synced = async () => { await page.syncing(); };
-  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept,
+  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept, clock,
     revoke: () => { current = null; } };
 }
 
@@ -378,4 +380,51 @@ test("a storage that throws: the bell still subscribes, without replaces", async
   assert.equal(app.button.dataset.state, "on");
   const post = app.calls.find((c) => c[0] === "POST" && c[1] === "/api/push/subscriptions");
   assert.equal("replaces" in post[2], false);
+});
+
+// ── A long-lived Home Screen app picks up a new sw.js ─────────────────────
+const updates = (app) => app.calls.filter((c) => c[0] === "update").length;
+
+test("coming back to the front asks for a newer service worker, at most once per SW_UPDATE_MS", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", visible: true });
+  await app.page.pushReady;
+  app.fire("doc:visibilitychange");
+  assert.equal(updates(app), 0, "register() has just checked");
+
+  app.clock.ms += SW_UPDATE_MS;
+  app.fire("doc:visibilitychange");
+  app.fire("win:focus");
+  assert.equal(updates(app), 1);
+
+  app.clock.ms += SW_UPDATE_MS - 1;
+  app.fire("doc:visibilitychange");
+  assert.equal(updates(app), 1);
+  app.clock.ms += 1;
+  app.doc.visibilityState = "hidden";
+  app.fire("doc:visibilitychange");
+  assert.equal(updates(app), 1, "hidden: not back in front");
+  app.doc.visibilityState = "visible";
+  app.fire("doc:visibilitychange");
+  assert.equal(updates(app), 2);
+});
+
+test("the update is asked whether the bell is on or off, never without push, and a failing one is swallowed", async () => {
+  const off = fakeApp({ permission: "granted", visible: true });
+  await off.page.pushReady;
+  off.clock.ms += SW_UPDATE_MS;
+  off.fire("doc:visibilitychange");
+  assert.equal(updates(off), 1);
+
+  const none = fakeApp({ enabled: false, permission: "granted", visible: true });
+  await none.page.pushReady;
+  none.clock.ms += SW_UPDATE_MS;
+  none.fire("doc:visibilitychange");
+  assert.equal(updates(none), 0);
+
+  const failing = fakeApp({ subscribed: true, permission: "granted", visible: true, failUpdate: true });
+  await failing.page.pushReady;
+  failing.clock.ms += SW_UPDATE_MS;
+  failing.fire("doc:visibilitychange");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(updates(failing), 1);
 });

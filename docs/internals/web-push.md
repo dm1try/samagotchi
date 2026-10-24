@@ -97,7 +97,10 @@ show iOS refuses is shown once more without its icon and data. A show calls `sho
 icon, data: {url}})` first; then, when `open` is an array, closes every `getNotifications()` whose tag is a
 question's `"<sid>:<qid>"` (never `chi:*`), isn't the new one and isn't in `open` (after the show: closing before it
 fails on iOS; errors are swallowed); then `setAppBadge(badge)` when `badge` is a number. A tap focuses the app's first window and navigates it to the url, else opens one (only a path of chi web's); `install`
-skips waiting, `activate` claims the clients. No fetch handler and no caching: chi web has no offline mode, and a
+skips waiting, `activate` claims the clients. A Home Screen app can stay open for days, and the browser checks for
+a newer `sw.js` only on `register()` and on navigations: so when the page comes back in front (`backInFront` in
+`notifications.js`) it calls `reg.update()` (errors swallowed), at most once per `SW_UPDATE_MS` (an hour; counted
+from the register, which has just checked), with the bell on or off, never without push. No fetch handler and no caching: chi web has no offline mode, and a
 fetch handler would change how the page loads. `spec/web/public/sw.test.js` runs it in a `vm` with a fake worker
 scope.
 
