@@ -1,11 +1,11 @@
 ---
 name: ruby
-version: 0.1.0
+version: 0.2.0
 scope: system
-description: "An RSpec run with no examples at all (`0 examples, 0 failures`) steers a hint into the turn: check the path, the filter (-e/--tag) or the .rspec --pattern"
+description: "The ruby_symbol tool: a Ruby method or class by name with its source, or a file's outline (Prism >= 1.0); and an RSpec run with no examples at all (`0 examples, 0 failures`) steers a hint into the turn: check the path, the filter (-e/--tag) or the .rspec --pattern"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:f088ae539b1a0c46b35823fb69be42524ce8eac34e185b20ffef7e05d62dbd5f
+  sha256: sha256:df0bdbc5efa1549301464f93e22b53166addc63db2f0f9215241d892b769b4e2
 # after_tool_call's result: (0.57.0)
 requires_chi: ">= 0.57.0"
