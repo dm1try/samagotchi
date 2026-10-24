@@ -63,8 +63,31 @@ module Samagotchi
     # @!attribute origin [String, nil] "command" for a :no_reply that a
     #   file-delivered session command settled (no turn ran:
     #   TurnCheckpoint.record_command_outcome); nil otherwise
+    # @!attribute running_look [RunningLook, nil] on a :timeout, the turn
+    #   this wait saw running (call's running_look:, for a wait that goes
+    #   on in a next call: chi web's 30 s slices of a remote wait)
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
-                        :stopped_by, :kept_steps, :session, :turn_id, :origin, keyword_init: true)
+                        :stopped_by, :kept_steps, :session, :turn_id, :origin, :running_look, keyword_init: true)
+
+    # A turn a wait with no turn: saw running with its checkpoint mark:
+    # last_turn's ended_at then and the names of the input files claimed
+    # then (*.json.processing), so its settle by a next worker tells from
+    # a turn that ended or an input that runs next (Poll#settled_running).
+    # Plain strings, so a remote wait carries it from one slice to the next.
+    RunningLook = Data.define(:last_end, :claimed) do
+      # @return [RunningLook, nil] nil unless +raw+ is {last_end: String or
+      #   nil, claimed: [file names]} (string keys, as JSON parsed it)
+      def self.from_h(raw)
+        return nil unless raw.is_a?(Hash) && raw.keys.sort == %w[claimed last_end]
+
+        last_end = raw["last_end"]
+        claimed = raw["claimed"]
+        return nil unless (last_end.nil? || last_end.is_a?(String)) && claimed.is_a?(Array) &&
+                          claimed.all? { |name| name.is_a?(String) && File.basename(name) == name }
+
+        new(last_end: last_end, claimed: claimed.sort.freeze)
+      end
+    end
 
     # The session as it was before a message went in (call's baseline:,
     # #baseline_of): its message count, the question pending then, and when
@@ -133,13 +156,17 @@ module Samagotchi
     #   sorts at the cursor, not past it, and its end precedes the
     #   baseline, so without it the wait would time out "running" again.
     #   Not for a turn: wait (chi answer) whose own end it waits for.
+    # @param running_look [RunningLook, nil] the running turn an earlier
+    #   call of the same wait saw (its :timeout result's running_look): its
+    #   settle ends this call too, as if this call had seen it running
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
-             baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false, ended_before: false)
+             baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false, ended_before: false,
+             running_look: nil)
       Poll.new(id, state_dir: state_dir, cursor: cursor, timeout: timeout, poll_interval: poll_interval,
                    cancelled: cancelled, baseline: baseline, owner_grace: owner_grace, interject: interject, turn: turn,
-                   queued: queued, ended_before: ended_before).run
+                   queued: queued, ended_before: ended_before, running_look: running_look).run
     end
 
     # The session as it was before a message went in (call's baseline:):

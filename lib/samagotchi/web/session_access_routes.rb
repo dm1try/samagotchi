@@ -171,13 +171,16 @@ module Samagotchi
       # (SessionAccess::Local#wait_reply). Body: cursor, baseline
       # ({messages, question_id, last_turn}, as the prepare route gave it),
       # turn, queued, ended_before, owner_grace (seconds, null: wait for
-      # whatever wakes a worker), timeout (seconds, capped). 200: the
-      # ReplyWait::Result's fields (status: done, waiting_for_answer,
-      # no_reply, error, stopped, timeout or worker_gone; text, file,
-      # question, outcome, …; never the Session) and parent_strategy, what
-      # a parent may pick on the session's questions here
-      # (ParentReport.strategy_for). A timeout status: ask again. 503
-      # server_stopping when chi web stops mid-wait.
+      # whatever wakes a worker), timeout (seconds, capped), running_look
+      # (the last timeout's, as it came). 200: the ReplyWait::Result's
+      # fields (status: done, waiting_for_answer, no_reply, error, stopped,
+      # timeout or worker_gone; text, file, question, outcome, …; never the
+      # Session) and parent_strategy, what a parent may pick on the
+      # session's questions here (ParentReport.strategy_for). A timeout
+      # status: ask again, with its running_look ({last_end, claimed}, or
+      # null: the running turn this slice saw, so a settle between two
+      # slices still ends the wait). 503 server_stopping when chi web stops
+      # mid-wait.
       def handle_wait(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         options, error = wait_options(body)
@@ -209,8 +212,15 @@ module Samagotchi
         end
 
         timeout = [numbers["timeout"] || WAIT_MAX_SECONDS, WAIT_MAX_SECONDS].min
+        look = body["running_look"]
+        running_look = look.nil? ? nil : ReplyWait::RunningLook.from_h(look)
+        if !look.nil? && running_look.nil?
+          return [nil, error_response(400, "invalid_wait", "running_look is {last_end, claimed: [file names]}")]
+        end
+
         [{ cursor: strings["cursor"], turn: strings["turn"], baseline: baseline, timeout: timeout,
-           owner_grace: numbers["owner_grace"], queued: body["queued"] == true, ended_before: body["ended_before"] == true }, nil]
+           owner_grace: numbers["owner_grace"], queued: body["queued"] == true, ended_before: body["ended_before"] == true,
+           running_look: running_look }, nil]
       end
 
       def wait_baseline(raw)
@@ -231,6 +241,7 @@ module Samagotchi
         RESULT_FIELDS.each { |key| json[key] = result[key] }
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         json[:question] = result.question&.to_file
+        json[:running_look] = result.running_look&.to_h
         json[:parent_strategy] = strategy_json(strategy)
         json
       end

@@ -333,7 +333,9 @@ module Samagotchi
       end
 
       # ReplyWait on the server, asked again each WAIT_SLICE until it ends
-      # or +timeout+ passes.
+      # or +timeout+ passes. Each slice is a fresh ReplyWait there: the
+      # running turn a slice saw (its timeout's running_look) goes into the
+      # next, so a settle between two slices ends the wait as it would here.
       # @return [ReplyWait::Result]
       # @raise [ArgumentError] the session is gone
       def wait_reply(id, cursor:, timeout:, baseline:, owner_grace: nil, turn: nil, queued: false, ended_before: false,
@@ -356,6 +358,8 @@ module Samagotchi
           @strategies[id] = strategy_of(reply.json["parent_strategy"])
           result = result_of(reply.json)
           return result unless result.status == :timeout
+
+          body[:running_look] = reply.json["running_look"]
         end
       end
 

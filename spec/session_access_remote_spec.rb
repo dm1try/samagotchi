@@ -272,6 +272,38 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     it "holds a parent to the strictest strategy before any wait said the server's" do
       expect(remote.parent_strategy("s1").name).to eq("hard")
     end
+
+    # Each slice is a fresh ReplyWait on the server: the turn one saw
+    # running goes into the next (running_look), so a dead worker's turn
+    # settled between two slices ends the wait as it does on this machine.
+    it "ends canceled (worker_stopped) on a settle between two slices, not at its timeout" do
+      stub_const("#{described_class}::WAIT_SLICE", 0.2)
+      session = make(status: "running")
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-10-04T10:00:00.000+00:00")
+      session.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 2)
+      session.save(state_dir: tmpdir)
+      base = Samagotchi::ReplyWait.baseline_of(session)
+      slices = []
+      settling = lambda do |method, path, **opts|
+        reply = transport.call(method, path, **opts)
+        next reply unless path.end_with?("/wait")
+
+        slices << [opts[:body][:running_look], reply.json["status"]]
+        if slices.size == 1 # the worker died in it; the next one settles it before the second slice
+          s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          Samagotchi::TurnCheckpoint.settle(s, session_dir: Samagotchi::Session.session_dir(s.id, state_dir: tmpdir))
+          s.save(state_dir: tmpdir)
+        end
+        reply
+      end
+      access = described_class.new(RemoteBackend.entry, transport: settling, sleeper: ->(_s) {})
+
+      result = access.wait_reply(session.id, cursor: nil, timeout: 5, baseline: base)
+
+      expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+      expect(slices).to eq([[nil, "timeout"],
+                            [{ "last_end" => "2026-10-04T10:00:00.000+00:00", "claimed" => [] }, "no_reply"]])
+    end
   end
 
   describe "chi send through a Remote" do

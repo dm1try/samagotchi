@@ -249,6 +249,14 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
 
       expect([status, body["status"]]).to eq([200, "timeout"])
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(body["running_look"]).to be_nil # no checkpoint mark: no turn to settle
+
+      # One with its mark: the next slice gets it back (SessionAccess::Remote#wait_reply).
+      marked = Samagotchi::Session.load(session.id, state_dir: state_dir)
+      marked.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 1)
+      marked.save(state_dir: state_dir)
+      look = { "last_end" => nil, "claimed" => [] }
+      expect(wait(session, { cursor: nil, timeout: 0.2 }).last).to include("status" => "timeout", "running_look" => look)
       expect(described_class::WAIT_MAX_SECONDS).to eq(30.0)
     end
 
@@ -266,6 +274,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(wait(session, { baseline: { messages: "x" } }).first).to eq(400)
       expect(wait(session, { baseline: { other: 1 } }).first).to eq(400)
       expect(wait(session, { timeout: -1 }).first).to eq(400)
+      expect(wait(session, { running_look: { last_end: nil, claimed: ["../x"] } }).first).to eq(400)
+      expect(wait(session, { running_look: "x" }).first).to eq(400)
       expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/wait", method: "POST", body: {}).first).to eq(404)
     end
   end

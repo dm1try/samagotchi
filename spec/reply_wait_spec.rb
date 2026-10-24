@@ -674,6 +674,41 @@ RSpec.describe Samagotchi::ReplyWait do
         expect(Samagotchi::ParentReport.status(result)).to eq("canceled")
       end
 
+      # A remote wait is chi web's 30 s slices, each a call of its own: the
+      # running turn one saw goes into the next as running_look:.
+      it "hands the turn it saw running to a next call, whose look after the settle ends it" do
+        queue_input("x1")
+        taken = File.basename(claim("x1")) # an input its turn took
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-10-04T10:00:00.000+00:00")
+        s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 2)
+        s.save(state_dir: tmpdir)
+        base = baseline
+        first = wait(baseline: base, timeout: 0.1)
+        expect(first.running_look)
+          .to eq(Samagotchi::ReplyWait::RunningLook.new(last_end: "2026-10-04T10:00:00.000+00:00", claimed: [taken]))
+        die_and_settle
+
+        expect(wait(baseline: base, timeout: 0.3).status).to eq(:timeout) # a fresh call never saw it running
+        result = wait(baseline: base, timeout: 5, running_look: first.running_look)
+        expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
+
+        # Not when an input waits: it runs next, and its end is the answer.
+        queue_input("q1")
+        expect(wait(baseline: base, timeout: 0.3, running_look: first.running_look).status).to eq(:timeout)
+      end
+
+      it "reads a carried running look only as {last_end, claimed: [file names]}" do
+        look = Samagotchi::ReplyWait::RunningLook
+        expect(look.from_h({ "last_end" => nil, "claimed" => ["b.json.processing", "a.json.processing"] }))
+          .to eq(look.new(last_end: nil, claimed: %w[a.json.processing b.json.processing]))
+        [nil, [], {}, { "last_end" => 3, "claimed" => [] }, { "last_end" => nil, "claimed" => ["../x"] },
+         { "last_end" => nil, "claimed" => "a" }, { "last_end" => nil, "claimed" => [], "x" => 1 }].each do |raw|
+          expect(look.from_h(raw)).to be_nil, raw.inspect
+        end
+      end
+
       describe "with a message sent into the running turn (a steer)" do
         def plain_input(id) = Samagotchi::SessionInbox.write_input(dir, prompt: "also", enqueued_id: id)
 

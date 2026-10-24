@@ -98,7 +98,11 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
 5. **The wait.** `ParentWait#wait_for_reply` → `Remote#wait_reply` loops on `POST …/wait` with
    `timeout: min(time left, WAIT_SLICE)` (30 s). The server runs `ReplyWait.call` for at most `WAIT_MAX_SECONDS` (30 s)
    and returns the `ReplyWait::Result` fields plus `parent_strategy`. On a `timeout` status the client asks again until
-   its own `--timeout` runs out, at which point it builds the `timeout` result itself. A 503 `server_stopping` (chi web
+   its own `--timeout` runs out, at which point it builds the `timeout` result itself. Each slice is a fresh `ReplyWait`
+   there, so a `timeout` answer carries the slice's `running_look` (`ReplyWait::RunningLook`: the running turn it saw
+   with its checkpoint mark, `{last_end, claimed}`, else null) and the client sends it back on the next slice, as is:
+   a dead worker's turn settled between two slices ends the wait `canceled` (`worker_stopped`) as it does locally,
+   not at the timeout. A 503 `server_stopping` (chi web
    shutting down mid-wait: `ReplyWait`'s `cancelled:` returns `:canceled`) is retried after `RETRY_AFTER` (1 s).
    `HTTPTransport::READ_TIMEOUT` (75 s) is set above the longest answer, a wait slice or a create's wait for its worker.
 6. **The report.** `ParentReport.report` prints it as it does locally. It uses `Remote#parent_strategy`, which

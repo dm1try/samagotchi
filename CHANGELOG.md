@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi --remote NAME send --wait` with no message (and one whose message merged into the running turn) ends
+  `canceled` (`worker_stopped`) when that turn's worker dies and the next worker settles it between two of chi web's
+  30 s wait slices, as it does on this machine, instead of waiting until `--timeout`.
+
 - chi web: turning the phone's bell off and on again now replaces a subscription iOS dropped silently, instead of
   keeping the dead one in `subscriptions.json`.
 - chi web: a Home Screen app left open for days picks up a newer service worker (after `chi update`) when it comes

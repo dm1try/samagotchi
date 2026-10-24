@@ -15,7 +15,7 @@ module Samagotchi
     # them. ReplyWait.call's parameters say what each means.
     class Poll
       def initialize(id, state_dir:, cursor:, timeout:, poll_interval:, cancelled:, baseline:, owner_grace:, interject:,
-                     turn:, queued:, ended_before:)
+                     turn:, queued:, ended_before:, running_look: nil)
         @id = id
         @state_dir = state_dir
         @cursor = cursor
@@ -41,10 +41,10 @@ module Samagotchi
         @own_base = nil
         @seen_running = false
         # A turn seen running with its checkpoint mark (a wait with no
-        # turn:): last_turn's ended_at then and the input files claimed
-        # then, so its settle by a next worker (#settled_running) tells
+        # turn:; RunningLook), by this call or an earlier one of the same
+        # wait, so its settle by a next worker (#settled_running) tells
         # from a turn that ended or an input that runs next.
-        @running_look = nil
+        @running_look = running_look
         @gone_since = nil
       end
 
@@ -264,14 +264,13 @@ module Samagotchi
         nil
       end
 
-      RunningLook = Data.define(:last_end, :claimed)
-
       def note_running(session)
         return unless session.interrupted_turn
 
-        @running_look = RunningLook.new(last_end: session.last_turn&.ended_at,
-                                        claimed: SessionInbox.claimed_input_files(@session_dir))
+        @running_look = RunningLook.new(last_end: session.last_turn&.ended_at, claimed: claimed_names)
       end
+
+      def claimed_names = SessionInbox.claimed_input_files(@session_dir).map { |path| File.basename(path) }.sort.freeze
 
       # The turn seen running is gone with no turn's end: its worker died
       # in it and the next one settled it (TurnCheckpoint.settle: idle, the
@@ -287,7 +286,7 @@ module Samagotchi
         return nil unless look && session.status == Session::STATUS_IDLE && session.interrupted_turn.nil? &&
                           session.last_turn&.ended_at == look.last_end
         return nil unless SessionInbox.find_new_input_files(@session_dir).empty?
-        return nil unless (SessionInbox.claimed_input_files(@session_dir) - look.claimed).empty?
+        return nil unless (claimed_names - look.claimed).empty?
 
         Result.new(status: :no_reply, outcome: "canceled", cancel_reason: TurnCheckpoint::WORKER_STOPPED, session: session)
       end
@@ -303,7 +302,9 @@ module Samagotchi
         nil
       end
 
-      def timed_out = @deadline && ReplyWait.monotonic > @deadline ? Result.new(status: :timeout) : nil
+      def timed_out
+        @deadline && ReplyWait.monotonic > @deadline ? Result.new(status: :timeout, running_look: @running_look) : nil
+      end
 
       # Whether the session's last turn is the one that had ended at the
       # baseline (its ended_at set and unchanged).
