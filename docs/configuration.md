@@ -1640,7 +1640,9 @@ What changes once `web.public_url` is set:
   to the proxy, but it outlives the sign-in's redirects: the sign-in page sits at that URL (its scripts can read it)
   and it stays in the browser's history, which is why it holds a code that works once. The page trades the code for
   the cookie (`POST /api/token`) and drops it from the URL; a page that already has a session asks first, since the
-  trade replaces it. The 401 page's paste box posts the token in the request's body, never in the URL.
+  trade replaces it. A code presented with the wrong identity is used up and gives nothing, so whoever already holds
+  a link can spend it (`chi web` again, or a new invite, makes another). The 401 page's paste box posts the token in
+  the request's body, never in the URL.
 - When the proxy's sign-in or chi's token ends, the page says so: it reloads once (the proxy's sign-in brings you
   back), and within a minute of that shows "Signed out … Reload" instead of a list that quietly stopped updating. Its
   API calls ask for JSON, so oauth2-proxy answers an ended sign-in with 401 instead of a redirect.
