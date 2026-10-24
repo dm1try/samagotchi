@@ -120,6 +120,8 @@ and commands may change between minor versions. How releases are made:
 - The start page's `review…` chip can name a file with a space in its path: in double quotes (`"docs/my plan.md"`);
   an unclosed quote is said in its form. A file Start refuses (a secret, outside the project) is said in that form,
   opened again at the files chosen, instead of a blocking alert.
+- The participants panel no longer closes on its own Cap or Invite another (the button, redrawn away by its own
+  click, read as a click outside the panel).
 
 ## [0.106.0] - 2026-10-23
 

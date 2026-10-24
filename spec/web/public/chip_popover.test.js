@@ -161,3 +161,18 @@ test("a sheet popover is a bottom sheet in a narrow window, a popover at its chi
   assert.equal(s.ctl.pop.style.width, "300px");
   s.done();
 });
+
+// An act that redraws its own button away (the participants panel's Cap,
+// swapped for its field) is a click inside, not outside: it stays open.
+test("a click on a button the act redraws away doesn't close it", () => {
+  const s = shell({ onAct: (name) => {
+    if (name === "other") render(html`<form><input name="swapped"></form>`, s.ctl.pop);
+  } });
+  s.chip.click();
+  s.ctl.pop.querySelector("[data-act=other]").click();
+  assert.equal(s.ctl.isOpen(), true);
+  assert.ok(s.ctl.pop.querySelector("input[name=swapped]"));
+  document.body.click();
+  assert.equal(s.ctl.isOpen(), false);
+  s.done();
+});
