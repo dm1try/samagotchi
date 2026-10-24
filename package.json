@@ -7,7 +7,7 @@
     "lint": "eslint lib/samagotchi/web/public spec/e2e"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "eslint": "^10.13.0",
     "globals": "^17.13.0",
     "happy-dom": "^20.14.6"
