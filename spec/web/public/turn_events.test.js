@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { turnOutput, workerGoneText } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { turnOutput, workerGoneText, streamDropEnd } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("turnOutput reads turn_summary.output", () => {
   const data = { type: "turn_completed", turn_summary: { output: "\nPONG" } };
@@ -494,6 +494,24 @@ test("workerGoneText ends a running turn whose worker went away, and only a runn
   assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u25A0 canceled (session stopped)");
   assert.equal(workerGoneText({ turnRunning: true }), "\u2715 canceled (worker exited)");
   assert.equal(workerGoneText({ turnRunning: false, stopped: true }), null);
+});
+
+// The stream dropped: an open one with no stop says nothing about the worker,
+// so the turn view waits for the re-read instead of flashing "canceled".
+test("streamDropEnd ends the turn view now only for a stop or a stream that never opened", () => {
+  assert.deepEqual(streamDropEnd({ turnRunning: false, stopped: true, opened: true }), { endNow: false, endText: null });
+  assert.deepEqual(streamDropEnd({ turnRunning: true, opened: true }), {
+    endNow: false, endText: "\u2715 canceled (worker exited)",
+  });
+  assert.deepEqual(streamDropEnd({ turnRunning: true, stopped: true, opened: true }), {
+    endNow: true, endText: "\u25A0 canceled (session stopped)",
+  });
+  assert.deepEqual(streamDropEnd({ turnRunning: true, opened: false }), {
+    endNow: true, endText: "\u2715 canceled (worker exited)",
+  });
+  assert.deepEqual(streamDropEnd({ turnRunning: true, stopped: true, opened: false }), {
+    endNow: true, endText: "\u25A0 canceled (session stopped)",
+  });
 });
 
 // 4.14: the worker can die between turn_completed and answer_display, so the

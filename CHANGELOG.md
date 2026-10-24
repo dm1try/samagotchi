@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a session's stream dropping mid-turn (a phone briefly offline) no longer shows "canceled (worker exited)"
+  while the worker runs on; the page re-reads first and shows it only when no worker took the turn.
+
 ## [0.110.0] - 2026-10-24
 
 ### Added
