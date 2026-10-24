@@ -124,7 +124,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
                               replace! turn_completed persist hook:after_turn=completed answer_display hook:session_end])
     expect(result).to be_a(Samagotchi::LLM::ModelResult).and have_attributes(output: "done")
-    expect(tail).to eq(["system:[SYSTEM: REMINDERS DUE]\n  tea: brew (interva", "user:hi", "model:done"])
+    expect(tail).to eq(["system:[SYSTEM: REMINDERS DUE 2026-01-02 03:04 loca", "user:hi", "model:done"])
     expect(at_end).to eq(status: "idle", outcome: "completed")
     expect_released
     expect_steer_dropped
@@ -245,7 +245,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(error).to be_a(Interrupt)
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
                               replace! turn_canceled persist])
-    expect(tail).to eq(["system:[SYSTEM: REMINDERS DUE]\n  tea: brew (interva", "user:hi",
+    expect(tail).to eq(["system:[SYSTEM: REMINDERS DUE 2026-01-02 03:04 loca", "user:hi",
                         "system:[SYSTEM: the previous turn was cancelled (ct"])
     expect(engine.active_cancel_controller).to be_nil
     expect(at_end).to eq(status: "idle", outcome: "canceled")
@@ -315,7 +315,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.messages.last[:content]).to eq(
       "[SYSTEM: the previous turn failed before any answer: boom. The continued turn stopped there.]"
     )
-    expect(tail(3).first(2)).to eq(["tool_response:r", "system:[SYSTEM: REMINDERS DUE]\n  tea: brew (interva"])
+    expect(tail(3).first(2)).to eq(["tool_response:r", "system:[SYSTEM: REMINDERS DUE 2026-01-02 03:04 loca"])
     expect(at_end).to eq(status: "idle", outcome: "failed")
     expect_released
   end

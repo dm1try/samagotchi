@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Sessions record when each message happened: prompts, lines merged into a turn, reminders, notes and the model's
   replies carry `at` in the session file (never sent to the model); plugins see it in `ctx.messages`.
+- Reminders tell the model the local time they came due (`[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]`), so it
+  can reason about how long ago something happened.
 
 ### Fixed
 

@@ -12,6 +12,10 @@ module Samagotchi
   # turn while they are pending. A turn injects whatever is due then
   # (#inject!), which marks it fired and clears the pending names.
   class ReminderQueue
+    # The reminders message's first line at +time+ (a Time in the zone to
+    # show: Time.now's is the local one).
+    def self.header(time) = "[SYSTEM: REMINDERS DUE #{time.strftime("%Y-%m-%d %H:%M")} local]"
+
     # @param store [ReminderStore, nil]
     # @param now [#call] the wall clock (a Time) for the injected message's
     #   stamp, when #inject! is given none
@@ -59,7 +63,12 @@ module Samagotchi
     # A tail message, not the head system prompt: changing the head would
     # make the model server re-evaluate the whole conversation's prefix
     # (its KV cache) every interval; a tail costs only the new suffix.
-    # The message carries its wall time (MessageTime::KEY, display-only).
+    # The header names the local time the reminders came due at, for the
+    # model ("[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]"): baked into
+    # the content here, never rendered at wire time, so a replay sends the
+    # same bytes (the prompt cache) whatever the time zone or DST. The
+    # message also carries that time as its stamp (MessageTime::KEY,
+    # display-only).
     # @param messages [Array<Hash>] the turn's messages (appended to)
     # @param now [Time, nil] the turn's wall time (nil: the clock's)
     # @return [Array<Hash>] the reminders injected (maybe none)
@@ -69,7 +78,7 @@ module Samagotchi
 
       time = now || @now.call
       lines = reminders.map { |r| "  #{r[:name]}: #{r[:description]} (interval: #{r[:interval_minutes]}m)" }.join("\n")
-      messages << { role: "system", content: "[SYSTEM: REMINDERS DUE]\n#{lines}\n[END REMINDERS]",
+      messages << { role: "system", content: "#{self.class.header(time)}\n#{lines}\n[END REMINDERS]",
                     MessageTime::KEY => MessageTime.iso(time) }
       @store.mark_fired_batch(reminders.map { |r| r[:name] })
       # Without this a turn's injection leaves a stale name, and the next

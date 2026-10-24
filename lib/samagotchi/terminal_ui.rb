@@ -213,7 +213,7 @@ module Samagotchi
             # When a reminder is due, queue a synthetic turn that
             # run_assist_loop checks before read_input. The synthetic turn
             # uses an empty prompt so the agent can see
-            # [SYSTEM: REMINDERS DUE] and act on them.
+            # [SYSTEM: REMINDERS DUE <local time>] and act on them.
             @engine.note_due_reminders(due_names)
           }
         }

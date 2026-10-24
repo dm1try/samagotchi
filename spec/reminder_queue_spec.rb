@@ -2,6 +2,8 @@
 
 require "samagotchi/reminder_queue"
 require "samagotchi/reminder_store"
+require "samagotchi/session"
+require "samagotchi/prompt"
 
 RSpec.describe Samagotchi::ReminderQueue do
   subject(:queue) { described_class.new(store: store) }
@@ -69,7 +71,35 @@ RSpec.describe Samagotchi::ReminderQueue do
       expect(messages.first[:content]).to eq("You are Chi.")
       expect(messages.size).to eq(3)
       expect(messages.last).to eq(role: "system", at: message_at,
-                                  content: "[SYSTEM: REMINDERS DUE]\n  health: Check API health (interval: 1m)\n[END REMINDERS]")
+                                  content: "[SYSTEM: REMINDERS DUE 2026-01-02 03:04 local]\n  health: Check API health (interval: 1m)\n[END REMINDERS]")
+    end
+
+    it "names the time the reminders came due in the header, the turn's time when given, its zone's clock" do
+      store.register({ name: "health", description: "Check API", interval_minutes: 1 })
+      make_due("health")
+      messages = []
+
+      queue.inject!(messages, now: Time.new(2026, 10, 24, 14, 32, 5, "+02:00"))
+
+      expect(messages.last[:content]).to start_with("[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]\n  health:")
+      expect(messages.last[:at]).to eq("2026-10-24T14:32:05.000+02:00")
+    end
+
+    it "keeps the header's time in the content: a saved and loaded session renders the same bytes later, elsewhere" do
+      store.register({ name: "health", description: "Check API", interval_minutes: 1 })
+      make_due("health")
+      messages = [{ role: "user", content: "hello" }]
+      queue.inject!(messages)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+      session.messages = messages
+
+      loaded = Samagotchi::Session.from_h(JSON.parse(JSON.generate(session.to_h)))
+      Samagotchi::MessageTime.source = -> { Time.new(2027, 3, 30, 23, 59, 0, "+09:00") }
+
+      with_env("TZ" => "Asia/Tokyo") do
+        expect(loaded.messages.last[:content]).to eq(messages.last[:content])
+        expect(Samagotchi::Prompt.format(loaded.messages)).to eq(Samagotchi::Prompt.format(messages))
+      end
     end
 
     it "appends to a conversation with no system message too" do

@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::Engine, "reminders" do
   end
 
   def reminder_message?(message)
-    message[:role] == "system" && message[:content].to_s.start_with?("[SYSTEM: REMINDERS DUE]")
+    message[:role] == "system" && message[:content].to_s.start_with?("[SYSTEM: REMINDERS DUE ")
   end
 
   describe "a due reminder in a turn" do
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::Engine, "reminders" do
 
       roles = sent.last.map { |m| reminder_message?(m) ? "reminder" : "#{m[:role]}:#{m[:content].to_s[0, 8]}" }
       expect(roles.drop(1)).to eq(%w[user:earlier model:before reminder user:hi])
-      expect(sent.last[-2][:content]).to eq("[SYSTEM: REMINDERS DUE]\n  tea: brew (interval: 1m)\n[END REMINDERS]")
+      expect(sent.last[-2][:content]).to eq("[SYSTEM: REMINDERS DUE 2026-01-02 03:04 local]\n  tea: brew (interval: 1m)\n[END REMINDERS]")
     end
 
     it "emits reminder_injected, marks it fired and empties the queue" do

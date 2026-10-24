@@ -249,7 +249,7 @@ RSpec.describe "Kernel contract (characterization)" do
 
       expect(store.reminders.keys).to eq(["tea"])
       expect(completions[2].json["prompt"]).to include("[contract_echo]\necho: hi")
-      expect(completions[3].json["prompt"]).to include("[SYSTEM: REMINDERS DUE]\n  tea: brew it (interval: 5m)")
+      expect(completions[3].json["prompt"]).to include("[SYSTEM: REMINDERS DUE 2026-01-02 03:04 local]\n  tea: brew it (interval: 5m)")
       expect(Thread.current[:contract_generations]).to eq([1, 2, 3, 1])
     ensure
       engine&.shutdown

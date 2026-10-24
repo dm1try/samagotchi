@@ -8,7 +8,7 @@ module Samagotchi
   #
   # Two delivery paths cooperate:
   #   1. Every turn injects what is due (ReminderQueue#inject!, from
-  #      Engine#run_turn) as [SYSTEM: REMINDERS DUE] and marks it fired.
+  #      Engine#run_turn) as [SYSTEM: REMINDERS DUE <local time>] and marks it fired.
   #   2. Synthetic turns: when this job's tick finds due reminders while
   #      idle, it fires @auto_turn_callback, which queues their names
   #      (Engine#note_due_reminders) for the worker's or the REPL's

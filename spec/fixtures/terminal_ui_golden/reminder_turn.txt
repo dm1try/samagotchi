@@ -24,5 +24,5 @@ Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l--- session ---
 system: <prompt>
-system: "[SYSTEM: REMINDERS DUE]\n  tick: Say TICK (interval: 1m)\n[END REMINDERS]"
+system: "[SYSTEM: REMINDERS DUE 2026-01-02 03:04 local]\n  tick: Say TICK (interval: 1m)\n[END REMINDERS]"
 model: "TICK"
