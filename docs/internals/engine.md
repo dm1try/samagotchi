@@ -93,7 +93,7 @@ StandardError in run_turn:
   → if turn.ended (it came from the after_turn/session_end hooks): logged as post_turn_error, re-raised
   → else: end_turn(turn, "failed", save: true) (a save that fails there is logged, turn_end_save_failed)
      # Both loops call LLM::FailedTurn.attach(e, conversation) before re-raising, so
-     # failed_messages keeps the loop's partial conversation (tool iterations included),
+     # failed_messages (TurnEndings) keeps the loop's partial conversation (tool iterations included),
      # else turn.messages, with TurnNote.failed(summary, continued: turn.continue) at the tail.
      # :turn_failed {error_class, message, duration_ms}; a provider error adds
      # error_kind, retryable, host and summary.
@@ -157,7 +157,7 @@ Stopped before the model was asked (prepare_turn returned false):
 The Engine does not talk to models directly. `Engine#backend` picks the loop the effective model's host speaks:
 
 ```
-Engine#backend → backend_for(effective_model)    # EffectiveModel.of(@host_registry, @model_choice)
+Engine#backend → backend_for(effective_model)    # EffectiveModel.of(@host_registry, @model_binding.choice)
   → host entry chat? (an api in LLM::Adapters::BY_API: openai, anthropic): LLM::ChatLoop (one per Engine, built on first use)
   → else:                                                     LLM::NativeBackend wrapping the Engine's KernelLoop
 ```
@@ -199,7 +199,9 @@ KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
 
 `turn.conversation` is the loop's own copy, not the Engine's `turn.messages`. A failure attaches it to the error
 (`LLM::FailedTurn.attach`), so `Engine#failed_messages` can keep it; an Interrupt (Ctrl-C) too, for
-`Engine#ctrl_c_messages` (see Error paths).
+`Engine#ctrl_c_messages` (see Error paths). Both are `TurnEndings`', with the other pure builders of a turn's end
+(`kept_messages`, `failed_event`, `turn_summary`, `stop_facts`); the Engine forwards to it and keeps `end_turn`,
+`complete_turn`, `store_answer_display` and `record_last_turn`.
 
 ### ChatLoop (the chat APIs)
 
@@ -397,19 +399,35 @@ what a resolve gives, all without a `/model`. Frozen, so any thread may hold one
 - The Engine's readers take one (`Engine#effective_model`); those whose fallback always covered the resolve go
   through `SessionModelSettings#model_setting` (`session_model_settings.rb`: the Engine forwards its readers of the session's settings there). A turn takes one in `turn_settings` (before the hooks) and one in `generate` (after
   them); `system_prompt`, `steer_cut_after` (at `:turn_started`) and the turn-end warm-up take their own;
-  `stats_snapshot` and `session_state_snapshot` take one each (the latter nil-tolerant).
+  `stats_snapshot` and `session_state_snapshot` take one each (the latter nil-tolerant; both `EngineSnapshots`',
+  `engine_snapshots.rb`, which the Engine forwards to).
 - Never resolved (they hold on a broken resolve): `effective_model_ref`, `bare_model_name`,
   `guardrail_model_name`, `sync_model_key!`, `served_model(probe: false)` (`HostRegistry#model_ref`/`#bare_name`).
 - Readers on other threads: the Bridge (`/state`, `/stats`, the SSE reset, a steer's cut wait), the worker's
   command thread, the recap thread and plugin threads (`session_model_recap_target`), the REPL.
-- `ModelChoice` (`@model_choice`) holds the name and the typed name as one value, so a reader on another thread
-  never pairs one model's name with another's typed name.
+- `ModelChoice` (`ModelBinding#choice`) holds the name and the typed name as one value, so a reader on another
+  thread never pairs one model's name with another's typed name.
 - `EffectiveModel.of_session` builds a saved session's (no worker): `Web::App`, `LLMContextStrategy.for_session`.
 
 `SessionSetting` names the four per-session settings (llm_context, thinking, reasoning_history, toolkit): the
 session's own value, the commands that move each chip, its chip from an EffectiveModel or from the Engine's
 readers, a saved session's chip, and how the web takes a worker snapshot's. The session state, `/stats` (no
 toolkit), a `:command_ran` and the web's session JSON list them from it.
+
+### ModelBinding (the choice and its profile)
+
+`ModelBinding` (`model_binding.rb`) holds the session's model choice, the profile given to `Engine.new` (until a
+switch), the prompt profile resolved for the choice (kept as a `[choice, resolution]` pair) and the memory overlay
+keys (`#sync_model_key!`), under one mutex; it is ToolkitBinding's counterpart, and the Engine forwards
+`profile_resolution`, `refresh_profile!`, `store_profile`, `apply_profile`, `resolve_profile`, `sync_model_key!`
+and `model_key` to it.
+
+- `#switch!` (`Engine#switch_model!`'s swap) is one assignment under the mutex: a reader on another thread sees
+  the old pair or the new one. It drops the given profile and the kept resolution.
+- `#store_profile` keeps and applies a resolution only while the choice is still the one it was resolved for,
+  by identity (`equal?`, not `==`): a `/stats` probing on a Bridge thread while `/model` runs keeps nothing.
+- `#apply_profile` runs under the mutex: the system prompts built for another profile are dropped, then
+  `KernelLoop#use_profile!`. Nothing else takes the mutex.
 
 ### ThinkingNotices
 
@@ -476,7 +494,8 @@ drain hands the message to the model at a boundary, or until the turn ends (`Ste
 
 ### The turn's sink (`on_event`) and the observers
 
-`Engine#emit_event` sends each turn event to the turn's sink (`on_event`, the REPL's renderer) and then to the
+`Engine#emit_event` (`EventFanout#emit_event`, `event_fanout.rb`, which also builds the loops' stream handler and
+emits the working set) sends each turn event to the turn's sink (`on_event`, the REPL's renderer) and then to the
 persistent observers (`Engine#subscribe`), which get a copy with a monotonic `event_seq`. The observers are the
 metrics, the debug log, the thinking tails, and in a worker the Bridge, which streams to the web and the attached
 TUI. Errors in the sink or an observer are caught; they never break the turn.
@@ -584,8 +603,11 @@ hook registry (`@hooks.fire`), not on the sink or the observers. The other hook 
 ```
 Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
-  @host_registry, @model_choice (ModelChoice: the name and the name as typed); @model_settings (SessionModelSettings: the choice and the session read at use); @client = effective_model.client
-  @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
+  @event_fanout (EventFanout: emit_event, the stream handler, the working set; its lookups read at call time)
+  @turn_endings (TurnEndings: the turn endings' builders)
+  @host_registry, @model_binding (ModelBinding: the ModelChoice, i.e. the name and the name as typed, and the given
+    profile or nil: resolved on first need, so building an Engine makes no network call); @model_settings
+    (SessionModelSettings: the choice and the session read at use); @client = effective_model.client
   MemoryBundle::SystemBundle.ensure! (the shipped system bundle installed; a failure is logged, not raised)
   @event_routes (EventRoutes: where a card or a notice goes: held while the plugins load, an anytime command's, an init task's, a turn event, else announced or held)
   @hook_routes (HookRoutes: notices (through @event_routes), hook questions, stop_turn/stop_generation, steer attribution)
@@ -609,9 +631,12 @@ Engine initialization (in this order, among other things):
   @native_backend = LLM::NativeBackend.new(kernel: @kernel)
   @prompt_builder = SystemPrompt.new(...)
   @session_observer with the metrics, the log subscriber and the thinking tails subscribed (subscribe_session_observers)
+  @engine_snapshots (EngineSnapshots: session_state_snapshot and stats_snapshot), built last: nothing reads a
+    snapshot while the Engine is built
 
 Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
-  → checks the host (ModelProfile.check_host!), sets @model_choice (name and typed name in one assignment)
+  → checks the host (ModelProfile.check_host!), sets the choice (ModelBinding#switch!: name and typed name in
+    one assignment)
   → drops the given profile and the profile resolution (resolved again on first need; one that another
     thread finishes for the old model is neither kept nor applied: #store_profile)
   → sync_model_key!, @prompt_builder.reset! (the system prompt is built again)
@@ -810,6 +835,10 @@ Paths are under `lib/samagotchi/`.
 | File | Role |
 |---|---|
 | `engine.rb` | Engine: turn lifecycle, event emission, plugins, model switching |
+| `event_fanout.rb` | `EventFanout`: how an event reaches the turn's sink and the observers (`emit_event`), the loops' stream handler, the working set's emit and dedupe; the Engine forwards |
+| `engine_snapshots.rb` | `EngineSnapshots`: the UIs' read model, `session_state_snapshot` (cheap, never raises) and `stats_snapshot` (may probe `/props`); the Engine forwards |
+| `model_binding.rb` | `ModelBinding`: the model choice and the prompt profile resolved for it, under one mutex, and the overlay keys; the Engine forwards |
+| `turn_endings.rb` | `TurnEndings`: what each turn ending keeps and announces (the kept messages and their `TurnNote`, `failed_event`, `turn_summary`, `stop_facts`); the Engine forwards |
 | `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
 | `steer_cut.rb` | `SteerCut`: the Engine's seam for a message cutting the generation |
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |

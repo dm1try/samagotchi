@@ -99,9 +99,9 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 ## Delivery
 
 **The event.** The Engine emits `{type: :working_set_updated, items:, at:}` (and `adds:` while the user's adds are
-pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_working_set`):
-- after each `:generation_started`, in `build_stream_event_handler`, from the running turn's conversation
-  (`Engine#live_conversation`, read on the turn's thread) under the turn's strategy
+pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_working_set`, `EventFanout`'s):
+- after each `:generation_started`, in `build_stream_event_handler` (`EventFanout`), from the running turn's
+  conversation (`Engine#live_conversation`, read on the turn's thread) under the turn's strategy
   (`@kernel.turn_settings.llm_context`). Both loops start a generation after `apply_llm_context!`, so the set is
   what that request sends;
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
@@ -206,8 +206,9 @@ projection), on both loops. It costs one model step; a model may skip it (the no
 - **The projection**: the pending adds are not items (nothing of them is sent), but the snapshot carries them:
   `WorkingSet.pending_adds` reads the pending note (`WorkingSet.pending_note_index` / `pending_ops`, which
   `WorkingSetSteer` delegates to) into `Snapshot#adds` (`WorkingSet::Add`: `kind`, `key`, `label`), and `to_h` adds
-  `adds:` while any is pending. `Engine#emit_working_set` compares the items and the adds, so an add announces a new
-  set and the next turn's first request (the note sent, no adds) emits again, which clears the page's pending add.
+  `adds:` while any is pending. `Engine#emit_working_set` (`EventFanout`, which keeps the last one emitted) compares
+  the items and the adds, so an add announces a new set and the next turn's first request (the note sent, no adds)
+  emits again, which clears the page's pending add.
   A running turn's set has none (the note was sent when it started), so the Bridge snapshot's `working_set` and the
   GET's `running` answer leave it out.
 

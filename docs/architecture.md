@@ -610,9 +610,10 @@ so later requests and resumed sessions pair them, and their reasoning (`thinking
 turn goes on from the run it resumes, `reasoning_since:`). It has its own system prompt
 (no raw-prompt tool declarations; the tools go as JSON schemas).
 
-`Engine#build_stream_event_handler` is the one seam both loops' streams pass
-through: with a `:generation_progress` hook registered it feeds a
-`Hooks::StreamWatch` each chunk's thinking and text after the UIs had it. A
+`Engine#build_stream_event_handler` (`EventFanout`'s, which the Engine forwards
+to) is the one seam both loops' streams pass through: with a
+`:generation_progress` hook registered it feeds a `Hooks::StreamWatch` each
+chunk's thinking and text after the UIs had it. A
 hook's `stop_generation` cancels the generation's own controller (a child of
 the turn's, `CancellationController#generation`), and each loop takes the cut
 as an empty answer and asks again.
