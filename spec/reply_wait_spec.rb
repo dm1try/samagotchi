@@ -70,10 +70,21 @@ RSpec.describe Samagotchi::ReplyWait do
     wait_for("the wait to look #{count} more time(s)") { polls[0] >= start + count }
   end
 
-  def wait(cursor: nil, timeout: 5, interject: nil, **opts)
+  # Blocks until each of +counters+ (a wait's own looks: #wait's
+  # +counter:+) made +count+ more: two waits sharing #polls could see one
+  # wait's looks stand for the other's.
+  def each_looked(counters, count)
+    starts = counters.map { |c| c[0] }
+    wait_for("each wait to look #{count} more time(s)") do
+      counters.zip(starts).all? { |c, start| c[0] >= start + count }
+    end
+  end
+
+  def wait(cursor: nil, timeout: 5, interject: nil, counter: nil, **opts)
     counting = lambda do
       interject&.call
       polls[0] += 1
+      counter[0] += 1 if counter
     end
     described_class.call(session.id, state_dir: tmpdir, cursor: cursor, timeout: timeout, poll_interval: 0.02, interject: counting, **opts)
   end
@@ -674,15 +685,20 @@ RSpec.describe Samagotchi::ReplyWait do
 
         it "ends on the settle once the turn merged it (its file gone), with turn: or without" do
           base = baseline
+          mine = [0]
+          theirs = [0]
           later do
-            looked(2)
+            # Both waits must see the turn running with its mark, each by
+            # its own looks (a settle before a wait's first look is no
+            # turn it saw: that one runs to its timeout).
+            each_looked([mine, theirs], 2)
             FileUtils.rm_f(claim("y1")) # the drain merges it
-            looked(2)
+            each_looked([mine, theirs], 2)
             die_and_settle
           end
 
-          plain = Thread.new { wait(baseline: base, timeout: 5) }
-          result = wait(baseline: base, turn: "y1", timeout: 5)
+          plain = Thread.new { wait(baseline: base, timeout: 5, counter: theirs) }
+          result = wait(baseline: base, turn: "y1", timeout: 5, counter: mine)
           expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
           join!(plain, "the plain wait")
           expect(plain.value.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "worker_stopped")
