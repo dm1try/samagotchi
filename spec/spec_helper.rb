@@ -91,6 +91,13 @@ SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.rm_rf(SPEC_XDG_STATE_HOME) }
 
+# `chi web --tunnel tailscale` never reaches the developer's real Tailscale
+# (its serve config is their tailnet's): the CLI it runs is this missing
+# file, for this process and every chi it starts, unless a spec points it at
+# a FakeTailscale.
+SPEC_TAILSCALE_CLI = File.join(SPEC_XDG_STATE_HOME, "no-real-tailscale")
+ENV["SAMAGOTCHI_TAILSCALE_CLI"] = SPEC_TAILSCALE_CLI
+
 # And keep the peer bundles (claude-peer, codex-peer) off the developer's
 # Claude Code and Codex config folders: their status card and install-skill
 # read (and --yes writes) <dir>/skills/chi-peer/SKILL.md. Empty dirs, as the
@@ -281,6 +288,7 @@ RSpec.configure do |config|
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
     SPEC_ENV_CLEAR.call
+    ENV["SAMAGOTCHI_TAILSCALE_CLI"] = SPEC_TAILSCALE_CLI
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
     ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
     ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"

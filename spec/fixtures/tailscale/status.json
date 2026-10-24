@@ -1,0 +1,27 @@
+{
+  "Version": "1.104.2",
+  "BackendState": "Running",
+  "Self": {
+    "ID": "nEXAMPLE1CNTRL",
+    "HostName": "chi-host",
+    "DNSName": "chi-host.example-tailnet.ts.net.",
+    "OS": "macOS",
+    "UserID": 1234567890123456,
+    "TailscaleIPs": ["100.100.10.1"],
+    "Online": true
+  },
+  "MagicDNSSuffix": "example-tailnet.ts.net",
+  "CurrentTailnet": {
+    "Name": "owner@example.com",
+    "MagicDNSSuffix": "example-tailnet.ts.net",
+    "MagicDNSEnabled": true
+  },
+  "CertDomains": ["chi-host.example-tailnet.ts.net"],
+  "User": {
+    "1234567890123456": {
+      "ID": 1234567890123456,
+      "LoginName": "owner@example.com",
+      "DisplayName": "Owner"
+    }
+  }
+}
