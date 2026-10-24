@@ -10,7 +10,8 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 // sw.js in a vm context with a fake service worker scope: its registration
 // (notifications shown, closed), clients (windows) and navigator (badge).
 // +refuse+ rejects that many showNotification calls first; +listFails+
-// makes getNotifications throw.
+// makes getNotifications throw. A notification closes only when it was
+// looked up by its tag, as on the iPhone.
 function loadWorker({ windows = [], refuse = 0, listFails = false } = {}) {
   const listeners = {};
   const shown = [];
@@ -23,8 +24,11 @@ function loadWorker({ windows = [], refuse = 0, listFails = false } = {}) {
     },
     getNotifications: async (filter = {}) => {
       if (listFails) throw new Error("no list");
-      return shown.filter((n) => (filter.tag === undefined || n.tag === filter.tag) && !n.closed)
-        .map((n) => ({ tag: n.tag, close: () => { n.closed = true; log.push(["close", n.tag]); } }));
+      // As on the iPhone (2026-10-24): one from the unfiltered list doesn't
+      // close; one looked up by its tag does.
+      const byTag = filter.tag !== undefined;
+      return shown.filter((n) => (!byTag || n.tag === filter.tag) && !n.closed)
+        .map((n) => ({ tag: n.tag, close: () => { if (!byTag) return; n.closed = true; log.push(["close", n.tag]); } }));
     },
   };
   const clients = {

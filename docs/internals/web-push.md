@@ -180,6 +180,10 @@ can land after the page's tidy-up and stay until the next one. Unverified on iOS
 
 ## iOS facts (the spike, 2026-10-24, on an iPhone)
 
+- **Close by tag lookup** (the P1b phone check, 2026-10-24, iOS 26): inside a push handler, after `showNotification`,
+  the unfiltered `getNotifications()` lists the shown ones with their tags, but `close()` on one from that list left
+  it on the lock screen; one from `getNotifications({tag})` closed. So `sw.js`'s cleanup reads the tags from the list
+  and closes through the tag lookup. Not yet known whether that is a WebKit bug (unfiltered close never probed alone).
 - **No replace by `tag`**: two notifications with one tag both stay, and closing same-tag ones inside the push
   handler before `showNotification` doesn't remove the older one. A separate close push that only closed
   `getNotifications({tag})` did, but it shows nothing (see the quota below), so the worker now closes after its show.
