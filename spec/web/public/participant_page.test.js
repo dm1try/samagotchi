@@ -298,3 +298,25 @@ test("participant page: after a turn ends, the next turn's events wait for the r
   sources.at(-1).emit("generation_chunk", { text: " one" });
   assert.equal($("liveReply").textContent, "Next one");
 });
+
+// A link's #code= opened in a browser that already has a session: the trade
+// would replace it (a link sent to the owner swapping their cookie for a
+// participant's), so the page asks first; declined, the code is dropped
+// unused and the page goes on as it was.
+test("participant page: a #code= link asks before replacing the session, and a no trades nothing", async (t) => {
+  const saved = { location: globalThis.location, history: globalThis.history, confirm: globalThis.confirm };
+  const asked = [];
+  const replaced = [];
+  globalThis.location = { hash: "#code=chc_x&s=s1", pathname: "/", search: "", reload: () => {} };
+  globalThis.history = { replaceState: (_s, _t, url) => replaced.push(url) };
+  globalThis.confirm = (text) => { asked.push(text); return false; };
+  t.after(() => Object.assign(globalThis, saved));
+  const { calls } = await openPage(t, {
+    respond: (call) => (call.path === "/api/token" ? call.answer(401, {}) : call.method === "GET" ? call.answer(200, REVIEW) : undefined),
+  });
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /in place of the session it has now/);
+  assert.deepEqual(replaced, ["/#s=s1"]);
+  assert.equal(calls.filter((c) => c.path === "/api/token").length, 0);
+  assert.ok(calls.some((c) => c.path.endsWith("/review")));
+});
