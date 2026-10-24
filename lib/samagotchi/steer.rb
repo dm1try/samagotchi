@@ -2,6 +2,7 @@
 
 require_relative "client_id"
 require_relative "participant_name"
+require_relative "message_time"
 
 module Samagotchi
   # A plugin's steer: text a plugin puts into the running turn (Engine#steer),
@@ -53,15 +54,16 @@ module Samagotchi
 
       # The messages it appends: the merged input first (one message per
       # sender run, marked kind input, source: when not the user's), then
-      # each steer.
-      def messages
+      # each steer; all stamped with +at+ (MessageTime::KEY), the drain's
+      # wall time.
+      def messages(at: MessageTime.iso(MessageTime.now))
         list = inputs.map do |input|
           message = { role: "user", kind: INPUT_KIND }
           message[:source] = input[:source] if input[:source]
           message.merge!(input[:mark]) if input[:mark]
           message.merge(content: input[:content], **Steer.author_fields(input[:author], input[:author_name]))
         end
-        list + steers.map { |steer| Steer.message(**steer) }
+        (list + steers.map { |steer| Steer.message(**steer) }).map { |message| MessageTime.stamp(message, at) }
       end
 
       # The :pending_input_merged fields beside iteration and answer;

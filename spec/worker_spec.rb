@@ -469,7 +469,7 @@ RSpec.describe Samagotchi::Worker do
 
         conversation = []
         Samagotchi::Steer.inject!(conversation, -> { lines.first(1) }, iteration: 1, emit: ->(_) {}, cancel_controller: nil)
-        expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0" }])
+        expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0", at: message_at }])
       end
 
       it "skips a queued line without stopping at it: a later line merges, the queued one runs after as its own turn" do

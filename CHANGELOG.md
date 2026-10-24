@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Sessions record when each message happened: prompts, lines merged into a turn, reminders, notes and the model's
+  replies carry `at` in the session file (never sent to the model); plugins see it in `ctx.messages`.
+
 ### Fixed
 
 - `chi send --wait` with no message on a running turn that has no turn id (a session's first prompt, a reminder

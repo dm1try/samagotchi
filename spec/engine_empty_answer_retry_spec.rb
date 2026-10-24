@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
     result = chat_turn(FakeChatAdapter.text(""), FakeChatAdapter.text("PONG"))
 
     expect(result.output).to eq("PONG")
-    expect(session.messages.last(3)).to match([a_hash_including(role: "user", content: "hi"), nudge, { role: "model", content: "PONG" }])
+    expect(session.messages.last(3)).to match([a_hash_including(role: "user", content: "hi"), nudge, { role: "model", content: "PONG", at: message_at }])
     expect(session.last_turn.to_file).to include("outcome" => "completed")
     expect(events.map { |e| e[:type] }).to include(:empty_answer_retry, :turn_completed)
     expect(events.count { |e| e[:type] == :generation_started }).to eq(2)

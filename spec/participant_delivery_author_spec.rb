@@ -206,7 +206,7 @@ RSpec.describe "a participant's author on delivery" do
       Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "web:t", author: author)
 
       expect(pop!(saved, "the running save's last message"))
-        .to eq(role: "user", content: "is step 3 safe?", author: author, author_name: "Alex")
+        .to eq(role: "user", content: "is step 3 safe?", author: author, author_name: "Alex", at: message_at)
     end
 
     it "refuses a participant's /word or !line input file (dropped, audited); the owner's is queued" do

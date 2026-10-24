@@ -462,7 +462,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.text).to eq("hello back")
       expect(result).not_to be_canceled
       expect(result).not_to be_exhausted
-      expect(result.conversation).to eq([{ role: "user", content: "hi" }, { role: "model", content: "hello back" }])
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, { role: "model", content: "hello back", at: message_at }])
     end
 
     it "says so when the model returns an empty answer after its retry, and keeps both out of the conversation" do
@@ -474,7 +474,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.text).to eq("")
       expect(result).to be_empty_answer
       expect(result.empty_retries).to eq(1)
-      expect(result.empty_steps).to eq([{ role: "model", content: "" }, { role: "model", content: "" }])
+      expect(result.empty_steps).to eq([{ role: "model", content: "", at: message_at }, { role: "model", content: "", at: message_at }])
       expect(result).not_to be_exhausted
       # The nudge stays at the tail: the Engine's TurnNote.empty replaces it.
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, Samagotchi::TurnNote.empty_retry])
@@ -486,8 +486,8 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run([{ role: "user", content: "hi" }])
 
-      expect(result.empty_steps).to eq([{ role: "model", content: "", thinking: "first" },
-                                        { role: "model", content: "", thinking: "second" }])
+      expect(result.empty_steps).to eq([{ role: "model", content: "", thinking: "first", at: message_at },
+                                        { role: "model", content: "", thinking: "second", at: message_at }])
       expect(result.conversation.map { |m| m[:role] }).to eq(%w[user system])
     end
 
@@ -511,7 +511,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(result.conversation).to eq([
         { role: "user", content: "hi" }, { role: "tool_response", content: "out", tool_call_id: "c1" },
-        { role: "model", content: "hello back" }
+        { role: "model", content: "hello back", at: message_at }
       ])
     end
   end
@@ -973,7 +973,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run
 
-      expect(result.conversation[1]).to eq(role: "model", content: "",
+      expect(result.conversation[1]).to eq(role: "model", content: "", at: message_at,
                                            tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "echo hi" } }])
       expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1")
     end
@@ -1097,7 +1097,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       answer = "Here is the first part\n#{described_class::FILTERED_MARK}"
       expect(result).not_to be_empty_answer
       expect([result.text, result.refusal]).to eq([answer, nil])
-      expect(result.conversation.last).to eq(role: "model", content: answer)
+      expect(result.conversation.last).to eq(role: "model", content: answer, at: message_at)
       expect(adapter.requests.length).to eq(1)
     end
 
@@ -1154,7 +1154,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(result.text).to eq("PONG")
       expect(result).not_to be_empty_answer
-      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG", at: message_at }])
       expect(adapter.requests.map { |r| r[:options] }).to eq([{}, { temperature: 0.6 }])
       expect(adapter.requests.last[:messages].last).to eq(role: "system", content: nudge[:content])
       retry_event = events.find { |e| e[:type] == :empty_answer_retry }
@@ -1187,7 +1187,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                                                                               model_name: "m")
 
       expect(result.text).to eq("PONG")
-      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG", at: message_at }])
 
       with_limit(0) do
         adapter = FakeChatAdapter.new(text("  \n "))
@@ -1385,7 +1385,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(result).to be_canceled
       expect(events.last).to include(type: :generation_cancelled, reason: :ctrl_c)
-      expect(result.conversation.last).to eq(role: "model", content: "Let me check the fi\n[interrupted]", interrupted: true)
+      expect(result.conversation.last).to eq(role: "model", content: "Let me check the fi\n[interrupted]", interrupted: true, at: message_at)
     end
 
     it "keeps the reasoning streamed before a cancel on the salvaged message" do
@@ -1398,7 +1398,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run(cancel_controller: controller)
 
       expect(result.conversation.last).to eq(role: "model", content: "Let me check the fi\n[interrupted]", interrupted: true,
-                                             thinking: "weighing the options")
+                                             thinking: "weighing the options", at: message_at)
     end
 
     it "catches a cancel between tool calls before the next request" do
@@ -1509,7 +1509,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       conversation = run.conversation
 
       expect(conversation[1]).to include(role: "model", content: "", thinking: "run it first")
-      expect(conversation[3]).to eq(role: "model", content: "done", thinking: "\nit passed")
+      expect(conversation[3]).to eq(role: "model", content: "done", thinking: "\nit passed", at: message_at)
     end
 
     it "adds no key when there was none" do

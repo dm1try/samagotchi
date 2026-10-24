@@ -504,7 +504,7 @@ module Samagotchi
                 model: served || job[:model], created_at: Time.now.utc.iso8601 }
       @mutex.synchronize { @state = saved }
       save(saved)
-      @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered])
+      @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered], created_at: saved[:created_at])
     rescue StandardError
       @in_flight = nil
     end

@@ -2,6 +2,7 @@
 
 require "time"
 require_relative "paths"
+require_relative "message_time"
 
 module Samagotchi
   # A context note: background text pushed into a session from outside (the
@@ -13,7 +14,8 @@ module Samagotchi
     # The message keys a note carries besides role and content; everything
     # that copies messages field by field must keep them.
     # context_source: the attached context source a note is about
-    # (ContextAbsorber), so the UIs can tie it to its chip.
+    # (ContextAbsorber), so the UIs can tie it to its chip. A note's wall
+    # time (MessageTime::KEY) is every entry's, kept beside these.
     KEYS = %i[kind note_id source from_session from_cwd context_source].freeze
     HEADER = "CONTEXT NOTE"
     # A finished background task's note (TaskFinishNote): a header of its own.
@@ -27,14 +29,16 @@ module Samagotchi
     # Takes SessionInbox.read_note's keys. +turn_start+ / +turn_id+: the
     # note starts a turn chi runs for it (a context wake), as a wake turn's
     # delegate report does (Steer.turn_prompt?). +header+: the frame's
-    # (HEADERS), not kept as a key: the content carries it.
+    # (HEADERS), not kept as a key: the content carries it. Its wall time
+    # (MessageTime::KEY) is +created_at+'s, else now.
     # @return [Hash] the conversation message
     def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil,
                 turn_start: nil, turn_id: nil, header: HEADER, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,
         from_cwd: from_cwd, context_source: context_source, turn_start: (true if turn_start == true), turn_id: turn_id,
         content: frame(text, source: source, created_at: created_at, from_session: from_session,
-                             from_cwd: from_cwd, header: header) }.compact
+                             from_cwd: from_cwd, header: header),
+        MessageTime::KEY => MessageTime.iso_of(created_at) || MessageTime.iso(MessageTime.now) }.compact
     end
 
     def frame(text, source:, created_at: nil, from_session: nil, from_cwd: nil, header: HEADER)

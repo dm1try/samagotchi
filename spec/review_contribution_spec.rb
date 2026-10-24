@@ -64,10 +64,10 @@ RSpec.describe "a participant's review contribution" do
                "owner again"]
 
       expect(described_class.merge(lines).messages)
-        .to eq([{ role: "user", kind: "input", content: "owner line" },
-                { role: "user", kind: "input", content: "alex 1\n\nalex 2", author: "p:p_1", author_name: "Alex" },
-                { role: "user", kind: "input", content: "bo", author: "p:p_2", author_name: "Bo" },
-                { role: "user", kind: "input", content: "owner again" }])
+        .to eq([{ role: "user", kind: "input", content: "owner line", at: message_at },
+                { role: "user", kind: "input", content: "alex 1\n\nalex 2", author: "p:p_1", author_name: "Alex", at: message_at },
+                { role: "user", kind: "input", content: "bo", author: "p:p_2", author_name: "Bo", at: message_at },
+                { role: "user", kind: "input", content: "owner again", at: message_at }])
     end
 
     describe "a forged header" do

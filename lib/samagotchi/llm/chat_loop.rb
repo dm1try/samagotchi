@@ -30,6 +30,7 @@ require_relative "../empty_answer_retry"
 require_relative "../steer"
 require_relative "../reasoning_history"
 require_relative "../turn_note"
+require_relative "../message_time"
 require_relative "../thinking"
 
 module Samagotchi
@@ -432,7 +433,8 @@ module Samagotchi
       # note's marker (TurnNote.empty, never sent), and an answer's display
       # and display_refs (AnswerDisplay, AnswerRefs; never sent), a
       # find_tools result's loaded names and a tool change's TOOL_CHANGE
-      # (sent only to a wire that loads tools).
+      # (sent only to a wire that loads tools), and an entry's wall time
+      # (MessageTime::KEY, display-only, never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -454,6 +456,7 @@ module Samagotchi
           Steer::AUTHOR_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[ToolResponse::LOADED] = entry[ToolResponse::LOADED] if entry[ToolResponse::LOADED].is_a?(Array)
           message[TOOL_CHANGE] = entry[TOOL_CHANGE] if entry[TOOL_CHANGE].is_a?(Hash)
+          message[MessageTime::KEY] = entry[MessageTime::KEY] if entry[MessageTime::KEY]
           message
         end
       end
@@ -704,7 +707,10 @@ module Samagotchi
         # (reasoning_history). A wire that sends its blocks back keeps them
         # as +anthropic_content+ (ChatResponse#provider_content: string
         # keys, as received, so a resumed session sends the same bytes).
+        # Every reply built from a response comes through here, so it is
+        # also where a reply gets its wall time (MessageTime::KEY).
         def with_thinking(message, response)
+          MessageTime.stamp(message, MessageTime.now)
           reasoning = response.reasoning.to_s
           message = message.merge(thinking: reasoning) unless reasoning.strip.empty?
           blocks = response.provider_content
@@ -1038,7 +1044,8 @@ module Samagotchi
           emit(type: :generation_cancelled, iteration: iteration, reason: reason, stopped_by: @cancel_controller&.stopped_by)
           visible = @loop.strip_model_thought(partial.to_s).strip
           unless visible.empty?
-            message = { role: "model", content: "#{visible}\n[interrupted]", interrupted: true }
+            message = { role: "model", content: "#{visible}\n[interrupted]", interrupted: true,
+                        MessageTime::KEY => MessageTime.iso(MessageTime.now) }
             thought = thinking.to_s
             message[:thinking] = thought unless thought.strip.empty?
             @conversation << message

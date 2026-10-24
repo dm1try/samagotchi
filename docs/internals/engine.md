@@ -25,12 +25,14 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # TurnState#begin!(controller:, sink:) (a new CancellationController when none is given),
   │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
   │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
-  │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from}
+  │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from,
+  │     #                 wall (MessageTime.now)}
   │
   ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
   ├── prepare_turn(turn, images)
-  │     # Emits :turn_started {session_id, prompt, turn_id, continue: true (only on a continue),
+  │     # Emits :turn_started {session_id, prompt, turn_id, at (the turn's wall time, Turn#wall: read once,
+  │     #                      the user message's and the reminders' stamp too), continue: true (only on a continue),
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
@@ -491,8 +493,8 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 
 | Event | When | Payload |
 |---|---|---|
-| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, resumed?, images?, cut_after}` (`resumed`: a step-limit Continue) |
-| `:reminder_injected` | due reminders went into the turn | `{reminders}` |
+| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, at, continue?, resumed?, images?, cut_after}` (`resumed`: a step-limit Continue; `at`: the turn's wall time, its prompt's stamp) |
+| `:reminder_injected` | due reminders went into the turn | `{reminders, at}` (`at`: the turn's wall time, the reminder message's stamp) |
 | `:context_status` | every request (unless `context.status` is off), the current estimate before it; and outside any turn after `/model` (or when a session is loaded on another model than its last turn ran on), to the observers only (`Engine#announce_switched_context!`) | `{iteration, status, usage, bucket, source}`; the switch's form has no `iteration`: `{usage, bucket, context_window_tokens, context_window_source}`, with `usage.source: "switch"`, and `usage` nil when the new window doesn't resolve (internals/context-telemetry.md) |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source, price, model_ref}` (`price`: the turn's `ModelPrice#to_h`, nil without one; `model_ref`: the turn's model, asked `host:model`, added by the Engine's stream handler from the model `#generate` resolved after the `before_turn` hooks, so a hook's switch is the one named; native adds `profile`, `profile_source`) |
 | `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` (SSE clients get the Bridge's projection instead: `{iteration, text, thinking, tool_call?, counts?}`, architecture.md) |
@@ -654,6 +656,19 @@ logged). Both are display only: `AnswerDisplay::DISPLAY_ONLY` lists `display`, `
 `strip`/`strip_all` drop from every model-facing copy (hooks' `messages:`, the recap, `ctx.messages`,
 after_generation), while `KernelLoop#sanitize_history` and `ChatLoop#plain` copy them so the stored conversation keeps
 them across turns. `Web::App#messages_for_display` sends `display_refs` re-validated (`AnswerRefs.for_display`).
+
+History stamps: user prompts, merged input and steers, reminders, context and task notes and the model's replies carry
+`at` (`MessageTime::KEY`, `message_time.rb`: a local-offset ISO time with milliseconds), when the entry happened. A
+turn reads the wall clock once (`Turn#wall`, `MessageTime.now`): `:turn_started`'s `at`, its prompt's and its
+reminders' stamps; `Steer::Merge#messages` stamps a merge at the boundary, `ContextNote.message` a note with its
+`created_at` (else now), `KernelLoop#iterate` / `#cancelled_result` and the chat loop's `Run#with_thinking` /
+`Run#canceled` each reply. Tool results, `!cmd` messages and TurnNote notes carry none. Like `display`, `at` must
+survive the two rebuilds: both model branches of `KernelLoop#sanitize_history` and `ChatLoop#plain` copy it (an
+allow-list that drops a key loses it for good on the next turn; `spec/message_time_history_spec.rb` checks both
+loops). It is display-only and never reaches the wire (prompt-caching.md, rule 7), but it is not in
+`AnswerDisplay::DISPLAY_ONLY`: hooks and `ctx.messages` see it. `:recap_ready` carries the saved recap's
+`created_at` (`Engine#emit_recap(created_at:)`, from `IdleRecap#collect`). The UIs' gap dividers come from
+`MessageTime.gap_line` (10 min, `GAP_SECONDS`).
 
 `:question_asked` (`QuestionAsked`, `question_asked.rb`) fires from the two Engine seams where a question of the
 model's opens, never from `QuestionDesk`: `Engine#request_question` (the kernel's `question_handler`, after

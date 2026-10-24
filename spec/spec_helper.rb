@@ -75,6 +75,9 @@ ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
 require "samagotchi/host_keys"
 # Loaded here so the before hook below always pins rg (a light file).
 require "samagotchi/bundle_needs"
+# Loaded here so the before hook below always pins the history stamps' wall
+# clock (MessageTime.now) to SpecStamps::MESSAGE_TIME.
+require "samagotchi/message_time"
 # The suite's temp homes go at exit with rm_rf: a late thread or a child
 # still writing (a tmp file renamed away mid-walk) must not turn the cleanup
 # into an Errno::ENOENT that fails a green run.
@@ -174,6 +177,10 @@ RSpec.configure do |config|
     # file from this example's config (the temp XDG_STATE_HOME by default).
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
     Samagotchi::HostKeys.keychain = Samagotchi::HostKeys::NullKeychain
+    # Every history stamp (MessageTime::KEY) an example's lib code makes is
+    # one fixed time (SpecStamps#message_at), so whole-message expectations
+    # name it; a spec of time gaps sets its own source.
+    Samagotchi::MessageTime.source = -> { SpecStamps::MESSAGE_TIME }
     # Hooks::BundleLoader evals each bundle hook into a Samagotchi::Bundles
     # module that lives for the process: chi builds one Engine, the suite
     # hundreds. Fresh modules, or each load redefines the last one's constants

@@ -107,7 +107,7 @@ RSpec.describe "a turn's author on the record" do
       events = []
       engine.run_turn(session, "hi", origin: { client_id: "web:t", enqueued_id: "e1" }, on_event: ->(e) { events << e })
 
-      expect(session.messages.find { |m| m[:role] == "user" }.keys).to eq(%i[role content turn_id])
+      expect(session.messages.find { |m| m[:role] == "user" }.keys).to eq(%i[role content turn_id at])
       expect(session.to_h["last_turn"]).not_to have_key("author")
       expect(analytics["turn_records"].last).not_to have_key("author")
       expect(events.find { |e| e[:type] == :turn_started }.keys).not_to include(:author, :author_name)

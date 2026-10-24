@@ -79,7 +79,7 @@ RSpec.describe "The skills bundle, installed" do
 
     engine.run_turn(session, "release please")
 
-    expect(session.messages).to include(role: "user", kind: "steer", source: "skills",
+    expect(session.messages).to include(role: "user", kind: "steer", source: "skills", at: message_at,
                                         content: a_string_starting_with("A step of skill release failed."))
     expect(notices).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
   end

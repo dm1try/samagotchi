@@ -698,7 +698,7 @@ RSpec.describe Samagotchi::IdleRecap do
       allow(idle).to receive(:should_fire?).and_return(true)
       drive(idle)
       gen_v1 = idle.generation
-      expect(engine).to have_received(:emit_recap).with(recap: anything, generation: gen_v1, covered: 3)
+      expect(engine).to have_received(:emit_recap).with(recap: anything, generation: gen_v1, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
       # Invalidate (bumps generation)
       idle.invalidate!
       expect(idle.generation).to eq(gen_v1 + 1)
@@ -712,7 +712,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expected_gen = gen_v1 + 2
       drive(idle)
       # The emit should use the new generation
-      expect(engine2).to have_received(:emit_recap).with(recap: anything, generation: expected_gen, covered: 4)
+      expect(engine2).to have_received(:emit_recap).with(recap: anything, generation: expected_gen, covered: 4, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
   end
 
@@ -797,7 +797,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(blocked_client).to have_received(:summarize).once
       gate.push(:go)
       drive(idle)
-      expect(engine).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation, covered: 3)
+      expect(engine).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "lets the other scheduler jobs keep ticking while a recap is in flight" do
@@ -869,7 +869,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(user_text(prompts[1])).to include("Earlier recap:\nrecap 1", "Reply PONG", "PONG")
       expect(user_text(prompts[1])).not_to include("Bluefin")
       expect(idle.state).to include(text: "recap 2", covered: 6)
-      expect(engine).to have_received(:emit_recap).with(recap: "recap 2", generation: idle.generation, covered: 6)
+      expect(engine).to have_received(:emit_recap).with(recap: "recap 2", generation: idle.generation, covered: 6, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "sends nothing when nothing new was said (a /recap or a context note re-arms the window)" do
@@ -1158,7 +1158,7 @@ RSpec.describe Samagotchi::IdleRecap do
       idle = idle_for(engine)
       expect(idle.request_now).to eq(:started)
       drive(idle)
-      expect(engine).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3)
+      expect(engine).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "says why there is nothing to ask" do

@@ -261,7 +261,7 @@ RSpec.describe "The hook runtime through the Engine" do
       engine.run_turn(session, "go", on_event: ->(e) { events << e })
 
       expect(results).to eq([true])
-      expect(session.messages).to include(role: "user", kind: "steer", source: "turn hook", content: "how is it going?")
+      expect(session.messages).to include(role: "user", kind: "steer", source: "turn hook", content: "how is it going?", at: message_at)
       expect(events.find { |e| e[:type] == :pending_input_merged })
         .to include(count: 0, content: nil, steers: [{ source: "turn hook", text: "how is it going?" }])
     end
@@ -284,7 +284,7 @@ RSpec.describe "The hook runtime through the Engine" do
 
       engine.run_turn(session, "go")
 
-      expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "nudge")
+      expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "nudge", at: message_at)
     end
   end
 end

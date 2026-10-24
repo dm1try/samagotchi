@@ -589,6 +589,17 @@ RSpec.describe Samagotchi::Engine do
       expect(first).not_to be_empty
     end
 
+    it "carries a recap's created_at on :recap_ready, for the UIs' recap time" do
+      events = []
+      engine = build_engine(profile: "gemma4")
+      engine.subscribe(observer: ->(event) { events << event })
+
+      engine.emit_recap(recap: "did things", generation: 3, covered: 4, created_at: "2026-10-24T12:32:00Z")
+
+      expect(events.last).to include(type: :recap_ready, recap: "did things", generation: 3, covered: 4,
+                                     created_at: "2026-10-24T12:32:00Z")
+    end
+
     it "exposes a monotonic engine-local event_count that increments per emitted event" do
       engine = build_engine(profile: "gemma4")
       expect(engine.event_count).to eq(0)

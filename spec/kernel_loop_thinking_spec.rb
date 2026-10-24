@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
     # The second prompt carries the first generation as it was generated.
     expect(prompts[1]).to include("<|im_start|>assistant\n#{empty_thought}#{tool_call}")
     expect(result.output).to eq("PONG")
-    expect(result.conversation.last).to eq(role: "model", content: "#{empty_thought}PONG")
+    expect(result.conversation.last).to eq(role: "model", content: "#{empty_thought}PONG", at: message_at)
     expect(events.select { |e| e[:type] == :generation_completed }.map { |e| e[:thinking_chars] }).to eq([0, 0])
   end
 
@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
       kernel.turn_settings = kernel.turn_settings.with(thinking: level)
       prompts = script("PONG")
 
-      expect(run.conversation.last).to eq(role: "model", content: "PONG")
+      expect(run.conversation.last).to eq(role: "model", content: "PONG", at: message_at)
       expect(prompts.last).to end_with("<|im_start|>assistant\n")
     end
   end
@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
       # Append-only within the turn: the next prompt is this one, its reply, then the tool response.
       expect(prompts[1]).to start_with(prompts[0] + first)
       expect(result.output).to eq("PONG")
-      expect(result.conversation.last).to eq(role: "model", content: "<think>\n#{second}")
+      expect(result.conversation.last).to eq(role: "model", content: "<think>\n#{second}", at: message_at)
       expect(lane(:thinking)).to include("reading it first", "it is missing")
       expect(lane(:text).strip).to eq("PONG")
     end

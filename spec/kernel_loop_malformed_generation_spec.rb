@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::KernelLoop, "malformed generation" do
 
     expect(result.output).to eq("apple")
     expect(result.conversation).to eq([{ role: "user", content: "hi" },
-                                       { role: "model", content: "<|channel>thought\n<channel|>apple" }])
+                                       { role: "model", content: "<|channel>thought\n<channel|>apple", at: message_at }])
     expect(calls.map { |c| c[:cache_prompt] }).to eq([:unset, false])
     expect(events.find { |e| e[:type] == :empty_answer_retry }).to include(iteration: 1, attempt: 1, of: 1, malformed: true)
     expect(events.map { |e| e[:type] }).not_to include(:tool_call_started)

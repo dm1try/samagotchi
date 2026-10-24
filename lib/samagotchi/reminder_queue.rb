@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "message_time"
 
 module Samagotchi
   # The session's due reminders, on their way into a turn.
@@ -12,8 +13,11 @@ module Samagotchi
   # (#inject!), which marks it fired and clears the pending names.
   class ReminderQueue
     # @param store [ReminderStore, nil]
-    def initialize(store:)
+    # @param now [#call] the wall clock (a Time) for the injected message's
+    #   stamp, when #inject! is given none
+    def initialize(store:, now: -> { MessageTime.now })
       @store = store
+      @now = now
       @lock = Monitor.new
       @pending = []
     end
@@ -55,14 +59,18 @@ module Samagotchi
     # A tail message, not the head system prompt: changing the head would
     # make the model server re-evaluate the whole conversation's prefix
     # (its KV cache) every interval; a tail costs only the new suffix.
+    # The message carries its wall time (MessageTime::KEY, display-only).
     # @param messages [Array<Hash>] the turn's messages (appended to)
+    # @param now [Time, nil] the turn's wall time (nil: the clock's)
     # @return [Array<Hash>] the reminders injected (maybe none)
-    def inject!(messages)
+    def inject!(messages, now: nil)
       reminders = due
       return [] if reminders.empty?
 
+      time = now || @now.call
       lines = reminders.map { |r| "  #{r[:name]}: #{r[:description]} (interval: #{r[:interval_minutes]}m)" }.join("\n")
-      messages << { role: "system", content: "[SYSTEM: REMINDERS DUE]\n#{lines}\n[END REMINDERS]" }
+      messages << { role: "system", content: "[SYSTEM: REMINDERS DUE]\n#{lines}\n[END REMINDERS]",
+                    MessageTime::KEY => MessageTime.iso(time) }
       @store.mark_fired_batch(reminders.map { |r| r[:name] })
       # Without this a turn's injection leaves a stale name, and the next
       # reminder turn would run with nothing due.

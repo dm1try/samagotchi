@@ -11,7 +11,15 @@ RSpec.describe Samagotchi::ContextNote do
       message = described_class.message(note_id: "n1", text: "deploy frozen", source: "slack", created_at: at)
 
       expect(message).to eq(role: "system", kind: "note", note_id: "n1", source: "slack",
-                            content: "[CONTEXT NOTE from slack, 14:02]\ndeploy frozen\n[END NOTE]")
+                            content: "[CONTEXT NOTE from slack, 14:02]\ndeploy frozen\n[END NOTE]",
+                            at: Time.iso8601(at).iso8601(3))
+    end
+
+    it "stamps a note with its created_at, or by the clock when it has none" do
+      message = described_class.message(note_id: "n1", text: "x", source: "slack")
+
+      expect(message[:at]).to eq(message_at)
+      expect(described_class.message(note_id: "n1", text: "x", source: "slack", created_at: "garbage")[:at]).to eq(message_at)
     end
 
     it "names the sending session by its short id and folder" do

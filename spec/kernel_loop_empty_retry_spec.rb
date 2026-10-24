@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     result = run
 
     expect(result.output).to eq("PONG")
-    expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
+    expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG", at: message_at }])
     expect(calls[1][:prompt]).to include(nudge[:content])
     expect(calls[1][:prompt]).not_to include("Let me write the reply")
     expect(calls.map { |c| c[:sampling] }).to eq([nil, { temperature: 0.6 }])
@@ -89,8 +89,8 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     # assistant turn (earlier thinking is stripped there).
     expect(result.conversation).to eq([{ role: "user", content: "hi" }])
     # What the UIs draw the turn's steps from.
-    expect(result.empty_steps).to eq([{ role: "model", content: "<think>first</think>" },
-                                      { role: "model", content: "<think>second</think>" }])
+    expect(result.empty_steps).to eq([{ role: "model", content: "<think>first</think>", at: message_at },
+                                      { role: "model", content: "<think>second</think>", at: message_at }])
     expect(result.empty_retries).to eq(1)
   end
 
@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     result = run
     expect(result.output).to eq("")
     expect(result.empty_retries).to eq(0)
-    expect(result.empty_steps).to eq([{ role: "model", content: "" }])
+    expect(result.empty_steps).to eq([{ role: "model", content: "", at: message_at }])
     expect(calls.length).to eq(1)
   ensure
     ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER")

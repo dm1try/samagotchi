@@ -68,6 +68,26 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "the turn's wall time (MessageTime)" do
+    it "is read once: :turn_started's at, the prompt's and the injected reminders' stamps, :reminder_injected's at" do
+      clock = SpecStamps::MESSAGE_TIME
+      Samagotchi::MessageTime.source = -> { clock += 60 }
+      store = engine.reminder_store
+      store.register({ name: "tea", description: "Make tea", interval_minutes: 5 })
+      store.instance_variable_get(:@mutex).synchronize { store.reminders["tea"][:next_fire_at] = 0 }
+      sent = nil
+      allow(kernel).to receive(:run) { |messages, **| sent = messages; kernel_result }
+
+      events = events_of
+      at = events.first[:at]
+
+      expect(events.first).to include(type: :turn_started)
+      expect(at).to eq((SpecStamps::MESSAGE_TIME + 60).iso8601(3))
+      expect(events.find { |e| e[:type] == :reminder_injected }).to include(at: at)
+      expect(sent.last(2).map { |m| [m[:role], m[:at]] }).to eq([["system", at], ["user", at]])
+    end
+  end
+
   describe "continue: true" do
     it "runs the existing conversation without appending a prompt" do
       session.messages = [{ role: "system", content: "old" }, { role: "user", content: "go" }, { role: "tool_response", content: "r" }]
@@ -87,7 +107,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       allow(kernel).to receive(:run).and_return(kernel_result)
 
       expect(events_of.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", cut_after: 20,
-                                       turn_id: a_string_matching(/\A\h{8}-/))
+                                       turn_id: a_string_matching(/\A\h{8}-/), at: message_at)
     end
   end
 
@@ -346,7 +366,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       events = events_of(origin: origin)
 
       expect(events.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", cut_after: 20,
-                                    origin: origin, turn_id: a_string_matching(/\A\h{8}-/))
+                                    origin: origin, turn_id: a_string_matching(/\A\h{8}-/), at: message_at)
       expect(events.find { |e| e[:type] == :turn_completed }).to include(origin: origin)
     end
 

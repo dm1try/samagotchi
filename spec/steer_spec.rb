@@ -9,9 +9,9 @@ RSpec.describe Samagotchi::Steer do
     it "joins the user lines into one message and follows it with each steer, in order" do
       merge = described_class.merge(["a", { text: " nudge ", source: "check-in" }, " b ", { "text" => "two", "source" => "x" }])
 
-      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a\n\nb" },
-                                    { role: "user", kind: "steer", source: "check-in", content: "nudge" },
-                                    { role: "user", kind: "steer", source: "x", content: "two" }])
+      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a\n\nb", at: message_at },
+                                    { role: "user", kind: "steer", source: "check-in", content: "nudge", at: message_at },
+                                    { role: "user", kind: "steer", source: "x", content: "two", at: message_at }])
       expect(merge.event_fields).to eq(count: 2, content: "a\n\nb",
                                        steers: [{ source: "check-in", text: "nudge" }, { source: "x", text: "two" }])
     end
@@ -35,7 +35,7 @@ RSpec.describe Samagotchi::Steer do
     it "saves a Line's source on its input message, and a user Line like a String" do
       line = described_class::Line
       merge = described_class.merge([line.new(text: "a", source: "chi_send"), line.new(text: " b ", source: "chi_send")])
-      expect(merge.messages).to eq([{ role: "user", kind: "input", source: "chi_send", content: "a\n\nb" }])
+      expect(merge.messages).to eq([{ role: "user", kind: "input", source: "chi_send", content: "a\n\nb", at: message_at }])
 
       user = described_class.merge([line.new(text: "a", source: nil), "b"])
       expect(user.messages).to eq(described_class.merge(%w[a b]).messages)
@@ -46,10 +46,10 @@ RSpec.describe Samagotchi::Steer do
       merge = described_class.merge([line.new(text: "a", source: nil), line.new(text: "b", source: "chi_send"),
                                      line.new(text: "c", source: "chi_send"), "d", { text: "n", source: "check-in" }])
 
-      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a" },
-                                    { role: "user", kind: "input", source: "chi_send", content: "b\n\nc" },
-                                    { role: "user", kind: "input", content: "d" },
-                                    { role: "user", kind: "steer", source: "check-in", content: "n" }])
+      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a", at: message_at },
+                                    { role: "user", kind: "input", source: "chi_send", content: "b\n\nc", at: message_at },
+                                    { role: "user", kind: "input", content: "d", at: message_at },
+                                    { role: "user", kind: "steer", source: "check-in", content: "n", at: message_at }])
       expect(merge.event_fields).to eq(count: 4, content: "a\n\nb\n\nc\n\nd",
                                        steers: [{ source: "check-in", text: "n" }])
     end
@@ -59,7 +59,8 @@ RSpec.describe Samagotchi::Steer do
       line = described_class::Line.new(text: "report", source: "delegate_report", mark: mark)
       expect(line).not_to eq(described_class::Line.new(text: "report", source: "delegate_report"))
       message = described_class.merge([line]).messages.first
-      expect(message).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true, turn_id: "T9", content: "report")
+      expect(message).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true, turn_id: "T9", content: "report",
+                            at: message_at)
       expect(described_class.turn_prompt?(message)).to be(true)
       expect(described_class.turn_prompt?(message.except(:turn_start))).to be(false)
     end
@@ -124,8 +125,8 @@ RSpec.describe Samagotchi::Steer do
     it "appends the merge on the tail and emits :pending_input_merged" do
       expect(inject(-> { ["line", { text: "nudge", source: "check-in" }] })).to be(true)
 
-      expect(conversation.drop(1)).to eq([{ role: "user", kind: "input", content: "line" },
-                                          { role: "user", kind: "steer", source: "check-in", content: "nudge" }])
+      expect(conversation.drop(1)).to eq([{ role: "user", kind: "input", content: "line", at: message_at },
+                                          { role: "user", kind: "steer", source: "check-in", content: "nudge", at: message_at }])
       expect(events).to eq([{ type: :pending_input_merged, iteration: 2, count: 1, content: "line",
                               steers: [{ source: "check-in", text: "nudge" }], answer: nil }])
     end

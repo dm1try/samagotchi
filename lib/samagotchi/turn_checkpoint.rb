@@ -7,6 +7,7 @@ require_relative "atomic_file"
 require_relative "interrupted_turn"
 require_relative "last_turn"
 require_relative "log"
+require_relative "message_time"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "steer"
@@ -181,7 +182,9 @@ module Samagotchi
       @written_at = nil
       @started_at = Time.now.iso8601(3)
       messages = Array(@session.messages).dup
-      messages << { role: "user", content: prompt, **author } unless prompt.to_s.empty?
+      # Stamped by the wall clock here, a moment before the turn's own
+      # stamp (Engine's Turn#wall), which the turn's first boundary saves.
+      messages << { role: "user", content: prompt, **author, MessageTime::KEY => MessageTime.iso(MessageTime.now) } unless prompt.to_s.empty?
       @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
                                                                                    enqueued_id: @enqueued_id) }
     end
@@ -202,6 +205,8 @@ module Samagotchi
       return false unless conversation
 
       @boundaries += 1
+      # The merge's stamps are this copy's own; Steer.inject! stamps the
+      # live merge a moment later.
       merged = merging.empty? ? [] : Steer.merge(merging).messages
       # One level deep: the loop may edit an entry in place later (a
       # forget stub) while a save on another thread serializes this one.

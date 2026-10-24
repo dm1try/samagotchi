@@ -33,6 +33,7 @@ require_relative "llm_context_forget"
 require_relative "working_set"
 require_relative "llm_context_notice"
 require_relative "answer_display"
+require_relative "message_time"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
 require_relative "llm/stream_drops"
@@ -360,7 +361,8 @@ module Samagotchi
         return after_malformed(turn, generation, reason)
       end
 
-      turn.conversation << { role: "model", content: request.prefill + generation.response.to_s }
+      turn.conversation << { role: "model", content: request.prefill + generation.response.to_s,
+                             MessageTime::KEY => MessageTime.iso(MessageTime.now) }
       # Profile-specific parse (incl. Qwen unterminated-block recovery); the
       # returned fragment (non-nil only for Qwen) is fed back on the next
       # iteration if the model opened a tool-call block it did not close.
@@ -867,7 +869,8 @@ module Samagotchi
       # cannot leak) so a follow-up steering message continues with the model's
       # half-finished work in context instead of losing it.
       unless partial.empty?
-        message = { role: "model", content: "#{partial}\n[interrupted]", interrupted: true }
+        message = { role: "model", content: "#{partial}\n[interrupted]", interrupted: true,
+                    MessageTime::KEY => MessageTime.iso(MessageTime.now) }
         # The thinking this generation streamed goes with it (the chat loop's
         # with_thinking key, which MessageParts reads and the prompt doesn't):
         # without it, reloading the cut step shows the empty answer it isn't.
@@ -1088,16 +1091,18 @@ module Samagotchi
 
     # +keep_thought_from+: model messages from this index on keep their
     # thought blocks (a resumed run's); nil strips every one.
+    # A model message is rebuilt from an allow-list: `display`,
+    # `display_refs` and its wall time (MessageTime::KEY) ride along so the
+    # stored conversation keeps them; the prompt formatter never reads them
+    # (AnswerDisplay, AnswerRefs, MessageTime).
     def sanitize_history(messages, keep_thought_from: nil)
       messages.each_with_index.map do |m, index|
         if m[:role] == "model" && keep_thought_from && index >= keep_thought_from
-          { role: m[:role], content: m[:content].to_s, display: m[:display], display_refs: m[:display_refs] }.compact
+          { role: m[:role], content: m[:content].to_s, display: m[:display], display_refs: m[:display_refs],
+            MessageTime::KEY => m[MessageTime::KEY] }.compact
         elsif m[:role] == "model"
-          # `display` and `display_refs` ride along so the stored
-          # conversation keeps them; the prompt formatter never reads them
-          # (AnswerDisplay, AnswerRefs).
           { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display],
-            display_refs: m[:display_refs] }.compact
+            display_refs: m[:display_refs], MessageTime::KEY => m[MessageTime::KEY] }.compact
         else
           m.dup
         end

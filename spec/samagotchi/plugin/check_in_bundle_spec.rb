@@ -76,7 +76,7 @@ RSpec.describe "The check-in bundle, installed" do
     engine.run_turn(session, "look around")
 
     expect(cards.first).to include(title: "2 tool calls, no answer yet", source: "check-in", in_turn: true)
-    expect(session.messages).to include(role: "user", kind: "steer", source: "check-in",
+    expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", at: message_at,
                                         content: a_string_starting_with("You've made 2 tool calls in this turn"))
     steer_at = session.messages.index { |m| m[:kind] == "steer" }
     expect(session.messages[(steer_at + 1)..].map { |m| m[:role] }).to include("model")
@@ -109,7 +109,7 @@ RSpec.describe "The check-in bundle, installed" do
 
       engine.run_turn(session, "go", pending_input: nil)
 
-      expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "2 calls so far: answer now.")
+      expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "2 calls so far: answer now.", at: message_at)
       expect(events.find { |e| e[:type] == :hook_notice }).to include(text: "nudged the model after 2 tool calls")
     end
   end

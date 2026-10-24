@@ -2185,7 +2185,7 @@ Need to inspect the filesystem first.
                           pending_input: ->(at_answer: false) { drains.shift || [] })
 
       expect(result.conversation[2]).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true,
-                                           turn_id: "T2", content: "session: c1\nstatus: answered\n---\n3")
+                                           turn_id: "T2", content: "session: c1\nstatus: answered\n---\n3", at: message_at)
       expect(prompts.first).to include("[Delegate report, delivered by chi when your delegate session ended its turn; ")
       expect(prompts.first).to include("its session:.]\nsession: c1\nstatus: answered")
     end
@@ -2205,8 +2205,8 @@ Need to inspect the filesystem first.
                                                               on_stream_event: ->(event) { events << event })
 
         tail = result.conversation.last(3)
-        expect(tail[0]).to eq(role: "user", kind: "input", content: "user line")
-        expect(tail[1]).to eq(role: "user", kind: "steer", source: "check-in", content: "how's it going?")
+        expect(tail[0]).to eq(role: "user", kind: "input", content: "user line", at: message_at)
+        expect(tail[1]).to eq(role: "user", kind: "steer", source: "check-in", content: "how's it going?", at: message_at)
         expect(tail[2][:role]).to eq("model")
         merged = events.find { |event| event[:type] == :pending_input_merged }
         expect(merged).to include(count: 1, content: "user line", steers: [{ source: "check-in", text: "how's it going?" }])

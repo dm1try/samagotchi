@@ -78,6 +78,7 @@ require_relative "thinking"
 require_relative "reasoning_history"
 require_relative "answer_display"
 require_relative "answer_refs"
+require_relative "message_time"
 require_relative "edit_preview"
 require_relative "question_desk"
 require_relative "question_asked"
@@ -585,9 +586,12 @@ module Samagotchi
 
     # Emit a :recap_ready event (additive slot) carrying the generated recap
     # and the generation id an observer uses to reject an invalidated recap.
-    # +covered+ counts the session messages it summarizes.
-    def emit_recap(recap:, generation:, covered: nil)
-      @session_observer.notify(type: :recap_ready, recap: recap, generation: generation, covered: covered)
+    # +covered+ counts the session messages it summarizes; +created_at+ is
+    # the saved recap's (UTC ISO; the UIs show its local time).
+    def emit_recap(recap:, generation:, covered: nil, created_at: nil)
+      event = { type: :recap_ready, recap: recap, generation: generation, covered: covered }
+      event[:created_at] = created_at if created_at
+      @session_observer.notify(event)
     end
 
     # Count one side request (a recap, a plugin's ctx.ask_model: IdleClient's
@@ -1997,8 +2001,10 @@ module Samagotchi
     # +resume_from+: where its reasoning starts, the run it resumes
     # (run_turn's resume_from:); nil for every other turn, and for a
     # Continue that starts cold (after a model change).
+    # +wall+: the wall time it started (MessageTime.now, once): the
+    # :turn_started event's at and its user message's (and reminders') stamp.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit, :resumed, :resume_from) do
+                      :settings, :id, :limit, :resumed, :resume_from, :wall) do
       def resumed? = resumed ? true : false
 
       # The turn's boundary events carry the origin only when it names a
@@ -2009,6 +2015,9 @@ module Samagotchi
 
       # Seconds since the turn started (the cancel note says how long it ran).
       def elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+
+      # The wall time's stamp text (MessageTime::KEY).
+      def at = MessageTime.iso(wall)
     end
     private_constant :Turn
 
@@ -2141,7 +2150,7 @@ module Samagotchi
 
       Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
                controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
-               id: id || SecureRandom.uuid)
+               id: id || SecureRandom.uuid, wall: MessageTime.now)
     end
     private :begin_turn
 
@@ -2155,7 +2164,7 @@ module Samagotchi
       image_refs, image_error = turn_image_refs(session, images)
       # Emit turn_started event
       bind_metrics(session)
-      turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt, turn_id: turn.id }
+      turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt, turn_id: turn.id, at: turn.at }
       turn_started[:continue] = true if turn.continue
       turn_started[:resumed] = true if turn.resumed?
       turn_started[:images] = image_refs unless image_refs.empty?
@@ -2316,16 +2325,18 @@ module Samagotchi
       # system prompt invalidates cache for the entire prefix.
       # Not into a participant's turn: the owner's reminders are the owner's,
       # and would be used up there under the review boundary.
-      due_reminders = turn.origin.participant? ? [] : @reminder_queue.inject!(turn.messages)
+      due_reminders = turn.origin.participant? ? [] : @reminder_queue.inject!(turn.messages, now: turn.wall)
       if due_reminders.any?
         emit_event(turn.on_event, {
           type: :reminder_injected,
-          reminders: due_reminders
+          reminders: due_reminders,
+          at: turn.at
         })
       end
 
       unless turn.continue
-        user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author) }
+        user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
+                         MessageTime::KEY => turn.at }
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt

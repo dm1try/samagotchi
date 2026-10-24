@@ -37,7 +37,7 @@ RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
     engine.run_turn(session, "go")
 
     expect(queued).to be(true)
-    expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "status?")
+    expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "status?", at: message_at)
   end
 
   it "ctx.stop_turn cancels the running turn once, with a notice, and is false with no turn" do

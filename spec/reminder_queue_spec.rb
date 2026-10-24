@@ -68,7 +68,7 @@ RSpec.describe Samagotchi::ReminderQueue do
       expect(result.map { |r| r[:name] }).to eq(["health"])
       expect(messages.first[:content]).to eq("You are Chi.")
       expect(messages.size).to eq(3)
-      expect(messages.last).to eq(role: "system",
+      expect(messages.last).to eq(role: "system", at: message_at,
                                   content: "[SYSTEM: REMINDERS DUE]\n  health: Check API health (interval: 1m)\n[END REMINDERS]")
     end
 
