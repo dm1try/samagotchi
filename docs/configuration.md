@@ -1629,8 +1629,9 @@ What changes once `web.public_url` is set:
 - Through the proxy the cookie is `__Host-chi_token` (Secure, Path=/, no Domain: other host names under the domain,
   such as a pod's other ports `https://<port>.<pod>…`, don't get it; the LAN's `chi_token` is separate). Cookies aren't
   scoped by port: another server on the **same host name** and a different port does get it, so give chi web a host
-  name of its own, or port 443. The token trade's redirect goes to the public URL (never to a client-sent
-  `X-Forwarded-Host`), and the page accepts `POST`s from the public `https://` origin only (a sibling port on the same
+  name of its own, or port 443. Through the proxy a `?token=` page isn't traded (it would ride the sign-in redirect,
+  and a crafted link could swap your session): a link's one-time code and the 401 page's paste box do it, the paste
+  box's redirect going to the public URL (never to a client-sent `X-Forwarded-Host`). The page accepts `POST`s from the public `https://` origin only (a sibling port on the same
   domain, or `http://`, is refused). No page of chi web's may be framed by another (`X-Frame-Options: DENY`,
   `frame-ancestors 'none'`, in every mode).
 - Links carry a **one-time code** in the fragment, never a token: `chi web` prints `Proxied: https://…/#code=chc_…`

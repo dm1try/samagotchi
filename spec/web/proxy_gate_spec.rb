@@ -244,18 +244,24 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     end
   end
 
-  describe "the token trade through the proxy" do
-    it "sets the host-only Secure __Host- cookie and an absolute Location from public_url, never X-Forwarded-Host" do
-      status, headers, = call("/?token=#{owner_token}&dir=/r",
-                              headers: proxied(owner, [%w[X-Forwarded-Host evil.example], %w[X-Forwarded-Proto http]]))
-      expect(status).to eq(303)
-      expect(headers["Location"]).to eq("#{origin}/?dir=/r")
-      expect(headers["Set-Cookie"]).to eq("__Host-chi_token=#{owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
-      expect(headers["Set-Cookie"]).not_to include("Domain")
+  # Through the proxy there is no GET trade: a ?token= link would ride the
+  # sign-in redirect, and a crafted one (a participant's) would replace the
+  # owner's cookie without a word. Codes and the paste box's POST cover it.
+  describe "a ?token= page through the proxy" do
+    it "trades nothing: the owner's cookie stays, no Set-Cookie" do
+      grant = issued.token
+      status, headers, = call("/?token=#{grant}", headers: proxied(owner, [["Cookie", "__Host-chi_token=#{owner_token}"]]))
+      expect([status, headers["Set-Cookie"]]).to eq([200, nil])
+      expect(call("/?token=#{owner_token}", headers: proxied).first).to eq(401)
     end
 
-    it "trades nothing for a refused identity" do
-      expect(call("/?token=#{owner_token}", headers: proxied("alex@pod.test")).first).to eq(401)
+    it "the paste box's trade sets the host-only Secure __Host- cookie, its Location from public_url, never X-Forwarded-Host" do
+      status, headers, = call("/api/token", method: "POST", body: "token=#{owner_token}",
+                                            headers: proxied(owner, [%w[Content-Type application/x-www-form-urlencoded],
+                                                                     %w[X-Forwarded-Host evil.example], %w[X-Forwarded-Proto http]]))
+      expect(status).to eq(303)
+      expect(headers["Location"]).to eq("#{origin}/")
+      expect(headers["Set-Cookie"]).to eq("__Host-chi_token=#{owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
     end
   end
 

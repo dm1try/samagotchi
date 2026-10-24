@@ -536,7 +536,10 @@ module Samagotchi
       def token_trade?(req)
         return false if direct_public?(req)
 
-        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token")
+        # Through the proxy no GET trade (a ?token= rides the sign-in
+        # redirect, and a crafted link would swap the owner's cookie): a
+        # link's #code= and the 401 page's POST do it.
+        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token") && !(@public_url && proxied?(req))
         return false unless page || fragment_trade?(req)
 
         token_required?(req) || Grants.token?(traded_token(req))

@@ -14,8 +14,8 @@ and commands may change between minor versions. How releases are made:
   Access, Tailscale Serve, or a plain TLS proxy). `web.public_url` (an https origin) makes every request need the
   access token, this machine's too; `web.proxy.identity_header` + `web.proxy.owner` also check the signed-in email
   the proxy sends (owner = that identity AND the token; a repeated, comma, empty or underscore-twin header is
-  refused). Through the proxy the cookie is `__Host-chi_token` (Secure), the token trade's redirect is absolute from
-  `web.public_url`, links (the start line, the web's and `chi share`'s invites) are `https://…/#code=…` with a
+  refused). Through the proxy the cookie is `__Host-chi_token` (Secure), a `?token=` page isn't traded (the paste box's
+  redirect is absolute from `web.public_url`), links (the start line, the web's and `chi share`'s invites) are `https://…/#code=…` with a
   one-time code, never a token, and on this machine a request takes the token as `Authorization: Bearer` only. See
   docs/configuration.md (Behind an auth proxy).
 - Experimental, with `web.public_url`: a link's `#code=` is traded for the cookie by the page (`POST /api/token`;
