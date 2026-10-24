@@ -126,6 +126,70 @@ module Samagotchi
                    port: port, dns_name: dns_name)
         end
 
+        # Serve 443 → the plan's port, in the background (tailscaled keeps
+        # it until #down, also past a chi web killed hard: the next
+        # --tunnel adopts it). The explicit target: chi web binds 127.0.0.1
+        # only.
+        # @raise [CliFailed, CliTimeout] its output in the message (a consent URL)
+        def up(plan)
+          args = ["serve", "--bg", "--https=443", plan.target]
+          result = run(args, timeout: SERVE_TIMEOUT)
+          raise CliFailed.new(command(args), result.output) unless result.success
+
+          nil
+        end
+
+        # 443 off again, only while Serve has exactly what #up set (the same
+        # test as the adopt): a handler someone added meanwhile, another
+        # target, Funnel, is left as it is (`serve --https=443 off` would drop
+        # all of 443).
+        # @return [Symbol] :off, :changed (left alone), :gone (443 was off already)
+        # @raise [Refused] a command that failed (the caller warns)
+        def down(plan)
+          state = begin
+            classify(json(%w[serve status --json]), plan.dns_name, plan.port)
+          rescue ServeInUse, Funnel
+            :changed
+          end
+          return state == :none ? :gone : state unless state == :ours
+
+          args = %w[serve --https=443 off]
+          result = run(args, timeout: SERVE_TIMEOUT)
+          raise CliFailed.new(command(args), result.output) unless result.success
+
+          :off
+        end
+
+        # What the start lines add: how it is reached and whose login is the
+        # owner, and the Tailnet Lock warning.
+        def start_lines(plan)
+          source = plan.owner_source == :config ? "web.proxy.owner" : "this machine's Tailscale login"
+          via = "         via Tailscale Serve (tailnet only), owner #{plan.public_url.owner} (#{source})"
+          via += "; Serve already forwarded port 443 here, chi web turns it off on exit" if plan.adopted
+          lines = [via]
+          if plan.lock_off
+            lines << "Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reach this page; " \
+                     "tailscale lock init turns it on (#{LOCK_DOCS})"
+          end
+          lines
+        end
+
+        # The line #down's outcome is said in, nil for none.
+        def down_line(plan, outcome)
+          case outcome
+          when :off then "Tailscale Serve: port 443 is off again."
+          when :changed
+            "Tailscale Serve's port 443 changed while chi web ran (#{plan.dns_name}): left as it is " \
+              "(tailscale serve status shows it)"
+          end
+        end
+
+        # A #down that failed: Serve may still forward the name.
+        def down_warning(plan, error)
+          "Warning: Tailscale Serve may still forward #{plan.dns_name} to 127.0.0.1:#{plan.port} (#{error.message}): " \
+            "turn it off with tailscale serve --https=443 off"
+        end
+
         # What Serve has on 443: :none, :ours (exactly one handler / →
         # http://127.0.0.1:<port>, no Funnel), or a ServeInUse / Funnel.
         # Other ports are not looked at.

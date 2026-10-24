@@ -150,6 +150,80 @@ RSpec.describe Samagotchi::Web::Tunnel::Tailscale do
     end
   end
 
+  describe "#up and #down" do
+    # What ran after prepare's three looks.
+    def commands = fake.argv.drop(3)
+
+    it "serves 443 to this port, then turns it off on exit, other ports untouched" do
+      fake.serve = "serve-8443-only.json"
+      plan = prepare
+      tunnel.up(plan)
+      expect(fake.serve).to eq(FakeTailscale.fixture("serve-443-8443.json"))
+      expect(tunnel.down(plan)).to eq(:off)
+      expect(commands).to eq(["serve --bg --https=443 http://127.0.0.1:4567", "serve status --json", "serve --https=443 off"])
+      expect(fake.serve).to eq(FakeTailscale.fixture("serve-8443-only.json"))
+      expect(tunnel.down_line(plan, :off)).to eq("Tailscale Serve: port 443 is off again.")
+    end
+
+    it "adopts a leftover: the same serve again (idempotent), off on exit" do
+      fake.serve = "serve-443-on.json"
+      plan = prepare
+      tunnel.up(plan)
+      expect(tunnel.down(plan)).to eq(:off)
+      expect(commands).to eq(["serve --bg --https=443 http://127.0.0.1:4567", "serve status --json", "serve --https=443 off"])
+      expect(fake.serve).to eq({})
+    end
+
+    it "leaves 443 alone when it changed while chi web ran: another handler, another target, Funnel" do
+      plan = prepare
+      tunnel.up(plan)
+      served = fake.serve
+      added = Marshal.load(Marshal.dump(served)).tap do |s|
+        s["Web"]["#{name}:443"]["Handlers"]["/files"] = { "Path" => "/tmp/x" }
+      end
+      moved = JSON.parse(JSON.generate(served).sub("127.0.0.1:4567", "127.0.0.1:9999"))
+      funnel = served.merge("AllowFunnel" => { "#{name}:443" => true })
+      [added, moved, funnel].each do |changed|
+        fake.serve = changed
+        expect(tunnel.down(plan)).to eq(:changed)
+        expect(fake.serve).to eq(changed)
+      end
+      expect(commands).not_to include("serve --https=443 off")
+      expect(tunnel.down_line(plan, :changed))
+        .to eq("Tailscale Serve's port 443 changed while chi web ran (#{name}): left as it is (tailscale serve status " \
+               "shows it)")
+    end
+
+    it "says nothing when 443 is off already" do
+      plan = prepare
+      expect(tunnel.down(plan)).to eq(:gone)
+      expect(tunnel.down_line(plan, :gone)).to be_nil
+      expect(commands).to eq(["serve status --json"])
+    end
+
+    it "refuses with serve's output when it fails or waits for consent" do
+      plan = prepare
+      fake.fail!("serve-bg", "Serve is not enabled on your tailnet.")
+      expect { tunnel.up(plan) }.to raise_error(Samagotchi::Web::Tunnel::CliFailed, /Serve is not enabled/)
+      FileUtils.rm_f(File.join(dir, "state", "fail-serve-bg"))
+      stub_const("#{described_class}::SERVE_TIMEOUT", 0.3)
+      fake.hang!("serve-bg", "To enable, visit: https://login.tailscale.com/f/serve?node=nEXAMPLE")
+      expect { tunnel.up(plan) }.to raise_error(Samagotchi::Web::Tunnel::CliTimeout, %r{https://login.tailscale.com/f/serve})
+      expect(fake.serve).to eq({})
+    end
+
+    it "raises a failed off for the caller's warning" do
+      plan = prepare
+      tunnel.up(plan)
+      fake.fail!("serve-off", "permission denied")
+      expect { tunnel.down(plan) }.to raise_error(Samagotchi::Web::Tunnel::CliFailed) { |e|
+        expect(tunnel.down_warning(plan, e))
+          .to eq("Warning: Tailscale Serve may still forward #{name} to 127.0.0.1:4567 (tailscale serve --https=443 off " \
+                 "failed: permission denied): turn it off with tailscale serve --https=443 off")
+      }
+    end
+  end
+
   describe "the refusals' text" do
     it "says what is wrong and what to do" do
       expect(described_class::CliMissing.new.message)
