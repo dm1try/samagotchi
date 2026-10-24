@@ -123,6 +123,8 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating → `docs/sessions.md`; review sessions (`chi review`, `ReviewStart`, Apply) → `docs/sessions.md` (Review sessions), `docs/internals/participants.md`
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
+- chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy
+  traces) → `docs/configuration.md` (Behind an auth proxy); the gate → `docs/internals/participants.md` (The gate)
 - Participants (`chi share`, `Web::Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
 - `chi broadcast` → `docs/broadcast.md`

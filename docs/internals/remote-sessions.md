@@ -189,7 +189,10 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 - **The token is the owner.** In LAN mode (`web.host: lan`) every non-loopback request needs the `Web::Token` access
   token, as the `chi_token` cookie or `Authorization: Bearer` (`App#token_gate`). This runs over plain http, which is
   fine on a home LAN, the same as the phone page. A loopback chi web without LAN mode needs no token
-  (`Remotes::Entry#token` is nil, and no header is sent).
+  (`Remotes::Entry#token` is nil, and no header is sent). Behind an auth proxy (`web.public_url`, experimental) every
+  request needs it, loopback too, and a proxied owner also the configured identity header
+  ([configuration.md: Behind an auth proxy](../configuration.md#behind-an-auth-proxy), `Web::ProxyGate`); `chi
+  --remote` through such a proxy isn't supported yet (the CLI can't pass its sign-in, and streams need TLS).
 - **Every request has a principal.** `App#principal_for` resolves who a request is, as a `Web::Principal`
   (`web/principal.rb`): `Principal::OWNER` for a peer the gate doesn't ask (no LAN mode, or a loopback peer) and for
   the access token; a participant for a live grant's `chp_` token; nil (a 401) for anyone else (`token_revoked` /
@@ -205,7 +208,8 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 - **The token at rest.** `remotes.yml` is written through `AtomicFile.write(perm: 0o600)`, its read-modify-write (`Remotes.put` / `remove`) under `remotes.yml.lock`. `Entry#inspect` / `#to_s`
   redact the token. `chi remote ls` never prints it (JSON shows `token: true|false`). `HTTPTransport#inspect` and
   `Remote#inspect` show only the label.
-- **The Host check.** `local_host_header?` accepts only the loopback names and the exact LAN IP. `http://studio.local`
+- **The Host check.** `local_host_header?` accepts only the loopback names and the exact LAN IP (and, with
+  `web.public_url`, its host exactly, port included). `http://studio.local`
   gets a 403 `forbidden`, which the client words as "use the LAN IP". The check guards against DNS rebinding.
   `cross_site?` lets CLI clients through because they send no `Origin` or `Sec-Fetch-Site`.
 - **`client_id` only tightens.** `handle_question_answer` forwards `client_id` only when it is `ClientId::CLI_ANSWER`

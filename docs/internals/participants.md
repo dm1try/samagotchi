@@ -7,9 +7,10 @@ limited and capped; and what they **see** (P4a): their page and its reads, all t
 experimental. An agent participant waits on its own turns' replies through the API. The code and docs say
 "participants" and "review", never "shared": `session.shared` already means "attached by default".
 
-Participants are a **LAN** feature for now (`web.host: lan`; a public URL, `web.public_url`, is planned, not a
-config key yet): a loopback peer with no token is
-the owner, and a reverse proxy on the same machine would make every visitor loopback. A participant's token is the
+Participants reach chi web on the **LAN** (`web.host: lan`), or **behind an auth proxy** with `web.public_url`
+(experimental; docs/configuration.md, "Behind an auth proxy"): there every request needs a token, this machine's too,
+and invite links are `https://<public url>/#token=chp_…&s=ID`. Without either, a loopback peer with no token is the
+owner, and a reverse proxy on the same machine would make every visitor loopback. A participant's token is the
 participant's wherever it comes from: their link opened on this machine (or on a chi web not on the LAN, whose link
 works on this machine only) is the participant, never the owner.
 
@@ -47,11 +48,22 @@ participant** and **one role**, until it expires or is revoked.
   refused with one message naming the file (`Grants::Corrupt`: `chi share` exits 1, chi web answers 500 with it);
   an archive or delete still goes ahead. Fix the file, or move it aside to end every link.
 - Rotating the owner token (`chi web --new-token`) never touches grants; `chi share revoke --all` ends them all.
+- **Bound grants** (`identity`, an email in lower case; nil for any, and absent from the store then): a bound grant
+  is honoured only on a request through the proxy (`web.public_url`) whose identity header carries that email; on the
+  LAN or this machine it is refused (401). The gate checks it (`participant_principal(identity:, proxied:)`);
+  issuing one (`chi share --identity`, the Invite dialog's email) is shared-sessions P6.
 
 ## The gate
 
 `App#principal_for` resolves every request to a `Web::Principal`:
 
+0. With `web.public_url` (`Web::ProxyGate`), a **proxied** request (a proxy trace: `X-Forwarded-*`, `Forwarded`,
+   `X-Real-IP`, a known identity header, the configured one, or the public Host) is `#proxied_principal`'s: the owner
+   only with the owner's token **and**, when `web.proxy.identity_header` is set, that header being one clean value
+   (not repeated, no comma, not empty, under one name with no underscore: the raw header names) equal to
+   `web.proxy.owner`; a participant with a live grant (a bound one only for its identity); else 401, its reason in
+   the detail (only the requester's own identity). Unproxied, every request needs a token too (no "loopback is the
+   owner"): rule 3 doesn't apply.
 1. The owner's token (Bearer, then the cookie; `?token=` on the page's trade): the **owner**. Checked first, so the
    owner's requests never touch the grants store (measured: no change to an owner route's time).
 2. A `chp_` token (`Grants.token?`) whose grant is active: a **participant** (`Principal.new(kind: :participant,
@@ -63,7 +75,9 @@ participant** and **one role**, until it expires or is revoked.
    owner." / "This review link expired: ask the session's owner for a new one."), any other **401
    `unauthorized`** as before.
 
-The `?token=` trade sets the `chi_token` cookie to the token that was presented, the owner's or the participant's
+The `?token=` trade (and `POST /api/token {token}`, the page's trade of a link's `#token=` fragment, which no proxy
+or IdP sees) sets the `chi_token` cookie (`__Host-chi_token`, Secure, on a proxied request) to the token that was
+presented, the owner's or the participant's
 (one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
 makes that browser the participant, on loopback too). A grant's token is traded on any peer; the owner's only where
 the gate asks for it. On a peer the gate doesn't ask, the 401 for a grant's cookie that no longer works clears the
@@ -426,8 +440,10 @@ participant TUI in v1.
 
 ## Invariants
 
-- The owner is the owner's token, or a loopback peer (or a chi web not on the LAN) with no participant token; nothing
-  else. A participant token never widens to the owner, from any peer.
+- The owner is the owner's token, or a loopback peer (or a chi web not on the LAN, and without `web.public_url`) with
+  no participant token; nothing else. Through a proxy the owner is the token and, with an identity header
+  configured, that identity: never the identity alone, never a loopback peer. A participant token never widens to the
+  owner, from any peer.
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.

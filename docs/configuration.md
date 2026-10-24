@@ -1596,6 +1596,66 @@ web:
 - `GET /api/sessions/:id` (and its `?tail=1`) carries `capabilities.editor` (true for such a viewer) and
   `editor_url`, the template (null otherwise).
 
+## Behind an auth proxy
+
+Experimental. `chi web` binds 127.0.0.1 only; to use it from elsewhere over https, put it behind a proxy that does TLS
+and, usually, a sign-in (oauth2-proxy, nginx `auth_request`, Caddy `forward_auth`, Cloudflare Access, Tailscale
+Serve; a work pod forwarding `https://<port>.<pod>.<domain>` through oauth2-proxy) and tell chi web its public URL:
+
+```yaml
+web:
+  public_url: https://4567.pod.example.com     # the https origin people open: no path
+  proxy:
+    identity_header: X-Forwarded-Email         # optional: the header the proxy puts the signed-in email in
+    owner: me@example.com                      # optional, needs identity_header: you, as that header says it
+```
+
+What changes once `web.public_url` is set:
+
+- **Every request needs the access token**, this machine's too (`$XDG_STATE_HOME/samagotchi/web-token`, made at
+  start; `chi web --new-token` replaces it). A proxy that adds no header and rewrites Host (nginx's `proxy_pass` with
+  its defaults) would otherwise look like this machine. `chi web` prints `Proxied: https://…/#token=…` and
+  `This machine: http://127.0.0.1:PORT/?token=…`; chi's own local callers (a second `chi web`, `chi share`, `chi
+  update`) send the token from the file.
+- **A request through the proxy** (it carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, a known identity header,
+  or the public Host) is the owner only with the token **and**, when `web.proxy.identity_header` is set, that header
+  being exactly `web.proxy.owner` (any case). A repeated, comma-separated or empty value, or the header sent under a
+  second spelling (`X_Forwarded_Email` next to `X-Forwarded-Email`), is refused (401, the reason in the answer's
+  detail). With `identity_header` unset the token alone decides: that works behind any proxy. `owner` without
+  `identity_header` stops `chi web` from starting.
+- Through the proxy the cookie is `__Host-chi_token` (Secure, this host only; the LAN's `chi_token` is separate), the
+  token trade's redirect goes to the public URL (never to a client-sent `X-Forwarded-Host`), and the page accepts
+  `POST`s from the public origin only (a sibling port on the same domain is refused).
+- Links carry the token in the **fragment**: the owner's `https://<public url>/#token=…`, a participant's
+  (`chi share`, the Invite dialog) `https://<public url>/#token=chp_…&s=ID`. Neither the proxy nor its sign-in sees a
+  fragment; the page trades it for the cookie (`POST /api/token`) and drops it from the URL. (A `?token=` link still
+  works, but it rides through the sign-in redirect into the identity provider's logs.)
+- When the proxy's sign-in or chi's token ends, the page says so: it reloads once (the proxy's sign-in brings you
+  back), and within a minute of that shows "Signed out … Reload" instead of a list that quietly stopped updating. Its
+  API calls ask for JSON, so oauth2-proxy answers an ended sign-in with 401 instead of a redirect.
+- A session's Bridge (its worker's own port) refuses any request that carries a proxy header (403 `proxied`): a
+  proxy that forwards every port doesn't reach a worker.
+- `chi --remote` to a chi web behind a sign-in proxy isn't supported yet.
+
+Which header to trust: only one the proxy **sets** on every signed-in request **and replaces** when a client sends
+it. Check before setting `identity_header`: run an echo on a free port behind the same proxy (`python3 -c` with
+`http.server`, or any header-echo server), open it signed in, and send your own copies (`curl -H 'X-Forwarded-Email:
+evil@x' -H 'X_Forwarded_Email: evil@x' …` with your sign-in cookie): the header you trust must come back with your
+email only. chi warns once in its log when a proxied request carries a known identity header but not the configured
+one.
+
+| Setup | `identity_header` | Notes |
+|---|---|---|
+| oauth2-proxy (`--pass-user-headers`) | `X-Forwarded-Email` | Replaced, spelling variants dropped; `X-Forwarded-For` always added. **Not** `X-Auth-Request-Email`: oauth2-proxy puts that on its *response*, a client's copy reaches chi untouched. Checked against oauth2-proxy 7.15.5. |
+| nginx `auth_request` + oauth2-proxy (`--set-xauthrequest`) | `X-Auth-Request-Email` | Only as nginx sets it from the auth reply (`auth_request_set $email $upstream_http_x_auth_request_email; proxy_set_header X-Auth-Request-Email $email;`), which replaces a client's copy; nginx drops underscore spellings by default. Checked with nginx 1.27. |
+| Caddy `forward_auth` (`copy_headers X-Auth-Request-Email`) | the copied header | Replaced from the auth reply; Caddy passes an underscore spelling through, which chi refuses. Checked with Caddy 2.8. |
+| Cloudflare Access | `Cf-Access-Authenticated-User-Email` | Not checked yet: verify with an echo. chi trusts the header only; it doesn't validate the `Cf-Access-Jwt-Assertion` token. |
+| Tailscale Serve | `Tailscale-User-Login` | Not checked yet: verify with an echo. Funnel (public) requests carry no identity: with the header set they are refused, leave it unset to let the token decide. |
+| Authelia, Authentik (behind nginx, Caddy, Traefik) | `Remote-Email` (Authelia), `X-Authentik-Email` (Authentik) | Not checked yet; only as the front proxy copies it from the auth reply (the nginx and Caddy rows). |
+| A TLS proxy with no sign-in (nginx, Caddy, an SSH tunnel) | leave unset | The token alone decides. |
+
+Keep the state dir (`web-token`, the grants) out of any folder others can read, such as a team's shared folder.
+
 ## All settings
 
 Every setting below takes the three forms described in
