@@ -125,7 +125,7 @@ and commands may change between minor versions. How releases are made:
 - The participants panel no longer closes on its own Cap or Invite another (the button, redrawn away by its own
   click, read as a click outside the panel).
 
-Update with `chi update` (the system bundle 0.107.0, the coordinator bundle 0.6.0), then restart `chi web`.
+Update with `chi update` (the system bundle 0.107.0, the coordinator bundle 0.6.0, the dev profile 0.7.2), then restart `chi web`.
 
 ## [0.106.0] - 2026-10-23
 
