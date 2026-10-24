@@ -111,15 +111,19 @@ module Samagotchi
         nil
       end
 
-      # Read, change and write under the lock; expired codes go.
+      # Read, change and write under the lock; expired codes go. The block
+      # gets the live codes and returns the codes to keep.
       def update
         dir = File.dirname(@path)
         FileUtils.mkdir_p(dir, mode: 0o700)
         File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
           now = @clock.call
-          entries = read.reject { |entry| Time.iso8601(entry["expires_at"].to_s) <= now rescue true }
-          entries = yield(entries)
+          stored = read
+          entries = yield(stored.reject { |entry| expired?(entry, now) })
+          # Written only when it changes: a guessed code costs no write.
+          next if entries == stored
+
           AtomicFile.write(@path, "#{JSON.generate({ "version" => 1, "codes" => entries })}\n", perm: 0o600)
         end
       end

@@ -42,4 +42,16 @@ RSpec.describe Samagotchi::Web::LinkCodes do
     expect(codes.redeem(token)).to be_nil
     expect(codes.redeem("chc_#{"a" * 43}")).to be_nil
   end
+
+  # A guessed code costs a read under the lock, never a write of the store.
+  it "doesn't rewrite the store for a code it doesn't have, only when one goes" do
+    codes.issue(kind: :owner, ttl: 600)
+    before = File.stat(codes.path).ino
+    expect(codes.redeem("chc_#{"a" * 43}")).to be_nil
+    expect(File.stat(codes.path).ino).to eq(before)
+    now[0] += 601
+    codes.redeem("chc_#{"b" * 43}")
+    expect(File.stat(codes.path).ino).not_to eq(before)
+    expect(JSON.parse(File.read(codes.path))["codes"]).to eq([])
+  end
 end
