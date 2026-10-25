@@ -20,6 +20,7 @@ require_relative "working_set_command"
 require_relative "recap_command"
 require_relative "guardrails/parent_policy"
 require_relative "system_one/log"
+require_relative "system_one/record"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -447,13 +448,49 @@ module Samagotchi
       SystemOne::Log.new(dir: File.dirname(@engine.guardrail_approvals.path))
     end
 
-    def system_one_auto_allows
+    def system_one_auto_allows(entries = system_one_entries)
       session_id = @engine.session&.id
       return [] unless session_id
 
-      system_one_log.entries.select do |entry|
+      entries.select do |entry|
         entry["session_id"] == session_id && entry["decision"] == "auto" && entry["answer"].nil?
       end.last(20).reverse
+    end
+
+    def system_one_entries
+      log = system_one_log
+      File.file?(log.path) ? log.entries : []
+    end
+
+    def system_one_listing(lines)
+      entries = system_one_entries
+      mode = Config.get("guardrails.system_one.mode").to_s
+      return if mode == "off" && entries.empty?
+
+      lines << "System 1 (#{mode}):"
+      auto_allows = system_one_auto_allows(entries)
+      lines << "  auto-allows (this session, newest first; /guardrails wrong N):"
+      if auto_allows.empty?
+        lines << "    (none)"
+      else
+        auto_allows.each_with_index do |entry, index|
+          call = shorten_call(entry["call"].to_s.gsub(/\s+/, " "))
+          probability = entry["p"].nil? ? "unknown" : format("%.2f", entry["p"].to_f)
+          lines << "    #{index + 1}. #{entry["rule"]}: #{call} (p=#{probability})"
+        end
+      end
+
+      rules = entries.filter_map { |entry| entry["rule"] }.uniq.sort
+      lines << "  records:"
+      if rules.empty?
+        lines << "    (none)"
+      else
+        rules.each do |rule|
+          summary = SystemOne::Record.new(entries, rule: rule).summary
+          counts = summary.reject { |key, _| key == :rule }.map { |key, value| "#{key}=#{value}" }.join(", ")
+          lines << "    #{rule}: #{counts}"
+        end
+      end
     end
 
     CALL_SHOWN = 100
@@ -506,6 +543,7 @@ module Samagotchi
       lines << "  (none)" if approvals.empty?
       approvals.each_with_index { |entry, idx| lines << "  #{idx + 1}. #{approval_line(entry)}" }
       lines << "revoke one with /guardrails revoke N" unless approvals.empty?
+      system_one_listing(lines)
       lines.join("\n")
     end
 

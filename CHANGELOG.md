@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   [Guardrails](docs/guardrails.md#system-1-experimental).
 - `/guardrails wrong [N]` appends a `should_have_asked` label to this session's Nth newest unlabelled
   System 1 auto-allow (default 1), so its rule asks again until its record is rebuilt.
+- `/guardrails` shows this session's recent System 1 auto-allows and each rule's record summary when System 1
+  is enabled or has judgments.
 - System 1's auto-allowed calls are marked on their tool row in the terminal (` · auto-allowed (System 1, p=0.97)`) and
   the web (an `auto-allowed · System 1` label, its rule and p on hover).
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for

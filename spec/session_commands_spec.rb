@@ -863,6 +863,38 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(out).to include("guardrails: on", "rules (1):",
                              "  1. git-push: ask (tool execute,task_create, command /git push/) — publishes [bundle guardrails]",
                              "  core: deny writes", "approvals (0):\n  (none)")
+      expect(out).not_to include("System 1")
+    end
+
+    it "lists this session's recent auto-allows and a Record summary for each rule" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("on")
+      log = system_one_log
+      accepted = log.judgment(session_id: session.id, rule: "git-push", call: "git push", p: 0.97, decision: "asked")
+      log.label(accepted, "allow_once")
+      auto_allow("git-push", "git push origin main")
+      auto_allow("git-rebase", "git rebase main")
+      auto_allow("git-push", "git push from another session", session_id: "another-session")
+
+      out = commands.run("/guardrails").output
+
+      expect(out).to include("System 1 (on):",
+                             "  auto-allows (this session, newest first; /guardrails wrong N):",
+                             "    1. git-rebase: git rebase main (p=0.97)",
+                             "    2. git-push: git push origin main (p=0.97)",
+                             "  records:",
+                             "    git-push: asks=3, labelled=1, allow_once=1, allow_wide=0, deny=0, should_have_asked=0, none=0, no_label=2, no_p=0",
+                             "    git-rebase: asks=1, labelled=0, allow_once=0, allow_wide=0, deny=0, should_have_asked=0, none=0, no_label=1, no_p=0")
+      expect(out).not_to include("another session")
+    end
+
+    it "shows System 1 history in off mode when entries exist, but hides an empty off-mode section" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("off")
+      expect(commands.run("/guardrails").output).not_to include("System 1")
+
+      auto_allow("git-push", "git push")
+      expect(commands.run("/guardrails").output).to include("System 1 (off):", "git-push: git push (p=0.97)")
     end
 
     it "says whether the model is small, and which models: rules are on for it" do

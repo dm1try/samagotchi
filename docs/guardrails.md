@@ -98,10 +98,11 @@ A stored approval only relaxes an ask; a deny rule is never approvable.
 A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
-approval N. In System 1 `on` mode, `/guardrails wrong [N]` flags the Nth newest
-auto-allowed call in this session as one System 1 should have asked about
-(default 1). The flag is appended to the judgments log; the rule asks again
-until its record is rebuilt.
+approval N. When System 1 is enabled or has judgments, it also shows this
+session's recent auto-allows and each rule's record summary. In System 1 `on`
+mode, `/guardrails wrong [N]` flags the Nth newest auto-allowed call in this
+session as one System 1 should have asked about (default 1). The flag is
+appended to the judgments log; the rule asks again until its record is rebuilt.
 The file tools can't write the store.
 
 ### Answers from a parent agent
