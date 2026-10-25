@@ -4,8 +4,8 @@ chi web pushes to the owner's phone when a session needs them, for what the tab 
 question, a step-limit question, a card with actions, a failed turn, and (per device, off by default) a done one. The
 phone runs chi web as a Home Screen app (iOS 16.4+), its bell subscribes the device, and chi web, the only sender,
 pushes through the device's push service (Apple's `web.push.apple.com`). The user side is in
-[configuration.md](../configuration.md#phone-notifications-web-push). This page is how it is built (P1 and P2a of the
-plan; the devices list in the page and `chi web push` come later).
+[configuration.md](../configuration.md#phone-notifications-web-push). This page is how it is built (P1, P2a and P2b of the
+plan: P2b is the devices sheet and `chi web push`).
 
 ```
 SessionHub ──emit──▶ Notifier#call(event) ──Queue──▶ sender thread
@@ -55,6 +55,8 @@ files, one per machine, never in config.yml:
   endpoint's SHA-256: the only name of a device outside the store. `Sub#public_h` (id, label, origin, the dates,
   `last_error`, `prefs: {done:}`) and `#inspect` never carry the endpoint or the keys; neither do the log lines.
   `prefs` is `{"done": false}` until `Store#set_prefs(id, done:, origin:)` (the PATCH route) sets it; `Sub#done?`.
+  `Store#remove_device(id, origin:)` removes by short id only on that origin (nil: any; the DELETE route, `chi web
+  push rm`); `#subscriptions!` is `#subscriptions` that raises `Corrupt` instead of reading none (the CLI says so).
 - `sent.json`: `{"version": 1, "keys": {KEY: iso time}}`, the attention keys already handled (a device took the
   show, or it was skipped while a page was in front, or capped), written by `Store#mark_sent` under `store.lock`,
   keys older than a day (`SENT_KEEP`) pruned on each write. `Store#sent_keys` reads it; one that doesn't read is
@@ -201,7 +203,10 @@ public URL, or `web.push.enabled: false`):
 - `POST /api/push/subscriptions {subscription: {endpoint, keys}, replaces?: id}` → 201 `{id, label}`; the label is
   chi's own ("iPhone · <date>", from the User-Agent's device class: iPhone, iPad, Mac, else Browser); `replaces`
   drops the device's earlier entry (`Store#add`).
-- `DELETE /api/push/subscriptions {endpoint}` → 204.
+- `DELETE /api/push/subscriptions {endpoint}` → 204: this device's bell turned off.
+- `DELETE /api/push/subscriptions/ID` → 204, 404 `unknown_device` (another origin's, or not a short id); logs
+  `push_removed`. The devices sheet's Remove for another device; this device's own row never uses it (its switch is
+  the bell, so the page's state and the store stay one).
 - `PATCH /api/push/subscriptions/ID {prefs: {done: true|false}}` → 200 the device's `Sub#public_h`; 404
   `unknown_device` (not this origin's, or not a short id: the id is a `([^/]+)` capture checked in the handler, as
   `participant_gate_spec`'s `path_for` fills only those), 400 `invalid_prefs`; logs `push_prefs`. ROUTES' first
@@ -209,7 +214,8 @@ public URL, or `web.push.enabled: false`):
 - `POST /api/push/presence {page, front}` → 204 (also with push off: a desk tab has nothing to be told), 400
   `invalid_presence`.
 - `POST /api/push/test {endpoint?}` → a test push to that device or every one on this origin, answered per device
-  (`{devices: [{id, label, status, code, ms}]}`); the bell sends one after subscribing.
+  (`{devices: [{id, label, status, code, ms}]}`); the bell sends one after subscribing. The payload is
+  `Push::TEST_PAYLOAD` (TTL `TEST_TTL`), shared with `chi web push test`.
 
 With push off the subscription writes and the test answer 409 `push_off`.
 
@@ -239,6 +245,24 @@ kept in localStorage as `chi_push_device`, `PUSH_DEVICE_KEY`; a storage that thr
 a test push; a tap when on unsubscribes and deletes, and forgets the id, unless there was no subscription left to
 delete (revoked meanwhile): then the id stays for the next subscribe to replace. The tab's own OS notification is left to the push there; the title count stays. In a browser tab, or with
 chi web not pushing, the bell is the in-tab one, unchanged (no duplicate desktop pushes).
+
+**The devices sheet** (`public/push_devices.js`, `createPushDevices` on `chip_popover.js`'s shell: a bottom sheet
+under 600 px, else a popover at the bell; made once chi web says it pushes, so a tab never gets one): in push mode
+the bell's tap opens it (`toggleNotify` → `sheet.toggle()`), and it reads `GET /api/push?endpoint=` on each open.
+This device's row has the switch, the bell's own `togglePush` (permission from that tap; off forgets
+`PUSH_DEVICE_KEY`), never Remove; every device has a **Long turns done** switch (`PATCH …/ID {prefs: {done}}`),
+another device Remove (`DELETE …/ID`); `GET`'s `stale` is one line. One change at a time, the list read again after
+each; a failure is said in the sheet (and the bell's tooltip). Pure `deviceRows` / `staleText` / `sheetModel` /
+`sheetTemplate` run under node (push_devices.test.js); notifications.js takes the sheet as a `devices` factory.
+
+**`chi web push`** (`lib/samagotchi/push_command.rb`, `PushCommand`): `ls [--format json]`, `rm ID`, `test [ID]` on
+this machine's `Store` directly (chi web need not run). "Stale" is another origin than
+`PushCommand.current_origin`: the running chi web's (`Web::Running.live_public_url`), else `web.public_url`'s, none
+marked when neither. `test` builds a `Client` per device (`Push.load_key`, `Push.contact(sub.origin)`), stamps the
+delivery (`Store#mark`) and removes a `:gone` device, as the route does. bin/chi branches on `ARGV[0..1] == web
+push` after the `SUBCOMMANDS` dispatch and before `RunOptions.parse` (which refuses a stray word after `web`); it is
+no `SUBCOMMANDS` key (`web` is RunOptions', and the contract spec would want a TABLE/MACHINE entry). `chi --remote X
+web push …` is refused before that by `SessionAccess::Dispatch` (`web` is local only).
 
 **The device's tidy-up** (`syncDevice`, the Home Screen app with the bell on): closes the shown notifications whose
 tag is a waiting key (`push.js isWaitingTag`, so `chi:test` and a failed or done turn's stay) and isn't open in the

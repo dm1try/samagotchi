@@ -154,6 +154,7 @@ module Samagotchi
                  chi bootstrap [HOST[:PORT]|URL]  first setup: find the model server, write config.yml
                  chi scratch [options]            a one-time session in this terminal: nothing is kept
                  chi web [--port PORT] [--open] [--scope=all]   the web UI
+                 chi web push <ls|rm|test>        the phones chi web pushes notifications to
                  chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean|stats>
                  chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
                  chi broadcast [-m TEXT] [--all] [--dry-run] | log | deliver   a note for every session it may concern

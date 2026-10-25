@@ -1787,9 +1787,17 @@ What it needs:
 - No Apple account or registration: chi web signs its pushes with a key of its own (VAPID).
 
 Turning it on, on the phone: open the `Proxied:` link in Safari → Share → **Add to Home Screen** → open the **Chi**
-app → tap the **bell** at the top → Allow. A test notification arrives at once. Tap the
-bell again to turn it off on that phone. In a browser tab the bell stays the tab's own notifications (while the tab
-is in the background), as before.
+app → tap the **bell** at the top → turn on **This device** in the sheet → Allow. A test notification arrives at once.
+In a browser tab the bell stays the tab's own notifications (while the tab is in the background), as before.
+
+**The devices** (the bell's sheet in the app; a bottom sheet on the phone): this device first, with its switch (off
+removes it from chi web and is the same as the bell turned off), then every other device chi web pushes to: its label,
+the last delivery and the last error, a **Long turns done** switch each, and **Remove** (it can turn its bell on again
+to come back). Devices made on an earlier public URL show as one line ("1 more device from an earlier address"): they
+are never sent to; `chi web push rm ID` removes them. From the Mac: `chi web push ls` lists them, `chi web push test
+[ID]` sends a test notification, `chi web push rm ID` removes one ([CLI](cli.md)). A device iOS dropped silently still
+shows a recent delivery (Apple keeps accepting pushes for it): if one stops getting notifications, switch it off and on
+there; the new subscription replaces the dead one.
 
 - **What is sent**: the session's name and the reason ("needs approval", "needs an answer", "hit its step limit",
   "needs you", "turn failed", "done in N s"), never the question or the command, as the tab's notification on the
@@ -1801,8 +1809,7 @@ is in the background), as before.
 - **When**: the same things the tab notifies for, still open 3 s after they came (3.5 s for a delegated child's
   approval, which its parent may relay instead); one push each. A delegated child's failed or finished turn is its
   parent's to report. **Done turns** (10 s or longer, or one nobody started: a delegate's report, a context change, a
-  finished task) are **off** by default, per device; the switch comes with the devices list (for now:
-  `PATCH /api/push/subscriptions/ID {"prefs": {"done": true}}`, the id from `GET /api/push`'s `devices`).
+  finished task) are **off** by default, per device: the **Long turns done** switch in the devices sheet turns them on.
 - **Quiet while you look**: nothing is pushed while any chi web page (a tab on the Mac, or the app) is in front and
   was touched in the last 2 minutes; what came meanwhile is never pushed later (the page has it). A page left in
   front untouched stops quieting the phone after about 2 minutes.

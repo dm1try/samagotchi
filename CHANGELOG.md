@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: in the phone's Home Screen app the bell opens a notifications sheet: this device's switch, then every
+  device chi web pushes to with its last delivery, a "Long turns done" switch each and Remove; devices from an
+  earlier address are one line.
+- `chi web push ls|rm ID|test [ID]`: list the phones chi web pushes to, remove one, or send a test notification,
+  from the terminal (chi web need not run; never prints a push address or keys).
+
 ### Fixed
 
 - `chi web --tunnel tailscale`: a Ctrl-C while it turned Tailscale Serve on left port 443 forwarding to chi web's port
