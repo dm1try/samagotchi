@@ -29,6 +29,11 @@ module Samagotchi
         def initialize(presence: Presence.new, **) = super
       end
 
+      # The test push (POST /api/push/test, chi web push test): no badge
+      # (it would clear the app's) and no open list (no cleanup).
+      TEST_PAYLOAD = { v: 1, kind: "show", tag: "chi:test", title: "chi", body: "test notification", url: "/" }.freeze
+      TEST_TTL = 600
+
       module_function
 
       # Push runs for +public_url+ (nil: none) when web.push.enabled.

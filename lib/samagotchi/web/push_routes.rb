@@ -67,10 +67,23 @@ module Samagotchi
         end
 
         sub = Push::Store.short_id?(id) && @push.store.set_prefs(id, done: prefs["done"], origin: @push.origin)
-        return error_response(404, "unknown_device", "no device #{id[0, 16]} pushes from this origin") unless sub
+        return unknown_device(id) unless sub
 
         Log.info(:web, "push_prefs", device: sub.id, done: sub.done?)
         json_response(200, sub.public_h)
+      end
+
+      # DELETE …/subscriptions/ID → 204: the devices list's Remove for
+      # another device (this device's row turns the bell off instead, so
+      # the page and the store agree).
+      def handle_push_remove(_req, id)
+        return push_off unless @push
+
+        sub = Push::Store.short_id?(id) && @push.store.remove_device(id, origin: @push.origin)
+        return unknown_device(id) unless sub
+
+        Log.info(:web, "push_removed", device: sub.id)
+        [204, { "Cache-Control" => "no-store" }, []]
       end
 
       # {endpoint} → 204: this device's bell turned off.
@@ -95,9 +108,8 @@ module Samagotchi
         endpoint = body["endpoint"] if body.is_a?(Hash)
         subs = @push.store.for_origin(@push.origin)
         subs = subs.select { |sub| sub.endpoint == endpoint } if endpoint.is_a?(String) && !endpoint.empty?
-        payload = { v: 1, kind: "show", tag: "chi:test", title: "chi", body: "test notification", url: "/" }
         results = subs.map do |sub|
-          result = @push.client.deliver(sub, payload, ttl: 600, urgency: "high")
+          result = @push.client.deliver(sub, Push::TEST_PAYLOAD, ttl: Push::TEST_TTL, urgency: "high")
           Log.info(:web, "push_test", device: sub.id, code: result.code, ms: result.ms)
           @push.store.remove(sub.id) if result.status == :gone
           { id: sub.id, label: sub.label, status: result.status.to_s, code: result.code, ms: result.ms }
@@ -115,6 +127,8 @@ module Samagotchi
         @push&.presence&.report(page, front)
         [204, { "Cache-Control" => "no-store" }, []]
       end
+
+      def unknown_device(id) = error_response(404, "unknown_device", "no device #{id[0, 16]} pushes from this origin")
 
       def push_off
         error_response(409, "push_off", "push needs an https public URL (chi web --tunnel tailscale, or web.public_url) " \

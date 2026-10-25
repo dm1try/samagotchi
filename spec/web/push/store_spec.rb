@@ -59,6 +59,14 @@ RSpec.describe Samagotchi::Web::Push::Store do
       expect(store.subscriptions).to eq([])
     end
 
+    it "removes a device by id only on the origin given (#remove_device)" do
+      far = store.add(receiver.subscription(endpoint), origin: "https://old.example", label: "far")
+      expect(store.remove_device(far.id, origin: origin)).to be_nil
+      expect(store.remove_device(endpoint, origin: nil)).to be_nil
+      expect(store.remove_device(far.id)&.label).to eq("far")
+      expect(store.subscriptions).to eq([])
+    end
+
     it "drops the entry it replaces (the device's id before, on this origin), never itself, and yields it" do
       dead = store.add(receiver.subscription("#{endpoint}dead"), origin: origin, label: "dead")
       elsewhere = store.add(WebPushReceiver.new.subscription("#{endpoint}far"), origin: "https://old.example", label: "far")

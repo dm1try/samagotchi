@@ -223,6 +223,31 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
     end
   end
 
+  describe "DELETE /api/push/subscriptions/:id" do
+    it "removes this origin's device by its id: 204, then 404" do
+      sub = store.add(receiver.subscription(endpoint), origin: origin, label: "iPhone")
+      other = store.add(receiver.subscription("https://web.push.apple.com/QGpad"), origin: origin, label: "iPad")
+      expect(call("/api/push/subscriptions/#{sub.id}", method: "DELETE").first).to eq(204)
+      expect(store.subscriptions.map(&:id)).to eq([other.id])
+      expect(json("/api/push/subscriptions/#{sub.id}", method: "DELETE").then { |st, b| [st, b["error"]] })
+        .to eq([404, "unknown_device"])
+    end
+
+    it "answers 404 unknown_device for another origin's device or no id, and keeps them" do
+      stale = store.add(receiver.subscription(endpoint), origin: "https://old.example.ts.net", label: "old")
+      ["/api/push/subscriptions/#{stale.id}", "/api/push/subscriptions/0000000z", "/api/push/subscriptions/abc"].each do |path|
+        expect(json(path, method: "DELETE").then { |st, b| [st, b["error"]] }).to eq([404, "unknown_device"]), path
+      end
+      expect(store.subscriptions.map(&:id)).to eq([stale.id])
+    end
+
+    it "answers 409 push_off when push is off" do
+      off = described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, public_url: public_url, public_token: owner_token)
+      status, _, text = call("/api/push/subscriptions/abcd1234", method: "DELETE", to: off)
+      expect([status, JSON.parse(text)["error"]]).to eq([409, "push_off"])
+    end
+  end
+
   describe "POST /api/push/presence" do
     it "keeps the page's report for the Notifier: 204, front until it says otherwise" do
       expect(call("/api/push/presence", method: "POST", body: { page: "p1", front: true }).first).to eq(204)

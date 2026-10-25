@@ -206,6 +206,16 @@ module Samagotchi
           end
         end
 
+        # Removes the device with this short id, only one subscribed on
+        # +origin+ (nil: any; chi web push rm).
+        # @return [Sub, nil] the one removed
+        def remove_device(id, origin: nil)
+          update do |subs|
+            gone = subs.find { |sub| sub.id == id && (origin.nil? || sub.origin == origin) }
+            [subs - [gone], gone]
+          end
+        end
+
         # Sets the device's prefs (+done+: a push for a long turn done).
         # @param origin [String, nil] only a device subscribed there
         # @return [Sub, nil] the device as it is now, nil when there is none
