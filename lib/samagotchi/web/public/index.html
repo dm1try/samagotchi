@@ -109,6 +109,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 @keyframes init-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.init-spin{animation:none;border-top-color:var(--accent)}.init-task{transition:none}}
 .markdown-warning{margin:0 16px 4px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg);color:var(--warn-bright);font-size:12px;line-height:1.4}
+.markdown-tip{display:flex;align-items:flex-start;gap:8px;margin:0 16px 4px;padding:6px 6px 6px 10px;border:1px solid var(--accent-border);border-radius:8px;background:var(--accent-bg);color:var(--text-muted);font-size:12px;line-height:1.4}
+.markdown-tip[hidden]{display:none}
+.markdown-tip-text{flex:1;min-width:0}
+.markdown-tip-close{flex:none;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-muted);font-size:14px;line-height:1;cursor:pointer}
+.markdown-tip-close:hover{background:var(--bg-hover);color:var(--text)}
 .bubble.user{border-left:3px solid var(--accent);background:var(--accent-bg);align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bubble.user.queued{border-left-style:dashed;opacity:.8}
 .bubble.user.steered{border-left-style:dashed;border-left-color:var(--accent);opacity:.9}
@@ -1271,7 +1276,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 /* Start page (no session): the composer alone, centered; no info bar. */
 body:not(.has-session) #center{justify-content:safe center;background:transparent}
 body:not(.has-session) #stage{flex:0 0 auto;min-height:0;background:transparent}
-body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:none}
+body:not(.has-session) #history,body:not(.has-session) #markdownWarning,body:not(.has-session) #markdownTip{display:none}
 body:not(.has-session) #empty{position:static;background:transparent;padding:0}
 body:not(.has-session) #dock{width:min(720px,calc(100% - 32px));margin:0 auto}
 body:not(.has-session) #infoBar{display:none}
@@ -1580,6 +1585,7 @@ a{color:var(--accent)}
   <section id="center">
     <div id="stage">
       <div id="markdownWarning" class="markdown-warning" hidden></div>
+      <div id="markdownTip" class="markdown-tip" hidden><span class="markdown-tip-text"></span><button type="button" class="markdown-tip-close" aria-label="Dismiss tip" title="Dismiss tip">×</button></div>
       <div id="history"></div>
       <div id="empty"></div>
       <div id="notice" role="status" hidden></div>

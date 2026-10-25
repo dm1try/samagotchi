@@ -81,6 +81,7 @@ module Samagotchi
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
           markdown_warning: @markdown_renderer.warning,
+          markdown_tip: @markdown_renderer.tip,
           **viewer_capabilities(req),
           pending_question: pending,
           last_event_seq: last_event_seq,
@@ -208,6 +209,7 @@ module Samagotchi
           session: session_json,
           messages: messages,
           markdown_warning: @markdown_renderer.warning,
+          markdown_tip: @markdown_renderer.tip,
           **viewer_capabilities(req),
           timing: timing
         })

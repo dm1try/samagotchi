@@ -605,7 +605,25 @@ RSpec.describe Samagotchi::Web::App do
       expect(message).to include("role" => "assistant", "content" => "hi there")
       expect(message).not_to have_key("html")
       expect(JSON.parse(body.first)["markdown_warning"]).to be_nil
+      expect(JSON.parse(body.first)["markdown_tip"]).to start_with("Markdown answers:")
       expect(JSON.parse(body.first)["capabilities"]).to eq("display" => false, "editor" => false)
+    end
+
+    it "sends the Markdown tip in both session payloads while Markdown is off, and none once it is on" do
+      off = build_app(state_dir: Dir.mktmpdir)
+      tip = Samagotchi::Web::MarkdownRenderer.new.tip
+      ["/api/sessions/s1", "/api/sessions/s1?tail=1"].each do |path|
+        _status, _headers, body = off.call(env_for(path))
+        expect(JSON.parse(body.first)["markdown_tip"]).to eq(tip), path
+      end
+
+      on = build_app(state_dir: Dir.mktmpdir, markdown: true)
+      ["/api/sessions/s1", "/api/sessions/s1?tail=1"].each do |path|
+        _status, _headers, body = on.call(env_for(path))
+        payload = JSON.parse(body.first)
+        expect(payload).to have_key("markdown_tip"), path
+        expect(payload["markdown_tip"]).to be_nil, path
+      end
     end
 
     it "reports a warning when Markdown is enabled without commonmarker" do
@@ -1412,8 +1430,8 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(status).to eq(200)
         payload = JSON.parse(body.first)
-        expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "capabilities", "editor_url",
-                                                "timing")
+        expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "markdown_tip", "capabilities",
+                                                "editor_url", "timing")
         expect(payload["tail"]).to be(true)
         expect(payload["capabilities"]).to eq("display" => true, "editor" => false)
         expect(payload["messages"].size).to eq(1)

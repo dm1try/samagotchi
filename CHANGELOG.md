@@ -13,6 +13,9 @@ and commands may change between minor versions. How releases are made:
 - Auto titles: the idle recap also writes a 2-6 word title for the session, in the same request, and a session
   without a `/title` is named by it on the web's cards, top bar, tab and notifications and in `chi sessions list`
   (json: `auto_title`). Later recaps keep it unless the focus moved; a hand title always wins.
+- chi web tells you Markdown rendering exists: while `web.markdown` is off, a session shows a one-line tip (restart
+  chi web with `--web-markdown`, or `web.markdown: true` in config.yml; plus `gem install commonmarker` when the gem
+  is missing). Its × hides it for that browser.
 
 ### Fixed
 

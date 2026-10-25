@@ -22,6 +22,30 @@ RSpec.describe Samagotchi::Web::MarkdownRenderer do
     expect(renderer.warning).to include("gem install commonmarker")
   end
 
+  describe "#tip" do
+    it "is nil while rendering is on" do
+      expect(renderer.tip).to be_nil
+    end
+
+    it "says how to turn rendering on while it is off and the gem is installed, without loading it" do
+      disabled = described_class.new
+      allow(Gem::Specification).to receive(:find_all_by_name).with("commonmarker").and_return([double])
+      expect(disabled).not_to receive(:load_bundled_commonmarker!)
+
+      expect(disabled.tip).to eq(described_class::TIP)
+      expect(disabled.tip).to include("--web-markdown", "web.markdown: true")
+      expect(disabled.tip).not_to include("gem install")
+    end
+
+    it "adds the gem install while it is off and the gem is missing" do
+      disabled = described_class.new
+      allow(Gem::Specification).to receive(:find_all_by_name).with("commonmarker").and_return([])
+
+      expect(disabled.tip).to eq(described_class::TIP_GEM)
+      expect(disabled.tip).to include("gem install commonmarker", "--web-markdown")
+    end
+  end
+
   it "renders markdown and sanitizes generated HTML and unsafe links" do
     html = renderer.render(
       "# Heading\n\n" \

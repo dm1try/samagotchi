@@ -7,6 +7,11 @@ module Samagotchi
   module Web
     class MarkdownRenderer
       WARNING = "Markdown rendering is enabled, but the optional commonmarker gem is not installed. Install it with: gem install commonmarker"
+      # The session view's tip while rendering is off (#tip): how to turn it
+      # on, the gem first when it isn't installed. Each fits two lines on a
+      # phone (390px), hence the short lead and the gem one without config.yml.
+      TIP = "Markdown answers: restart chi web with --web-markdown (or web.markdown: true in config.yml)."
+      TIP_GEM = "Markdown answers: gem install commonmarker, then restart chi web with --web-markdown."
       # NOTE: `span` is allowed because the syntax highlighter (commonmarker/syntect)
       # emits classed <span>s; keeping it lets highlighting render.
       ALLOWED_ELEMENTS = %w[a blockquote br code del em h1 h2 h3 h4 h5 h6 hr li ol p pre s strong span table tbody td th thead tr ul].freeze
@@ -27,6 +32,15 @@ module Samagotchi
 
       def warning
         WARNING if enabled? && !load_bundled_commonmarker!
+      end
+
+      # The tip while rendering is off, nil when it is on. Whether the gem is
+      # installed is read from its gemspec, not by loading it: a server that
+      # won't render has no use for the native extension.
+      def tip
+        return nil if enabled?
+
+        commonmarker_installed? ? TIP : TIP_GEM
       end
 
       def render(markdown)
@@ -55,6 +69,12 @@ module Samagotchi
         @commonmarker_available = true
       rescue LoadError
         @commonmarker_available = false
+      end
+
+      def commonmarker_installed?
+        return @commonmarker_installed unless @commonmarker_installed.nil?
+
+        @commonmarker_installed = Gem::Specification.find_all_by_name("commonmarker").any?
       end
 
       def sanitize(html)

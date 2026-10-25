@@ -915,7 +915,11 @@ with markdown off), the same renderer and sanitizer. Generated HTML is
 sanitized, raw HTML in model output is not trusted, and unsafe links are
 removed. If Markdown is enabled without
 commonmarker installed, Chi Web keeps the normal escaped-text display and shows a
-warning explaining how to install the optional gem.
+warning explaining how to install the optional gem. While Markdown is off, the
+owner's session view shows a one-line tip saying how to turn it on (and, when
+commonmarker isn't installed, how to install it; the text is the server's,
+`markdown_tip` in the session payloads, never on a participant's page); its ×
+hides it for that browser (`chi_markdown_tip_dismissed` in localStorage).
 
 Every prompt and answer has a copy button (on hover; always shown, dimmed, on a
 touch screen), and so does each code block of a rendered answer. An answer

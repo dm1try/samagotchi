@@ -124,6 +124,8 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       %w[brief=1 cards=1 tail=1 timing=1].each do |query|
         expect(json("/api/sessions/#{session.id}?#{query}")).to eq([200, body]), query
       end
+      # Nothing of the owner's chi web, such as the Markdown tip.
+      expect(body).not_to have_key("markdown_tip")
     end
 
     it "GET /api/info: app, version and features, not this machine's pid, cwd or LAN address" do
