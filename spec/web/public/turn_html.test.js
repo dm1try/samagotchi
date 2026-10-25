@@ -368,7 +368,14 @@ test("toolRowTemplate: a head-mode output has no tail class", () => {
 });
 
 test("toolRowInnerTemplate labels a System 1 auto-allowed row with its rule and p on hover, and only that", () => {
-  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "git push", guardrail: { rule: "git-push", p: 0.97 } });
+  const html = toolRowHtml({
+    key: "1:1", tool: "execute", status: "ok", title: "git push",
+    guardrail: { rule: "git-push", p: 0.97, judgment_id: "j1" },
+  });
   assert.match(html, /<span class="activity-auto" title="rule git-push, p=0\.97, allowed once">auto-allowed · System 1<\/span>/);
+  assert.match(html, /<button type="button" class="system-one-wrong"[^>]*data-judgment-id="j1"[^>]*>should have asked<\/button>/);
+  assert.doesNotMatch(toolRowHtml({
+    key: "1:1", tool: "execute", status: "ok", title: "git push", guardrail: { rule: "git-push", p: 0.97 },
+  }), /system-one-wrong/);
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "git push" }), /auto-allowed/);
 });

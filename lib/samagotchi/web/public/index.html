@@ -185,6 +185,10 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .activity-params{color:var(--text-muted);overflow-wrap:anywhere}
 .activity-alias{color:var(--text-faint);white-space:nowrap}
 .activity-auto{color:var(--accent);font-size:11px;white-space:nowrap;cursor:help}
+button.system-one-wrong{flex:none;padding:1px 6px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-muted);font-size:10px;line-height:16px;white-space:nowrap}
+button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:var(--text)}
+button.system-one-wrong.marked{border-color:var(--accent-border);color:var(--text-3)}
+.activity-row.guardrail-wrong .activity-auto{color:var(--text-muted)}
 .activity-duration{color:var(--text-faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .activity-output{margin:4px 0 2px var(--row-gutter);font-size:12px;color:var(--text-muted);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:6px 8px;max-height:160px;overflow:auto}
 .activity-output.tail{display:flex;flex-direction:column-reverse}

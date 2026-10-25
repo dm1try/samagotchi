@@ -197,6 +197,14 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end
 
+    it "cannot flag a System 1 auto-allow through the owner's route" do
+      status, body = json("/api/sessions/#{session.id}/guardrails/wrong", method: "POST")
+
+      expect([status, body["error"], body["detail"]]).to eq([
+        403, "not_permitted", "a participant can't do that: only the session's owner can"
+      ])
+    end
+
     it "gets 404 for another session on any session route, as if it didn't exist" do
       rows = described_class.const_get(:ROUTES).select { |row| row[1].source.include?("/api/sessions/([^/]+)") }
       rows.each do |verb, pattern, handler|

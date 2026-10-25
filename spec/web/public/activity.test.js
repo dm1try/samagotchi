@@ -259,7 +259,7 @@ test("addCompleted marks a call System 1 allowed once, through a snapshot's repl
   addCompleted(m, { iteration: 1, call_index: 1, tool: "execute", activity: { status: "ok", guardrail } });
   addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", activity: { status: "ok", guardrail: { rule: "git-push", decided_by: "user" } } });
   addCompleted(m, { iteration: 1, call_index: 3, tool: "execute", activity: { status: "ok" } });
-  assert.deepEqual(m.rows[0].guardrail, { rule: "git-push", p: 0.97 });
+  assert.deepEqual(m.rows[0].guardrail, { rule: "git-push", p: 0.97, judgment_id: "j" });
   assert.equal(m.rows[1].guardrail, undefined);
   assert.equal(m.rows[2].guardrail, undefined);
 });

@@ -19,6 +19,7 @@ require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
+require_relative "system_one/log"
 require_relative "session_commands"
 require_relative "queued_command"
 require_relative "steer"
@@ -584,6 +585,7 @@ module Samagotchi
       %w[POST cancel] => :handle_cancel,
       %w[POST answer] => :handle_answer,
       %w[POST question/dismiss] => :handle_dismiss_question,
+      %w[POST guardrails/wrong] => :handle_system_one_wrong,
       %w[POST turn] => :handle_post_turn,
       %w[POST turn/dequeue] => :handle_dequeue_turn,
       %w[POST command] => :handle_command,
@@ -728,6 +730,30 @@ module Samagotchi
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       end
+    end
+
+    # POST /session/:id/guardrails/wrong {id}: append a false-allow label
+    # only for this session's System 1 auto-allow. Unknown ids are not
+    # distinguishable from judgments belonging to another session.
+    def handle_system_one_wrong(session_id, body)
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      judgment_id = fetched(parsed, "id").to_s.strip
+      return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }] if judgment_id.empty?
+
+      log = SystemOne::Log.new(dir: Guardrails::Approvals.dir_for(@state_dir))
+      entry = log.entries.find do |judgment|
+        judgment["id"] == judgment_id &&
+          judgment["session_id"] == session_id &&
+          judgment["decision"] == "auto"
+      end
+      return [{}, 404, { error: "unknown_judgment" }] unless entry
+      return [{}, 200, { status: "labelled", id: judgment_id }] if entry["answer"] == "should_have_asked"
+      return [{}, 409, { error: "already_labelled" }] unless entry["answer"].nil?
+      return [{}, 500, { error: "label_failed", detail: "could not write the System 1 label" }] unless log.label(judgment_id, "should_have_asked")
+
+      [{}, 200, { status: "labelled", id: judgment_id }]
     end
 
     # What a parent's relay may say about this session's approval

@@ -145,6 +145,13 @@ module Samagotchi
       post("question/dismiss", { id: id, deadline: deadline }, read_body: true)
     end
 
+    # POST /session/:id/guardrails/wrong: mark this session's System 1
+    # auto-allow as one it should have asked about; 404 when unknown.
+    # @return [Response]
+    def mark_system_one_wrong(judgment_id:)
+      post("guardrails/wrong", { id: judgment_id }, read_body: true)
+    end
+
     # POST /session/:id/turn/dequeue: take back a queued message (one that
     # waits for the running turn's end) before it runs. 200 {status:
     # "removed", enqueued_id, prompt}; 409 already_started (a turn took

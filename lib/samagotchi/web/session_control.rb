@@ -107,6 +107,28 @@ module Samagotchi
         end
       end
 
+      # The owner's correction for a System 1 auto-allow. The Bridge checks
+      # that the judgment belongs to this worker's session.
+      def handle_system_one_wrong(req, id)
+        body = parse_json(request_body(req))
+        return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
+
+        judgment_id = body["id"].to_s.strip
+        return error_response(400, "missing_fields", "id is required") if judgment_id.empty?
+
+        request = ->(client) { client.mark_system_one_wrong(judgment_id: judgment_id) }
+        relay(id, bridge_client(id), request, what: "the System 1 judgment was not labelled",
+              cant: "label System 1 judgments") do |reply|
+          case reply.status
+          when 200 then json_response(200, { status: "labelled", id: judgment_id })
+          when 404
+            error_response(404, "unknown_judgment", "unknown System 1 judgment") if reply.json&.dig("error") == "unknown_judgment"
+          when 409 then error_response(409, "already_labelled", "System 1 judgment already has a label")
+          when 400 then error_response(400, "invalid_judgment", reply_detail(reply, "invalid System 1 judgment"))
+          end
+        end
+      end
+
       # A session command typed in the composer (/model, /models, !rollback,
       # !cmd, /continue): the worker runs it (woken as for a turn) and every
       # UI gets its :command_ran. Needs the worker's Bridge.

@@ -549,6 +549,25 @@ RSpec.describe Samagotchi::Bridge do
       @bridge_port = JSON.parse(File.read(sidecar))["port"]
     end
 
+    it "labels this session's System 1 auto-allow and returns 404 for an unknown judgment" do
+      start_bridge
+      log = Samagotchi::SystemOne::Log.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir))
+      id = log.judgment(session_id: @session.id, rule: "git-push", decision: "auto", p: 0.97)
+      other = log.judgment(session_id: "another-session", rule: "git-push", decision: "auto", p: 0.97)
+      client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+
+      response = client.mark_system_one_wrong(judgment_id: id)
+      unknown = client.mark_system_one_wrong(judgment_id: "unknown")
+      another_session = client.mark_system_one_wrong(judgment_id: other)
+
+      expect(response.status).to eq(200)
+      expect(response.json).to include("status" => "labelled", "id" => id)
+      expect(log.entries.find { |entry| entry["id"] == id }["answer"]).to eq("should_have_asked")
+      expect(unknown.status).to eq(404)
+      expect(unknown.json).to include("error" => "unknown_judgment")
+      expect(another_session.status).to eq(404)
+    end
+
     it "advertises the input format its worker reads in the sidecar" do
       start_bridge
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")

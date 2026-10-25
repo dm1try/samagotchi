@@ -3636,6 +3636,49 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions/:id/guardrails/wrong" do
+    def flag_wrong(app, body = '{"id":"j1"}')
+      status, _headers, resp = app.call(env_for("/api/sessions/s1/guardrails/wrong", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    def app_with_worker_response(response)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_client).and_return(instance_double(Samagotchi::BridgeClient,
+                                                                       mark_system_one_wrong: response))
+      app
+    end
+
+    it "relays the judgment id to the worker for the owner" do
+      response = Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"labelled","id":"j1"}')
+      app = build_app(state_dir: Dir.mktmpdir)
+      client = instance_double(Samagotchi::BridgeClient, mark_system_one_wrong: response)
+      allow(app).to receive(:bridge_client).and_return(client)
+      expect(client).to receive(:mark_system_one_wrong).with(judgment_id: "j1").and_return(response)
+
+      status, body = flag_wrong(app)
+
+      expect(status).to eq(200)
+      expect(body).to include("status" => "labelled", "id" => "j1")
+    end
+
+    it "returns 404 when the worker doesn't know the judgment id" do
+      response = Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"unknown_judgment"}')
+
+      expect(flag_wrong(app_with_worker_response(response))).to eq([
+        404, { "error" => "unknown_judgment", "detail" => "unknown System 1 judgment" }
+      ])
+    end
+
+    it "says when the worker is too old to have the route" do
+      response = Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}')
+
+      expect(flag_wrong(app_with_worker_response(response))).to match([
+        501, hash_including("error" => "not_supported")
+      ])
+    end
+  end
+
   # A worker frozen (a sleeping Mac, SIGSTOP) or too slow: the client's read
   # timed out, or the Bridge read the request after its deadline and dropped
   # it. Either way it didn't run, and the page says so.

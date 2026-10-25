@@ -756,9 +756,11 @@ from allowing it — the record gate is about the rule, not about who answers.
 
 To correct an auto-allow after the fact, run `/guardrails` to see this
 session's recent unlabelled auto-allows, newest first, then
-`/guardrails wrong [N]` to label one. The label is appended, not written over
-the judgment. `should_have_asked` makes the rule's record fail the false-allow
-check, so the rule asks again until enough later clean asks rebuild its record.
+`/guardrails wrong [N]` to label one. In chi web, the owner can instead click
+**should have asked** on that tool row; participants cannot use that route.
+The label is appended, not written over the judgment. `should_have_asked`
+makes the rule's record fail the false-allow check, so the rule asks again
+until enough later clean asks rebuild its record.
 
 ### Seeding the record: `chi guardrails replay`
 

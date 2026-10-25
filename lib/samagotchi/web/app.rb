@@ -247,6 +247,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/exit\z}, :handle_exit, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/recap\z}, :handle_recap, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/guardrails/wrong\z}, :handle_system_one_wrong, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/stats\z}, :handle_stats, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/children/counts\z}, :handle_children_counts, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/turns/([^/]+)/records\z}, :handle_turn_records, :owner, :session],

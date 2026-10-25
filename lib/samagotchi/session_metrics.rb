@@ -1107,10 +1107,10 @@ module Samagotchi
         # A grep that found nothing (ok): the reloaded web row says "no match".
         active[:no_match] = true if event.dig(:activity, :no_match)
         # Allowed once by System 1 instead of the user: the reloaded web row
-        # says so (its rule and p only; other guardrail data isn't drawn).
+        # says so and can flag the judgment it came from.
         guardrail = event.dig(:activity, :guardrail)
         if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
-          active[:guardrail] = { rule: guardrail[:rule], p: guardrail[:p] }
+          active[:guardrail] = { rule: guardrail[:rule], p: guardrail[:p], judgment_id: guardrail[:judgment_id] }.compact
         end
         finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
       end
