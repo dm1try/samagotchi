@@ -8,6 +8,7 @@ require "time"
 require "uri"
 require_relative "crypto"
 require_relative "../private_files"
+require_relative "../../log"
 require_relative "../../atomic_file"
 require_relative "../../session"
 
@@ -16,8 +17,10 @@ module Samagotchi
     module Push
       # This machine's Web Push state, in $XDG_STATE_HOME/samagotchi/web-push/
       # (next to web-token and web-grants/; a 0700 folder, 0600 files, never
-      # in config.yml): vapid.pem, chi web's one VAPID key, and
-      # subscriptions.json, the devices that turned the bell on. A
+      # in config.yml): vapid.pem, chi web's one VAPID key,
+      # subscriptions.json, the devices that turned the bell on, and
+      # sent.json, the attention keys already handled (a restart pushes
+      # none of them again). A
       # subscription holds no personal data (an opaque endpoint and two
       # keys); the endpoint and keys never leave this store but for the push
       # itself: what the page and the log show is Sub#public_h (the short
@@ -29,7 +32,11 @@ module Samagotchi
         DIR = "web-push"
         KEY_FILE = "vapid.pem"
         SUBS_FILE = "subscriptions.json"
+        SENT_FILE = "sent.json"
         LOCK = "store.lock"
+        # A handled key is kept this long (a restart catches up questions
+        # under an hour old).
+        SENT_KEEP = 24 * 3600
 
         # The push services a subscription's endpoint may name: the
         # browsers' (Apple, Google, Mozilla, Microsoft). chi web POSTs to
@@ -113,6 +120,7 @@ module Samagotchi
           @clock = clock
           @key_mutex = Mutex.new
           @key = nil
+          @sent_corrupt_logged = false
         end
 
         # Never the key.
@@ -121,11 +129,12 @@ module Samagotchi
 
         def key_path = File.join(@dir, KEY_FILE)
         def subs_path = File.join(@dir, SUBS_FILE)
+        def sent_path = File.join(@dir, SENT_FILE)
 
         # Refuses a store others could read (PrivateFiles).
         # @raise [Insecure]
         def check_permissions!
-          PrivateFiles.check!(@dir, [key_path, subs_path], holds: "chi's push key and devices", error: Insecure)
+          PrivateFiles.check!(@dir, [key_path, subs_path, sent_path], holds: "chi's push key and devices", error: Insecure)
         end
 
         # chi web's VAPID key: vapid.pem, made (0600) the first time.
@@ -206,9 +215,49 @@ module Samagotchi
           end
         end
 
+        # The attention keys already handled (pushed to a device, or
+        # skipped while the owner looked, or over the cap): key → iso8601
+        # time. None when sent.json is missing; one that doesn't read is
+        # logged once and read as none (the next #mark_sent rewrites it:
+        # it only spares a restart's repeat).
+        # @return [Hash{String => String}]
+        def sent_keys = read_sent
+
+        # Records +key+ as handled now; keys older than SENT_KEEP go.
+        def mark_sent(key)
+          locked do
+            at = now
+            keys = read_sent.reject { |_, time| stale_sent?(time, at) }
+            keys[key.to_s] = stamp(at)
+            body = JSON.pretty_generate({ "version" => 1, "keys" => keys })
+            AtomicFile.write(sent_path, "#{body}\n", perm: 0o600)
+          end
+          nil
+        end
+
         private
 
         def now = @clock.call
+
+        def read_sent
+          data = JSON.parse(File.read(sent_path))
+          keys = data["keys"] if data.is_a?(Hash)
+          raise JSON::ParserError, "no keys" unless keys.is_a?(Hash) && keys.all? { |k, v| k.is_a?(String) && v.is_a?(String) }
+
+          keys
+        rescue Errno::ENOENT
+          {}
+        rescue JSON::ParserError
+          Log.warn(:web, "push_sent_corrupt", path: sent_path) unless @sent_corrupt_logged
+          @sent_corrupt_logged = true
+          {}
+        end
+
+        def stale_sent?(time, at)
+          at - Time.iso8601(time) > SENT_KEEP
+        rescue ArgumentError
+          true
+        end
 
         def stamp(time) = time.utc.iso8601
 

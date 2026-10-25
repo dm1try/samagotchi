@@ -22,22 +22,27 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
   let(:notifier) { described_class.new(store: store, client: client, origin: origin, presence: presence, now: -> { clock[0] }) }
   let!(:phone) { store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/phone"), origin: origin, label: "iPhone") }
 
-  # Records each delivery; answers +status+ (or what the block says).
+  # Records each delivery; answers the next of +script+, else +status+.
+  # :busy is a 429 with Retry-After 2, :error a 500 without one (10 s).
   class PushNotifierSpecClient
     Result = Samagotchi::Web::Push::Client::Result
+    CODES = { ok: 201, gone: 410, bad_jwt: 403, failed: 500, busy: 429, error: 500 }.freeze
 
     attr_reader :calls
-    attr_accessor :status
+    attr_accessor :status, :script
 
     def initialize
       @calls = []
       @status = :ok
+      @script = []
     end
 
     def deliver(sub, payload, ttl:, urgency:)
       @calls << { sub: sub.id, payload: payload, ttl: ttl, urgency: urgency }
-      Result.new(status: status, code: { ok: 201, gone: 410, bad_jwt: 403, failed: 500 }[status], ms: 3,
-                 error: status == :failed ? "500" : nil)
+      answer = script.shift || status
+      failed = %i[failed busy error].include?(answer)
+      Result.new(status: failed ? :failed : answer, code: CODES[answer], ms: 3, error: failed ? CODES[answer].to_s : nil,
+                 retry_after: { busy: 2, error: 10 }[answer])
     end
   end
 
@@ -309,6 +314,125 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(store.find(phone.id).last_error).to eq("500")
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:web, "push_failed", { device: phone.id, code: 500, ms: 3, kind: "approval", error: "500" })
+    end
+  end
+
+  context "with the hour's cap" do
+    before { notifier.start(PushNotifierSpecHub.new, sender: false) }
+
+    it "sends 30 shows an hour, holds back the 31st with one warning, and sends again once the hour has moved on" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      add_done_device
+      31.times do |i|
+        session(id: "s#{i}", question: { id: "q", kind: "approval" })
+        advance(3)
+      end
+      session(id: "late", question: { id: "q", kind: "approval" })
+      advance(3)
+      tags = client.calls.map { |c| c[:payload][:tag] }.uniq
+      expect(tags.size).to eq(30)
+      expect(client.calls.size).to eq(60) # one event to two devices counts once
+      expect(Samagotchi::Log).to have_received(:warn).with(:web, "push_capped", hash_including(cap: 30)).once
+      expect(store.sent_keys.keys).to include("s30:q", "late:q")
+
+      advance(3600 - (32 * 3) + 4)
+      session(id: "next", question: { id: "q", kind: "approval" })
+      advance(3)
+      expect(client.calls.last[:payload][:tag]).to eq("next:q")
+    end
+  end
+
+  context "with a busy push service" do
+    before { notifier.start(PushNotifierSpecHub.new, sender: false) }
+
+    it "retries a 429 once after its Retry-After, without holding back another show meanwhile" do
+      client.script = [:busy]
+      session(id: "a", question: { id: "q1", kind: "approval" })
+      advance(1)
+      session(id: "b", question: { id: "q2", kind: "approval" })
+      advance(2)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(%w[a:q1])
+      advance(1)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(%w[a:q1 b:q2])
+      advance(0.9)
+      expect(client.calls.size).to eq(2)
+      advance(0.1)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(%w[a:q1 b:q2 a:q1])
+      expect(client.calls.last[:payload][:open]).to eq(%w[a:q1 b:q2])
+      expect(store.find(phone.id).last_error).to be_nil
+      expect(store.sent_keys.keys).to contain_exactly("a:q1", "b:q2")
+    end
+
+    it "gives up after the one retry: push_failed and the error kept" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      client.script = %i[error error]
+      session(question: { id: "q1", kind: "approval" })
+      advance(3)
+      advance(10)
+      advance(60)
+      expect(client.calls.size).to eq(2)
+      expect(store.find(phone.id).last_error).to eq("500")
+      expect(Samagotchi::Log).to have_received(:warn).with(:web, "push_failed", hash_including(device: phone.id, code: 500)).once
+      expect(store.sent_keys).to eq({})
+    end
+
+    it "drops the retry of a question answered meanwhile, and retries a failed turn's as is" do
+      client.script = %i[busy busy]
+      session(id: "a", question: { id: "q1", kind: "approval" })
+      session(id: "f", turn: ended("failed", 2))
+      advance(3)
+      session(id: "a")
+      advance(2)
+      failed = "f:2026-10-25T09:05:12.345+02:00"
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["a:q1", failed, failed])
+    end
+  end
+
+  context "when chi web restarts (the seed's catch-up)" do
+    let(:wall) { Time.iso8601("2026-10-25T10:00:00+02:00") }
+    let(:notifier) do
+      described_class.new(store: store, client: client, origin: origin, presence: presence, now: -> { clock[0] }, clock: -> { wall })
+    end
+
+    def asked(id, ago, kind: "approval") = summary(id: id, question: { id: "q", kind: kind, created_at: (wall - ago).iso8601(3) })
+
+    it "pushes once an open question asked under an hour ago that no run handled; not one in sent.json, nor an older one" do
+      store.mark_sent("seen:q")
+      hub = PushNotifierSpecHub.new([asked("new", 600), asked("seen", 60), asked("old", 2 * 3600),
+                                     summary(id: "nodate", question: { id: "q", kind: "approval" }),
+                                     summary(id: "card", card: { id: "k1", bundle: "check-in" })])
+      notifier.start(hub, sender: false)
+      advance(3)
+      advance(10)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["new:q"])
+      expect(client.calls.first[:payload][:badge]).to eq(5)
+
+      again = described_class.new(store: store, client: client, origin: origin, now: -> { clock[0] }, clock: -> { wall })
+      again.start(PushNotifierSpecHub.new([asked("new", 600)]), sender: false)
+      clock[0] += 10
+      again.pump
+      expect(client.calls.size).to eq(1)
+    ensure
+      again&.stop
+    end
+
+    it "catches up a step-limit continue and a delegated child's approval with its own hold, not a relayed one" do
+      relayed = summary(id: "r", parent_id: "p", question: { id: "q", kind: "approval", relayed_to: "p1234567",
+                                                             created_at: wall.iso8601(3) })
+      child = summary(id: "c", parent_id: "p", question: { id: "q", kind: "approval", created_at: wall.iso8601(3) })
+      notifier.start(PushNotifierSpecHub.new([asked("k", 5, kind: "continue"), child, relayed]), sender: false)
+      advance(3)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["k:q"])
+      advance(0.5)
+      expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["k:q", "c:q"])
+    end
+
+    it "keeps a key skipped while a page was in front out of the next run's catch-up" do
+      presence.report("desk", true)
+      notifier.start(PushNotifierSpecHub.new([asked("a", 60)]), sender: false)
+      advance(3)
+      expect(client.calls).to eq([])
+      expect(store.sent_keys.keys).to eq(["a:q"])
     end
   end
 

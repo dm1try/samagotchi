@@ -85,10 +85,27 @@ RSpec.describe Samagotchi::Web::Push::Client do
     end
   end
 
+  it "says when a retry may go after a 429 or 5xx: its Retry-After seconds up to 60, else 10; never for others" do
+    answering = lambda do |code, retry_after = nil|
+      response = Struct.new(:code, :body, :retry_after) { def [](name) = name == "Retry-After" ? retry_after : nil }
+      transport = ->(_uri, _request) { response.new(code.to_s, "", retry_after) }
+      described_class.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: transport)
+                     .deliver(sub, {}, ttl: 1, urgency: "high").retry_after
+    end
+    expect(answering.call(429, "2")).to eq(2)
+    expect(answering.call(503, "120")).to eq(60)
+    expect(answering.call(500)).to eq(10)
+    expect(answering.call(502, "Wed, 21 Oct 2026 07:28:00 GMT")).to eq(10)
+    expect(answering.call(429, "-3")).to eq(10)
+    expect(answering.call(201, "5")).to be_nil
+    expect(answering.call(410, "5")).to be_nil
+    expect(answering.call(403, "5")).to be_nil
+  end
+
   it "is failed, with the error's class and no message, when the service can't be reached" do
     refused = ->(_uri, _request) { raise Errno::ECONNREFUSED, "https://web.push.apple.com/QGdevice1" }
     result = described_class.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: refused).deliver(sub, {}, ttl: 1, urgency: "high")
-    expect(result).to have_attributes(status: :failed, code: nil, error: "Errno::ECONNREFUSED")
+    expect(result).to have_attributes(status: :failed, code: nil, error: "Errno::ECONNREFUSED", retry_after: nil)
 
     slow = ->(_uri, _request) { raise Net::ReadTimeout }
     expect(described_class.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: slow).deliver(sub, {}, ttl: 1, urgency: "high").error)

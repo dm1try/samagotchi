@@ -159,8 +159,46 @@ RSpec.describe Samagotchi::Web::Push::Store do
       expect { store.check_permissions! }
         .to raise_error(described_class::Insecure, /vapid\.pem can be read by other users: chmod 700 .* \(it holds chi's push key and devices\)/)
       File.chmod(0o600, store.key_path)
+      store.mark_sent("s1:q1")
+      File.chmod(0o644, store.sent_path)
+      expect { store.check_permissions! }.to raise_error(described_class::Insecure, /sent\.json can be read by other users/)
+      File.chmod(0o600, store.sent_path)
       File.chmod(0o755, dir)
       expect { store.check_permissions! }.to raise_error(described_class::Insecure, /web-push can be read by other users/)
+    end
+  end
+
+  describe "the handled keys (sent.json)" do
+    it "records a key with its time, 0600, and drops keys older than a day on each write" do
+      expect(store.sent_keys).to eq({})
+      store.mark_sent("s1:q1")
+      expect(store.sent_keys).to eq("s1:q1" => "2026-10-24T12:00:00Z")
+      expect(mode(store.sent_path)).to eq(0o600)
+      expect(JSON.parse(File.read(store.sent_path))["version"]).to eq(1)
+
+      later = described_class.new(dir, clock: -> { now + (24 * 3600) + 1 })
+      later.mark_sent("s2:q2")
+      expect(store.sent_keys.keys).to eq(["s2:q2"])
+    end
+
+    it "reads a corrupt one as none, logs it once, and rewrites it on the next write" do
+      allow(Samagotchi::Log).to receive(:warn)
+      FileUtils.mkdir_p(dir)
+      File.write(store.sent_path, "{nope")
+      expect(store.sent_keys).to eq({})
+      File.write(store.sent_path, JSON.generate({ "version" => 1, "keys" => ["s1:q1"] }))
+      expect(store.sent_keys).to eq({})
+      expect(Samagotchi::Log).to have_received(:warn).with(:web, "push_sent_corrupt", path: store.sent_path).once
+
+      store.mark_sent("s1:q1")
+      expect(store.sent_keys.keys).to eq(["s1:q1"])
+    end
+
+    it "drops a key whose time doesn't read" do
+      FileUtils.mkdir_p(dir)
+      File.write(store.sent_path, JSON.generate({ "version" => 1, "keys" => { "old:q" => "yesterday" } }))
+      store.mark_sent("s1:q1")
+      expect(store.sent_keys.keys).to eq(["s1:q1"])
     end
   end
 end

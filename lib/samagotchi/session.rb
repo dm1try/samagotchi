@@ -378,7 +378,8 @@ module Samagotchi
 
     # The question this session waits on, as the lists show it: {id:, kind:}
     # with kind "question" (the model's), "approval", "hook" or "continue"
-    # (the step-limit question, asked between turns); nil with
+    # (the step-limit question, asked between turns), +relayed_to+ and
+    # +created_at+ (iso8601: chi web's push catch-up) when set; nil with
     # none. Only while a worker runs it (+live+): a question saved by a
     # worker that died waits for no one (the next worker drops it). The
     # web's summaries and `chi sessions list` both ask this.
@@ -391,7 +392,8 @@ module Samagotchi
       kind = pending.kind.to_s
       relayed = pending.relayed_to
       relayed_to = relayed.is_a?(Hash) ? (relayed[:parent_short] || relayed["parent_short"]) : nil
-      { id: pending.id, kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
+      { id: pending.id, kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to,
+        created_at: pending.created_at }.compact
     end
 
     # A question saved by a process that no longer runs this session (the

@@ -565,7 +565,8 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.pending_question).to have_attributes(id: record["id"], kind: "approval", status: "pending",
                                                          options: record["options"], relayed_to: record["relayed_to"])
       expect(loaded.pending_question.approval).to eq(record["approval"])
-      expect(loaded.waiting_question(live: true)).to eq(id: record["id"], kind: "approval", relayed_to: "0a1b2c3d")
+      expect(loaded.waiting_question(live: true)).to eq(id: record["id"], kind: "approval", relayed_to: "0a1b2c3d",
+                                                        created_at: record["created_at"])
 
       loaded.save(state_dir: tmpdir)
       expect(JSON.pretty_generate(JSON.parse(File.read(path))["pending_question"])).to eq(JSON.pretty_generate(record))
@@ -1077,6 +1078,12 @@ RSpec.describe Samagotchi::Session do
       expect(session.waiting_question(live: false)).to be_nil
       session.pending_question = { id: "q1", kind: "other" }
       expect(session.waiting_question(live: true)).to eq(id: "q1", kind: "question")
+    end
+
+    it "carries the question's created_at when it has one (chi web's push catch-up)" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/w")
+      session.pending_question = { id: "q1", kind: "approval", created_at: "2026-10-25T09:00:00.000+02:00" }
+      expect(session.waiting_question(live: true)).to eq(id: "q1", kind: "approval", created_at: "2026-10-25T09:00:00.000+02:00")
     end
   end
 end

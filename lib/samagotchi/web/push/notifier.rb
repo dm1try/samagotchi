@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "time"
 require_relative "attention"
 require_relative "../../log"
 
@@ -30,7 +31,12 @@ module Samagotchi
       # is pushed, a waiting one only while still open, to the devices
       # subscribed on this run's public origin (a done turn only to those
       # that asked for it), unless a chi web page is in front (Presence):
-      # then the owner is looking, and the key is never pushed. See
+      # then the owner is looking, and the key is never pushed. At most CAP
+      # shows an hour; a 429 or 5xx is retried once (Client::Result
+      # #retry_after) without the sender ever sleeping. Each key handled
+      # (pushed, skipped or capped) goes in the store's sent.json, so after
+      # a restart the seed pushes an approval asked meanwhile (open, under
+      # CATCH_UP old) and nothing pushed already. See
       # docs/internals/web-push.md.
       class Notifier
         HOLD = 3.0
@@ -44,9 +50,17 @@ module Samagotchi
         # (and the worker cleans up nothing).
         OPEN_LIMIT = 3000
         STOP_JOIN = 2.0
+        # Shows (one event, however many devices) per rolling CAP_WINDOW.
+        CAP = 30
+        CAP_WINDOW = 3600
+        # A question open at a restart is pushed if it was asked this
+        # recently and isn't in sent.json.
+        CATCH_UP = 3600
 
         Show = Data.define(:attention, :title, :body, :at)
         Close = Data.define(:keys)
+        # One device's show, again at +at+ (the push service said when).
+        Retry = Data.define(:show, :sub_id, :at)
 
         # @param store [Store] the devices (and the key the client signs with)
         # @param client [#deliver] Client
@@ -55,14 +69,16 @@ module Samagotchi
         # @param presence [Presence, nil] the pages' reports (nil: nobody is
         #   ever in front)
         # @param now [#call] monotonic seconds (specs move it)
+        # @param clock [#call] the Time now (a question's created_at)
         def initialize(store:, client:, origin:, presence: nil, hold: HOLD,
-                       now: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                       now: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, clock: -> { Time.now })
           @store = store
           @client = client
           @origin = origin
           @presence = presence
           @hold = hold
           @now = now
+          @clock = clock
           @queue = Queue.new
           # The sink's side (under @mutex): the last summary per session.
           @mutex = Mutex.new
@@ -71,6 +87,9 @@ module Samagotchi
           @early = []
           # The sender's side (its thread only, or #pump in a spec).
           @pending = {} # key → Show waiting its hold
+          @retries = {} # [key, device id] → Retry
+          @shown = [] # when each counted show went, oldest first
+          @capped_warned_at = nil
           @refused = false
           @thread = nil
           @handle = nil
@@ -108,10 +127,13 @@ module Samagotchi
         end
 
         # The seed: the summaries as the subscribe saw them. Events that came
-        # before it (newer than the snapshot) are applied after it.
+        # before it (newer than the snapshot) are applied after it. An open
+        # question asked under CATCH_UP ago that no earlier run handled
+        # (sent.json) is shown: it came while chi web was down.
         def seed(summaries)
           @mutex.synchronize do
             summaries.each { |summary| @by_id[summary[:id]] = summary if summary[:id] }
+            catch_up(summaries)
             @seeded = true
             @early.each { |event| notice(event) }
             @early.clear
@@ -153,6 +175,32 @@ module Samagotchi
           end
         end
 
+        # Cards carry no time: they seed as they are.
+        def catch_up(summaries)
+          sent = nil
+          at = @clock.call
+          summaries.each do |summary|
+            question = summary[:pending_question]
+            next unless summary[:id] && question.is_a?(Hash) && question[:id] && !question[:relayed_to]
+
+            asked = asked_at(question[:created_at])
+            next unless asked && at - asked < CATCH_UP
+
+            sent ||= @store.sent_keys
+            attention = Attention.for(nil, summary)
+            next if attention.nil? || sent.key?(attention.key)
+
+            Log.info(:web, "push_catch_up", kind: attention.reason)
+            enqueue_show(attention, summary)
+          end
+        end
+
+        def asked_at(text)
+          text.is_a?(String) ? Time.iso8601(text) : nil
+        rescue ArgumentError
+          nil
+        end
+
         def enqueue_show(attention, summary)
           title, body = Attention.text(summary, attention.reason)
           @queue << Show.new(attention: attention, title: title, body: body, at: @now.call)
@@ -160,7 +208,7 @@ module Samagotchi
 
         def run
           loop do
-            due = @pending.values.map { |show| due_at(show) }.min
+            due = (@pending.values.map { |show| due_at(show) } + @retries.values.map(&:at)).min
             wait = due && [due - @now.call, 0].max
             message = @queue.pop(timeout: wait)
             break if message == :stop
@@ -186,32 +234,70 @@ module Samagotchi
         def flush
           now = @now.call
           due = @pending.values.select { |show| due_at(show) <= now }
-          return if due.empty?
+          retries = @retries.values.select { |again| again.at <= now }
+          return if due.empty? && retries.empty?
 
           due.each { |show| @pending.delete(show.attention.key) }
+          retries.each { |again| @retries.delete([again.show.attention.key, again.sub_id]) }
           open = @mutex.synchronize { Attention.open_keys(@by_id) }
-          due.each do |show|
-            reason = show.attention.reason
-            # Nothing to answer in a failed or done turn: it is due as is.
-            next if Attention.waiting?(reason) && !open.include?(show.attention.key)
-
-            send_show(show, open)
-          end
+          due.each { |show| send_show(show, open) if still_due?(show, open) }
+          retries.each { |again| send_retry(again, open) if still_due?(again.show, open) }
         end
 
-        # A due show to its devices, unless a page is in front: then the
-        # in-tab notification and badge have it, and it is never pushed.
+        # A waiting show while its key is open; a failed or done turn's as
+        # is (nothing to answer).
+        def still_due?(show, open) = !Attention.waiting?(show.attention.reason) || open.include?(show.attention.key)
+
+        # A due show to its devices, unless a page is in front (the in-tab
+        # notification and badge have it) or the hour's cap is reached:
+        # either way the key is handled, never pushed later.
         def send_show(show, open)
           return if @refused
 
           subs = targets(show.attention.reason)
           return if subs.empty?
 
+          key = show.attention.key
           if @presence&.present?
             Log.info(:web, "push_skipped", reason: "present", kind: show.attention.reason)
-            return
+            return handled(key)
           end
-          deliver(subs, show_payload(show, open), reason: show.attention.reason)
+          return handled(key) if capped?(show.attention.reason)
+
+          @shown << @now.call
+          handled(key) if deliver(subs, show_payload(show, open), show)
+        end
+
+        # The retry of one device's show: to that device, if it is still
+        # there; not counted against the cap again.
+        def send_retry(again, open)
+          return if @refused
+
+          sub = @store.for_origin(@origin).find { |candidate| candidate.id == again.sub_id }
+          return unless sub
+
+          handled(again.show.attention.key) if deliver([sub], show_payload(again.show, open), again.show, final: true)
+        end
+
+        # Over CAP shows in the last CAP_WINDOW: one warning per window.
+        def capped?(kind)
+          at = @now.call
+          @shown.shift while @shown.any? && at - @shown.first >= CAP_WINDOW
+          return false if @shown.size < CAP
+
+          if @capped_warned_at.nil? || at - @capped_warned_at >= CAP_WINDOW
+            @capped_warned_at = at
+            Log.warn(:web, "push_capped", cap: CAP, kind: kind,
+                                          echo: "[chi web] #{CAP} pushes in the last hour: holding the rest back")
+          end
+          true
+        end
+
+        # In sent.json: a restart's catch-up skips it.
+        def handled(key)
+          @store.mark_sent(key)
+        rescue SystemCallError => e
+          Log.warn(:web, "push_sent_unwritten", error: e.class.name)
         end
 
         def show_payload(show, open)
@@ -221,16 +307,28 @@ module Samagotchi
           JSON.generate(with_open).bytesize <= OPEN_LIMIT ? with_open : payload
         end
 
-        # @param reason [String] the attention's: its TTL and urgency, who
-        #   gets it, the log line's kind
+        # @param show [Show] its reason: the TTL and urgency, the log
+        #   line's kind
+        # @param final [Boolean] this is the one retry: a failure is final
         # @return [Boolean] whether any device took it
-        def deliver(subs, payload, reason:)
+        def deliver(subs, payload, show, final: false)
+          reason = show.attention.reason
           waiting = Attention.waiting?(reason)
           subs.map do |sub|
             result = @client.deliver(sub, payload, ttl: waiting ? SHOW_TTL : EVENT_TTL, urgency: waiting ? "high" : "normal")
+            if result.retry_after && !final
+              retry_later(show, sub, result)
+              next false
+            end
             record(sub, result, reason)
             result.ok?
           end.any?
+        end
+
+        def retry_later(show, sub, result)
+          Log.info(:web, "push_retry", device: sub.id, code: result.code, ms: result.ms, kind: show.attention.reason,
+                                       after: result.retry_after)
+          @retries[[show.attention.key, sub.id]] = Retry.new(show: show, sub_id: sub.id, at: @now.call + result.retry_after)
         end
 
         # This origin's devices; a done turn only to those whose prefs ask

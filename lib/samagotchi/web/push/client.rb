@@ -11,18 +11,25 @@ module Samagotchi
     module Push
       # One push to one device: the payload encrypted for its keys
       # (Crypto.encrypt), POSTed to its endpoint with chi web's VAPID header,
-      # and the push service's answer as a Result. No retry (P1). See
-      # docs/internals/web-push.md.
+      # and the push service's answer as a Result. It never retries itself:
+      # a Result says when a retry may help (+retry_after+), and the
+      # Notifier keeps it. See docs/internals/web-push.md.
       class Client
         OPEN_TIMEOUT = 5
         READ_TIMEOUT = 10
+        # A 429 or 5xx's Retry-After (delta-seconds) is taken up to this;
+        # without one (or as an HTTP date) a retry waits RETRY_DEFAULT.
+        RETRY_MAX = 60
+        RETRY_DEFAULT = 10
 
         # +status+ :ok (201/200/202), :gone (404/410: the device dropped
         # it), :bad_jwt (403 BadJwtToken: the push service refused chi's
         # VAPID token) or :failed; +code+ the HTTP status (nil when none
-        # came), +error+ a short word for a failure, +ms+ the call's time.
-        Result = Data.define(:status, :code, :ms, :error) do
-          def initialize(error: nil, **) = super
+        # came), +error+ a short word for a failure, +ms+ the call's time,
+        # +retry_after+ the seconds after which one retry may go (a 429 or
+        # 5xx; nil for anything else).
+        Result = Data.define(:status, :code, :ms, :error, :retry_after) do
+          def initialize(error: nil, retry_after: nil, **) = super
           def ok? = status == :ok
         end
 
@@ -93,7 +100,17 @@ module Samagotchi
                    when 403 then response.body.to_s.include?("BadJwtToken") ? :bad_jwt : :failed
                    else :failed
                    end
-          Result.new(status: status, code: code, ms: elapsed, error: status == :failed ? code.to_s : nil)
+          Result.new(status: status, code: code, ms: elapsed, error: status == :failed ? code.to_s : nil,
+                     retry_after: retry_after(response, code))
+        end
+
+        # The push service is busy (429) or failing (5xx): when to try once
+        # more.
+        def retry_after(response, code)
+          return nil unless code == 429 || (500..599).cover?(code)
+
+          value = response["Retry-After"].to_s.strip
+          value.match?(/\A\d+\z/) ? [value.to_i, RETRY_MAX].min : RETRY_DEFAULT
         end
 
         def ms(started) = ((@monotonic.call - started) * 1000).round
