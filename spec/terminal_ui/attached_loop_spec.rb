@@ -314,6 +314,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                     'tool> reading file (read path="NOPE.md"): error (42ms)', "Done."])
       end
 
+      it "marks a replayed row System 1 allowed once, from its saved record" do
+        save_records([{ turn_id: "t1", iteration: 1, call_index: 1, tool: "execute", duration_ms: 1234,
+                        guardrail: { rule: "git-push", p: 0.96 } },
+                      { turn_id: "t1", iteration: 2, call_index: 1, tool: "read", duration_ms: 42 }])
+        feed(snapshot(messages: messages))
+
+        expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") })
+          .to eq(["user> find it", 'tool> running command (execute command="true"): ok (1.2s) · auto-allowed (System 1, p=0.96)',
+                  'tool> reading file (read path="NOPE.md"): error (42ms)', "Done."])
+      end
+
       it "pairs the rows with the records in call order by tool, leaving a row without one bare" do
         # The first call left no record (an older worker's turn, say): the
         # read's record is not the execute's.

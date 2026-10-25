@@ -165,6 +165,22 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:tool_records].map { |record| record[:no_match] }).to eq([true, nil])
   end
 
+  it "keeps System 1's auto-allow (its rule and p) on the tool record, and no other guardrail data" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute",
+        activity: { tool: "execute", status: "ok",
+                    guardrail: { rule: "git-push", verdict: "allow", decided_by: "system one", scope: "once", p: 0.95,
+                                 judgment_id: "j1", note: "auto-allowed by System 1 (p=0.95)" } } },
+      { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute",
+        activity: { tool: "execute", status: "ok", guardrail: { rule: "git-push", verdict: "allow", decided_by: "user", scope: "once" } } }
+    ])
+    expect(metrics.snapshot[:tool_records].map { |record| record[:guardrail] })
+      .to eq([{ rule: "git-push", p: 0.95 }, nil])
+  end
+
   it "keeps a built-in run through call_tool on its record, never counted as an alias" do
     feed([
       { type: :turn_started, session_id: "sess-1", prompt: "hi" },

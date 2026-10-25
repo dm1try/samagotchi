@@ -1550,7 +1550,8 @@ module Samagotchi
               record = join_record(records, part)
               duration = record&.dig("duration_ms")
               @screen.commit(join_tool_line(part, duration_ms: duration.is_a?(Numeric) ? duration : nil,
-                                                  saved_status: record&.dig("status")))
+                                                  saved_status: record&.dig("status"),
+                                                  auto_allowed: record&.dig("guardrail")))
             end
           end
         end
@@ -1594,8 +1595,10 @@ module Samagotchi
       # A saved call's row; "no result" for a call the turn never answered
       # (it ended first). Its status is the saved record's, as live and the
       # web's reload (a guardrail's "blocked" is no error), else read from
-      # its result (a guardrail's deny text reads blocked too).
-      def join_tool_line(part, duration_ms: nil, saved_status: nil)
+      # its result (a guardrail's deny text reads blocked too). A record that
+      # System 1 allowed once (+auto_allowed+, its saved {rule, p}) says so,
+      # as the live row does.
+      def join_tool_line(part, duration_ms: nil, saved_status: nil, auto_allowed: nil)
         output = part[:output]
         command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
         text = ToolActivity.saved_result_text(output) unless output.nil?
@@ -1612,7 +1615,15 @@ module Samagotchi
                      params: part[:params], status: status,
                      description: ToolView.description_title(part[:view] || {}) }
         "#{format_tool_activity_line(activity, duration_ms: duration_ms)}" \
-          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}#{format_tool_cut_suffix(part[:output_truncated])}"
+          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}#{format_tool_cut_suffix(part[:output_truncated])}" \
+          "#{auto_allowed_suffix(auto_allowed)}"
+      end
+
+      # The live row's System 1 suffix for a saved record's {rule, p}.
+      def auto_allowed_suffix(saved)
+        return "" unless saved.is_a?(Hash)
+
+        format_tool_guardrail_suffix({ decided_by: "system one", p: saved["p"] || saved[:p] })
       end
 
       # The context notes that came since the last prompt (all of them in a

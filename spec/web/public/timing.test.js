@@ -480,6 +480,22 @@ test("sessionDurationNow keeps the server's duration without any start", () => {
   assert.equal(sessionDurationNow(undefined, false, 1), null);
 });
 
+test("turnGroups: System 1's auto-allow on a tool record reaches its row, from the parts and from the record alone", () => {
+  const guardrail = { rule: "git-push", p: 0.95 };
+  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
+    tool_records: [
+      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", guardrail, duration_ms: 7 },
+      { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "execute", status: "ok", duration_ms: 3 },
+    ] });
+  const withParts = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE] } },
+  ];
+  assert.deepEqual(turnGroups(withParts, timing)[0].steps.map((s) => s.tools.map((t) => t.guardrail)), [[guardrail], [undefined]]);
+  const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Done." }];
+  assert.deepEqual(turnGroups(plain, timing)[0].steps.flatMap((s) => s.tools.map((t) => t.guardrail)), [guardrail, undefined]);
+});
+
 test("turnGroups: a no-match tool record's flag reaches its row, from the parts and from the record alone", () => {
   const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
     tool_records: [

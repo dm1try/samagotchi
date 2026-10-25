@@ -1106,6 +1106,12 @@ module Samagotchi
         active[:via] = via.to_s if via
         # A grep that found nothing (ok): the reloaded web row says "no match".
         active[:no_match] = true if event.dig(:activity, :no_match)
+        # Allowed once by System 1 instead of the user: the reloaded web row
+        # says so (its rule and p only; other guardrail data isn't drawn).
+        guardrail = event.dig(:activity, :guardrail)
+        if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
+          active[:guardrail] = { rule: guardrail[:rule], p: guardrail[:p] }
+        end
         finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
       end
     end
@@ -1113,7 +1119,7 @@ module Samagotchi
     # Caller holds the mutex.
     def finish_tool_record(active, status, waited_ms: 0)
       record = active.slice(
-        :id, :turn_id, :iteration, :call_index, :tool, :called_as, :via, :no_match, :started_at
+        :id, :turn_id, :iteration, :call_index, :tool, :called_as, :via, :no_match, :guardrail, :started_at
       ).merge(
         status: status,
         completed_at: now.iso8601(3),
