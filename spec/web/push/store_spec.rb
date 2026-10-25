@@ -201,4 +201,16 @@ RSpec.describe Samagotchi::Web::Push::Store do
       expect(store.sent_keys.keys).to eq(["s1:q1"])
     end
   end
+
+  describe "#set_prefs" do
+    it "sets a device's done pref, on its origin only, and answers it (nil for none)" do
+      sub = store.add(receiver.subscription(endpoint), origin: origin, label: "a")
+      expect(sub.public_h[:prefs]).to eq(done: false)
+      expect(store.set_prefs(sub.id, done: true, origin: "https://other.example")).to be_nil
+      expect(store.set_prefs(sub.id, done: true, origin: origin)).to have_attributes(id: sub.id, done?: true)
+      expect(store.find(sub.id).public_h[:prefs]).to eq(done: true)
+      expect(store.set_prefs(sub.id, done: false).done?).to be(false)
+      expect(store.set_prefs("ffffffff", done: true)).to be_nil
+    end
+  end
 end

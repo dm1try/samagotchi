@@ -335,7 +335,7 @@ module Samagotchi
         # for it (off by default).
         def targets(reason)
           subs = @store.for_origin(@origin)
-          reason == "done" ? subs.select { |sub| sub.prefs["done"] == true } : subs
+          reason == "done" ? subs.select(&:done?) : subs
         end
 
         def record(sub, result, kind)

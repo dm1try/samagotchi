@@ -18,16 +18,22 @@ module Samagotchi
 
       private
 
-      # {enabled, public_key, origin, this}: +this+ is the device whose
-      # endpoint the page sends as ?endpoint= (its pushManager's), nil when
-      # this store doesn't have it for this origin.
+      # {enabled, public_key, origin, this, devices, stale}: +this+ is the
+      # device whose endpoint the page sends as ?endpoint= (its
+      # pushManager's), nil when this store doesn't have it for this
+      # origin; +devices+ this origin's (Sub#public_h, +this+ marked),
+      # +stale+ how many were made on another origin (never sent to).
       def handle_push_info(req)
         return json_response(200, { enabled: false, public_key: nil, origin: nil, this: nil }) unless @push
 
         endpoint = req.params["endpoint"].to_s
-        this = endpoint.empty? ? nil : @push.store.for_origin(@push.origin).find { |sub| sub.endpoint == endpoint }
+        subs = @push.store.subscriptions
+        mine = subs.select { |sub| sub.origin == @push.origin }
+        this = endpoint.empty? ? nil : mine.find { |sub| sub.endpoint == endpoint }
         json_response(200, { enabled: true, public_key: Push::Crypto.public_key_b64(@push.store.vapid_key),
-                             origin: @push.origin, this: this && { id: this.id, label: this.label } })
+                             origin: @push.origin, this: this && { id: this.id, label: this.label },
+                             devices: mine.map { |sub| sub.public_h.merge(this: sub.equal?(this)) },
+                             stale: subs.size - mine.size })
       end
 
       # {subscription: {endpoint, keys: {p256dh, auth}}, replaces?: id} →
@@ -47,6 +53,24 @@ module Samagotchi
         json_response(201, { id: sub.id, label: sub.label })
       rescue Push::Store::Invalid => e
         error_response(400, "invalid_subscription", e.message)
+      end
+
+      # PATCH …/subscriptions/ID {prefs: {done: true|false}} → 200 the
+      # device (Sub#public_h): whether it gets a push for a long turn done.
+      def handle_push_prefs(req, id)
+        return push_off unless @push
+
+        body = push_body(req)
+        prefs = body["prefs"] if body.is_a?(Hash)
+        unless prefs.is_a?(Hash) && prefs.keys == ["done"] && [true, false].include?(prefs["done"])
+          return error_response(400, "invalid_prefs", "give {prefs: {done: true|false}}")
+        end
+
+        sub = Push::Store.short_id?(id) && @push.store.set_prefs(id, done: prefs["done"], origin: @push.origin)
+        return error_response(404, "unknown_device", "no device #{id[0, 16]} pushes from this origin") unless sub
+
+        Log.info(:web, "push_prefs", device: sub.id, done: sub.done?)
+        json_response(200, sub.public_h)
       end
 
       # {endpoint} → 204: this device's bell turned off.

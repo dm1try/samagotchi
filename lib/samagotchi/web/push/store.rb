@@ -94,8 +94,11 @@ module Samagotchi
           # Never the endpoint or the keys: what the page, the CLI and the log show.
           def public_h
             { id: id, label: label, origin: origin, created_at: created_at, last_ok_at: last_ok_at,
-              last_error: last_error }
+              last_error: last_error, prefs: { done: done? } }
           end
+
+          # The device wants a push for a long turn done (off by default).
+          def done? = prefs["done"] == true
 
           def inspect = "#<Sub #{id} #{label.inspect}>"
           alias_method :to_s, :inspect
@@ -108,6 +111,7 @@ module Samagotchi
         end
 
         def self.short_id(endpoint) = Digest::SHA256.hexdigest(endpoint.to_s)[0, 8]
+        def self.short_id?(text) = text.is_a?(String) && text.match?(/\A[0-9a-f]{8}\z/)
 
         attr_reader :dir
 
@@ -199,6 +203,21 @@ module Samagotchi
           update do |subs|
             gone = subs.find { |sub| sub.id == id_or_endpoint || sub.endpoint == id_or_endpoint }
             [subs - [gone], gone]
+          end
+        end
+
+        # Sets the device's prefs (+done+: a push for a long turn done).
+        # @param origin [String, nil] only a device subscribed there
+        # @return [Sub, nil] the device as it is now, nil when there is none
+        def set_prefs(id, done:, origin: nil)
+          update do |subs|
+            found = nil
+            subs = subs.map do |sub|
+              next sub unless sub.id == id && (origin.nil? || sub.origin == origin)
+
+              found = sub.with(prefs: sub.prefs.merge("done" => done == true))
+            end
+            [subs, found]
           end
         end
 

@@ -66,11 +66,28 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       status, body = json("/api/push")
       expect(status).to eq(200)
       expect(body).to eq("enabled" => true, "public_key" => Samagotchi::Web::Push::Crypto.public_key_b64(store.vapid_key),
-                         "origin" => origin, "this" => nil)
+                         "origin" => origin, "this" => nil, "devices" => [], "stale" => 0)
 
       sub = store.add(receiver.subscription(endpoint), origin: origin, label: "iPhone · 2026-10-24")
       _, body = json("/api/push?endpoint=#{CGI.escape(endpoint)}")
       expect(body["this"]).to eq("id" => sub.id, "label" => "iPhone · 2026-10-24")
+    end
+
+    it "lists this origin's devices (this one marked, never an endpoint or keys) and counts the stale ones" do
+      sub = store.add(receiver.subscription(endpoint), origin: origin, label: "iPhone")
+      other = store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/QGipad"), origin: origin, label: "iPad")
+      store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/QGold"), origin: "https://old.example.ts.net",
+                                                                                    label: "old")
+      status, text = call("/api/push?endpoint=#{CGI.escape(endpoint)}").values_at(0, 2)
+      expect(status).to eq(200)
+      body = JSON.parse(text)
+      expect(body["devices"].map { |d| d.values_at("id", "label", "this", "prefs") })
+        .to eq([[sub.id, "iPhone", true, { "done" => false }], [other.id, "iPad", false, { "done" => false }]])
+      expect(body["devices"].first.keys).to contain_exactly("id", "label", "origin", "created_at", "last_ok_at", "last_error",
+                                                            "prefs", "this")
+      expect(body["stale"]).to eq(1)
+      expect(text).not_to include(endpoint, sub.p256dh, sub.auth, "QGipad")
+      expect(json("/api/push").last["devices"].map { |d| d["this"] }).to eq([false, false])
     end
 
     it "says enabled false, with no key, when push is off" do
@@ -171,6 +188,38 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       # No badge (it would clear the app's) and no open list (no cleanup).
       expect(sent.first[3].keys).not_to include(:badge, :open)
       expect(store.subscriptions.map(&:label)).to eq(%w[phone stale])
+    end
+  end
+
+  describe "PATCH /api/push/subscriptions/:id" do
+    it "sets the device's done pref and answers the device" do
+      sub = store.add(receiver.subscription(endpoint), origin: origin, label: "iPhone")
+      status, body = json("/api/push/subscriptions/#{sub.id}", method: "PATCH", body: { prefs: { done: true } })
+      expect(status).to eq(200)
+      expect(body).to include("id" => sub.id, "label" => "iPhone", "prefs" => { "done" => true })
+      expect(body.keys).not_to include("endpoint", "keys")
+      expect(store.find(sub.id).done?).to be(true)
+      expect(json("/api/push/subscriptions/#{sub.id}", method: "PATCH", body: { prefs: { done: false } }).last["prefs"])
+        .to eq("done" => false)
+    end
+
+    it "answers 404 unknown_device for another origin's device or no id, 400 invalid_prefs on a bad body" do
+      stale = store.add(receiver.subscription(endpoint), origin: "https://old.example.ts.net", label: "old")
+      ["/api/push/subscriptions/#{stale.id}", "/api/push/subscriptions/0000000z", "/api/push/subscriptions/abc"].each do |path|
+        expect(json(path, method: "PATCH", body: { prefs: { done: true } }).then { |st, b| [st, b["error"]] })
+          .to eq([404, "unknown_device"]), path
+      end
+      expect(store.find(stale.id).done?).to be(false)
+      [nil, {}, { prefs: { done: "yes" } }, { prefs: { done: true, other: 1 } }, { prefs: true }].each do |body|
+        expect(json("/api/push/subscriptions/#{stale.id}", method: "PATCH", body: body).then { |st, b| [st, b["error"]] })
+          .to eq([400, "invalid_prefs"]), body.inspect
+      end
+    end
+
+    it "answers 409 push_off when push is off" do
+      off = described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, public_url: public_url, public_token: owner_token)
+      status, _, text = call("/api/push/subscriptions/abcd1234", method: "PATCH", body: { prefs: { done: true } }, to: off)
+      expect([status, JSON.parse(text)["error"]]).to eq([409, "push_off"])
     end
   end
 

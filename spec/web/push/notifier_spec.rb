@@ -79,14 +79,10 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     { "outcome" => outcome, "ended_at" => at, "seconds" => seconds, "origin" => origin }
   end
 
-  # A second device on this origin with prefs.done (the store's file, as
-  # a PATCH would leave it).
+  # A second device on this origin with prefs.done.
   def add_done_device
     sub = store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/done"), origin: origin, label: "iPad")
-    data = JSON.parse(File.read(store.subs_path))
-    data["subscriptions"].find { |row| row["id"] == sub.id }["prefs"] = { "done" => true }
-    File.write(store.subs_path, JSON.generate(data))
-    sub
+    store.set_prefs(sub.id, done: true)
   end
 
   def hub_event(**) = Samagotchi::Web::SessionHub::Event.new(**)

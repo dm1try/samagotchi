@@ -271,6 +271,8 @@ module Samagotchi
         ["GET", %r{\A/api/push\z}, :handle_push_info, :owner],
         ["POST", %r{\A/api/push/subscriptions\z}, :handle_push_subscribe, :owner],
         ["DELETE", %r{\A/api/push/subscriptions\z}, :handle_push_unsubscribe, :owner],
+        # The id checked in the handler (participant_gate_spec fills ([^/]+) captures only).
+        ["PATCH", %r{\A/api/push/subscriptions/([^/]+)\z}, :handle_push_prefs, :owner],
         ["POST", %r{\A/api/push/test\z}, :handle_push_test, :owner],
         ["POST", %r{\A/api/push/presence\z}, :handle_push_presence, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
