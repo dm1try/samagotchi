@@ -1183,6 +1183,37 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:4px}
 .pp-view{font-size:12px;color:var(--accent);text-decoration:none}
 .pp-view:hover{text-decoration:underline}
+/* The Home Screen app's notifications sheet (push_devices.js): the bell opens it; a bottom sheet on a phone. */
+.push-devices .ctx-pop-head strong{font-family:inherit}
+.push-devices.sheet{border-radius:14px;padding:14px 16px;font-size:14px}
+.pd-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin:2px 0;padding:0}
+.pd-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;padding:8px 10px;border-radius:10px;background:var(--bg-inset)}
+.pd-who{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text)}
+.pd-who b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pd-tag{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--accent-bg);color:var(--accent);white-space:nowrap}
+.pd-act{grid-column:2;grid-row:1/3;display:flex;align-items:center}
+.pd-meta{grid-column:1;font-size:11.5px;color:var(--text-muted)}
+.pd-error{color:var(--danger-text)}
+.pd-done{grid-column:1/3;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)}
+.pd-remove{padding:3px 10px;border-radius:7px;font-size:12px;background:var(--bg-raised);color:var(--danger-text);border:1px solid var(--border-strong);cursor:pointer}
+.pd-remove:hover{color:var(--text-hover)}
+.pd-switch{appearance:none;-webkit-appearance:none;position:relative;flex-shrink:0;width:34px;height:20px;margin:0;border-radius:999px;background:var(--bg-raised);border:1px solid var(--border-strong);cursor:pointer;transition:background .15s}
+.pd-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--text-muted);transition:transform .15s,background .15s}
+.pd-switch:checked{background:var(--accent-strong);border-color:var(--accent-strong)}
+.pd-switch:checked::after{transform:translateX(14px);background:var(--on-solid)}
+.pd-switch:disabled{opacity:.5;cursor:default}
+.pd-switch:focus-visible{outline:2px solid var(--accent-ring);outline-offset:2px}
+.pd-done .pd-switch{width:30px;height:18px}
+.pd-done .pd-switch::after{width:12px;height:12px}
+.pd-done .pd-switch:checked::after{transform:translateX(12px)}
+.pd-note{font-size:11.5px;color:var(--text-muted)}
+.pd-note.pd-error{color:var(--danger-text)}
+.push-devices.sheet .pd-switch{width:42px;height:26px}
+.push-devices.sheet .pd-switch::after{width:20px;height:20px}
+.push-devices.sheet .pd-switch:checked::after{transform:translateX(16px)}
+.push-devices.sheet .pd-done{font-size:13px}
+.push-devices.sheet .pd-meta,.push-devices.sheet .pd-note{font-size:12.5px}
+.push-devices.sheet .pd-remove{padding:6px 12px;font-size:13px}
 .ctx-pop-head{display:flex;align-items:baseline;gap:8px}
 .ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}

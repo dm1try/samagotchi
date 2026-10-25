@@ -200,12 +200,24 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     return { getItem: (k) => (kept.has(k) ? kept.get(k) : null), setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
   };
   const clock = { ms: 1_000_000 };
+  // The notifications sheet the bell opens in push mode: its hooks, and
+  // how often it was toggled.
+  const sheet = { hooks: null, toggles: 0, refreshes: 0 };
+  const devices = (hooks) => {
+    sheet.hooks = hooks;
+    return { toggle() { sheet.toggles += 1; }, refresh() { sheet.refreshes += 1; } };
+  };
   const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped, now: () => clock.ms,
-    sendPresence: () => {}, every: () => {} });
-  const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
+    sendPresence: () => {}, every: () => {}, devices });
+  // A tap on the bell, then (push mode: it opened the sheet) on this
+  // device's switch.
+  const tap = async () => {
+    for (const fn of listeners["button:click"]) await fn();
+    return sheet.hooks ? sheet.hooks.toggleThis() : null;
+  };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
   const synced = async () => { await page.syncing(); };
-  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept, clock,
+  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept, clock, sheet,
     revoke: () => { current = null; } };
 }
 
@@ -522,4 +534,23 @@ test("presenceSender: a beacon (JSON) when leaving, else the api; errors swallow
   presenceSender({ nav: {}, api: () => { throw new Error("x"); } })({ page: "p", front: false }, true);
   assert.deepEqual(fallback, ["/api/push/presence", "/api/push/presence"]);
   await new Promise((r) => setImmediate(r));
+});
+
+test("in the app the bell opens the notifications sheet; its switch is the bell's subscribe and unsubscribe", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", saved: { [PUSH_DEVICE_KEY]: "abcd1234" } });
+  await app.page.pushReady;
+  assert.equal(app.sheet.hooks.state(), "on");
+  await app.tap();
+  assert.equal(app.sheet.toggles, 1);
+  assert.equal(app.button.dataset.state, "off");
+  assert.equal(app.sheet.hooks.state(), "off");
+  assert.equal(app.kept.has(PUSH_DEVICE_KEY), false, "this device's Remove forgets its id");
+});
+
+test("in a tab (no push) no sheet is made and the bell toggles the in-tab choice", async () => {
+  const app = fakeApp({ enabled: false, permission: "granted" });
+  await app.page.pushReady;
+  await app.tap();
+  assert.equal(app.sheet.hooks, null);
+  assert.equal(app.sheet.toggles, 0);
 });
