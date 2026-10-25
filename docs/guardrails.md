@@ -613,6 +613,48 @@ A rule in config.yml that uses a key this chi doesn't know yet (`modes:`,
 that doesn't parse denies every tool call (see Failing closed). Bundles say
 which chi they need (`requires_chi`), so their rules don't hit this.
 
+## System 1 (experimental)
+
+System 1 is a cheap classifier that judges an approval — "would the user
+allow this?" — before it reaches them, so the asks they always allow stop
+reaching them. **P1 is the client and the settings only: nothing judges yet.**
+No ask is answered by System 1, and every approval card works exactly as
+before.
+
+`Samagotchi::SystemOne` (lib/samagotchi/system_one/) speaks the TypeSafe
+"System One" judgment API: `POST <host>/v1/systemone` with
+`{model, state, questions}` and answers of type `noul` (a probability),
+`choice` or `score`. The host is a `hosts:` entry with `api: openai` — a
+local Splash server, or the hosted Jev API — and its key is that host's own
+`api_key_env:`.
+
+```yaml
+guardrails:
+  system_one:
+    mode: off                # off (default) | audit (judge, log, never decide) | on
+    host: splash             # the hosts: entry serving /v1/systemone
+    model: Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0   # else the host's first model
+    rules: [git-push, git-rebase]                  # the rule ids it may answer for
+    threshold: 0.95          # the probability an auto-allow needs
+    min_record: 5            # clean records a rule needs before it is trusted
+    timeout_ms: 2000         # a slower judgment is no judgment
+```
+
+`SystemOne::Client.from_config(host_registry: ...)` reads these on every
+call, so a config.yml change takes effect on the next ask. `mode: off` (the
+default) or no `host` means there is no client at all. Anything else is no
+judgment and one `Log.warn(:guardrails, "system_one_failed", …)`: an
+unreachable host, a host that isn't `api: openai`, a status other than 200,
+a body that isn't JSON, a question with no answer, a request longer than
+`timeout_ms`. A nil means "ask the user", which is what the caller would
+have done anyway.
+
+`ruby script/system-one-probe HOST [MODEL]` asks three fixed approval-like
+questions through the client and prints each probability and the latency of
+the call — how a host is checked before any of this is turned on. The
+decision log, the rule opt-ins and the auto-allow itself come in later
+phases.
+
 ## The guardrails bundle
 
 ```sh

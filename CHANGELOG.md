@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for
+  the questions a guardrail ask would ask, with the new `guardrails.system_one.*` settings (`mode`, `host`, `model`,
+  `rules`, `threshold`, `min_record`, `timeout_ms`) and `script/system-one-probe HOST [MODEL]`, which prints each
+  question's probability and latency. Nothing judges yet: P1 is the client and the settings only, so every approval
+  card still reaches the user. See [Guardrails](docs/guardrails.md#system-1-experimental).
+
 ### Changed
 
 - chi's icon (the browser tab and the Home Screen app) is a deeper blue to purple, so the white χ stands out on any

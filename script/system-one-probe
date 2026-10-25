@@ -1,0 +1,47 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The System One probe: three fixed approval-like questions asked through
+# Samagotchi::SystemOne::Client against one host, printing p and the latency
+# of each call (the first is usually cold).
+#
+#   ruby script/system-one-probe HOST [MODEL]
+#
+# HOST is a hosts: entry name whose api is openai (a local Splash, or the
+# hosted Jev API); MODEL is the judgment model, else the host's first model.
+# It talks to that host only, reads config.yml for the host's key, and no
+# spec runs it. See docs/guardrails.md, "System 1 (experimental)".
+
+require_relative "../lib/samagotchi/host_registry"
+require_relative "../lib/samagotchi/system_one"
+
+TIMEOUT_MS = 20_000 # a cold first prefill can take seconds; a judgment that
+# takes this long is not a judgment worth having.
+
+QUESTIONS = [
+  ["git-push", "A tool call runs `git push origin main`, publishing this repo's commits to its remote. Would the user allow it?"],
+  ["write-outside-repo", "A tool call writes a file outside the session's repo, in a temporary folder. Would the user allow it?"],
+  ["shell-touches-chi", "A shell command reads chi's own config file, ~/.config/samagotchi/config.yml. Would the user allow it?"]
+].map { |id, instructions| [id, Samagotchi::SystemOne::Question.new(id: id, type: :noul, instructions: instructions)] }
+
+host = ARGV[0].to_s.strip
+abort("usage: script/system-one-probe HOST [MODEL]") if host.empty?
+
+registry = Samagotchi::HostRegistry.new
+model = ARGV[1].to_s.strip
+client = Samagotchi::SystemOne::Client.new(
+  backend: Samagotchi::SystemOne::HttpBackend.new(host_registry: registry, host: host, model: model.empty? ? nil : model,
+                                                  timeout_ms: TIMEOUT_MS),
+  mode: "audit", host: host, model: model.empty? ? nil : model
+)
+
+clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+puts "host #{host} (#{registry.find_entry(host)&.openai_base_url}) model #{client.model || "none"} timeout #{TIMEOUT_MS} ms"
+
+QUESTIONS.each do |id, question|
+  started = clock.call
+  answers = client.ask(state: "the guardrail ask for rule #{id}", questions: { id => question })
+  ms = ((clock.call - started) * 1000).round
+  answer = answers&.fetch(id)
+  puts answer ? format("%-18s p=%.4f  %d ms", id, answer.noul, ms) : format("%-18s no judgment  %d ms", id, ms)
+end

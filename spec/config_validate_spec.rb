@@ -75,4 +75,20 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
       "config: unknown key 'bridge'", "config: unknown key 'thinking.preview_lines'"
     ])
   end
+
+  # System 1 (docs/guardrails.md "System 1"): config.yml only, like every
+  # other guardrails setting.
+  it "takes the System 1 settings and warns about a mode it doesn't have" do
+    expect(problems("guardrails: {system_one: {mode: audit, host: splash, model: m, rules: [git-push, git-rebase], " \
+                    "threshold: 0.9, min_record: 3, timeout_ms: 1200}}")).to eq([])
+
+    file = { "guardrails" => { "system_one" => { "rules" => %w[git-push git-rebase], "threshold" => "0.9" } } }
+    expect(Samagotchi::Config.resolve("guardrails.system_one.rules", file_data: file, env: {})).to eq("git-push|git-rebase")
+    expect(Samagotchi::Config.resolve("guardrails.system_one.threshold", file_data: file, env: {})).to eq(0.9)
+    expect(Samagotchi::Config.resolve("guardrails.system_one.timeout_ms", file_data: {}, env: {})).to eq(2000)
+
+    expect(Samagotchi::Log).to receive(:warn).with(:config, "invalid_value",
+                                                   hash_including(echo: /guardrails\.system_one\.mode: "sometimes"/))
+    expect(Samagotchi::Config.resolve("guardrails.system_one.mode", file_data: { "guardrails" => { "system_one" => { "mode" => "sometimes" } } }, env: {})).to eq("off")
+  end
 end
