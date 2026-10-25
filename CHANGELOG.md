@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - chi web: tapping the composer (or any other text field) on an iPhone or iPad no longer zooms the page in. Text
   fields are 16px on phones and touch devices, the size under which iOS Safari zooms on focus (and the Home Screen
   app never zooms back); a mouse desktop keeps its sizes.
+- chi web: the sessions list's cards on an iPhone show their whole preview, title and recap again instead of cutting
+  them through the middle.
 
 ## [0.111.1] - 2026-10-25
 

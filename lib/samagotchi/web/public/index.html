@@ -15,6 +15,8 @@
 :root{--icon-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.75' cy='6.25' r='1.1'/%3E%3Cpath d='m2.5 12.5 3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
 *{box-sizing:border-box;margin:0;padding:0}
+/* No iOS text autosizing: it grows text in a box sized for the text as written (it clipped the session cards). */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 #dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
@@ -1469,6 +1471,9 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card{padding:12px;border-radius:10px;background:var(--bg-panel);border:1px solid var(--border);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:var(--border-strong);background:var(--bg-hover)}
 #allList .card{position:relative}
+/* Every row keeps its content's height: a card shorter than its rows (seen on iOS) cut the clamped preview and the
+   single-line title and recap through the middle. */
+#allList .card > *{flex-shrink:0}
 /* A card's tools in the all view: archive (or unarchive) and delete, shown on hover, always under hover:none. */
 #allList .card-tools{position:absolute;top:6px;right:6px;display:flex;gap:2px}
 .card-tools button{padding:2px 7px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);font-size:12px;line-height:1.2;cursor:pointer;opacity:0;transition:opacity .15s}
