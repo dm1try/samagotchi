@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-10-25
+
 ### Added
 
 - chi web: the phone's push notifications now come for everything the tab notifies for: a step-limit question, a card
@@ -30,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   app never zooms back); a mouse desktop keeps its sizes.
 - chi web: the sessions list's cards on an iPhone show their whole preview, title and recap again instead of cutting
   them through the middle.
+
+Update with `chi update` (the system bundle 0.112.0), then restart `chi web`.
 
 ## [0.111.1] - 2026-10-25
 
@@ -4287,7 +4291,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.111.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.112.0...HEAD
+[0.112.0]: https://github.com/dm1try/samagotchi/compare/v0.111.1...v0.112.0
 [0.111.1]: https://github.com/dm1try/samagotchi/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/dm1try/samagotchi/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/dm1try/samagotchi/compare/v0.109.0...v0.110.0
