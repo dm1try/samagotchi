@@ -272,6 +272,7 @@ module Samagotchi
         ["POST", %r{\A/api/push/subscriptions\z}, :handle_push_subscribe, :owner],
         ["DELETE", %r{\A/api/push/subscriptions\z}, :handle_push_unsubscribe, :owner],
         ["POST", %r{\A/api/push/test\z}, :handle_push_test, :owner],
+        ["POST", %r{\A/api/push/presence\z}, :handle_push_presence, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze

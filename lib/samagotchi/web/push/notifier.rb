@@ -29,7 +29,9 @@ module Samagotchi
       # thread. There a show waits its hold (HOLD, or the event's own) and
       # is pushed, a waiting one only while still open, to the devices
       # subscribed on this run's public origin (a done turn only to those
-      # that asked for it). See docs/internals/web-push.md.
+      # that asked for it), unless a chi web page is in front (Presence):
+      # then the owner is looking, and the key is never pushed. See
+      # docs/internals/web-push.md.
       class Notifier
         HOLD = 3.0
         # Waiting kinds: kept 12 h for an offline phone, delivered at once.
@@ -50,11 +52,15 @@ module Samagotchi
         # @param client [#deliver] Client
         # @param origin [String] this run's public origin: only the
         #   subscriptions made on it are sent to
+        # @param presence [Presence, nil] the pages' reports (nil: nobody is
+        #   ever in front)
         # @param now [#call] monotonic seconds (specs move it)
-        def initialize(store:, client:, origin:, hold: HOLD, now: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+        def initialize(store:, client:, origin:, presence: nil, hold: HOLD,
+                       now: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
           @store = store
           @client = client
           @origin = origin
+          @presence = presence
           @hold = hold
           @now = now
           @queue = Queue.new
@@ -189,8 +195,23 @@ module Samagotchi
             # Nothing to answer in a failed or done turn: it is due as is.
             next if Attention.waiting?(reason) && !open.include?(show.attention.key)
 
-            deliver(show_payload(show, open), reason: reason)
+            send_show(show, open)
           end
+        end
+
+        # A due show to its devices, unless a page is in front: then the
+        # in-tab notification and badge have it, and it is never pushed.
+        def send_show(show, open)
+          return if @refused
+
+          subs = targets(show.attention.reason)
+          return if subs.empty?
+
+          if @presence&.present?
+            Log.info(:web, "push_skipped", reason: "present", kind: show.attention.reason)
+            return
+          end
+          deliver(subs, show_payload(show, open), reason: show.attention.reason)
         end
 
         def show_payload(show, open)
@@ -203,11 +224,9 @@ module Samagotchi
         # @param reason [String] the attention's: its TTL and urgency, who
         #   gets it, the log line's kind
         # @return [Boolean] whether any device took it
-        def deliver(payload, reason:)
-          return false if @refused
-
+        def deliver(subs, payload, reason:)
           waiting = Attention.waiting?(reason)
-          targets(reason).map do |sub|
+          subs.map do |sub|
             result = @client.deliver(sub, payload, ttl: waiting ? SHOW_TTL : EVENT_TTL, urgency: waiting ? "high" : "normal")
             record(sub, result, reason)
             result.ok?

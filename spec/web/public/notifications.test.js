@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NOTIFY_KEY, PUSH_DEVICE_KEY, SW_UPDATE_MS, createNotifications } from "../../../lib/samagotchi/web/public/notifications.js";
+import {
+  NOTIFY_KEY, PRESENCE_EVERY_MS, PUSH_DEVICE_KEY, SW_UPDATE_MS, TOUCH_FRESH_MS, createNotifications, presenceSender,
+} from "../../../lib/samagotchi/web/public/notifications.js";
 
 // A fake page: a document whose visibility and focus the test sets, a
 // window, a bell, localStorage and the Notification API.
-function fakePage({ front = false, permission = "granted", wanted = true, notification = true } = {}) {
+function fakePage({ front = false, permission = "granted", wanted = true, notification = true, clock = { ms: 1_000_000 } } = {}) {
   const listeners = {};
   const on = (target) => (type, fn) => { (listeners[`${target}:${type}`] ||= []).push(fn); };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
@@ -34,11 +36,18 @@ function fakePage({ front = false, permission = "granted", wanted = true, notifi
   }
   NotificationApi.permission = permission;
   NotificationApi.requestPermission = async () => NotificationApi.permission;
+  // Presence: what the page reported, and its 30 s tick.
+  const reports = [];
+  const ticks = [];
   const page = createNotifications({
     button, doc, win, storage: () => storage, channel: null,
     NotificationApi: notification ? NotificationApi : undefined,
+    now: () => clock.ms, pageId: "page-1",
+    sendPresence: (body, leaving) => reports.push(leaving ? { ...body, leaving } : body),
+    every: (fn, ms) => ticks.push({ fn, ms }),
   });
-  return { page, doc, win, button, attrs, store, shown, fire, NotificationApi };
+  const tick = () => ticks.forEach((t) => t.fn());
+  return { page, doc, win, button, attrs, store, shown, fire, NotificationApi, reports, ticks, tick, clock };
 }
 
 const session = (extra = {}) => ({ id: "s1", first_preview: "fix the build", pending_question: null, last_turn: null, ...extra });
@@ -191,7 +200,8 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     return { getItem: (k) => (kept.has(k) ? kept.get(k) : null), setItem: (k, v) => kept.set(k, String(v)), removeItem: (k) => kept.delete(k) };
   };
   const clock = { ms: 1_000_000 };
-  const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped, now: () => clock.ms });
+  const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped, now: () => clock.ms,
+    sendPresence: () => {}, every: () => {} });
   const tap = async () => { for (const fn of listeners["button:click"]) await fn(); };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
   const synced = async () => { await page.syncing(); };
@@ -442,4 +452,74 @@ test("the update is asked whether the bell is on or off, never without push, and
   failing.fire("doc:visibilitychange");
   await new Promise((r) => setImmediate(r));
   assert.equal(updates(failing), 1);
+});
+
+// ── Presence (POST /api/push/presence: chi web pushes nothing while a page is in front) ──
+test("presence: a page loaded in front says so; one behind says nothing until it comes to the front", () => {
+  const front = fakePage({ front: true });
+  assert.deepEqual(front.reports, [{ page: "page-1", front: true }]);
+  const behind = fakePage();
+  assert.deepEqual(behind.reports, []);
+  behind.doc.visibilityState = "visible";
+  behind.doc.focused = true;
+  behind.fire("win:focus");
+  assert.deepEqual(behind.reports, [{ page: "page-1", front: true }]);
+});
+
+test("presence: visible without focus is not front; blur says behind, hiding and pagehide beacon it", () => {
+  const p = fakePage({ front: true });
+  p.reports.length = 0;
+  p.doc.focused = false;
+  p.fire("win:blur");
+  p.doc.visibilityState = "hidden";
+  p.fire("doc:visibilitychange");
+  p.fire("win:pagehide");
+  assert.deepEqual(p.reports, [{ page: "page-1", front: false }, { page: "page-1", front: false, leaving: true },
+    { page: "page-1", front: false, leaving: true }]);
+  p.doc.visibilityState = "visible";
+  p.fire("doc:visibilitychange");
+  assert.deepEqual(p.reports.at(-1), { page: "page-1", front: false }, "visible, not yet focused");
+});
+
+test("presence: the 30 s tick reports only while front, and once more when 2 min pass untouched", () => {
+  const p = fakePage({ front: true });
+  assert.deepEqual(p.ticks.map((t) => t.ms), [PRESENCE_EVERY_MS]);
+  p.reports.length = 0;
+  p.clock.ms += PRESENCE_EVERY_MS;
+  p.tick();
+  assert.deepEqual(p.reports, [{ page: "page-1", front: true }]);
+  p.clock.ms = 1_000_000 + TOUCH_FRESH_MS;
+  p.tick();
+  p.tick();
+  assert.deepEqual(p.reports, [{ page: "page-1", front: true }, { page: "page-1", front: false }], "untouched: once, then quiet");
+
+  // The first touch after being idle says front at once; the next ones wait for the tick.
+  for (const type of ["doc:pointerdown", "doc:keydown", "doc:touchstart"]) p.fire(type);
+  assert.deepEqual(p.reports.slice(2), [{ page: "page-1", front: true }]);
+});
+
+test("presence: a page behind never ticks a report", () => {
+  const p = fakePage();
+  p.fire("doc:pointerdown");
+  p.tick();
+  p.tick();
+  assert.deepEqual(p.reports, []);
+});
+
+test("presenceSender: a beacon (JSON) when leaving, else the api; errors swallowed", async () => {
+  const sent = [];
+  const nav = { sendBeacon: (url, blob) => { sent.push(["beacon", url, blob.type]); return true; } };
+  const api = (method, path, body) => { sent.push([method, path, body]); return Promise.reject(new Error("offline")); };
+  const send = presenceSender({ nav, api });
+  send({ page: "p", front: false }, true);
+  send({ page: "p", front: true }, false);
+  assert.deepEqual(sent, [["beacon", "/api/push/presence", "application/json"], ["POST", "/api/push/presence", { page: "p", front: true }]]);
+
+  // A beacon refused (or none) goes through the api; a throwing api is swallowed.
+  const fallback = [];
+  presenceSender({ nav: { sendBeacon: () => false }, api: (m, path) => { fallback.push(path); } })({ page: "p", front: false }, true);
+  presenceSender({ nav: {}, api: (m, path) => { fallback.push(path); } })({ page: "p", front: false }, true);
+  presenceSender({ nav: {}, api: () => { throw new Error("x"); } })({ page: "p", front: false }, true);
+  assert.deepEqual(fallback, ["/api/push/presence", "/api/push/presence"]);
+  await new Promise((r) => setImmediate(r));
 });

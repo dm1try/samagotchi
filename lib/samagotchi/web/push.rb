@@ -4,13 +4,14 @@ require_relative "push/crypto"
 require_relative "push/store"
 require_relative "push/client"
 require_relative "push/attention"
+require_relative "push/presence"
 require_relative "push/notifier"
 require_relative "../config"
 
 module Samagotchi
   module Web
     # Web Push: chi web reaches the owner's phone (a Home Screen app that
-    # turned the bell on) when a session waits on an approval or a question.
+    # turned the bell on) when a session needs the user or a turn failed.
     # It needs an https public origin (web.public_url or chi web --tunnel
     # tailscale) and web.push.enabled (on by default); without a subscribed
     # device it does nothing. See docs/configuration.md (Phone
@@ -21,9 +22,12 @@ module Samagotchi
       class Refused < StandardError; end
 
       # What chi web's push routes and its Notifier share for one run: the
-      # store, the client that signs with its key, and the public origin
-      # the devices subscribe on.
-      Runtime = Data.define(:store, :client, :origin)
+      # store, the client that signs with its key, the public origin the
+      # devices subscribe on, and the pages' presence (the route writes it,
+      # the Notifier reads it).
+      Runtime = Data.define(:store, :client, :origin, :presence) do
+        def initialize(presence: Presence.new, **) = super
+      end
 
       module_function
 

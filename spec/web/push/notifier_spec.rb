@@ -6,6 +6,7 @@ require "samagotchi/web/session_hub"
 require "samagotchi/web/push/client"
 require "samagotchi/web/push/crypto"
 require "samagotchi/web/push/notifier"
+require "samagotchi/web/push/presence"
 require "samagotchi/web/push/store"
 require_relative "../../support/web_push_receiver"
 
@@ -17,7 +18,8 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
   let(:store) { Samagotchi::Web::Push::Store.new(File.join(root, "web-push")) }
   let(:clock) { [100.0] }
   let(:client) { PushNotifierSpecClient.new }
-  let(:notifier) { described_class.new(store: store, client: client, origin: origin, now: -> { clock[0] }) }
+  let(:presence) { Samagotchi::Web::Push::Presence.new(now: -> { clock[0] }) }
+  let(:notifier) { described_class.new(store: store, client: client, origin: origin, presence: presence, now: -> { clock[0] }) }
   let!(:phone) { store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/phone"), origin: origin, label: "iPhone") }
 
   # Records each delivery; answers +status+ (or what the block says).
@@ -111,6 +113,39 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
                                     payload: { v: 1, kind: "show", tag: "s1:q1", title: "fix the build",
                                                body: "needs approval", url: "/#/s/s1", badge: 1, open: ["s1:q1"] } }])
       expect(store.find(phone.id).last_ok_at).not_to be_nil
+    end
+
+    context "with a chi web page in front (presence)" do
+      it "sends nothing, logs the skip without a device, and never pushes that key later" do
+        allow(Samagotchi::Log).to receive(:info).and_call_original
+        presence.report("desk", true)
+        session(question: { id: "q1", kind: "approval" })
+        session(id: "f", turn: ended("failed", 2))
+        advance(3)
+        presence.report("desk", false)
+        session(question: { id: "q1", kind: "approval" })
+        advance(10)
+        expect(client.calls).to eq([])
+        expect(Samagotchi::Log).to have_received(:info).with(:web, "push_skipped", { reason: "present", kind: "approval" })
+        expect(Samagotchi::Log).to have_received(:info).with(:web, "push_skipped", { reason: "present", kind: "failed" })
+      end
+
+      it "pushes once the page's report is older than 45 s" do
+        presence.report("desk", true)
+        advance(43)
+        session(question: { id: "q1", kind: "approval" })
+        advance(3)
+        expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["s1:q1"])
+      end
+
+      it "pushes when the page said it went behind" do
+        presence.report("desk", true)
+        session(question: { id: "q1", kind: "approval" })
+        advance(1)
+        presence.report("desk", false)
+        advance(2)
+        expect(client.calls.map { |c| c[:payload][:tag] }).to eq(["s1:q1"])
+      end
     end
 
     it "pushes nothing when it is answered within the hold" do

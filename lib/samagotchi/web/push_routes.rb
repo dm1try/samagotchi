@@ -7,7 +7,8 @@ module Samagotchi
   module Web
     # The owner's Web Push routes (App::ROUTES, all :owner rows: a
     # participant gets no pushes): what the page's bell asks (GET /api/push),
-    # subscribing this device and unsubscribing it, and a test push.
+    # subscribing this device and unsubscribing it, a test push, and the
+    # pages' presence (no push while the owner looks at one).
     # Included in App: its helpers (json_response, error_response,
     # parse_json, request_body) and @push (a Push::Runtime, nil when push is
     # off: no https public_url, or web.push.enabled false) answer. See
@@ -78,6 +79,17 @@ module Samagotchi
           { id: sub.id, label: sub.label, status: result.status.to_s, code: result.code, ms: result.ms }
         end
         json_response(200, { devices: results })
+      end
+
+      # {page, front} → 204: whether the user is at this page (visible,
+      # focused, touched lately; notifications.js reports it). Also with
+      # push off: a desk tab has nothing to be told.
+      def handle_push_presence(req)
+        page, front = Push::Presence.parse(push_body(req))
+        return error_response(400, "invalid_presence", "give {page: id, front: true|false}") unless page
+
+        @push&.presence&.report(page, front)
+        [204, { "Cache-Control" => "no-store" }, []]
       end
 
       def push_off

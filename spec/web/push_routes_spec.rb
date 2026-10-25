@@ -43,14 +43,14 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
     FileUtils.remove_entry(public_dir)
   end
 
-  def call(path, method: "GET", body: nil, token: owner_token, agent: iphone)
+  def call(path, method: "GET", body: nil, token: owner_token, agent: iphone, to: app)
     env = Rack::MockRequest.env_for(path, method: method, input: body && JSON.generate(body))
     env["HTTP_HOST"] = public_host
     env["REMOTE_ADDR"] = "127.0.0.1"
     env["CONTENT_TYPE"] = "application/json" if body
     env["HTTP_USER_AGENT"] = agent
     env["HTTP_AUTHORIZATION"] = "Bearer #{token}" if token
-    status, headers, chunks = app.call(env)
+    status, headers, chunks = to.call(env)
     text = +""
     chunks.each { |chunk| text << chunk }
     [status, headers, text]
@@ -171,6 +171,30 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       # No badge (it would clear the app's) and no open list (no cleanup).
       expect(sent.first[3].keys).not_to include(:badge, :open)
       expect(store.subscriptions.map(&:label)).to eq(%w[phone stale])
+    end
+  end
+
+  describe "POST /api/push/presence" do
+    it "keeps the page's report for the Notifier: 204, front until it says otherwise" do
+      expect(call("/api/push/presence", method: "POST", body: { page: "p1", front: true }).first).to eq(204)
+      expect(push.presence.present?).to be(true)
+      expect(call("/api/push/presence", method: "POST", body: { page: "p1", front: false }).first).to eq(204)
+      expect(push.presence.present?).to be(false)
+    end
+
+    it "answers 400 invalid_presence on a bad body" do
+      [nil, { page: "p1" }, { page: "", front: true }, { page: 1, front: true }, { page: "p1", front: "yes" },
+       { page: "x" * 65, front: true }].each do |body|
+        status, answer = json("/api/push/presence", method: "POST", body: body)
+        expect([status, answer["error"]]).to eq([400, "invalid_presence"]), body.inspect
+      end
+      expect(push.presence.present?).to be(false)
+    end
+
+    it "answers 204 with push off too (a desk tab has nothing to be told)" do
+      off = described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, public_url: public_url, public_token: owner_token)
+      expect(call("/api/push/presence", method: "POST", body: { page: "p1", front: true }, to: off).first).to eq(204)
+      expect(json("/api/push/presence", method: "POST", body: { page: "p1" }, to: off).first).to eq(400)
     end
   end
 

@@ -219,7 +219,8 @@ module Samagotchi
           # The Notifier seeds from the hub's snapshot, which is empty before
           # a scan: one now, so what is already open never pushes.
           hub.scan
-          notifier = Push::Notifier.new(store: push.store, client: push.client, origin: push.origin).start(hub)
+          notifier = Push::Notifier.new(store: push.store, client: push.client, origin: push.origin,
+                                        presence: push.presence).start(hub)
           Samagotchi::Log.info(:web, "push", devices: push.store.for_origin(push.origin).size)
         end
         hub.start
