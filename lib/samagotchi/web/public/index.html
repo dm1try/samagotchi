@@ -710,7 +710,7 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 #modelList .model-option.unavailable:not(.chosen) .model-id,#modelList .model-option.unavailable .model-host{color:var(--text-faint)}
 #modelList .model-option.unavailable .model-note{color:var(--warn-text)}
 #modelList .model-empty{padding:10px;font-size:13px;color:var(--text-faint)}
-@media(max-width:600px){#modelPanel{left:6px;width:calc(100% - 12px)}#modelSearch{font-size:16px}#modelList .model-option{padding-top:8px;padding-bottom:8px}}
+@media(max-width:600px){#modelPanel{left:6px;width:calc(100% - 12px)}#modelList .model-option{padding-top:8px;padding-bottom:8px}}
 /* The / autocomplete: a list over the composer card's top edge. It wears the glass edge and shadow, but opaque:
    inside the dock's own backdrop-filter a second blur sees nothing, and the history would show through its text. */
 #commandList{position:absolute;left:10px;width:min(640px,calc(100% - 20px));bottom:calc(100% + 8px);max-height:min(260px,40vh);overflow-y:auto;border-radius:12px;padding:4px;z-index:20;display:flex;flex-direction:column;gap:1px;background:var(--bg-panel);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
@@ -1105,7 +1105,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .llmctx-form .ctx-pop-head strong{font-family:inherit}
 .llmctx-field{display:flex;align-items:center;gap:8px}
 .llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
-.llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:13px/1.4 inherit}
+.llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
 .llmctx-field select:focus,.llmctx-field input:focus{outline:none;border-color:var(--accent-border)}
 /* The settings selects draw their own closed box (each browser's native one differs) with the model picker's drawn caret on the label; the open list stays the OS menu. */
 .llmctx-field select{appearance:none;-webkit-appearance:none;padding-right:26px;cursor:pointer}
@@ -1122,7 +1122,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 #infoBar .ctx-chip.ctx-add{border-style:dashed;color:var(--text-muted);background:transparent}
 .ctx-add-form{display:flex;flex-direction:column;gap:6px;margin:0}
 .ctx-add-form .ctx-pop-head strong{font-family:inherit}
-.ctx-add-input{width:100%;box-sizing:border-box;padding:6px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:13px/1.4 inherit}
+.ctx-add-input{width:100%;box-sizing:border-box;padding:6px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
 .ctx-add-input:focus{outline:none;border-color:var(--accent-border)}
 #infoBar .ctx-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font:600 11px/1.5 ui-monospace,monospace;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3);border:1px solid var(--border-strong);white-space:nowrap}
 #infoBar .ctx-chip:hover,#infoBar .ctx-chip.open{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
@@ -1300,8 +1300,6 @@ body.has-session #scope .scope-where{display:none}
   #sessionTitleRow{flex-basis:100%;order:10}
   #sessionTitle{font-size:12px}
   .title-rename{font-size:12px;line-height:18px}
-  /* Under 16px iOS Safari zooms the page on focus. */
-  .rename-input{font-size:16px}
   #scope,#stripStatus{flex:1 1 0;min-width:0;max-width:max-content}
   #stripStatus{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
   #scope .scope-name{flex-shrink:1;min-width:0}
@@ -1520,6 +1518,14 @@ body.all-view #center, body.all-view #topStrip{display:none}
   #topStrip #allTile{width:auto}
 }
 a{color:var(--accent)}
+/* Under 16px iOS Safari zooms the page on focus (and a Home Screen app never zooms back), at any width: every text
+   field gets 16px on a phone or a touch device. Last in the sheet so it wins over each field's own size; keep new text
+   fields in this list (stage.spec.js's phone step checks the visible ones). */
+@media (max-width:600px),(pointer:coarse){
+  #composer textarea,.question-freeform,.continue-reason,.participants-popover input,.participants-popover select,
+  .rs-form textarea,.pp-link input,.llmctx-field select,.llmctx-field input,.ctx-add-input,.ws-add-in,.rename-input,
+  #modelSearch{font-size:16px}
+}
 </style>
 </head>
 <body>

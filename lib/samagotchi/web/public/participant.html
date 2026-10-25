@@ -126,6 +126,8 @@ button.small{font-size:12px;padding:2px 8px}
   .p-bubble{padding:9px 12px}
   .p-hint,.p-note{display:none}
 }
+/* Under 16px iOS Safari zooms the page on focus (and a Home Screen app never zooms back). */
+@media (max-width:600px),(pointer:coarse){.p-compose textarea{font-size:16px}}
 </style>
 </head>
 <body>

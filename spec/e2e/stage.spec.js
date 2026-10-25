@@ -191,6 +191,16 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(askRef).toHaveText("JIRA-7");
   await expect(askRef).toHaveAttribute("title", "JIRA-7 Login fails");
   await expectNoHorizontalOverflow(page);
+  // Every visible text field is 16px or more on a phone: under 16px iOS Safari
+  // zooms the page on focus (and a Home Screen app never zooms back).
+  const small = await page.evaluate(() => {
+    const skip = new Set(["hidden", "file", "checkbox", "radio", "range", "button", "submit"]);
+    return [...document.querySelectorAll("input, textarea, select")]
+      .filter((el) => !skip.has(el.type) && el.checkVisibility())
+      .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16)
+      .map((el) => `${el.id || el.className || el.tagName} ${getComputedStyle(el).fontSize}`);
+  });
+  expect(small).toEqual([]);
   // The card's arrival grows the stage, briefly; the top bar stays (the
   // hidden strip's pill gains "· 1 waiting" and must not wrap to a row).
   const marks = await stageMarks(page);

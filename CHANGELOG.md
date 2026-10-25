@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: tapping the composer (or any other text field) on an iPhone or iPad no longer zooms the page in. Text
+  fields are 16px on phones and touch devices, the size under which iOS Safari zooms on focus (and the Home Screen
+  app never zooms back); a mouse desktop keeps its sizes.
+
 ## [0.111.1] - 2026-10-25
 
 ### Fixed
