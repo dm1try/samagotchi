@@ -14,6 +14,12 @@ and commands may change between minor versions. How releases are made:
   without a `/title` is named by it on the web's cards, top bar, tab and notifications and in `chi sessions list`
   (json: `auto_title`). Later recaps keep it unless the focus moved; a hand title always wins.
 
+### Fixed
+
+- chi web's all sessions list: once it held more cards than fit, every card was cut to 72px whatever it held, so a
+  two-line title's meta row ran over the card's border and a parent's "▸ N delegates" chip was drawn under the next
+  card, out of reach.
+
 ## [0.113.0] - 2026-10-25
 
 ### Added

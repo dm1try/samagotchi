@@ -1488,7 +1488,9 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #toast .toast-action{background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
 #toast .toast-close{background:transparent;border:0;color:var(--text-muted);cursor:pointer;padding:2px 4px;margin-left:-6px}
 #toast .toast-close:hover{color:var(--text)}
-#allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
+/* Each row is as tall as its tallest card. An `auto` row in a grid that overflows its
+   height has no free space to grow into, so it collapses to each card's min-height. */
+#allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;grid-auto-rows:max-content;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}
 .card.skeleton .line.long{width:78%}
@@ -1502,8 +1504,8 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card{padding:12px;border-radius:10px;background:var(--bg-panel);border:1px solid var(--border);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:var(--border-strong);background:var(--bg-hover)}
 #allList .card{position:relative}
-/* Every row keeps its content's height: a card shorter than its rows (seen on iOS) cut the clamped preview and the
-   single-line title and recap through the middle. */
+/* A card's lines are never squeezed to fit a short card: the flex side of the same overflow the rule above fixes
+   (an overflowing grid collapsing its rows to min-height), seen on iOS as the title, recap and preview cut through. */
 #allList .card > *{flex-shrink:0}
 /* A card's tools in the all view: archive (or unarchive) and delete, shown on hover, always under hover:none. */
 #allList .card-tools{position:absolute;top:6px;right:6px;display:flex;gap:2px}

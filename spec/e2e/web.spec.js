@@ -1105,7 +1105,10 @@ test("all sessions: select mode archives a Shift-click range and one more pick i
 // sessions (no worker): a parent and two delegates, then again with one
 // waiting on the user.
 test("a parent's delegates fold into its card: one strip card with a popover, inline rows in all sessions, search and a waiting one open them, select mode leaves rows alone", async ({ page, chi }) => {
-  const fam = await seedFamily(chi, { tag: "Fold", parentMemories: ["project:notes", "user:style"] });
+  // A parent whose title wraps on a phone: its card needs more than the grid's
+  // 72px row minimum, which is the card the row-collapse bug cut in half.
+  const TAG = "Fold a wide refactor across worktrees and cards";
+  const fam = await seedFamily(chi, { tag: TAG, parentMemories: ["project:notes", "user:style"] });
   let waitingFam = null;
   try {
     // The strip: the family is one card; its chip opens the rows in a popover under it.
@@ -1145,6 +1148,35 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     await expect(chip).toHaveAttribute("aria-expanded", "false");
     // The card's tooltip: its id, update and status, then the memories it used.
     await expect(card).toHaveAttribute("title", new RegExp(`^${fam.parent} · updated .+ · mem: project:notes, user:style$`));
+
+    // Once the list scrolls the card keeps the height of its content: the chip and
+    // the meta row stay inside it instead of hanging under its bottom border.
+    // Checked before any click (a click scrolls the chip into view and passes on
+    // broken CSS), and only when the list really overflows — this worker's chi is
+    // shared, so the number of cards varies.
+    try {
+      for (const height of [300, 240, 200, 160]) {
+        await page.setViewportSize({ width: 390, height });
+        if (await page.evaluate(() => {
+          const list = document.querySelector("#allList");
+          return list.scrollHeight > list.clientHeight;
+        })) break;
+        if (height === 160) throw new Error("#allList never scrolls: the step cannot check anything");
+      }
+      const cardBox = await card.boundingBox();
+      const cardBottom = cardBox.y + cardBox.height;
+      for (const [name, part] of [["chip", chip], ["meta row", card.locator(".meta")]]) {
+        const box = await part.boundingBox();
+        expect(box.y + box.height, `the card's ${name} hangs below the card`).toBeLessThanOrEqual(cardBottom + 1);
+      }
+      await chip.click();
+      await expect(rows).toHaveCount(2);
+      await chip.click();
+      await expect(rows).toHaveCount(0);
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+
     await expect(rows).toHaveCount(0);
     for (const id of fam.children) await expect(page.locator(`#allList .card[data-id="${id}"]`)).toHaveCount(0);
     await expect(page.locator("#count")).toHaveText(/^\d+ \(\+\d+ delegates\)$/);
@@ -1152,13 +1184,13 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     await chip.click();
     await expect(chip).toHaveAttribute("aria-expanded", "true");
     await expect(rows).toHaveCount(2);
-    await expect(card.locator(`.family-row[data-id="${fam.children[0]}"]`)).toContainText("Fold child one fixes");
+    await expect(card.locator(`.family-row[data-id="${fam.children[0]}"]`)).toContainText("child one fixes");
     await expect(page).toHaveURL(/#\/sessions$/);
     await chip.click();
     await expect(rows).toHaveCount(0);
 
     // A search that matches a delegate brings its family, open, the row marked.
-    await page.locator("#filter").fill("fold child two");
+    await page.locator("#filter").fill("child two");
     await expect(page.locator("#allList .card[data-id]")).toHaveCount(1);
     await expect(card.locator(`.family-row.match[data-id="${fam.children[1]}"]`)).toBeVisible();
     await expect(card.locator(`.family-row.dim[data-id="${fam.children[0]}"]`)).toBeVisible();
