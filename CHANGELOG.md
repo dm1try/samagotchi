@@ -22,7 +22,8 @@ and commands may change between minor versions. How releases are made:
 - `/guardrails` shows this session's recent System 1 auto-allows and each rule's record summary when System 1
   is enabled or has judgments.
 - chi web's owner can flag an auto-allowed tool row as **should have asked**; the worker appends the label only
-  for a judgment belonging to that session, and participants cannot reach the route.
+  for a judgment belonging to that session, and participants cannot reach the route; a flagged row stays marked
+  after a reload.
 - System 1's auto-allowed calls are marked on their tool row in the terminal (` · auto-allowed (System 1, p=0.97)`) and
   the web (an `auto-allowed · System 1` label, its rule and p on hover).
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for

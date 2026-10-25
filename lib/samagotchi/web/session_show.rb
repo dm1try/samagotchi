@@ -8,9 +8,11 @@ require_relative "../answer_refs"
 require_relative "../answer_tail"
 require_relative "../output_formatter"
 require_relative "../question_asked"
+require_relative "../guardrails/approvals"
 require_relative "../session_commands"
 require_relative "../session_metrics"
 require_relative "../session_setting"
+require_relative "../system_one/log"
 
 module Samagotchi
   module Web
@@ -300,7 +302,7 @@ module Samagotchi
                    persisted
                  end
         turns = Array(source["turn_records"])
-        timing_from(source, turns, Array(source["tool_records"]), live: live,
+        timing_from(source, turns, Array(source["tool_records"]), session_id: session_id, live: live,
                                                                  turn_count: (live && turn_count(live_metrics)) || turns.size)
       end
 
@@ -321,13 +323,13 @@ module Samagotchi
           # An older worker's metrics hold every record (before they held the
           # recent ones only, never more than LIVE_RECORDS_CAP turns).
           turns, tools = newest_turn_records(turns, tools, live_metrics["active_turn"]) if turns.size > SessionMetrics::LIVE_RECORDS_CAP
-          return timing_from(live_metrics, turns, tools, live: true, turn_count: count)
+          return timing_from(live_metrics, turns, tools, session_id: session_id, live: true, turn_count: count)
         end
 
         persisted = read_analytics(session_id)
         all = Array(persisted["turn_records"])
         turns, tools = newest_turn_records(all, Array(persisted["tool_records"]), nil)
-        timing_from(persisted, turns, tools, live: false, turn_count: all.size)
+        timing_from(persisted, turns, tools, session_id: session_id, live: false, turn_count: all.size)
       end
 
       # The finished turns a live worker counts: its metrics' turns (the
@@ -349,7 +351,7 @@ module Samagotchi
         [kept, tools.select { |r| r.is_a?(Hash) && ids.include?(r["turn_id"]) }]
       end
 
-      def timing_from(source, turn_records, tool_records, live:, turn_count:)
+      def timing_from(source, turn_records, tool_records, session_id:, live:, turn_count:)
         started_at = source["started_at"]
         last_activity_at = source["last_activity_at"]
         {
@@ -357,7 +359,7 @@ module Samagotchi
           last_activity_at: last_activity_at,
           session_duration_ms: session_duration_ms(started_at, last_activity_at, active: live),
           turn_records: turn_records,
-          tool_records: tool_records,
+          tool_records: system_one_labelled_records(session_id, tool_records),
           turn_count: turn_count,
           active_turn: source["active_turn"],
           active_tools: Array(source["active_tools"]),
@@ -374,6 +376,34 @@ module Samagotchi
           # tokens: the ctx tooltip's own line (nil without any).
           side: source["side"]
         }
+      end
+
+      # A saved analytics record knows the judgment id, not the later label:
+      # the judgments log remains the source of truth across reloads.
+      def system_one_labelled_records(session_id, records)
+        ids = records.filter_map do |record|
+          record.dig("guardrail", "judgment_id") if record.is_a?(Hash) && record["guardrail"].is_a?(Hash)
+        end.to_h { |id| [id, true] }
+        return records if ids.empty?
+
+        log = SystemOne::Log.new(dir: Guardrails::Approvals.dir_for(default_state_dir))
+        return records unless File.file?(log.path)
+
+        labelled = log.entries.each_with_object({}) do |entry, result|
+          next unless ids[entry["id"]] && entry["session_id"] == session_id && entry["decision"] == "auto" &&
+                      entry["answer"] == "should_have_asked"
+
+          result[entry["id"]] = true
+        end
+        return records if labelled.empty?
+
+        records.map do |record|
+          guardrail = record.is_a?(Hash) && record["guardrail"]
+          judgment_id = guardrail.is_a?(Hash) && guardrail["judgment_id"]
+          next record unless labelled[judgment_id]
+
+          record.merge("guardrail" => guardrail.merge("should_have_asked" => true))
+        end
       end
 
       def read_analytics(session_id)

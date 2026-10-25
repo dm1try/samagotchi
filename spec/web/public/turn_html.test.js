@@ -379,3 +379,13 @@ test("toolRowInnerTemplate labels a System 1 auto-allowed row with its rule and 
   }), /system-one-wrong/);
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "git push" }), /auto-allowed/);
 });
+
+test("toolRowInnerTemplate shows an already flagged System 1 auto-allow without an action button", () => {
+  const html = toolRowHtml({
+    key: "1:1", tool: "execute", status: "ok", title: "git push",
+    guardrail: { rule: "git-push", p: 0.97, judgment_id: "j1", should_have_asked: true },
+  });
+  assert.match(html, /^<div class="activity-row guardrail-wrong"/);
+  assert.match(html, /<span class="system-one-wrong marked"[^>]*>should have asked<\/span>/);
+  assert.doesNotMatch(html, /<button[^>]*class="system-one-wrong"/);
+});

@@ -1840,6 +1840,39 @@ RSpec.describe Samagotchi::Web::App do
       expect(timing).to include("context" => nil, "tokens" => nil, "memory_index" => nil, "model_segments" => [])
     end
 
+    it "marks previously flagged auto-allows in the returned tool records" do
+      state_dir = Dir.mktmpdir
+      log = Samagotchi::SystemOne::Log.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir))
+      judgment_id = log.judgment("session_id" => "s1", "decision" => "auto", "rule" => "git-push", "p" => 0.97)
+      log.label(judgment_id, "should_have_asked")
+      foreign_id = log.judgment("session_id" => "other", "decision" => "auto", "rule" => "git-push", "p" => 0.97)
+      log.label(foreign_id, "should_have_asked")
+      missing_label_id = log.judgment("session_id" => "s1", "decision" => "auto", "rule" => "git-push", "p" => 0.97)
+      timing_dir = File.join(state_dir, "s1")
+      FileUtils.mkdir_p(timing_dir)
+      File.write(File.join(timing_dir, "analytics.json"), JSON.generate(
+        tool_records: [
+          { turn_id: "turn-1", iteration: 1, call_index: 1,
+            guardrail: { rule: "git-push", p: 0.97, judgment_id: judgment_id } },
+          { turn_id: "turn-1", iteration: 1, call_index: 2,
+            guardrail: { rule: "git-push", p: 0.97, judgment_id: foreign_id } },
+          { turn_id: "turn-1", iteration: 1, call_index: 3,
+            guardrail: { rule: "git-push", p: 0.97, judgment_id: missing_label_id } }
+        ]
+      ))
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
+      allow(app).to receive(:bridge_get_json).with("s1", "state").and_return(nil)
+      allow(Samagotchi::SystemOne::Log).to receive(:new).with(dir: log.dir).and_return(log)
+      expect(log).to receive(:entries).once.and_call_original
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1?timing=1"))
+
+      expect(status).to eq(200)
+      records = JSON.parse(body.first).dig("timing", "tool_records")
+      expect(records.map { |record| record.dig("guardrail", "should_have_asked") })
+        .to eq([true, nil, nil])
+    end
+
     # The ctx meter's value on load: a stopped session's saved context.
     it "passes the saved context and token sums through in the timing" do
       state_dir = Dir.mktmpdir
