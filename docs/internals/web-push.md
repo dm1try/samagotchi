@@ -146,8 +146,9 @@ the top and in `pending_question` / `pending_card`, strings in `last_turn`), `no
   cleaned up, and pushed only while still open. A failed or done turn has nothing to answer.
 - `Attention.closed_keys(prev, next)`: the question answered, replaced, newly relayed; the card resolved or
   replaced; both when the session is gone.
-- `Attention.text(summary, reason)`: notify.js `attentionText`'s words: the session's title, first preview or last
-  prompt clipped to 61, and "needs approval" / "needs an answer" / "hit its step limit" / "needs you" / "turn
+- `Attention.text(summary, reason)`: notify.js `attentionText`'s words: the session's name as its card has it
+  (title, auto title, the recap's first sentence, first preview, last prompt — the same order `format.js cardName`
+  uses) clipped to 61, and "needs approval" / "needs an answer" / "hit its step limit" / "needs you" / "turn
   failed" / "done in N s" (`last_turn["seconds"]` rounded). Never the question or the command.
 
 `Notifier#call(event)` is a `SessionHub` sink. **The hub calls it under its Monitor**, from the tick thread and also

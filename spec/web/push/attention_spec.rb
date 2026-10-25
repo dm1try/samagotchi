@@ -72,6 +72,16 @@ RSpec.describe Samagotchi::Web::Push::Attention do
       expect(long).to eq("#{"a" * 60}…")
     end
 
+    it "names the session as its card does: the recap's first sentence after the auto title, the first message without one" do
+      summary = { auto_title: "Login fix", recap: "We fixed the login page.", first_preview: "x", last_prompt: "y" }
+      expect(described_class.text(summary, "question").first).to eq("Login fix")
+      expect(described_class.text(summary.merge(auto_title: nil), "question").first).to eq("We fixed the login page.")
+      expect(described_class.text({ title: "fix it", recap: "We fixed the login page." }, "question").first).to eq("fix it")
+      expect(described_class.text({ recap: "We fixed the login page.", last_prompt: "fix the login" }, "done").first)
+        .to eq("We fixed the login page.")
+      expect(described_class.text({ first_preview: "the first", last_prompt: "later" }, "question").first).to eq("the first")
+    end
+
     it "says a failed turn and a done one with its seconds rounded, as attentionText" do
       expect(described_class.text({ title: "t" }, "failed")).to eq(["t", "turn failed"])
       expect(described_class.text({ title: "t", last_turn: { "seconds" => 12.5 } }, "done")).to eq(["t", "done in 13 s"])

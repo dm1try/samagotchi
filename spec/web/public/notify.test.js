@@ -109,6 +109,11 @@ test("the words: session name and the reason, no question text", () => {
   // The auto title after a hand title, before the first message (D10).
   assert.equal(attentionText({ ...s, auto_title: "Build fix" }, { reason: "done" }).title, "Build fix");
   assert.equal(attentionText({ ...s, title: "CI", auto_title: "Build fix" }, { reason: "done" }).title, "CI");
+  // Then the recap's first sentence, as the card's name (format.js cardName); the
+  // first message only when there is no recap.
+  assert.equal(attentionText({ ...s, recap: "Parser fixed" }, { reason: "done" }).title, "Parser fixed");
+  assert.equal(attentionText({ ...s, auto_title: "Build fix", recap: "Parser fixed" }, { reason: "done" }).title, "Build fix");
+  assert.equal(attentionText({ id: "s9", recap: "Parser fixed" }, { reason: "question" }).title, "Parser fixed");
 });
 
 test("a question answered (here or in another client) is closed; a new one is closed and needs an answer", () => {

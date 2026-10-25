@@ -126,9 +126,11 @@ module Samagotchi
 
         # notify.js attentionText: the session's name (clipped) and the
         # reason, never the question or the command (a lock screen shows it).
+        # The name is the card's (format.js cardName): title, auto title, the
+        # recap's first sentence the server already cut, first message, last prompt.
         # @return [Array(String, String)] title, body
         def text(summary, reason)
-          name = (summary && [summary[:title], summary[:auto_title], summary[:first_preview], summary[:last_prompt]]
+          name = (summary && [summary[:title], summary[:auto_title], summary[:recap], summary[:first_preview], summary[:last_prompt]]
                              .find { |v| present?(v) }) ||
                  "chi session"
           body = reason == "done" ? "done in #{seconds(summary&.dig(:last_turn) || {}).round} s" : BODIES.fetch(reason, "")

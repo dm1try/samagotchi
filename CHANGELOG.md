@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- chi web's notifications — the browser's own and the phone's push — name a session just as its card does: with no
+  title, the recap's first sentence now comes after the auto title and before the first message, instead of jumping
+  straight to the first message.
 - chi web on a touch screen: the Annotate bar docks just above the composer instead of under the selection, where iOS's
   own selection menu (Copy, Look Up…) was drawn over it; its pills are larger to tap and wrap to a second row.
 
