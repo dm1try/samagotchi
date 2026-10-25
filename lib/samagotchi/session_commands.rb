@@ -19,6 +19,7 @@ require_relative "reasoning_history_command"
 require_relative "working_set_command"
 require_relative "recap_command"
 require_relative "guardrails/parent_policy"
+require_relative "system_one/log"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -91,7 +92,7 @@ module Samagotchi
       registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)", anytime: true) do |text|
         reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
       end
-      registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)",
+      registry.register(GUARDRAILS_COMMAND, "list guardrails, revoke an approval or flag a System 1 auto-allow",
                         mid_turn: show_mid_turn(GUARDRAILS_COMMAND)) do |text|
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       end
@@ -418,9 +419,47 @@ module Samagotchi
 
     def guardrails(args)
       return guardrails_revoke(args.delete_prefix("revoke").strip) if args.start_with?("revoke")
-      return reply("usage: /guardrails [revoke N]", status: :error) unless args.empty?
+      return guardrails_wrong(args.sub(/\Awrong\b/, "").strip) if args.match?(/\Awrong(?:\s|\z)/)
+      return reply("usage: /guardrails [revoke N | wrong [N]]", status: :error) unless args.empty?
 
       reply(guardrails_listing)
+    end
+
+    def guardrails_wrong(arg)
+      unless arg.empty? || arg.match?(/\A[1-9]\d*\z/)
+        return reply("usage: /guardrails wrong [N] (N from /guardrails)", status: :error)
+      end
+
+      index = arg.empty? ? 1 : arg.to_i
+      entry = system_one_auto_allows[index - 1]
+      return reply("no unlabelled System 1 auto-allows in this session (see /guardrails)") unless entry
+      unless system_one_log.label(entry["id"], "should_have_asked")
+        return reply("could not label System 1 auto-allow #{index} (see the guardrails log)", status: :error)
+      end
+
+      call = shorten_call(entry["call"].to_s.gsub(/\s+/, " "))
+      probability = entry["p"].nil? ? "unknown" : format("%.2f", entry["p"].to_f)
+      reply("labelled auto-allow #{index}: #{entry["rule"]}: #{call} (p=#{probability}); " \
+            "the rule will ask again until its record is rebuilt")
+    end
+
+    def system_one_log
+      SystemOne::Log.new(dir: File.dirname(@engine.guardrail_approvals.path))
+    end
+
+    def system_one_auto_allows
+      session_id = @engine.session&.id
+      return [] unless session_id
+
+      system_one_log.entries.select do |entry|
+        entry["session_id"] == session_id && entry["decision"] == "auto" && entry["answer"].nil?
+      end.last(20).reverse
+    end
+
+    CALL_SHOWN = 100
+
+    def shorten_call(call)
+      call.length > CALL_SHOWN ? "#{call[0, CALL_SHOWN - 1]}…" : call
     end
 
     def guardrails_listing

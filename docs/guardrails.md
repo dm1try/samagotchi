@@ -97,7 +97,11 @@ matches its exact folder.
 A stored approval only relaxes an ask; a deny rule is never approvable.
 A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).
-`/guardrails` lists the rules and approvals; `/guardrails revoke N` removes one.
+`/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
+approval N. In System 1 `on` mode, `/guardrails wrong [N]` flags the Nth newest
+auto-allowed call in this session as one System 1 should have asked about
+(default 1). The flag is appended to the judgments log; the rule asks again
+until its record is rebuilt.
 The file tools can't write the store.
 
 ### Answers from a parent agent
@@ -748,6 +752,12 @@ the user.
 A delegate child answers from its own session's settings: its System 1 can
 auto-allow a call even when the child's `parent_answers: hard` bars a parent
 from allowing it — the record gate is about the rule, not about who answers.
+
+To correct an auto-allow after the fact, run `/guardrails` to see this
+session's recent unlabelled auto-allows, newest first, then
+`/guardrails wrong [N]` to label one. The label is appended, not written over
+the judgment. `should_have_asked` makes the rule's record fail the false-allow
+check, so the rule asks again until enough later clean asks rebuild its record.
 
 ### Seeding the record: `chi guardrails replay`
 

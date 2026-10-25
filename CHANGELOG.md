@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   `memory-remove` ask was scoring flat because the judge could not tell which memory was going. The judgments log is
   read once per ask, shared by the examples and the record gate. See
   [Guardrails](docs/guardrails.md#system-1-experimental).
+- `/guardrails wrong [N]` appends a `should_have_asked` label to this session's Nth newest unlabelled
+  System 1 auto-allow (default 1), so its rule asks again until its record is rebuilt.
 - System 1's auto-allowed calls are marked on their tool row in the terminal (` · auto-allowed (System 1, p=0.97)`) and
   the web (an `auto-allowed · System 1` label, its rule and p on hover).
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for

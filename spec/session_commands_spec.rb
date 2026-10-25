@@ -54,6 +54,7 @@ RSpec.describe Samagotchi::SessionCommands do
     it "knows the commands a worker runs, and nothing else" do
       expect(%w[/model /models /guardrails !rollback /continue].map { |c| described_class.builtin_registry.command?(c) }).to all(be(true))
       expect(described_class.builtin_registry.command?("/guardrails revoke 2")).to be(true)
+      expect(described_class.builtin_registry.command?("/guardrails wrong 2")).to be(true)
       expect(described_class.builtin_registry.command?("/guardrailsx")).to be(false)
       expect(described_class.builtin_registry.command?("/model beta:x --default")).to be(true)
       expect(described_class.builtin_registry.command?("/continue no, too slow")).to be(true)
@@ -844,6 +845,14 @@ RSpec.describe Samagotchi::SessionCommands do
       engine.guardrail_approvals.add(v, scope)
     end
 
+    def system_one_log
+      Samagotchi::SystemOne::Log.new(dir: File.join(state, "guardrails"))
+    end
+
+    def auto_allow(rule, call, p: 0.97, session_id: session.id)
+      system_one_log.judgment(session_id: session_id, rule: rule, tool: "execute", call: call, p: p, decision: "auto")
+    end
+
     it "lists the rules, the core checks and no approvals" do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],
@@ -966,7 +975,37 @@ RSpec.describe Samagotchi::SessionCommands do
     it "refuses a bad revoke or argument" do
       expect(commands.run("/guardrails revoke 3").to_h).to include(status: :error, output: "no approval 3 (see /guardrails)")
       expect(commands.run("/guardrails revoke x").status).to eq(:error)
-      expect(commands.run("/guardrails nope").output).to eq("usage: /guardrails [revoke N]")
+      expect(commands.run("/guardrails nope").output).to eq("usage: /guardrails [revoke N | wrong [N]]")
+    end
+
+    it "labels this session's newest auto-allows with /guardrails wrong [N], appending a label" do
+      first = auto_allow("git-push", "git push origin main")
+      other_session = auto_allow("git-rebase", "git rebase main", session_id: "another-session")
+      latest = auto_allow("git-rebase", "git rebase --onto base")
+      before = File.readlines(system_one_log.path)
+
+      result = commands.run("/guardrails wrong 2")
+
+      expect(result.output).to include("labelled auto-allow 2: git-push", "git push origin main", "p=0.97",
+                                       "the rule will ask again until its record is rebuilt")
+      after = File.readlines(system_one_log.path)
+      expect(after[0...before.size]).to eq(before)
+      expect(system_one_log.entries.find { |entry| entry["id"] == first }["answer"]).to eq("should_have_asked")
+      expect(system_one_log.entries.find { |entry| entry["id"] == latest }["answer"]).to be_nil
+      expect(system_one_log.entries.find { |entry| entry["id"] == other_session }["answer"]).to be_nil
+    end
+
+    it "defaults /guardrails wrong to the newest unlabelled auto-allow and reports when there are none" do
+      id = auto_allow("git-push", "git push")
+
+      expect(commands.run("/guardrails wrong").output).to include("labelled auto-allow 1: git-push")
+      expect(system_one_log.entries.find { |entry| entry["id"] == id }["answer"]).to eq("should_have_asked")
+      expect(commands.run("/guardrails wrong").output).to eq("no unlabelled System 1 auto-allows in this session (see /guardrails)")
+    end
+
+    it "rejects an invalid wrong index" do
+      expect(commands.run("/guardrails wrong 0").output).to eq("usage: /guardrails wrong [N] (N from /guardrails)")
+      expect(commands.run("/guardrails wrong nope").status).to eq(:error)
     end
   end
 
