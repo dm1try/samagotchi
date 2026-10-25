@@ -618,16 +618,58 @@ module Samagotchi
         log_refused(refused_peer(req), req.path_info, reason)
         return error_response(401, "unauthorized", unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
 
-        body = @public_url ? PUBLIC_UNAUTHORIZED_PAGE : UNAUTHORIZED_PAGE
+        body = unauthorized_page(req)
         [401, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" },
          [body]]
       end
 
+      # Which page a refused page request gets: the LAN page with no
+      # web.public_url, the proxy page for a request that came through it,
+      # and for a browser on this machine the one pointing at the public
+      # address (#direct_public?): there the paste box can't help.
+      def unauthorized_page(req)
+        return direct_public_page if direct_public?(req)
+        return PUBLIC_UNAUTHORIZED_PAGE if @public_url
+
+        UNAUTHORIZED_PAGE
+      end
+
+      # A browser on this machine, with web.public_url set: the gate refuses
+      # it like every other request, and no trade can fix it here — loopback
+      # takes the token as Bearer only, so there is no cookie for it to keep
+      # (a cookie for 127.0.0.1 reaches every server on any local port). The
+      # page says where to open chi web instead. The origin is this machine's
+      # config, not a secret; it is escaped all the same, and no token or
+      # link code is in it.
+      def direct_public_page
+        origin = CGI.escapeHTML(@public_url.origin)
+        <<~HTML
+          <!doctype html>
+          <html lang="en"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>chi web: open it at its public address</title>
+          <style>
+            :root { color-scheme: light dark; }
+            body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 30rem; margin: 3rem auto; padding: 0 1rem; }
+            a { color: inherit; }
+          </style></head>
+          <body>
+          <h1>chi web</h1>
+          <p>chi web is behind an access proxy, so every request needs its access token, this machine's too.
+          A browser here can't trade a token for a cookie on 127.0.0.1, so this page can't let you in: open
+          chi web at its public address instead.</p>
+          <p><a href="#{origin}/">#{origin}/</a></p>
+          <p>chi web prints a link to it in its terminal every time it starts.</p>
+          </body></html>
+        HTML
+      end
+
       def unauthorized_detail(req, reason)
         return "chi web behind the proxy: #{reason || "needs its access token"}" if proxied?(req)
-        return "chi web with web.public_url needs its access token, on this machine too" if @public_url
+        return "chi web on the LAN needs its access token" unless @public_url
 
-        "chi web on the LAN needs its access token"
+        detail = "chi web with web.public_url needs its access token, on this machine too"
+        direct_public?(req) ? "#{detail}; open its public address #{@public_url.origin}/ instead" : detail
       end
 
       # Who a refusal is logged as: the peer, or behind a proxy (every peer

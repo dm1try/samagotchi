@@ -205,8 +205,47 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
 
     it "needs the token on loopback too, and the token alone is the owner there" do
       status, _, body = local("/api/sessions")
-      expect([status, detail(body)]).to eq([401, "chi web with web.public_url needs its access token, on this machine too"])
+      expect([status, detail(body)]).to eq([401, "chi web with web.public_url needs its access token, on this machine too; " \
+                                            "open its public address #{origin}/ instead"])
       expect(local("/api/sessions", headers: [bearer]).first).to eq(200)
+    end
+
+    # The paste box is a dead end here: loopback takes the token as Bearer
+    # only, so a traded cookie is never sent back. The page says where to open
+    # chi web instead (docs/configuration.md, "Every request needs the access
+    # token").
+    it "the 401 page of a browser on this machine links the public address, and has no paste box" do
+      status, headers, body = local("/")
+
+      expect(status).to eq(401)
+      expect(headers["Content-Type"]).to start_with("text/html")
+      expect(body).to include("public address").and include(%(href="#{origin}/"))
+      expect(body).not_to include("<form")
+      expect(body).not_to include("<input")
+      # The address is not a secret; a token or a link code is.
+      expect(body).not_to include(owner_token)
+      expect(body).not_to include("#code=")
+    end
+
+    it "links it for every refused page path, not just the page itself" do
+      %w[/ /index.html /nope /app.js].each do |path|
+        status, _, body = local(path)
+        expect([status, body.include?(%(href="#{origin}/"))]).to eq([401, true]), path
+      end
+    end
+
+    it "escapes the address from config, and keeps the link without a token or a code" do
+      odd = Samagotchi::Web::PublicUrl.new(origin: 'https://a"b&c.test', host: 'a"b&c.test', identity_header: nil, owner: nil)
+      other = described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
+                                  hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir),
+                                  public_url: odd, public_token: owner_token)
+
+      status, _, chunks = other.call(env_for("/", host: "127.0.0.1:4567"))
+      body = chunks.join
+      expect(status).to eq(401)
+      expect(body).to include(%(href="https://a&quot;b&amp;c.test/"))
+      expect(body).not_to include(%(href="https://a"b&c))
+      expect(body).not_to include(owner_token)
     end
 
     # A cookie for 127.0.0.1 would go to every server on any local port.
@@ -333,6 +372,8 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       _, _, body = call("/", headers: proxied)
       expect(body).to include('<form method="post" action="/api/token">')
       expect(body).not_to include('method="get"')
+      # The public-address page is only for this machine's loopback.
+      expect(body).not_to include("public address")
     end
 
     it "trades a pasted owner token for the cookie and a 303 to the public page" do

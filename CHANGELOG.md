@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- chi web behind an auth proxy: a browser on this machine opening `127.0.0.1:<port>` got the token page with a paste
+  box that cannot work there (loopback takes the token as `Authorization: Bearer` only, so no cookie is traded); the
+  401 page now says chi web opens at its public address and links it, and the API's 401 detail says the same.
 - `chi web --tunnel tailscale`: a Ctrl-C while it turned Tailscale Serve on left port 443 forwarding to chi web's port
   after it exited, and a second Ctrl-C during the teardown could cut it short with 443 still on: both now wait for the
   command and turn 443 off.
