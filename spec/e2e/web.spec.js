@@ -889,6 +889,20 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(page.locator("#prompt")).toBeFocused();
   await expect.poll(() => page.locator("#prompt").evaluate((el) => el.offsetHeight)).toBeGreaterThan(PROMPT_LINE_PX * 3);
   await page.locator("#prompt").fill("");
+  // A floor set in a big window is held to half of the window the box is shown
+  // in (a resized window, a rotated phone, another device on the same origin):
+  // the saved floor itself stays, so the height comes back with the room.
+  const [bx, by] = await gripMiddle();
+  await page.mouse.move(bx, by);
+  await page.mouse.down();
+  await page.mouse.move(bx, by - 300, { steps: 10 });
+  await page.mouse.up();
+  const tallFloor = await promptH();
+  await page.setViewportSize({ width: 500, height: 400 });
+  await expect.poll(promptH).toBe(200);
+  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(tallFloor);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect.poll(promptH).toBe(tallFloor);
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);

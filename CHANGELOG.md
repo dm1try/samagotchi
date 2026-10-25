@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web's composer grip keeps the message box inside the window it is shown in: the height is now held to the same
+  half of the window a drag may set, whatever floor was saved, so a 400 px floor set in a 800 px window shows 250 px
+  in a 500 px one (a rotated phone, a resized window, a second device on the same origin) and comes back whole when
+  the room is back — the saved floor itself is untouched. See [Sessions](docs/sessions.md).
+
 ## [0.116.0] - 2026-10-25
 
 ### Added

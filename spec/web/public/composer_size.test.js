@@ -13,13 +13,39 @@ test("text grows the box up to 35% of the window, then scrolls", () => {
 
 test("the grip's floor holds for short text and lifts the cap", () => {
   assert.deepEqual(promptHeight({ contentPx: 30, floorPx: 250, viewportPx: 800 }), { height: 250, scrolls: false });
-  assert.deepEqual(promptHeight({ contentPx: 900, floorPx: 500, viewportPx: 800 }), { height: 500, scrolls: true });
+  // 400 px is the most a drag may set in a 800 px window, and it caps the text too.
+  assert.deepEqual(promptHeight({ contentPx: 900, floorPx: 400, viewportPx: 800 }), { height: 400, scrolls: true });
 });
 
 test("a grip drag stays between the minimum and 50% of the window", () => {
   assert.equal(gripFloor(10, 800), 72);
   assert.equal(gripFloor(300, 800), 300);
   assert.equal(gripFloor(2000, 800), 400);
+});
+
+test("a floor saved in a bigger window is held to 50% of the window it is shown in", () => {
+  // The 400 px floor a drag could set in a 800 px window: in a 500 px one the
+  // box stops at half of it, not at the saved floor (a rotated phone, a resized
+  // window, another device on the same origin).
+  assert.deepEqual(promptHeight({ contentPx: 30, floorPx: 400, viewportPx: 500 }), { height: 250, scrolls: false });
+  assert.deepEqual(promptHeight({ contentPx: 30, floorPx: 400, viewportPx: 300 }), { height: 150, scrolls: false });
+  // and it comes back whole in the window it was set in.
+  assert.deepEqual(promptHeight({ contentPx: 30, floorPx: 400, viewportPx: 800 }), { height: 400, scrolls: false });
+});
+
+test("the clamped floor caps the text too: a tall draft scrolls at half the window", () => {
+  assert.deepEqual(promptHeight({ contentPx: 900, floorPx: 400, viewportPx: 500 }), { height: 250, scrolls: true });
+  // Below the clamp the text still grows to 35% of the window.
+  assert.deepEqual(promptHeight({ contentPx: 170, floorPx: 100, viewportPx: 500 }), { height: 170, scrolls: false });
+});
+
+test("the render's floor is the same rule as the drag's", () => {
+  assert.equal(promptHeight({ contentPx: 30, floorPx: 400, viewportPx: 500 }).height, gripFloor(400, 500));
+  assert.equal(promptHeight({ contentPx: 26, floorPx: 400, viewportPx: 200, minPx: PROMPT_LINE_PX }).height, gripFloor(400, 200, PROMPT_LINE_PX));
+});
+
+test("a window shorter than the minimum keeps the box at the minimum", () => {
+  assert.deepEqual(promptHeight({ contentPx: 10, floorPx: 400, viewportPx: 100 }), { height: 72, scrolls: false });
 });
 
 test("in a session the empty box is one line", () => {
