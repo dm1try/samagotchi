@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "recap_store"
+
 module Samagotchi
   # /title, the session's own name (Session#title): with no argument, the
   # title and what shows without one; `/title TEXT` names the session
@@ -49,13 +51,20 @@ module Samagotchi
     private
 
     # "title: Coordinator", "title: none (shows the auto title: Parser tab
-    # handling)" (the recap's, RecapTitle), or "title: none (shows the
-    # first message: hey chi …)"
+    # handling)" (the recap's title, RecapTitle), "title: none (shows the
+    # recap: Fixing the login page.)" (its first sentence, when the recap
+    # has no title), or "title: none (shows the first message: hey chi …)".
+    # The name comes from the same read the cards and `chi sessions list`
+    # use — RecapStore.card on the session's recap.json — so this line can't
+    # disagree with what the lists show, including when the recap is off for
+    # this session and a title saved earlier still shows (docs/sessions.md,
+    # "Session titles").
     def listing(session)
       return "title: #{session.title}" if session.title
 
-      auto = @engine.recap&.state&.dig(:title)
-      return "title: none (shows the auto title: #{auto})" if auto
+      card = RecapStore.card(Session.session_dir(session.id, state_dir: @engine.session_state_dir))
+      return "title: none (shows the auto title: #{card.title})" if card.title
+      return "title: none (shows the recap: #{card.preview})" if card.preview
 
       preview = session.first_preview.to_s
       "title: none (shows #{preview.empty? ? "the first message" : "the first message: #{preview}"})"
