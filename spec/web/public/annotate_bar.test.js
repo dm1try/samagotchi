@@ -20,13 +20,17 @@ function el(tag, { classes = [] } = {}) {
       if (sel === "button") return this.tag === "button" ? this : null;
       return sel.split(".").filter(Boolean).every((c) => classes.includes(c)) ? this : null;
     },
-    classList: { contains: (c) => classes.includes(c) },
+    classList: {
+      contains: (c) => classes.includes(c),
+      add: (c) => { if (!classes.includes(c)) classes.push(c); },
+      remove: (c) => { const i = classes.indexOf(c); if (i >= 0) classes.splice(i, 1); },
+    },
     querySelectorAll: () => [],
     getBoundingClientRect: () => ({ top: 0, bottom: 30, left: 0, right: 120 }),
   };
 }
 
-function fakePage({ selectionText = "the answer", inRoot = true, commands = [] } = {}) {
+function fakePage({ selectionText = "the answer", inRoot = true, commands = [], touch = false, dock = null } = {}) {
   const docListeners = {};
   const doc = {
     body: el("body"),
@@ -57,6 +61,7 @@ function fakePage({ selectionText = "the answer", inRoot = true, commands = [] }
     }),
     requestAnimationFrame: (fn) => frames.push(fn),
     addEventListener() {},
+    matchMedia: (query) => ({ matches: touch && query === "(pointer: coarse)" }),
   };
   const quotes = [];
   const actions = [];
@@ -70,6 +75,7 @@ function fakePage({ selectionText = "the answer", inRoot = true, commands = [] }
     actions: () => annotationActions(state.commands),
     running: () => state.running,
     onAction: (action, fields) => actions.push([action.label, fields]),
+    dock: () => dock,
     doc, win,
   });
   const selectionChange = () => {
@@ -101,6 +107,35 @@ test("a selection in an answer shows the bar under it; Annotate quotes it", () =
   click(bar.el, bar.el.children[0]);
   assert.deepEqual(quotes, ["> the answer\n\n"]);
   assert.equal(bar.el.hidden, true);
+});
+
+test("on a touch screen the bar docks above the composer, away from the OS selection menu", () => {
+  const dock = { getBoundingClientRect: () => ({ top: 650, height: 120 }) };
+  const { bar, quotes, selectionChange } = fakePage({ touch: true, dock });
+  selectionChange();
+  assert.equal(bar.el.hidden, false);
+  // 650 - the bar's 30px - 8px gap, not under the selection (126px).
+  assert.equal(bar.el.style.top, "612px");
+  assert.equal(bar.el.style.left, "8px");
+  assert.equal(bar.el.classList.contains("docked"), true);
+  click(bar.el, bar.el.children[0]);
+  assert.deepEqual(quotes, ["> the answer\n\n"]);
+});
+
+test("docked without a laid-out composer: the bottom of the window", () => {
+  for (const dock of [null, { getBoundingClientRect: () => ({ top: 0, height: 0 }) }]) {
+    const { bar, selectionChange } = fakePage({ touch: true, dock });
+    selectionChange();
+    assert.equal(bar.el.style.top, "762px");
+  }
+});
+
+test("a pointer screen floats the bar under the selection, not docked", () => {
+  const dock = { getBoundingClientRect: () => ({ top: 650, height: 120 }) };
+  const { bar, selectionChange } = fakePage({ dock });
+  selectionChange();
+  assert.equal(bar.el.style.top, "126px");
+  assert.equal(bar.el.classList.contains("docked"), false);
 });
 
 test("a preset quotes with its text as the note", () => {

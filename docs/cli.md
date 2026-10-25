@@ -1130,6 +1130,9 @@ for a note under it. Next to it sit quick replies, by default `Agreed` and
 `Could you please elaborate?`: a click quotes the selection the same way
 with that text already written as the note. It only fills the composer,
 never sends, so you can collect several quotes and edit before sending.
+On a touch screen (a phone, a tablet) the bar sits just above the composer
+instead of next to the selection, where the system's own Copy menu and the
+selection handles would cover it; several pills wrap to a second row.
 
 The list is `web.annotate_presets`, `|`-separated (at most five; a preset
 can't contain `|`; a YAML list works too):

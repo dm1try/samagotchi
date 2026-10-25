@@ -550,6 +550,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 #annotateBar .annotate-action:disabled{opacity:.5;cursor:not-allowed}
 #annotateBar .annotate-action[data-sends]::after{content:"↗";margin-left:4px;opacity:.75}
 #annotateBar .annotate-more-list{position:absolute;top:calc(100% + 4px);right:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+#annotateBar.docked{right:8px;justify-content:center}
+@media (pointer:coarse){#annotateBar button{font-size:14px;padding:8px 14px}}
 #annotateBar .annotate-more-list[hidden]{display:none}
 #annotateBar .annotate-preset{background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Copy buttons (copy.js): top-right in an answer and a code block, left of a prompt (its right edge is the page's); shown on hover or focus, always (dim) on touch. They hold no text: "copied ✓" is CSS content. */

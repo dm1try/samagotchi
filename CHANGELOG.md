@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web on a touch screen: the Annotate bar docks just above the composer instead of under the selection, where iOS's
+  own selection menu (Copy, Look Up…) was drawn over it; its pills are larger to tap and wrap to a second row.
+
 ## [0.114.0] - 2026-10-25
 
 ### Added
