@@ -27,13 +27,22 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
 
   def launch = described_class.launch(port: 4567, dir: "/", tunnel: "tailscale")
 
+  # A start that binds the port (calls on_bound, the tunnel's up), then
+  # returns +result+ or raises +error+.
+  def bound(result = true, error: nil)
+    allow(described_class).to receive(:start) do |on_bound:, **|
+      on_bound.call
+      yield if block_given?
+      raise error if error
+
+      result
+    end
+  end
+
   it "runs chi web with the tunnel's public_url for this run, then turns the serve off" do
     config_before = File.read(config_file)
     served = nil
-    allow(described_class).to receive(:start) do |**|
-      served = fake.serve
-      true
-    end
+    bound { served = fake.serve }
 
     expect { expect(launch).to eq(0) }.to output("Tailscale Serve: port 443 is off again.\n").to_stdout
     expect(described_class).to have_received(:start).with(hash_including(
@@ -53,15 +62,35 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect(File.read(config_file)).to eq(config_before)
   end
 
-  it "turns it off after Ctrl-C, SIGTERM and a port taken" do
-    allow(described_class).to receive(:start).and_raise(Interrupt)
+  it "turns it off after Ctrl-C and SIGTERM" do
+    bound(error: Interrupt)
     expect { expect(launch).to eq(Samagotchi::CLI::Exit::INTERRUPTED) }
       .to output("Tailscale Serve: port 443 is off again.\nChi Web stopped.\n").to_stdout
-    allow(described_class).to receive(:start).and_raise(SignalException, "TERM")
+    bound(error: SignalException.new("TERM"))
     expect { expect { launch }.to raise_error(SignalException) }.to output(/off again/).to_stdout
-    allow(described_class).to receive(:start).and_return(false)
-    expect { expect(launch).to eq(1) }.to output(/off again/).to_stdout
-    expect(fake.argv.count("serve --https=443 off")).to eq(3)
+    expect(fake.argv.count("serve --https=443 off")).to eq(2)
+  end
+
+  # Between the free-port probe and the bind another listener can take the
+  # port: Serve would forward the tailnet to it.
+  it "turns Serve on only once the port is bound: a port taken never reaches Serve" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
+    allow(Samagotchi::Web::SessionHub).to receive(:new)
+      .and_return(instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, scan: nil, subscribe: -> {}))
+    allow(Samagotchi::Web::Token).to receive_messages(load_or_create: nil, read: "T")
+    allow(described_class).to receive(:push_runtime).and_return(nil)
+    allow(Rackup::Handler::WEBrick).to receive(:run).and_raise(Errno::EADDRINUSE)
+    expect { expect(launch).to eq(1) }.to output(/port 4567 is in use/).to_stderr
+    expect(fake.argv.grep(/\Aserve --/)).to eq([])
+
+    served = nil
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_app, opts|
+      expect(fake.argv.grep(/serve --bg/)).to eq([])
+      expect { opts[:StartCallback].call }.to output(/\AChi Web on .*Proxied: /m).to_stdout
+      served = fake.serve
+    end
+    expect { expect(launch).to eq(0) }.to output(/off again/).to_stdout
+    expect(served).to eq(FakeTailscale.fixture("serve-443-on.json"))
   end
 
   # A Ctrl-C from another thread once the block is true (Thread#raise is
@@ -75,23 +104,21 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
   end
 
   it "turns it off after a Ctrl-C while serve --bg runs (Serve keeps what it set)" do
-    allow(described_class).to receive(:start)
+    bound
     fake.slow!("serve-bg", 0.4)
     interrupter = interrupt_when("serve --bg to start") { fake.argv.include?("serve --bg --https=443 http://127.0.0.1:4567") }
     expect { expect(launch).to eq(Samagotchi::CLI::Exit::INTERRUPTED) }
       .to output("Tailscale Serve: port 443 is off again.\nChi Web stopped.\n").to_stdout
     interrupter.join
-    expect(described_class).not_to have_received(:start)
     expect(fake.argv.last).to eq("serve --https=443 off")
     expect(fake.serve).to eq({})
   end
 
   it "finishes the teardown through a second Ctrl-C, with the first one's exit status" do
     interrupter = nil
-    allow(described_class).to receive(:start) do |**|
+    bound(error: SignalException.new("TERM")) do
       fake.slow!("serve-status", 0.4)
       interrupter = interrupt_when("the teardown's serve status") { fake.argv.count("serve status --json") == 2 }
-      raise SignalException, "TERM"
     end
     expect { expect { launch }.to raise_error(SignalException, "SIGTERM") }
       .to output("Tailscale Serve: port 443 is off again.\n").to_stdout
@@ -103,7 +130,7 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
 
   it "adopts a leftover serve for its port and still turns it off" do
     fake.serve = "serve-443-on.json"
-    allow(described_class).to receive(:start).and_return(true)
+    bound
     expect { launch }.to output(/off again/).to_stdout
     expect(described_class).to have_received(:start)
       .with(hash_including(public_notes: include(a_string_including("Serve already forwarded port 443 here"))))
@@ -129,10 +156,11 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     fake.serve = "serve-off.json"
     allow(Samagotchi::Web::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Web::Grants::Insecure, "0644")
     expect { expect(launch).to eq(1) }.to output("Error: 0644\n").to_stderr
+    expect(described_class).not_to have_received(:start)
     allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
     fake.fail!("serve-bg", "Serve is not enabled on your tailnet.")
+    bound
     expect { expect(launch).to eq(1) }.to output(/\AError: tailscale serve --bg .* failed: Serve is not enabled/).to_stderr
-    expect(described_class).not_to have_received(:start)
     expect(fake.argv).not_to include("serve --https=443 off")
   end
 
@@ -150,24 +178,21 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
   end
 
   it "runs without push checks when web.push.enabled is false" do
-    allow(described_class).to receive(:start).and_return(true)
+    bound
     with_env("SAMAGOTCHI_WEB_PUSH_ENABLED" => "false", "SAMAGOTCHI_WEB_PUSH_CONTACT" => "chi@localhost") do
       expect { expect(launch).to eq(0) }.to output.to_stdout
     end
   end
 
   it "warns when the off fails, without changing the exit status" do
-    allow(described_class).to receive(:start).and_return(true)
+    bound
     fake.fail!("serve-off", "permission denied")
     expect { expect(launch).to eq(0) }
       .to output(/\AWarning: Tailscale Serve may still forward #{Regexp.escape(name)} to 127.0.0.1:4567 /).to_stdout
   end
 
   it "leaves 443 alone when someone changed it while chi web ran" do
-    allow(described_class).to receive(:start) do |**|
-      fake.serve = fake.serve.tap { |s| s["Web"]["#{name}:443"]["Handlers"]["/files"] = { "Path" => "/tmp/x" } }
-      true
-    end
+    bound { fake.serve = fake.serve.tap { |s| s["Web"]["#{name}:443"]["Handlers"]["/files"] = { "Path" => "/tmp/x" } } }
     expect { launch }.to output(/changed while chi web ran/).to_stdout
     expect(fake.argv).not_to include("serve --https=443 off")
   end

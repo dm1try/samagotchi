@@ -1733,8 +1733,9 @@ Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reac
 ```
 
 - It checks before it changes anything: Tailscale is connected, this machine has its `ts.net` name and a certificate
-  for it, and what Serve already has on port 443. Nothing there: it runs
-  `tailscale serve --bg --https=443 http://127.0.0.1:<port>`. Exactly that one handler for this port (a leftover of an
+  for it, and what Serve already has on port 443. Nothing there: once chi web has bound its port (so Serve never
+  forwards your tailnet to another program that took the port first), it runs
+  `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, then prints its lines. Exactly that one handler for this port (a leftover of an
   earlier run killed hard, or step 3 done by hand): it adopts it. Anything else on 443 (another port, other paths, TCP
   forwarding, Funnel) is refused and left alone. Serve's other ports are never touched.
 - The owner is `web.proxy.owner` if config.yml has it, else this machine's own Tailscale login (a tagged machine has

@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - `chi web --tunnel tailscale`: a Ctrl-C while it turned Tailscale Serve on left port 443 forwarding to chi web's port
   after it exited, and a second Ctrl-C during the teardown could cut it short with 443 still on: both now wait for the
   command and turn 443 off.
+- `chi web --tunnel tailscale` turns Tailscale Serve on only once chi web has bound its port: a program that took the
+  port between the free-port check and the bind was reachable from the tailnet until chi web gave up.
 
 ## [0.112.0] - 2026-10-25
 

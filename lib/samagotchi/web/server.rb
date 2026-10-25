@@ -130,7 +130,9 @@ module Samagotchi
                       annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
                       public_url: public_url }
           started = if plan
-                      with_tunnel(provider, plan) { start(**options, public_notes: provider.start_lines(plan)) }
+                      with_tunnel(provider, plan) do |up|
+                        start(**options, public_notes: provider.start_lines(plan), on_bound: up)
+                      end
                     else
                       start(**options)
                     end
@@ -147,19 +149,22 @@ module Samagotchi
       end
 
       # The tunnel on while the block runs (the server), off after it
-      # whatever ends it (Ctrl-C, SIGTERM, SIGHUP, a port taken), once #up
-      # may have taken effect: a refusal before it turns off nothing (a live
-      # tunnel of another chi web stays). A signal during #up waits for it
+      # whatever ends it (Ctrl-C, SIGTERM, SIGHUP), once #up may have taken
+      # effect: a refusal before it turns off nothing (a live tunnel of
+      # another chi web stays). The block gets #up to call once the port is
+      # bound (start's on_bound), so Serve never forwards the tailnet to a
+      # listener that took the port first. A signal during #up waits for it
       # (its command runs in its own process group, and Serve keeps what it
       # set even if chi stopped waiting), so it can't land between the serve
       # going on and the teardown being due; #up is bounded by its timeout.
       def self.with_tunnel(provider, plan)
         attempted = false
-        Thread.handle_interrupt(SignalException => :never) do
-          attempted = true
-          provider.up(plan)
-        end
-        yield
+        yield(lambda do
+          Thread.handle_interrupt(SignalException => :never) do
+            attempted = true
+            provider.up(plan)
+          end
+        end)
       ensure
         tunnel_down(provider, plan) if attempted
       end
@@ -202,11 +207,14 @@ module Samagotchi
       #   (web.public_url, or --tunnel's): every request needs the access token
       # @param public_notes [Array<String>] lines after the proxied link's
       #   (the tunnel's)
+      # @param on_bound [#call, nil] run once the port is bound, before any
+      #   line (the tunnel's #up); what it raises ends the run
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
-                     working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [])
+                     working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
+                     on_bound: nil)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -242,7 +250,11 @@ module Samagotchi
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
         running_path = Running.path(state_dir: state_dir)
+        webrick = nil
+        callback_unfinished = false
         started = lambda do
+          callback_unfinished = true
+          on_bound&.call
           record_running(running_path, port, public_url)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
@@ -259,12 +271,14 @@ module Samagotchi
               open_url(open_target)
             end
           end
+          callback_unfinished = false
         end
 
         # The event loops (GET /api/events) end once WEBrick leaves
         # :Running: it joins every request thread before run returns.
         Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN),
                                           StartCallback: started) do |server|
+          webrick = server
           app.server_running = -> { server.status == :Running }
           listen_lan(server, lan, port) if lan
         end
@@ -276,6 +290,9 @@ module Samagotchi
         warn "Error: can't listen on #{lan.ip}:#{port} (#{e.message}); did the address change? Run chi web again"
         false
       ensure
+        # A start callback that raised (on_bound's refusal, a Ctrl-C) leaves
+        # WEBrick :Running with its sockets open.
+        webrick&.listeners&.each { |socket| socket.close unless socket.closed? } if callback_unfinished
         Running.clear(path: running_path) if running_path
         config_restart_unsubscribe&.call
         notifier&.stop

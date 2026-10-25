@@ -174,6 +174,25 @@ RSpec.describe Samagotchi::Web::Server do
     expect(File.exist?(path)).to be(false)
   end
 
+  it "runs on_bound (the tunnel's up) once bound, before it records or says anything; what it raises ends the run" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
+    allow(described_class).to receive(:record_running)
+    socket = instance_double(TCPServer, closed?: false, close: nil)
+    webrick = double("webrick", listeners: [socket], status: :Running)
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_app, opts, &block|
+      block.call(webrick)
+      opts[:StartCallback].call
+    end
+    on_bound = -> { raise Samagotchi::Web::Tunnel::CliFailed.new("tailscale serve", "no") }
+
+    expect do
+      expect { described_class.start(port: 4999, hub: hub, state_dir: start_state, on_bound: on_bound) }
+        .to raise_error(Samagotchi::Web::Tunnel::CliFailed)
+    end.not_to output.to_stdout
+    expect(described_class).not_to have_received(:record_running)
+    expect(socket).to have_received(:close)
+  end
+
   it "says the port is in use instead of a backtrace when the bind fails" do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run).and_raise(Errno::EADDRINUSE)
