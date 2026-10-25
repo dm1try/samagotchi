@@ -58,6 +58,35 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.find_by_key("web.turn_view")).to be_nil
       end
 
+      it "reads an unquoted on/off as the word for an enum that has it; a bool for one without still warns" do
+        # YAML 1.1 turns an unquoted on/off/yes/no into true/false, so the enum
+        # branch sees a boolean before it ever sees the word.
+        entry = described_class.find_by_key("guardrails.system_one.mode")
+        expect(described_class.coerce!(entry, true)).to eq("on")
+        expect(described_class.coerce!(entry, false)).to eq("off")
+        expect(described_class.resolve("guardrails.system_one.mode",
+                                       file_data: { "guardrails" => { "system_one" => { "mode" => true } } }, env: {})).to eq("on")
+        expect(described_class.resolve("session.delegate_reports",
+                                       file_data: { "session" => { "delegate_reports" => false } }, env: {})).to eq("off")
+        expect(described_class.resolve("session.task_wakes",
+                                       file_data: { "session" => { "task_wakes" => false } }, env: {})).to eq("off")
+        # The same, read through Psych: `mode: on` is the boolean true there.
+        expect(described_class.resolve("guardrails.system_one.mode",
+                                       file_data: YAML.load("guardrails:\n  system_one:\n    mode: on\n"), env: {})).to eq("on")
+
+        # An enum whose values are not on/off keeps refusing a boolean.
+        expect do
+          expect(described_class.resolve("session.task_wakes",
+                                         file_data: { "session" => { "task_wakes" => true } }, env: {})).to eq("wake")
+        end.to output(/invalid value for session.task_wakes: true \(allowed: wake, queue, off\) — using default/).to_stderr
+        expect do
+          described_class.coerce!(described_class.find_by_key("log.level"), false)
+        end.to raise_error(Samagotchi::SessionConfig::Error, /log.level takes debug, info, warn or error, not "false"/)
+        expect do
+          expect(described_class.resolve("log.level", file_data: { "log" => { "level" => true } }, env: {})).to eq("info")
+        end.to output(/invalid value for log.level: true \(allowed: debug, info, warn, error\) — using default/).to_stderr
+      end
+
       it "defaults the web working set to on; off from the file, env or cli (--[no-]web-working-set)" do
         key = "web.working_set"
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(true)

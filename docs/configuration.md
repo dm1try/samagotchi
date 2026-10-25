@@ -97,6 +97,12 @@ Behavior:
 - Top level is a YAML mapping of sections (`default:`, `server:`, `recap:`, …)
   and the maps described below. Keys are lower `snake_case`, one level per
   dot: `server.read_timeout` is `server: {read_timeout: 600}`.
+- Each key takes its own type: a number, a boolean (`true`/`false`, and
+  `yes`/`on`/`1`, `no`/`off`/`0`), text, or one of the words the setting
+  allows (`auto`, `audit`, `on`, …). YAML 1.1 reads an unquoted `on`, `off`,
+  `yes` or `no` as a boolean, so for a setting whose values are `on` and
+  `off` an unquoted `off` is the same as `"off"` (`guardrails.system_one.mode: off`,
+  `session.task_wakes: off`).
 - A key chi doesn't read warns at start, with the closest known key:
   `config: unknown key 'default.modle' (did you mean 'default.model'?)`.
   Names you choose under the maps below (host names, model ids) don't warn.

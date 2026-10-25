@@ -370,6 +370,8 @@ module Samagotchi
     # What a :bool value reads as (Config.coerce!), YAML 1.1's words and 1/0.
     BOOL_WORDS = { "1" => true, "true" => true, "yes" => true, "on" => true,
                    "0" => false, "false" => false, "no" => false, "off" => false }.freeze
+    # The word an :enum takes for a boolean (an unquoted on/off is one in YAML 1.1).
+    BOOL_ENUM_WORDS = { true => "on", false => "off" }.freeze
 
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze
@@ -397,8 +399,10 @@ module Samagotchi
       # +raw+ as +entry+'s type, strictly: a value of another shape raises.
       # :string as given (a YAML list joined with |), :integer, :float,
       # :bool (true/yes/on/1, false/no/off/0/""), :enum in its canonical
-      # case; nil for nil, and for a blank value of any other type than
-      # :string and :bool. #coerce is its lenient twin (config.yml, env).
+      # case (an unquoted on/off, which YAML 1.1 reads as a boolean, is the
+      # word when the entry has it); nil for nil, and for a blank value of any
+      # other type than :string and :bool. #coerce is its lenient twin
+      # (config.yml, env).
       # @raise [SessionConfig::Error] "KEY takes WHAT, not RAW"
       def coerce!(entry, raw)
         return nil if raw.nil?
@@ -414,12 +418,24 @@ module Samagotchi
                 when :integer then Integer(str, exception: false)
                 when :float then Float(str, exception: false)
                 when :bool then BOOL_WORDS[str.downcase]
-                when :enum then entry.enum_values.find { |v| v.downcase == str.downcase }
+                when :enum then enum_word(entry, raw, str)
                 else str
                 end
         raise SessionConfig::Error, "#{entry.key} takes #{takes(entry)}, not #{raw.to_s.inspect}" if value.nil?
 
         value
+      end
+
+      # A value of +entry+'s enum, as written. YAML 1.1 reads an unquoted
+      # on/off/yes/no as a boolean, so `mode: on` reaches the enum branch as
+      # true: it is the entry's "on"/"off" when the entry has that word, and
+      # still invalid when it doesn't.
+      def enum_word(entry, raw, str)
+        found = entry.enum_values.find { |v| v.downcase == str.downcase }
+        return found if found
+
+        word = BOOL_ENUM_WORDS[raw]
+        word && entry.enum_values.include?(word) ? word : nil
       end
 
       # What +entry+'s type takes, as a refusal names it.

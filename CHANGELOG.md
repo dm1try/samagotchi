@@ -10,6 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- An unquoted `on`/`off` in `config.yml` now means the word for a setting whose values are `on` and `off`:
+  `guardrails.system_one.mode: on` turns System 1 on and `session.task_wakes: off` turns the finish wake off
+  instead of warning and falling back to the default (YAML 1.1 reads those words as booleans). A boolean for an
+  enum with no such word still warns, and `cache.warmup: on` counts as `auto` quietly. See
+  [Configuration](docs/configuration.md).
 - chi web's composer grip keeps the message box inside the window it is shown in: the height is now held to the same
   half of the window a drag may set, whatever floor was saved, so a 400 px floor set in a 800 px window shows 250 px
   in a 500 px one (a rotated phone, a resized window, a second device on the same origin) and comes back whole when

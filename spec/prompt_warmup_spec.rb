@@ -141,6 +141,20 @@ RSpec.describe Samagotchi::PromptWarmup do
         expect(with_env("SAMAGOTCHI_CACHE_WARMUP" => value) { described_class.enabled? }).to be(false)
       end
     end
+
+    it "reads an unquoted on/off in the config file: YAML's true is auto, false is off, and neither warns" do
+      Dir.mktmpdir("chi-warmup-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        %w[on off].each do |word|
+          File.write(File.join(dir, "samagotchi", "config.yml"), "cache:\n  warmup: #{word}\n")
+          with_config_home(dir) do
+            with_env("SAMAGOTCHI_CACHE_WARMUP" => nil) do
+              expect(described_class.enabled?).to be(word == "on")
+            end
+          end
+        end
+      end
+    end
   end
 end
 

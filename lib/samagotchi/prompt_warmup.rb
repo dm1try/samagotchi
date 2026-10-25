@@ -29,6 +29,10 @@ module Samagotchi
   #   restores the state. When /slots can't say, the warm-up runs.
   class PromptWarmup
     MODES = %w[auto off].freeze
+    # The words cache.warmup takes, in the shape YAML hands them: an unquoted
+    # on/off arrives as true/false.
+    AUTO_WORDS = %w[auto on true 1].freeze
+    OFF_WORDS = %w[off false no 0].freeze
     # Seconds #take_pin waits for the busy-slot check (Client#slot_status
     # gives up within 3 s).
     DECIDE_TIMEOUT = 3
@@ -36,12 +40,13 @@ module Samagotchi
     STOP_JOIN_SECONDS = 1
 
     # Whether cache.warmup allows a warm-up (auto, the default; off, false,
-    # no or 0 turn it off; anything else warns once and is auto).
+    # no or 0 turn it off; on/true/1 (YAML's unquoted on) are auto; anything
+    # else warns once and is auto).
     def self.enabled?
       value = Config.get("cache.warmup").to_s.strip.downcase
-      return false if %w[off false no 0].include?(value)
+      return false if OFF_WORDS.include?(value)
 
-      unless value.empty? || value == "auto" || @warned
+      unless value.empty? || AUTO_WORDS.include?(value) || @warned
         @warned = true
         Log.warn(:config, "invalid_value", echo: "Warning: invalid value for cache.warmup: #{value.inspect} (allowed: auto, off) — using auto",
                                            key: "cache.warmup")
