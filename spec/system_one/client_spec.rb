@@ -98,6 +98,13 @@ RSpec.describe Samagotchi::SystemOne::Client do
       expect(client.backend).to be_a(Samagotchi::SystemOne::HttpBackend)
     end
 
+    it "takes the model a run names over the configured one" do
+      write_config({ "mode" => "audit", "host" => "splash", "model" => "configured-model" })
+      client = described_class.from_config(host_registry: registry, model: "run-model")
+      expect(client.model).to eq("run-model")
+      expect(described_class.from_config(host_registry: registry).model).to eq("configured-model")
+    end
+
     it "reads the settings again on every call, so config.yml changes take effect" do
       write_config({ "mode" => "audit", "host" => "splash" })
       expect(described_class.from_config(host_registry: registry)).not_to be_nil

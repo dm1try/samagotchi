@@ -689,6 +689,41 @@ P2a judges every ask; the rule opt-ins and the auto-allow are P3.
 questions through the client and prints each probability and the latency of
 the call — how a host is checked before any of this is turned on.
 
+### Seeding the record: `chi guardrails replay`
+
+A rule's record starts empty, so `chi guardrails replay` (this machine only)
+judges the asks the sessions here already answered and writes them to the same
+log, with the user's answer as the label:
+
+```sh
+chi guardrails replay [--dry-run] [--threshold T] [--model M]
+```
+
+It reads every session's sidecar, `$XDG_STATE_HOME/samagotchi/sessions/<id>/cards.json`
+(the file `Bridge::CardStore` saves), and takes the entries of type `question`
+whose `pending_question.approval` is there and that have an `answer` or were
+`cancelled`. A label is the scope the user took — `allow_once` for "Allow once",
+`allow_wide` for a wider one, `deny` for anything else, `none` for a cancelled
+ask. Skipped: a question no one answered, one answered by a parent agent (not
+the user), a relay card, which carries no approval of its own, and a question
+id a previous replay already logged — so running it twice adds nothing. A cards
+file that doesn't parse is skipped with one warning line, never a failed run.
+
+Each ask is judged exactly as a live one is (`SystemOne::ApprovalQuestion`),
+and written as a `judgment` line with `decision` and `origin` both `replay`,
+its `question_id` and the card's `created_at` as `asked_at`, followed by its
+label. Then a table, one row per rule sorted by how many asks it had, and a
+total: the asks, how many the user allowed, denied, how many at the threshold
+System 1 would have auto-allowed, how many of those the user denied (the false
+allows), and how many got no judgment. `--threshold` overrides
+`guardrails.system_one.threshold` for the table; `--model` overrides the model
+for this run; `--dry-run` judges and prints without writing a line. Without a
+client (`mode: off`, or no `host`) it exits 2 saying what to set.
+
+Two limits on what the replay can see: `CardStore` keeps only the last 20
+questions per session, and a `--no-shared` REPL session never writes a
+`cards.json` at all, so its asks are not replayable.
+
 ## The guardrails bundle
 
 ```sh

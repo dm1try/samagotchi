@@ -68,6 +68,8 @@ SUBCOMMANDS = {
   "memory" => ["samagotchi/memory_command", "MemoryCommand"],
   # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
   "bundle" => ["samagotchi/bundle_command", "BundleCommand"],
+  # the System 1 record: replay the asks this machine's sessions already answered
+  "guardrails" => ["samagotchi/guardrails_command", "GuardrailsCommand"],
   # other machines' chi web, for chi --remote NAME (add, ls, rm)
   "remote" => ["samagotchi/remote_command", "RemoteCommand"]
 }.freeze

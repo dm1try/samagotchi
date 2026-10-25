@@ -16,6 +16,12 @@ and commands may change between minor versions. How releases are made:
   question's probability and latency. In `audit` (or `on`) mode every approval a user is about to see is now judged
   first and written, with the answer they gave, to `guardrails/judgments.jsonl` beside the approvals store — nothing
   about the ask changes yet, so every card still reaches the user. See [Guardrails](docs/guardrails.md#system-1-experimental).
+- `chi guardrails replay [--dry-run] [--threshold T] [--model M]` runs System 1 over the approvals this machine's
+  sessions already answered — read from their `cards.json` sidecars — and writes each judgment and the user's answer
+  to `guardrails/judgments.jsonl`, so a rule's record starts with the asks the user really decided on. It prints a
+  per-rule table (asks, allowed, denied, auto at the threshold, false allows, no judgment) and skips parent-agent
+  answers, unanswered asks, relay cards and question ids a previous replay logged. Exits 2 when `guardrails.system_one.mode`
+  is off or no host is set. See [Guardrails](docs/guardrails.md#seeding-the-record-chi-guardrails-replay).
 
 ### Changed
 

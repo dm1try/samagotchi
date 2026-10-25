@@ -32,14 +32,16 @@ module Samagotchi
       # nil when judgment is off (the default) or no host is named, so the
       # caller needs no other check. The settings are read every call: a
       # config.yml change takes effect on the next ask.
-      def self.from_config(host_registry:, env: ENV)
+      # @param model [String, nil] a model for this call only (chi guardrails
+      #   replay --model), else the configured one
+      def self.from_config(host_registry:, env: ENV, model: nil)
         mode = Config.get("guardrails.system_one.mode").to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
 
         host = Config.get("guardrails.system_one.host").to_s.strip
         return nil if host.empty?
 
-        model = Config.get("guardrails.system_one.model").to_s.strip
+        model = (model.nil? ? Config.get("guardrails.system_one.model") : model).to_s.strip
         timeout_ms = Config.get("guardrails.system_one.timeout_ms").to_i
         timeout_ms = DEFAULT_TIMEOUT_MS unless timeout_ms.positive?
 
