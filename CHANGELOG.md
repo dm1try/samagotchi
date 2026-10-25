@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-10-25
+
 ### Changed
 
 - chi web's notifications — the browser's own and the phone's push — name a session just as its card does: with no
@@ -21,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 - `/title` with no argument now says what the session's card shows: the auto title its recap saved (even when this
   session's recap is off), or the recap's first sentence when the recap has no title. Both said "shows the first
   message".
+
+Update with `chi update` (the system bundle 0.115.0), then restart `chi web`.
 
 ## [0.114.0] - 2026-10-25
 
@@ -4350,7 +4354,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.114.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.115.0...HEAD
+[0.115.0]: https://github.com/dm1try/samagotchi/compare/v0.114.0...v0.115.0
 [0.114.0]: https://github.com/dm1try/samagotchi/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/dm1try/samagotchi/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/dm1try/samagotchi/compare/v0.111.1...v0.112.0
