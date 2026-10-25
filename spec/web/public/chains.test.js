@@ -356,6 +356,25 @@ test("chainTitle: a link titled with the opener reads its chain's first link's t
   assert.equal(chainTitle(x, new Map([[x.id, x], [y.id, y]])), "Continue where we left off.");
 });
 
+test("chainTitle and openTitle: a link's own auto title or recap beats the chain walk; a recapped first link names its chain", () => {
+  const first = link("r1", 5, { first_preview: "/coordinate the daily review", recap: "Ran the daily review." });
+  const bare = link("r2", 6, { continues: "r1", first_preview: "Continue where we left off." });
+  const recapped = link("r3", 7, { continues: "r2", first_preview: "Continue where we left off.", recap: "Merged two branches." });
+  const auto = link("r4", 8, { continues: "r3", first_preview: "Continue where we left off.", auto_title: "Merge day" });
+  const byId = new Map([first, bare, recapped, auto].map((s) => [s.id, s]));
+  assert.equal(chainTitle(bare, byId), "Ran the daily review.");
+  assert.equal(chainTitle(recapped, byId), "Merged two branches.");
+  assert.equal(chainTitle(auto, byId), "Merge day");
+  // An opener head with only a recap names its chain too.
+  const head = link("o1", 5, { first_preview: "Continue where we left off.", recap: "Started the queue." });
+  const next = link("o2", 6, { continues: "o1", first_preview: "Continue where we left off." });
+  assert.equal(chainTitle(next, new Map([[head.id, head], [next.id, next]])), "Started the queue.");
+  // The top bar follows the card for a recapped or auto-titled session in no chain.
+  const cardTitle = (s) => `card of ${s.id}`;
+  assert.equal(openTitle({ shown: { id: "c", recap: "Fixed X." }, first: "fix X", cardTitle }), "card of c");
+  assert.equal(openTitle({ shown: { id: "c", auto_title: "X fix" }, first: "fix X", cardTitle }), "card of c");
+});
+
 test("chainTitle and openTitle: a link's own title (/title) first, and a titled first link names its opener links", () => {
   const first = link("t1", 5, { first_preview: "hey chi", title: "Coordinator" });
   const next = link("t2", 6, { continues: "t1", first_preview: "Continue where we left off." });

@@ -17,6 +17,12 @@ and commands may change between minor versions. How releases are made:
   30 pushes an hour; a busy push service is tried once more; an approval asked while chi web was restarting is pushed
   once when it starts.
 
+### Changed
+
+- chi web: an untitled session's card, top bar and browser tab read its recap's first sentence (what the session is
+  doing) instead of its first message, so long-lived sessions started the same way no longer look alike; the card
+  then leaves out its recap line, and a session with no recap yet still reads its first message.
+
 ### Fixed
 
 - chi web: tapping the composer (or any other text field) on an iPhone or iPad no longer zooms the page in. Text

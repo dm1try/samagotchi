@@ -178,9 +178,17 @@ test("cardTemplate: the ctx tooltip carries the side requests line", () => {
   assert.ok(out.includes("side requests: 1 (btw) · 300 in / 3 out · $0.0012"));
 });
 
+test("cardTemplate: no recap line when the title is the recap's first sentence; shown under an auto title (D5)", () => {
+  const recapLine = (s) => markupOf(cardTemplate(s, {}, { title: previewForCard(s) })).includes('class="recap"');
+  assert.equal(recapLine(sess("a1", { recap: "Fixed the parser.", first_preview: "fix it" })), false);
+  assert.equal(recapLine(sess("a2", { recap: "Fixed the parser.", auto_title: "Parser fix" })), true);
+  assert.equal(recapLine(sess("a3", { recap: "Fixed the parser.", title: "Parser" })), true);
+  assert.equal(recapLine(sess("a4", { first_preview: "fix it" })), false);
+});
+
 test("cardTemplate: an all-sessions card with its tools, owner, recap, memories, folder and archived badge", () => {
   const s = sess("0123456789", {
-    owner: "worker", archived: true, recap: "did it", used_memory_names: ["a", "b"], working_directory: "/w/other",
+    owner: "worker", archived: true, title: "T", recap: "did it", used_memory_names: ["a", "b"], working_directory: "/w/other",
   });
   assert.equal(markupOf(cardTemplate(s, { deletable: true, archivable: true }, { title: "T", projectName: "proj" })), canon(
     `<div class="card archived" data-id="0123456789" title="0123456789 · updated  · idle · mem: a, b">` +

@@ -106,6 +106,9 @@ test("the words: session name and the reason, no question text", () => {
   assert.equal(attentionText(s, { reason: "continue" }).body, "hit its step limit");
   assert.equal(attentionText(s, { reason: "failed" }).body, "turn failed");
   assert.equal(attentionText({ id: "x" }, { reason: "failed" }).title, "chi session");
+  // The auto title after a hand title, before the first message (D10).
+  assert.equal(attentionText({ ...s, auto_title: "Build fix" }, { reason: "done" }).title, "Build fix");
+  assert.equal(attentionText({ ...s, title: "CI", auto_title: "Build fix" }, { reason: "done" }).title, "CI");
 });
 
 test("a question answered (here or in another client) is closed; a new one is closed and needs an answer", () => {

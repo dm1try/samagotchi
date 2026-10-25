@@ -96,7 +96,7 @@ test("modelLabel keeps the model asked for, no marker, when the served one is ex
   assert.deepEqual(modelLabel("work:rr/x", "rr/x", "rr/x", "work"), { text: "work:rr/x", title: "work:rr/x", mismatch: false });
 });
 
-import { deleteConfirmText, previewForCard } from "../../../lib/samagotchi/web/public/format.js";
+import { cardTitleSource, deleteConfirmText, previewForCard } from "../../../lib/samagotchi/web/public/format.js";
 
 test("previewForCard and deleteConfirmText name a titled session by its title (/title), else as before", () => {
   const titled = { id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", title: "Coordinator", first_preview: "hey chi", last_prompt: "go" };
@@ -104,6 +104,21 @@ test("previewForCard and deleteConfirmText name a titled session by its title (/
   assert.match(deleteConfirmText(titled), /^Delete session 3fa2b1c4 \u2014 "Coordinator"\?/);
   assert.equal(previewForCard({ ...titled, title: null }), "hey chi");
   assert.equal(previewForCard({ title: null, first_preview: "", last_prompt: "" }), "\u2014");
+});
+
+test("previewForCard, cardTitleSource and deleteConfirmText: title, auto title, recap, first message, last prompt", () => {
+  const s = { id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", title: "Coordinator", auto_title: "Heartbeat loop",
+    recap: "Ran the coordinator heartbeat.", first_preview: "Start the coordinator heartbeat", last_prompt: "go" };
+  const without = (...keys) => Object.fromEntries(Object.entries(s).filter(([k]) => !keys.includes(k)));
+  assert.deepEqual([previewForCard(s), cardTitleSource(s)], ["Coordinator", "title"]);
+  assert.deepEqual([previewForCard(without("title")), cardTitleSource(without("title"))], ["Heartbeat loop", "auto"]);
+  const recapped = without("title", "auto_title");
+  assert.deepEqual([previewForCard(recapped), cardTitleSource(recapped)], ["Ran the coordinator heartbeat.", "recap"]);
+  assert.match(deleteConfirmText(recapped), /^Delete session 3fa2b1c4 \u2014 "Ran the coordinator heartbeat\."\?/);
+  const plain = without("title", "auto_title", "recap");
+  assert.deepEqual([previewForCard(plain), cardTitleSource(plain)], ["Start the coordinator heartbeat", "preview"]);
+  assert.equal(cardTitleSource({}), "preview");
+  assert.equal(previewForCard({ recap: "" , last_prompt: "go" }), "go");
 });
 
 test("deleteConfirmText names the session and says it can't be undone", () => {

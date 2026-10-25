@@ -137,6 +137,13 @@ test("sessionStateFrom's title: the first user message wins over the card's prev
   assert.equal(st.firstPreview, "first message");
 });
 
+test("sessionStateFrom's title: an auto title or recap names it before the first user message, as its card", () => {
+  const messages = [{ role: "user", content: "first message" }];
+  assert.equal(sessionStateFrom(payload({ session: { recap: "Fixed the parser." }, messages })).firstPreview, "Fixed the parser.");
+  assert.equal(sessionStateFrom(payload({ session: { recap: "Fixed it.", auto_title: "Parser fix" }, messages })).firstPreview, "Parser fix");
+  assert.equal(sessionStateFrom(payload({ session: { title: "P", auto_title: "Parser fix" }, messages })).firstPreview, "P");
+});
+
 test("sessionStateFrom's title: the card's preview, else its last prompt, else a dash", () => {
   assert.equal(sessionStateFrom(payload({ session: { first_preview: "card" } })).firstPreview, "card");
   assert.equal(sessionStateFrom(payload({ session: { last_prompt: "last" } })).firstPreview, "last");
