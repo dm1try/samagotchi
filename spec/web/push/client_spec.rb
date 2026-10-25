@@ -17,9 +17,11 @@ RSpec.describe Samagotchi::Web::Push::Client do
   let(:receiver) { WebPushReceiver.new }
   let(:sub) { store.add(receiver.subscription("https://web.push.apple.com/QGdevice1"), origin: "https://s.example", label: "iPhone") }
   let(:requests) { Queue.new }
+  let(:started) { Queue.new }
   let(:answer) { [201, ""] }
   let(:server) do
-    WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", AccessLog: [], Logger: WEBrick::Log.new(File::NULL)).tap do |s|
+    WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", AccessLog: [], Logger: WEBrick::Log.new(File::NULL),
+                            StartCallback: -> { started << true }).tap do |s|
       s.mount_proc("/") do |req, res|
         requests << { path: req.path, headers: req.header.transform_values(&:first), body: req.body }
         res.status, res.body = answer
@@ -44,7 +46,12 @@ RSpec.describe Samagotchi::Web::Push::Client do
     WebMock.enable!
   end
 
-  before { @thread = Thread.new { server.start } }
+  # Running before an example goes on: a shutdown that lands before start begins is lost and start never returns
+  # (an example that never reaches the service shuts it down at once).
+  before do
+    @thread = Thread.new { server.start }
+    pop!(started, "the fake push service to start")
+  end
 
   after do
     server.shutdown
