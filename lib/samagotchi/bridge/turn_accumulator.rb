@@ -192,6 +192,7 @@ module Samagotchi
         activity = { tool: part[:tool], status: part[:status], params: part[:params], **title }
         activity[:action] = part[:action] if part[:action]
         activity[:no_match] = true if part[:no_match]
+        activity[:guardrail] = part[:guardrail] if part[:guardrail]
         completed = { type: :tool_call_completed, **call, output: part[:output], output_truncated: !!part[:output_truncated],
                       activity: activity }
         completed[:duration_ms] = part[:duration_ms] unless part[:duration_ms].nil?
@@ -333,6 +334,9 @@ module Samagotchi
           capped = output.length > @max_output_chars
           tool[:status] = (event.dig(:activity, :status) || "ok").to_s
           tool[:no_match] = true if event.dig(:activity, :no_match)
+          # Only System 1's auto-allow is drawn on the row (the web's label).
+          guardrail = event.dig(:activity, :guardrail)
+          tool[:guardrail] = guardrail if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
           tool[:output] = capped ? ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool]) : output.dup
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]

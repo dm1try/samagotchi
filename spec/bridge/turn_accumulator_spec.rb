@@ -191,6 +191,21 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(described_class.replay_events(acc.current_turn).last[:activity]).to include(status: "ok", no_match: true)
   end
 
+  it "keeps System 1's auto-allow on its part and replays it in the activity; other verdicts are not kept" do
+    system_one = { rule: "git-push", verdict: "allow", decided_by: "system one", scope: "once", p: 0.97 }
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "git push" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "",
+           activity: { tool: "execute", status: "ok", guardrail: system_one } },
+         { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute", params: "ls" },
+         { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute", output: "",
+           activity: { tool: "execute", status: "ok", guardrail: system_one.merge(decided_by: "user") } })
+    expect(acc.current_turn[:parts].map { |part| part[:guardrail] }).to eq([system_one, nil])
+    completed = described_class.replay_events(acc.current_turn).select { |event| event[:type] == :tool_call_completed }
+    expect(completed.first[:activity]).to include(guardrail: system_one)
+    expect(completed.last[:activity]).not_to have_key(:guardrail)
+  end
+
   it "keeps the name the model called an aliased tool by on its part, and replays it" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls", called_as: "bash" },

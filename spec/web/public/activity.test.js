@@ -252,3 +252,14 @@ test("a replayed running call with the snapshot's elapsed_ms starts that long be
   // Its live completion is timed from there.
   assert.equal(addCompleted(m, { iteration: 1, call_index: 1 }, 51_000).duration_ms, 13_000);
 });
+
+test("addCompleted marks a call System 1 allowed once, through a snapshot's replay; other verdicts leave no mark", () => {
+  const m = newActivity();
+  const guardrail = { rule: "git-push", verdict: "allow", decided_by: "system one", scope: "once", p: 0.97, judgment_id: "j" };
+  addCompleted(m, { iteration: 1, call_index: 1, tool: "execute", activity: { status: "ok", guardrail } });
+  addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", activity: { status: "ok", guardrail: { rule: "git-push", decided_by: "user" } } });
+  addCompleted(m, { iteration: 1, call_index: 3, tool: "execute", activity: { status: "ok" } });
+  assert.deepEqual(m.rows[0].guardrail, { rule: "git-push", p: 0.97 });
+  assert.equal(m.rows[1].guardrail, undefined);
+  assert.equal(m.rows[2].guardrail, undefined);
+});

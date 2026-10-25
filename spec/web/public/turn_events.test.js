@@ -744,3 +744,14 @@ test("snapshotEvents: a queued entry's delivery and the turn's cut_after replay 
   assert.equal("delivery" in events[2], false);
   assert.equal("cut_after" in snapshotEvents({ current_turn: { prompt: "p", parts: [] } })[0], false);
 });
+
+test("snapshotEvents keeps System 1's auto-allow in the completed event's activity, as Ruby's replay", () => {
+  const guardrail = { rule: "git-push", decided_by: "system one", p: 0.97 };
+  const turn = { prompt: "p", parts: [
+    { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "command=\"git push\"", status: "ok", output: "", guardrail },
+    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=\"ls\"", status: "ok", output: "a" },
+  ] };
+  const completed = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_completed");
+  assert.deepEqual(completed[0].activity.guardrail, guardrail);
+  assert.equal("guardrail" in completed[1].activity, false);
+});

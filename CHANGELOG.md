@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- System 1's auto-allowed calls are marked on their tool row in the terminal (` · auto-allowed (System 1, p=0.97)`) and
+  the web (an `auto-allowed · System 1` label, its rule and p on hover).
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for
   the questions a guardrail ask would ask, with the new `guardrails.system_one.*` settings (`mode`, `host`, `model`,
   `rules`, `threshold`, `min_record`, `timeout_ms`) and `script/system-one-probe HOST [MODEL]`, which prints each

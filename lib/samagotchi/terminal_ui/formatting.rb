@@ -202,6 +202,20 @@ module Samagotchi
         output_truncated ? " #{paint("[cut]", 90)}" : ""
       end
 
+      # A call System 1 allowed once instead of asking: " · auto-allowed
+      # (System 1, p=0.97)", yellow, from the activity's guardrail (symbol or
+      # string keys: live, snapshot). Any other guardrail data adds nothing.
+      def format_tool_guardrail_suffix(guardrail)
+        return "" unless guardrail.is_a?(Hash)
+
+        get = ->(key) { guardrail[key] || guardrail[key.to_s] }
+        return "" unless get.call(:decided_by) == "system one"
+
+        p_value = get.call(:p)
+        detail = p_value.nil? ? "System 1" : format("System 1, p=%.2f", p_value.to_f)
+        " #{paint("\u00b7 auto-allowed (#{detail})", 33)}"
+      end
+
       # Prompt labels by the sender's client_id: a whole id, or a prefix
       # (ending in ":") it starts with (turn_events.js CLIENT_LABELS;
       # spec/shared/labels_matrix.json).

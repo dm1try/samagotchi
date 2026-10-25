@@ -366,3 +366,9 @@ test("toolRowTemplate: a head-mode output has no tail class", () => {
   const html = toolRowHtml({ key: "1:1", tool: "execute", status: "blocked", output: "[execute] Error: denied by guardrail (rm): no" });
   assert.match(html, /<div class="activity-output" title="Error: denied by guardrail \(rm\): no">/);
 });
+
+test("toolRowInnerTemplate labels a System 1 auto-allowed row with its rule and p on hover, and only that", () => {
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "git push", guardrail: { rule: "git-push", p: 0.97 } });
+  assert.match(html, /<span class="activity-auto" title="rule git-push, p=0\.97, allowed once">auto-allowed · System 1<\/span>/);
+  assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "git push" }), /auto-allowed/);
+});

@@ -221,6 +221,7 @@ module Samagotchi
         line += @view.format_tool_image_suffix(images) if images&.any?
         line += @view.format_tool_diff_suffix(diff) if diff
         line += @view.format_tool_cut_suffix(output_truncated) if output_truncated
+        line += @view.format_tool_guardrail_suffix(activity[:guardrail]) if activity[:guardrail]
         @view.print_line(line)
       end
 
