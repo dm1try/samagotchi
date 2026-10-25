@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-10-25
+
 ### Added
 
 - System 1's judgment now sees more of the ask it is given: its state carries up to five of the user's **earlier
@@ -45,7 +47,7 @@ and commands may change between minor versions. How releases are made:
   allowed, and no false allow among its last 20 labelled asks. Calls that write chi's own config.yml, hooks,
   installed bundles or the guardrails store are never auto-allowed, nor `chi-answer-piped`, `chi-answer-http` or
   `chi-broadcast`; memory files are fair game. Nothing is stored in `approvals.json`, no card is opened and no
-  notification is sent, so an auto-allowed call is silent for now (the visible line is the next step). See
+  notification is sent, so the auto-allowed tool row is its only trace. See
   [Guardrails](docs/guardrails.md#answering-for-the-user-on-mode).
 
 ### Changed
@@ -4403,7 +4405,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.115.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.116.0...HEAD
+[0.116.0]: https://github.com/dm1try/samagotchi/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/dm1try/samagotchi/compare/v0.114.0...v0.115.0
 [0.114.0]: https://github.com/dm1try/samagotchi/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/dm1try/samagotchi/compare/v0.112.0...v0.113.0
