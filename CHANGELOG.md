@@ -50,6 +50,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- chi web's composer grip hides the message box with a click as well as a drag: a click on the expanded grip folds it
+  250 ms after the press, so a second click inside that window is a double-click and resets the height instead (a
+  drag, Enter or Space still act at once). A fold no longer forgets the height the grip set (`chi_composer_floor`):
+  the box opens again at the height it had, and only a double-click forgets it. See [Sessions](docs/sessions.md).
 - chi's icon (the browser tab and the Home Screen app) is a deeper blue to purple, so the white χ stands out on any
   wallpaper. On a phone, remove the Home Screen app and add it again to see it: iOS keeps the old icon.
 

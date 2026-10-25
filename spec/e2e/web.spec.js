@@ -819,17 +819,32 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   const dockH = () => page.locator("#center").evaluate((el) => parseFloat(el.style.getPropertyValue("--dock-h")));
   const expandedH = await dockH();
   await expect(grip).toHaveAttribute("aria-expanded", "true");
-  await page.evaluate(() => localStorage.setItem("chi_composer_floor", "120"));
-  const box = await grip.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const gripMiddle = async () => {
+    const b = await grip.boundingBox();
+    return [b.x + b.width / 2, b.y + b.height / 2];
+  };
+  const promptH = () => page.locator("#prompt").evaluate((el) => el.offsetHeight);
+  // A drag up gives the box a custom height (the grip's floor), saved per browser.
+  const [gx, gy] = await gripMiddle();
+  await page.mouse.move(gx, gy);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 80, { steps: 8 });
+  await page.mouse.move(gx, gy - 60, { steps: 6 });
+  await page.mouse.up();
+  const floorPx = await promptH();
+  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(floorPx);
+  const [fx, fy] = await gripMiddle();
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  // Far enough down to fold: the box clamps at its one-line minimum, so the
+  // fold asks for 32 px or more under the height the box actually shows.
+  await page.mouse.move(fx, fy + 120, { steps: 8 });
   await expect(grip).toHaveClass(/will-fold/);
   await page.mouse.up();
   await expect(page.locator("#composer")).toBeHidden();
   await expect(grip).toHaveAttribute("aria-expanded", "false");
-  // A fold forgets the floor: it opens at the minimum again.
-  expect(await page.evaluate(() => localStorage.getItem("chi_composer_floor"))).toBeNull();
+  // A fold keeps the height: opening brings the box back at the floor it had
+  // (a double-click is the only reset).
+  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(floorPx);
   await expect.poll(dockH).toBeLessThan(expandedH - 30);
   await page.reload();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
@@ -843,6 +858,8 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(page.locator("#prompt")).toHaveValue("h");
   await expect(page.locator("#prompt")).toBeFocused();
   await expect(grip).toHaveAttribute("aria-expanded", "true");
+  // ... at the height the grip had set, before the fold.
+  await expect.poll(promptH).toBe(floorPx);
   await grip.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#composer")).toBeHidden();

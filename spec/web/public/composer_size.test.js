@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GRIP_FOLD_PX, GRIP_OPEN_PX, PROMPT_LINE_PX, gripFolds, gripFloor, promptHeight } from "../../../lib/samagotchi/web/public/composer_size.js";
+import { GRIP_CLICK_FOLD_MS, GRIP_FOLD_PX, GRIP_OPEN_PX, PROMPT_LINE_PX, gripFolds, gripFloor, gripGesture, promptHeight } from "../../../lib/samagotchi/web/public/composer_size.js";
 
 test("short text keeps the three-line minimum", () => {
   assert.deepEqual(promptHeight({ contentPx: 30, viewportPx: 800 }), { height: 72, scrolls: false });
@@ -56,4 +56,31 @@ test("gripFolds: measured against the box shown, not the floor: a tall draft fol
   // A 150 px box (its text): the floor may be at the minimum already.
   assert.equal(gripFolds({ requestedPx: 130, shownPx: 150 }), false);
   assert.equal(gripFolds({ requestedPx: 118, shownPx: 150 }), true);
+});
+
+test("a click on the expanded grip folds GRIP_CLICK_FOLD_MS later, so a double-click can still reset", () => {
+  assert.equal(GRIP_CLICK_FOLD_MS, 250);
+});
+
+test("gripGesture: a release past the fold threshold folds at once, whatever else was pending", () => {
+  assert.equal(gripGesture({ session: true, folded: false, dy: 60, willFold: true, pending: false }), "fold");
+  assert.equal(gripGesture({ session: true, folded: false, dy: 60, willFold: true, pending: true }), "fold");
+});
+
+test("gripGesture: a tap-sized release is a click, a longer one a drag", () => {
+  // 7 px is still a click, 8 px a drag.
+  assert.equal(gripGesture({ session: true, folded: false, dy: 7, willFold: false, pending: false }), "hide");
+  assert.equal(gripGesture({ session: true, folded: false, dy: -7, willFold: false, pending: false }), "hide");
+  assert.equal(gripGesture({ session: true, folded: false, dy: 8, willFold: false, pending: false }), "resize");
+  assert.equal(gripGesture({ session: true, folded: false, dy: -20, willFold: false, pending: false }), "resize");
+});
+
+test("gripGesture: a click opens the folded handle, folds the expanded grip, and the second click in a row is a double-click", () => {
+  assert.equal(gripGesture({ session: true, folded: true, dy: 0, willFold: false, pending: false }), "open");
+  assert.equal(gripGesture({ session: true, folded: false, dy: 0, willFold: false, pending: false }), "hide");
+  assert.equal(gripGesture({ session: true, folded: false, dy: 0, willFold: false, pending: true }), "reset");
+  // A drag down on the folded handle does nothing: up opens it while dragging.
+  assert.equal(gripGesture({ session: true, folded: true, dy: 40, willFold: false, pending: false }), "none");
+  // The start page has no fold: its grip only resizes, a click included.
+  assert.equal(gripGesture({ session: false, folded: false, dy: 0, willFold: false, pending: false }), "resize");
 });

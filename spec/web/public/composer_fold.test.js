@@ -28,7 +28,7 @@ test("foldHandle: expanded is unmarked, whatever the draft or a wait, and says h
   assert.equal(h.folded, false);
   assert.equal(h.draft, false);
   assert.equal(h.waiting, false);
-  assert.match(h.title, /down to hide it/);
+  assert.equal(h.title, "Drag to resize, click to hide (double-click resets)");
   assert.deepEqual(Object.keys(h).sort(), ["draft", "folded", "title", "waiting"]);
 });
 

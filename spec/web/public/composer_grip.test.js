@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { COMPOSER_FOLD_KEY } from "../../../lib/samagotchi/web/public/composer_fold.js";
+import { GRIP_CLICK_FOLD_MS } from "../../../lib/samagotchi/web/public/composer_size.js";
 import { GRIP_KEY, createComposerGrip } from "../../../lib/samagotchi/web/public/composer_grip.js";
 
 // A page of its own per test (the grip adds listeners on the document) and
@@ -68,7 +69,7 @@ test("the start page's grip only resizes: no role, its own title, a drag saves t
   assert.equal(localStorage.getItem(GRIP_KEY), "100");
 });
 
-test("a drag down past the box folds on release: will-fold while it would, the floor forgotten, the fold saved", () => {
+test("a drag down past the box folds on release: will-fold while it would, the height it had kept, the fold saved", () => {
   const { grip, composeGrip, pointer, folded, state } = setup();
   grip.newVisit();
   state.floor = 80;
@@ -81,8 +82,9 @@ test("a drag down past the box folds on release: will-fold while it would, the f
   pointer("pointerup", 140);
   assert.equal(composeGrip.classList.contains("will-fold"), false);
   assert.equal(folded(), true);
-  assert.equal(state.floor, null);
-  assert.equal(localStorage.getItem(GRIP_KEY), null);
+  // The drag asked for a smaller box, but the fold restores the height it had.
+  assert.equal(state.floor, 80);
+  assert.equal(localStorage.getItem(GRIP_KEY), "80");
   assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1");
   assert.equal(composeGrip.getAttribute("aria-expanded"), "false");
   assert.ok(composeGrip.classList.contains("folded"));
@@ -134,4 +136,116 @@ test("typing on the page opens a folded composer and saves the choice", () => {
   doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "a", cancelable: true }));
   assert.equal(folded(), false);
   assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "0");
+});
+
+test("clicking the expanded grip folds it, but only after the double-click window", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, composeGrip, pointer, folded } = setup();
+  grip.newVisit();
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  assert.equal(folded(), false);
+  assert.equal(composeGrip.getAttribute("aria-expanded"), "true");
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS - 1);
+  assert.equal(folded(), false);
+  t.mock.timers.tick(1);
+  assert.equal(folded(), true);
+  assert.equal(composeGrip.getAttribute("aria-expanded"), "false");
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1");
+});
+
+test("a click keeps the height: opening the folded grip brings the box back at the floor it had", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, pointer, folded, state } = setup();
+  grip.newVisit();
+  state.floor = 120;
+  localStorage.setItem(GRIP_KEY, "120");
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS);
+  assert.equal(folded(), true);
+  assert.equal(state.floor, 120);
+  assert.equal(localStorage.getItem(GRIP_KEY), "120");
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  assert.equal(folded(), false);
+  assert.equal(state.floor, 120);
+});
+
+test("the second click of a double-click cancels the pending fold and resets the height", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, composeGrip, pointer, folded, state } = setup();
+  grip.newVisit();
+  state.floor = 120;
+  localStorage.setItem(GRIP_KEY, "120");
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  t.mock.timers.tick(120);
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  composeGrip.dispatchEvent(new composeGrip.ownerDocument.defaultView.Event("dblclick", { cancelable: true }));
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
+  assert.equal(folded(), false);
+  assert.equal(state.floor, null);
+  assert.equal(localStorage.getItem(GRIP_KEY), null);
+});
+
+test("a drag folds at once, and a drag after a click takes the pending fold back", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, pointer, folded, state } = setup();
+  grip.newVisit();
+  state.floor = 120;
+  localStorage.setItem(GRIP_KEY, "120");
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  pointer("pointerdown", 300);
+  pointer("pointermove", 380);
+  pointer("pointerup", 380);
+  assert.equal(folded(), true);
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
+  assert.equal(folded(), true);
+  assert.equal(state.floor, 120);
+});
+
+test("Enter on the expanded grip folds at once, no delay", () => {
+  const { grip, composeGrip, folded, state } = setup();
+  grip.newVisit();
+  state.floor = 120;
+  localStorage.setItem(GRIP_KEY, "120");
+  composeGrip.dispatchEvent(new composeGrip.ownerDocument.defaultView.KeyboardEvent("keydown", { key: "Enter", cancelable: true }));
+  assert.equal(folded(), true);
+  assert.equal(state.floor, 120);
+});
+
+test("the start page's grip never folds: a click there only keeps its floor", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, pointer, folded, state } = setup({ session: null });
+  grip.newVisit();
+  state.floor = 100;
+  pointer("pointerdown", 300);
+  pointer("pointermove", 200);
+  pointer("pointerup", 200);
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
+  assert.equal(folded(), false);
+  assert.equal(state.floor, 100);
+  assert.equal(localStorage.getItem(GRIP_KEY), "100");
+});
+
+test("a resize drag after a click takes the pending fold back: the box stays open", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, pointer, folded, state } = setup();
+  grip.newVisit();
+  state.floor = 100;
+  localStorage.setItem(GRIP_KEY, "100");
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  pointer("pointerdown", 300);
+  pointer("pointermove", 260);
+  pointer("pointerup", 260);
+  assert.equal(state.floor, 40);
+  assert.equal(localStorage.getItem(GRIP_KEY), "40");
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
+  assert.equal(folded(), false);
 });
