@@ -163,6 +163,10 @@ module Samagotchi
           []
         end
 
+        # As #subscriptions, but a corrupt file raises (chi web push says so).
+        # @raise [Corrupt]
+        def subscriptions! = read
+
         # The subscriptions for +origin+ (the ones chi web sends to now).
         def for_origin(origin) = subscriptions.select { |sub| sub.origin == origin }
 

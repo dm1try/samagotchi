@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
         %w[sessions stats ab] => "chi sessions stats", %w[sessions prune] => "chi sessions prune",
         %w[context mute x ab] => "chi context mute", %w[context add x --push --project] => "chi context add --project",
         %w[context ls --project] => "chi context ls --project", %w[broadcast -m x] => "chi broadcast",
-        %w[bundle list] => "chi bundle", %w[memory ls] => "chi memory", %w[web] => "chi web", %w[self] => "chi self",
+        %w[bundle list] => "chi bundle", %w[memory ls] => "chi memory", %w[web] => "chi web", %w[web push ls] => "chi web", %w[self] => "chi self",
         %w[--attach ab --verbose] => "chi --verbose", %w[-v -p hi] => "chi --verbose", %w[--no-shared] => "chi --no-shared",
         %w[--memory m --attach ab] => "chi --memory", %w[--dir /x --mute m] => "chi --mute",
         %w[--append-system-prompt=f.md] => "chi --append-system-prompt", %w[--attach ab --status-line on] => "chi --status-line"

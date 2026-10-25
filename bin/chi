@@ -97,6 +97,14 @@ if (path, klass = SUBCOMMANDS[ARGV[0]])
   exit Samagotchi.const_get(klass).new(ARGV[1..] || []).run
 end
 
+# `chi web push ls|rm|test`: this machine's Web Push devices. Not a
+# SUBCOMMANDS key: `chi web` itself is RunOptions' (and a remote's refusal
+# came above: chi web runs on this machine only).
+if ARGV[0] == "web" && ARGV[1] == "push"
+  require "samagotchi/push_command"
+  exit Samagotchi::PushCommand.new(ARGV[2..]).run
+end
+
 # `chi scratch`: the run options below, for a session that leaves nothing
 # behind (TerminalUI scratch:). The word goes before OptionParser sees it.
 scratch = ARGV[0] == "scratch"
