@@ -15,6 +15,7 @@ require_relative "fake_executables"
 #
 #   fake = FakeTailscale.new(dir, serve: "serve-443-on.json")
 #   fake.fail!("serve-bg", "consent needed")   # status, serve-status, lock, serve-bg, serve-off
+#   fake.slow!("serve-bg", 0.5)                # answers (and applies) 0.5 s later
 #   fake.argv  # => ["status --json", "serve status --json", ...]
 class FakeTailscale
   FIXTURES = File.expand_path("../fixtures/tailscale", __dir__)
@@ -32,6 +33,7 @@ class FakeTailscale
       *) echo "fake tailscale: unknown command: $*" >&2; exit 2 ;;
     esac
     if [ -f "$dir/fail-$key" ]; then cat "$dir/fail-$key" >&2; exit 1; fi
+    if [ -f "$dir/slow-$key" ]; then sleep "$(cat "$dir/slow-$key")"; fi
     if [ -f "$dir/hang-$key" ]; then cat "$dir/hang-$key"; exec sleep 30; fi
     case "$key" in
       status) cat "$dir/status.json" ;;
@@ -97,6 +99,10 @@ class FakeTailscale
 
   # +key+ prints +text+ and sleeps 30 s.
   def hang!(key, text = "") = File.write(File.join(@state, "hang-#{key}"), text)
+
+  # +key+ waits +seconds+ before it answers (and, for serve-bg/serve-off,
+  # changes 443), as a slow tailscaled would.
+  def slow!(key, seconds) = File.write(File.join(@state, "slow-#{key}"), seconds.to_s)
 
   # Every command it ran, one argv per line.
   def argv = File.read(File.join(@state, "argv.log")).lines(chomp: true)

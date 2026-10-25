@@ -64,6 +64,43 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect(fake.argv.count("serve --https=443 off")).to eq(3)
   end
 
+  # A Ctrl-C from another thread once the block is true (Thread#raise is
+  # how Ruby hands a signal to the main thread; RSpec traps SIGINT itself).
+  def interrupt_when(what, &ready)
+    target = Thread.current
+    Thread.new do
+      wait_for(what, &ready)
+      target.raise(Interrupt)
+    end
+  end
+
+  it "turns it off after a Ctrl-C while serve --bg runs (Serve keeps what it set)" do
+    allow(described_class).to receive(:start)
+    fake.slow!("serve-bg", 0.4)
+    interrupter = interrupt_when("serve --bg to start") { fake.argv.include?("serve --bg --https=443 http://127.0.0.1:4567") }
+    expect { expect(launch).to eq(Samagotchi::CLI::Exit::INTERRUPTED) }
+      .to output("Tailscale Serve: port 443 is off again.\nChi Web stopped.\n").to_stdout
+    interrupter.join
+    expect(described_class).not_to have_received(:start)
+    expect(fake.argv.last).to eq("serve --https=443 off")
+    expect(fake.serve).to eq({})
+  end
+
+  it "finishes the teardown through a second Ctrl-C, with the first one's exit status" do
+    interrupter = nil
+    allow(described_class).to receive(:start) do |**|
+      fake.slow!("serve-status", 0.4)
+      interrupter = interrupt_when("the teardown's serve status") { fake.argv.count("serve status --json") == 2 }
+      raise SignalException, "TERM"
+    end
+    expect { expect { launch }.to raise_error(SignalException, "SIGTERM") }
+      .to output("Tailscale Serve: port 443 is off again.\n").to_stdout
+    expect(fake.argv.last).to eq("serve --https=443 off")
+    expect(fake.serve).to eq({})
+  ensure
+    interrupter&.join
+  end
+
   it "adopts a leftover serve for its port and still turns it off" do
     fake.serve = "serve-443-on.json"
     allow(described_class).to receive(:start).and_return(true)

@@ -1742,7 +1742,9 @@ Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reac
   config.yml: a `web.public_url` or `web.proxy.identity_header` that says otherwise (in config.yml or the environment)
   is refused, so a config from step 4 with this machine's name works as it is.
 - On exit (Ctrl-C, a kill, closing the terminal) it runs `tailscale serve --https=443 off`, but only while 443 still
-  serves exactly what it set; if you changed 443 meanwhile it leaves it and says so. Killed hard (`kill -9`, a power
+  serves exactly what it set; if you changed 443 meanwhile it leaves it and says so. A Ctrl-C while it turns Serve on
+  or off waits for that command (at most 15 s each) and the teardown still runs; a teardown that fails is one warning
+  line. Killed hard (`kill -9`, a power
   loss) the serve stays on: Serve answers 502 for the name while nothing listens on the port, and whatever later
   listens on 127.0.0.1:<port> is reachable from your tailnet; the next `chi web --tunnel tailscale` adopts it and
   turns it off on exit, a plain `chi web` doesn't look.

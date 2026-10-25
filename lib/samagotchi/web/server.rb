@@ -147,25 +147,40 @@ module Samagotchi
       end
 
       # The tunnel on while the block runs (the server), off after it
-      # whatever ends it (Ctrl-C, SIGTERM, SIGHUP, a port taken), and only
-      # once #up succeeded: a refusal before it, or a failed #up, turns off
-      # nothing (a live tunnel of another chi web stays).
+      # whatever ends it (Ctrl-C, SIGTERM, SIGHUP, a port taken), once #up
+      # may have taken effect: a refusal before it turns off nothing (a live
+      # tunnel of another chi web stays). A signal during #up waits for it
+      # (its command runs in its own process group, and Serve keeps what it
+      # set even if chi stopped waiting), so it can't land between the serve
+      # going on and the teardown being due; #up is bounded by its timeout.
       def self.with_tunnel(provider, plan)
-        provider.up(plan)
-        upped = true
+        attempted = false
+        Thread.handle_interrupt(SignalException => :never) do
+          attempted = true
+          provider.up(plan)
+        end
         yield
       ensure
-        tunnel_down(provider, plan) if upped
+        tunnel_down(provider, plan) if attempted
       end
 
       # The tunnel's teardown, before any line (a hung-up terminal can't
       # write): a failure is one warning line, never a crash or another exit
-      # status, and a second Ctrl-C during it only cuts it short.
+      # status. A second Ctrl-C (SIGTERM, SIGHUP) during it waits for it
+      # (bounded by its commands' timeouts) and is then dropped: the run
+      # already ends the way the first signal ends it.
       def self.tunnel_down(provider, plan)
-        line = begin
-          provider.down_line(plan, provider.down(plan))
-        rescue Tunnel::Refused, SignalException => e
-          provider.down_warning(plan, e)
+        line = nil
+        begin
+          Thread.handle_interrupt(SignalException => :never) do
+            line = begin
+              provider.down_line(plan, provider.down(plan))
+            rescue Tunnel::Refused => e
+              provider.down_warning(plan, e)
+            end
+          end
+        rescue SignalException
+          nil
         end
         say(line) if line
       end
