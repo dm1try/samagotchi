@@ -1,0 +1,766 @@
+{
+  "note": "Web Push and the tab's notifications decide the same: Web::Push::Attention (spec/web/push/attention_cases_spec.rb) and notify.js attentionFor/closedKeys, push.js openPushKeys (spec/web/public/notify.test.js, push.test.js) answer every row. Summaries as the hub's JSON; hold_ms null when there is no hold of its own.",
+  "attention": [
+    {
+      "name": "a new approval",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "attention": {
+        "reason": "approval",
+        "key": "s1:q1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "an approval on a session not seen yet",
+      "prev": null,
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "attention": {
+        "reason": "approval",
+        "key": "s1:q1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a plain question",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "question"
+        }
+      },
+      "attention": {
+        "reason": "question",
+        "key": "s1:q1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a hook's question is a question",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "h1",
+          "kind": "hook"
+        }
+      },
+      "attention": {
+        "reason": "question",
+        "key": "s1:h1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a step-limit continue",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "c1",
+          "kind": "continue"
+        }
+      },
+      "attention": {
+        "reason": "continue",
+        "key": "s1:c1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "the same question again",
+      "prev": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a new question already relayed to its parent",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval",
+          "relayed_to": "p1234567"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a question relayed after it was seen closes it",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval",
+          "relayed_to": "p1234567"
+        }
+      },
+      "attention": null,
+      "closed": [
+        "s1:q1"
+      ]
+    },
+    {
+      "name": "a delegated child's approval holds 3.5 s",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "attention": {
+        "reason": "approval",
+        "key": "s1:q1",
+        "hold_ms": 3500
+      },
+      "closed": []
+    },
+    {
+      "name": "a delegated child's hook question holds 3.5 s",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "h1",
+          "kind": "hook"
+        }
+      },
+      "attention": {
+        "reason": "question",
+        "key": "s1:h1",
+        "hold_ms": 3500
+      },
+      "closed": []
+    },
+    {
+      "name": "a delegated child's plain question doesn't hold",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "question"
+        }
+      },
+      "attention": {
+        "reason": "question",
+        "key": "s1:q1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "an answered question closes",
+      "prev": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "next": {
+        "id": "s1"
+      },
+      "attention": null,
+      "closed": [
+        "s1:q1"
+      ]
+    },
+    {
+      "name": "a replaced question closes the old one and opens the new",
+      "prev": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q2",
+          "kind": "question"
+        }
+      },
+      "attention": {
+        "reason": "question",
+        "key": "s1:q2",
+        "hold_ms": null
+      },
+      "closed": [
+        "s1:q1"
+      ]
+    },
+    {
+      "name": "a new card",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "attention": {
+        "reason": "card",
+        "key": "s1:card:k1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "the same card again",
+      "prev": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a resolved card closes",
+      "prev": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "next": {
+        "id": "s1"
+      },
+      "attention": null,
+      "closed": [
+        "s1:card:k1"
+      ]
+    },
+    {
+      "name": "a replaced card closes the old one and opens the new",
+      "prev": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "pending_card": {
+          "id": "k2",
+          "bundle": "check-in"
+        }
+      },
+      "attention": {
+        "reason": "card",
+        "key": "s1:card:k2",
+        "hold_ms": null
+      },
+      "closed": [
+        "s1:card:k1"
+      ]
+    },
+    {
+      "name": "a failed turn, short",
+      "prev": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:00:00.000+02:00",
+          "seconds": 12,
+          "origin": "user"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "failed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 2,
+          "origin": "user"
+        }
+      },
+      "attention": {
+        "reason": "failed",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a failed turn on a session not seen yet",
+      "prev": null,
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "failed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 2,
+          "origin": "user"
+        }
+      },
+      "attention": {
+        "reason": "failed",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a done turn of 9.9 s is watched: nothing",
+      "prev": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:00:00.000+02:00",
+          "seconds": 12,
+          "origin": "user"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 9.9,
+          "origin": "user"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a done turn of 10 s",
+      "prev": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:00:00.000+02:00",
+          "seconds": 12,
+          "origin": "user"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 10,
+          "origin": "user"
+        }
+      },
+      "attention": {
+        "reason": "done",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a short done turn nobody started (delegate_report)",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 1,
+          "origin": "delegate_report"
+        }
+      },
+      "attention": {
+        "reason": "done",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a short done turn nobody started (context)",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 1,
+          "origin": "context"
+        }
+      },
+      "attention": {
+        "reason": "done",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a short done turn nobody started (task)",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 1,
+          "origin": "task"
+        }
+      },
+      "attention": {
+        "reason": "done",
+        "key": "s1:2026-10-25T09:05:12.345+02:00",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a canceled turn: nothing",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "canceled",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 60,
+          "origin": "user"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "the same ended_at again: nothing",
+      "prev": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 60,
+          "origin": "user"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 60,
+          "origin": "user"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a delegated child's failed turn: its parent reports it",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "last_turn": {
+          "outcome": "failed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 2,
+          "origin": "user"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a delegated child's done turn: its parent reports it",
+      "prev": {
+        "id": "s1",
+        "parent_id": "p1"
+      },
+      "next": {
+        "id": "s1",
+        "parent_id": "p1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 60,
+          "origin": "user"
+        }
+      },
+      "attention": null,
+      "closed": []
+    },
+    {
+      "name": "a new question beats a new card and a turn",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        },
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        },
+        "last_turn": {
+          "outcome": "failed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 2,
+          "origin": "user"
+        }
+      },
+      "attention": {
+        "reason": "approval",
+        "key": "s1:q1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "a new card beats a turn",
+      "prev": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        }
+      },
+      "next": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        },
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        },
+        "last_turn": {
+          "outcome": "failed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 2,
+          "origin": "user"
+        }
+      },
+      "attention": {
+        "reason": "card",
+        "key": "s1:card:k1",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
+      "name": "the session gone closes its question and its card",
+      "prev": {
+        "id": "s1",
+        "pending_question": {
+          "id": "q1",
+          "kind": "approval"
+        },
+        "pending_card": {
+          "id": "k1",
+          "bundle": "check-in"
+        }
+      },
+      "next": null,
+      "attention": null,
+      "closed": [
+        "s1:q1",
+        "s1:card:k1"
+      ]
+    },
+    {
+      "name": "no next summary id: nothing",
+      "prev": {
+        "id": "s1"
+      },
+      "next": {
+        "title": "x"
+      },
+      "attention": null,
+      "closed": []
+    }
+  ],
+  "open_keys": [
+    {
+      "name": "every open question (a hook's, a continue's) and card, not a relayed one or none",
+      "by_id": {
+        "a": {
+          "id": "a",
+          "pending_question": {
+            "id": "q1",
+            "kind": "approval"
+          }
+        },
+        "h": {
+          "id": "h",
+          "pending_question": {
+            "id": "h1",
+            "kind": "hook"
+          }
+        },
+        "r": {
+          "id": "r",
+          "pending_question": {
+            "id": "q2",
+            "kind": "approval",
+            "relayed_to": "p1234567"
+          }
+        },
+        "c": {
+          "id": "c",
+          "pending_question": {
+            "id": "c1",
+            "kind": "continue"
+          }
+        },
+        "k": {
+          "id": "k",
+          "pending_card": {
+            "id": "k1",
+            "bundle": "check-in"
+          }
+        },
+        "n": {
+          "id": "n"
+        },
+        "x": {
+          "id": "x",
+          "pending_question": {
+            "kind": "question"
+          }
+        },
+        "f": {
+          "id": "f",
+          "last_turn": {
+            "outcome": "failed",
+            "ended_at": "2026-10-25T09:05:12.345+02:00",
+            "seconds": 2,
+            "origin": "user"
+          }
+        }
+      },
+      "open": [
+        "a:q1",
+        "h:h1",
+        "c:c1",
+        "k:card:k1"
+      ]
+    },
+    {
+      "name": "a session with both a question and a card has both open",
+      "by_id": {
+        "b": {
+          "id": "b",
+          "pending_question": {
+            "id": "q1",
+            "kind": "question"
+          },
+          "pending_card": {
+            "id": "k1",
+            "bundle": "check-in"
+          }
+        }
+      },
+      "open": [
+        "b:q1",
+        "b:card:k1"
+      ]
+    },
+    {
+      "name": "nothing open",
+      "by_id": {},
+      "open": []
+    }
+  ]
+}

@@ -79,6 +79,18 @@ test("a show with open shows first, then closes the answered ones, keeping the l
   assert.deepEqual(w.log, [["close", "a:q1"], ["badge", 2]]);
 });
 
+test("the cleanup closes an answered card's banner, keeps an open continue's and card's, never a failed or done turn's", async () => {
+  const w = loadWorker();
+  await w.push(show("c:c1"));
+  await w.push(show("k:card:k1"));
+  await w.push(show("g:card:k2"));
+  await w.push(show("f:2026-10-25T09:05:12.345+02:00"));
+  w.log.length = 0;
+  await w.push(show("n:q9", { open: ["c:c1", "k:card:k1", "n:q9"], badge: 3 }));
+  assert.deepEqual(w.shown.filter((n) => n.closed).map((n) => n.tag), ["g:card:k2"]);
+  assert.deepEqual(w.log, [["close", "g:card:k2"], ["badge", 3]]);
+});
+
 test("a show without open closes nothing; one without badge leaves the badge alone", async () => {
   const w = loadWorker();
   await w.push(show("a:q1"));

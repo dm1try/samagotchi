@@ -287,6 +287,21 @@ test("the app tidies the device only after the first snapshot: closes answered q
   assert.deepEqual(app.delivered.map((n) => n.closed), [true, false, false]);
 });
 
+test("the app's tidy-up keeps an open continue's and card's banners, closes a resolved card's, never a failed turn's", async () => {
+  const failedTag = "f:2026-10-25T09:05:12.345+02:00";
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["c:c1", "k:card:k1", "g:card:k2", failedTag] });
+  await app.page.pushReady;
+  app.doc.visibilityState = "visible";
+  app.page.noticeSessions("snapshot", { sessions: [
+    session({ id: "c", pending_question: { id: "c1", kind: "continue" } }),
+    session({ id: "k", pending_card: { id: "k1", bundle: "check-in" } }),
+    session({ id: "g" }),
+    session({ id: "f" }),
+  ] });
+  await app.synced();
+  assert.deepEqual(app.device, [["close", "g:card:k2"], ["badge", 2]]);
+});
+
 test("the app tidies again when it comes back to the front, and after a session frame while visible", async () => {
   const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1", "b:q2"] });
   await app.page.pushReady;

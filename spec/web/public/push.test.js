@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isQuestionTag, openPushKeys, pushSupported, subscribe, unsubscribe, urlBase64ToBytes } from "../../../lib/samagotchi/web/public/push.js";
+import { readFileSync } from "node:fs";
+import { isWaitingTag, openPushKeys, pushSupported, subscribe, unsubscribe, urlBase64ToBytes } from "../../../lib/samagotchi/web/public/push.js";
 
 function PushManager() {}
 const standaloneMedia = (matches) => () => ({ matches });
@@ -80,24 +81,27 @@ test("unsubscribe drops this device's subscription and tells chi web its endpoin
   assert.equal(await unsubscribe({ reg: fakeReg().reg, del: async () => assert.fail("nothing to delete") }), false);
 });
 
-test("openPushKeys: every pending approval or question (a hook's too), not a relayed one, a continue or none", () => {
-  const byId = {
-    a: { id: "a", pending_question: { id: "q1", kind: "approval" } },
-    h: { id: "h", pending_question: { id: "h1", kind: "hook" } },
-    r: { id: "r", pending_question: { id: "q2", kind: "approval", relayed_to: "p1234567" } },
-    c: { id: "c", pending_question: { id: "c1", kind: "continue" } },
-    n: { id: "n", pending_question: null },
-    x: { id: "x", pending_question: { kind: "question" } },
-  };
-  assert.deepEqual(openPushKeys(byId), ["a:q1", "h:h1"]);
+// spec/fixtures/attention_cases.json's open_keys rows (Attention.open_keys runs them too).
+const CASES = JSON.parse(readFileSync(new URL("../../fixtures/attention_cases.json", import.meta.url), "utf8"));
+
+for (const row of CASES.open_keys) {
+  test(`openPushKeys case: ${row.name}`, () => {
+    assert.deepEqual(openPushKeys(row.by_id), row.open);
+  });
+}
+
+test("openPushKeys of nothing is none", () => {
   assert.deepEqual(openPushKeys(undefined), []);
 });
 
-test("isQuestionTag: a pushed question's tag, never chi's own or a card's", () => {
-  assert.equal(isQuestionTag("0b1c-uuid:9f2e-uuid"), true);
-  assert.equal(isQuestionTag("chi:test"), false);
-  assert.equal(isQuestionTag("chi:other"), false);
-  assert.equal(isQuestionTag("s1:card:c1"), false);
-  assert.equal(isQuestionTag(""), false);
-  assert.equal(isQuestionTag(undefined), false);
+test("isWaitingTag: a pushed question's or card's tag, never chi's own or a failed or done turn's", () => {
+  assert.equal(isWaitingTag("0b1c-uuid:9f2e-uuid"), true);
+  assert.equal(isWaitingTag("s1:card:c1"), true);
+  assert.equal(isWaitingTag("chi:test"), false);
+  assert.equal(isWaitingTag("chi:other"), false);
+  assert.equal(isWaitingTag("chi:card:x"), false);
+  assert.equal(isWaitingTag("s1:2026-10-25T09:05:12.345+02:00"), false);
+  assert.equal(isWaitingTag("s1:2026-10-25T07:05:12.345Z"), false);
+  assert.equal(isWaitingTag(""), false);
+  assert.equal(isWaitingTag(undefined), false);
 });

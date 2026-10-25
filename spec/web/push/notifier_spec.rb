@@ -62,8 +62,24 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     expect(client.calls.map { |c| c[:payload][:kind] }.uniq - ["show"]).to eq([])
   end
 
-  def summary(id: "s1", question: nil, parent_id: nil, title: "fix the build")
-    { id: id, title: title, first_preview: "first", parent_id: parent_id, pending_question: question }.compact
+  def summary(id: "s1", question: nil, parent_id: nil, title: "fix the build", card: nil, turn: nil)
+    { id: id, title: title, first_preview: "first", parent_id: parent_id, pending_question: question, pending_card: card,
+      last_turn: turn }.compact
+  end
+
+  # A last_turn as the summary has it (string keys).
+  def ended(outcome, seconds, at: "2026-10-25T09:05:12.345+02:00", origin: "client")
+    { "outcome" => outcome, "ended_at" => at, "seconds" => seconds, "origin" => origin }
+  end
+
+  # A second device on this origin with prefs.done (the store's file, as
+  # a PATCH would leave it).
+  def add_done_device
+    sub = store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/done"), origin: origin, label: "iPad")
+    data = JSON.parse(File.read(store.subs_path))
+    data["subscriptions"].find { |row| row["id"] == sub.id }["prefs"] = { "done" => true }
+    File.write(store.subs_path, JSON.generate(data))
+    sub
   end
 
   def hub_event(**) = Samagotchi::Web::SessionHub::Event.new(**)
@@ -180,11 +196,44 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(client.calls.map { |c| c[:payload][:tag] }).to contain_exactly("child:q1", "hooked:h1")
     end
 
-    it "pushes a hook question as a question, and not a step-limit continue (P1)" do
+    it "pushes a hook question as a question, a step-limit continue and a card, and badges them all" do
       session(id: "h", question: { id: "h1", kind: "hook" })
       session(id: "c", question: { id: "c1", kind: "continue" })
+      session(id: "k", card: { id: "k1", bundle: "check-in" })
       advance(3)
-      expect(client.calls.map { |c| c[:payload].values_at(:tag, :body) }).to eq([["h:h1", "needs an answer"]])
+      expect(client.calls.map { |c| c[:payload].values_at(:tag, :body, :badge) })
+        .to eq([["h:h1", "needs an answer", 3], ["c:c1", "hit its step limit", 3], ["k:card:k1", "needs you", 3]])
+      expect(client.calls.last[:payload][:open]).to eq(%w[h:h1 c:c1 k:card:k1])
+      expect(client.calls.map { |c| c[:urgency] }.uniq).to eq(["high"])
+    end
+
+    it "pushes nothing for a card resolved within its hold" do
+      session(id: "k", card: { id: "k1", bundle: "check-in" })
+      advance(1)
+      session(id: "k")
+      advance(10)
+      expect(client.calls).to eq([])
+    end
+
+    it "pushes a failed turn to every device, kept 10 min at normal urgency, outside the badge" do
+      done_device = add_done_device
+      session(id: "w", question: { id: "q1", kind: "approval" })
+      advance(3)
+      client.calls.clear
+      session(id: "f", turn: ended("failed", 2))
+      advance(3)
+      expect(client.calls.map { |c| c.values_at(:sub, :ttl, :urgency) })
+        .to eq([[phone.id, 600, "normal"], [done_device.id, 600, "normal"]])
+      expect(client.calls.first[:payload]).to include(tag: "f:2026-10-25T09:05:12.345+02:00", body: "turn failed",
+                                                      url: "/#/s/f", badge: 1, open: ["w:q1"])
+    end
+
+    it "pushes a done turn only to a device that asked for done turns" do
+      done_device = add_done_device
+      session(id: "d", turn: ended("completed", 12.4))
+      session(id: "short", turn: ended("completed", 3))
+      advance(3)
+      expect(client.calls.map { |c| [c[:sub], c[:payload][:body], c[:ttl]] }).to eq([[done_device.id, "done in 12 s", 600]])
     end
 
     it "pushes nothing on session_gone, and drops a show still in its hold" do

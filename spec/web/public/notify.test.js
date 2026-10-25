@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { RELAY_HOLD_MS, attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention, waitingOn } from "../../../lib/samagotchi/web/public/notify.js";
+import { readFileSync } from "node:fs";
+import { RELAY_HOLD_MS, attentionFor, attentionText, closedKeys, createNotifyGate, initialAttentionState, notifyState, trackAttention, waitingOn } from "../../../lib/samagotchi/web/public/notify.js";
 
 // What in a session's summary change needs the user: an open question,
 // a failed turn, a long turn done. The first snapshot only seeds.
@@ -357,3 +358,17 @@ test("an attention with its own hold waits for it, also without BroadcastChannel
   gate.drop(["s1:q1"]);
   assert.equal(timers[0].fn, null);
 });
+
+// spec/fixtures/attention_cases.json: the rules a push and the tab's
+// notification share (Web::Push::Attention runs the same rows,
+// spec/web/push/attention_cases_spec.rb).
+const CASES = JSON.parse(readFileSync(new URL("../../fixtures/attention_cases.json", import.meta.url), "utf8"));
+
+for (const row of CASES.attention) {
+  test(`attention case: ${row.name}`, () => {
+    const a = attentionFor(row.prev, row.next);
+    assert.deepEqual(a && { reason: a.reason, key: a.key, hold_ms: a.holdMs ?? null }, row.attention);
+    if (a) assert.equal(a.sessionId, row.next.id);
+    assert.deepEqual(closedKeys(row.prev, row.next), row.closed);
+  });
+}

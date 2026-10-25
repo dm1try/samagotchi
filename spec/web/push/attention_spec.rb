@@ -4,7 +4,9 @@ require "spec_helper"
 require "samagotchi/web/push/attention"
 
 # The server's port of notify.js's rules (attentionFor, closedKeys,
-# attentionText), P1's part: approvals and questions.
+# attentionText). The cases both sides answer are in
+# spec/fixtures/attention_cases.json (attention_cases_spec.rb); these are
+# the Ruby side's own.
 RSpec.describe Samagotchi::Web::Push::Attention do
   def s(question = nil, **kw) = { id: "s1", pending_question: question }.merge(kw).compact
 
@@ -14,7 +16,7 @@ RSpec.describe Samagotchi::Web::Push::Attention do
         .to eq(described_class::Event.new(reason: "approval", session_id: "s1", key: "s1:q", hold: nil))
       expect(described_class.for(s, s({ id: "q", kind: "hook" })).reason).to eq("question")
       expect(described_class.for(s, s({ id: "q", kind: "question" })).reason).to eq("question")
-      expect(described_class.for(s, s({ id: "q", kind: "continue" }))).to be_nil
+      expect(described_class.for(s, s({ id: "q", kind: "continue" })).reason).to eq("continue")
     end
 
     it "is nothing for the same question, a relayed one or no question" do
@@ -45,16 +47,17 @@ RSpec.describe Samagotchi::Web::Push::Attention do
   end
 
   describe ".open_keys" do
-    it "is every pending approval or question (a hook's too), not a relayed one, a continue or no question" do
+    it "is every pending question (a hook's, a continue's too) and card, not a relayed one or no question" do
       by_id = {
         "a" => { id: "a", pending_question: { id: "q1", kind: "approval" } },
         "h" => { id: "h", pending_question: { id: "h1", kind: "hook" } },
         "r" => { id: "r", pending_question: { id: "q2", kind: "approval", relayed_to: "p1234567" } },
         "c" => { id: "c", pending_question: { id: "c1", kind: "continue" } },
+        "k" => { id: "k", pending_card: { id: "k1", bundle: "check-in" } },
         "n" => { id: "n" },
         "x" => { id: "x", pending_question: { kind: "question" } }
       }
-      expect(described_class.open_keys(by_id)).to eq(["a:q1", "h:h1"])
+      expect(described_class.open_keys(by_id)).to eq(["a:q1", "h:h1", "c:c1", "k:card:k1"])
     end
   end
 
@@ -65,6 +68,14 @@ RSpec.describe Samagotchi::Web::Push::Attention do
       expect(described_class.text({}, "question").first).to eq("chi session")
       long = described_class.text({ title: "a" * 80 }, "approval").first
       expect(long).to eq("#{"a" * 60}…")
+    end
+
+    it "says a failed turn and a done one with its seconds rounded, as attentionText" do
+      expect(described_class.text({ title: "t" }, "failed")).to eq(["t", "turn failed"])
+      expect(described_class.text({ title: "t", last_turn: { "seconds" => 12.5 } }, "done")).to eq(["t", "done in 13 s"])
+      expect(described_class.text({ title: "t", last_turn: { "seconds" => "x" } }, "done")).to eq(["t", "done in 0 s"])
+      expect(described_class.text({ title: "t" }, "done")).to eq(["t", "done in 0 s"])
+      expect(described_class.text({ title: "t" }, "card")).to eq(["t", "needs you"])
     end
   end
 end

@@ -10,9 +10,11 @@ module Samagotchi
       # chi web's one sender of pushes: a SessionHub subscriber that keeps
       # the summaries the page's trackAttention keeps (seeded by the
       # subscribe's snapshot, so what was open before never pushes), turns
-      # each new approval or question (Attention.for) into a show, and
-      # hands it to its own sender thread through a Queue; one answered
-      # anywhere (Attention.closed_keys) only cancels its show's hold.
+      # each new attention (Attention.for: a question, an approval, a
+      # step-limit continue, a card with actions, a failed or done turn)
+      # into a show, and hands it to its own sender thread through a Queue;
+      # one answered anywhere (Attention.closed_keys) only cancels its
+      # show's hold.
       #
       # Every push it sends shows a notification: WebKit removes a
       # subscription after a few pushes that show none (its silent-push
@@ -25,12 +27,15 @@ module Samagotchi
       # tick thread and on chi web's request threads (SessionHub#touch), so
       # it only enqueues; a push is a 0.5 s https call, made on the sender
       # thread. There a show waits its hold (HOLD, or the event's own) and
-      # is pushed only while still open, to every device subscribed on this
-      # run's public origin. See docs/internals/web-push.md.
+      # is pushed, a waiting one only while still open, to the devices
+      # subscribed on this run's public origin (a done turn only to those
+      # that asked for it). See docs/internals/web-push.md.
       class Notifier
         HOLD = 3.0
         # Waiting kinds: kept 12 h for an offline phone, delivered at once.
         SHOW_TTL = 12 * 3600
+        # A failed or done turn: stale soon, no need to wake the phone.
+        EVENT_TTL = 600
         # A show carries +open+ only while its JSON stays this small: one
         # aes128gcm record leaves 3993 bytes of plaintext under Web Push's
         # 4096 (86 header, 1 delimiter, 16 tag). Longer, it goes without
@@ -180,10 +185,11 @@ module Samagotchi
           due.each { |show| @pending.delete(show.attention.key) }
           open = @mutex.synchronize { Attention.open_keys(@by_id) }
           due.each do |show|
-            key = show.attention.key
-            next unless open.include?(key)
+            reason = show.attention.reason
+            # Nothing to answer in a failed or done turn: it is due as is.
+            next if Attention.waiting?(reason) && !open.include?(show.attention.key)
 
-            deliver(show_payload(show, open), kind: show.attention.reason)
+            deliver(show_payload(show, open), reason: reason)
           end
         end
 
@@ -194,16 +200,25 @@ module Samagotchi
           JSON.generate(with_open).bytesize <= OPEN_LIMIT ? with_open : payload
         end
 
-        # @param kind [String] the reason, for the log line
+        # @param reason [String] the attention's: its TTL and urgency, who
+        #   gets it, the log line's kind
         # @return [Boolean] whether any device took it
-        def deliver(payload, kind:)
+        def deliver(payload, reason:)
           return false if @refused
 
-          @store.for_origin(@origin).map do |sub|
-            result = @client.deliver(sub, payload, ttl: SHOW_TTL, urgency: "high")
-            record(sub, result, kind)
+          waiting = Attention.waiting?(reason)
+          targets(reason).map do |sub|
+            result = @client.deliver(sub, payload, ttl: waiting ? SHOW_TTL : EVENT_TTL, urgency: waiting ? "high" : "normal")
+            record(sub, result, reason)
             result.ok?
           end.any?
+        end
+
+        # This origin's devices; a done turn only to those whose prefs ask
+        # for it (off by default).
+        def targets(reason)
+          subs = @store.for_origin(@origin)
+          reason == "done" ? subs.select { |sub| sub.prefs["done"] == true } : subs
         end
 
         def record(sub, result, kind)

@@ -4,12 +4,12 @@ module Samagotchi
   module Web
     module Push
       # When a session needs the user, decided from two of the hub's session
-      # summaries (SessionSummary.build: symbol keys): the server's port of
-      # the page's rules (web/public/notify.js attentionFor, closedKeys,
-      # attentionText), so a push and the tab's notification ring for the
-      # same thing under the same key. P1 pushes approvals and questions
-      # only (the plan's D1): a step-limit question, a card, a failed or
-      # done turn come later. See docs/internals/web-push.md.
+      # summaries (SessionSummary.build: symbol keys, but +last_turn+'s are
+      # strings): the server's port of the page's rules (web/public/notify.js
+      # attentionFor, closedKeys, attentionText), so a push and the tab's
+      # notification ring for the same thing under the same key.
+      # spec/fixtures/attention_cases.json holds the cases both sides answer.
+      # See docs/internals/web-push.md.
       module Attention
         module_function
 
@@ -23,11 +23,20 @@ module Samagotchi
         # (or hook question) waits, as its parent may relay it.
         RELAY_HOLD = 3.5
         RELAYED_KINDS = %w[approval hook].freeze
-        # The reasons P1 pushes.
-        PUSHED = %w[approval question].freeze
+        # The reasons that wait on the user: open until answered, counted in
+        # the badge, cleaned up once answered. A failed or done turn is
+        # neither (nothing to answer).
+        WAITING = %w[approval question continue card].freeze
+        # notify.js DONE_MIN_SECONDS, UNWATCHED_ORIGINS: a finished turn
+        # shorter than this was watched (no "done"), unless nobody started
+        # it (a delegate child's report, a context change, a finished task).
+        DONE_MIN_SECONDS = 10
+        UNWATCHED_ORIGINS = %w[delegate_report context task].freeze
         TITLE_MAX = 61
         BODIES = { "question" => "needs an answer", "approval" => "needs approval", "continue" => "hit its step limit",
-                   "card" => "needs you" }.freeze
+                   "card" => "needs you", "failed" => "turn failed" }.freeze
+
+        def waiting?(reason) = WAITING.include?(reason)
 
         # notify.js questionReason: a hook's question is a question.
         def reason_of(question)
@@ -39,52 +48,81 @@ module Samagotchi
         end
 
         # What +nxt+ newly needs the user for, compared with +prev+ (nil for
-        # a session not seen yet).
+        # a session not seen yet): a new question first, then a new card,
+        # then a finished turn (notify.js attentionFor's order).
         # @return [Event, nil]
         def for(prev, nxt)
           return nil unless nxt && nxt[:id]
 
           question = nxt[:pending_question]
-          return nil unless question && question[:id] && question[:id] != prev&.dig(:pending_question, :id)
-          # Relayed to the parent already: the parent's notifies.
-          return nil if question[:relayed_to]
+          if question.is_a?(Hash) && question[:id] && question[:id] != prev&.dig(:pending_question, :id)
+            # Relayed to the parent already: the parent's notifies.
+            return nil if question[:relayed_to]
 
-          reason = reason_of(question)
-          return nil unless PUSHED.include?(reason)
+            hold = RELAY_HOLD if nxt[:parent_id] && RELAYED_KINDS.include?(question[:kind])
+            return Event.new(reason: reason_of(question), session_id: nxt[:id], key: key(nxt[:id], question[:id]), hold: hold)
+          end
+          card = nxt[:pending_card]
+          if card.is_a?(Hash) && card[:id] && card[:id] != prev&.dig(:pending_card, :id)
+            return Event.new(reason: "card", session_id: nxt[:id], key: card_key(nxt[:id], card[:id]), hold: nil)
+          end
 
-          hold = RELAY_HOLD if nxt[:parent_id] && RELAYED_KINDS.include?(question[:kind])
-          Event.new(reason: reason, session_id: nxt[:id], key: key(nxt[:id], question[:id]), hold: hold)
+          turn_event(prev, nxt)
+        end
+
+        # A top-level turn that ended since +prev+: failed, or done when it
+        # ran long or nobody watched it. A delegated child's turn is
+        # reported by its parent's.
+        def turn_event(prev, nxt)
+          turn = nxt[:last_turn]
+          return nil unless turn.is_a?(Hash) && turn["ended_at"]
+          return nil if turn["ended_at"] == prev&.dig(:last_turn, "ended_at") || nxt[:parent_id]
+
+          reason = case turn["outcome"]
+                   when "failed" then "failed"
+                   when "completed"
+                     "done" if seconds(turn) >= DONE_MIN_SECONDS || UNWATCHED_ORIGINS.include?(turn["origin"])
+                   end
+          reason && Event.new(reason: reason, session_id: nxt[:id], key: key(nxt[:id], turn["ended_at"]), hold: nil)
         end
 
         # The keys of what +prev+ had open and +nxt+ no longer has: its
-        # question answered (anywhere), gone or newly relayed; everything
-        # when the session is gone (+nxt+ nil).
+        # question answered (anywhere), gone or newly relayed, its card
+        # resolved or replaced; everything when the session is gone (+nxt+
+        # nil).
         # @return [Array<String>]
         def closed_keys(prev, nxt)
+          keys = []
           question = prev&.dig(:pending_question)
-          return [] unless question && question[:id]
-
-          now = nxt&.dig(:pending_question)
-          gone = now.nil? || now[:id] != question[:id] || (now[:relayed_to] && !question[:relayed_to])
-          gone ? [key(prev[:id], question[:id])] : []
+          if question.is_a?(Hash) && question[:id]
+            now = nxt&.dig(:pending_question)
+            gone = !now.is_a?(Hash) || now[:id] != question[:id] || (now[:relayed_to] && !question[:relayed_to])
+            keys << key(prev[:id], question[:id]) if gone
+          end
+          card = prev&.dig(:pending_card)
+          keys << card_key(prev[:id], card[:id]) if card.is_a?(Hash) && card[:id] && nxt&.dig(:pending_card, :id) != card[:id]
+          keys
         end
 
-        # Every key still open in +by_id+ (session id → summary): a
-        # pending question with an id, not relayed, of a reason P1 pushes.
-        # The rule push.js openPushKeys keeps, so the show's +open+ list,
-        # the page's cleanup and the badge agree.
+        # Every waiting key still open in +by_id+ (session id → summary): a
+        # pending question with an id, not relayed (any reason: a step-limit
+        # continue too), and a card with actions. The rule push.js
+        # openPushKeys keeps, so the show's +open+ list, the page's cleanup
+        # and the badge agree.
         # @return [Array<String>]
         def open_keys(by_id)
-          by_id.each_value.filter_map do |summary|
+          by_id.each_value.flat_map do |summary|
             question = summary[:pending_question]
-            next unless question.is_a?(Hash) && question[:id] && !question[:relayed_to]
-            next unless PUSHED.include?(reason_of(question))
-
-            key(summary[:id], question[:id])
+            card = summary[:pending_card]
+            keys = []
+            keys << key(summary[:id], question[:id]) if question.is_a?(Hash) && question[:id] && !question[:relayed_to]
+            keys << card_key(summary[:id], card[:id]) if card.is_a?(Hash) && card[:id]
+            keys
           end
         end
 
-        def key(session_id, question_id) = "#{session_id}:#{question_id}"
+        def key(session_id, id) = "#{session_id}:#{id}"
+        def card_key(session_id, card_id) = "#{session_id}:card:#{card_id}"
 
         # notify.js attentionText: the session's name (clipped) and the
         # reason, never the question or the command (a lock screen shows it).
@@ -92,7 +130,14 @@ module Samagotchi
         def text(summary, reason)
           name = (summary && [summary[:title], summary[:first_preview], summary[:last_prompt]].find { |v| present?(v) }) ||
                  "chi session"
-          [clip(name.to_s.strip, TITLE_MAX), BODIES.fetch(reason, "")]
+          body = reason == "done" ? "done in #{seconds(summary&.dig(:last_turn) || {}).round} s" : BODIES.fetch(reason, "")
+          [clip(name.to_s.strip, TITLE_MAX), body]
+        end
+
+        # notify.js Number(turn.seconds): anything that isn't a number is 0.
+        def seconds(turn)
+          value = turn["seconds"]
+          value.is_a?(Numeric) ? value.to_f : Float(value.to_s, exception: false) || 0.0
         end
 
         def present?(value) = !value.nil? && !value.to_s.strip.empty?
