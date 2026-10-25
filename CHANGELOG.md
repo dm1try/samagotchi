@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi's icon (the browser tab and the Home Screen app) is a deeper blue to purple, so the white χ stands out on any
+  wallpaper. On a phone, remove the Home Screen app and add it again to see it: iOS keeps the old icon.
+
 ## [0.115.0] - 2026-10-25
 
 ### Changed
