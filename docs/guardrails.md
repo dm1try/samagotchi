@@ -659,9 +659,17 @@ in code (`SystemOne::ApprovalQuestion::INSTRUCTIONS`), reviewed like a
 prompt; the state is the ask's own facts — the rule and its source, the
 reason, the tool, the command (or the paths) cut to 2000 characters, the
 edit's diff, the cwd, the repo and branch, and the session's title when it
-has one. A participant's review turn is never judged: there is no user
-there to ask. The judgment runs before the card appears, so an ask is slower
-by up to `timeout_ms` (2000 ms by default).
+has one. A memory ask also names what it is about: the entry and its scope,
+and for a removal the description that entry's index line carries
+(`Targets#memory`, read into the card by `Guardrails::Approval`): a path
+alone tells the judge too little. The state then carries up to five of the
+user's **earlier asks they answered** (`SystemOne::Similar`) — this rule in
+this repository first, then this rule anywhere, then any answered ask, ranked
+by how many words the logged call shares with this one, ties going to the
+newest. Reading the log is best-effort, so a log that cannot be read simply
+offers no examples. A participant's review turn is never judged: there is no
+user there to ask. The judgment runs before the card appears, so an ask is
+slower by up to `timeout_ms` (2000 ms by default).
 
 Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
 `$XDG_STATE_HOME/samagotchi/guardrails/` (`SystemOne::Log`): 0600, appended

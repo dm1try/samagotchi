@@ -309,9 +309,14 @@ module Samagotchi
       return nil if client.nil? || log.nil?
 
       approval = payload[:approval]
+      # The judgments log is read once for this ask: the state's examples and
+      # the record gate both use these entries. The judgment of the ask being
+      # judged is written after it, so the examples are always earlier asks.
+      entries = log.entries
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       answers = begin
-        client.ask(state: SystemOne::ApprovalQuestion.state(approval, session_title: @session_lookup.call&.title),
+        client.ask(state: SystemOne::ApprovalQuestion.state(approval, session_title: @session_lookup.call&.title,
+                                                            entries: entries),
                    questions: { SystemOne::ApprovalQuestion::ID => SystemOne::ApprovalQuestion.question },
                    cancel_controller: @cancel_controller.call)
       rescue StandardError => e
@@ -322,7 +327,7 @@ module Samagotchi
       end
       latency_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       p = answers && answers[SystemOne::ApprovalQuestion::ID]&.noul
-      auto = system_one_auto_allow?(client, approval, p, log)
+      auto = system_one_auto_allow?(client, approval, p, entries)
       decision = system_one_decision(client, auto)
 
       id = log.judgment(session_id: @session_lookup.call&.id,
@@ -350,8 +355,9 @@ module Samagotchi
     # Every gate an auto-allow must pass, in order: the mode, the rule the
     # user opted in, the never-list and chi's own files, the probability, and
     # the rule's record. Any one that fails leaves the ask to the user. The
-    # log is read once per ask.
-    def system_one_auto_allow?(client, approval, p, log)
+    # entries are the judgment log read once for this ask.
+    # @param entries [Array<Hash>] SystemOne::Log#entries
+    def system_one_auto_allow?(client, approval, p, entries)
       return false unless client.mode == "on"
 
       rule = approval[:rule].to_s
@@ -363,7 +369,7 @@ module Samagotchi
       return false if p.nil? || p.to_f < threshold
 
       min_record = Config.get("guardrails.system_one.min_record").to_i
-      SystemOne::Record.new(log.entries, rule: rule).qualifies?(threshold: threshold, min_record: min_record)
+      SystemOne::Record.new(entries, rule: rule).qualifies?(threshold: threshold, min_record: min_record)
     rescue StandardError => e
       Samagotchi::Log.warn(:guardrails, "system_one_gate_failed", error: "#{e.class}: #{e.message}")
       false

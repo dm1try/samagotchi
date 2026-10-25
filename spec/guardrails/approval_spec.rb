@@ -165,6 +165,58 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     end
   end
 
+  describe "a memory_write ask" do
+    def memory_call(name: "notes", scope: "system", remove: false)
+      { name: "memory_write", path: name, scope: scope, remove: remove }
+    end
+
+    def memory_facts(call, rule: "memory-remove")
+      described_class.payload(ask(c: call, rule: rule))[:approval][:memory]
+    end
+
+    it "names the entry and its scope, and says nothing for another tool" do
+      with_config_home(dir) do
+        expect(memory_facts(memory_call, rule: "memory-write")).to eq({ name: "notes", scope: "system" })
+        expect(described_class.payload(ask)[:approval]).not_to have_key(:memory)
+        expect(memory_facts({ name: "memory_write", path: "h", scope: "team" })).to be_nil
+      end
+    end
+
+    it "adds the entry's index description for a removal, where the ask needs it" do
+      with_config_home(dir) do
+        FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "index.md"),
+                   "- **notes** · system · 2026-10-25 · 42 — how the user likes their notes\n\nFree-form prose here.\n")
+        expect(memory_facts(memory_call(remove: true))).to eq({ name: "notes", scope: "system",
+                                                                description: "how the user likes their notes" })
+        # A write ask gets the entry and its scope only: its own content is in the card.
+        expect(memory_facts(memory_call, rule: "memory-write")).to eq({ name: "notes", scope: "system" })
+      end
+    end
+
+    it "keeps just the name and scope when the index has no line, or no description" do
+      with_config_home(dir) do
+        FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "index.md"),
+                   "- **notes** · system · 2026-10-25 · 42 · from guardrails\n- **other** · system · 2026-10-25 · 10\n")
+        expect(memory_facts(memory_call(remove: true))).to eq({ name: "notes", scope: "system" })
+        expect(memory_facts(memory_call(name: "other", remove: true))).to eq({ name: "other", scope: "system" })
+      end
+    end
+
+    it "resolves a project scope's index too" do
+      with_config_home(dir) do
+        call = memory_call(name: "git_workspace_rule", scope: "project", remove: true)
+        entry_dir = File.dirname(Samagotchi::Guardrails::Targets.memory_path(call, nil))
+        FileUtils.mkdir_p(entry_dir)
+        File.write(File.join(entry_dir, "index.md"),
+                   "- **git_workspace_rule** · project · 2026-10-03 · 1942 — worktree per task\n")
+        expect(memory_facts(call))
+          .to eq({ name: "git_workspace_rule", scope: "project", description: "worktree per task" })
+      end
+    end
+  end
+
   describe ".settle" do
     let(:scopes) { %w[once session] }
 

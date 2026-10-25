@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- System 1's judgment now sees more of the ask it is given: its state carries up to five of the user's **earlier
+  answered asks** that look like this one (`SystemOne::Similar` — same rule and repository first, then the same rule,
+  then the ask whose logged call shares the most words with this one, ties newest first), and a `memory_write` ask
+  names the entry and its scope instead of only a path, with that entry's index description for a removal — the
+  `memory-remove` ask was scoring flat because the judge could not tell which memory was going. The judgments log is
+  read once per ask, shared by the examples and the record gate. See
+  [Guardrails](docs/guardrails.md#system-1-experimental).
 - System 1's auto-allowed calls are marked on their tool row in the terminal (` · auto-allowed (System 1, p=0.97)`) and
   the web (an `auto-allowed · System 1` label, its rule and p on hover).
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for

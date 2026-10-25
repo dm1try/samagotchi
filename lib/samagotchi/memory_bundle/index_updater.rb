@@ -88,6 +88,19 @@ module Samagotchi
         end
       end
 
+      # +entry_name+'s description in +scope+'s index.md — the text after the
+      # " — " on its managed line — or nil when the index has no line for it
+      # or that line carries no description. One small file read.
+      def self.description_for(scope, entry_name)
+        index_path = index_path_for(scope)
+        return nil unless index_path && File.exist?(index_path)
+
+        match = File.read(index_path, encoding: "UTF-8").match(managed_pattern(entry_name))
+        match ? extract_description(match[0].chomp) : nil
+      rescue StandardError
+        nil
+      end
+
       # The bundle a managed line names ("· from <bundle>", before any
       # " — description"), or nil.
       def self.extract_source(line)

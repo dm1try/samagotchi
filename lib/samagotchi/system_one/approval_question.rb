@@ -3,13 +3,15 @@
 require "digest"
 
 require_relative "question"
+require_relative "similar"
 
 module Samagotchi
   module SystemOne
     # The one question an approval asks System 1: "would this user allow it
     # without hesitation?" (docs/guardrails.md, "System 1"). The instruction
     # is a constant in code, reviewed like a prompt; the state is the ask's
-    # own facts — the rule that asked, why, the call, and where it runs.
+    # own facts — the rule that asked, why, the call, and where it runs — plus
+    # the memory an ask names and the earlier asks it resembles.
     module ApprovalQuestion
       ID = "allow"
       # What the judgment is asked, in the model's terms. Frozen: a change
@@ -18,7 +20,9 @@ module Samagotchi
                      "The state names the rule, why it asked, the call and where it runs. Would the user approve it " \
                      "without hesitation? Users usually approve routine reads, edits of the agent's own notes and " \
                      "memory, and pushes of verified work; they usually refuse discarding uncommitted work, " \
-                     "interactive rebases, deleting outside the project, and anything irreversible they did not ask for."
+                     "interactive rebases, deleting outside the project, and anything irreversible they did not ask " \
+                     "for. The state may also list a few of the user's earlier decisions on calls like this one, " \
+                     "most alike first, each with what they answered."
       # How much of a command, a diff or a path list the state carries.
       TEXT_CHARS = 2000
       # How much of the call the judgment log keeps; its digest is of the whole.
@@ -33,8 +37,11 @@ module Samagotchi
 
       # @param approval [Hash] payload[:approval]: the ask the user is shown
       # @param session_title [String, nil] the session's title, when it has one
+      # @param entries [Array<Hash>] SystemOne::Log#entries: the judgments the
+      #   user has answered so far, read once per ask and shared with the
+      #   record gate (GuardrailWiring#system_one_judge)
       # @return [Hash] the state, with the fields the ask didn't give left out
-      def self.state(approval, session_title: nil)
+      def self.state(approval, session_title: nil, entries: nil)
         {
           "rule" => approval[:rule],
           "source" => approval[:source],
@@ -46,8 +53,16 @@ module Samagotchi
           "cwd" => approval[:cwd],
           "repo_name" => approval[:repo_name],
           "branch" => approval[:branch],
-          "session" => session_title
-        }.reject { |_key, value| value.nil? || (value.is_a?(String) && value.strip.empty?) || (value.is_a?(Array) && value.empty?) }
+          "session" => session_title,
+          # Which memory entry the ask is about, when it is a memory ask.
+          "memory" => memory_facts(approval[:memory]),
+          # The asks this one looks like, and what the user did about them.
+          "examples" => Similar.select(entries: entries, rule: approval[:rule], repo_name: approval[:repo_name],
+                                       call_text: call_text(approval))
+        }.reject do |_key, value|
+          value.nil? || (value.is_a?(String) && value.strip.empty?) ||
+            ((value.is_a?(Array) || value.is_a?(Hash)) && value.empty?)
+        end
       end
 
       # What the call is, whole: the command, the paths, or a plugin tool's
@@ -67,6 +82,14 @@ module Samagotchi
       def self.call_fields(approval)
         call = call_text(approval)
         { "call" => cut(call, CALL_CHARS), "call_digest" => Digest::SHA256.hexdigest(call) }
+      end
+
+      # The memory an ask is about, as the approval card built it: entry name,
+      # scope, and (for a removal) the description its index line carries.
+      private_class_method def self.memory_facts(memory)
+        return nil unless memory.is_a?(Hash) && !memory.empty?
+
+        memory.transform_keys(&:to_s).reject { |_key, value| value.to_s.strip.empty? }
       end
 
       private_class_method def self.change_text(preview)

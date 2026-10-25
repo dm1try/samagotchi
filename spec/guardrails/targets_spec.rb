@@ -64,6 +64,16 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     expect(targets(name: "write", path: "h.md", current_model_only: true)).not_to be_memory_overlay
   end
 
+  it "names the memory a memory_write call is about: its entry and its scope" do
+    expect(targets(name: "memory_write", path: "git_workspace_rule", scope: "project", remove: true).memory)
+      .to eq({ name: "git_workspace_rule", scope: "project" })
+    expect(targets(name: "memory_write", path: "identity", scope: "system").memory)
+      .to eq({ name: "identity", scope: "system" })
+    expect(targets(name: "memory_write", path: "h", scope: "team").memory).to be_nil
+    expect(targets(name: "memory_write").memory).to be_nil
+    expect(targets(name: "write", path: "h.md").memory).to be_nil
+  end
+
   describe ".prompt_memory_path?" do
     let(:sys) { Samagotchi::MemoryPaths.system_dir }
     let(:projects) { Samagotchi::MemoryPaths.projects_dir }

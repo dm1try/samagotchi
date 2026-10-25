@@ -74,6 +74,12 @@ module Samagotchi
       attr_reader :memory_overlay
       alias memory_overlay? memory_overlay
 
+      # @return [Hash, nil] a memory_write call's entry and its scope,
+      #   {name:, scope:}: which memory the ask is about, in words rather than
+      #   as the file it names (#paths); nil for another tool or a call the
+      #   tool would refuse
+      attr_reader :memory
+
       # @param call [Hash] the parsed tool call
       # @param context [Context]
       # @param model_key [String, nil] for a memory_write model overlay, and
@@ -114,9 +120,10 @@ module Samagotchi
         end
         memory_remove = tool == "memory_write" && call[:remove].to_s.strip.downcase == "true"
         memory_overlay = tool == "memory_write" && !memory_remove && call[:current_model_only].to_s.strip.downcase == "true"
+        memory = tool == "memory_write" ? memory_facts(call) : nil
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd),
             repo: context.repo(cwd), args: args, acts_as: acts_as, label: label, memory_remove: memory_remove,
-            memory_overlay: memory_overlay,
+            memory_overlay: memory_overlay, memory: memory,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
             chi_dirs: -> { chi_dirs(context, base) })
       end
@@ -224,14 +231,28 @@ module Samagotchi
         nil
       end
 
+      # The memory a memory_write call is about, in the words the ask needs:
+      # the entry and its scope, not its file; nil for a call the tool would
+      # refuse (no entry, no scope, a scope chi has no folder for).
+      def self.memory_facts(call)
+        entry = call[:path].to_s.strip
+        scope = Tools::MemoryRead.normalize_scope(call[:scope])
+        return nil if entry.empty? || scope.nil?
+
+        { name: entry, scope: scope }
+      rescue StandardError
+        nil
+      end
+
       # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
       def initialize(tool:, command:, paths:, cwd:, repo_root:, repo: nil, args: nil, acts_as: nil, label: nil,
                      model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil, memory_remove: false,
-                     memory_overlay: false)
+                     memory_overlay: false, memory: nil)
         @acts_as = acts_as
         @label = label
         @memory_remove = memory_remove
         @memory_overlay = memory_overlay
+        @memory = memory
         @repo = repo
         @chi_dirs = chi_dirs
         @session_root = session_root || repo_root || cwd

@@ -8,6 +8,7 @@ require_relative "system_one/http_backend"
 require_relative "system_one/client"
 require_relative "system_one/log"
 require_relative "system_one/record"
+require_relative "system_one/similar"
 require_relative "system_one/self_protect"
 require_relative "system_one/approval_question"
 

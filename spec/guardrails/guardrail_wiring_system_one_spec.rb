@@ -127,7 +127,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     allow(Samagotchi::Log).to receive(:warn)
     verdict = wiring.request_approval(verdict_for)
     expect(verdict).to be_allow
-    expect(Samagotchi::Log).to have_received(:warn).with(:guardrails, "system_one_log_failed", anything)
+    expect(Samagotchi::Log).to have_received(:warn).with(:guardrails, "system_one_log_failed", anything).at_least(:once)
   end
 
   it "sends the rule, the reason, the call and the diff to the judge" do
@@ -160,6 +160,68 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     expect(line["call"].length).to eq(300)
     expect(line["call"]).to eq("#{long[0, 299]}…")
     expect(line["call_digest"]).to eq(Digest::SHA256.hexdigest(long))
+  end
+
+  it "shows the judge the earlier asks the user answered, most alike first" do
+    log = S1::Log.new(dir: File.join(base, "guardrails"))
+    [["git-rebase", "git push origin main", "allow_once"], ["git-push", "git push origin feature", "deny"],
+     ["git-push", "git push origin main", nil]].each do |rule, call, answer|
+      id = log.judgment(rule: rule, tool: "execute", call: call, repo_name: "samagotchi", p: 0.9,
+                        decision: "audit", origin: "live")
+      log.label(id, answer) unless answer.nil?
+    end
+
+    states = []
+    judge = S1::FakeBackend.new do |state, questions|
+      states << state
+      questions.to_h { |q| [q.id, S1::Answer.new(id: q.id, type: :noul, noul: 0.5)] }
+    end
+    wiring(system_one: S1::Client.new(backend: judge, mode: "audit", host: "splash", model: "judge-model"))
+      .request_approval(verdict_for)
+
+    examples = states.first["examples"]
+    expect(examples.map { |example| example["answer"] }).to eq(%w[deny allow_once])
+    expect(examples.first).to eq({ "rule" => "git-push", "repo" => "samagotchi",
+                                   "call" => "git push origin feature", "answer" => "deny" })
+  end
+
+  it "names the memory a memory ask touches: entry, scope, and its index description" do
+    states = []
+    judge = S1::FakeBackend.new do |state, questions|
+      states << state
+      questions.to_h { |q| [q.id, S1::Answer.new(id: q.id, type: :noul, noul: 0.5)] }
+    end
+    verdict = nil
+    with_config_home(File.join(base, "config")) do
+      FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "index.md"),
+                 "- **scratch_piles** · system · 2026-10-25 · 650 — where scratch work goes\n")
+      verdict = wiring(system_one: S1::Client.new(backend: judge, mode: "audit", host: "splash",
+                                                  model: "judge-model")).request_approval(
+                                                    verdict_for({ name: "memory_write", path: "scratch_piles", scope: "system", remove: true },
+                                                                rule: "memory-remove", scopes: ["once"])
+                                                  )
+    end
+    expect(verdict).to be_allow
+    expect(states.first["memory"]).to eq({ "name" => "scratch_piles", "scope" => "system",
+                                           "description" => "where scratch work goes" })
+  end
+
+  it "reads the judgments log once per ask: the examples and the record share one read" do
+    reads = 0
+    allow(S1::Log).to receive(:new).and_wrap_original do |original, **kwargs|
+      log = original.call(**kwargs)
+      entries = log.method(:entries)
+      log.define_singleton_method(:entries) { reads += 1; entries.call }
+      log
+    end
+    seed = S1::Log.new(dir: File.join(base, "guardrails"))
+    id = seed.judgment(rule: "git-push", tool: "execute", call: "git push origin main", p: 0.9,
+                       decision: "audit", origin: "live")
+    seed.label(id, "allow_once")
+
+    wiring.request_approval(verdict_for)
+    expect(reads).to eq(1)
   end
 
   it "the instruction the judge is asked is the frozen constant" do

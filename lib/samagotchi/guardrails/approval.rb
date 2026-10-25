@@ -51,6 +51,9 @@ module Samagotchi
             paths: targets && !targets.paths.empty? ? targets.paths : nil,
             # No command or path (an MCP tool): its arguments, as the question.
             args: args_for_card(targets),
+            # A memory_write ask, in words: the entry, its scope, and for a
+            # removal the description its index line carries.
+            memory: memory_for_card(targets),
             cwd: targets&.cwd,
             repo_root: targets&.repo_root,
             # The repository's name (a worktree's main checkout's folder).
@@ -76,6 +79,23 @@ module Samagotchi
 
         text = Approval.args_text(targets.args, limit: ARGS_CHARS)
         text.empty? ? nil : text
+      end
+
+      # A memory_write ask names an entry, not a file: which one, and in which
+      # scope. For a removal the ask also carries that entry's description from
+      # its scoped index line, which is what System 1 otherwise cannot see
+      # (docs/guardrails.md, "System 1"). nil for every other tool.
+      def memory_for_card(targets)
+        entry = targets&.memory
+        return nil if entry.nil?
+
+        facts = { name: entry[:name], scope: entry[:scope] }
+        if targets.memory_remove?
+          require_relative "../memory_bundle/index_updater"
+          description = MemoryBundle::IndexUpdater.description_for(entry[:scope], entry[:name])
+          facts[:description] = description unless description.to_s.strip.empty?
+        end
+        facts
       end
 
       # Settle +verdict+ from open_question's result.

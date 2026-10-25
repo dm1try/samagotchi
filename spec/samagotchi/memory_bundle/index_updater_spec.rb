@@ -65,4 +65,23 @@ RSpec.describe Samagotchi::MemoryBundle::IndexUpdater do
     expect(line("other")).to eq("- **other** · system · #{today} · 3 — a b\n")
     expect(line("guide")).to eq("- **guide** · system · #{today} · 12 — How to\n")
   end
+
+  describe ".description_for" do
+    it "reads the description off the entry's own line" do
+      described_class.update_index("system", "guide", 12, "How the user likes guides")
+      expect(described_class.description_for("system", "guide")).to eq("How the user likes guides")
+    end
+
+    it "is nil when there is no line, no description, or no such scope" do
+      described_class.update_index("system", "bare", 12)
+      expect(described_class.description_for("system", "bare")).to be_nil
+      expect(described_class.description_for("system", "missing")).to be_nil
+      expect(described_class.description_for("team", "guide")).to be_nil
+    end
+
+    it "reads the legacy colon line as well" do
+      File.write(File.join(system_dir, "index.md"), "- **old** · system · 2026-09-01 · 100: an older line\n")
+      expect(described_class.description_for("system", "old")).to eq("an older line")
+    end
+  end
 end
