@@ -11,6 +11,7 @@ require_relative "image_store"
 require_relative "output_formatter"
 require_relative "steer"
 require_relative "recap_store"
+require_relative "recap_title"
 require_relative "log"
 
 module Samagotchi
@@ -143,8 +144,17 @@ module Samagotchi
       # user decisions) — tolerated. The "we" variant was 4/4 consistent.
       # %<plain>s is the range, e.g. "2-4 plain sentences"; %<shape>s is SHAPE
       # or ONE_SHAPE.
+      # Auto-title spike (eval 0004, 2026-10-25; local Qwen3.8-Flash-Next,
+      # the 4 recap-spike sessions, first recap + update, N=5): a first-line
+      # title parsed in 50/50, 2-6 words and no actor in all, no recap
+      # regression against "Reply with the recap only" (one reply echoed
+      # "Blank line follows title." before the recap: RecapTitle drops it).
+      # Asked last, it was there in 15/50 and 4 replies were the title alone.
+      # A quoted example title (probe p0) was copied as the title: none here.
+      TITLE = "Reply with a title line, a blank line, then the recap. The title line is \"#{RecapTitle::LABEL} \" " \
+              "followed by 2-6 words naming the task, no actors. The recap: "
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
-               "coming back to it later. Reply with the recap only: %<plain>s, no heading, " \
+               "coming back to it later. #{TITLE}%<plain>s, no heading, " \
                "no preamble, no notes about the task or the transcript. Do not mention what the " \
                "transcript lacks or does not say; leave it out. Centre it on outcomes, not on " \
                "the order of events. %<shape>s Keep project names " \
@@ -169,6 +179,10 @@ module Samagotchi
       UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
                "write an updated recap of the whole session that also covers what happened since " \
                "(do not just repeat the earlier recap)."
+      # With an earlier title (the user message's "Earlier title:" line): the
+      # spike kept it in 14/15 updates on the same task and changed it on 4/5
+      # where the focus moved, so a card doesn't rename at every idle window.
+      UPDATE_TITLE = " Keep the earlier title unless the focus moved."
       # Holds the length once the recap covers more (S0: an updated recap ran
       # to 6 sentences for 2-4 without it, within range+1 in 95%+ with it).
       # The first-sentence line keeps the list preview on the task.
@@ -210,7 +224,9 @@ module Samagotchi
       #   transcript to summarize
       # @param sentences [Array(Integer, Integer)] the range, from #sentences_range
       # @param offer [Boolean] a continue offer is open: add OFFER_LINE
-      def build(transcript, tool_count: nil, tool_names: [], previous: nil, sentences: DEFAULT_SENTENCES, offer: false)
+      # @param previous_title [String, nil] the earlier recap's title (with +previous+)
+      def build(transcript, tool_count: nil, tool_names: [], previous: nil, previous_title: nil, sentences: DEFAULT_SENTENCES,
+                offer: false)
         body = cap(transcript.to_s.strip)
         return nil if body.empty?
 
@@ -227,8 +243,11 @@ module Samagotchi
         one = sentences.last == 1
         range = { plain: sentences_text(sentences, "plain "), sentences: sentences_text(sentences),
                   shape: one ? ONE_SHAPE : SHAPE, focus: one ? "it" : "the first sentence" }
-        system = format(SYSTEM, range) + (previous ? UPDATE + format(UPDATE_LENGTH, range) : "") + tools
+        earlier_title = previous && !previous_title.to_s.strip.empty? ? previous_title.to_s.strip : nil
+        update = "#{UPDATE}#{UPDATE_TITLE if earlier_title}#{format(UPDATE_LENGTH, range)}"
+        system = format(SYSTEM, range) + (previous ? update : "") + tools
         user = +""
+        user << "Earlier title: #{earlier_title}\n\n" if earlier_title
         user << "Earlier recap:\n#{previous}\n\n" if previous
         user << "Transcript#{" since the earlier recap" if previous} (the system prompt and tool " \
                 "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n"
@@ -269,8 +288,9 @@ module Samagotchi
     #   answer (the Worker's or the REPL's TurnFlow); read at each attempt
     attr_writer :awaiting_continue
 
-    # @return [Hash, nil] the last recap written: {text:, covered:,
-    #   covered_digest:, model:, created_at:}, where covered counts the
+    # @return [Hash, nil] the last recap written: {text:, title:, covered:,
+    #   covered_digest:, model:, created_at:} (title: the auto title, absent
+    #   when no reply gave one), where covered counts the
     #   session messages it summarizes and covered_digest fingerprints the
     #   last of them. With a store, loaded from it for each new session.
     def state
@@ -467,12 +487,13 @@ module Samagotchi
       return :nothing_new if transcript.strip.empty?
 
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text),
-                                                     sentences: @sentences, offer: offer_open?)
+                                             previous_title: previous&.dig(:title), sentences: @sentences, offer: offer_open?)
       return :nothing_new if prompt.nil?
 
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,
-                     covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked.label }
+                     covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked.label,
+                     previous_title: previous&.dig(:title) }
       :started
     rescue StandardError
       :failed
@@ -499,9 +520,16 @@ module Samagotchi
       # An IdleClient::Summary names the model that answered; a plain String
       # (a stubbed client) doesn't, and the asked label stands in.
       served = recap.model if recap.respond_to?(:model)
-      text = recap.to_s
-      saved = { text: text, covered: job[:covered], covered_digest: job[:covered_digest],
-                model: served || job[:model], created_at: Time.now.utc.iso8601 }
+      # The title line off the recap (RecapTitle): the text is the recap
+      # alone. A reply without a title that passes keeps the earlier one, so
+      # a broken line doesn't blank the card; a title alone is no recap.
+      split = RecapTitle.split(recap.to_s)
+      text = split.body
+      return if text.empty?
+
+      title = split.title || job[:previous_title]
+      saved = { text: text, title: title, covered: job[:covered], covered_digest: job[:covered_digest],
+                model: served || job[:model], created_at: Time.now.utc.iso8601 }.compact
       @mutex.synchronize { @state = saved }
       save(saved)
       @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered], created_at: saved[:created_at])

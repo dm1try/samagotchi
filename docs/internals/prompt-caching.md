@@ -124,7 +124,8 @@ right-hand column happens.
   only when the first participant joins and when the last leaves or expires: one history re-read each, then stable.
   Under D3(a) the declared tools stay the session's, so an author switch costs nothing: the review boundary is a
   gate on the calls, not a toolkit switch. The forged-header mark (`(quoted) `) is a pure function of the text too.
-- Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
+- Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt (the recap's also
+  asks for its auto title line, `RecapPrompt::TITLE`: static text, still that one request). On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 
 ## The turn-end warm-up

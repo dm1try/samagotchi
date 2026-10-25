@@ -199,7 +199,7 @@ RSpec.describe Samagotchi::IdleRecap do
       it "puts the instructions in a system message and the transcript in the user message" do
         system, user = described_class.build(transcript)
         expect(system[:role]).to eq("system")
-        expect(system[:content]).to include("recap only", "no preamble")
+        expect(system[:content]).to include("The recap: 2-4 plain sentences", "no preamble")
         expect(user[:role]).to eq("user")
         expect(user[:content]).to include(transcript)
       end
@@ -243,10 +243,34 @@ RSpec.describe Samagotchi::IdleRecap do
 
       it "asks for 2-4 sentences by default and renders the configured range" do
         build = ->(**kw) { described_class.build(transcript, **kw).first[:content] }
-        expect(build.call).to include("recap only: 2-4 plain sentences,")
-        expect(build.call(sentences: [2, 3])).to include("recap only: 2-3 plain sentences,")
-        expect(build.call(sentences: [3, 3])).to include("recap only: 3 plain sentences,")
-        expect(build.call(sentences: [1, 1])).to include("recap only: 1 plain sentence,")
+        expect(build.call).to include("The recap: 2-4 plain sentences,")
+        expect(build.call(sentences: [2, 3])).to include("The recap: 2-3 plain sentences,")
+        expect(build.call(sentences: [3, 3])).to include("The recap: 3 plain sentences,")
+        expect(build.call(sentences: [1, 1])).to include("The recap: 1 plain sentence,")
+      end
+
+      it "asks for a title line first, 2-6 words, no actors, with no example title to copy" do
+        system = described_class.build(transcript).first[:content]
+        expect(system).to include("Reply with a title line, a blank line, then the recap. The title line is \"Title: \" " \
+                                  "followed by 2-6 words naming the task, no actors. The recap: 2-4 plain sentences, no heading,")
+        expect(system).not_to include("recap only")
+        expect(system).not_to match(/Title: [A-Z]/) # the spike's p0: an example title was copied
+        expect(system).not_to include("Keep the earlier title")
+      end
+
+      it "names the earlier title above the earlier recap and asks to keep it unless the focus moved" do
+        system, user = described_class.build(transcript, previous: "We set up Bluefin.", previous_title: " Bluefin setup ")
+        expect(user[:content]).to start_with("Earlier title: Bluefin setup\n\nEarlier recap:\nWe set up Bluefin.\n\n")
+        expect(system[:content]).to include("(do not just repeat the earlier recap). Keep the earlier title unless the " \
+                                            "focus moved. Keep it to 2-4 sentences")
+      end
+
+      it "asks nothing about an earlier title when the earlier recap has none, or on a first recap" do
+        system, user = described_class.build(transcript, previous: "We set up Bluefin.", previous_title: nil)
+        expect(user[:content]).to start_with("Earlier recap:")
+        expect(system[:content]).not_to include("Keep the earlier title")
+        expect(described_class.build(transcript, previous_title: "Bluefin setup"))
+          .to eq(described_class.build(transcript))
       end
 
       it "holds the length in an updated recap only" do
@@ -260,7 +284,7 @@ RSpec.describe Samagotchi::IdleRecap do
       it "asks for one sentence with the task and where it stands when the range is 1" do
         build = ->(**kw) { described_class.build(transcript, **kw).first[:content] }
         one = build.call(sentences: [1, 1])
-        expect(one).to include("recap only: 1 plain sentence,", "The sentence names the task itself",
+        expect(one).to include("The recap: 1 plain sentence,", "The sentence names the task itself",
                                "and where it stands: the result, or what is still open.")
         expect(one).not_to include("first sentence", "Then say what came of it", "End with")
         update = build.call(sentences: [1, 1], previous: "Earlier.")
@@ -922,6 +946,48 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(idle)
       expect(user_text(prompts[1])).not_to include("Earlier recap")
       expect(idle.state).to include(covered: 3)
+    end
+
+    it "saves the reply's title apart from the recap text, which every reader gets without it" do
+      allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; "Title: Bluefin setup\n\nBluefin was set up." }
+      engine = engine_for
+      idle = recap_for(engine)
+      drive(idle)
+      expect(idle.state).to include(text: "Bluefin was set up.", title: "Bluefin setup")
+      expect(engine).to have_received(:emit_recap).with(hash_including(recap: "Bluefin was set up."))
+    end
+
+    it "sends the earlier title with the update, and keeps it when the reply has none that passes" do
+      replies = ["Title: Bluefin setup\n\nBluefin was set up.", "PONG was replied. Bluefin is set up.",
+                 "Title: The user pings\n\nA ping was answered.", "Title: Ping checks\n\nPings were checked."]
+      allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; replies[prompts.size - 1] }
+      idle = recap_for(engine_for)
+      drive(idle)
+      3.times do |i|
+        messages[0] += [msg("user", "Reply PONG #{i}"), msg("model", "PONG")]
+        seq[0] = i + 2
+        drive(idle)
+      end
+      expect(user_text(prompts[1])).to start_with("Earlier title: Bluefin setup\n\nEarlier recap:\nBluefin was set up.")
+      expect(user_text(prompts[2])).to start_with("Earlier title: Bluefin setup\n\n") # no title line: kept
+      expect(user_text(prompts[3])).to start_with("Earlier title: Bluefin setup\n\n") # an actor title: kept
+      expect(idle.state).to include(text: "Pings were checked.", title: "Ping checks")
+    end
+
+    it "saves no title for a reply without one when there was none before" do
+      idle = recap_for(engine_for)
+      drive(idle)
+      expect(idle.state).to include(text: "recap 1")
+      expect(idle.state).not_to have_key(:title)
+    end
+
+    it "saves nothing for a reply that is the title alone" do
+      allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; "Title: Bluefin setup" }
+      engine = engine_for
+      idle = recap_for(engine)
+      drive(idle)
+      expect(idle.state).to be_nil
+      expect(engine).not_to have_received(:emit_recap)
     end
 
     it "keeps the previous state when an attempt fails" do

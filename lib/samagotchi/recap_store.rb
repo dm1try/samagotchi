@@ -8,7 +8,9 @@ require_relative "session"
 
 module Samagotchi
   # The idle recap saved with its session, in <session dir>/recap.json:
-  #   {text, covered, covered_digest, model, created_at}
+  #   {text, title, covered, covered_digest, model, created_at}
+  # (title: the auto title the recap reply led with, RecapTitle; absent in
+  # a recap saved before it, or when no reply gave one).
   # A separate file, so it never races the session-file save at the end of a
   # turn. Follows the Engine's current session (the REPL can switch).
   class RecapStore
@@ -77,11 +79,26 @@ module Samagotchi
       nil
     end
 
+    # What a session card or list row reads from the saved recap.
+    # +preview+: #preview's sentence; +title+: the auto title, or nil.
+    Card = Data.define(:preview, :title)
+
+    # @return [Card] the saved recap's preview and auto title, from one
+    #   read (both nil when there is no recap)
+    def self.card(session_dir)
+      data = read(session_dir)
+      title = data&.dig(:title).to_s.gsub(/\s+/, " ").strip
+      Card.new(preview: preview_of(data), title: title.empty? ? nil : title)
+    end
+
     # @return [String, nil] the first sentence of the recap saved in
     #   +session_dir+, on one line, without the subject phrase (SUBJECT_RE)
     #   and cut to PREVIEW_CHARS. The full recap keeps its sentence.
-    def self.preview(session_dir)
-      text = read(session_dir)&.dig(:text).to_s.gsub(/\s+/, " ").strip
+    def self.preview(session_dir) = preview_of(read(session_dir))
+
+    # #preview of a recap already read (RecapStore.read's hash, or nil).
+    def self.preview_of(data)
+      text = data&.dig(:text).to_s.gsub(/\s+/, " ").strip
       return nil if text.empty?
 
       first = text[/\A.*?[.!?](?=\s|\z)/] || text

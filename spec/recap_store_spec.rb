@@ -143,4 +143,26 @@ RSpec.describe Samagotchi::RecapStore do
       expect(described_class.preview(File.dirname(path))).to be_nil
     end
   end
+
+  describe ".card" do
+    def write(fields)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, JSON.generate({ covered: 2 }.merge(fields)))
+    end
+
+    it "is the preview and the auto title, from one read" do
+      write(text: "The user was fixing the parser. Tabs work.", title: " Parser  tab handling ")
+      expect(described_class.card(File.dirname(path)))
+        .to eq(described_class::Card.new(preview: "Fixing the parser.", title: "Parser tab handling"))
+    end
+
+    it "has no title for a recap saved without one (before auto titles), and nothing without a recap" do
+      write(text: "Tabs work.")
+      expect(described_class.card(File.dirname(path))).to have_attributes(preview: "Tabs work.", title: nil)
+      write(text: "Tabs work.", title: "  ")
+      expect(described_class.card(File.dirname(path)).title).to be_nil
+      FileUtils.rm_f(path)
+      expect(described_class.card(File.dirname(path))).to have_attributes(preview: nil, title: nil)
+    end
+  end
 end

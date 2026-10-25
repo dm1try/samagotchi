@@ -204,6 +204,11 @@ RSpec.describe Samagotchi::IdleClient do
       expect(client.summarize("summarize this").text).to eq("The goal was a flag. It is done!")
     end
 
+    it "keeps the recap's first-line title with the sentences that finished (RecapTitle splits it later)" do
+      reply({ content: "Title: Flag work\n\nThe goal was a flag. It is" }, finish_reason: "length")
+      expect(client.summarize("summarize this").text).to eq("Title: Flag work\nThe goal was a flag.") # blank lines collapse (strip_thinking)
+    end
+
     it "gives no recap when not even one sentence finished" do
       reply({ content: "The goal was to add a" }, finish_reason: "length")
       expect(client.summarize("summarize this")).to be_nil
