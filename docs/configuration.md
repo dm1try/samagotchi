@@ -50,7 +50,8 @@ hosts:
 # alias is applied, and its host:/the alias's host picks the host when host_ref
 # is left out; a model naming no host goes where a bare --model goes (the
 # default host). A model naming another host than host_ref turns recap off with
-# a warning. recap: false turns it off.
+# a warning. recap: false turns it off. Each recap also names the session with
+# a short auto title (shown when it has no /title), in the same request.
 recap:
   # host_ref: small-box
   # model: your-small-model-id

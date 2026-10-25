@@ -282,7 +282,16 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       FileUtils.mkdir_p(session_dir(s))
       File.write(File.join(session_dir(s), "recap.json"), JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
 
-      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(recap: "We fixed the login.")
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(recap: "We fixed the login.", auto_title: nil)
+    end
+
+    it "gives the auto title the recap's reply led with" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "recap.json"),
+                 JSON.generate(text: "We fixed the login. Then the tests.", title: "Login fix", covered: 2))
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(recap: "We fixed the login.", auto_title: "Login fix")
     end
 
     it "gives how full the context was after the last turn, nil when unknown" do

@@ -48,9 +48,14 @@ module Samagotchi
 
     private
 
-    # "title: Coordinator", or "title: none (shows the first message: hey chi …)"
+    # "title: Coordinator", "title: none (shows the auto title: Parser tab
+    # handling)" (the recap's, RecapTitle), or "title: none (shows the
+    # first message: hey chi …)"
     def listing(session)
       return "title: #{session.title}" if session.title
+
+      auto = @engine.recap&.state&.dig(:title)
+      return "title: none (shows the auto title: #{auto})" if auto
 
       preview = session.first_preview.to_s
       "title: none (shows #{preview.empty? ? "the first message" : "the first message: #{preview}"})"

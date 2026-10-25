@@ -128,7 +128,8 @@ module Samagotchi
         # reason, never the question or the command (a lock screen shows it).
         # @return [Array(String, String)] title, body
         def text(summary, reason)
-          name = (summary && [summary[:title], summary[:first_preview], summary[:last_prompt]].find { |v| present?(v) }) ||
+          name = (summary && [summary[:title], summary[:auto_title], summary[:first_preview], summary[:last_prompt]]
+                             .find { |v| present?(v) }) ||
                  "chi session"
           body = reason == "done" ? "done in #{seconds(summary&.dig(:last_turn) || {}).round} s" : BODIES.fetch(reason, "")
           [clip(name.to_s.strip, TITLE_MAX), body]

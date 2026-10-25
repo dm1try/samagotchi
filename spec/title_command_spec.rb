@@ -4,10 +4,12 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/title_command"
 require "samagotchi/session"
+require "samagotchi/idle_recap"
 
 # /title: shows, sets or clears the session's own name.
 RSpec.describe Samagotchi::TitleCommand do
-  let(:engine) { Struct.new(:session).new(session) }
+  let(:recap) { nil }
+  let(:engine) { Struct.new(:session, :recap).new(session, recap) }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd).tap do |s|
       s.first_preview = "hey chi, coordinate"
@@ -21,6 +23,21 @@ RSpec.describe Samagotchi::TitleCommand do
     expect(command.run(" ")).to eq(["title: none (shows the first message)", false, :ok])
     session.title = "Coordinator"
     expect(command.run("")).to eq(["title: Coordinator", false, :ok])
+  end
+
+  context "with an auto title from the recap" do
+    let(:recap) { instance_double(Samagotchi::IdleRecap, state: { text: "Tabs work.", title: "Parser tab handling" }) }
+
+    it "says the auto title shows without a title, and a title still wins" do
+      expect(command.run("")).to eq(["title: none (shows the auto title: Parser tab handling)", false, :ok])
+      expect(command.run("Coordinator")).to eq(["title: Coordinator", true, :ok])
+      expect(command.run("--clear").first).to eq("title: none (shows the auto title: Parser tab handling)")
+    end
+  end
+
+  it "shows the first message under a recap without an auto title (one saved before them)" do
+    engine.recap = instance_double(Samagotchi::IdleRecap, state: { text: "Tabs work." })
+    expect(command.run("")).to eq(["title: none (shows the first message: hey chi, coordinate)", false, :ok])
   end
 
   it "sets it, whitespace collapsed and cut at 80 characters (changed: its host saves it); the same again is no change" do

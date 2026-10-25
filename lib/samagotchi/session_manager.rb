@@ -308,12 +308,13 @@ module Samagotchi
     # @param exclude [String, nil] a session id to leave out (the asker)
     # @param include_archived [Boolean] archived sessions too
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
-    #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
+    #   updated_at:, status:, live:, busy:, owner:, recap:, auto_title:, parent_id:,
     #   parent_short_id:, continues:, continues_short_id:, delegate:, archived:, scratch:, test_run:, waiting:,
     #   waiting_id:, stopped_by:}; busy =
     #   live with a turn running, delegate = started by the delegate tool
     #   (Session#delegate?; a fork has a parent_id but isn't one), continues = the session it continues (the
-    #   previous link of its chain, Session#continues), recap = the saved recap's first sentence, project =
+    #   previous link of its chain, Session#continues), recap = the saved recap's first sentence, auto_title =
+    #   the auto title its reply led with (RecapTitle) or nil, project =
     #   Session#project_root, waiting = the kind of question it waits on
     #   ("question", "approval", "hook"; Session#waiting_question) or nil,
     #   waiting_id = that question's id or nil, relayed_to = the parent
@@ -339,7 +340,7 @@ module Samagotchi
 
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), title: s.title, cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
-          owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
+          owner: owner&.kind, **recap_fields(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd),
                                                     budget_tokens: -> { budgets.call(s) })&.round(1),
           parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), continues: s.continues,
@@ -476,6 +477,12 @@ module Samagotchi
     private_class_method def self.summary_desc(session)
       desc = [File.basename(session.working_directory.to_s), summary_text(session)].reject(&:empty?).join(" · ")
       cut(desc, SUMMARY_DESC_LIMIT)
+    end
+
+    # A session row's recap: and auto_title: (RecapStore.card, one read).
+    private_class_method def self.recap_fields(session_dir)
+      card = RecapStore.card(session_dir)
+      { recap: card.preview, auto_title: card.title }
     end
 
     private_class_method def self.summary_preview(session)

@@ -40,6 +40,7 @@ module Samagotchi
         up = bridge_up?(session_dir, owner)
         sidecar = up ? WorkerSidecar.read(session_dir) : nil
         saved = SessionMetrics.saved_summary(session_dir, budget_tokens: budget_resolver(session, registry))
+        recap_card = RecapStore.card(session_dir)
         {
           id: session.id,
           status: status,
@@ -74,8 +75,12 @@ module Samagotchi
           # place of the first message.
           title: session.title,
           owner: owner&.kind,
-          # The saved recap's first sentence, for the session card.
-          recap: RecapStore.preview(session_dir),
+          # The saved recap's first sentence, for the session card, and the
+          # auto title its reply led with (RecapTitle), else nil: an untitled
+          # session's name on the pages and its pushes (never in a model
+          # request).
+          recap: recap_card.preview,
+          auto_title: recap_card.title,
           # How full the context was after the last turn (%), or nil, and
           # the session's token sums and cost (the card's ctx tooltip), from
           # one read of analytics.json.

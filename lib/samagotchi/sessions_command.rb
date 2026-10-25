@@ -217,12 +217,13 @@ module Samagotchi
         # scratch: a `chi scratch` session (deleted when its REPL ends, a
         # leftover one at the next sweep)
         # ctx_pct: how full the context was after the last turn, or nil
-        # title: the session's own name (/title; desc shows it too), or nil
+        # title: the session's own name (/title; desc shows it too), or nil;
+        # auto_title: the one its recap gave it (RecapTitle), or nil
         # waiting: the kind of question it waits on (question, approval,
         # hook: chi answer or the web answers it), or nil; waiting_id: its
         # id, for chi answer --question; relayed_to: the parent session (short
         # id) whose card it also waits in (the approval relay), or nil
-        keys = %i[id short_id desc title cwd project updated_at live busy owner recap parent_id continues delegate archived scratch ctx_pct
+        keys = %i[id short_id desc title auto_title cwd project updated_at live busy owner recap parent_id continues delegate archived scratch ctx_pct
                   waiting waiting_id relayed_to stopped_by]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
@@ -234,12 +235,13 @@ module Samagotchi
                   elsif summary[:busy] then "running"
                   else summary[:live] ? "live" : summary[:status].to_s
                   end
-          # The saved recap's first sentence says more than the last prompt
-          # (text only: tsv and json keep desc for pickers); a title (in
-          # desc) says what the user named it.
+          # The recap's auto title, else its first sentence, says more than
+          # the last prompt (text only: tsv and json keep desc for pickers);
+          # a title (in desc) says what the user named it.
           desc = summary[:desc]
-          if summary[:recap] && !summary[:title]
-            desc = [File.basename(summary[:cwd].to_s), summary[:recap]].reject(&:empty?).join(" · ")
+          named = summary[:auto_title] || summary[:recap]
+          if named && !summary[:title]
+            desc = [File.basename(summary[:cwd].to_s), named].reject(&:empty?).join(" · ")
             desc = "#{desc[0, 59]}…" if desc.length > 60
           end
           # A delegated session points at its parent.
@@ -265,15 +267,16 @@ module Samagotchi
       sort ||= "updated_at"
       order ||= "desc"
       sessions = @access.list(sort: sort, order: order, limit: limit, project_root: project, include_archived: include_archived)
-      # The session's title, else the saved recap's first sentence, else the
-      # last prompt (or the first message, before any turn), cut as before.
+      # The session's title, else the recap's auto title, else its first
+      # sentence, else the last prompt (or the first message, before any
+      # turn), cut as before.
       # These rows read each session's folder here (its recap, saved
       # context, owner): machine-local, the server's rows remotely (P2's
       # list parity).
       state_dir = Samagotchi::Session.default_state_dir
       list_text = lambda do |s|
-        recap = s.title ? nil : Samagotchi::RecapStore.preview(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
-        (recap || Samagotchi::SessionManager.summary_text(s))[0, 60]
+        card = s.title ? nil : Samagotchi::RecapStore.card(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
+        (card&.title || card&.preview || Samagotchi::SessionManager.summary_text(s))[0, 60]
       end
       # How full the context was after the last turn: "ctx 12%", counted
       # against the session's llm_context budget when one is set and smaller

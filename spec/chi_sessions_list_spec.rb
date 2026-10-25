@@ -71,10 +71,10 @@ RSpec.describe "chi sessions list" do
                              "context" => { "used_tokens" => used_tokens, "window_tokens" => window_tokens }))
   end
 
-  def write_recap(session, text)
+  def write_recap(session, text, title: nil)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "recap.json"), JSON.generate(text: text, covered: 2))
+    File.write(File.join(dir, "recap.json"), JSON.generate({ text: text, title: title, covered: 2 }.compact))
   end
 
   # Remotely a plain list is chi web's rows in the --live/--cwd text form
@@ -336,6 +336,33 @@ RSpec.describe "chi sessions list" do
         .to include("desc" => "app · Login fix", "title" => "Login fix")
     end
 
+    it "shows the recap's auto title over its first sentence in the plain listing, a title over both", local_only: plain do
+      auto = make("fix it", live: true)
+      write_recap(auto, "The user was fixing the login page. It works now.", title: "Login page fix")
+      expect(run_chi.first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login page fix\n")
+
+      s = Samagotchi::Session.load(auto.id, state_dir: state_dir)
+      s.title = "Login fix"
+      s.save(state_dir: state_dir)
+      expect(run_chi.first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login fix\n")
+    end
+
+    # Remotely these are chi web's rows (GET /api/sessions/summaries), auto_title among them.
+    it "shows the auto title in the --live text, a title over it; json has auto_title, tsv keeps desc" do
+      auto = make("fix it", live: true)
+      write_recap(auto, "The user was fixing the login page. It works now.", title: "Login page fix")
+
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  app · Login page fix\n")
+      expect(run_chi("--live", "--format", "tsv").first).to include("#{auto.id}\tapp · fix it\n")
+      expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == auto.id })
+        .to include("desc" => "app · fix it", "title" => nil, "auto_title" => "Login page fix", "recap" => "Fixing the login page.")
+
+      s = Samagotchi::Session.load(auto.id, state_dir: state_dir)
+      s.title = "Login fix"
+      s.save(state_dir: state_dir)
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  app · Login fix\n")
+    end
+
     it "cuts a long recap to 60 characters, as it does a prompt", local_only: plain do
       session = make("x")
       write_recap(session, "Checking #{"word " * 30}.")
@@ -378,7 +405,7 @@ RSpec.describe "chi sessions list" do
       expect(status).to eq(0), err
       expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it", "title" => nil,
                                        "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                       "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
+                                       "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "auto_title" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
                                        "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
                                        "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
     end

@@ -66,6 +66,8 @@ RSpec.describe Samagotchi::Web::Push::Attention do
       expect(described_class.text({ title: "fix it", first_preview: "x" }, "approval")).to eq(["fix it", "needs approval"])
       expect(described_class.text({ title: "  ", first_preview: "the first" }, "question")).to eq(["the first", "needs an answer"])
       expect(described_class.text({}, "question").first).to eq("chi session")
+      expect(described_class.text({ title: "fix it", auto_title: "Login fix", first_preview: "x" }, "failed").first).to eq("fix it")
+      expect(described_class.text({ title: nil, auto_title: "Login fix", first_preview: "x" }, "failed").first).to eq("Login fix")
       long = described_class.text({ title: "a" * 80 }, "approval").first
       expect(long).to eq("#{"a" * 60}…")
     end

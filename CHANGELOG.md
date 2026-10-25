@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Auto titles: the idle recap also writes a 2-6 word title for the session, in the same request, and a session
+  without a `/title` is named by it on the web's cards, top bar, tab and notifications and in `chi sessions list`
+  (json: `auto_title`). Later recaps keep it unless the focus moved; a hand title always wins.
+
 ## [0.113.0] - 2026-10-25
 
 ### Added
