@@ -47,12 +47,13 @@ RSpec.describe Samagotchi::GuardrailsCommand do
 
   # A question card as the CardStore saves it: the approval, and either an
   # answer, a cancellation, or neither.
-  def question(id, rule, answer: nil, cancelled: false, scopes: SCOPES)
+  def question(id, rule, answer: nil, cancelled: false, scopes: SCOPES, user_only: nil)
     entry = { "type" => "question", "in_turn" => true, "turns" => 1,
               "pending_question" => { "id" => id, "question" => "Approve tool call?",
                                       "options" => ["Allow once", "Allow this call for the session", "Deny"],
                                       "approval" => approval(rule, scopes: scopes), "status" => "pending",
                                       "created_at" => "2026-10-20T10:00:00+02:00" } }
+    entry["pending_question"]["user_only"] = true if user_only
     entry["answer"] = answer if answer
     entry["cancelled"] = true if cancelled
     entry
@@ -62,11 +63,12 @@ RSpec.describe Samagotchi::GuardrailsCommand do
     { "id" => "q", "selected" => [], "freeform" => nil, "selected_indices" => [index], "by" => by }
   end
 
-  # A session folder, its session file (with a title when given) and its
-  # cards.json. @return the session's id.
-  def session(entries, title: nil)
+  # A session folder, its session file (with a title, and its own
+  # parent_answers when given) and its cards.json. @return the session's id.
+  def session(entries, title: nil, parent_answers: nil)
     saved = Samagotchi::Session.new_session(mode: "assist", model_name: "spec-model", working_directory: tmpdir)
     saved.title = title if title
+    saved.parent_answers = parent_answers if parent_answers
     saved.save(state_dir: sessions_dir)
     dir = Samagotchi::Session.session_dir(saved.id, state_dir: sessions_dir)
     FileUtils.mkdir_p(dir)
@@ -114,7 +116,7 @@ RSpec.describe Samagotchi::GuardrailsCommand do
     first = entries.first
     expect(first).to include("kind" => "judgment", "decision" => "replay", "origin" => "replay", "rule" => "git-push",
                              "source" => "bundle guardrails", "tool" => "execute", "model" => "judge-model",
-                             "threshold" => 0.95, "p" => 0.97, "asked_at" => "2026-10-20T10:00:00+02:00")
+                             "threshold" => 0.8, "p" => 0.97, "asked_at" => "2026-10-20T10:00:00+02:00")
     expect(first["session_id"]).to eq(@session_id)
     expect(first["repo_name"]).to eq("samagotchi")
     expect(first["call"]).to eq("git push origin main")
@@ -151,7 +153,7 @@ RSpec.describe Samagotchi::GuardrailsCommand do
     expect(rows[2]).to eq(%w[memory-remove 1 1 0 0 0 0])
     expect(rows[3]).to eq(%w[shell-touches-chi 1 1 0 0 0 1])
     expect(rows[4]).to eq(%w[total 6 4 1 2 1 1])
-    expect(out.string).to include("6 asks replayed from 1 session · threshold 0.95 · model judge-model")
+    expect(out.string).to include("6 asks replayed from 1 session · threshold 0.8 · model judge-model")
   end
 
   it "counts auto and false allows against --threshold" do
@@ -208,5 +210,53 @@ RSpec.describe Samagotchi::GuardrailsCommand do
     expect(run(["replay", "--threshold", "abc"])).to eq(2)
     expect(err.string).to include("--threshold takes a number")
     expect(run(["replay", "--dry-run", "extra"])).to eq(2)
+  end
+
+  # A parent agent's answer is not the user's. Only its deny is a label, and
+  # only where the parent could have allowed: the ask is not user-only, and
+  # the session's parent level permits a "permit" option.
+  describe "a parent agent's answer" do
+    DENY_INDEX = 4
+
+    it "judges and labels a parent's deny when the parent could have allowed" do
+      session([question("q-parent-deny", "git-push", answer: answer(DENY_INDEX, by: "parent_agent"))])
+      expect(run(["replay"])).to eq(0)
+      entries = lines
+      expect(entries.size).to eq(1)
+      expect(entries.first).to include("kind" => "judgment", "question_id" => "q-parent-deny", "decision" => "replay",
+                                       "rule" => "git-push", "p" => 0.97, "answer" => "deny")
+    end
+
+    it "skips a parent's allow: it is not the user's decision" do
+      session([question("q-parent-allow", "git-push", answer: answer(0, by: "parent_agent"))])
+      run(["replay"])
+      expect(lines).to eq([])
+      expect(out.string).to include("1 answered by a parent agent")
+    end
+
+    it "skips a parent's deny on an ask only the user may answer" do
+      session([question("q-parent-user-only", "chi-config", answer: answer(DENY_INDEX, by: "parent_agent"), user_only: true)])
+      run(["replay"])
+      expect(lines).to eq([])
+      expect(out.string).to include("1 answered by a parent that could not allow")
+    end
+
+    it "skips a parent's deny when the session's parent level forbids permitting" do
+      session([question("q-parent-hard", "git-push", answer: answer(DENY_INDEX, by: "parent_agent"))], parent_answers: "hard")
+      run(["replay"])
+      expect(lines).to eq([])
+      expect(out.string).to include("1 answered by a parent that could not allow")
+    end
+
+    it "skips a parent's deny when the card has no session file to read the level from" do
+      dir = File.join(sessions_dir, "cccc3333-3333-3333-3333-333333333333")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "cards.json"),
+                 JSON.generate({ "version" => 1, "turns" => 1,
+                                 "entries" => [question("q-no-session", "git-push", answer: answer(DENY_INDEX, by: "parent_agent"))] }))
+      run(["replay"])
+      expect(lines).to eq([])
+      expect(out.string).to include("1 answered by a parent that could not allow")
+    end
   end
 end

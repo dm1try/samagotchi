@@ -173,8 +173,8 @@ module Samagotchi
       # (Guardrails::ParentPolicy): hard = deny and plain answers; standard = + spend (Continue); soft = + permit (Allow
       # once). An invalid value is hard, the strictest.
       Entry.new(key: "guardrails.parent_answers", yaml_path: %w[guardrails parent_answers], type: :enum, default: "soft", expose: %i[config], enum_values: %w[hard standard soft], invalid: "hard", lifecycle: :next_tool_or_approval),
-      # System 1 (the cheap judgment model that will answer the asks a user always allows). P1 has the client and these
-      # settings only: nothing judges yet, so only SystemOne::Client.from_config reads them (docs/guardrails.md).
+      # System 1 (the cheap judgment model that answers the asks a user always allows). Client and settings; in `on`
+      # mode GuardrailWiring also reads rules, threshold and min_record for the auto-allow (docs/guardrails.md).
       # off (the default) | audit (judge every ask, log it, never decide) | on. An unknown value warns and is off.
       Entry.new(key: "guardrails.system_one.mode",       yaml_path: %w[guardrails system_one mode],      type: :enum,    default: "off",  expose: %i[config], enum_values: %w[off audit on], lifecycle: :next_tool_or_approval),
       # The hosts: entry serving /v1/systemone (Splash, or the hosted Jev API); unset: no judgment.
@@ -184,7 +184,7 @@ module Samagotchi
       # The rule ids System 1 may answer for ("a|b", or a YAML list, parsed like guardrails.small_models).
       Entry.new(key: "guardrails.system_one.rules",      yaml_path: %w[guardrails system_one rules],      type: :string,  default: nil,    expose: %i[config], lifecycle: :next_tool_or_approval),
       # The probability an auto-allow needs, and how many clean records a rule needs before it is trusted.
-      Entry.new(key: "guardrails.system_one.threshold",  yaml_path: %w[guardrails system_one threshold],  type: :float,   default: 0.95,  expose: %i[config], lifecycle: :next_tool_or_approval),
+      Entry.new(key: "guardrails.system_one.threshold",  yaml_path: %w[guardrails system_one threshold],  type: :float,   default: 0.8,   expose: %i[config], lifecycle: :next_tool_or_approval),
       Entry.new(key: "guardrails.system_one.min_record", yaml_path: %w[guardrails system_one min_record], type: :integer, default: 5,     expose: %i[config], lifecycle: :next_tool_or_approval),
       # How long one judgment may take, in milliseconds; a judgment that doesn't arrive asks the user.
       Entry.new(key: "guardrails.system_one.timeout_ms", yaml_path: %w[guardrails system_one timeout_ms], type: :integer, default: 2000,  expose: %i[config], lifecycle: :next_tool_or_approval),

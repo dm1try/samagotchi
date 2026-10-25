@@ -19,8 +19,10 @@ module Samagotchi
       # parent model would be writing a model's prompt); and the bundle's
       # asks before answering chi's questions around chi answer (a parent
       # allowing one would answer a grandchild's question as the user).
-      # Only the user may allow them (ParentApprovals.protected?,
-      # ParentPolicy's user_only).
+      # A parent agent may never allow them (ParentApprovals.protected?,
+      # ParentPolicy's user_only); System 1 may, only if the user lists the
+      # rule by name in guardrails.system_one.rules, and never for the
+      # chi-answer/chi-broadcast ones (SystemOne::SelfProtect::NEVER_AUTO).
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
                            model-overlay-write chi-answer-piped chi-answer-http].freeze
       SCOPES = %w[once session repo rule].freeze
@@ -33,6 +35,8 @@ module Samagotchi
       attr_accessor :context, :targets
       # The scope the user allowed an ask for ("once", "session", …).
       attr_accessor :scope
+      # System 1's judgment that decided an ask, when it did: {id:, p:}.
+      attr_accessor :judgment
 
       def initialize(call:)
         @call = call
@@ -121,8 +125,11 @@ module Samagotchi
       end
 
       # For the activity entry; an allowed ask notes how ("approved (repo)",
-      # "approved earlier (session)").
+      # "approved earlier (session)"), one System 1 answered notes that and
+      # carries the judgment (docs/guardrails.md, "System 1").
       def to_activity
+        return system_one_activity if @decided_by == "system one"
+
         note = if allow? && @scope
                  "approved#{" earlier" if @decided_by == "approval"} (#{@scope})"
                end
@@ -130,6 +137,19 @@ module Samagotchi
       end
 
       private
+
+      # The auto-allow's activity: who decided, for how long, and the
+      # judgment behind it (the p and the judgment's id), so a UI can show
+      # why the call was never asked about.
+      def system_one_activity
+        facts = @judgment || {}
+        p = facts[:p]
+        activity = { rule: @rule, verdict: @decision.to_s, decided_by: @decided_by, scope: @scope,
+                     note: p ? "auto-allowed by System 1 (p=#{format("%.2f", p.to_f)})" : "auto-allowed by System 1" }
+        activity[:judgment_id] = facts[:id] if facts[:id]
+        activity[:p] = p if p
+        activity.compact
+      end
 
       def decider
         return [("rule #{@rule}" if @rule), @source].compact.join(", ") if @rule || @source

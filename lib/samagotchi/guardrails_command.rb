@@ -8,6 +8,7 @@ require_relative "cli/flags"
 require_relative "config"
 require_relative "bridge/card_store"
 require_relative "guardrails/approvals"
+require_relative "guardrails/parent_policy"
 require_relative "host_registry"
 require_relative "session"
 require_relative "system_one"
@@ -29,13 +30,16 @@ module Samagotchi
           (their cards, $XDG_STATE_HOME/samagotchi/sessions/<id>/cards.json)
           through System 1 and write the judgment and the user's answer to
           guardrails/judgments.jsonl, so a rule's record starts with the asks
-          the user really decided on. Asks a parent agent answered, asks with
-          no approval card and unanswered ones are skipped, as are question
-          ids a previous replay already logged. --threshold overrides
-          guardrails.system_one.threshold for the table; --model overrides the
-          configured model for this run. --dry-run judges and prints the table
-          without writing a line. Needs guardrails.system_one.mode audit or on
-          and a guardrails.system_one.host (exit 2 without one).
+          the user really decided on. Asks with no approval card, unanswered
+          ones, and question ids a previous replay already logged are skipped.
+          A parent agent's answer is not the user's: only its deny is logged,
+          and only when the parent could have allowed (the session's
+          guardrails.parent_answers allows "permit" and the ask is not
+          user-only). --threshold overrides guardrails.system_one.threshold
+          for the table; --model overrides the configured model for this run.
+          --dry-run judges and prints the table without writing a line. Needs
+          guardrails.system_one.mode audit or on and a guardrails.system_one.host
+          (exit 2 without one).
     TEXT
 
     SUBCOMMANDS = %w[replay].freeze
@@ -58,6 +62,7 @@ module Samagotchi
     SKIP_WORDS = {
       already_replayed: "already replayed",
       answered_by_parent: "answered by a parent agent",
+      parent_cannot_allow: "answered by a parent that could not allow",
       unanswered: "unanswered",
       no_approval: "no approval card",
       no_question_id: "no question id"
@@ -135,7 +140,7 @@ module Samagotchi
           end
 
           entries.each do |entry|
-            ask = ask_of(entry, name, replayed)
+            ask = ask_of(entry, name, replayed, sessions_dir)
             next if ask.nil?
 
             ask.is_a?(Symbol) ? skipped[ask] += 1 : asks << ask
@@ -163,9 +168,9 @@ module Samagotchi
     end
 
     # One card entry as an ask to judge: an Ask, a skip reason (:already_replayed,
-    # :answered_by_parent, :unanswered, :no_approval, :no_question_id), or nil
-    # for an entry that is not a question at all.
-    def ask_of(entry, session_id, replayed)
+    # :answered_by_parent, :parent_cannot_allow, :unanswered, :no_approval,
+    # :no_question_id), or nil for an entry that is not a question at all.
+    def ask_of(entry, session_id, replayed, sessions_dir)
       return nil unless entry.is_a?(Hash) && entry[:type] == "question"
 
       pending = entry[:pending_question]
@@ -175,18 +180,51 @@ module Samagotchi
       return :no_question_id if question_id.empty?
       return :already_replayed if replayed.include?(question_id)
 
+      answer = entry[:answer]
       label = if entry[:cancelled]
                 "none"
-              elsif entry[:answer].nil?
+              elsif answer.nil?
                 return :unanswered
-              elsif entry[:answer][:by] == "parent_agent"
-                return :answered_by_parent
+              elsif answer[:by] == "parent_agent"
+                # A parent's allow is not the user's decision. Its deny is a
+                # label only where the parent could have allowed: a parent
+                # that was not allowed to permit says nothing about the user
+                # (docs/guardrails.md, "System 1").
+                return :answered_by_parent unless label_for(answer, pending[:approval][:scopes]) == "deny"
+                return :parent_cannot_allow unless parent_may_permit?(pending, session_id, sessions_dir)
+
+                "deny"
               else
-                label_for(entry[:answer], pending[:approval][:scopes])
+                label_for(answer, pending[:approval][:scopes])
               end
 
       Ask.new(question_id: question_id, session_id: session_id, approval: pending[:approval],
               label: label, asked_at: pending[:created_at])
+    end
+
+    # Whether this session's parent could have allowed the ask: not a
+    # user-only ask, and a parent level that permits one. No session file:
+    # not permitted.
+    def parent_may_permit?(pending, session_id, sessions_dir)
+      return false if pending[:user_only] == true
+
+      session = session_of(session_id, sessions_dir)
+      return false if session.nil?
+
+      Guardrails::ParentPolicy.for_session(session).allow?("permit")
+    end
+
+    # The session a card belongs to, or nil when there is no session file;
+    # read once per session for the run.
+    def session_of(session_id, sessions_dir)
+      return nil unless Session.valid_id?(session_id)
+      return nil unless File.exist?(Session.session_file(session_id, state_dir: sessions_dir))
+
+      (@sessions ||= {})[session_id] ||= begin
+        Session.load(session_id, state_dir: sessions_dir)
+      rescue StandardError
+        nil
+      end
     end
 
     # What the user did, as the log's label: the scope they took, a denial
@@ -234,12 +272,7 @@ module Samagotchi
     # The session's title, as the ask's state carries it; nil when there is
     # no session file (the cards alone are enough to replay).
     def session_title(ask, sessions_dir)
-      return nil unless Session.valid_id?(ask.session_id)
-      return nil unless File.exist?(Session.session_file(ask.session_id, state_dir: sessions_dir))
-
-      Session.load(ask.session_id, state_dir: sessions_dir).display_title
-    rescue StandardError
-      nil
+      session_of(ask.session_id, sessions_dir)&.display_title
     end
 
     # The threshold for this run: --threshold, or guardrails.system_one.threshold.

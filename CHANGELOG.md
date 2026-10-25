@@ -13,15 +13,24 @@ and commands may change between minor versions. How releases are made:
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for
   the questions a guardrail ask would ask, with the new `guardrails.system_one.*` settings (`mode`, `host`, `model`,
   `rules`, `threshold`, `min_record`, `timeout_ms`) and `script/system-one-probe HOST [MODEL]`, which prints each
-  question's probability and latency. In `audit` (or `on`) mode every approval a user is about to see is now judged
-  first and written, with the answer they gave, to `guardrails/judgments.jsonl` beside the approvals store — nothing
-  about the ask changes yet, so every card still reaches the user. See [Guardrails](docs/guardrails.md#system-1-experimental).
+  question's probability and latency. In `audit` mode every approval a user is about to see is now judged
+  first and written, with the answer they gave, to `guardrails/judgments.jsonl` beside the approvals store. See
+  [Guardrails](docs/guardrails.md#system-1-experimental).
 - `chi guardrails replay [--dry-run] [--threshold T] [--model M]` runs System 1 over the approvals this machine's
   sessions already answered — read from their `cards.json` sidecars — and writes each judgment and the user's answer
   to `guardrails/judgments.jsonl`, so a rule's record starts with the asks the user really decided on. It prints a
-  per-rule table (asks, allowed, denied, auto at the threshold, false allows, no judgment) and skips parent-agent
-  answers, unanswered asks, relay cards and question ids a previous replay logged. Exits 2 when `guardrails.system_one.mode`
+  per-rule table (asks, allowed, denied, auto at the threshold, false allows, no judgment) and skips unanswered
+  asks, relay cards and question ids a previous replay logged; a parent agent's answer is not the user's, so only
+  its deny is replayed, and only where the parent could have allowed. Exits 2 when `guardrails.system_one.mode`
   is off or no host is set. See [Guardrails](docs/guardrails.md#seeding-the-record-chi-guardrails-replay).
+- **System 1 `on` mode answers for the user**: an ask is allowed once, without a question, when its rule is in
+  `guardrails.system_one.rules`, the judgment's probability is at `guardrails.system_one.threshold` (0.8 now, was
+  0.95), and that rule's record is clean — `guardrails.system_one.min_record` (5) asks at the threshold the user
+  allowed, and no false allow among its last 20 labelled asks. Calls that write chi's own config.yml, hooks,
+  installed bundles or the guardrails store are never auto-allowed, nor `chi-answer-piped`, `chi-answer-http` or
+  `chi-broadcast`; memory files are fair game. Nothing is stored in `approvals.json`, no card is opened and no
+  notification is sent, so an auto-allowed call is silent for now (the visible line is the next step). See
+  [Guardrails](docs/guardrails.md#answering-for-the-user-on-mode).
 
 ### Changed
 

@@ -617,10 +617,11 @@ which chi they need (`requires_chi`), so their rules don't hit this.
 
 System 1 is a cheap classifier that judges an approval — "would the user
 allow this?" — before it reaches them, so the asks they always allow stop
-reaching them. **P2a is the audit: with `mode: audit` (or `on`) every ask a
-person is about to see is judged and logged, and nothing about the ask
-changes.** The user is asked exactly as they would have been, and their
-answer is what settles the call, as always. Auto-allowing (P3) comes later.
+reaching them. With `mode: audit` every ask a person is about to see is
+judged and logged and **nothing about the ask changes**: the user is asked
+exactly as they would have been, and their answer is what settles the call.
+With `mode: on` an ask that passes every gate is allowed **once** without
+reaching them — see [Answering for the user](#answering-for-the-user-on-mode).
 
 `Samagotchi::SystemOne` (lib/samagotchi/system_one/) speaks the TypeSafe
 "System One" judgment API: `POST <host>/v1/systemone` with
@@ -636,7 +637,7 @@ guardrails:
     host: splash             # the hosts: entry serving /v1/systemone
     model: Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0   # else the host's first model
     rules: [git-push, git-rebase]                  # the rule ids it may answer for
-    threshold: 0.95          # the probability an auto-allow needs
+    threshold: 0.8           # the probability an auto-allow needs
     min_record: 5            # clean records a rule needs before it is trusted
     timeout_ms: 2000         # a slower judgment is no judgment
 ```
@@ -669,25 +670,76 @@ keeping the newest half of its lines — once it passes 5 MB. A line is never
 rewritten to add its label:
 
 ```json
-{"kind":"judgment","id":"…","at":"…","session_id":"…","rule":"git-push","source":"config","tool":"execute","call":"git push origin main","call_digest":"<sha256 of the whole call>","repo_name":"samagotchi","p":0.97,"threshold":0.95,"model":"Qwen3.8-Flash","latency_ms":180,"decision":"audit","origin":"live"}
+{"kind":"judgment","id":"…","at":"…","session_id":"…","rule":"git-push","source":"config","tool":"execute","call":"git push origin main","call_digest":"<sha256 of the whole call>","repo_name":"samagotchi","p":0.97,"threshold":0.8,"model":"Qwen3.8-Flash","latency_ms":180,"decision":"audit","origin":"live"}
 {"kind":"label","id":"…","at":"…","answer":"allow_once"}
 ```
 
+`decision` is what the judgment led to: `audit` (audit mode), `asked` (on
+mode, the user was asked), `auto` (on mode, System 1 answered for the user).
 A judgment that never arrived is logged too, with `p` null, so the failures
 count as well. The label line, keyed by the judgment's id, is what the user
 did: `allow_once`, `allow_wide` (any scope wider than once), `deny`, or
 `none` for an ask that was cancelled. **A parent agent's answer is not the
-user's, so it writes no label at all.** `SystemOne::Log#entries` reads the
-file and returns the judgments joined with their last label.
+user's: its allow labels nothing. Its deny is a label only where the parent
+could have allowed instead** — the ask is not `user_only` and the session's
+parent level permits a permit (`Guardrails::ParentPolicy`); a parent that was
+not allowed to allow says nothing about what the user would have done. An
+auto-allow has no label at all, since nobody was asked.
+`SystemOne::Log#entries` reads the file and returns the judgments joined with
+their last label.
 
 Everything about the log is best-effort: a write that fails is one
 `Log.warn(:guardrails, "system_one_log_failed", …)` and the approval goes on
-as if System 1 were not there. `rules:` and `min_record:` are not read yet —
-P2a judges every ask; the rule opt-ins and the auto-allow are P3.
+as if System 1 were not there.
 
 `ruby script/system-one-probe HOST [MODEL]` asks three fixed approval-like
 questions through the client and prints each probability and the latency of
 the call — how a host is checked before any of this is turned on.
+
+### Answering for the user: `on` mode
+
+In `on` mode an ask is allowed **once**, without reaching the user, when every
+gate below passes, in this order:
+
+1. the mode is `on` (in `audit` the judgment decides nothing);
+2. the ask's rule is in `guardrails.system_one.rules` — `"git-push|git-rebase"`
+   or a YAML list, read like `guardrails.small_models`. Nothing is auto-allowed
+   by default: the user names the rules they want;
+3. the rule is not one of the three that let an agent answer chi's own
+   questions — `chi-answer-piped`, `chi-answer-http`, `chi-broadcast` — which
+   are never auto-allowed, even when listed
+   (`SystemOne::SelfProtect::NEVER_AUTO`);
+4. the call does not change chi itself (`SystemOne::SelfProtect.refuse?`): no
+   edit or write whose paths include config.yml in chi's config dir, anything
+   under the hooks dir, the installed bundles dir or the guardrails store (where
+   `approvals.json` and `judgments.jsonl` live), and no `execute` or
+   `task_create` command naming any of them — the `~/.config/samagotchi`
+   spelling counts too. The memories dir is deliberately not one of these:
+   reading or appending a memory file can be auto-allowed. A protected rule
+   (`Verdict::PROTECTED_RULES`) may be listed by name and System 1 may answer
+   it, but a call that really writes config.yml or the hooks is refused here;
+5. the judgment's `p` is at least `guardrails.system_one.threshold` (0.8);
+6. the rule's record is clean (`SystemOne::Record`, read from the log once per
+   ask): at least `guardrails.system_one.min_record` (5) of its asks judged at
+   or above the threshold that the user allowed, and none of its **last 20
+   labelled** asks judged at the threshold that the user denied or later
+   flagged as one System 1 should have asked about. Asks with no label, no
+   probability, or a `none` label count for neither side.
+
+Then the judgment's `decision` is `auto`, the verdict settles as
+`settle!(:allow, decided_by: "system one")` with scope `once`, and nothing is
+written to `approvals.json` — the next call is judged again. **No question is
+opened, so no card appears, no `:question_asked` hook fires, and no
+notification is sent.** The verdict's activity carries
+`note: "auto-allowed by System 1 (p=0.97)"`, `judgment_id` and `p`; the line
+that shows it in the terminal and the web is P3b, and is not rendered yet, so
+today an auto-allowed call simply looks like a call that never needed
+approval. If the judgment line cannot be written to the log, the ask goes to
+the user.
+
+A delegate child answers from its own session's settings: its System 1 can
+auto-allow a call even when the child's `parent_answers: hard` bars a parent
+from allowing it — the record gate is about the rule, not about who answers.
 
 ### Seeding the record: `chi guardrails replay`
 
@@ -704,10 +756,13 @@ It reads every session's sidecar, `$XDG_STATE_HOME/samagotchi/sessions/<id>/card
 whose `pending_question.approval` is there and that have an `answer` or were
 `cancelled`. A label is the scope the user took — `allow_once` for "Allow once",
 `allow_wide` for a wider one, `deny` for anything else, `none` for a cancelled
-ask. Skipped: a question no one answered, one answered by a parent agent (not
-the user), a relay card, which carries no approval of its own, and a question
-id a previous replay already logged — so running it twice adds nothing. A cards
-file that doesn't parse is skipped with one warning line, never a failed run.
+ask. Skipped: a question no one answered, a relay card, which carries no
+approval of its own, and a question id a previous replay already logged — so
+running it twice adds nothing. A parent agent's answer is not the user's: its
+allow is skipped, and its deny is replayed only where the parent could have
+allowed (the card is not `user_only` and the session's parent level permits a
+permit). A cards file that doesn't parse is skipped with one warning line,
+never a failed run.
 
 Each ask is judged exactly as a live one is (`SystemOne::ApprovalQuestion`),
 and written as a `judgment` line with `decision` and `origin` both `replay`,

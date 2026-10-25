@@ -6,6 +6,8 @@ require_relative "config"
 require_relative "log"
 require_relative "guardrails"
 require_relative "guardrails/parent_approvals"
+require_relative "guardrails/parent_policy"
+require_relative "model_match"
 require_relative "memory_bundle/manifest"
 require_relative "version"
 require_relative "hooks"
@@ -266,12 +268,19 @@ module Samagotchi
       # A call on chi's own config, hooks or guardrails is the user's to
       # allow, never a parent agent's (Guardrails::ParentPolicy).
       payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])
-      # System 1, audit phase: the ask the user is about to see is judged by
-      # the cheap model and logged, and the user is asked exactly as they
-      # would have been (the judgment decides nothing yet — P3).
-      judgment_id = system_one_judge(payload)
+      # System 1: the ask is judged before the user sees it, and in `on` mode
+      # one that passes every gate is allowed once without reaching them
+      # (docs/guardrails.md, "System 1").
+      judgment = system_one_judge(payload)
+      if judgment && judgment[:auto]
+        verdict.judgment = { id: judgment[:id], p: judgment[:p] }
+        verdict.settle!(:allow, decided_by: "system one")
+        verdict.scope = "once"
+        return verdict
+      end
+
       answer = @ask.call(payload)
-      system_one_label(judgment_id, answer, payload[:approval][:scopes])
+      system_one_label(judgment, answer, payload)
       Guardrails::Approval.settle(verdict, answer, payload[:approval][:scopes])
     end
 
@@ -286,10 +295,12 @@ module Samagotchi
     end
 
     # System 1's judgment of an ask, written to the log before the user is
-    # asked. A participant's review turn is never judged, and no client (mode
-    # off, no host) means no line at all. A judgment that fails is logged with
-    # p nil, so the failures are in the log too.
-    # @return [String, nil] the judgment's id, nil when nothing was written
+    # asked, with the decision it led to: "auto" (it answered for the user),
+    # "asked" (on mode, the user decides) or "audit" (audit mode). A
+    # participant's review turn is never judged, and no client (mode off, no
+    # host) means no line at all. A judgment that fails is logged with p nil,
+    # so the failures are in the log too.
+    # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
     def system_one_judge(payload)
       return nil if Steer.participant_author?(turn_author)
 
@@ -310,31 +321,79 @@ module Samagotchi
         nil
       end
       latency_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+      p = answers && answers[SystemOne::ApprovalQuestion::ID]&.noul
+      auto = system_one_auto_allow?(client, approval, p, log)
+      decision = system_one_decision(client, auto)
 
-      log.judgment(session_id: @session_lookup.call&.id,
-                   rule: approval[:rule], source: approval[:source], tool: approval[:tool],
-                   **SystemOne::ApprovalQuestion.call_fields(approval),
-                   repo_name: approval[:repo_name],
-                   p: answers && answers[SystemOne::ApprovalQuestion::ID]&.noul,
-                   threshold: Config.get("guardrails.system_one.threshold"),
-                   model: client.model, latency_ms: latency_ms,
-                   decision: "audit", origin: "live")
+      id = log.judgment(session_id: @session_lookup.call&.id,
+                        rule: approval[:rule], source: approval[:source], tool: approval[:tool],
+                        **SystemOne::ApprovalQuestion.call_fields(approval),
+                        repo_name: approval[:repo_name],
+                        p: p, threshold: Config.get("guardrails.system_one.threshold"), model: client.model,
+                        latency_ms: latency_ms, decision: decision, origin: "live")
+      # A judgment the log cannot hold is no judgment: the user is asked.
+      { id: id, p: p, auto: auto && !id.nil? }
     rescue StandardError => e
       # The approval never fails because of System 1.
-      Samagotchi::Log.warn(:guardrails, "system_one_audit_failed", error: "#{e.class}: #{e.message}")
+      Samagotchi::Log.warn(:guardrails, "system_one_judgment_failed", error: "#{e.class}: #{e.message}")
       nil
+    end
+
+    # What the judgment line says it did: "auto" (System 1 answered for the
+    # user), "asked" (on mode, the user decides), "audit" (nothing decided).
+    def system_one_decision(client, auto)
+      return "auto" if auto
+
+      client.mode == "on" ? "asked" : "audit"
+    end
+
+    # Every gate an auto-allow must pass, in order: the mode, the rule the
+    # user opted in, the never-list and chi's own files, the probability, and
+    # the rule's record. Any one that fails leaves the ask to the user. The
+    # log is read once per ask.
+    def system_one_auto_allow?(client, approval, p, log)
+      return false unless client.mode == "on"
+
+      rule = approval[:rule].to_s
+      return false if rule.empty?
+      return false unless system_one_rules.include?(rule)
+      return false if SystemOne::SelfProtect.refuse?(approval)
+
+      threshold = Config.get("guardrails.system_one.threshold").to_f
+      return false if p.nil? || p.to_f < threshold
+
+      min_record = Config.get("guardrails.system_one.min_record").to_i
+      SystemOne::Record.new(log.entries, rule: rule).qualifies?(threshold: threshold, min_record: min_record)
+    rescue StandardError => e
+      Samagotchi::Log.warn(:guardrails, "system_one_gate_failed", error: "#{e.class}: #{e.message}")
+      false
+    end
+
+    # guardrails.system_one.rules: a "|"-separated string or a YAML list,
+    # read with the same grammar as guardrails.small_models.
+    def system_one_rules
+      ModelMatch.parse(Config.get("guardrails.system_one.rules"))
+    rescue StandardError
+      []
     end
 
     # The user's answer to that ask, as a label on the judgment: the scope
     # they took, a denial, or none for an ask that was cancelled. A parent
-    # agent's answer is not the user's, so it labels nothing.
-    def system_one_label(id, answer, scopes)
+    # agent's answer is not the user's: its allow labels nothing, and its
+    # deny is a label only where the parent could have allowed — a parent
+    # that was not allowed to permit says nothing about what the user would
+    # have done (docs/guardrails.md, "System 1").
+    def system_one_label(judgment, answer, payload)
+      id = judgment && judgment[:id]
       return nil if id.nil?
 
+      scopes = Array(payload[:approval][:scopes])
       if !answer.is_a?(Samagotchi::QuestionAnswer)
         label = "none"
       elsif answer.parent_agent?
-        return nil
+        return nil if parent_allowed?(answer, scopes) || !parent_may_permit?(payload)
+
+        label = "deny"
       else
         index = answer.selected_indices.first
         label = if index && index < scopes.size
@@ -347,6 +406,20 @@ module Samagotchi
     rescue StandardError => e
       Samagotchi::Log.warn(:guardrails, "system_one_label_failed", error: "#{e.class}: #{e.message}")
       nil
+    end
+
+    # Whether a parent's answer picked one of the offered scopes.
+    def parent_allowed?(answer, scopes)
+      index = answer.selected_indices.first
+      !index.nil? && index < scopes.size
+    end
+
+    # Whether this session's parent level lets a parent allow a call at all,
+    # and the ask is not one only the user may answer.
+    def parent_may_permit?(payload)
+      return false if payload[:user_only]
+
+      Guardrails::ParentPolicy.for_session(@session_lookup.call).allow?("permit")
     end
 
     # The work tree top of the session's working_directory (the folder
