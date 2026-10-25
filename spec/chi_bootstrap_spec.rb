@@ -83,6 +83,17 @@ RSpec.describe "chi bootstrap" do
       .to eq(%w[agents-md check-in core cost-cap guardrails loop-guard samagotchi-system slow-commands work-cap])
   end
 
+  it "doesn't ask about Markdown without a terminal, and names --web-markdown in the next steps" do
+    server.default("/v1/models", json: models("m"))
+
+    out, err, status = bootstrap(target, "--no-test")
+
+    expect([err, status]).to eq(["", 0])
+    expect(out).not_to include("Markdown in chi web?")
+    expect(out).to match(/^ +chi web --web-markdown +# Markdown answers/)
+    expect(written).not_to have_key("web")
+  end
+
   it "installs nothing again on a second run, with the config already there" do
     server.default("/v1/models", json: models("m"))
 
@@ -466,12 +477,28 @@ RSpec.describe "chi bootstrap" do
     # here, never the suite's shared config dir.
     around { |example| with_env("XDG_CONFIG_HOME" => File.join(home, "process-config")) { example.run } }
 
-    def run_command(input, *args, extra_env: {}, bundles: nil)
+    # No real `gem install` here: +gem_runner+ answers [output, success]
+    # and records its argv in gem_runs; commonmarker counts as installed
+    # unless +gem_present+ says otherwise.
+    def run_command(input, *args, extra_env: {}, bundles: nil, gem_present: true, gem_runner: nil)
       out = StringIO.new
       err = StringIO.new
       command = Samagotchi::BootstrapCommand.new(args, stdin: tty.new(input), stdout: out, stderr: err,
-                                                       env: extra_env, config_path: config, bundles: bundles)
+                                                       env: extra_env, config_path: config, bundles: bundles,
+                                                       gem_present: -> { gem_present }, gem_runner: gem_runner || fake_gem(["", true]))
       [command.run, out.string, err.string]
+    end
+
+    def gem_runs = @gem_runs ||= []
+
+    def fake_gem(answer)
+      runs = gem_runs
+      Class.new do
+        define_method(:run) do |argv|
+          runs << argv
+          answer
+        end
+      end.new
     end
 
     def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
@@ -483,7 +510,7 @@ RSpec.describe "chi bootstrap" do
       stub_const("Samagotchi::VERSION", "#{major}.#{minor + 1}.0")
       server.default("/v1/models", json: models("m"))
 
-      code, out, err = run_command("y\n", target, "--no-test")
+      code, out, err = run_command("y\nn\n", target, "--no-test")
 
       expect([code, err]).to eq([0, ""])
       expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\n",
@@ -499,10 +526,11 @@ RSpec.describe "chi bootstrap" do
     it "leaves dev out on no" do
       server.default("/v1/models", json: models("m"))
 
-      code, out, = run_command("\n", target, "--no-test")
+      code, out, = run_command("\nn\n", target, "--no-test")
 
       expect(code).to eq(0)
-      expect(out).to include("Also install dev", "chi bundle install dev")
+      expect(out).to include("Also install dev", "chi bundle install dev", "Render answers as Markdown in chi web? [Y/n] ")
+      expect(written).not_to have_key("web")
       expect(installed).to eq(%w[agents-md check-in core cost-cap guardrails loop-guard samagotchi-system slow-commands work-cap])
     end
 
@@ -564,6 +592,98 @@ RSpec.describe "chi bootstrap" do
       expect(code).to eq(0)
       expect(out).to include("API key environment variable")
       expect(written.dig("hosts", "local", "api_key_env")).to eq("FAKE_KEY")
+    end
+
+    describe "Markdown in chi web" do
+      # No dev prompt: the Markdown one is the only question after the pick.
+      let(:quiet_bundles) do
+        Class.new do
+          def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+          def to_install(_) = []
+
+          def install(name, dry_run: false)
+            Samagotchi::MemoryBundle::Profile::InstallResult.new(name: name, version: "0.1.0", installed: [], already: [], skipped: {},
+                                                                 failed: {}, kept_own: {})
+          end
+        end.new
+      end
+      let(:prompt) { "Render answers as Markdown in chi web? [Y/n] " }
+      let(:failed_line) do
+        "commonmarker: install failed (error: cargo not found); answers stay plain text — gem install commonmarker, " \
+          "then chi web --web-markdown\n"
+      end
+
+      before { server.default("/v1/models", json: models("m")) }
+
+      def markdown(input, *args, **opts) = run_command(input, target, "--no-test", *args, bundles: quiet_bundles, **opts)
+
+      it "writes web.markdown: true as a boolean on yes (the default), without gem install when commonmarker is there" do
+        code, out, err = markdown("\n")
+
+        expect([code, err]).to eq([0, ""])
+        expect(out).to include(prompt, "web: markdown on (config.yml)\n")
+        expect(written["web"]).to eq("markdown" => true)
+        expect(Samagotchi::Config.resolve("web.markdown", file_data: written, env: {})).to be(true)
+        expect(gem_runs).to be_empty
+        expect(out).to match(/^ +chi web --open +# the web UI$/)
+        expect(out).not_to include("--web-markdown")
+      end
+
+      it "installs commonmarker with this Ruby's gem command when it is missing, then writes the setting" do
+        code, out, = markdown("y\n", gem_present: false)
+
+        expect(code).to eq(0)
+        expect(gem_runs).to eq([[Samagotchi::GemUpdate.gem_bin, "install", "commonmarker", "--no-document"]])
+        expect(out).to include("commonmarker: installing…\nweb: markdown on (config.yml)\n")
+        expect(written.dig("web", "markdown")).to be(true)
+      end
+
+      it "writes nothing when the install fails, says why in one line and keeps the exit code" do
+        failing = fake_gem(["Building native extensions. This could take a while...\nerror: cargo not found\n\n", false])
+
+        code, out, err = markdown("y\n", gem_present: false, gem_runner: failing)
+
+        expect([code, err]).to eq([0, ""])
+        expect(out).to include(failed_line)
+        expect(out).not_to include("markdown on")
+        expect(written).not_to have_key("web")
+        expect(out).to match(/^ +chi web --web-markdown +# Markdown answers \(needs gem install commonmarker\)$/)
+      end
+
+      it "leaves it off on no, and on a closed stdin despite the default" do
+        ["n\n", ""].each do |input|
+          FileUtils.rm_f(config)
+          code, out, = markdown(input)
+
+          expect(code).to eq(0)
+          expect(out).to include(prompt)
+          expect(written).not_to have_key("web")
+          expect(out).to match(/^ +chi web --web-markdown +# Markdown answers$/)
+        end
+        expect(gem_runs).to be_empty
+      end
+
+      it "doesn't ask when the config has it on already, and keeps an existing file's comments when it writes" do
+        FileUtils.mkdir_p(File.dirname(config))
+        File.write(config, "# mine\nweb:\n  markdown: true\n")
+        _, out, = markdown("y\n")
+        expect(out).not_to include(prompt)
+
+        File.write(config, "# mine\nweb:\n  # rendering\n  markdown: false\n")
+        _, out, = markdown("y\n")
+        expect(out).to include(prompt, "web: markdown on (config.yml)")
+        expect(File.read(config)).to start_with("# mine\nweb:\n  # rendering\n  markdown: true\n")
+      end
+
+      it "only says it would ask on a dry run" do
+        code, out, = markdown("y\n", "--dry-run", gem_present: false)
+
+        expect(code).to eq(0)
+        expect(out).to include("web: would ask about Markdown in chi web\n")
+        expect(out).not_to include(prompt)
+        expect(gem_runs).to be_empty
+        expect(File.exist?(config)).to be(false)
+      end
     end
   end
 end

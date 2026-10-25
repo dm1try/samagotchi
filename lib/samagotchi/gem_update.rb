@@ -39,8 +39,12 @@ module Samagotchi
       end
     end
 
+    # This Ruby's own gem command (chi bootstrap installs commonmarker with
+    # it too).
+    def self.gem_bin = File.join(RbConfig::CONFIG["bindir"], "gem")
+
     # @param fetcher [#call, nil] → the latest.json body (specs)
-    def initialize(env: ENV, fetcher: nil, runner: Runner.new, gem_bin: File.join(RbConfig::CONFIG["bindir"], "gem"))
+    def initialize(env: ENV, fetcher: nil, runner: Runner.new, gem_bin: GemUpdate.gem_bin)
       @env = env
       @fetcher = fetcher || method(:fetch)
       @runner = runner

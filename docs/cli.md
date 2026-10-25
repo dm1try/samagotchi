@@ -99,6 +99,16 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).
   A bundle that fails to install makes the exit 1. `--dry-run` says what it
   would install.
+- **Markdown in chi web.** Then, on a terminal and unless config.yml has
+  `web: markdown: true` already, it asks `Render answers as Markdown in chi web? [Y/n]`
+  (a closed stdin is no). Yes installs the `commonmarker` gem when it is
+  missing (`gem install commonmarker` through the Ruby chi runs on; it can take
+  a while where no precompiled build exists) and writes `web: markdown: true`
+  into config.yml, its comments kept ("web: markdown on (config.yml)"). A failed
+  install says so in one line with gem's last output line, writes nothing and
+  leaves the exit code as it was. Without a terminal it doesn't ask; a new
+  config's next steps then name `chi web --web-markdown`. `--dry-run` says it
+  would ask.
 
 ### Writing a bundle: new, test, check
 
@@ -898,7 +908,8 @@ Bundler, `gem install commonmarker`):
 chi web --web-markdown
 ```
 
-The setting also supports `SAMAGOTCHI_WEB_MARKDOWN=true` or the global config:
+`chi bootstrap` offers to turn it on (and install commonmarker) on a terminal
+(see [First setup](#first-setup)). The setting also supports `SAMAGOTCHI_WEB_MARKDOWN=true` or the global config:
 
 ```yaml
 web:

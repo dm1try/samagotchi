@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 - chi web tells you Markdown rendering exists: while `web.markdown` is off, a session shows a one-line tip (restart
   chi web with `--web-markdown`, or `web.markdown: true` in config.yml; plus `gem install commonmarker` when the gem
   is missing). Its × hides it for that browser.
+- `chi bootstrap` on a terminal asks "Render answers as Markdown in chi web? [Y/n]": yes installs the commonmarker
+  gem when it is missing and writes `web: markdown: true` into config.yml, its comments kept; a failed install says
+  why in one line and writes nothing. Without a terminal, a new config's next steps name `chi web --web-markdown`.
 
 ### Fixed
 

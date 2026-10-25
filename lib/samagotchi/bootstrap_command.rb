@@ -5,6 +5,7 @@ require_relative "config"
 require_relative "model_profile"
 require_relative "host_registry"
 require_relative "host_keys"
+require_relative "gem_update"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
@@ -18,7 +19,8 @@ module Samagotchi
   # Anthropic's Messages API, Bootstrap::Probe), picks the model, sends one
   # test request and writes config.yml: a fresh file, or a hosts: entry
   # added to an existing one. Then it installs the
-  # system bundle and the core profile, and on a terminal asks about dev.
+  # system bundle and the core profile, and on a terminal asks about dev
+  # and Markdown in chi web (installing commonmarker when it is missing).
   # Prompts only on a terminal; a script gets the list and exit 2 instead.
   class BootstrapCommand
     include CLI::Command
@@ -53,7 +55,7 @@ module Samagotchi
         entry added (after a backup), and its other lines stay as they are.
         Then it installs the system bundle and the core bundles (loop-guard,
         check-in, guardrails, slow-commands, agents-md), and on a terminal
-        offers the dev bundles.
+        offers the dev bundles and Markdown in chi web.
     TEXT
 
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
@@ -75,13 +77,18 @@ module Samagotchi
     DEV = "dev"
     # The config outcomes after which the bundles are installed.
     INSTALLS_BUNDLES = %i[new appended exists snippet].freeze
+    # The optional gem chi web renders Markdown with (web.markdown).
+    MARKDOWN_GEM = "commonmarker"
+    MARKDOWN_HINT = "answers stay plain text — gem install #{MARKDOWN_GEM}, then chi web --web-markdown".freeze
 
     # @param argv [Array<String>] the arguments after "bootstrap"
     # @param probe [Bootstrap::Probe, nil] (specs)
     # @param bundles [Bootstrap::Bundles, nil] (specs: the bundles go where
     #   the process ENV points, not +env+)
+    # @param gem_runner [#run] runs `gem install commonmarker` (GemUpdate::Runner)
+    # @param gem_present [#call, nil] → whether commonmarker is installed
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, env: ENV, probe: nil, config_path: nil,
-                   platform: RbConfig::CONFIG["host_os"], bundles: nil)
+                   platform: RbConfig::CONFIG["host_os"], bundles: nil, gem_runner: GemUpdate::Runner.new, gem_present: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -91,6 +98,9 @@ module Samagotchi
       @config_path = config_path || ConfigFile.global_path(env: env)
       @platform = platform
       @bundles = bundles || Bootstrap::Bundles.new
+      @gem_runner = gem_runner
+      # Installed, without loading its native extension into this process.
+      @gem_present = gem_present || -> { Gem::Specification.find_all_by_name(MARKDOWN_GEM).any? }
     end
 
     # @return [Integer] 0 written (or already there), 1 failed (a failed
@@ -358,7 +368,8 @@ module Samagotchi
     end
 
     # The system bundle, core, and dev when a terminal says yes: one line
-    # each. 1 when something failed.
+    # each. Then Markdown in chi web (#offer_markdown). 1 when a bundle
+    # failed; the Markdown step never changes it.
     def install_bundles(dry_run: false)
       ok = system_bundle_line(@bundles.sync_system(dry_run: dry_run), dry_run)
       ok = install_profile(CORE, dry_run) && ok
@@ -366,7 +377,59 @@ module Samagotchi
         @stdout.print("Also install #{DEV} (#{members.join(", ")})? [y/N] ")
         ok = install_profile(DEV, false) && ok if @stdin.gets.to_s.strip.downcase.start_with?("y")
       end
+      offer_markdown(dry_run)
       ok ? 0 : 1
+    end
+
+    # On a terminal, unless config.yml has web.markdown on already: ask, and
+    # on yes install commonmarker when it is missing, then write
+    # web.markdown: true. A closed stdin is no, whatever the default.
+    # Sets @markdown_on for #next_steps.
+    def offer_markdown(dry_run)
+      @markdown_on = markdown_on?
+      return if @markdown_on || !tty?
+      return @stdout.puts("web: would ask about Markdown in chi web") if dry_run
+
+      @stdout.print("Render answers as Markdown in chi web? [Y/n] ")
+      answer = @stdin.gets
+      return if answer.nil?
+
+      answer = answer.strip.downcase
+      return unless answer.empty? || answer.start_with?("y")
+
+      @markdown_on = install_markdown_gem && write_markdown
+    end
+
+    # Whether @config_path (not the process's Config) has web.markdown on.
+    def markdown_on?
+      data = ConfigFile.read_yaml(path: @config_path)
+      raw = data["web"]["markdown"] if data.is_a?(Hash) && data["web"].is_a?(Hash)
+      Config.coerce!(Config.find_by_key("web.markdown"), raw) == true
+    rescue SessionConfig::Error
+      false
+    end
+
+    # true when commonmarker is there or `gem install` (this Ruby's own gem
+    # command) put it there; else one line with gem's last word on it.
+    def install_markdown_gem
+      return true if @gem_present.call
+
+      @stdout.puts("#{MARKDOWN_GEM}: installing…")
+      output, ok = @gem_runner.run([GemUpdate.gem_bin, "install", MARKDOWN_GEM, "--no-document"])
+      return true if ok
+
+      last = output.to_s.lines.map(&:strip).reject(&:empty?).last || "no output"
+      @stdout.puts("#{MARKDOWN_GEM}: install failed (#{last}); #{MARKDOWN_HINT}")
+      false
+    end
+
+    def write_markdown
+      ConfigFile.write_setting!("web.markdown", true, path: @config_path)
+      @stdout.puts("web: markdown on (config.yml)")
+      true
+    rescue StandardError => e
+      @stdout.puts("web: markdown not written (#{e.message.lines.first.to_s.strip}); #{MARKDOWN_HINT}")
+      false
     end
 
     # One line for the profile; false when it (or a member) failed.
@@ -477,7 +540,9 @@ module Samagotchi
     def next_steps
       dev = dev_to_install
       bundles = dev.empty? ? ["chi bundle list", "the installed bundles"] : ["chi bundle install #{DEV}", "more bundles (#{dev.join(", ")})"]
-      lines = [["chi", "a session"], ["chi web --open", "the web UI"], bundles]
+      lines = [["chi", "a session"], ["chi web --open", "the web UI"]]
+      lines << ["chi web --web-markdown", "Markdown answers#{" (needs gem install #{MARKDOWN_GEM})" unless @gem_present.call}"] unless @markdown_on
+      lines << bundles
       lines << ["chi desktop install", "macOS \"Send to chi\" helper"] if @platform.to_s.include?("darwin")
       lines.each_with_index do |(command, what), i|
         @stdout.puts("#{i.zero? ? "next:" : "     "}  #{command.ljust(22)} # #{what}")
