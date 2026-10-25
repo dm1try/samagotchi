@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-10-25
+
 ### Added
 
 - Auto titles: the idle recap also writes a 2-6 word title for the session, in the same request, and a session
@@ -25,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - chi web's all sessions list: once it held more cards than fit, every card was cut to 72px whatever it held, so a
   two-line title's meta row ran over the card's border and a parent's "▸ N delegates" chip was drawn under the next
   card, out of reach.
+
+Update with `chi update` (the system bundle 0.114.0), then restart `chi web`.
 
 ## [0.113.0] - 2026-10-25
 
@@ -4332,7 +4336,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.113.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.114.0...HEAD
+[0.114.0]: https://github.com/dm1try/samagotchi/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/dm1try/samagotchi/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/dm1try/samagotchi/compare/v0.111.1...v0.112.0
 [0.111.1]: https://github.com/dm1try/samagotchi/compare/v0.111.0...v0.111.1
