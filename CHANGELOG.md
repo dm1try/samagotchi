@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-10-25
+
 ### Added
 
 - chi web: in the phone's Home Screen app the bell opens a notifications sheet: this device's switch, then every
@@ -26,6 +28,8 @@ and commands may change between minor versions. How releases are made:
   command and turn 443 off.
 - `chi web --tunnel tailscale` turns Tailscale Serve on only once chi web has bound its port: a program that took the
   port between the free-port check and the bind was reachable from the tailnet until chi web gave up.
+
+Update with `chi update` (the system bundle 0.113.0), then restart `chi web`.
 
 ## [0.112.0] - 2026-10-25
 
@@ -4310,7 +4314,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.112.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.113.0...HEAD
+[0.113.0]: https://github.com/dm1try/samagotchi/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/dm1try/samagotchi/compare/v0.111.1...v0.112.0
 [0.111.1]: https://github.com/dm1try/samagotchi/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/dm1try/samagotchi/compare/v0.110.0...v0.111.0
