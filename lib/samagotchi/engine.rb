@@ -401,7 +401,12 @@ module Samagotchi
         cancelled: -> { !!active_cancel_controller&.cancelled? },
         # An approval of the model's call: :question_asked first (QuestionAsked).
         ask: ->(fields) { open_question(question_asked(QuestionAsked::KIND_APPROVAL, fields)) },
-        notify: ->(message) { guardrail_notify(message) }
+        notify: ->(message) { guardrail_notify(message) },
+        # System 1 (experimental, audit phase): the judgment client is read
+        # from config on every ask, and the running turn's cancel controller
+        # closes a judgment that is no longer wanted.
+        system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry) },
+        cancel_controller: -> { active_cancel_controller }
       )
     end
     private :build_guardrail_wiring

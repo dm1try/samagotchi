@@ -13,8 +13,9 @@ and commands may change between minor versions. How releases are made:
 - **System 1 (experimental)**: `Samagotchi::SystemOne` talks the TypeSafe judgment API (`POST <host>/v1/systemone`) for
   the questions a guardrail ask would ask, with the new `guardrails.system_one.*` settings (`mode`, `host`, `model`,
   `rules`, `threshold`, `min_record`, `timeout_ms`) and `script/system-one-probe HOST [MODEL]`, which prints each
-  question's probability and latency. Nothing judges yet: P1 is the client and the settings only, so every approval
-  card still reaches the user. See [Guardrails](docs/guardrails.md#system-1-experimental).
+  question's probability and latency. In `audit` (or `on`) mode every approval a user is about to see is now judged
+  first and written, with the answer they gave, to `guardrails/judgments.jsonl` beside the approvals store — nothing
+  about the ask changes yet, so every card still reaches the user. See [Guardrails](docs/guardrails.md#system-1-experimental).
 
 ### Changed
 

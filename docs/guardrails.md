@@ -617,9 +617,10 @@ which chi they need (`requires_chi`), so their rules don't hit this.
 
 System 1 is a cheap classifier that judges an approval — "would the user
 allow this?" — before it reaches them, so the asks they always allow stop
-reaching them. **P1 is the client and the settings only: nothing judges yet.**
-No ask is answered by System 1, and every approval card works exactly as
-before.
+reaching them. **P2a is the audit: with `mode: audit` (or `on`) every ask a
+person is about to see is judged and logged, and nothing about the ask
+changes.** The user is asked exactly as they would have been, and their
+answer is what settles the call, as always. Auto-allowing (P3) comes later.
 
 `Samagotchi::SystemOne` (lib/samagotchi/system_one/) speaks the TypeSafe
 "System One" judgment API: `POST <host>/v1/systemone` with
@@ -649,11 +650,44 @@ a body that isn't JSON, a question with no answer, a request longer than
 `timeout_ms`. A nil means "ask the user", which is what the caller would
 have done anyway.
 
+### What the audit writes
+
+With a client, `GuardrailWiring#request_approval` asks System 1 one `noul`
+question, `allow`, before the user is asked. Its instruction is a constant
+in code (`SystemOne::ApprovalQuestion::INSTRUCTIONS`), reviewed like a
+prompt; the state is the ask's own facts — the rule and its source, the
+reason, the tool, the command (or the paths) cut to 2000 characters, the
+edit's diff, the cwd, the repo and branch, and the session's title when it
+has one. A participant's review turn is never judged: there is no user
+there to ask. The judgment runs before the card appears, so an ask is slower
+by up to `timeout_ms` (2000 ms by default).
+
+Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
+`$XDG_STATE_HOME/samagotchi/guardrails/` (`SystemOne::Log`): 0600, appended
+under an exclusive `flock` (several workers write it), and rewritten —
+keeping the newest half of its lines — once it passes 5 MB. A line is never
+rewritten to add its label:
+
+```json
+{"kind":"judgment","id":"…","at":"…","session_id":"…","rule":"git-push","source":"config","tool":"execute","call":"git push origin main","call_digest":"<sha256 of the whole call>","repo_name":"samagotchi","p":0.97,"threshold":0.95,"model":"Qwen3.8-Flash","latency_ms":180,"decision":"audit","origin":"live"}
+{"kind":"label","id":"…","at":"…","answer":"allow_once"}
+```
+
+A judgment that never arrived is logged too, with `p` null, so the failures
+count as well. The label line, keyed by the judgment's id, is what the user
+did: `allow_once`, `allow_wide` (any scope wider than once), `deny`, or
+`none` for an ask that was cancelled. **A parent agent's answer is not the
+user's, so it writes no label at all.** `SystemOne::Log#entries` reads the
+file and returns the judgments joined with their last label.
+
+Everything about the log is best-effort: a write that fails is one
+`Log.warn(:guardrails, "system_one_log_failed", …)` and the approval goes on
+as if System 1 were not there. `rules:` and `min_record:` are not read yet —
+P2a judges every ask; the rule opt-ins and the auto-allow are P3.
+
 `ruby script/system-one-probe HOST [MODEL]` asks three fixed approval-like
 questions through the client and prints each probability and the latency of
-the call — how a host is checked before any of this is turned on. The
-decision log, the rule opt-ins and the auto-allow itself come in later
-phases.
+the call — how a host is checked before any of this is turned on.
 
 ## The guardrails bundle
 

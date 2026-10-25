@@ -78,7 +78,8 @@ module Samagotchi
 
       # One warn, one nil: the ask goes to the user.
       def no_judgment(reason, **fields)
-        Log.warn(:guardrails, "system_one_failed", echo: "[samagotchi:guardrails] system one: #{reason}", host: @host, **fields)
+        # Qualified: inside SystemOne, the bare Log is now SystemOne::Log.
+        Samagotchi::Log.warn(:guardrails, "system_one_failed", echo: "[samagotchi:guardrails] system one: #{reason}", host: @host, **fields)
         nil
       end
     end

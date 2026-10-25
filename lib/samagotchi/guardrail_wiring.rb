@@ -10,6 +10,7 @@ require_relative "memory_bundle/manifest"
 require_relative "version"
 require_relative "hooks"
 require_relative "edit_preview"
+require_relative "system_one"
 require_relative "tool_activity"
 require_relative "turn_origin"
 
@@ -38,8 +39,11 @@ module Samagotchi
     # @param ask       [#call] (fields) → the answer; the Engine's question flow
     # @param notify    [#call] (message) → shows a guardrails line in every UI
     #   (a bundle's rules kept because it needs a newer chi)
+    # @param system_one [#call] → SystemOne::Client or nil: the judgment client
+    #   (nil while `guardrails.system_one.mode` is off or no host is set)
+    # @param cancel_controller [#call] → the running turn's CancellationController, nil
     def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
-                   notify: ->(_message) {})
+                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
@@ -49,6 +53,8 @@ module Samagotchi
       @cancelled_lookup = cancelled
       @ask = ask
       @notify = notify
+      @system_one = system_one
+      @cancel_controller = cancel_controller
       # Bundle name → the rules last loaded from it whole, kept while the
       # installed version needs a newer chi; [name, version] said so once.
       @loaded_bundle_rules = {}
@@ -82,6 +88,7 @@ module Samagotchi
     def state_dir=(state_dir)
       @approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
       @approvals = Guardrails::Approvals::InMemory.new(@approvals) if @scratch
+      @system_one_log = nil
       @protected = nil
     end
 
@@ -259,10 +266,88 @@ module Samagotchi
       # A call on chi's own config, hooks or guardrails is the user's to
       # allow, never a parent agent's (Guardrails::ParentPolicy).
       payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])
-      Guardrails::Approval.settle(verdict, @ask.call(payload), payload[:approval][:scopes])
+      # System 1, audit phase: the ask the user is about to see is judged by
+      # the cheap model and logged, and the user is asked exactly as they
+      # would have been (the judgment decides nothing yet — P3).
+      judgment_id = system_one_judge(payload)
+      answer = @ask.call(payload)
+      system_one_label(judgment_id, answer, payload[:approval][:scopes])
+      Guardrails::Approval.settle(verdict, answer, payload[:approval][:scopes])
     end
 
     private
+
+    # The judgments log (SystemOne::Log), beside the approvals store; nil
+    # while there is no store dir.
+    def system_one_log
+      return nil if @approvals.nil?
+
+      @system_one_log ||= SystemOne::Log.new(dir: File.dirname(@approvals.path))
+    end
+
+    # System 1's judgment of an ask, written to the log before the user is
+    # asked. A participant's review turn is never judged, and no client (mode
+    # off, no host) means no line at all. A judgment that fails is logged with
+    # p nil, so the failures are in the log too.
+    # @return [String, nil] the judgment's id, nil when nothing was written
+    def system_one_judge(payload)
+      return nil if Steer.participant_author?(turn_author)
+
+      client = @system_one.call
+      log = system_one_log
+      return nil if client.nil? || log.nil?
+
+      approval = payload[:approval]
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      answers = begin
+        client.ask(state: SystemOne::ApprovalQuestion.state(approval, session_title: @session_lookup.call&.title),
+                   questions: { SystemOne::ApprovalQuestion::ID => SystemOne::ApprovalQuestion.question },
+                   cancel_controller: @cancel_controller.call)
+      rescue StandardError => e
+        # The client already turns every failure it knows into a nil; this is
+        # the unexpected one. Either way the ask goes to the user.
+        Samagotchi::Log.warn(:guardrails, "system_one_ask_failed", error: "#{e.class}: #{e.message}")
+        nil
+      end
+      latency_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+
+      log.judgment(session_id: @session_lookup.call&.id,
+                   rule: approval[:rule], source: approval[:source], tool: approval[:tool],
+                   **SystemOne::ApprovalQuestion.call_fields(approval),
+                   repo_name: approval[:repo_name],
+                   p: answers && answers[SystemOne::ApprovalQuestion::ID]&.noul,
+                   threshold: Config.get("guardrails.system_one.threshold"),
+                   model: client.model, latency_ms: latency_ms,
+                   decision: "audit", origin: "live")
+    rescue StandardError => e
+      # The approval never fails because of System 1.
+      Samagotchi::Log.warn(:guardrails, "system_one_audit_failed", error: "#{e.class}: #{e.message}")
+      nil
+    end
+
+    # The user's answer to that ask, as a label on the judgment: the scope
+    # they took, a denial, or none for an ask that was cancelled. A parent
+    # agent's answer is not the user's, so it labels nothing.
+    def system_one_label(id, answer, scopes)
+      return nil if id.nil?
+
+      if !answer.is_a?(Samagotchi::QuestionAnswer)
+        label = "none"
+      elsif answer.parent_agent?
+        return nil
+      else
+        index = answer.selected_indices.first
+        label = if index && index < scopes.size
+                  scopes[index] == "once" ? "allow_once" : "allow_wide"
+                else
+                  "deny"
+                end
+      end
+      system_one_log.label(id, label)
+    rescue StandardError => e
+      Samagotchi::Log.warn(:guardrails, "system_one_label_failed", error: "#{e.class}: #{e.message}")
+      nil
+    end
 
     # The work tree top of the session's working_directory (the folder
     # itself outside a repo, or when it's gone); never Dir.pwd, which is
