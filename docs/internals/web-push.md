@@ -1,17 +1,19 @@
 # Web Push (internals)
 
-chi web pushes to the owner's phone when a session waits on an approval or a question: the phone runs chi web as a
-Home Screen app (iOS 16.4+), its bell subscribes the device, and chi web, the only sender, pushes through the
-device's push service (Apple's `web.push.apple.com`). The user side is in
-[configuration.md](../configuration.md#phone-notifications-web-push). This page is how it is built (P1 of the plan:
-approvals and questions; the step-limit question, cards, failed and done turns, presence and the device list come
-later).
+chi web pushes to the owner's phone when a session needs them, for what the tab notifies for: an approval, a
+question, a step-limit question, a card with actions, a failed turn, and (per device, off by default) a done one. The
+phone runs chi web as a Home Screen app (iOS 16.4+), its bell subscribes the device, and chi web, the only sender,
+pushes through the device's push service (Apple's `web.push.apple.com`). The user side is in
+[configuration.md](../configuration.md#phone-notifications-web-push). This page is how it is built (P1 and P2a of the
+plan; the devices list in the page and `chi web push` come later).
 
 ```
 SessionHub ──emit──▶ Notifier#call(event) ──Queue──▶ sender thread
-                         Attention rules               hold 3 s → still open?
+                         Attention rules               hold 3 s → still open? a page in front? the cap?
                                                        Crypto.encrypt + VAPID → Client#deliver(endpoint)
                                                        201 ok · 404/410 drop the device · 403 BadJwtToken stop + log
+                                                       429/5xx one retry · handled keys → sent.json
+                     page ──POST /api/push/presence──▶ Presence (in front, touched < 2 min)
 service worker ◀── Apple (web.push.apple.com) ◀──────── {v, kind: show, tag, title, body, url, badge, open?}
 ```
 
@@ -50,8 +52,14 @@ files, one per machine, never in config.yml:
   another key and makes a new one.
 - `subscriptions.json`: `{"version": 1, "subscriptions": [{id, endpoint, keys: {p256dh, auth}, origin, label,
   created_at, last_ok_at, last_error, prefs}]}`, read as `Store::Sub` values. `id` is the first 8 hex of the
-  endpoint's SHA-256: the only name of a device outside the store. `Sub#public_h` and `#inspect` never carry the
-  endpoint or the keys; neither do the log lines.
+  endpoint's SHA-256: the only name of a device outside the store. `Sub#public_h` (id, label, origin, the dates,
+  `last_error`, `prefs: {done:}`) and `#inspect` never carry the endpoint or the keys; neither do the log lines.
+  `prefs` is `{"done": false}` until `Store#set_prefs(id, done:, origin:)` (the PATCH route) sets it; `Sub#done?`.
+- `sent.json`: `{"version": 1, "keys": {KEY: iso time}}`, the attention keys already handled (a device took the
+  show, or it was skipped while a page was in front, or capped), written by `Store#mark_sent` under `store.lock`,
+  keys older than a day (`SENT_KEEP`) pruned on each write. `Store#sent_keys` reads it; one that doesn't read is
+  logged once (`push_sent_corrupt`) and read as none, and the next write replaces it (it only spares a restart's
+  repeat). It is in `check_permissions!`'s list.
 
 `Store#add` checks what `pushManager.subscribe` gave, one message per refusal (the route answers it as 400
 `invalid_subscription`): an endpoint and both keys; https on port 443 without userinfo, at most 2048 bytes; a host in
@@ -73,9 +81,11 @@ tailnet leaves the old ones stale (never sent to: a tap would open an origin tha
 ## The client (`web/push/client.rb`)
 
 `Client#deliver(sub, payload, ttl:, urgency:)` encrypts the payload's JSON, POSTs it over TLS (open 5 s, read 10 s,
-no redirects, no retry) with `Content-Encoding: aes128gcm`, `TTL`, `Urgency` and the VAPID header, and answers a
-`Client::Result`: `:ok` (200/201/202), `:gone` (404/410: the device dropped it), `:bad_jwt` (403 with
-`BadJwtToken`), `:failed` (anything else; a connection error as its class name or `timeout`, never its message). The
+no redirects, no retry of its own) with `Content-Encoding: aes128gcm`, `TTL`, `Urgency` and the VAPID header, and
+answers a `Client::Result`: `:ok` (200/201/202), `:gone` (404/410: the device dropped it), `:bad_jwt` (403 with
+`BadJwtToken`), `:failed` (anything else; a connection error as its class name or `timeout`, never its message).
+A 429 or 5xx also carries `retry_after`: its `Retry-After` delta-seconds up to `RETRY_MAX` 60, else (missing, an
+HTTP date) `RETRY_DEFAULT` 10; nil for anything else, a connection error too (it may have been delivered). The
 transport is injectable: `spec/web/push/client_spec.rb` runs a fake push service (WEBrick, plain http through the
 injected transport) that decrypts each body with the device's key and checks the headers and the JWT.
 
@@ -84,18 +94,20 @@ injected transport) that decrypts each body with the device's key and checks the
 The service worker is the only reader of the payload (JSON, at most `Notifier::OPEN_LIMIT`, 3000 bytes, with
 `open`; one aes128gcm record leaves 3993 bytes of plaintext under Web Push's 4096: 86 header, 1 delimiter, 16 tag):
 
-- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":"/#/s/<id>","badge":N,"open":[KEY…]}`: TTL 12 h,
-  `Urgency: high`. `open` only while the whole list fits the limit; the test push (`chi:test`) has neither `open`
-  nor `badge`.
+- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":"/#/s/<id>","badge":N,"open":[KEY…]}`: a waiting
+  reason's (approval, question, continue, card) TTL 12 h (`SHOW_TTL`), `Urgency: high`; a failed or done turn's
+  TTL 10 min (`EVENT_TTL`), `Urgency: normal`. `open` only while the whole list fits the limit; the test push
+  (`chi:test`) has neither `open` nor `badge`.
 
-`badge` and `open` are the keys still open in the Notifier's summaries (`Attention.open_keys`: a pending approval
-or question, a hook's too, not relayed), so an approval pushed by an earlier chi web run still counts after a
-restart. `public/sw.js` is a classic script (module service workers on iOS are unverified) at scope `/`. Every push
+`badge` and `open` are the waiting keys still open in the Notifier's summaries (`Attention.open_keys`: a pending
+question of any reason, a hook's and a continue's too, not relayed, and a card with actions; never a failed or done
+turn), so an approval pushed by an earlier chi web run still counts after a restart. `public/sw.js` is a classic script (module service workers on iOS are unverified) at scope `/`. Every push
 event ends in `showNotification`: a payload that isn't a readable v1 show (no data, bad JSON, another `v`, a stale
 `close` from an older chi web, any other kind) shows a fallback (`chi` / "open chi", tag `chi:other`, url `/`), and a
 show iOS refuses is shown once more without its icon and data. A show calls `showNotification(title, {body, tag,
-icon, data: {url}})` first; then, when `open` is an array, closes every `getNotifications()` whose tag is a
-question's `"<sid>:<qid>"` (never `chi:*`), isn't the new one and isn't in `open` (after the show: closing before it
+icon, data: {url}})` first; then, when `open` is an array, closes every `getNotifications()` whose tag is a waiting
+key (`WAITING_TAG`: a question's `"<sid>:<qid>"` or a card's `"<sid>:card:<cid>"`, never `chi:*` nor a failed or
+done turn's `"<sid>:<ended_at>"`, whose time has colons), isn't the new one and isn't in `open` (after the show: closing before it
 fails on iOS; errors are swallowed); then `setAppBadge(badge)` when `badge` is a number. A tap focuses the app's first window and navigates it to the url, else opens one (only a path of chi web's); `install`
 skips waiting, `activate` claims the clients. A Home Screen app can stay open for days, and the browser checks for
 a newer `sw.js` only on `register()` and on navigations: so when the page comes back in front (`backInFront` in
@@ -111,17 +123,30 @@ transparency with black).
 
 ## The Notifier (`web/push/notifier.rb`) and its rules (`web/push/attention.rb`)
 
-`Push::Attention` is the server's port of `web/public/notify.js` for what P1 pushes, so a push and the tab's
-notification ring for the same thing under the same key:
+`Push::Attention` is the server's port of `web/public/notify.js`, so a push and the tab's notification ring for the
+same thing under the same key. **One set of rules for both sides**: `spec/fixtures/attention_cases.json` holds the
+cases (`attention`: `{name, prev, next, attention: {reason, key, hold_ms}|null, closed}` in the summary's JSON;
+`open_keys`: `{name, by_id, open}`), and `spec/web/push/attention_cases_spec.rb` (the summary's key types: symbols at
+the top and in `pending_question` / `pending_card`, strings in `last_turn`), `notify.test.js` (`attentionFor`,
+`closedKeys`) and `push.test.js` (`openPushKeys`) run every row. A change to either side adds its row there.
 
-- `Attention.for(prev, next)`: a new `pending_question` id that isn't `relayed_to` (absent when nil: the summary
-  compacts it), whose **reason** (notify.js `questionReason`: `approval`, `continue`, anything else incl. `hook` is
-  a question) is approval or question. Filtering on the reason, never on `kind == "question"`, keeps hook questions.
-  A delegated child's (`parent_id`) approval or hook question holds `RELAY_HOLD` 3.5 s (notify.js `RELAY_HOLD_MS`):
-  its parent may relay it. The key is `"<sid>:<qid>"`.
-- `Attention.closed_keys(prev, next)`: the question answered, replaced, newly relayed, or the session gone.
+- `Attention.for(prev, next)`, in notify.js's order:
+  1. a new `pending_question` id: none if it is `relayed_to` already (absent when nil: the summary compacts it);
+     else its **reason** (notify.js `questionReason`: `approval`, `continue`, anything else incl. `hook` is a
+     question), key `"<sid>:<qid>"`. A delegated child's (`parent_id`) approval or hook question holds `RELAY_HOLD`
+     3.5 s (notify.js `RELAY_HOLD_MS`): its parent may relay it.
+  2. a new `pending_card` id: `card`, key `"<sid>:card:<cid>"`.
+  3. a top-level turn whose `last_turn["ended_at"]` changed (a delegated child's is its parent's to report):
+     `failed`, or `done` when `completed` and `seconds` ≥ `DONE_MIN_SECONDS` 10 or its origin is in
+     `UNWATCHED_ORIGINS` (`delegate_report`, `context`, `task`); key `"<sid>:<ended_at>"`. A reminder turn follows
+     the same rules (no reminder event of its own).
+- `WAITING` (approval, question, continue, card) are the reasons that stay open until answered: badged, in `open`,
+  cleaned up, and pushed only while still open. A failed or done turn has nothing to answer.
+- `Attention.closed_keys(prev, next)`: the question answered, replaced, newly relayed; the card resolved or
+  replaced; both when the session is gone.
 - `Attention.text(summary, reason)`: notify.js `attentionText`'s words: the session's title, first preview or last
-  prompt clipped to 61, and "needs approval" / "needs an answer". Never the question or the command.
+  prompt clipped to 61, and "needs approval" / "needs an answer" / "hit its step limit" / "needs you" / "turn
+  failed" / "done in N s" (`last_turn["seconds"]` rounded). Never the question or the command.
 
 `Notifier#call(event)` is a `SessionHub` sink. **The hub calls it under its Monitor**, from the tick thread and also
 from chi web's request threads (`SessionHub#touch`, from the stop/archive/delete routes), so it only enqueues: a push
@@ -134,10 +159,30 @@ open already never pushes. The hub's projection is empty before its first scan, 
 once after the `chi` line's subscribe and before `notifier.start(hub)`, then `hub.start`. Events that reach the sink
 before the seed is in (they are newer than the snapshot) are applied after it.
 
-The sender thread holds each show (`HOLD` 3 s, or the event's own), then pushes it only while its key is still in
-`Attention.open_keys` of the summaries (read under the sink's mutex at flush time), to every subscription on this
-run's origin, with that list as `open` and its size as `badge`. A close only drops a show still in its hold: it
-pushes nothing. Results: `:ok` stamps the device's
+The sender thread holds each show (`HOLD` 3 s, or the event's own); then a waiting one goes only while its key is
+still in `Attention.open_keys` of the summaries (read under the sink's mutex at flush time), a failed or done one as
+is. It goes to every subscription on this run's origin (a done turn only to those whose `prefs.done` is true), with
+that list as `open` and its size as `badge`, unless:
+
+- **a page is in front** (`Push::Presence#present?`, below): no send at all, `push_skipped reason: present` (no
+  device), and the key is handled (never pushed later: the tab's notification and badge have it);
+- **the cap**: `CAP` 30 shows in a rolling `CAP_WINDOW` hour, counted per show event (one to N devices is one; the
+  test push isn't the Notifier's): over it, not sent, handled, and one `push_capped` warning per hour (on chi web's
+  terminal too).
+
+A close only drops a show still in its hold: it pushes nothing. **Retry**: a result with `retry_after` (a 429 or
+5xx) puts that device's show in the sender's retry table (`Notifier::Retry`, per key and device, due like a hold:
+the sender never sleeps, other shows go out meanwhile; `push_retry` logs it); it goes once more to that device, still
+there, only while a waiting key is open (a failed or done one as is), with the open list of that moment, and isn't
+counted against the cap again. A second failure is final: `push_failed` and `last_error`, as any failure. A key a
+device took (first try or retry), or one skipped or capped, goes in `sent.json` (`Store#mark_sent`).
+
+**Restart catch-up**: `Session#waiting_question` carries the question's `created_at` (`PendingQuestion#created_at`,
+iso8601; the summary's `pending_question` has it, the page ignores it). `Notifier#seed` shows each seed summary's
+open, not relayed question asked under `CATCH_UP` (an hour) ago whose key isn't in `sent.json` (`push_catch_up`):
+asked while chi web was down or restarting, it gets the normal hold, presence and the cap. Everything else seeds as
+before (cards carry no time). The first restart after P2a may push a seen, still-open question once (no `sent.json`
+yet). Results: `:ok` stamps the device's
 `last_ok_at`; `:gone` removes it; `:failed` keeps its code in `last_error` and logs `push_failed`; `:bad_jwt` logs
 one `push_bad_jwt` warning (on chi web's terminal too) and stops all pushes until chi web restarts. Log lines carry
 `device:` (the short id), `code:`, `ms:`, `kind:`: never the endpoint, keys or text. `#stop` drops pending holds and
@@ -150,16 +195,37 @@ joins with a timeout; `Server.start`'s ensure calls it. Specs drive `#pump` with
 `Web::PushRoutes`; `@push` is the run's `Push::Runtime` (store, client, origin), nil when push is off (no https
 public URL, or `web.push.enabled: false`):
 
-- `GET /api/push[?endpoint=E]` → `{enabled, public_key, origin, this: {id, label}|null}`; off: `enabled: false` and
-  no key.
+- `GET /api/push[?endpoint=E]` → `{enabled, public_key, origin, this: {id, label}|null, devices, stale}`: `devices`
+  this origin's (`Sub#public_h` + `this: bool`), `stale` how many were made on another origin; off: `enabled:
+  false` and no key.
 - `POST /api/push/subscriptions {subscription: {endpoint, keys}, replaces?: id}` → 201 `{id, label}`; the label is
   chi's own ("iPhone · <date>", from the User-Agent's device class: iPhone, iPad, Mac, else Browser); `replaces`
   drops the device's earlier entry (`Store#add`).
 - `DELETE /api/push/subscriptions {endpoint}` → 204.
+- `PATCH /api/push/subscriptions/ID {prefs: {done: true|false}}` → 200 the device's `Sub#public_h`; 404
+  `unknown_device` (not this origin's, or not a short id: the id is a `([^/]+)` capture checked in the handler, as
+  `participant_gate_spec`'s `path_for` fills only those), 400 `invalid_prefs`; logs `push_prefs`. ROUTES' first
+  PATCH row.
+- `POST /api/push/presence {page, front}` → 204 (also with push off: a desk tab has nothing to be told), 400
+  `invalid_presence`.
 - `POST /api/push/test {endpoint?}` → a test push to that device or every one on this origin, answered per device
   (`{devices: [{id, label, status, code, ms}]}`); the bell sends one after subscribing.
 
-With push off the three writes answer 409 `push_off`.
+With push off the subscription writes and the test answer 409 `push_off`.
+
+## Presence (`web/push/presence.rb`)
+
+"Don't push while I'm looking" is decided here, as the iPhone's service worker can't see the app in front. Every
+chi web page, a desk tab or the Home Screen app (`notifications.js`, whether or not it gets pushes itself), reports
+`POST /api/push/presence {page, front}`: `page` a random id per page load, `front` = visible + `hasFocus()` +
+touched (pointerdown, keydown, touchstart) in the last 2 min (`TOUCH_FRESH_MS`; the load counts as a touch). It
+reports on visibilitychange, window focus and blur, the first touch that brings it to the front, every 30 s
+(`PRESENCE_EVERY_MS`) while front and once more when 2 min pass untouched; a hide or `pagehide` sends `front: false`
+as a beacon (`presenceSender`: `navigator.sendBeacon` with a JSON Blob, same origin so the cookie goes; else the
+api's fetch; errors swallowed). `Push::Presence` keeps each page's last report in memory (a Mutex; at most
+`MAX_PAGES` 64, the longest unheard dropped); `present?` is any `front: true` younger than `TTL` 45 s. It is part of
+`Push::Runtime` (`presence`), so the route writes and the Notifier (built in `Server.start` from the Runtime) reads
+the same one. A page left in front untouched quiets the phone at most ~2 min after the last touch.
 
 ## The page (`public/push.js`, `public/notifications.js`)
 
@@ -175,8 +241,8 @@ delete (revoked meanwhile): then the id stays for the next subscribe to replace.
 chi web not pushing, the bell is the in-tab one, unchanged (no duplicate desktop pushes).
 
 **The device's tidy-up** (`syncDevice`, the Home Screen app with the bell on): closes the shown notifications whose
-tag is a question's (`push.js isQuestionTag`, so `chi:test` stays) and isn't open in the page's `byId`
-(`push.js openPushKeys`: `Attention.open_keys`'s rule, with notify.js's `questionReason`), and sets or clears the app
+tag is a waiting key (`push.js isWaitingTag`, so `chi:test` and a failed or done turn's stay) and isn't open in the
+page's `byId` (`push.js openPushKeys`: `Attention.open_keys`'s rule), and sets or clears the app
 badge (`navigator.setAppBadge` / `clearAppBadge`); the bell turned off clears it. It runs once push is known, when
 the page comes back in front, and after each hub frame while visible (so answering on the Mac with the app open
 clears it at once), one at a time with one rerun. Never before the first snapshot (an empty `byId` would close
@@ -201,7 +267,7 @@ can land after the page's tidy-up and stay until the next one. Unverified on iOS
   handler before `showNotification` doesn't remove the older one. A separate close push that only closed
   `getNotifications({tag})` did, but it shows nothing (see the quota below), so the worker now closes after its show.
 - **The service worker can't see the app in front** (`clients.matchAll` gave 0 windows with the app open) and a
-  banner shows anyway: "don't push while I'm looking" has to be decided server-side, from the pages' presence (P2).
+  banner shows anyway: "don't push while I'm looking" has to be decided server-side, from the pages' presence (see Presence above).
 - **Silent pushes**: the spike's 4 close pushes in a row didn't revoke the subscription, but that was luck or lazy
   enforcement: the user check's 6 did (WebKit's quota is 3 pushes that show nothing; see the top of this page).
 - iOS sent the cookie with the manifest, `sw.js` and icon fetches, but Chrome fetches manifests without credentials:

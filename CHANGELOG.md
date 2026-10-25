@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: the phone's push notifications now come for everything the tab notifies for: a step-limit question, a card
+  that asks (check-in's Nudge / Keep going / Stop) and a failed turn, beside approvals and questions. Done turns are
+  off by default, per device (the switch comes with the devices list).
+- chi web: no push while a chi web page is in front and was touched in the last 2 minutes (you are looking); at most
+  30 pushes an hour; a busy push service is tried once more; an approval asked while chi web was restarting is pushed
+  once when it starts.
+
 ### Fixed
 
 - chi web: tapping the composer (or any other text field) on an iPhone or iPad no longer zooms the page in. Text
