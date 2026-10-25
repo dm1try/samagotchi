@@ -8,16 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.111.1] - 2026-10-25
+
 ### Fixed
 
 - `chi --remote NAME send --wait` with no message (and one whose message merged into the running turn) ends
   `canceled` (`worker_stopped`) when that turn's worker dies and the next worker settles it between two of chi web's
   30 s wait slices, as it does on this machine, instead of waiting until `--timeout`.
-
 - chi web: turning the phone's bell off and on again now replaces a subscription iOS dropped silently, instead of
   keeping the dead one in `subscriptions.json`.
 - chi web: a Home Screen app left open for days picks up a newer service worker (after `chi update`) when it comes
   back to the front.
+
+Update with `chi update` (the system bundle 0.111.1), then restart `chi web`.
 
 ## [0.111.0] - 2026-10-24
 
@@ -4261,7 +4264,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.111.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.111.1...HEAD
+[0.111.1]: https://github.com/dm1try/samagotchi/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/dm1try/samagotchi/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/dm1try/samagotchi/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/dm1try/samagotchi/compare/v0.108.0...v0.109.0
