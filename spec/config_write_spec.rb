@@ -115,4 +115,40 @@ RSpec.describe Samagotchi::ConfigFile, "writes to config.yml" do
         .to raise_error(ArgumentError, /reserved/)
     end
   end
+
+  describe ".write_setting!" do
+    it "adds web.markdown: true as a real boolean, keeping the comments" do
+      write_config(commented)
+
+      expect(described_class.write_setting!("web.markdown", true, path: @path)).to be(true)
+
+      expect(File.read(@path)).to eq("#{commented}web:\n  markdown: true\n")
+      expect(data.dig("web", "markdown")).to be(true)
+      expect(Samagotchi::Config.resolve("web.markdown", file_data: data, env: {})).to be(true)
+    end
+
+    it "replaces the key on its line in an existing section" do
+      write_config("# web\nweb:\n  # render answers\n  markdown: false   # off for now\n  port: 4567\n")
+
+      described_class.write_setting!("web.markdown", true, path: @path)
+
+      expect(File.read(@path)).to eq("# web\nweb:\n  # render answers\n  markdown: true\n  port: 4567\n")
+    end
+
+    it "types the value as the entry reads it, and writes an integer bare" do
+      write_config("# mine\n")
+      described_class.write_setting!("web.markdown", "yes", path: @path)
+      described_class.write_setting!("session.max_count", "50", path: @path)
+
+      expect(File.read(@path)).to eq("# mine\nweb:\n  markdown: true\nsession:\n  max_count: 50\n")
+    end
+
+    it "refuses an unknown key, a value of the wrong type and a key config.yml doesn't hold" do
+      expect { described_class.write_setting!("web.nope", true, path: @path) }.to raise_error(ArgumentError, /unknown config key/)
+      expect { described_class.write_setting!("web.markdown", "maybe", path: @path) }
+        .to raise_error(Samagotchi::SessionConfig::Error, /takes true or false/)
+      expect { described_class.write_setting!("model.profile", "qwen36", path: @path) }.to raise_error(ArgumentError, /section\.key/)
+      expect(File.exist?(@path)).to be(false)
+    end
+  end
 end

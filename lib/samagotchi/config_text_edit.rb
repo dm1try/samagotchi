@@ -25,7 +25,8 @@ module Samagotchi
     # @param text [String, nil] the file's text (nil: no file)
     # @param section [String] a top-level key ("default")
     # @param key [String] the key under it; an existing key matches in any case
-    # @param value [String] the value, written as a quoted string
+    # @param value [String, Integer, Boolean] the value: a string quoted, an
+    #   Integer or true/false bare (as the file's types read them back)
     # @param expected [Hash] the whole file's data after the change
     # @return [String] the new text
     def set(text, section:, key:, value:, expected:)
@@ -77,7 +78,13 @@ module Samagotchi
       line[/\A\s*(["']?)([^"':#\s][^"':#]*?)\1:(?:\s|\z)/, 2]
     end
 
-    # JSON's quoting is valid YAML: model ids hold "/" and ":".
-    def scalar(value) = JSON.generate(value.to_s)
+    # JSON's quoting is valid YAML: model ids hold "/" and ":". true, false
+    # and Integers go bare, so they read back as themselves, not as text.
+    def scalar(value)
+      case value
+      when true, false, Integer then value.to_s
+      else JSON.generate(value.to_s)
+      end
+    end
   end
 end

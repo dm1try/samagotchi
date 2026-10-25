@@ -1245,6 +1245,30 @@ module Samagotchi
       true
     end
 
+    # Sets one registry key (a Config::Entry with a section.key yaml_path,
+    # e.g. "web.markdown") in config.yml, its value typed as the entry
+    # reads it (true is written bare); the rest of the file, comments
+    # included, stays as written (ConfigTextEdit). No Config.reload!: a
+    # caller reading Config.get afterwards reloads itself.
+    # @raise [ArgumentError] an unknown key, or one config.yml doesn't hold
+    #   as section.key
+    # @raise [SessionConfig::Error] a value the entry's type doesn't take
+    def write_setting!(key, value, env: ENV, path: global_path(env: env))
+      entry = Config.find_by_key(key)
+      raise ArgumentError, "unknown config key: #{key}" unless entry
+      raise ArgumentError, "#{key} isn't a section.key setting of config.yml" unless entry.config_exposed? && entry.yaml_path.size == 2
+
+      typed = Config.coerce!(entry, value)
+      raise ArgumentError, "#{key} needs a value" if typed.nil?
+
+      section, leaf = entry.yaml_path
+      expected = deep_copy(read_yaml(env: env, path: path) || {})
+      expected[section] = {} unless expected[section].is_a?(Hash)
+      expected[section][leaf] = typed
+      write_config_key(path, section, leaf, typed, expected)
+      typed
+    end
+
     def model_aliases(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
       return {} unless data.is_a?(Hash)
