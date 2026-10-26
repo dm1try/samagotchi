@@ -230,7 +230,9 @@ A builder runs these while working, not the full suite: the specs the change tou
 files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…), the specs that read
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
 file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `turn_flow.rb` and `turn_note.rb`, whose
-words the REPL prints, pick it by a rule), then the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
+words the REPL prints, pick it by a rule). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
+effective-model, request, prompt-snapshot and full system-prompt goldens because they hash the request's prompt and
+tools. Then come the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
 `spec/guardrails/context_spec.rb`), then the specs that name a method the change touches (the innermost `def` around a
 changed line, read with Prism; one `git grep` for up to 12 names; names under 4 characters, `initialize`, `to_s`,

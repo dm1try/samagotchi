@@ -127,6 +127,23 @@ RSpec.describe AffectedSpecs::Picker do
     end
   end
 
+  it "picks request-hash goldens when the prompt or tool declarations change" do
+    goldens = %w[
+      spec/engine_effective_model_characterization_spec.rb
+      spec/llm/request_goldens_spec.rb
+      spec/prompt_snapshot_spec.rb
+      spec/system_prompt_full_spec.rb
+    ]
+    goldens.each { |path| files[path] = "" }
+
+    ["lib/samagotchi/tool_declarations.rb", "lib/samagotchi/system_prompt.rb"].each do |changed|
+      result = pick(changed)
+
+      expect(paths(result.ruby)).to eq(goldens)
+      expect(result.ruby.map(&:reason)).to all(eq("rule: hash the request's prompt and tools (#{changed})"))
+    end
+  end
+
   it "picks the bundle CLI spec when a shipped bundle manifest changes" do
     files["spec/chi_bundle_cli_spec.rb"] = ""
     result = pick("lib/samagotchi/bundles/core/manifest.yml")

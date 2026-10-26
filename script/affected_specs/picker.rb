@@ -39,6 +39,10 @@ module AffectedSpecs
       why: "reads shipped manifests for profiles and pins versions in chi bundle CLI" },
     { match: %w[lib/samagotchi/session_metrics.rb spec/fixtures/effective_model/**/*],
       specs: %w[spec/engine_effective_model_characterization_spec.rb], why: "pins effective-model goldens" },
+    { match: %w[lib/samagotchi/tool_declarations.rb lib/samagotchi/system_prompt.rb],
+      specs: %w[spec/engine_effective_model_characterization_spec.rb spec/llm/request_goldens_spec.rb
+                spec/prompt_snapshot_spec.rb spec/system_prompt_full_spec.rb],
+      why: "hash the request's prompt and tools" },
     { match: %w[lib/samagotchi/event_fanout.rb],
       specs: %w[spec/engine_stream_hooks_spec.rb spec/engine_event_routes_characterization_spec.rb spec/engine_working_set_spec.rb],
       why: "Engine's event fanout, tested through the Engine" },
