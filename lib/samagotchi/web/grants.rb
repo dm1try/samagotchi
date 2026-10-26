@@ -14,6 +14,7 @@ require_relative "../participant_name"
 require_relative "../session"
 require_relative "../redacted_inspect"
 require_relative "private_files"
+require_relative "participant_exposure"
 
 module Samagotchi
   module Web
@@ -129,14 +130,21 @@ module Samagotchi
       # +cap+ (dollars) and +queue+ (turns waiting) as issued; nil in a
       # grant from before them, which takes the config's (#spend_cap,
       # #queue_limit).
+      # +exposure+: what the participant learns of the review's usage
+      # (ParticipantExposure; "own" for every grant today, and for one from
+      # before it). Kept as stored: a level this chi doesn't know reads as
+      # the narrowest, and is written back as it was.
       # +extra+: the stored keys this chi doesn't know (a newer chi's,
       # such as a field added to a grant without a version bump), written
       # back as they were, so a rewrite here never drops them.
       Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                          :revoked_by, :last_used_at, :cap, :queue, :identity, :extra) do
+                          :revoked_by, :last_used_at, :cap, :queue, :identity, :exposure, :extra) do
         # identity: the proxy identity (an email, lower case) the grant is
         # bound to, nil for any (ProxyGate; issued from shared-sessions P6).
-        def initialize(cap: nil, queue: nil, identity: nil, extra: {}, **) = super
+        def initialize(cap: nil, queue: nil, identity: nil, exposure: nil, extra: {}, **)
+          super(cap: cap, queue: queue, identity: identity, extra: extra,
+                exposure: exposure.nil? ? ParticipantExposure::DEFAULT : exposure, **)
+        end
 
         def self.from_h(hash)
           known = members - [:extra]
@@ -178,11 +186,19 @@ module Samagotchi
             state: state(now).to_s, cap: spend_cap, queue: queue_limit, identity: identity }
         end
 
-        # A grant bound to no identity is stored as before identity existed;
-        # the keys this chi doesn't know come after, as they were.
+        # A grant bound to no identity, with the default exposure, is stored
+        # as before either existed; the keys this chi doesn't know come
+        # after, as they were.
+        #
+        # A non-default exposure needs no version bump (identity's
+        # BOUND_VERSION): a chi that ignores it shows the participant the
+        # narrowest level, so it fails closed, and one that knows Grant#extra
+        # keeps it on a rewrite. A bump would only make that chi refuse the
+        # owner's invite, cap and revoke (Newer) for no safety gain.
         def to_store
           hash = to_h.except(:extra).transform_keys(&:to_s)
           hash.delete("identity") if identity.nil?
+          hash.delete("exposure") if exposure == ParticipantExposure::DEFAULT
           hash.merge(extra.reject { |key, _| hash.key?(key) })
         end
 

@@ -259,13 +259,64 @@ RSpec.describe Samagotchi::Web::Grants do
 
     it "keeps a grant's keys it doesn't know on a rewrite, and never shows them" do
       issued = issue
-      rewrite! { |data| data["grants"].first["exposure"] = { "plan" => true } }
+      rewrite! { |data| data["grants"].first["tier"] = { "plan" => true } }
       grants.set_cap(issued.grant.id, 5)
       grants.revoke(id: issued.grant.id)
 
       row = stored["grants"].first
-      expect(row).to include("exposure" => { "plan" => true }, "cap" => 5.0, "revoked_by" => "owner")
-      expect(grants.find(issued.grant.id).public_h(now.first)).not_to have_key(:exposure)
+      expect(row).to include("tier" => { "plan" => true }, "cap" => 5.0, "revoked_by" => "owner")
+      expect(grants.find(issued.grant.id).public_h(now.first)).not_to have_key(:tier)
+    end
+
+    describe "a grant's exposure (ParticipantExposure)" do
+      it "is own by default, and not in the store then (as before it existed)" do
+        issued = issue
+        expect(issued.grant.exposure).to eq("own")
+        expect(stored["grants"].first).not_to have_key("exposure")
+        expect(grants.find(issued.grant.id).exposure).to eq("own")
+      end
+
+      it "keeps a non-default one on a rewrite, as it was, without a version bump" do
+        issued = issue
+        rewrite! { |data| data["grants"].first["exposure"] = "session" }
+        expect(grants.find(issued.grant.id).exposure).to eq("session")
+        grants.set_cap(issued.grant.id, 5)
+        issue
+
+        expect(stored["version"]).to eq(1)
+        expect(stored["grants"].first).to include("exposure" => "session", "cap" => 5.0)
+        expect(stored["grants"].last).not_to have_key("exposure")
+        expect(grants.find(issued.grant.id).public_h(now.first)).not_to have_key(:exposure)
+      end
+
+      # An older reader: a chi from shared-sessions P6 (Grant#extra, no
+      # exposure) reads the key as one it doesn't know. The store stays at a
+      # version it writes, so it keeps the key on its rewrites and still
+      # honours the grant, showing the participant the narrowest level.
+      it "leaves the store at a version an older chi reads and writes, which keeps the key as an unknown one" do
+        issued = issue
+        rewrite! { |data| data["grants"].first["exposure"] = "session" }
+        grants.revoke(id: issued.grant.id)
+        expect(stored["version"]).to be <= described_class::BOUND_VERSION
+
+        # P6's Grant.from_h and #to_store, over P6's members.
+        older = Data.define(*(described_class::Grant.members - [:exposure])) do
+          def self.from_h(hash)
+            known = members - [:extra]
+            new(**known.to_h { |key| [key, hash[key.to_s]] }, extra: hash.reject { |key, _| known.include?(key.to_sym) })
+          end
+
+          def to_store
+            hash = to_h.except(:extra).transform_keys(&:to_s)
+            hash.delete("identity") if identity.nil?
+            hash.merge(extra.reject { |key, _| hash.key?(key) })
+          end
+        end
+        row = stored["grants"].first
+        read = older.from_h(row)
+        expect(read.extra).to eq("exposure" => "session")
+        expect(read.to_store).to eq(row)
+      end
     end
 
     it "never goes back to 1 once a store says 2" do
