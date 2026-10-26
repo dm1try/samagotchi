@@ -755,11 +755,14 @@ Then the judgment's `decision` is `auto`, the verdict settles as
 written to `approvals.json` — the next call is judged again. **No question is
 opened, so no card appears, no `:question_asked` hook fires, and no
 notification is sent.** The verdict's activity carries
-`note: "auto-allowed by System 1 (p=0.97)"`, `judgment_id` and `p`; the line
-that shows it in the terminal and the web is P3b, and is not rendered yet, so
-today an auto-allowed call simply looks like a call that never needed
-approval. If the judgment line cannot be written to the log, the ask goes to
-the user.
+`note: "auto-allowed by System 1 (p=0.97)"`, `judgment_id` and `p`, and the
+call's tool row shows it: the terminal's tool line ends in
+`· auto-allowed (System 1, p=0.97)`
+(`TerminalUI::Formatting#format_tool_guardrail_suffix`, live and when
+attaching to a saved turn), and the web's activity row carries
+**auto-allowed · System 1** with `rule …, p=…, allowed once` on hover and the
+owner's **should have asked** button (below). The stage trail shows no mark.
+If the judgment line cannot be written to the log, the ask goes to the user.
 
 A delegate child answers from its own session's settings: its System 1 can
 auto-allow a call even when the child's `parent_answers: hard` bars a parent
