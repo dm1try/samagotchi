@@ -37,6 +37,8 @@ and commands may change between minor versions. How releases are made:
   /api/push` failed (chi web restarting, a phone just woken) tries again when it comes back to the front instead of
   staying in tab mode until a reload.
 - `chi --help` lists `chi guardrails replay` (seeding System 1's record), the one subcommand it left out.
+- The participants panel's Cap form no longer sets a $0 cap when its field is cleared, nor sends a negative or
+  over-$1000 one: it refuses as the Invite's cap field does ("A cap is dollars, 0 to 1000.").
 
 ## [0.121.0] - 2026-10-26
 

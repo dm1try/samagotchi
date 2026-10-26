@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, nameUnnamedBadges, participantName, setParticipantNames, UNNAMED } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
@@ -367,5 +367,37 @@ test("participants panel: the dialog and each row's Cap and Revoke are named; Ca
   const field = c.pop.querySelector(".pp-cap-form input");
   assert.equal(field.getAttribute("aria-label"), "New cap for Kim, dollars");
   assert.equal(document.activeElement, field);
+  c.done();
+});
+
+// One rule for both cap fields: the Invite's (empty = the default cap) and a
+// row's Cap form (empty = nothing to set, never a $0 cap).
+test("participants: capValue reads dollars 0 to 1000, empty as none, else one refusal", () => {
+  assert.deepEqual(capValue(" $2.5 "), { value: 2.5 });
+  assert.deepEqual(capValue("0"), { value: 0 });
+  assert.deepEqual(capValue(""), { value: null });
+  for (const bad of ["-1", "1001", "lots"]) assert.deepEqual(capValue(bad), { error: "A cap is dollars, 0 to 1000." });
+});
+
+test("participants panel: a cleared, negative or too-high cap is refused in the panel and sends nothing", async () => {
+  const sent = [];
+  const c = panelControl({ api: { cap: async (...args) => { sent.push(args); return {}; } } });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  c.pop.querySelector('[data-act="cap"]').click();
+  for (const text of ["", "  ", "-3", "5000"]) {
+    const form = c.pop.querySelector(".pp-cap-form");
+    form.elements.cap.value = text;
+    c.submit(form);
+    await tick();
+    assert.match(c.pop.textContent, /A cap is dollars, 0 to 1000\./);
+  }
+  assert.deepEqual(sent, []);
+  const form = c.pop.querySelector(".pp-cap-form");
+  form.elements.cap.value = "$3";
+  c.submit(form);
+  await tick();
+  assert.deepEqual(sent, [["s1", "p_0001abcd", 3]]);
   c.done();
 });
