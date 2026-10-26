@@ -74,12 +74,36 @@ RSpec.describe Samagotchi::Toolkit do
     expect(declared(described_class.new(name: "b").resolve(kits))).to eq(builtins)
   end
 
+  it "inherits group selectors through bases, and sorts and deduplicates explicit names and globs" do
+    config = { "web" => { "base" => "lean", "groups" => %w[chrome db* chrome] },
+               "web-child" => { "base" => "web" },
+               "all" => { "base" => "web", "groups" => "all" } }
+    kits = described_class.kits(config: config)
+
+    expect(described_class.new(name: "web").resolve(kits).groups).to eq(%w[chrome db*])
+    expect(described_class.new(name: "web-child").resolve(kits).groups).to eq(%w[chrome db*])
+    expect(described_class.new(name: "all").resolve(kits).groups).to eq(["all"])
+    expect(described_class::BUILTIN_KITS.fetch("full").groups).to eq(:all)
+    expect(described_class::BUILTIN_KITS.fetch("review").groups).to eq([])
+  end
+
+  it "keeps a groups-only kit on full from resolving to everything" do
+    kits = described_class.kits(config: { "chrome" => { "base" => "full", "groups" => ["chrome"] } })
+    resolved = described_class.new(name: "chrome").resolve(kits)
+
+    expect(resolved.everything?).to be(false)
+    expect(resolved.all_core).to be(true)
+    expect(resolved.groups).to eq(["chrome"])
+    expect(described_class.new(name: "typo").resolve(kits).groups).to eq(:all)
+  end
+
   it "refuses a config kit with a built-in's name or a bad shape" do
     errors = []
     kits = described_class.kits(config: { "lean" => { "base" => "full" }, "odd" => "lean" }, errors: errors)
     expect(kits["lean"].source).to eq("core")
     expect(kits).not_to have_key("odd")
-    expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit", "toolkit.kits.odd: expected {base:, add:, remove:, prompt:}"])
+    expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit",
+                          "toolkit.kits.odd: expected {base:, add:, remove:, prompt:, groups:}"])
   end
 
   it "has a frozen review kit of reads whose name config can't take" do
@@ -97,8 +121,8 @@ RSpec.describe Samagotchi::Toolkit do
     kits = described_class.kits(config: { "audit" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
                                 errors: errors)
     expect(kits["audit"].base).to eq("lean")
-    expect(errors).to eq(["toolkit.kits.audit: unknown key tools (a kit takes base:, add:, remove:, prompt:)",
-                          "toolkit.kits.audit: unknown key remvoe (a kit takes base:, add:, remove:, prompt:)"])
+    expect(errors).to eq(["toolkit.kits.audit: unknown key tools (a kit takes base:, add:, remove:, prompt:, groups:)",
+                          "toolkit.kits.audit: unknown key remvoe (a kit takes base:, add:, remove:, prompt:, groups:)"])
   end
 
   it "doesn't let a plugin kit replace one already known" do

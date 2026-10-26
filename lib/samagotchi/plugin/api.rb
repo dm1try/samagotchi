@@ -308,12 +308,14 @@ module Samagotchi
       # toolkit.default, ctx.use_toolkit): +base+'s tools (a toolkit chi or
       # a bundle has) with +add+ declared and +remove+ left out, and
       # +prompt+: text the sessions on it get in their system prompt (nil:
-      # its base's, "" none; at most Toolkit::PROMPT_MAX characters). A
+      #   its base's, "" none; at most Toolkit::PROMPT_MAX characters);
+      #   +groups+: MCP source group names/globs (nil inherits its base).
+      #   A
       # name chi (full, lean, child) or another bundle has is a load error,
       # and so is a prompt that isn't text or is too long; a base that
       # doesn't resolve leaves the sessions on it with every tool
       # (Toolkit#resolve).
-      def toolkit(name, base:, add: [], remove: [], prompt: nil)
+      def toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil)
         name = name.to_s
         raise ArgumentError, "toolkit name #{name.inspect} must be a-z, 0-9, _ and -" unless name.match?(TOOLKIT_NAME)
 
@@ -327,7 +329,8 @@ module Samagotchi
         end
         raise ArgumentError, "toolkit #{name} is declared twice" if @toolkits.any? { |kit| kit.name == name }
 
-        @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, prompt: prompt, source: @bundle)
+        @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, prompt: prompt,
+                                      groups: groups, source: @bundle)
         nil
       end
 

@@ -150,6 +150,38 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
   end
 
+  describe "toolkit source groups" do
+    let(:waited) { [] }
+
+    it "filters search and descriptions by declared-time names and globs, while all_groups stays global" do
+      source = added(wait: ->(group) { waited << group })
+      source.publish([
+        described_class::Group.new(name: "chrome", summary: "browser", tools: [tool("chrome", "new_page")]),
+        described_class::Group.new(name: "postgres", summary: "database",
+                                   state: :starting, tools: [tool("postgres", "query")])
+      ])
+      index.declare(registry)
+      kits = Samagotchi::Toolkit.kits(config: { "web" => { "base" => "lean", "groups" => ["ch*"] } })
+      registry.toolkit = Samagotchi::Toolkit.new(name: "web").resolve(kits)
+      index.refresh!
+
+      expect(index.all_groups.map(&:name)).to include("chrome", "postgres", "chi")
+      expect(index.reached_groups.map(&:name)).to include("chrome", "chi")
+      expect(index.reached_groups.map(&:name)).not_to include("postgres")
+      expect(registry[find_name].schema[:description]).to include("- chrome: browser (1 tool)")
+      expect(registry[find_name].schema[:description]).not_to include("postgres")
+      expect(index.find("query")).not_to include("postgres/query")
+      expect(index.find("query", "postgres")).to eq("Error: no group postgres. Groups: chi, chrome")
+      expect(index.call("postgres/query", {})).to start_with("Error: no tool postgres/query")
+      expect(index.unreached_tool("postgres/query")&.full_name).to eq("postgres/query")
+      expect(waited).to be_empty
+      expect(source.declared_groups).to eq(["chrome"])
+
+      source.publish(source.groups + [described_class::Group.new(name: "chrome_extra", tools: [tool("chrome_extra", "late")])])
+      expect(index.reached_groups.map(&:name)).not_to include("chrome_extra")
+    end
+  end
+
   # What a hit loads on a host that loads tools (lean tools P2c): the wire
   # names of a keyword answer's callable, deferrable matches.
   describe "#find's loaded names" do

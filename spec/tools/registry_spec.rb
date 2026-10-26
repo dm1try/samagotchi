@@ -219,7 +219,10 @@ RSpec.describe Samagotchi::Tools::Registry do
         end
       end
 
-      def kit(name = "lean", **) = Samagotchi::Toolkit.new(name: name, **).resolve(Samagotchi::Toolkit.kits)
+      def kit(name = "lean", groups: nil, **changes)
+        resolved = Samagotchi::Toolkit.new(name: name, **changes).resolve(Samagotchi::Toolkit.kits)
+        groups.nil? ? resolved : resolved.with(groups: Samagotchi::Toolkit.group_names(groups))
+      end
 
       it "is a built-in the kit's list leaves out; a removed one is the user's to bring back" do
         registry.toolkit = kit(remove: %w[delegate echo])
@@ -253,6 +256,18 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.names).to include("find_tools", "call_tool")
         expect(registry.names(toolkit: kit(remove: %w[find_tools]))).to eq(registry.names(toolkit: kit) - ["find_tools"])
         expect(registry.names(toolkit: kit(remove: %w[call_tool]))).to include("find_tools") # MCP's, as on main
+      end
+
+      it "declares index tools only for a reached source group or reachable built-in" do
+        registry.register("find_tools", schema: schema.merge(name: "find_tools"), handler: ->(*) {}, source: "index")
+        registry.index = registry.index.with(groups: %w[chrome postgres])
+        no_groups = kit("full", groups: [])
+        chrome = kit("full", groups: ["ch*"])
+
+        expect(registry.names(toolkit: no_groups)).not_to include("find_tools", "call_tool")
+        expect(registry.names(toolkit: chrome)).to include("find_tools", "call_tool")
+        expect(registry.names(toolkit: kit("lean", groups: []))).to include("find_tools", "call_tool")
+        expect(registry.index.groups).to eq(%w[chrome postgres])
       end
 
       # A Bridge thread reads the declared tools (setting chips) while the

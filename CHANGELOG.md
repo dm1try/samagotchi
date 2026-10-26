@@ -9,6 +9,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Toolkit kits can filter MCP server groups with `groups:` names or globs; omitted groups inherit their base's.
 - `ask_user_question`'s description asks the model, when it recommends one option, to put it first and end its
   label with " (Recommended)" (eval 0005: Flash Next and DeepSeek v4.1-flash mark it 5/5 on a decision question,
   0/5 before; an answer comes back with the suffix, so `chi answer --option` takes that exact label or the number).

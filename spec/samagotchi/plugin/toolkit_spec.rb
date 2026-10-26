@@ -35,6 +35,15 @@ RSpec.describe "Plugin toolkits" do
         .to raise_error(ArgumentError, "toolkit long: prompt is over 2000 characters")
     end
 
+    it "accepts source group names and globs without changing inherited defaults" do
+      chi = api
+      chi.toolkit("web", base: "lean", groups: %w[chrome db* chrome])
+      chi.toolkit("all", base: "web", groups: :all)
+      chi.commit!
+
+      expect(kits.map(&:groups)).to eq([%w[chrome db*], :all])
+    end
+
     it "refuses chi's own names, another bundle's, a twice-declared one and a bad name" do
       expect { api.toolkit("lean", base: "full") }.to raise_error(ArgumentError, "toolkit lean is chi's own")
       first = api("other")

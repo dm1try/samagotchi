@@ -184,7 +184,7 @@ module Samagotchi
       # the declared tools stay the same for a session's life. A built-in
       # left out counts only while call_tool can reach it (not removed).
       def index_needed?(toolkit)
-        return true unless @index.groups.empty?
+        return true if reached_groups?(toolkit)
         return false if toolkit&.removed&.include?(@index.call_name)
 
         index_reaches?(toolkit)
@@ -194,7 +194,11 @@ module Samagotchi
       # removed or not: a source registered at load, or a built-in the
       # toolkit leaves out without removing it.
       def index_reaches?(toolkit)
-        !@index.groups.empty? || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
+        reached_groups?(toolkit) || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
+      end
+
+      def reached_groups?(toolkit)
+        @index.groups.any? { |name| toolkit.nil? || toolkit.reaches_group?(name) }
       end
 
       # Not declared by +toolkit+ under +layers+. An index tool counts only

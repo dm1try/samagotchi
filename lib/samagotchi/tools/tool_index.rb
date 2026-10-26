@@ -141,7 +141,7 @@ module Samagotchi
       # yet). +prefix+: a bare name with it is taken as an acts_as as given.
       # +label+ is the call tool's row label.
       class Source
-        attr_reader :label, :prefix, :context, :groups, :declared_names, :declared_tokens
+        attr_reader :label, :prefix, :context, :groups, :declared_names, :declared_tokens, :declared_groups
 
         def initialize(label:, call:, acts_as:, wait: nil, prefix: nil, context: nil)
           raise ArgumentError, "tool_source: call must respond to #call" unless call.respond_to?(:call)
@@ -157,6 +157,7 @@ module Samagotchi
           @groups = [].freeze
           @declared_names = []
           @declared_tokens = 0
+          @declared_groups = [].freeze
         end
 
         def inspect = "#<ToolIndex::Source #{@label} groups=#{@groups.map(&:name).join(",")}>"
@@ -184,9 +185,10 @@ module Samagotchi
 
         # What ToolIndex#declare registered: the tools' names and their
         # definitions' estimated tokens (the mcp bundle's /mcp says them).
-        def declared!(names, tokens)
+        def declared!(names, tokens, groups)
           @declared_names = names.dup.freeze
           @declared_tokens = tokens
+          @declared_groups = groups.dup.freeze
         end
       end
 
@@ -197,6 +199,7 @@ module Samagotchi
         # The source groups' lines in the search tool's description, as
         # #declare found them (#find_description).
         @described = {}.freeze
+        @declared_group_names = nil
         @dropped = []
         @dropped_mutex = Mutex.new
       end
@@ -230,7 +233,16 @@ module Samagotchi
         own + kept
       end
 
-      def reached_groups = all_groups
+      def reached_groups
+        groups = all_groups
+        toolkit = @registry&.toolkit
+        return groups if toolkit.nil? || toolkit.groups == :all
+
+        declared = @declared_group_names || groups.reject { |group| own?(group) }.map(&:name)
+        groups.select do |group|
+          own?(group) || (declared.include?(group.name) && toolkit.reaches_group?(group.name))
+        end
+      end
 
       # Register the search and call tools in +registry+, once, after the
       # plugins load (or without them: the built-ins a toolkit leaves out
@@ -241,6 +253,7 @@ module Samagotchi
       def declare(registry, failures: nil)
         @registry = registry
         @described = description_lines(all_groups.reject { |group| own?(group) }).freeze
+        @declared_group_names = @described.keys.freeze
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
           if (taken = registry[spec.name])
@@ -253,8 +266,7 @@ module Samagotchi
           registry.register(spec.name, source: SOURCE, unwrap: unwrap, **spec.entry_fields(nil))
           spec
         end
-        source_groups = all_groups.reject { |group| own?(group) }.map(&:name)
-        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: source_groups,
+        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: @declared_group_names,
                                              deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) })
         declared!(declared)
         declared.map(&:name)
@@ -296,7 +308,7 @@ module Samagotchi
       def find_description
         "Search tools this session doesn't declare, by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
           "its name (<group>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
-          "name.\nGroups:\n#{(description_lines(registry_groups).values + @described.values).join("\n")}"
+          "name.\nGroups:\n#{(description_lines(registry_groups).values + described_groups.values).join("\n")}"
       end
 
       # ── Search ──────────────────────────────────────────────────────────
@@ -506,7 +518,14 @@ module Samagotchi
       def declared!(specs)
         names = specs.map(&:name)
         tokens = specs.sum { |spec| ToolIndex.spec_tokens(spec) }
-        @sources.each { |source| source.declared!(names, tokens) }
+        groups = reached_groups.reject { |group| own?(group) }.map(&:name)
+        @sources.each { |source| source.declared!(names, tokens, groups) }
+      end
+
+      def described_groups
+        return @described unless @registry&.toolkit && @registry.toolkit.groups != :all
+
+        @described.select { |name, _line| @registry.toolkit.reaches_group?(name) }
       end
 
       def own?(group) = RESERVED_GROUPS.include?(group.name)
@@ -618,7 +637,7 @@ module Samagotchi
       # @return [Tool, String]
       def lookup(name, waited: false)
         name = name.strip
-        all = all_groups
+        all = reached_groups
         tool = all.lazy.filter_map do |group|
           next unless name.start_with?("#{group.name}/")
 
@@ -657,6 +676,34 @@ module Samagotchi
         tool = lookup(name, waited: true)
         tool.is_a?(Tool) ? tool : nil
       end
+
+      # A source tool in the declaration-time group set that the active
+      # toolkit does not reach. Never waits for a group to start.
+      def unreached_tool(name)
+        name = name.to_s.strip
+        return nil if name.empty?
+
+        groups = all_groups.reject { |group| own?(group) }
+        groups.select! { |group| @declared_group_names.include?(group.name) } if @declared_group_names
+        tool = tool_in(name, groups)
+        return nil unless tool
+        return nil if reached_groups.any? { |group| group.name == tool.group }
+
+        tool
+      end
+
+      def tool_in(name, groups)
+        named = groups.filter_map do |group|
+          next unless name.start_with?("#{group.name}/")
+
+          group.tools.find { |tool| tool.name == name.delete_prefix("#{group.name}/") }
+        end
+        return named.first if named.one?
+
+        same = groups.flat_map(&:tools).select { |tool| tool.acts_as == name }
+        same.first if same.one?
+      end
+      public :unreached_tool
 
       # The acts_as and label +name+ stands for, from the name alone:
       # <group>/<tool> of a known group (the one that has the tool, else the
