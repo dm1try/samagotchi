@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.119.0] - 2026-10-26
+
 ### Added
 
 - claude-peer (0.4.3): `pair --inbox-socket PATH` pairs both ways with chi on
@@ -4452,7 +4454,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.118.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.119.0...HEAD
+[0.119.0]: https://github.com/dm1try/samagotchi/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/dm1try/samagotchi/compare/v0.117.0...v0.118.0
 [0.117.0]: https://github.com/dm1try/samagotchi/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/dm1try/samagotchi/compare/v0.115.0...v0.116.0
