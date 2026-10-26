@@ -139,6 +139,10 @@ module Samagotchi
       def delivered(response, answer, fields, dismissed)
         return "not delivered (the child's worker is gone)" unless response
 
+        # The child's Bridge asked for a secret this worker didn't send (one
+        # from before the child's chi): not the child's guardrails refusing.
+        return "not delivered (#{BridgeSecret::REFUSED})" if response.secret_refused?
+
         hook = fields[:kind] == HOOK_KIND
         case response.status
         when 200

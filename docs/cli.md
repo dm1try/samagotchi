@@ -239,10 +239,12 @@ done
   hands over to the new chi, which does the rest and prints the table. Old
   versions stay installed: running workers and an old `chi web` still load
   files from them, so a `gem cleanup` while they run breaks them (a
-  `LoadError`, missing web assets); restart them first. A chi web or an
-  attached terminal started before the update may not reach a worker the
-  new chi starts (403 `bridge_secret`: its Bridge asks for a secret they
-  don't send): restart chi web and re-attach. Offline, the row says
+  `LoadError`, missing web assets); restart them first. A chi web, an
+  attached terminal or a session worker started before the update may not
+  reach a worker the new chi starts (403 `bridge_secret`: its Bridge asks for
+  a secret they don't send; an older worker's delegate child is one): restart
+  chi web, re-attach, and restart the older workers (`chi sessions restart
+  ID...`, as the `workers` row says). Offline, the row says
   "couldn't check" and the rest still runs; a failed install fails the row
   and the rest runs on the current version. Under Bundler (`bundle exec`)
   the row says `bundle update samagotchi` instead.

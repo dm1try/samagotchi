@@ -765,7 +765,7 @@ module Samagotchi
       # chi web's answer/dismiss reply as the worker's Bridge would have
       # given it: 503 not_live is no worker (nil), 504 the Bridge's 408, 501
       # not_supported its 404 for a route it lacks, 409 question_not_pending
-      # its 409; the rest as it came.
+      # its 409, 502 bridge_secret its 403 (BridgeSecret); the rest as it came.
       def bridge_reply(reply)
         json = reply.json.is_a?(Hash) ? reply.json : {}
         case [reply.status, json["error"]]
@@ -773,6 +773,7 @@ module Samagotchi
         in [404, "not_found"] then nil
         in [504, _] then BridgeClient::Response.new(status: 408, body: reply.body)
         in [501, "not_supported"] then BridgeClient::Response.new(status: 404, body: JSON.generate(json.merge("error" => "not_found")))
+        in [502, BridgeSecret::ERROR] then BridgeClient::Response.new(status: 403, body: reply.body)
         else BridgeClient::Response.new(status: reply.status, body: reply.body)
         end
       end

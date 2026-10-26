@@ -196,6 +196,8 @@ module Samagotchi
               end
       return failure(worker_gone(id)) unless reply
 
+      return failure(BridgeSecret::REFUSED) if reply.secret_refused?
+
       case reply.status
       when 200 then nil
       when 409

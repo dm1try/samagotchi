@@ -5,6 +5,7 @@ require "json"
 require "socket"
 
 require_relative "worker_sidecar"
+require_relative "bridge_secret"
 require_relative "delivery"
 require_relative "chi_invocation"
 require_relative "bridge_client/sse_parser"
@@ -24,7 +25,7 @@ module Samagotchi
     # A reply's status line; its code is group 1.
     STATUS_LINE = StreamRequest::STATUS_LINE
     # The request header that carries the Bridge's secret (Bridge#secret_ok?).
-    SECRET_HEADER = "X-Chi-Bridge"
+    SECRET_HEADER = BridgeSecret::HEADER
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for the Bridge's response headers, per attempt:
     # a worker that took the connection and froze must not hold the web's
@@ -47,6 +48,9 @@ module Samagotchi
     # A Bridge reply: HTTP status code and raw body (nil when not read).
     Response = Struct.new(:status, :body, keyword_init: true) do
       def ok? = status == 200
+
+      # The Bridge refused it for want of its secret (BridgeSecret::REFUSED says what to do).
+      def secret_refused? = BridgeSecret.refused?(status, body)
 
       # @return [Hash, nil] the body parsed as JSON, or nil when it is not
       def json

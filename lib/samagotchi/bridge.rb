@@ -8,6 +8,7 @@ require "securerandom"
 require "openssl"
 require "time"
 require_relative "atomic_file"
+require_relative "bridge_secret"
 require_relative "delivery"
 require_relative "session_inbox"
 
@@ -70,16 +71,12 @@ module Samagotchi
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
-    # The request header that names the Bridge's secret (BridgeClient::SECRET_HEADER), lowercased as #read_request keeps it.
-    SECRET_HEADER = "x-chi-bridge"
+    # The request header that names the Bridge's secret, lowercased as #read_request keeps it.
+    SECRET_HEADER = BridgeSecret::HEADER.downcase
     # Bytes of randomness in a Bridge's secret (hex in bridge.json: twice as many characters).
     SECRET_BYTES = 32
-    # What a request without this Bridge's secret, or with another one, is told
-    # (403 bridge_secret): it comes from a chi that read no secret, a chi web
-    # or an attached terminal started before chi was updated.
-    SECRET_REFUSED = "the request didn't name this session worker's secret: a chi web or an attached terminal " \
-                     "started before chi was updated can't reach it; restart chi web and re-attach terminals " \
-                     "(chi --attach ID)"
+    # What a request without this Bridge's secret, or with another one, is told (403 bridge_secret).
+    SECRET_REFUSED = BridgeSecret::REFUSED
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -483,7 +480,7 @@ module Samagotchi
                                                                "never a request through a proxy" })
         elsif !secret_ok?(headers)
           note_refused(:secret, "secret_refused", request[:path])
-          write_json(io, 403, nil, { error: "bridge_secret", detail: SECRET_REFUSED })
+          write_json(io, 403, nil, { error: BridgeSecret::ERROR, detail: SECRET_REFUSED })
         elsif route.nil?
           write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })

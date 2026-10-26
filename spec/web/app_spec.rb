@@ -3607,6 +3607,31 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("error" => "question_not_pending", "detail" => "question already answered")
     end
 
+    # Not the route's own 403 (a parent's option refused): a worker that asks for a secret this chi web didn't send.
+    it "answers 502 bridge_secret with the restart message for a worker that wants its secret" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      accept_thread = Thread.new do
+        conn = server.accept
+        conn.readpartial(16_384)
+        reply = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+        conn.write("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\n\r\n#{reply}")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
+      )
+      server.close
+      accept_thread.join(1)
+
+      expect(status).to eq(502)
+      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret::REFUSED)
+    end
+
     # 4.27: any unmapped bridge status used to become 503 not_live, so the page
     # said the session was not running for a failure that wasn't that (a 500
     # in the worker, say). Only a missing or unreachable bridge is 503 now.

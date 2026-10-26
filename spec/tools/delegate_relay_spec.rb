@@ -51,7 +51,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   class FakeChild
     Response = Samagotchi::BridgeClient::Response
     attr_reader :posts
-    attr_accessor :status, :on_answered
+    attr_accessor :status, :on_answered, :error
 
     def initialize
       @posts = []
@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     def relay(action:, relay_id:, question_id:, **extra)
       @posts << { action: action, relay_id: relay_id, question_id: question_id, **extra }
       on_answered&.call if action == "answered"
-      Response.new(status: action == "answered" ? status : 200, body: status == 200 ? "{}" : %({"error":"x"}))
+      Response.new(status: action == "answered" ? status : 200, body: status == 200 ? "{}" : JSON.generate(error: error || "x"))
     end
   end
 
@@ -167,6 +167,18 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     client.on_answered = -> { finish_child }
     expect(wait).to include("→ refused by the child (a parent agent may not allow it); it waits for the user there")
     expect(relay.relay_desk.status(client.posts.last[:relay_id])).to include(by: "parent_agent")
+  end
+
+  # A child on a newer chi than this (older) worker: its Bridge asks for a secret.
+  it "says the child's Bridge wanted its secret, not that the child refused the pick" do
+    update(child, pending_question: approval)
+    user_answers("Allow once", 0)
+    client.status = 403
+    client.error = Samagotchi::BridgeSecret::ERROR
+    client.on_answered = -> { finish_child }
+    outcome = wait
+    expect(outcome).to include("→ not delivered (#{Samagotchi::BridgeSecret::REFUSED})")
+    expect(outcome).not_to include("refused by the child")
   end
 
   it "closes the card when the child is answered first, and says so" do

@@ -51,9 +51,10 @@ and commands may change between minor versions. How releases are made:
 - A session's worker answers only chi's own clients on its machine: its Bridge makes a random secret, written to the
   session's `bridge.json` (readable by you only), and refuses every request that doesn't name it (403
   `bridge_secret`). A proxy or tunnel that forwards every local port, or another account on the machine, reaches the
-  port but no longer a session. **After updating chi, restart chi web and re-attach terminals** (`chi --attach ID`):
-  a chi web or attached terminal from before the update sends no secret, and a worker the new chi starts refuses it
-  with a message saying so. Workers started before the update ask for no secret and answer both until they restart.
+  port but no longer a session. **After updating chi, restart chi web, re-attach terminals** (`chi --attach ID`) **and
+  restart older session workers** (`chi sessions restart ID...`): a chi web, attached terminal or session worker from
+  before the update sends no secret, and a worker the new chi starts (a delegate child too) refuses it with a message
+  saying so. Workers started before the update ask for no secret and answer both until they restart.
 
 ## [0.119.0] - 2026-10-26
 

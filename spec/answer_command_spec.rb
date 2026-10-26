@@ -402,6 +402,16 @@ RSpec.describe Samagotchi::AnswerCommand do
         end
       end
 
+      context "when the worker asks for a secret this chi doesn't send (a newer worker)" do
+        let(:replies) { [[403, { error: "bridge_secret", detail: "the worker's words" }]] }
+
+        it "exits 1 with the one restart message, not a refused option" do
+          s = asking(approval)
+          expect(run(s.id, "--question", "a1", "--option", "1", "--format", "json")).to eq(1)
+          expect(json_out).to include("status" => "error", "detail" => Samagotchi::BridgeSecret::REFUSED)
+        end
+      end
+
       it "under soft refuses even Allow once on an approval only the user may allow (user_only), before posting", local_only: PARENT_CHECK do
         s = asking(approval.merge(user_only: true))
         expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)

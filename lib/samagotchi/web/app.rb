@@ -1084,6 +1084,10 @@ module Samagotchi
         return not_live(id) unless client
 
         reply = request.call(client)
+        # Not the route's own 403 (a parent's option refused): the worker
+        # asked for a secret this chi web didn't send.
+        return error_response(502, BridgeSecret::ERROR, BridgeSecret::REFUSED) if reply.secret_refused?
+
         mapped = yield(reply)
         return mapped if mapped
 
