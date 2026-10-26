@@ -15,10 +15,12 @@ require_relative "public_url"
 require_relative "push"
 require_relative "qr"
 require_relative "running"
+require_relative "start_dir"
 require_relative "session_hub"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
+require_relative "../paths"
 require_relative "../project_scope"
 require_relative "../log"
 require_relative "../version"
@@ -71,18 +73,22 @@ module Samagotchi
       # URL. If a chi web already runs on the port, print (and with --open,
       # open) its page for +start_dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
-      # @param start_dir [String] the folder chi web starts in (StartDir):
-      #   its project's page, and where a new session without a dir starts
+      # @param start_dir [String, nil] the folder chi web starts in
+      #   (--start-dir, web.start_dir; StartDir.resolve, nil: the cwd): its
+      #   project's page, and where a new session without a dir starts. A
+      #   folder that isn't one stops it before anything else (never a chdir)
       # @param new_token [Boolean] replace the LAN access token first
       #   (--new-token): a running server takes the new one at once
       # @param tunnel [String, nil] --tunnel's provider (Tunnel.for): this
       #   run's public_url is the tunnel's, never config's, and the tunnel is
       #   on while the server runs
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", start_dir: Dir.pwd, open_browser: false, markdown: false,
+      def self.launch(port: nil, host: nil, scope: "project", start_dir: nil, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
                       working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil)
+        start_given = !start_dir.to_s.strip.empty?
+        start_dir = StartDir.resolve(start_dir)
         rotate_token if new_token
         public_url = public_url_setting unless tunnel
         setting = host_setting(host)
@@ -101,6 +107,8 @@ module Samagotchi
             return 1
           end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
+          other_start = start_given && other_start_line(found["start_dir"], start_dir)
+          puts other_start if other_start
           puts running_lan_lines(found["lan"], port) if found["lan"]
           running_public = public_url || Running.live_public_url(probe: ->(at) { probe(host, at) })
           puts running_public_lines(running_public) if running_public
@@ -140,7 +148,7 @@ module Samagotchi
                     end
           started ? 0 : 1
         end
-      rescue Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused, Push::Refused, Push::Store::Insecure => e
+      rescue StartDir::Invalid, Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused, Push::Refused, Push::Store::Insecure => e
         warn "Error: #{e.message}"
         1
       rescue Interrupt
@@ -148,6 +156,15 @@ module Samagotchi
         # status a shell gives a command it interrupted.
         puts "#{"\n" if $stdout.tty?}Chi Web stopped."
         CLI::Exit::INTERRUPTED
+      end
+
+      # A second chi web given a start folder (--start-dir, web.start_dir)
+      # other than the running one's: one line saying it stays; nil when
+      # they match or the running one doesn't say (an older chi web).
+      def self.other_start_line(running, wanted)
+        return nil if running.nil? || running == wanted
+
+        "It starts in #{Paths.tilde(running)}; restart it to use #{Paths.tilde(wanted)}"
       end
 
       # The tunnel on while the block runs (the server), off after it

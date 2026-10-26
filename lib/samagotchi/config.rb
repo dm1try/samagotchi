@@ -326,6 +326,9 @@ module Samagotchi
       Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli], lifecycle: :web_start),
       # What a file ref (a tool row's file, a diff line) opens on this machine: a preset (vscode, vscode-insiders, cursor, zed, none) or a URL template with {path} and an optional {line} (Web::Editor).
       Entry.new(key: "web.editor",               yaml_path: %w[web editor],               type: :string, default: "vscode",        expose: %i[env config cli], lifecycle: :web_start),
+      # The folder chi web starts in (Web::StartDir): its bare page shows that folder's project, and a new session
+      # without a folder (the all view's) starts there. Unset: the folder chi web runs in. chi web --start-dir wins.
+      Entry.new(key: "web.start_dir",            yaml_path: %w[web start_dir],            type: :string, default: nil,             expose: %i[env config], lifecycle: :web_start),
       # Participants (chi share): a new grant's lifetime (Nh or Nd, 1h to 30d), and what a grant without its own
       # takes: its spending cap in dollars ($0 to $1000) and how many of its turns may wait (0 to 20). Read when used.
       Entry.new(key: "web.participants.expires", yaml_path: %w[web participants expires], type: :string, default: "7d", expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),

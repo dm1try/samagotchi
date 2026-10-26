@@ -560,15 +560,42 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class).not_to have_received(:start)
     end
 
+    it "stops on a start folder that isn't one before it probes the port or rotates the token" do
+      allow(described_class).to receive(:probe)
+      allow(described_class).to receive(:rotate_token)
+      result = nil
+
+      expect { result = described_class.launch(port: 4567, start_dir: "/nope/gone", new_token: true) }
+        .to output("Error: --start-dir /nope/gone: no such folder\n").to_stderr
+      expect(result).to eq(1)
+      expect(described_class).not_to have_received(:probe)
+      expect(described_class).not_to have_received(:rotate_token)
+    end
+
+    it "says when the running chi web starts in another folder than the one given, and only then" do
+      Dir.mktmpdir("start") do |wanted|
+        allow(described_class).to receive(:probe).and_return({ "pid" => 42, "start_dir" => "/srv" })
+
+        expect { described_class.launch(port: 4567, start_dir: wanted) }
+          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?dir=%2Fr\n" \
+                     "It starts in /srv; restart it to use #{Samagotchi::Paths.tilde(wanted)}\n").to_stdout
+        expect { described_class.launch(port: 4567) }
+          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?dir=%2Fr\n").to_stdout
+        allow(described_class).to receive(:probe).and_return({ "pid" => 42, "start_dir" => wanted })
+        expect { described_class.launch(port: 4567, start_dir: wanted) }
+          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?dir=%2Fr\n").to_stdout
+      end
+    end
+
     it "starts a server on a free port with the scope URL" do
       allow(described_class).to receive(:probe).and_return(:free)
       allow(described_class).to receive(:start).and_return(true)
 
       expect(described_class.launch(port: 4567, markdown: true, view: "stage", annotate_presets: "Yes|No", editor: "zed", working_set: true,
-                                    start_dir: "/r")).to eq(0)
+                                    start_dir: "/")).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, view: "stage",
-              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, public_url: nil, start_dir: "/r")
+              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, public_url: nil, start_dir: "/")
     end
 
     it "stops on Ctrl-C with one line and status 130, no backtrace" do

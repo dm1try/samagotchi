@@ -150,7 +150,7 @@ module Samagotchi
                         --llm-context-budget --toolkit --tool --no-tool --set --parent-answers --no-interrupt
                         --no-default-input --dir --version -h --help],
         LOCAL_ONLY => %w[--no-shared --non-interactive -v --verbose --append-system-prompt --memory --mute --profile
-                         --port --open --new-token --tunnel --scope --web-markdown --no-web-markdown]
+                         --port --open --new-token --tunnel --start-dir --scope --web-markdown --no-web-markdown]
       }.freeze
       # A short run flag's name in a refusal.
       RUN_WORDS = { "-v" => "--verbose" }.freeze

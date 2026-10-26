@@ -44,6 +44,12 @@ RSpec.describe Samagotchi::RunOptions do
     expect(overrides).to eq({})
   end
 
+  it "takes chi web's start folder as --start-dir, never a generated --web-start-dir" do
+    options, overrides, rest = parse("web", "--start-dir", "~/proj")
+    expect([options[:start_dir], overrides, rest]).to eq(["~/proj", {}, ["web"]])
+    expect(refusal("--web-start-dir", "x")).to eq(["Error: invalid option: --web-start-dir (see chi --help)\n", 1])
+  end
+
   it "keeps a prompt that looks like --no-tool as the prompt" do
     options, = parse("-p", "--no-tool=x is broken")
     expect(options[:prompt]).to eq("--no-tool=x is broken")

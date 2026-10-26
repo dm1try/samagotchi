@@ -134,6 +134,10 @@ if options[:tunnel] && !web
   warn "Error: --tunnel goes with chi web (chi web --tunnel tailscale)"
   exit 2
 end
+if options[:start_dir] && !web
+  warn "Error: --start-dir goes with chi web (chi web --start-dir DIR)"
+  exit 2
+end
 if options[:sets] && web
   warn "Error: --set is a new session's (chi --set, chi send --new --set), not chi web's"
   exit 2
@@ -225,7 +229,8 @@ if options[:web]
                                       markdown: markdown, view: view, new_token: options[:new_token], tunnel: options[:tunnel],
                                       working_set: Samagotchi::Config.get("web.working_set"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
-                                      editor: Samagotchi::Config.get("web.editor"))
+                                      editor: Samagotchi::Config.get("web.editor"),
+                                      start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"))
 end
 
 # --resume and --attach take a unique id prefix too, like git.

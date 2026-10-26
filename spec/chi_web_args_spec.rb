@@ -33,6 +33,12 @@ RSpec.describe "chi web arguments" do
     expect(fork_chi("web", "--tunnel", "ngrok")).to eq(["", "Error: invalid argument: --tunnel ngrok (see chi --help)\n", 1])
   end
 
+  it "takes --start-dir with chi web only, and only a folder" do
+    expect(fork_chi("--start-dir", "x")).to eq(["", "Error: --start-dir goes with chi web (chi web --start-dir DIR)\n", 2])
+    expect(fork_chi("web", "--start-dir", "/nope/gone", "--port", "1"))
+      .to eq(["", "Error: --start-dir /nope/gone: no such folder\n", 1])
+  end
+
   it "refuses an unknown --web-view value after web" do
     expect(fork_chi("web", "--web-view", "bogus")).to eq(["", "Error: invalid argument: --web-view bogus (see chi --help)\n", 1])
     expect(fork_chi("web", "--web-view=bogus")).to eq(["", "Error: invalid argument: --web-view=bogus (see chi --help)\n", 1])

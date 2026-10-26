@@ -14,7 +14,7 @@ module Samagotchi
   module RunOptions
     # The flags an underscored spelling is refused for (--recap_base_url),
     # with the config registry's.
-    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel].freeze
+    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel --start-dir].freeze
 
     module_function
 
@@ -223,6 +223,8 @@ module Samagotchi
         opts.on("--tunnel PROVIDER", %w[tailscale],
                 "`chi web`: reach it over https from your tailnet through Tailscale Serve (never Funnel), for this run; " \
                 "turned off on exit") { |v| options[:tunnel] = v }
+        opts.on("--start-dir DIR", "`chi web`: the folder it starts in (web.start_dir; default: this one): its page opens on that " \
+                                   "folder's project, and a new session from the all view starts there") { |v| options[:start_dir] = v }
         opts.on("--scope VALUE", %w[project all],
                 "Which sessions `chi web` and `chi sessions list` show: project (the default: this folder's git project; " \
                 "every session outside a repo) or all") { |v| options[:scope] = v }
