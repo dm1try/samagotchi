@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
   (nor logs the cancel as a failed judgment): the call is denied with "The turn was stopped".
 - A participant no longer reads a one-time link code (`chc_…`, as in an invite link a reply quotes) or a Bridge's
   `X-Chi-Bridge` secret: both are redacted like `chp_` tokens.
+- An agent participant's `chi --remote … send --wait` goes on after chi web restarts: chi web reads whose turn it is
+  from the claimed input file, the last turn or the refused turn's record, not only its memory (it answered 403).
 
 ## [0.121.0] - 2026-10-26
 

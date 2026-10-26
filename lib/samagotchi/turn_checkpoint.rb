@@ -123,13 +123,15 @@ module Samagotchi
 
     # A participant's queued turn the worker refused (Worker#refuse_participant_turn:
     # +reason+ revoked or cap_reached) ends its sender's wait: no turn ran,
-    # canceled for that reason (ParentReport reads it as refused).
-    def self.record_refused(session_dir, enqueued_id, reason:)
+    # canceled for that reason (ParentReport reads it as refused). Its
+    # +author+ (the participant's "p:<id>") says whose wait it is to a chi
+    # web restarted since (ParticipantAccess#turn_author).
+    def self.record_refused(session_dir, enqueued_id, reason:, author: nil)
       id = enqueued_id.to_s
       return unless SessionInbox::ENQUEUED_ID_NAME.match?(id)
 
       write_settled(session_dir, id, LastTurn.new(outcome: "canceled", cancel_reason: reason.to_s,
-                                                  ended_at: Time.now.iso8601(3), enqueued_id: id))
+                                                  ended_at: Time.now.iso8601(3), enqueued_id: id, author: author))
     rescue SystemCallError, IOError => e
       Log.warn(:worker, "refused_turn_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
     end

@@ -163,6 +163,57 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     end
   end
 
+  # A chi web restarted while their turn is claimed or after it ended (a
+  # fresh App, nothing in memory) knows it as theirs from the session's
+  # files: the claimed input file's author, then last_turn's or the settled
+  # record's. Another grant's turn stays 403.
+  describe "their wait after chi web restarted" do
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
+    let(:other) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Kim", state_dir: state_dir) }
+
+    def wait_on(eid, token: issued.token)
+      call("/api/sessions/#{session.id}/wait", body: { turn: eid, timeout: 0.05 }, token: token)
+    end
+
+    def prepare(eid, token: issued.token) = call("/api/sessions/#{session.id}/wait/prepare", body: { turn: eid }, token: token)
+
+    it "knows their claimed, running turn by the claimed file's author" do
+      file = Samagotchi::SessionInbox.write_input(dir, prompt: "mine", client_id: "review:#{grant.id}", enqueued_id: "e-run",
+                                                       author: grant.author, delivery: "queue")
+      Samagotchi::SessionInbox.claim_input_file(file)
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.interrupted_turn = Samagotchi::InterruptedTurn.new(enqueued_id: "e-run")
+      session.save(state_dir: state_dir)
+
+      status, body = prepare("e-run")
+      expect([status, body["known_turn"]]).to eq([200, true])
+      expect(prepare("e-run", token: other.token).first).to eq(403)
+    end
+
+    it "reads their ended turn's outcome from last_turn, and a refused one's from its settled record" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: "2026-10-26T10:00:00Z", enqueued_id: "e-done",
+                                                   author: grant.author)
+      session.save(state_dir: state_dir)
+      Samagotchi::TurnCheckpoint.record_refused(dir, "e-refused", reason: "cap_reached", author: grant.author)
+
+      expect(prepare("e-done")).to eq([200, { "session_id" => session.id, "baseline" => { "last_turn" => "2026-10-26T10:00:00Z" },
+                                              "known_turn" => true,
+                                              "live" => false, "last_turn_id" => "e-done" }])
+      expect(wait_on("e-done").last.slice("status", "outcome")).to eq("status" => "no_reply", "outcome" => "failed")
+      expect(wait_on("e-refused").last.slice("status", "outcome", "cancel_reason"))
+        .to eq("status" => "no_reply", "outcome" => "canceled", "cancel_reason" => "cap_reached")
+      expect([prepare("e-done", token: other.token).first, wait_on("e-refused", token: other.token).first]).to eq([403, 403])
+    end
+
+    it "keeps an owner's ended turn the owner's (403)" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-10-26T10:00:00Z",
+                                                   enqueued_id: "e-owner")
+      session.save(state_dir: state_dir)
+
+      expect([prepare("e-owner").first, wait_on("e-owner").first]).to eq([403, 403])
+    end
+  end
+
   describe "resolve and wait (an agent participant's send --wait)" do
     let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
     let(:start) do

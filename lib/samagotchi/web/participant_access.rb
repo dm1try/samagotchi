@@ -13,6 +13,7 @@ require_relative "../parent_report"
 require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
+require_relative "../turn_checkpoint"
 require_relative "../log"
 
 module Samagotchi
@@ -336,20 +337,38 @@ module Samagotchi
       end
 
       # Whether the turn +enqueued_id+ of session +id+ is +grant+'s: chi
-      # web's record of who sent it, else (a chi web restarted since) its
-      # waiting input file's author, which only a principal stamps.
+      # web's record of who sent it, else (a chi web restarted since) the
+      # author the session's files keep for it (#turn_author), which only a
+      # principal stamps.
       def own_turn?(grant, id, enqueued_id)
         return false unless enqueued_id.is_a?(String) && !enqueued_id.empty?
 
         sender = @participant_mutex.synchronize { @participant_turns[enqueued_id] }
         return sender == grant.id if sender
 
-        SessionInbox.find_new_input_files(Session.session_dir(id, state_dir: default_state_dir)).any? do |file|
+        turn_author(id, enqueued_id) == grant.author
+      end
+
+      # Who queued the turn +enqueued_id+, as the session's files say: its
+      # input file's author while it waits or runs (the claimed
+      # *.json.processing stays until the turn ends), then the turn's end:
+      # last_turn's author, or its settled record's (a refused turn's).
+      # nil for the owner's turn, or one nothing names.
+      def turn_author(id, enqueued_id)
+        dir = Session.session_dir(id, state_dir: default_state_dir)
+        files = SessionInbox.find_new_input_files(dir) + SessionInbox.claimed_input_files(dir)
+        files.each do |file|
           data = JSON.parse(File.read(file))
-          data.is_a?(Hash) && data["enqueued_id"] == enqueued_id && data["author"] == grant.author
+          return data["author"] if data.is_a?(Hash) && data["enqueued_id"] == enqueued_id
         rescue JSON::ParserError, SystemCallError
-          false
+          next
         end
+        last = session_access.show(id).last_turn
+        return last.author if last&.enqueued_id == enqueued_id
+
+        TurnCheckpoint.settled_turn(dir, enqueued_id)&.author
+      rescue ArgumentError, JSON::ParserError, SystemCallError
+        nil
       end
 
       # GET /api/sessions/resolve?id= for a participant: their grant's

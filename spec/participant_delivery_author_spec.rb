@@ -171,6 +171,8 @@ RSpec.describe "a participant's author on delivery" do
                                                     baseline: baseline, turn: "e1", queued: true)
 
       expect(wait).to have_attributes(status: :no_reply, outcome: "canceled", cancel_reason: "cap_reached")
+      # Whose turn it was, for a chi web restarted since (ParticipantAccess#turn_author).
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "e1").author).to eq(author)
       expect(Samagotchi::ParentReport.status(wait)).to eq("refused")
       expect(Samagotchi::ParentReport.exit_status(wait)).to eq(Samagotchi::CLI::Exit::FAILED)
       expect(Samagotchi::ParentReport.json(wait, session_id: session.id)[:detail])

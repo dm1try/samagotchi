@@ -720,7 +720,7 @@ module Samagotchi
     # ends the sender's wait on it (chi send --wait, chi web's /wait).
     # @param origin [TurnOrigin] a participant's
     def refuse_participant_turn(origin, reason)
-      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason)
+      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
       Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
                                            enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
       @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
