@@ -239,7 +239,10 @@ done
   hands over to the new chi, which does the rest and prints the table. Old
   versions stay installed: running workers and an old `chi web` still load
   files from them, so a `gem cleanup` while they run breaks them (a
-  `LoadError`, missing web assets); restart them first. Offline, the row says
+  `LoadError`, missing web assets); restart them first. A chi web or an
+  attached terminal started before the update may not reach a worker the
+  new chi starts (403 `bridge_secret`: its Bridge asks for a secret they
+  don't send): restart chi web and re-attach. Offline, the row says
   "couldn't check" and the rest still runs; a failed install fails the row
   and the rest runs on the current version. Under Bundler (`bundle exec`)
   the row says `bundle update samagotchi` instead.
@@ -1360,8 +1363,9 @@ chi --remote work sessions list
 ```
 
 - Pick a local port other than 14567 when this machine runs its own chi web.
-- Forward only chi web's port, never a worker's: a session's Bridge is
-  unauthenticated.
+- Forward only chi web's port, never a worker's: a session's Bridge answers
+  only chi's own clients on its machine (they read its secret from the
+  session's folder), so a forwarded worker port is of no use.
 - Without `web.public_url` there, a request that arrives through the tunnel
   looks local and needs no token, so any process here reaching the forwarded
   port acts as you there. With it set, every request needs the token, which

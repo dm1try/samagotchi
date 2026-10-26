@@ -6,7 +6,8 @@ session's `context`, `sessions list/stop/restart/archive/unarchive/delete`) agai
 sessions, workers, memories and code stay on that machine; this one only sends requests and prints the answers.
 User-facing behaviour is in [cli.md](../cli.md#remote-sessions). This page is the code's shape, for changing it.
 
-**The one rule:** the remote side is that machine's **chi web**, never a worker's Bridge. Bridges stay on loopback.
+**The one rule:** the remote side is that machine's **chi web**, never a worker's Bridge. Bridges stay on loopback,
+and answer only a request that names their secret from `bridge.json` ([architecture.md](../architecture.md)).
 chi web answers each request by calling the same `SessionAccess::Local` operation the CLI would call there.
 
 ## The seam: `SessionAccess`

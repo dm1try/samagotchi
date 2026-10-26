@@ -152,7 +152,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Model loops and adapters | `KernelLoop`, `LLM::ChatLoop`, `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::AnthropicMessages`, `LLM::HTTP` | The model↔tool loops and the HTTP adapters they talk through (see "Model loops and adapters"). |
-| Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, no auth, localhost-only). |
+| Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, localhost-only), and it answers only a request that names its secret (`X-Chi-Bridge`, from the worker's 0600 `bridge.json`). |
 | Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`). With `web.host: lan` (or one of this machine's IPv4 addresses) the server also listens on that address, where every request but this machine's needs the access token (`App#token_gate`: the `chi_token` cookie or `Authorization: Bearer`; [CLI](cli.md#chi-web-on-your-phone)). Experimental: behind an auth proxy (`web.public_url`, `Web::ProxyGate`) every request needs the token, this machine's too, and one that came through the proxy also the configured identity header for the owner ([configuration.md](configuration.md#behind-an-auth-proxy)). A request goes through, in order: the Host check (`local_host_header?`: loopback names, the LAN address, the public host), the cross-site check (`cross_site?`: Origin this server's or the public origin, no `Sec-Fetch-Site` cross-site/same-site on a POST or `/api`), the frame check (`framed?`: a frame/embed/object load from another origin, 403 `framed`; every HTML answer carries `X-Frame-Options: DENY` and `frame-ancestors 'none'`), the token gate (`token_gate` → `principal_for`, `proxied_principal` for a proxied request; the `?token=` / `POST /api/token` trade sets the cookie, `__Host-chi_token` through the proxy; with `web.public_url` a direct request takes Bearer only, and chi's token-less `/api/info` probe gets `probe_info`), then the route's permission (`Principal#permits?`). It talks to each worker's Bridge (`App#relay`, `bridge_get`; `/stream` proxies it) and reads the session files; no `Engine` of its own. Markdown (`web.markdown`) is rendered here only (`Web::MarkdownRenderer`): the answers it serves, card bodies, and `POST /api/render` for a text the page already shows. `App` keeps the gate, `ROUTES` and the helpers the handlers share; its handlers live in mixins it includes, each a `Web::` module with private methods: `SessionAccessRoutes` (`web/session_access_routes.rb`), `ParticipantAccess` (`web/participant_access.rb`), `ParticipantsAdmin` (`web/participants_admin.rb`), `ParticipantReview` (`web/participant_review.rb`), `MessageDisplay` (`web/message_display.rb`), `SessionShow` (`web/session_show.rb`), `SessionCreate` (`web/session_create.rb`), `SessionControl` (`web/session_control.rb`), `PushRoutes` (`web/push_routes.rb`) and `ProxyGate` (`web/proxy_gate.rb`). Exact paths in `GATE_FREE_PATHS` are served before the token gate (the fragment trade's script, and the Home Screen app's manifest, service worker and icons). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`; retention (14d/500) + ordering (`updated_at desc`). |
 
@@ -390,8 +390,22 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   worker only through `chi web`. A request carrying any trace a proxy adds (`ProxyTrace`: `X-Forwarded-*`,
   `Forwarded`, `X-Real-IP`, `X-Auth-Request-*`, `Cf-*`…, underscore twins too) is `403 proxied`
   (`Bridge#proxied_request?`): an auth proxy that forwards every local port and adds such a header doesn't reach a
-  worker. A heuristic: a forward that adds none still does, until Bridges have a secret (shared-sessions P6).
-  `bridge.json` is 0600.
+  worker.
+- **The secret.** Every request, on every route (the stream, the reads such as `state` and `stats`, the writes, and
+  an unknown path), names the Bridge's secret in `X-Chi-Bridge`; one without it, or with another one, is
+  `403 bridge_secret` with one message (`Bridge::SECRET_REFUSED`: restart chi web and re-attach terminals), after
+  the browser and proxy checks and before any route (`Bridge#secret_ok?`, `OpenSSL.secure_compare`). No route is left
+  open: what the reads show is the session itself. Each Bridge makes its own (`SecureRandom.hex(32)`, 64 hex
+  characters) when it starts and writes it to `bridge.json`, which is 0600 from the moment it exists
+  (`AtomicFile` creates the temporary file with that mode, then renames it), so only this machine's user can read
+  it: a forward that adds no proxy header, or another local account, reaches the port but not a session. Clients get
+  it only from the sidecar: `BridgeClient.discover`/`.wait_for`/`.for_sidecar` take the port and the secret from the
+  same read (chi web makes its client from the sidecar for every request, the attached terminal again on a
+  `worker_changed`), so a respawned worker's new one is used and nothing passes a port by hand. A worker from before
+  the secret writes none and asks for none; a chi web or attached terminal from before it sends none, so a worker
+  the newer chi started refuses it until it is restarted. The secret is never logged (a refusal logs
+  `secret_refused` with the path, at most once a minute), never in an event, a reply, `/api/info` or a session
+  file, and `WorkerSidecar`, `BridgeClient` and `Bridge` leave it out of `#inspect`.
 
 The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` frames
 (`SessionMetrics#snapshot`) carry the session's totals and only the recent timing records: the
@@ -472,7 +486,7 @@ Every route goes through `Bridge#dispatch`: an id other than the bridge's own se
 `handler_failed`) rather than dropping the connection.
 
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
-for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
+for client discovery, with the Bridge's secret (see above). `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
 `GET /api/sessions/:id/output`), as a byte pipe for the owner: `App#proxy_stream_body` gives `ProxyStreamBody` the
 request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
