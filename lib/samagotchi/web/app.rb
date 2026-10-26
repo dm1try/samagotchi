@@ -16,6 +16,7 @@ require_relative "../answer_tail"
 require_relative "../answer_refs"
 require_relative "../question_asked"
 require_relative "../bridge_client"
+require_relative "../worker_link"
 require_relative "../bridge/bounded_queue"
 require_relative "../bridge/card_store"
 require_relative "../session"
@@ -1134,8 +1135,9 @@ module Samagotchi
       # The session's Bridge, waiting briefly for one a resume just spawned.
       # @return [BridgeClient, nil]
       def live_bridge_client(id)
-        sidecar = bridge_sidecar(id) || await_bridge_sidecar(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min)
-        bridge_client_for(id, sidecar)
+        link = worker_link(id)
+        link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min) unless link.live?
+        link_client(id, link)
       end
 
       # The process holding the session (an OwnerLock::Owner), or nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
@@ -1358,16 +1360,16 @@ module Samagotchi
         # Single live transport: proxy to the session's Bridge. When no live
         # worker exists there is nothing to stream — history is available via
         # GET /api/sessions/:id/output.
-        sidecar = bridge_sidecar(id)
+        link = worker_link(id)
         # A resume just spawned the worker: its bridge may still be binding.
         # Wait briefly for it so the first SSE connect lands on a live bridge
         # instead of an instantly-closed empty 200 / 503 during startup.
-        if sidecar.nil? && @bridge_wait_timeout.to_i.positive?
-          sidecar = await_bridge_sidecar(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
+        if !link.live? && @bridge_wait_timeout.to_i.positive?
+          link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
         end
-        return error_response(503, "not_live", "no live bridge for session #{id}") unless sidecar
+        return error_response(503, "not_live", "no live bridge for session #{id}") unless link.live?
 
-        client = bridge_client_for(id, sidecar)
+        client = link_client(id, link)
 
         headers = {
           "Content-Type" => "text/event-stream",
@@ -1479,33 +1481,40 @@ module Samagotchi
         end
       end
 
-      # Bounded wait for a freshly-spawned worker's bridge sidecar so the
-      # response hands the client a live transport without client-side polling.
-      # Returns the bridge's sidecar (WorkerSidecar), or nil when it is not up by the deadline (the
-      # session still exists; EventSource auto-reconnect covers late binders).
-      def await_bridge_sidecar(session_id, timeout: @bridge_wait_timeout)
-        return nil if timeout.nil? || timeout <= 0
+      # Bounded wait for a freshly-spawned worker's Bridge so the response
+      # hands the client a live transport without client-side polling (the
+      # web's WorkerLink.await: #worker_link polled). Returns the first Live,
+      # else the last outcome (None when +timeout+ allows no wait): the
+      # session still exists; EventSource auto-reconnect covers late binders.
+      # @return [WorkerLink::Live, WorkerLink::None, WorkerLink::Stale]
+      def await_worker_link(session_id, timeout: @bridge_wait_timeout)
+        return WorkerLink::None.new if timeout.nil? || timeout <= 0
 
-        BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) { bridge_sidecar(session_id) }
+        last = WorkerLink::None.new
+        found = BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) do
+          (last = worker_link(session_id)).live? && last
+        end
+        found || last
       rescue StandardError
-        nil
+        WorkerLink::None.new
       end
 
-      # The session's live Bridge's sidecar (stale ones are removed), or nil:
-      # read again for every request, so a respawned worker's port and secret
-      # are the ones used.
-      # @return [WorkerSidecar, nil]
-      def bridge_sidecar(session_id)
+      # The session's worker link (WorkerLink.resolve; stale sidecars are
+      # removed): read again for every request, so a respawned worker's port
+      # and secret are the ones used.
+      # @return [WorkerLink::Live, WorkerLink::None, WorkerLink::Stale]
+      def worker_link(session_id)
         dir = @session_class.session_dir(session_id, state_dir: default_state_dir)
-        BridgeClient.live_sidecar(dir, host: DEFAULT_HOST)
+        WorkerLink.resolve(dir, unlink: true, host: DEFAULT_HOST)
       rescue StandardError
-        nil
+        WorkerLink::None.new
       end
 
       # @return [BridgeClient, nil] a client for the session's live Bridge
-      def bridge_client(session_id) = bridge_client_for(session_id, bridge_sidecar(session_id))
+      def bridge_client(session_id) = link_client(session_id, worker_link(session_id))
 
-      def bridge_client_for(session_id, sidecar) = BridgeClient.for_sidecar(session_id, sidecar, host: DEFAULT_HOST)
+      # @return [BridgeClient, nil] +link+'s client when it is Live
+      def link_client(session_id, link) = link.live? ? link.client(session_id, host: DEFAULT_HOST) : nil
 
       # GET a read path of the session's live Bridge (+path+: "state",
       # "snapshot", "stats", ...).
@@ -1824,7 +1833,7 @@ module Samagotchi
         #   is kept (the env carries the token cookie, never held or inspected)
         # @param filter [#call, nil] chunk -> String (nil or "": nothing sent);
         #   it sees the Bridge's reads as they come, not whole frames
-        # @param client [BridgeClient] the session's Bridge (App#bridge_client_for)
+        # @param client [BridgeClient] the session's Bridge (App#link_client)
         def initialize(client:, query:, headers:, server_running: -> { true }, filter: nil)
           @client = client
           @query = query

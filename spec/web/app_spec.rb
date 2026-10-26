@@ -12,6 +12,7 @@ require "samagotchi/web/app"
 require "samagotchi/bridge"
 require "samagotchi/web/session_hub"
 require "samagotchi/session"
+require_relative "../support/worker_links"
 
 # Emulates SessionManager#read_responses over an in-memory response list,
 # optionally filtering by mtime threshold using a parallel +times+ array.
@@ -84,6 +85,8 @@ class StubSessionLoader
 end
 
 RSpec.describe Samagotchi::Web::App do
+  include WorkerLinks
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
@@ -102,8 +105,8 @@ RSpec.describe Samagotchi::Web::App do
     )
   end
 
-  # The live worker's sidecar App#bridge_sidecar finds: +port+ and a secret (#bridge_secret); nil for none.
-  def sidecar_at(port) = port && Samagotchi::WorkerSidecar.new(port: port, secret: bridge_secret)
+  # The worker link App#worker_link finds: Live on +port+ with a secret (#bridge_secret); None for nil.
+  def link_at(port) = port ? live_link(Samagotchi::WorkerSidecar.new(port: port, secret: bridge_secret)) : none_link
 
   def bridge_secret = "5e" * 32
 
@@ -187,7 +190,7 @@ RSpec.describe Samagotchi::Web::App do
 
     it "proxies to the live bridge and forwards the client query string" do
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(9_999))
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
       status, headers, body = app.call(env_for("/api/sessions/s1/stream?from_seq=3"))
 
       expect(status).to eq(200)
@@ -199,7 +202,7 @@ RSpec.describe Samagotchi::Web::App do
     # ?raw=1 is the worker port's debugging view (a chunk's provider payload).
     it "doesn't forward raw, in any spelling, and keeps the other parameters" do
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(9_999))
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
       { "?raw=1&from_seq=3" => "?from_seq=3", "?from_seq=3&r%61w=1&snapshot=1" => "?from_seq=3&snapshot=1",
         "?raw" => "", "?raw=1" => "" }.each do |given, forwarded|
         _status, _headers, body = app.call(env_for("/api/sessions/s1/stream#{given}"))
@@ -219,7 +222,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(server.local_address.ip_port))
+      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
       _status, headers, _body = app.call(env_for("/api/sessions/s1/stream?raw=1&snapshot=1", headers: { "rack.hijack?" => true }))
       headers["rack.hijack"].call(StringIO.new)
       join!(accept_thread, "the fake bridge")
@@ -230,7 +233,7 @@ RSpec.describe Samagotchi::Web::App do
 
     it "forwards the Last-Event-ID header through to the bridge" do
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(9_999))
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
       _status, _headers, body = app.call(
         env_for("/api/sessions/s1/stream?from_seq=3", headers: { "HTTP_LAST_EVENT_ID" => "7" })
       )
@@ -249,7 +252,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
       status, headers, body = app.call(
         env_for("/api/sessions/s1/stream?from_seq=0", headers: { "rack.hijack?" => true })
       )
@@ -1148,7 +1151,7 @@ RSpec.describe Samagotchi::Web::App do
     it "does not resume a dead session on preview — read-only, wake on POST /turn" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(nil))
+      allow(app).to receive(:worker_link).and_return(link_at(nil))
 
       status, _headers, _body = app.call(env_for("/api/sessions/s1"))
 
@@ -1159,7 +1162,7 @@ RSpec.describe Samagotchi::Web::App do
     it "does not resume when the bridge is already live" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(4567))
+      allow(app).to receive(:worker_link).and_return(link_at(4567))
 
       app.call(env_for("/api/sessions/s1"))
 
@@ -2124,7 +2127,7 @@ RSpec.describe Samagotchi::Web::App do
     it "reports the bridge port once the worker bridge comes up" do
       manager = FakeResponsesManager.new
       app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 5)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(nil), sidecar_at(nil), sidecar_at(4_321))
+      allow(app).to receive(:worker_link).and_return(link_at(nil), link_at(nil), link_at(4_321))
       status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
@@ -2134,7 +2137,7 @@ RSpec.describe Samagotchi::Web::App do
     it "reports a null bridge_port when the bridge is not up by the deadline" do
       manager = FakeResponsesManager.new
       app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 0.3)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(nil))
+      allow(app).to receive(:worker_link).and_return(link_at(nil))
       status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
@@ -3508,7 +3511,7 @@ RSpec.describe Samagotchi::Web::App do
 
     it "returns 503 not_live when there is no live bridge for the session" do
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(nil))
+      allow(app).to receive(:worker_link).and_return(link_at(nil))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-1","selected":["A"]}')
       )
@@ -3570,7 +3573,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-9","selected":["Cats"],"freeform":"meow"}')
       )
@@ -3598,7 +3601,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
       )
@@ -3623,7 +3626,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
       )
@@ -3650,7 +3653,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.report_on_exception = false
 
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-5","selected":["A"]}')
       )
@@ -3684,7 +3687,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     def app_with_bridge(port)
-      build_app(state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port)) }
+      build_app(state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:worker_link).and_return(link_at(port)) }
     end
 
     it "returns 400 without a question id, and 503 with no live bridge" do
@@ -3748,7 +3751,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     def app_with_bridge(port, manager: FakeResponsesManager.new)
-      build_app(manager: manager, state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_sidecar).and_return(sidecar_at(port)) }
+      build_app(manager: manager, state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:worker_link).and_return(link_at(port)) }
     end
 
     it "wakes the session's worker and hands the command to its Bridge" do

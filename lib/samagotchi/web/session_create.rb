@@ -28,7 +28,7 @@ module Samagotchi
     # (request_toolkit, request_parent_answers, request_llm_context,
     # request_thinking). Included in App: its ROUTES name handle_create, and
     # its helpers (json_response, error_response, parse_json, request_body,
-    # await_bridge_sidecar, session_to_json, record_history, scope_dir, …) and
+    # await_worker_link, session_to_json, record_history, scope_dir, …) and
     # ivars (@manager, @session_class, @state_dir, @hub) answer. See
     # docs/architecture.md (chi web's routes).
     module SessionCreate
@@ -130,7 +130,7 @@ module Samagotchi
         end
         # The worker's Bridge is the single live transport: wait (bounded) for
         # it so the client can attach without client-side polling.
-        port = await_bridge_sidecar(session.id)&.port
+        port = await_worker_link(session.id).then { |link| link.live? ? link.port : nil }
         # The projection holds it before the page hears back (no tick wait).
         @hub&.touch(session.id)
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
@@ -172,7 +172,7 @@ module Samagotchi
                                               model: model.empty? ? nil : model)
         return error if error
 
-        port = await_bridge_sidecar(session.id)&.port
+        port = await_worker_link(session.id).then { |link| link.live? ? link.port : nil }
         moved = session.moved_children || []
         # The moved delegates' cards fold under the new link now.
         [session.continues, session.id, *moved].each { |sid| @hub&.touch(sid) }
@@ -228,7 +228,7 @@ module Samagotchi
         rescue ArgumentError => e
           return error_response(404, "not_found", e.message)
         end
-        port = await_bridge_sidecar(session.id)&.port
+        port = await_worker_link(session.id).then { |link| link.live? ? link.port : nil }
         @hub&.touch(session.id)
         json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning))
       end
