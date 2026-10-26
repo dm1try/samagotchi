@@ -16,11 +16,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
-- chi web's bare page (`/`: the LAN link and its QR code, the Home Screen app, a pushed notification's link) opens on
-  the project chi web starts in, as its printed link already did; outside a repo it shows every session as before.
-  Every project's sessions are now `/?scope=all` (the header's `all`), and `chi web --scope=all` prints that link.
-  The Home Screen app's notifications and badge still cover every project: on a project's page it tidies them from
-  every session's events, where before a project's page (`?dir=`) left them as they were.
+- chi web's bare page (`/`: the LAN link and its QR code, the Home Screen app) opens on the project chi web starts in,
+  as its printed link already did; outside a repo it shows every session as before. Every project's sessions are now
+  `/?scope=all` (the header's `all`), and `chi web --scope=all` (or a `chi web` run outside a repo) prints that link.
+- A pushed notification opens its session in that session's own project (the all view for a session outside a repo),
+  not the project the app shows. The Home Screen app's notifications and badge still cover every project: on a
+  project's page it tidies them from every session's events, where before a project's page (`?dir=`) left them as
+  they were.
 
 ## [0.119.0] - 2026-10-26
 

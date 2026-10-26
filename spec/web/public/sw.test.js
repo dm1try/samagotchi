@@ -126,24 +126,24 @@ test("every push shows something: an unreadable one, another version, a close or
   assert.deepEqual(w.log, []);
 });
 
-test("a tap focuses the app's window and navigates it to the session", async () => {
+test("a tap focuses the app's window and navigates it to the session in its project's view, query and all", async () => {
   const win = { log: [], focus: async () => win.log.push("focus"), navigate: async (url) => win.log.push(["navigate", url]) };
   const w = loadWorker({ windows: [win] });
   let closed = false;
-  await w.fire("notificationclick", { notification: { data: { url: "/#/s/s1" }, close: () => { closed = true; } } });
+  await w.fire("notificationclick", { notification: { data: { url: "/?dir=/u/my+app#/s/s1" }, close: () => { closed = true; } } });
   assert.equal(closed, true);
   assert.deepEqual(w.log, [["matchAll", { type: "window", includeUncontrolled: true }]]);
-  assert.deepEqual(win.log, ["focus", ["navigate", "/#/s/s1"]]);
+  assert.deepEqual(win.log, ["focus", ["navigate", "/?dir=/u/my+app#/s/s1"]]);
 });
 
 test("a tap with no window opens one, and only at a path of chi web's", async () => {
   const w = loadWorker();
-  await w.fire("notificationclick", { notification: { data: { url: "/#/s/s1" }, close() {} } });
+  await w.fire("notificationclick", { notification: { data: { url: "/?scope=all#/s/s1" }, close() {} } });
   await w.fire("notificationclick", { notification: { data: { url: "https://evil.example/" }, close() {} } });
   await w.fire("notificationclick", { notification: { data: { url: "//evil.example/" }, close() {} } });
   await w.fire("notificationclick", { notification: { data: { url: "/\\evil.example/" }, close() {} } });
   assert.deepEqual(w.log.filter((e) => e[0] === "openWindow"),
-    [["openWindow", "/#/s/s1"], ["openWindow", "/"], ["openWindow", "/"], ["openWindow", "/"]]);
+    [["openWindow", "/?scope=all#/s/s1"], ["openWindow", "/"], ["openWindow", "/"], ["openWindow", "/"]]);
 });
 
 test("install skips waiting and activate claims the clients; no fetch handler", async () => {

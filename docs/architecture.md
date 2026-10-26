@@ -501,8 +501,9 @@ The page's scope is in its URL, and the server picks the default: `?dir=<folder>
 project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare
 `/` the start folder's project when that folder is in a repo (`App#index_data_attributes` writes
 `data-scope-dir`, which the page reads when the URL has no `?dir`), else every session. The page never
-redirects, so the `?token=` trade's 303, a link code's `#code=`, the Home Screen app's `start_url` `/`
-and a push's `/#/s/<id>` all land on the start project. `?dir=` beats `?scope=all`. A session created
+redirects, so the `?token=` trade's 303, a link code's `#code=` and the Home Screen app's `start_url` `/`
+all land on the start project; a push opens its session's own project (`/?dir=<root>#/s/<id>`, or
+`/?scope=all#/s/<id>` outside a repo). `?dir=` beats `?scope=all`. A session created
 without a folder starts in the start folder.
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and

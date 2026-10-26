@@ -1812,6 +1812,8 @@ are never sent to; `chi web push rm ID` removes them. From the Mac: `chi web pus
 shows a recent delivery (Apple keeps accepting pushes for it): if one stops getting notifications, switch it off and on
 there; the new subscription replaces the dead one.
 
+- **What a tap opens**: the session, in its own project's view (the all view for a session in no repo), whichever
+  project the app was showing; an open app window moves there.
 - **What is sent**: the session's name and the reason ("needs approval", "needs an answer", "hit its step limit",
   "needs you", "turn failed", "done in N s"), never the question or the command, as the tab's notification on the
   Mac. The session's name shows on the lock screen and the Watch.

@@ -96,10 +96,12 @@ injected transport) that decrypts each body with the device's key and checks the
 The service worker is the only reader of the payload (JSON, at most `Notifier::OPEN_LIMIT`, 3000 bytes, with
 `open`; one aes128gcm record leaves 3993 bytes of plaintext under Web Push's 4096: 86 header, 1 delimiter, 16 tag):
 
-- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":"/#/s/<id>","badge":N,"open":[KEY…]}`: a waiting
+- `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":URL,"badge":N,"open":[KEY…]}`: a waiting
   reason's (approval, question, continue, card) TTL 12 h (`SHOW_TTL`), `Urgency: high`; a failed or done turn's
   TTL 10 min (`EVENT_TTL`), `Urgency: normal`. `open` only while the whole list fits the limit; the test push
-  (`chi:test`) has neither `open` nor `badge`.
+  (`chi:test`) has neither `open` nor `badge`. URL (`Notifier.session_url`) is the session in its own project's
+  view, `/?dir=<project root>#/s/<id>` (the folder URL-encoded, its slashes kept), or `/?scope=all#/s/<id>` for a
+  session in no repo: never the bare `/`, which is chi web's start project.
 
 `badge` and `open` are the waiting keys still open in the Notifier's summaries (`Attention.open_keys`: a pending
 question of any reason, a hook's and a continue's too, not relayed, and a card with actions; never a failed or done

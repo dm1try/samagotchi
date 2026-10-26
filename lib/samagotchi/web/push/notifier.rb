@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "uri"
 require "time"
 require_relative "attention"
 require_relative "../../log"
@@ -57,10 +58,22 @@ module Samagotchi
         # recently and isn't in sent.json.
         CATCH_UP = 3600
 
-        Show = Data.define(:attention, :title, :body, :at)
+        # url: the page the notification opens (Notifier.session_url).
+        Show = Data.define(:attention, :title, :body, :at, :url)
         Close = Data.define(:keys)
         # One device's show, again at +at+ (the push service said when).
         Retry = Data.define(:show, :sub_id, :at)
+
+        # The page a session's notification opens: the session in its own
+        # project's view (?dir=<its project root>), or in the all view
+        # (?scope=all) for a session in no repo, never chi web's bare page
+        # (its start folder's project). The service worker navigates an open
+        # window to it, query and all.
+        def self.session_url(summary)
+          root = summary[:project_root]
+          scope = root ? "dir=#{URI.encode_www_form_component(root).gsub("%2F", "/")}" : "scope=all"
+          "/?#{scope}#/s/#{summary[:id]}"
+        end
 
         # @param store [Store] the devices (and the key the client signs with)
         # @param client [#deliver] Client
@@ -203,7 +216,8 @@ module Samagotchi
 
         def enqueue_show(attention, summary)
           title, body = Attention.text(summary, attention.reason)
-          @queue << Show.new(attention: attention, title: title, body: body, at: @now.call)
+          @queue << Show.new(attention: attention, title: title, body: body, at: @now.call,
+                             url: Notifier.session_url(summary))
         end
 
         def run
@@ -302,7 +316,7 @@ module Samagotchi
 
         def show_payload(show, open)
           payload = { v: 1, kind: "show", tag: show.attention.key, title: show.title, body: show.body,
-                      url: "/#/s/#{show.attention.session_id}", badge: open.size }
+                      url: show.url, badge: open.size }
           with_open = payload.merge(open: open)
           JSON.generate(with_open).bytesize <= OPEN_LIMIT ? with_open : payload
         end

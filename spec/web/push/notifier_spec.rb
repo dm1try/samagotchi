@@ -69,9 +69,9 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     expect(client.calls.map { |c| c[:payload][:kind] }.uniq - ["show"]).to eq([])
   end
 
-  def summary(id: "s1", question: nil, parent_id: nil, title: "fix the build", card: nil, turn: nil)
+  def summary(id: "s1", question: nil, parent_id: nil, title: "fix the build", card: nil, turn: nil, project_root: nil)
     { id: id, title: title, first_preview: "first", parent_id: parent_id, pending_question: question, pending_card: card,
-      last_turn: turn }.compact
+      last_turn: turn, project_root: project_root }.compact
   end
 
   # A last_turn as the summary has it (string keys).
@@ -112,8 +112,15 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
       expect(client.calls).to eq([{ sub: phone.id, ttl: 12 * 3600, urgency: "high",
                                     payload: { v: 1, kind: "show", tag: "s1:q1", title: "fix the build",
-                                               body: "needs approval", url: "/#/s/s1", badge: 1, open: ["s1:q1"] } }])
+                                               body: "needs approval", url: "/?scope=all#/s/s1", badge: 1, open: ["s1:q1"] } }])
       expect(store.find(phone.id).last_ok_at).not_to be_nil
+    end
+
+    it "opens a session in a repo in its own project's view, the folder encoded" do
+      session(id: "r1", question: { id: "q1", kind: "question" }, project_root: "/Users/me/my app&co")
+      advance(5)
+
+      expect(client.calls.map { |c| c[:payload][:url] }).to eq(["/?dir=/Users/me/my+app%26co#/s/r1"])
     end
 
     context "with a chi web page in front (presence)" do
@@ -261,7 +268,7 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(client.calls.map { |c| c.values_at(:sub, :ttl, :urgency) })
         .to eq([[phone.id, 600, "normal"], [done_device.id, 600, "normal"]])
       expect(client.calls.first[:payload]).to include(tag: "f:2026-10-25T09:05:12.345+02:00", body: "turn failed",
-                                                      url: "/#/s/f", badge: 1, open: ["w:q1"])
+                                                      url: "/?scope=all#/s/f", badge: 1, open: ["w:q1"])
     end
 
     it "pushes a done turn only to a device that asked for done turns" do
