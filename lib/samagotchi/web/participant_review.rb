@@ -2,6 +2,7 @@
 
 require_relative "participant_view"
 require_relative "participant_stream_filter"
+require_relative "participant_exposure"
 require_relative "../session_metrics"
 require_relative "../review_start"
 require_relative "../guardrails/review_paths"
@@ -58,15 +59,16 @@ module Samagotchi
         automatic = automatic_turn_ids(id, session, shown, current, state)
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
                      (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
+        queued = snapshot_list(turn_snapshot, "queued")
         json_response(200, {
-          viewer: review_viewer(req, id),
+          viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer),
           session: { id: session.id, title: participant_title(session), status: displayed_status(session, state) },
           subjects: review_subjects(session, viewer),
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
           messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
           current_turn: current,
           waiting_for_owner: waiting,
-          queued: review_queue(snapshot_list(turn_snapshot, "queued"), viewer),
+          queued: review_queue(queued, viewer),
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
       end
@@ -140,15 +142,69 @@ module Samagotchi
       def delegate_child?(session) = !session.parent_id.to_s.empty?
 
       # Who is reading: a participant (their id, name, whether they may
-      # comment: not once their cap is reached), or the owner looking
-      # through the participant view (no composer).
-      def review_viewer(req, id)
+      # comment: not once their cap is reached, and their +usage+ as their
+      # grant's exposure shows it), or the owner looking through the
+      # participant view (no composer, no usage: the owner has /stats).
+      # +state+ the live worker's session state (nil without one), +queued+
+      # its queue.
+      def review_viewer(req, id, session:, state:, queued:, viewer:)
         return { kind: "owner", can_comment: false } if principal(req).owner?
 
         grant = principal(req).grant
         capped = !participant_cap_refusal(grant).nil?
         { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, can_comment: !capped,
-          cap_reached: capped, session_id: id }
+          cap_reached: capped, session_id: id,
+          usage: review_usage(grant, session: session, state: state, queued: queued, viewer: viewer) }
+      end
+
+      # A participant's usage, the fields their grant's exposure level
+      # shows (ParticipantExposure), each computed only when shown. Every
+      # source reads the grant's own author: never another participant's or
+      # the owner's.
+      def review_usage(grant, session:, state:, queued:, viewer:)
+        ParticipantExposure.usage(grant.exposure, {
+          spent: -> { participant_spent(grant, state) },
+          cap: -> { grant.spend_cap },
+          queued: -> { queued.count { |entry| entry.is_a?(Hash) && viewer.own?(entry["author"]) } },
+          queue_limit: -> { grant.queue_limit },
+          expires_at: -> { grant.expires_at },
+          model: -> { participant_model(session, state, viewer) }
+        })
+      end
+
+      # What the participant has cost so far, in dollars: the saved
+      # analytics' count (#participant_cap_refusal's), or the live worker's
+      # when it is more (SessionMetrics#spend: its saved turns, the running
+      # turn's finished generations and the side requests; a running turn
+      # is saved only at its end). The worker's count already holds the
+      # saved one, so the two are never added.
+      def participant_spent(grant, state)
+        dir = Session.session_dir(grant.session_id, state_dir: default_state_dir)
+        saved = SessionMetrics.saved_spend(dir, grant.author)
+        live = live_spend(state, grant.author)
+        [saved, live].max.round(4)
+      end
+
+      # +author+'s cost in the live worker's metrics (spend_by_author), 0.0
+      # without one.
+      def live_spend(state, author)
+        cost = state.is_a?(Hash) ? state.dig("metrics", "spend_by_author", author, "cost") : nil
+        cost.is_a?(Numeric) && cost.to_f.finite? ? cost.to_f : 0.0
+      rescue TypeError
+        0.0
+      end
+
+      # The model the session runs on, as its host is sent it (the alias
+      # applied, no host name): the live worker's, else the saved one's;
+      # nil when it doesn't resolve.
+      def participant_model(session, state, viewer)
+        ref = (state.is_a?(Hash) && state["model_name"]) || session.model_name
+        return nil if ref.to_s.empty?
+
+        name = host_registry.bare_name(ref.to_s)
+        name.to_s.empty? ? nil : ParticipantView::Redact.text(name.to_s, viewer)
+      rescue StandardError
+        nil
       end
 
       # The queue as a participant sees it: their own queued turns (the

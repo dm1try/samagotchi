@@ -96,6 +96,52 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(review(issued.token).last["viewer"]).to include("can_comment" => false, "cap_reached" => true)
   end
 
+  describe "a participant's usage (the exposure policy's own level)" do
+    let(:other) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir).grant }
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
+
+    before do
+      File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [
+        { "id" => "t1", "author" => author, "cost" => 0.5 },
+        { "id" => "t2", "author" => other.author, "cost" => 1.25 },
+        { "id" => "t3", "cost" => 7.0 }
+      ] }))
+      snapshot["snapshot"]["queued"] << { "enqueued_id" => "e3", "prompt" => "Sam's", "author" => other.author }
+    end
+
+    it "is their own spend, cap, queued turns, queue limit, link expiry and the model: nobody else's" do
+      usage = review(issued.token).last.dig("viewer", "usage")
+      expect(usage).to eq("spent" => 0.5, "cap" => 2.0, "queued" => 1, "queue_limit" => 3,
+                          "expires_at" => issued.grant.expires_at, "model" => "m")
+    end
+
+    it "counts their running turn from the live worker, never adding the saved spend it already holds" do
+      snapshot["session_state_snapshot"]["metrics"] = { "cost" => 9.0, "spend_by_author" => {
+        author => { "turns" => 1, "cost" => 0.875 }, other.author => { "turns" => 1, "cost" => 4.0 }
+      } }
+      snapshot["session_state_snapshot"]["model_name"] = "live-model"
+      usage = review(issued.token).last.dig("viewer", "usage")
+      expect(usage).to include("spent" => 0.875, "model" => "live-model")
+    end
+
+    it "keeps the saved spend when the worker counts less (no turn of theirs in it yet), and reads it without a worker" do
+      snapshot["session_state_snapshot"]["metrics"] = { "spend_by_author" => { other.author => { "cost" => 4.0 } } }
+      expect(review(issued.token).last.dig("viewer", "usage", "spent")).to eq(0.5)
+
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(nil)
+      expect(review(issued.token).last.dig("viewer", "usage")).to include("spent" => 0.5, "queued" => 0, "model" => "m")
+    end
+
+    it "shows a level this chi doesn't know as its own, the narrowest" do
+      store = JSON.parse(File.read(grants.path))
+      store["grants"].find { |row| row["id"] == issued.grant.id }["exposure"] = "session"
+      File.write(grants.path, JSON.generate(store))
+      expect(grants.find(issued.grant.id).exposure).to eq("session")
+      usage = review(issued.token).last.dig("viewer", "usage")
+      expect(usage.keys).to eq(%w[spent cap queued queue_limit expires_at model])
+    end
+  end
+
   it "gives the owner the same filtered data as the participant view: nothing theirs, no composer" do
     issued
     status, body = review(owner_token)

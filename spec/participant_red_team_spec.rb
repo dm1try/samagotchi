@@ -402,6 +402,21 @@ RSpec.describe "a participant red-teaming a session" do
                  JSON.generate({ "turn_records" => [{ "id" => "tt", "automatic" => true }] }))
     end
 
+    it "reads its own usage only: never the owner's, another participant's or the session's spend" do
+      other = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir).grant
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({
+        "turn_records" => [{ "id" => "t1", "cost" => 7.77 },
+                           { "id" => "t2", "author" => other.author, "cost" => 3.33 },
+                           { "id" => "t3", "author" => grant.author, "cost" => 0.25 }],
+        "side" => { "cost_sum" => 1.11 }
+      }))
+      status, body = get("/api/sessions/#{session.id}/review")
+      expect(status).to eq(200)
+      expect(JSON.parse(body).dig("viewer", "usage")).to include("spent" => 0.25)
+      %w[7.77 3.33 1.11 8.02].each { |leak| expect(body).not_to include(leak), leak }
+    end
+
     it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report, the owner's ! output, an automatic prompt or a host path" do
       status, body = get("/api/sessions/#{session.id}/review")
       expect(status).to eq(200)
