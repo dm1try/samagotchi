@@ -30,7 +30,7 @@ function el(tag, { classes = [] } = {}) {
   };
 }
 
-function fakePage({ selectionText = "the answer", inRoot = true, commands = [], touch = false, dock = null } = {}) {
+function fakePage({ selectionText = "the answer", inRoot = true, commands = [], touch = false, dock = null, options = {} } = {}) {
   const docListeners = {};
   const doc = {
     body: el("body"),
@@ -77,6 +77,7 @@ function fakePage({ selectionText = "the answer", inRoot = true, commands = [], 
     onAction: (action, fields) => actions.push([action.label, fields]),
     dock: () => dock,
     doc, win,
+    ...options,
   });
   const selectionChange = () => {
     docListeners.selectionchange.forEach((fn) => fn());
@@ -86,6 +87,25 @@ function fakePage({ selectionText = "the answer", inRoot = true, commands = [], 
 }
 
 const click = (bar, btn) => bar.fire("click", { target: btn });
+
+test("a page's own source and quote (the participant page's): read for the selection, the quote theirs", () => {
+  const seen = [];
+  const options = {
+    source: (node) => { seen.push(node.parentElement.classList.contains("output")); return { kind: "plan", root: node.parentElement }; },
+    quote: (text, source) => `From ${source.kind}:\n> ${text}\n\n`,
+  };
+  const { bar, quotes, selectionChange } = fakePage({ options });
+  selectionChange();
+  assert.deepEqual(seen, [true]);
+  click(bar.el, bar.el.children[1]);
+  assert.deepEqual(quotes, ["From plan:\n> the answer\n\nAgreed"]);
+});
+
+test("a page's own source refusing a selection hides the bar", () => {
+  const { bar, selectionChange } = fakePage({ options: { source: () => null } });
+  selectionChange();
+  assert.equal(bar.el.hidden, true);
+});
 
 test("the bar: Annotate then the presets, hidden, in the body", () => {
   const { bar, doc } = fakePage();
