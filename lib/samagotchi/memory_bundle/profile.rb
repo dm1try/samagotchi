@@ -152,7 +152,7 @@ module Samagotchi
       # @raise [Uninstaller::UninstallError] when +name+ isn't installed
       def uninstall(name, shipped_dir: SourceNormalizer::SHIPPED_DIR, force: false)
         bundle = Provenance.new(name: name).record
-        raise Uninstaller::UninstallError, "Bundle '#{name}' is not installed" unless bundle
+        raise Uninstaller::UninstallError.not_installed(name) unless bundle
 
         shipped = File.join(shipped_dir, name)
         manifest = File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil

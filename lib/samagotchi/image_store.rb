@@ -201,6 +201,9 @@ module Samagotchi
   # a request is sent.
   module ImageStore
     class Error < StandardError
+      # A ref to a file this session doesn't hold as an image: one wording
+      # for a turn's refs (#check_refs) and a web upload's (#ref_for).
+      def self.unknown_image(file) = new("unknown image #{file.to_s[0, 80]}")
     end
 
     DIR = "images"
@@ -278,7 +281,7 @@ module Samagotchi
 
         ref = symbolize(image)
         return "images are refs to uploaded files, not paths" if ref.key?(:path)
-        return "unknown image #{ref[:file].to_s[0, 80]}" unless valid_ref?(session_dir, ref)
+        return Error.unknown_image(ref[:file]).message unless valid_ref?(session_dir, ref)
 
         { file: ref[:file].to_s, name: File.basename(ref[:name].to_s)[0, 120] }
       end
@@ -321,11 +324,11 @@ module Samagotchi
     # A ref for an image already stored in this session (a web upload),
     # rebuilt from the file itself: only its name comes from the caller.
     def self.ref_for(session_dir, file:, name: nil, source: "user")
-      raise Error, "unknown image #{file.to_s[0, 80]}" unless valid_ref?(session_dir, { file: file })
+      raise Error.unknown_image(file) unless valid_ref?(session_dir, { file: file })
 
       bytes = File.binread(File.join(session_dir.to_s, file.to_s))
       info = ImageHeader.read(bytes)
-      raise Error, "unknown image #{file}" unless info && MIME.key?(info.format) && info.width
+      raise Error.unknown_image(file) unless info && MIME.key?(info.format) && info.width
 
       name = File.basename(name.to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
       { file: file.to_s, mime: MIME.fetch(info.format), width: info.width, height: info.height,

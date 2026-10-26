@@ -12,7 +12,11 @@ require_relative "../model_overlay"
 module Samagotchi
   module MemoryBundle
     class Uninstaller
-      class UninstallError < StandardError; end
+      class UninstallError < StandardError
+        # The bundle +name+ has no install record: one wording for the
+        # uninstall of a bundle and of a profile (Profile#uninstall).
+        def self.not_installed(name) = new("Bundle '#{name}' is not installed")
+      end
 
       # removed_files: the bundle's own hooks/ and plugin/ files (deleted);
       # trashed_files: its memory files, moved to trash_dir (Trash), nil
@@ -34,7 +38,7 @@ module Samagotchi
       def run
         provenance = Provenance.new(name: @name)
         bundle = provenance.record
-        raise UninstallError, "Bundle '#{@name}' is not installed" unless bundle
+        raise UninstallError.not_installed(@name) unless bundle
 
         # The scope from the flag, else the record's
         target_scope = @scope.to_s.strip.empty? ? bundle.effective_scope : @scope
