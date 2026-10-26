@@ -134,7 +134,9 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       expect(review(issued.token).last.dig("viewer", "usage", "spent")).to eq(0.5)
 
       allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(nil)
-      expect(review(issued.token).last.dig("viewer", "usage")).to include("spent" => 0.5, "queued" => 0, "model" => "m")
+      usage = review(issued.token).last.dig("viewer", "usage")
+      expect(usage).to include("spent" => 0.5, "queue_limit" => 3, "model" => "m")
+      expect(usage).not_to have_key("queued")
     end
 
     it "shows a level this chi doesn't know as its own, the narrowest" do

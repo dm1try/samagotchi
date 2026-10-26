@@ -25,6 +25,7 @@ and commands may change between minor versions. How releases are made:
   from it (`ssh -R`).
 - An ended participant link forgets its comment history even when its first review read is refused.
 - The participant review status stays idle when a live snapshot has no current turn and its status is stale.
+- The participant usage row no longer says "0 queued" when no worker is running.
 
 ## [0.120.0] - 2026-10-26
 

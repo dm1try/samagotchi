@@ -59,7 +59,7 @@ module Samagotchi
         automatic = automatic_turn_ids(id, session, shown, current, state)
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
                      (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
-        queued = snapshot_list(turn_snapshot, "queued")
+        queued = turn_snapshot && snapshot_list(turn_snapshot, "queued")
         status = displayed_status(session, state)
         status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && current.nil?
         json_response(200, {
@@ -70,7 +70,7 @@ module Samagotchi
           messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
           current_turn: current,
           waiting_for_owner: waiting,
-          queued: review_queue(queued, viewer),
+          queued: review_queue(queued || [], viewer),
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
       end
@@ -164,14 +164,16 @@ module Samagotchi
       # source reads the grant's own author: never another participant's or
       # the owner's.
       def review_usage(grant, session:, state:, queued:, viewer:)
-        ParticipantExposure.usage(grant.exposure, {
+        usage = ParticipantExposure.usage(grant.exposure, {
           spent: -> { participant_spent(grant, state) },
           cap: -> { grant.spend_cap },
-          queued: -> { queued.count { |entry| entry.is_a?(Hash) && viewer.own?(entry["author"]) } },
+          queued: -> { queued&.count { |entry| entry.is_a?(Hash) && viewer.own?(entry["author"]) } },
           queue_limit: -> { grant.queue_limit },
           expires_at: -> { grant.expires_at },
           model: -> { participant_model(session, state, viewer) }
         })
+        usage.delete(:queued) unless queued
+        usage
       end
 
       # What the participant has cost so far, in dollars: the saved

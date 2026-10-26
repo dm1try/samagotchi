@@ -191,6 +191,7 @@ test("participant: the usage row's items, from the fields the exposure gave and 
   // A field the level doesn't show draws nothing; no usage, no row.
   assert.deepEqual(usageItems({ spent: 1 }, now).map((i) => i.text), ["$1.00 spent"]);
   assert.deepEqual(usageItems(undefined, now), []);
+  assert.deepEqual(usageItems({ queue_limit: 3 }, now), []);
   assert.deepEqual(usageItems({ queued: 1 }, now), [], "a queue with no limit isn't shown");
   assert.equal(usageItems({ expires_at: "2026-10-26T11:00:00Z" }, now)[0].text, "link ended");
 });
