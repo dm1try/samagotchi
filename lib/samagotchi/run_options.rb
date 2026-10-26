@@ -165,6 +165,7 @@ module Samagotchi
                  chi review FILE... [--dir DIR] | --from ID   a review session to share (chi share)
                  chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
                  chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
+                 chi guardrails replay [--dry-run] [--threshold T] [--model M]   seed System 1's record from answered approvals
                  chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
                  chi models [--format json] [TEXT]   the models --model takes, from every host
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME

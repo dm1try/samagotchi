@@ -36,6 +36,7 @@ and commands may change between minor versions. How releases are made:
   chi web is told first, and a failure leaves the bell on with the error. The Home Screen app whose first `GET
   /api/push` failed (chi web restarting, a phone just woken) tries again when it comes back to the front instead of
   staying in tab mode until a reload.
+- `chi --help` lists `chi guardrails replay` (seeding System 1's record), the one subcommand it left out.
 
 ## [0.121.0] - 2026-10-26
 

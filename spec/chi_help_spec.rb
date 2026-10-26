@@ -43,6 +43,16 @@ RSpec.describe "chi --help" do
     expect(out).not_to include("bin/chi") # what an installed gem's user types
   end
 
+  it "names every bin/chi SUBCOMMANDS key" do
+    out, = @help
+    # The keys, read from the script as session_access_contract_spec does (it runs on load).
+    keys = File.read(File.expand_path("../bin/chi", __dir__))[/^SUBCOMMANDS = \{.*?^\}\.freeze/m]
+               .scan(/^\s+"([a-z-]+)" => \[/).flatten
+
+    expect(keys).not_to be_empty
+    expect(keys.reject { |sub| out.include?("chi #{sub} ") }).to eq([])
+  end
+
   it "lists every command SessionAccess::Contract runs under --remote, and only those" do
     out, = @help
     contract = Samagotchi::SessionAccess::Contract
