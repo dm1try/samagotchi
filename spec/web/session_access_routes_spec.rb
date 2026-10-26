@@ -772,6 +772,25 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(bridge).to have_received(:request_exit).with(client_id: nil, delete: false).twice
     end
 
+    it "passes the ask's stop: \"all\" on, and relays the holds and what was stopped" do
+      allow(bridge).to receive(:request_exit).and_return(
+        reply(409, { status: "held", reason: "reminders", session_id: session.id,
+                     holds: [{ "kind" => "reminders", "items" => [{ "id" => "api_health", "label" => "api_health",
+                                                                    "detail" => "every 20m" }] }] }),
+        reply(200, { status: "exiting", session_id: session.id, stopped: { "reminders" => ["api_health"] } })
+      )
+
+      status, body = call("#{path}/exit", method: "POST", body: { client_id: "tui:1@mac", stop: "all" })
+
+      expect(bridge).to have_received(:request_exit).with(client_id: "tui:1@mac", delete: false, stop: true)
+      expect(status).to eq(409)
+      expect(body["holds"].first["items"].first["label"]).to eq("api_health")
+
+      status, body = call("#{path}/exit", method: "POST", body: { client_id: "tui:1@mac", stop: "all" })
+      expect(status).to eq(200)
+      expect(body["stopped"]).to eq({ "reminders" => ["api_health"] })
+    end
+
     it "answers a held worker's 409 with its reason and tasks, and the words" do
       allow(bridge).to receive(:request_exit)
         .and_return(reply(409, { status: "held", reason: "other_ui", tasks: [{ id: "t1", command: "sleep 9" }], session_id: session.id }))

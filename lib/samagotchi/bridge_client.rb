@@ -206,10 +206,12 @@ module Samagotchi
     # error "not_found" = a worker older than the route, 408 = too late.
     # @param client_id [String] the asking UI, whose own streams don't hold
     # @return [Response]
-    def request_exit(client_id:, delete: false, restart: false)
+    def request_exit(client_id:, delete: false, restart: false, stop: false, ask: true)
       body = { client_id: client_id }
       body[:delete] = true if delete
       body[:restart] = true if restart
+      body[:stop] = "all" if stop
+      body[:ask] = false unless ask
       body[:deadline] = deadline
       post("exit", body, read_body: true)
     end

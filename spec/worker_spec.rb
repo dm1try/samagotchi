@@ -1018,10 +1018,12 @@ RSpec.describe Samagotchi::Worker do
     end
 
     describe "an exit request (POST /exit)" do
-      def post_exit(client_id: "tui:1")
+      def post_exit(client_id: "tui:1", stop: false)
         port = JSON.parse(File.read(sidecar))["port"]
+        body = { client_id: client_id }
+        body[:stop] = "all" if stop
         res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                             JSON.generate(client_id: client_id), "Content-Type" => "application/json")
+                             JSON.generate(body), "Content-Type" => "application/json")
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -1119,6 +1121,104 @@ RSpec.describe Samagotchi::Worker do
         expect(post_exit.last).to include("reason" => "client_connected")
         loop_rounds
         expect(@thread).to be_alive
+      end
+
+      def child(id, state: "running")
+        Samagotchi::ChildrenStatus::Child.new(id: id, short_id: id[0, 8], title: "Fix the composer", state: state,
+                                              waiting: nil, live: true, delegate: true, cwd: tmpdir, branch: nil,
+                                              last_reply: nil, last_reply_at: nil, reported: false,
+                                              updated_at: Time.now.iso8601, archived: false)
+      end
+
+      describe "the exit ask" do
+        def child_stub(stopped)
+          allow(Samagotchi::ChildrenStatus).to receive(:of).and_return([child("c1c1c1c1-1111")])
+          allow(Samagotchi::SessionManager).to receive(:stop_session) { |id, **| stopped << id }
+        end
+
+        it "lists what the user can stop when only that holds the worker, and stays up" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          child_stub([])
+          start_worker(poll_interval: 0.05)
+
+          status, body = post_exit
+
+          expect(status).to eq(409)
+          expect(body["reason"]).to eq("reminders")
+          expect(body["holds"]).to eq([{ "kind" => "reminders",
+                                         "items" => [{ "id" => "api_health", "label" => "api_health",
+                                                       "detail" => "every 20m" }] },
+                                       { "kind" => "delegates",
+                                         "items" => [{ "id" => "c1c1c1c1-1111", "label" => "Fix the composer",
+                                                       "detail" => "running a turn" }] }])
+          loop_rounds
+          expect(@thread).to be_alive
+        end
+
+        it "stops them all and leaves when the body says so, reporting what it stopped" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          stopped = []
+          child_stub(stopped)
+          start_worker(poll_interval: 0.05)
+
+          status, body = post_exit(stop: true)
+
+          expect(status).to eq(200)
+          expect(body["stopped"]).to eq({ "reminders" => ["api_health"], "tasks" => [],
+                                          "delegates" => ["c1c1c1c1"] })
+          expect(stopped).to eq(["c1c1c1c1-1111"])
+          expect(engine.reminder_store.reminders).to be_empty
+          expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+        end
+
+        it "refuses the stop-all when something the user can't stop appeared meanwhile" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          start_worker(poll_interval: 0.05)
+          allow(engine).to receive(:turn_running?).and_return(true)
+
+          status, body = post_exit(stop: true)
+
+          expect(status).to eq(409)
+          expect(body["reason"]).to eq("turn_running")
+          expect(body).not_to include("holds")
+          loop_rounds
+          expect(@thread).to be_alive
+        end
+
+        it "asks when a delegate running is all that is left, and stops it on the answer" do
+          stopped = []
+          allow(Samagotchi::ChildrenStatus).to receive(:of).and_return([child("c1c1c1c1-1111")])
+          allow(Samagotchi::SessionManager).to receive(:stop_session) { |id, **| stopped << id }
+          start_worker(poll_interval: 0.05)
+
+          status, body = post_exit
+
+          expect(status).to eq(409)
+          expect(body["reason"]).to eq("delegates")
+          expect(body["holds"]).to eq([{ "kind" => "delegates",
+                                         "items" => [{ "id" => "c1c1c1c1-1111", "label" => "Fix the composer",
+                                                       "detail" => "running a turn" }] }])
+          loop_rounds
+          expect(@thread).to be_alive
+
+          status, body = post_exit(stop: true)
+
+          expect(status).to eq(200)
+          expect(body["stopped"]).to eq({ "reminders" => [], "tasks" => [], "delegates" => ["c1c1c1c1"] })
+          expect(stopped).to eq(["c1c1c1c1-1111"])
+          expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+        end
+
+        it "does not ask for a delete exit: a delegate alone leaves, as before" do
+          allow(Samagotchi::ChildrenStatus).to receive(:of).and_return([child("c1c1c1c1-1111")])
+          start_worker(poll_interval: 0.05)
+          port = JSON.parse(File.read(sidecar))["port"]
+          res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                               JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json")
+
+          expect(res.code.to_i).to eq(200)
+          expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+        end
       end
 
       describe "with restart: true" do

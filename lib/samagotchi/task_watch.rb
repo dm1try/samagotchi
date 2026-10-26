@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "time"
+
 require_relative "config"
 require_relative "log"
 require_relative "tools/task_runtime"
@@ -182,18 +184,34 @@ module Samagotchi
     # @return [Array<Entry>]
     def holding = entries.reject { |entry| entry.note_only || entry.failures >= MAX_FAILURES }
 
-    # The #holding tasks still running ({id:, command:}), for /exit
-    # (WorkerIdleExit's watched_running): one finished meanwhile is noted
-    # as the worker leaves. One `ps` per task.
-    # @return [Array<Hash>]
+    # A watched task still running, as /exit and the exit ask see it:
+    # +age_seconds+, the seconds since it started (nil when its record has
+    # no start time).
+    Running = Data.define(:id, :command, :age_seconds)
+
+    # The #holding tasks still running, for /exit (WorkerIdleExit's
+    # watched_running): one finished meanwhile is noted as the worker leaves.
+    # One `ps` per task.
+    # @return [Array<Running>]
     def running
       holding.filter_map do |entry|
         record, = Tools::TaskRuntime.get_record(entry.id)
-        { id: entry.id, command: record.command.to_s } if record&.running?
+        next unless record&.running?
+
+        Running.new(id: entry.id, command: record.command.to_s, age_seconds: age_seconds(record))
       end
     end
 
     private
+
+    # Seconds since the task started, from its record's iso8601 +started_at+;
+    # nil when that can't be read.
+    def age_seconds(record)
+      started = Time.parse(record.started_at.to_s)
+      [(Time.now - started).round, 0].max
+    rescue ArgumentError, TypeError
+      nil
+    end
 
     # Removes +entry+; nil (a filter_map's skip), or with +kept+ whether it
     # was there. +log+: why a task leaves without a note, at +level+ (debug

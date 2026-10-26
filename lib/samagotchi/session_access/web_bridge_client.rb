@@ -139,12 +139,17 @@ module Samagotchi
       end
 
       # POST …/exit: the worker asked to exit (chi web passes client_id on
-      # only when it is an attached TUI's).
-      # @return [BridgeClient::Response] 200 {status: exiting, discard}, 409
-      #   held {reason, tasks}, 408 late, 404 an older worker's
-      def request_exit(client_id:, delete: false)
+      # only when it is an attached TUI's), stop: true first stopping what
+      # the user can stop, ask: false leaving the delegate children out of
+      # the list (a UI that can't ask about them).
+      # @return [BridgeClient::Response] 200 {status: exiting, discard,
+      #   stopped}, 409 held {reason, tasks, holds}, 408 late, 404 an older
+      #   worker's
+      def request_exit(client_id:, delete: false, stop: false, ask: true)
         body = { client_id: client_id }
         body[:delete] = true if delete
+        body[:stop] = "all" if stop
+        body[:ask] = false unless ask
         post(:exit, "exit", body)
       end
 

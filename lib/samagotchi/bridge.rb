@@ -87,21 +87,26 @@ module Samagotchi
     #   one, POST /command answers 501
     # @param on_exit_request [#call, nil] a client asks the worker to exit
     #   now: takes the client_id and delete: (the exit is to delete the
-    #   session, /exit --delete), returns nil when the worker will leave or
-    #   what keeps it up (a WorkerIdleExit::Hold: #reason, #tasks, #hint);
-    #   called with the event log held. Without one, POST /exit answers 501
+    #   session, /exit --delete) or stop: ("all": stop everything the user
+    #   can stop first), returns nil when the worker will leave or
+    #   what keeps it up (a WorkerIdleExit::Hold: #reason, #tasks, #hint,
+    #   #holds); called with the event log held. Without one, POST /exit
+    #   answers 501
     # @param exit_discards [#call, nil] after an exit the worker agreed to:
     #   whether it will delete the session as empty (the 200 says
     #   +discard+); without one the reply leaves the field out
+    # @param exit_stopped [#call, nil] after a stop-all exit: what it stopped
+    #   (a HoldStop::Stopped) for the 200's +stopped+; nil leaves it out
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
-                   on_command: nil, on_exit_request: nil, exit_discards: nil)
+                   on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil)
       @engine = engine
       @on_input = on_input
       @on_command = on_command
       @on_exit_request = on_exit_request
       @exit_discards = exit_discards
+      @exit_stopped = exit_stopped
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -883,14 +888,21 @@ module Samagotchi
 
     # A client asks the worker to exit now (`/exit` in the attached TUI), or
     # with "restart": true to hand the session to a new worker on the newest
-    # chi installed (the "restart" feature). The worker decides with the
-    # event log held, so no POST /turn lands between its check and its
-    # answer; it leaves from its loop after this reply.
-    # 200 {status: "exiting", discard?: the session is empty and goes} ({status: "restarting"} for a restart), or 409
-    # {status: "held", reason:} naming what keeps it up (with tasks: [{id:,
-    # command:}] and a hint: how to stop them, for background_tasks). A past +deadline+
-    # (see #handle_post_turn), checked with the event log held: 408
-    # deadline_passed, the worker not asked (its client said it didn't stop).
+    # chi installed (the "restart" feature). "stop": "all" first stops every
+    # hold the user can stop; "ask": false leaves the delegate children out of
+    # the list (a UI that can't ask about them, as /archive). The worker
+    # decides with the event log held, so no POST /turn lands between its
+    # check and its answer; it leaves from its loop after this reply.
+    # 200 {status: "exiting", discard?: the session is empty and goes,
+    # stopped?: what a "stop": "all" exit stopped} ({status: "restarting"} for
+    # a restart), or 409 {status: "held", reason:} naming what keeps it up
+    # (with tasks: [{id:, command:, age_seconds:}] and a hint: how to stop
+    # them, for background_tasks). When every hold is one the user can stop,
+    # the 409 also carries holds: [{kind:, items: [{id:, label:, detail:}]}
+    # — reminders, running tasks, delegate children — for the terminal's ask.
+    # A past +deadline+ (see #handle_post_turn), checked with the event log
+    # held: 408 deadline_passed, the worker not asked (its client said it
+    # didn't stop).
     # Returns [headers, status, body].
     def handle_exit_request(session_id, body)
       return [{}, 501, { error: "exit_unavailable" }] unless @on_exit_request
@@ -901,7 +913,13 @@ module Samagotchi
       client_id = fetched(parsed, "client_id")
       delete = fetched(parsed, "delete") == true
       restart = fetched(parsed, "restart") == true
+      stop_all = fetched(parsed, "stop") == "all"
+      # A client that can ask about what still runs (an attached terminal's
+      # plain /exit) gets the delegates in the hold list; one that can't
+      # (/archive, and every worker's own last look) does not.
       options = restart ? { delete: delete, restart: true } : { delete: delete }
+      options[:stop] = true if stop_all && !restart
+      options[:ask] = false if fetched(parsed, "ask") == false
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
@@ -918,13 +936,25 @@ module Samagotchi
 
         body = { status: "exiting", session_id: @session_id }
         body[:discard] = @exit_discards.call == true if @exit_discards
+        stopped = @exit_stopped&.call
+        body[:stopped] = stopped.to_h if stopped
         return [{}, 200, body]
       end
 
       # A hold may name what it waits for (tasks: the background tasks a
-      # finish wake watches).
+      # finish wake watches). When every hold is one the user can stop, +holds+
+      # lists them for the terminal's ask: [{kind:, items: [{id:, label:,
+      # detail:}]} (docs/cli.md, /exit).
       [{}, 409, { status: "held", reason: hold.reason.to_s, tasks: hold.tasks, hint: hold.hint,
-                  session_id: @session_id }.compact]
+                  holds: holds_json(hold.holds), session_id: @session_id }.compact]
+    end
+
+    # The exit ask's stoppable holds as JSON; nil when there are none, so an
+    # older client sees today's plain 409.
+    def holds_json(holds)
+      return nil if holds.nil? || holds.empty?
+
+      holds.map { |hold| { kind: hold.kind.to_s, items: hold.items.map { |item| item.to_h } } }
     end
 
     # Queue a turn for this session through its file IPC (the worker polls

@@ -13,6 +13,8 @@ require_relative "turn_note"
 require_relative "steer"
 require_relative "turn_origin"
 require_relative "worker_idle_exit"
+require_relative "hold_stop"
+require_relative "children_status"
 require_relative "worker_wakes"
 require_relative "worker_inbound"
 require_relative "worker_signals"
@@ -210,6 +212,11 @@ module Samagotchi
       end
     end
 
+    # The step that stops what the user can stop (the reminders, the watched
+    # tasks and the delegate children the exit ask lists), and what the last
+    # stop-all exit stopped. /exit's 2 uses it; the web's Stop will too.
+    attr_reader :hold_stop, :stopped_holds
+
     private
 
     # @return [Symbol] what #run returns
@@ -330,7 +337,9 @@ module Samagotchi
                                             on_command: method(:on_command),
                                             on_exit_request: method(:exit_request),
                                             # Decided again as it leaves (a note may still come in).
-                                            exit_discards: method(:empty_session?))
+                                            exit_discards: method(:empty_session?),
+                                            # What a stop-all /exit stopped, for its 200.
+                                            exit_stopped: method(:stopped_holds))
       # What failed to load and what plugins showed as they loaded, now that
       # a UI can be there (a late one gets them in the snapshot).
       @engine.announce_load_events!
@@ -346,8 +355,25 @@ module Samagotchi
         # finished since the pass looked holds too, until the next pass
         # wakes for it (#run_task_wake).
         watched_tasks: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.holding : [] },
-        watched_running: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.running : [] }
+        watched_running: -> { TaskWatch.mode == "wake" ? @task_wakes.watch.running : [] },
+        # Never a hold (a child is its own worker), but the exit ask lists
+        # them so "stop them and exit" stops them too.
+        delegates: method(:live_delegates)
       )
+      @hold_stop = HoldStop.new(engine: @engine, task_watch: @task_wakes.watch, delegates: method(:live_delegates),
+                                state_dir: @state_dir)
+    end
+
+    # The delegate children of this session that are running a turn or have
+    # a live worker. ChildrenStatus.of scans the session files; this runs on
+    # an exit request, not every pass.
+    # @return [Array<ChildrenStatus::Child>]
+    def live_delegates
+      ChildrenStatus.of(@session_id, state_dir: @state_dir)
+                      .select { |child| child.delegate && (child.state == "running" || child.live) }
+    rescue StandardError => e
+      Log.warn(:worker, "delegate_look_failed", error: e.class.name, msg: e.message)
+      []
     end
 
     # What runs beside the loop until it leaves.
@@ -1418,10 +1444,18 @@ module Samagotchi
     # +delete+: the session is deleted after (/exit --delete), so no recap.
     # +restart+: a new worker takes over (on the newest chi installed), so
     # WorkerIdleExit#hold_for_restart's rules, and no recap or discard.
+    # +stop+: the exit ask's "stop them and exit" — stop every hold the user
+    #   can stop before leaving; a hold they can't stop refuses the request
+    #   (WorkerIdleExit#request_hold checks again, so one that appeared
+    #   since the ask is refused too).
+    # +ask+: this client asks the user what to do with what still runs, so the
+    #   delegate children are part of the list. An exit that deletes the
+    #   session, or one a UI can't ask about (/archive), leaves them out:
+    #   they never hold the worker up on their own.
     # @return [WorkerIdleExit::Hold, nil] what keeps the worker up (for
     #   :background_tasks, the watched tasks still running), nil when it
     #   will leave
-    def exit_request(client_id, delete: false, restart: false)
+    def exit_request(client_id, delete: false, restart: false, stop: false, ask: true)
       # The Bridge serves before the idle-exit policy exists.
       return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
 
@@ -1430,10 +1464,24 @@ module Samagotchi
         return WorkerIdleExit::Hold.new(reason: hold) if hold
       else
         # /exit names the tasks it waits for (D3), from the one look that found them.
-        hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
-        return hold if hold
+        # The ask covers the delegate children too, but only for a plain /exit: an
+        # exit that deletes the session, or one a UI won't ask about, ignores them.
+        hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT, ask: ask && !delete)
+        if hold
+          # A hold the user can't stop here: no ask, today's refusal.
+          return hold unless hold.ask?
+          # The ask's 409: the list, for the terminal to ask with.
+          return hold unless stop
+
+          @stopped_holds = @hold_stop.stop_all
+          # An unstoppable hold may have arrived while stopping (a child stopped
+          # here is no longer counted).
+          recheck = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
+          return recheck if recheck
+        end
       end
 
+      @stopped_holds = nil unless stop
       @exit_requested = true
       @exit_requested_by = client_id
       @exit_deletes = delete && !restart

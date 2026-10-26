@@ -304,22 +304,25 @@ module Samagotchi
         { epoch: sidecar.epoch, started_at: sidecar.started_at, version: sidecar.version, features: sidecar.features }
       end
 
-      # POST /api/sessions/:id/exit {client_id, delete}: a remote attached
+      # POST /api/sessions/:id/exit {client_id, delete, stop}: a remote attached
       # TUI's /exit (and the worker's half of /exit --delete and /archive),
       # relayed to the live worker's exit (BridgeClient#request_exit; never
       # wakes one). client_id is passed on only when it is an attached TUI's
       # (tui:…): any other is dropped, and then every stream counts as a UI,
-      # which only keeps the worker up. 200 the Bridge's {status: exiting,
-      # session_id, discard}; 409 held with its {status, reason, tasks,
-      # hint}; 503 not_live, 501 not_supported (an older worker), 504
-      # worker_timeout.
+      # which only keeps the worker up. stop: true means the ask's "stop them
+      # and exit". 200 the Bridge's {status: exiting, session_id, discard,
+      # stopped}; 409 held with its {status, reason, tasks, hint, holds};
+      # 503 not_live, 501 not_supported (an older worker), 504 worker_timeout.
       def handle_exit(req, id)
         body = body_hash(req) or return refusal(400, "invalid_json", "invalid JSON body")
         @session_class.load(id, state_dir: default_state_dir)
         client_id = body["client_id"] if body["client_id"].is_a?(String) && body["client_id"].start_with?(ClientId::TUI_PREFIX)
         delete = body["delete"] == true
+        options = { delete: delete }
+        options[:stop] = true if body["stop"] == "all"
+        options[:ask] = false if body["ask"] == false
 
-        request = ->(client) { client.request_exit(client_id: client_id, delete: delete) }
+        request = ->(client) { client.request_exit(client_id: client_id, **options) }
         with_message(relay(id, bridge_client(id), request, what: "the worker was not asked to exit", cant: "exit from here") do |reply|
           case reply.status
           when 200 then json_response(200, reply.json || { status: "exiting", session_id: id })

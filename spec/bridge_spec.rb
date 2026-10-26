@@ -13,6 +13,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
 require "samagotchi/worker_idle_exit"
+require "samagotchi/hold_stop"
 require "samagotchi/bridge_client"
 
 # Minimal SSE/HTTP client for the bridge integration specs. Talks a raw
@@ -536,13 +537,13 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil,
-                     heartbeat_interval: 0.2)
+                     exit_stopped: nil, heartbeat_interval: 0.2)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
-        on_exit_request: on_exit_request, exit_discards: exit_discards
+        on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -2135,6 +2136,45 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
 
         expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([501, { "error" => "exit_unavailable" }])
+      end
+
+      it "passes stop: \"all\" to the worker, and nothing when the body says no stop" do
+        asked = []
+        start_bridge(on_exit_request: ->(client_id, **opts) { (asked << [client_id, opts.fetch(:stop, false)]) && nil })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1", stop: "all")).first).to eq(200)
+        expect(post_exit(JSON.generate(client_id: "tui:1", stop: "everything")).first).to eq(200)
+
+        expect(asked).to eq([["tui:1", true], ["tui:1", false]])
+      end
+
+      it "lists what the user can stop when only that holds the worker" do
+        start_bridge(on_exit_request: lambda { |_, **|
+          Samagotchi::WorkerIdleExit::Hold.new(
+            reason: :reminders,
+            holds: [Samagotchi::WorkerIdleExit::StoppableHold.new(kind: :reminders, items: [
+              Samagotchi::WorkerIdleExit::HoldItem.new(id: "api_health", label: "api_health", detail: "every 20m")
+            ])]
+          )
+        })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1")))
+          .to eq([409, { "status" => "held", "reason" => "reminders", "session_id" => @session.id,
+                         "holds" => [{ "kind" => "reminders",
+                                       "items" => [{ "id" => "api_health", "label" => "api_health",
+                                                     "detail" => "every 20m" }] }] }])
+      end
+
+      it "says what a stop-all exit stopped" do
+        start_bridge(on_exit_request: ->(_, **) {},
+                     exit_stopped: lambda {
+                       Samagotchi::HoldStop::Stopped.new(reminders: ["api_health"], tasks: ["rails s"],
+                                                         delegates: [])
+                     })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1", stop: "all")))
+          .to eq([200, { "status" => "exiting", "session_id" => @session.id,
+                         "stopped" => { "reminders" => ["api_health"], "tasks" => ["rails s"], "delegates" => [] } }])
       end
     end
 

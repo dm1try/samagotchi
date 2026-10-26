@@ -189,7 +189,8 @@ RSpec.describe Samagotchi::TaskWatch do
       watch.turn_canceled(:user)
       watch.observe(created("done"))
       allow(Samagotchi::Tools::TaskRuntime).to receive(:get_record) do |id|
-        [instance_double(Samagotchi::Tools::TaskRecord, running?: id != "done", command: "make #{id}"), nil]
+        [instance_double(Samagotchi::Tools::TaskRecord, running?: id != "done", command: "make #{id}",
+                        started_at: (Time.now - 30).iso8601), nil]
       end
     end
 
@@ -199,7 +200,9 @@ RSpec.describe Samagotchi::TaskWatch do
     end
 
     it "holds /exit only for those still running" do
-      expect(watch.running).to eq([{ id: "old", command: "make old" }])
+      running = watch.running
+      expect(running.map { |task| [task.id, task.command] }).to eq([["old", "make old"]])
+      expect(running.first.age_seconds).to be_between(29, 31)
     end
 
     it "stops holding for a task whose note failed MAX_FAILURES times" do
@@ -258,10 +261,13 @@ RSpec.describe Samagotchi::TaskWatch do
   it "says which watched tasks still run, for the idle exit" do
     watch.observe(created("a"))
     watch.observe(created("b"))
+    started = (Time.now - 5).iso8601
     allow(Samagotchi::Tools::TaskRuntime).to receive(:get_record) do |id|
-      [instance_double(Samagotchi::Tools::TaskRecord, running?: id == "a", command: "sleep 9"), nil]
+      [instance_double(Samagotchi::Tools::TaskRecord, running?: id == "a", command: "sleep 9", started_at: started), nil]
     end
 
-    expect(watch.running).to eq([{ id: "a", command: "sleep 9" }])
+    running = watch.running
+    expect(running.map { |task| [task.id, task.command] }).to eq([["a", "sleep 9"]])
+    expect(running.first.age_seconds).to be_between(4, 6)
   end
 end

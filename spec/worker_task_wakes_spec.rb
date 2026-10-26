@@ -516,12 +516,32 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     scripts["build"] = [task_create("t1")]
     worker = start_worker
     run_prompt("build")
+    records["t1"] = records["t1"].with(started_at: (Time.now - 125).iso8601)
+    item = Samagotchi::WorkerIdleExit::HoldItem.new(id: "t1", label: "sleep 20; echo done", detail: "2m")
 
-    expect(worker.send(:exit_request, "web:tab"))
-      .to eq(Samagotchi::WorkerIdleExit::Hold.new(reason: :background_tasks,
-                                                  tasks: [{ id: "t1", command: "sleep 20; echo done" }],
-                                                  hint: Samagotchi::Worker::TASK_STOP_HINT))
+    hold = worker.send(:exit_request, "web:tab")
+    expect(hold.reason).to eq(:background_tasks)
+    expect(hold.hint).to eq(Samagotchi::Worker::TASK_STOP_HINT)
+    expect(hold.tasks.first[:id]).to eq("t1")
+    expect(hold.tasks.first[:command]).to eq("sleep 20; echo done")
+    expect(hold.tasks.first[:age_seconds]).to be_between(124, 126)
+    expect(hold.holds).to eq([Samagotchi::WorkerIdleExit::StoppableHold.new(kind: :background_tasks,
+                                                                            items: [item])])
     config["session.task_wakes"] = "queue"
     expect(worker.send(:exit_request, "web:tab")).to be_nil
+  end
+
+  it "stops the watched task on the ask's stop-all and leaves, saying what it stopped" do
+    scripts["build"] = [task_create("t1")]
+    allow(Samagotchi::Tools::TaskRuntime).to receive(:stop_task) do |id, by:|
+      records[id] = records[id].with(status: "stopped", stop_reason: "stopped_by_user", stop_requested_by: by)
+    end
+    worker = start_worker
+    run_prompt("build")
+
+    expect(worker.send(:exit_request, "tui:1", stop: true)).to be_nil
+    expect(worker.stopped_holds.tasks).to eq(["sleep 20; echo done"])
+    expect(records["t1"].running?).to be(false)
+    expect(join!(@thread, "the worker").value).to eq(:exit_requested)
   end
 end
