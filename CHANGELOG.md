@@ -13,6 +13,9 @@ and commands may change between minor versions. How releases are made:
   (`~` and a relative path work; one that isn't a folder stops it, exit 1). Its page opens on that folder's project,
   and a new session from the all view starts there. A chi web already running in another folder keeps it and the
   second one says so: restart it to change it.
+- Annotate on the participant page: selecting text in the Plan (the review's files) or the thread offers your
+  `web.annotate_presets` and quotes the selection into the comment box (`From <path>:` / `From <name>'s comment:`),
+  as on your own page.
 - The participant page's comment box is the owner's composer: it grows with the text, its grip resizes or folds it
   (Annotate and typing open it again), it stays one row on a phone, and ↑/↓ recall the participant's own earlier
   comments from that browser (kept per review link, never your prompt history). No `/` list, delivery choices or
@@ -49,6 +52,12 @@ and commands may change between minor versions. How releases are made:
 - The participants' grants store (`web-grants/grants.json`) carries a version: 2 once a grant is bound to an identity.
   chi keeps a grant's fields it doesn't know when it rewrites the store, and never writes over a store a newer chi
   wrote (its links still work; invite, cap and revoke say to update chi). A chi from before this one doesn't check.
+
+### Fixed
+
+- chi web's stage: on a phone its height follows the whole bottom dock (an info bar that wraps late after a reload
+  no longer leaves it too tall), and the keyboard opening during a smooth scroll no longer leaves a question card
+  out of sight.
 
 ### Security
 
