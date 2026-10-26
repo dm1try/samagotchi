@@ -1657,6 +1657,30 @@ RSpec.describe Samagotchi::Bridge do
       expect(record.fields.except("ms")).to eq("method" => "GET", "path" => "/session/#{@session.id}/stats", "status" => "200")
     end
 
+    it "closes the connection after a refusal, so a keep-alive stream request reads it to its end at once" do
+      start_bridge
+      sock = TCPSocket.new("127.0.0.1", @bridge_port)
+      sock.write("GET /session/#{@session.id}/stream HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n")
+      raw = wait_until(timeout: 3) { sock.read } # nil only if the Bridge kept it open
+      sock.close
+
+      expect(raw).to start_with("HTTP/1.1 403")
+      expect(raw).to end_with(JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED))
+    end
+
+    it "ends a stream that names no secret with reason bridge_secret, not after the header timeout" do
+      start_bridge
+      events = Queue.new
+      started = SpecWaiting.mono
+      stream = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: nil)
+                                       .follow(reconnect_delays: [5]) { |event| events << event }
+
+      expect(pop!(events, "the stream's end")).to eq("type" => "stream_closed", "reason" => "bridge_secret")
+      expect(SpecWaiting.mono - started).to be < Samagotchi::BridgeClient::EventStream::HEADER_TIMEOUT # not the full wait
+    ensure
+      stream&.close
+    end
+
     it "never logs its secret: not at debug level, not for a refused request, not when a handler fails" do
       log = File.join(Dir.mktmpdir, "chi.log")
       Samagotchi::Log.configure(path: log, level: :debug)

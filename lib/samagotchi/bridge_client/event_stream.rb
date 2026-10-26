@@ -121,6 +121,7 @@ module Samagotchi
           outcome = read_connection
           break if closed?
           return finish("unknown_session") if outcome == :unknown_session
+
           # Refused for want of the secret: a new worker (a new sidecar, a
           # new secret) is followed at once; else no retry would get in.
           if outcome == :secret_refused
@@ -157,7 +158,7 @@ module Samagotchi
 
       # One connection: :events when it yielded any, else why it failed.
       def read_connection
-        sock, status = @client.connect_stream(query: @query, last_event_id: @last_event_id, timeout: HEADER_TIMEOUT)
+        sock, status, headers = @client.connect_stream(query: @query, last_event_id: @last_event_id, timeout: HEADER_TIMEOUT)
         return :unreachable unless sock
 
         unless attach(sock)
@@ -165,7 +166,7 @@ module Samagotchi
           return :closed
         end
         return :unknown_session if status == 404
-        return :secret_refused if status == 403 && BridgeSecret.refused?(status, refusal_body(sock))
+        return :secret_refused if status == 403 && BridgeSecret.refused?(status, refusal_body(sock, headers))
         return :unreachable unless status == 200
 
         # Back as soon as the stream answers: a replay may bring nothing
@@ -193,15 +194,18 @@ module Samagotchi
         detach(sock)
       end
 
-      # A refusal's JSON body (the Bridge closes after it), within HEADER_TIMEOUT.
-      def refusal_body(sock)
+      # A refusal's JSON body: its Content-Length's worth, else up to the
+      # Bridge's close, within HEADER_TIMEOUT.
+      def refusal_body(sock, headers)
         body = +""
+        length = headers.to_h["content-length"]&.to_i
+        limit = length&.between?(0, 16_384) ? length : 16_384
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + HEADER_TIMEOUT
-        while body.bytesize < 16_384
+        while body.bytesize < limit
           left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           break unless left.positive? && sock.wait_readable(left)
 
-          body << sock.readpartial(4096)
+          body << sock.readpartial(limit - body.bytesize)
         end
         body
       rescue IOError, SystemCallError

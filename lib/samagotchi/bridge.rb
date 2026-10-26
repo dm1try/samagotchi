@@ -471,15 +471,21 @@ module Samagotchi
         if request[:too_large]
           write_json(io, 413, { "Connection" => "close" }, { error: "too_large", detail: "request body over #{MAX_BODY_BYTES} bytes" })
           break
+        # A refusal closes the connection, as its Connection: close says: a
+        # client that asked to keep it open (a stream's keep-alive) reads
+        # the refusal to its end at once rather than waiting.
         elsif browser_request?(headers)
           write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
+          break
         elsif proxied_request?(headers)
           note_refused(:proxied, "proxied_refused", request[:path])
           write_json(io, 403, nil, { error: "proxied", detail: "the bridge answers chi's own clients on this machine, " \
                                                                "never a request through a proxy" })
+          break
         elsif !secret_ok?(headers)
           note_refused(:secret, "secret_refused", request[:path])
           write_json(io, 403, nil, { error: BridgeSecret::ERROR, detail: SECRET_REFUSED })
+          break
         # From here on a client of this worker (it named the secret): only its
         # requests keep the worker from its idle exit, never a refused one's
         # (an older chi web's polls, a scan through a forward).
