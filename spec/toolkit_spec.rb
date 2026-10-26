@@ -87,6 +87,17 @@ RSpec.describe Samagotchi::Toolkit do
     expect(described_class::BUILTIN_KITS.fetch("review").groups).to eq([])
   end
 
+  it "keeps the built-in child and coordinator bundle's child toolkits on all source groups" do
+    plugins = [
+      described_class::Kit.new(name: "coordinator", base: "lean", source: "coordinator"),
+      described_class::Kit.new(name: "coding", base: "child", source: "coordinator")
+    ]
+    kits = described_class.kits(plugins: plugins)
+
+    expect(%w[child coordinator coding].map { |name| described_class.new(name: name).resolve(kits).groups })
+      .to eq(%i[all all all])
+  end
+
   it "keeps a groups-only kit on full from resolving to everything" do
     kits = described_class.kits(config: { "chrome" => { "base" => "full", "groups" => ["chrome"] } })
     resolved = described_class.new(name: "chrome").resolve(kits)
