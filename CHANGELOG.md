@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 - `ask_user_question`'s description asks the model, when it recommends one option, to put it first and end its
   label with " (Recommended)" (eval 0005: Flash Next and DeepSeek v4.1-flash mark it 5/5 on a decision question,
   0/5 before; an answer comes back with the suffix, so `chi answer --option` takes that exact label or the number).
+- The recommended option shows as such: chi web's question card marks its row in the accent colour with a small
+  "recommended" tag (the label shown, and the answered line, without the suffix; nothing is pre-checked), and the
+  terminal's question paints its row bold. Approval and step-limit cards are unchanged.
 - chi web's select boxes have one shape in every dialog: the Invite panel's person/agent and Expires now match the
   text fields beside them (flat box, same height and corners, one thin caret), as the Thinking and LLM context
   dialogs' selects already did, in place of the browser's own pill.

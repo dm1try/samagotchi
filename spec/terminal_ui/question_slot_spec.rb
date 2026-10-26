@@ -74,6 +74,28 @@ RSpec.describe Samagotchi::TerminalUI::QuestionSlot do
     expect(rows.values_at(0, 1, 4, 9).map { |row| row[/\A<\d+>/] }).to eq(%w[<1> <33> <92> <90>])
   end
 
+  describe "a recommended option" do
+    let(:question) do
+      Samagotchi::TerminalUI::QuestionPrompt.new(
+        "id" => "q1", "question" => "How?", "options" => ["Raise an error (Recommended)", "Ignore them", "Warn"]
+      )
+    end
+    let(:paint) { ->(text, code) { "<#{code}>#{text}" } }
+
+    it "is painted bold with its label as is, in full rows and folded ones" do
+      rows = question.slot(paint: paint).fit(width: 100, height: nil)
+      expect(rows).to include("<1;92>  1) Raise an error (Recommended)", "<92>  2) Ignore them", "<92>  3) Warn")
+      expect(question.slot(paint: paint).fit(width: 100, height: 2).last)
+        .to eq("<92>  <1;92>1) Raise an error (Recommended)<92> · <92>2) Ignore them<92> · <92>3) Warn")
+      expect(question.slot.fit(width: 100, height: 2).last).to eq("  1) Raise an error (Recommended) · 2) Ignore them · 3) Warn")
+    end
+
+    it "keeps a folded row without one painted as a whole" do
+      rows = question.slot(paint: paint).fit(width: 40, height: 3)
+      expect(rows.last).to eq("<92>  2) Ignore them · 3) Warn")
+    end
+  end
+
   describe "a continue offer" do
     it "says what yes and no do, with the model's last step while there is room" do
       slot = described_class.continue_offer({ last_model_intent: "run the specs\nagain" })

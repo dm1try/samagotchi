@@ -426,6 +426,10 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .question-option:hover{background:var(--bg-hover)}
 .question-option.selected{border-color:var(--ok);color:var(--text)}
 .question-option input{margin:0;accent-color:var(--warn)}
+/* The model's recommended option (a label ending in "(Recommended)"): an accent row and a small tag. */
+.question-option.recommended{border-color:var(--accent-border);background:var(--accent-bg);color:var(--text)}
+.question-option.recommended.selected{border-color:var(--ok)}
+.question-option-tag{margin-left:auto;flex:none;font-size:11px;color:var(--accent);border:1px solid var(--accent-border);border-radius:999px;padding:0 6px}
 .question-freeform{width:100%;box-sizing:border-box;background:var(--bg-inset);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:8px}
 .question-error{color:var(--danger);font-size:12px;margin-bottom:8px}
 .question-error.hidden{display:none}

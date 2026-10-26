@@ -15,6 +15,12 @@ module Samagotchi
       # A numbered option shows as "1) Apple", a word as "yes: continue".
       Option = Struct.new(:key, :label) do
         def text = key.match?(/\A\d+\z/) ? "#{key}) #{label}" : "#{key}: #{label}"
+
+        # The model's pick (a label ending in "(Recommended)"): painted bold,
+        # its label kept as is so a typed label still matches.
+        def recommended? = label.to_s.rstrip.end_with?("(Recommended)")
+
+        def code = recommended? ? "1;92" : 92
       end
 
       CONTINUE_QUESTION = "The turn ran out of iterations. Continue it?"
@@ -83,7 +89,7 @@ module Samagotchi
         question_rows = question_rows.first(1) unless details
         rows.concat(question_rows.map { |row| @paint.call(row, @question_code) })
         rows.concat(@details.map { |row| @paint.call(row, @question_code) }) if details
-        rows.concat(folded ? folded_options(width) : @options.map { |o| @paint.call("  #{o.text}", 92) })
+        rows.concat(folded ? folded_options(width) : @options.map { |o| @paint.call("  #{o.text}", o.code) })
         rows << @paint.call("  [#{@hint}]", 90) if hint && @hint
         rows
       end
@@ -91,19 +97,24 @@ module Samagotchi
       # The options packed into rows of +width+: "  1) Allow once · 2) Deny".
       def folded_options(width)
         rows = []
-        line = +""
+        line = []
         @options.each do |option|
-          item = option.text
-          candidate = line.empty? ? "  #{item}" : "#{line} · #{item}"
-          if !line.empty? && display_width(candidate) > width
+          if !line.empty? && display_width("  #{(line + [option]).map(&:text).join(" · ")}") > width
             rows << line
-            line = "  #{item}"
+            line = [option]
           else
-            line = +candidate
+            line << option
           end
         end
         rows << line unless line.empty?
-        rows.map { |row| @paint.call(row, 92) }
+        rows.map { |row| paint_folded(row) }
+      end
+
+      # One folded row; a recommended option in it is painted on its own.
+      def paint_folded(options)
+        return @paint.call("  #{options.map(&:text).join(" · ")}", 92) if options.none?(&:recommended?)
+
+        @paint.call("  ", 92) + options.map { |o| @paint.call(o.text, o.code) }.join(@paint.call(" · ", 92))
       end
 
       # Word wrap at +width+ columns, the first row after +first+, the others

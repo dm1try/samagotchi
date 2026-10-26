@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate, keepsAskingText } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate, keepsAskingText, isRecommended, optionText } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -232,4 +232,20 @@ test("keepsAskingText: the model's question and an own approval keep the reply t
 test("resultText for a dismissed relayed hook question says Dismissed, not Denied or Cancelled", () => {
   const hook = { id: "h1", kind: "hook", options: ["Continue", "Stop"], relay: { id: "r1", child_id: "cccc2222-0000" } };
   assert.equal(resultText(hook, { cancelled: true, reason: "dismissed" }), "Dismissed");
+});
+
+test("isRecommended / optionText: a label ending in (Recommended), shown without it", () => {
+  assert.equal(isRecommended("Raise an error (Recommended)"), true);
+  assert.equal(isRecommended("Raise an error (Recommended) "), true);
+  assert.equal(isRecommended("Raise an error (recommended)"), false);
+  assert.equal(isRecommended("(Recommended) first"), false);
+  assert.equal(optionText("Raise an error (Recommended)"), "Raise an error");
+  assert.equal(optionText("Ignore them"), "Ignore them");
+  assert.equal(optionText("(Recommended)"), "(Recommended)");
+});
+
+test("resultText and summaryText drop the mark from a question's answer, not an approval's", () => {
+  const q = { id: "q1", question: "How?", options: ["A (Recommended)", "B"] };
+  assert.equal(resultText(q, { answer: { selected: ["A (Recommended)"] } }), "Answered: A");
+  assert.equal(summaryText(q, { answer: { selected: ["A (Recommended)", "B"], freeform: "x" } }), "How? → A, B · x");
 });

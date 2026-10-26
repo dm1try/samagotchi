@@ -235,6 +235,36 @@ test("answered (here or elsewhere): marked, disabled, collapsed to the result; a
   assert.equal(card.querySelectorAll(".question-result").length, 1);
 });
 
+test("a recommended option: marked with a tag, shown without the mark, answered with the full label", async () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion({ id: "q1", question: "How?", options: ["Raise an error (Recommended)", "Ignore them"] });
+  const card = cards.questionCard();
+  const [rec, other] = card.querySelectorAll(".question-option");
+  assert.equal(rec.classList.contains("recommended"), true);
+  assert.equal(other.classList.contains("recommended"), false);
+  assert.equal(rec.children[1].textContent, "Raise an error");
+  assert.equal(rec.querySelector(".question-option-tag").textContent, "recommended");
+  assert.equal(other.querySelector(".question-option-tag"), null);
+  assert.deepEqual(card.querySelectorAll(".question-option input").map((i) => [i.value, i.checked]),
+    [["Raise an error (Recommended)", false], ["Ignore them", false]]);
+  rec.querySelector("input").checked = true;
+  card.querySelector(".question-submit").click();
+  await flush();
+  assert.deepEqual(calls[0], ["sendAnswer", "s1", { id: "q1", selected: ["Raise an error (Recommended)"] }]);
+  cards.resolveQuestion("q1", { answer: { selected: ["Raise an error (Recommended)"] } });
+  assert.equal(card.querySelector(".question-result").textContent, "Answered: Raise an error");
+  assert.equal(card.querySelector("summary").textContent, "How? → Raise an error");
+});
+
+test("an approval's options are never marked recommended", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ id: "a1", kind: "approval", question: "Run it?", options: ["Allow (Recommended)", "Deny"],
+    approval: { tool: "execute", command: "ls" } });
+  const card = cards.questionCard();
+  assert.equal(card.querySelector(".question-option.recommended"), null);
+  assert.equal(card.querySelector(".question-option").children[1].textContent, "Allow (Recommended)");
+});
+
 test("another question's resolve leaves this one; a hand-toggled card stays as left", () => {
   const { cards } = setup();
   cards.renderQuestion(PQ);
