@@ -1420,8 +1420,10 @@ toolkit:
   ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil)).
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`); for the MCP bundle
   each group is a server. Selectors are sorted and deduplicated and match the groups declared when plugins load.
-  An omitted key inherits the base's selectors; the built-in kits reach all groups, `groups: ["*"]` matches every
-  group, and `groups: []` reaches none.
+  An omitted key inherits the base's selectors; `full` and `lean` (and `child`, which is on `lean`) reach all
+  groups, `review` (the participants' kit) reaches none, `groups: ["*"]` matches every group, and `groups: []`
+  reaches none. A kit whose base doesn't resolve (an unknown name, a cycle) falls back to `full`, which reaches
+  every group.
   A selector that matches no group in that load-time snapshot warns once. `find_tools` and `call_tool` are
   declared only when the toolkit reaches a source group or has a reachable built-in. Calls naming an unreached
   group are refused before guardrails and do not start its server. The first-run init wait is unchanged: it can
