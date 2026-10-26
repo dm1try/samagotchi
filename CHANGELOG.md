@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- chi's icon (the browser tab and the Home Screen app) is flat: a system-blue χ on a graphite tile, no gradient. On a
+  phone, remove the Home Screen app and add it again to see it: iOS keeps the old icon.
+
 ### Fixed
 
 - chi web's session bar stops squeezing its meta row into a narrow column in a small window: the bar's own actions

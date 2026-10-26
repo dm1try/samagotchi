@@ -14,17 +14,18 @@ import { chromium } from "@playwright/test";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pub = join(root, "lib/samagotchi/web/public");
-// favicon.svg with its rounded square made a full square: the gradient
-// fills the icon edge to edge, the glyph stays where it is.
-const svg = readFileSync(join(pub, "favicon.svg"), "utf8")
-  .replace(/<rect [^>]*\/>/, '<rect x="0" y="0" width="32" height="32" fill="url(#g)"/>');
+// favicon.svg with its rounded square made a full square in the same fill:
+// the tile reaches the icon's edges, the glyph stays where it is.
+const favicon = readFileSync(join(pub, "favicon.svg"), "utf8");
+const fill = favicon.match(/<rect [^>]*fill="([^"]+)"/)[1];
+const svg = favicon.replace(/<rect [^>]*\/>/, `<rect x="0" y="0" width="32" height="32" fill="${fill}"/>`);
 
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
   for (const size of [180, 192, 512]) {
     await page.setViewportSize({ width: size, height: size });
-    await page.setContent(`<html><body style="margin:0;background:#1f6feb">${svg
+    await page.setContent(`<html><body style="margin:0;background:${fill.startsWith("#") ? fill : "#22262f"}">${svg
       .replace("<svg ", `<svg width="${size}" height="${size}" `)}</body></html>`);
     writeFileSync(join(pub, `icons/chi-${size}.png`), await page.screenshot({ omitBackground: false }));
   }
