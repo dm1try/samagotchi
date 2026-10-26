@@ -189,6 +189,70 @@ RSpec.describe Samagotchi::Web::Grants do
     end
   end
 
+  describe "the store's version" do
+    def stored = JSON.parse(File.read(path))
+
+    def rewrite!
+      data = stored
+      yield data
+      File.write(path, JSON.generate(data))
+    end
+
+    it "is 1 while no grant is bound, 2 once one is" do
+      issued = issue
+      expect(stored["version"]).to eq(1)
+      expect(stored["grants"].first).not_to have_key("identity")
+
+      rewrite! { |data| data["grants"].first["identity"] = "alex@corp.example" }
+      grants.revoke(id: issued.grant.id)
+      expect(stored).to include("version" => 2)
+      expect(stored["grants"].first).to include("identity" => "alex@corp.example", "revoked_by" => "owner")
+    end
+
+    it "keeps a grant's keys it doesn't know on a rewrite, and never shows them" do
+      issued = issue
+      rewrite! { |data| data["grants"].first["exposure"] = { "plan" => true } }
+      grants.set_cap(issued.grant.id, 5)
+      grants.revoke(id: issued.grant.id)
+
+      row = stored["grants"].first
+      expect(row).to include("exposure" => { "plan" => true }, "cap" => 5.0, "revoked_by" => "owner")
+      expect(grants.find(issued.grant.id).public_h(now.first)).not_to have_key(:exposure)
+    end
+
+    it "never goes back to 1 once a store says 2" do
+      issue
+      rewrite! { |data| data["version"] = 2 }
+      issue
+      expect(stored["version"]).to eq(2)
+    end
+
+    context "when a newer chi wrote it" do
+      let!(:issued) { issue }
+
+      before { rewrite! { |data| data["version"] = 3 } }
+
+      it "still finds its grants, and refuses every write without touching the file" do
+        before = File.binread(path)
+        expect(grants.lookup(issued.token)&.id).to eq(issued.grant.id)
+        expect(grants.list.map(&:id)).to eq([issued.grant.id])
+
+        [-> { issue }, -> { grants.set_cap(issued.grant.id, 3) }, -> { grants.revoke }].each do |call|
+          expect(&call).to raise_error(described_class::Newer, /newer chi \(grants store version 3; this chi knows up to 2\): chi won't write over it/)
+        end
+        expect { grants.touch(issued.grant.id) }.not_to raise_error
+        expect(File.binread(path)).to eq(before)
+      end
+    end
+
+    it "refuses a version that isn't a number as a store that doesn't read" do
+      issue
+      rewrite! { |data| data["version"] = "2" }
+      allow(Samagotchi::Log).to receive(:warn)
+      expect { grants.list }.to raise_error(described_class::Corrupt, /a bad version/)
+    end
+  end
+
   describe ".check_permissions!" do
     it "passes a missing store and a 0700/0600 one" do
       expect { described_class.check_permissions!(path) }.not_to raise_error

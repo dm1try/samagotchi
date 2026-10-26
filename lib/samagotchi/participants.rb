@@ -148,11 +148,13 @@ module Samagotchi
     # session nobody was invited to.
     # A grants store that doesn't read (Web::Grants::Corrupt) doesn't stop
     # the archive or delete: its links already find no grant, and the
-    # store itself says so (Log.warn) until it's fixed.
+    # store itself says so (Log.warn) until it's fixed. Nor does one a newer
+    # chi wrote (Newer): chi web's gate refuses a grant whose session is
+    # archived or gone even when it can't write the revoke.
     def end_sessions(session_ids, by:, state_dir: Session.default_state_dir)
       grants = Web::Grants.new(Web::Grants.path(state_dir: state_dir))
       session_ids.each { |sid| revoke(grants, session_id: sid, by: by, state_dir: state_dir) }
-    rescue Web::Grants::Corrupt
+    rescue Web::Grants::Unwritable
       nil
     end
   end

@@ -275,6 +275,17 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(grants.find(gone.grant.id).revoked_by).to eq("gone")
     end
 
+    it "is refused when its session was archived, even on a store a newer chi wrote (no revoke written)" do
+      token
+      path = grants.path
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("version" => 3)))
+      before = File.binread(path)
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+      expect(json("/api/info")).to eq([401, json("/api/info").last])
+      expect(json("/api/info").last["error"]).to eq("token_revoked")
+      expect(File.binread(path)).to eq(before)
+    end
+
     it "is a plain 401 for a token no grant was issued for" do
       expect(json("/api/info", bearer: "chp_#{"x" * 43}").last["error"]).to eq("unauthorized")
     end

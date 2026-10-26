@@ -93,6 +93,9 @@ module Samagotchi
 
         Participants.revoke(@grants, session_id: grant.session_id, id: grant.id, by: by, state_dir: default_state_dir)
         @grants.find(grant.id) || grant
+      rescue Grants::Unwritable
+        # A store this chi can't write (a newer chi's): refused all the same.
+        grant.with(revoked_at: @grants.now.utc.iso8601, revoked_by: by)
       end
 
       # 401 token_revoked / token_expired for an ended grant's token (the

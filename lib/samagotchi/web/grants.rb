@@ -74,13 +74,37 @@ module Samagotchi
       # session".
       class Invalid < StandardError; end
 
+      # The store's version: 1, and BOUND_VERSION once a grant is bound to
+      # an identity, so a chi that knows only 1 and checks (from this one
+      # on) doesn't rewrite it. MAX_VERSION is the newest this chi reads
+      # and writes; a newer store it reads but never writes (Newer).
+      VERSION = 1
+      BOUND_VERSION = 2
+      MAX_VERSION = 2
+
+      # A store chi won't write over (Corrupt, Newer): the owner's invite,
+      # cap and revoke are refused with its message.
+      class Unwritable < StandardError; end
+
       # The store is there but doesn't read (not JSON, a grant without its
       # digest or expiry): its grants find nothing (fail closed), and
       # nothing writes over it, which would lose every other grant.
-      class Corrupt < StandardError
+      class Corrupt < Unwritable
         def initialize(path, reason)
           super("#{path} can't be read (#{reason}): chi won't write over it; fix it, or move it aside to end " \
                 "every participant's link")
+        end
+      end
+
+      # The store was written by a newer chi (its version above
+      # MAX_VERSION): its grants still work here (read as this chi knows
+      # them), but nothing writes over it, which would drop what that chi
+      # added to them.
+      class Newer < Unwritable
+        def initialize(path, version)
+          super("#{path} was written by a newer chi (grants store version #{version}; this chi knows up to " \
+                "#{MAX_VERSION}): chi won't write over it, which would drop what that chi added; update chi " \
+                "(chi update)")
         end
       end
 
@@ -91,14 +115,19 @@ module Samagotchi
       # +cap+ (dollars) and +queue+ (turns waiting) as issued; nil in a
       # grant from before them, which takes the config's (#spend_cap,
       # #queue_limit).
+      # +extra+: the stored keys this chi doesn't know (a newer chi's,
+      # such as a field added to a grant without a version bump), written
+      # back as they were, so a rewrite here never drops them.
       Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                          :revoked_by, :last_used_at, :cap, :queue, :identity) do
+                          :revoked_by, :last_used_at, :cap, :queue, :identity, :extra) do
         # identity: the proxy identity (an email, lower case) the grant is
         # bound to, nil for any (ProxyGate; issued from shared-sessions P6).
-        def initialize(cap: nil, queue: nil, identity: nil, **) = super
+        def initialize(cap: nil, queue: nil, identity: nil, extra: {}, **) = super
 
         def self.from_h(hash)
-          new(**members.to_h { |key| [key, hash[key.to_s]] })
+          known = members - [:extra]
+          extra = hash.reject { |key, _| known.include?(key.to_s.to_sym) }
+          new(**known.to_h { |key| [key, hash[key.to_s]] }, extra: extra)
         end
 
         # The dollars this participant may cost the owner.
@@ -135,8 +164,13 @@ module Samagotchi
             state: state(now).to_s, cap: spend_cap, queue: queue_limit }
         end
 
-        # A grant bound to no identity is stored as before identity existed.
-        def to_store = to_h.transform_keys(&:to_s).tap { |hash| hash.delete("identity") if identity.nil? }
+        # A grant bound to no identity is stored as before identity existed;
+        # the keys this chi doesn't know come after, as they were.
+        def to_store
+          hash = to_h.except(:extra).transform_keys(&:to_s)
+          hash.delete("identity") if identity.nil?
+          hash.merge(extra.reject { |key, _| hash.key?(key) })
+        end
 
         def inspect = "#<Grant #{id} #{session_id[0, 8]} #{name.inspect}>"
         alias_method :to_s, :inspect
@@ -335,7 +369,7 @@ module Samagotchi
         update do |grants|
           [grants.map { |grant| grant.id == id ? grant.with(last_used_at: stamp(at)) : grant }, nil]
         end
-      rescue Corrupt
+      rescue Unwritable
         nil
       end
 
@@ -369,7 +403,7 @@ module Samagotchi
       end
 
       def reload(stamp)
-        @grants = stamp ? read : []
+        @grants = stamp ? read.first : []
         @corrupt = nil
       rescue Corrupt => e
         @grants = []
@@ -377,19 +411,23 @@ module Samagotchi
         Log.warn(:web, "grants_unreadable", echo: "[chi web] #{e.message}", path: @path)
       end
 
+      # [grants, the store's version] (none yet: [[], VERSION]).
       # @raise [Corrupt] the file is there but isn't a grants store
       def read
         data = begin
           JSON.parse(File.read(@path))
         rescue Errno::ENOENT
-          return []
+          return [[], VERSION]
         rescue JSON::ParserError
           raise Corrupt.new(@path, "not JSON")
         end
         rows = data.is_a?(Hash) ? data["grants"] : nil
         raise Corrupt.new(@path, "no grants list") unless rows.is_a?(Array)
 
-        rows.each_with_index.map { |hash, index| grant_from(hash, index) }
+        version = data.fetch("version", VERSION)
+        raise Corrupt.new(@path, "a bad version") unless version.is_a?(Integer) && version >= VERSION
+
+        [rows.each_with_index.map { |hash, index| grant_from(hash, index) }, version]
       end
 
       # A stored grant the gate can compare and date, else Corrupt.
@@ -427,11 +465,16 @@ module Samagotchi
         File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
           # Never over a store that didn't read (Corrupt): the next write
-          # would keep only this one's change.
-          grants, result = yield(read)
+          # would keep only this one's change. Nor over a newer chi's
+          # (Newer): this chi would drop what it doesn't know.
+          stored, version = read
+          raise Newer.new(@path, version) if version > MAX_VERSION
+
+          grants, result = yield(stored)
           at = now
           kept = grants.reject { |grant| (ended = grant.ended_at(at)) && at - ended > KEEP_ENDED }
-          body = JSON.pretty_generate({ "version" => 1, "grants" => kept.map(&:to_store) })
+          version = [version, kept.any?(&:identity) ? BOUND_VERSION : VERSION].max
+          body = JSON.pretty_generate({ "version" => version, "grants" => kept.map(&:to_store) })
           AtomicFile.write(@path, "#{body}\n", perm: 0o600)
           @mutex.synchronize { @stamp = nil }
           on_write&.call(kept, result)

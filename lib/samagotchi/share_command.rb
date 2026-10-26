@@ -93,7 +93,7 @@ module Samagotchi
       send(:"run_#{@sub || "invite"}", parsed.options, parsed.args)
     rescue SessionAccess::BadRequest => e
       usage_error(e.message)
-    rescue Web::Grants::Corrupt => e
+    rescue Web::Grants::Unwritable => e
       error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     rescue ArgumentError => e

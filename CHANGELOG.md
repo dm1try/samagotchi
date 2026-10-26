@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
   not the project the app shows. The Home Screen app's notifications and badge still cover every project: on a
   project's page it tidies them from every session's events, where before a project's page (`?dir=`) left them as
   they were.
+- The participants' grants store (`web-grants/grants.json`) carries a version: 2 once a grant is bound to an identity.
+  chi keeps a grant's fields it doesn't know when it rewrites the store, and never writes over a store a newer chi
+  wrote (its links still work; invite, cap and revoke say to update chi). A chi from before this one doesn't check.
 
 ## [0.119.0] - 2026-10-26
 
