@@ -205,3 +205,16 @@ test("typing anywhere opens a folded session composer unless the page turns it o
     assert.equal(composer.isComposerFolded(), !typeAnywhere, `typeAnywhere ${typeAnywhere}`);
   }
 });
+
+test("imagesOff: a paste, drop or pick of images adds no chip and toasts why; the drop is still the page's", () => {
+  const { prompt, composerEl, attachInput, chipsEl, calls, dispatch, transfer, composer } = setup({ hooks: { imagesOff: "No images here." } });
+  dispatch(prompt, "paste", { clipboardData: { files: [image()], items: [], getData: () => "" } });
+  const drop = dispatch(composerEl, "drop", { dataTransfer: transfer([image()]) });
+  assert.equal(drop.defaultPrevented, true, "the browser doesn't open the dropped file");
+  Object.defineProperty(attachInput, "files", { value: [image()], configurable: true });
+  dispatch(attachInput, "change", {});
+  assert.equal(composer.addImageFiles([]), false);
+  assert.equal(chipsEl.hidden, true);
+  assert.deepEqual(composer.chips(), []);
+  assert.deepEqual(calls.toasts, ["No images here.", "No images here.", "No images here."]);
+});
