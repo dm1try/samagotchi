@@ -454,10 +454,30 @@ test("participant page: a link that ends forgets this grant's comments", async (
     respond: (call) => (++gets === 1 ? call.answer(200, REVIEW_G1)
       : call.answer(401, { error: "token_revoked", detail: "this review link was revoked by the session's owner" })),
   });
+  assert.equal(localStorage.getItem("chi_review_history_session:s1"), "g1");
   sources[0].emit("turn_completed");
   await tick(120);
   assert.equal(document.getElementById("ended").hidden, false);
   assert.equal(localStorage.getItem("chi_review_history:g1"), null);
+  assert.equal(localStorage.getItem("chi_review_history_session:s1"), null);
+});
+
+test("participant page: an ended link before its first read forgets only its remembered grant", async (t) => {
+  localStorage.setItem("chi_review_history:g1", JSON.stringify(["Mine"]));
+  localStorage.setItem("chi_review_history:g2", JSON.stringify(["Other"]));
+  localStorage.setItem("chi_review_history_session:s1", "g1");
+  t.after(() => {
+    localStorage.removeItem("chi_review_history:g1");
+    localStorage.removeItem("chi_review_history:g2");
+    localStorage.removeItem("chi_review_history_session:s1");
+  });
+  const { $ } = await openPage(t, {
+    respond: (call) => call.answer(401, { error: "token_revoked", detail: "this review link was revoked" }),
+  });
+  assert.equal($("ended").hidden, false);
+  assert.equal(localStorage.getItem("chi_review_history:g1"), null);
+  assert.equal(localStorage.getItem("chi_review_history:g2"), JSON.stringify(["Other"]));
+  assert.equal(localStorage.getItem("chi_review_history_session:s1"), null);
 });
 
 test("participant page: the owner's participant view mounts no composer", async (t) => {
