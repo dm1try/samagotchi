@@ -166,6 +166,40 @@ socket) names it too: `include BridgeAuth` (spec/support/bridge_auth.rb, require
 `port` and `secret` from the sidecar in one go, as `BridgeClient.discover` does. A client made with `BridgeClient.new`
 takes `secret:` (nil for a fake Bridge that doesn't check it).
 
+### Support files
+
+`spec/spec_helper.rb` loads the suite-wide helpers (marked *helper*: every example group gets them); a spec that needs
+any other file requires it, so a spec file run alone still finds its requires. Each file's header says more.
+
+| File | What it gives |
+|---|---|
+| `bounded_capture.rb` | `BoundedCapture.capture3`: `Open3.capture3` with a deadline, in its own process group killed on expiry |
+| `bridge_auth.rb` | `BridgeAuth`: the Bridge secret's header for a hand-written request (above) |
+| `chi_cli.rb` | *helper*: `run_chi` (bin/chi in a child process), `fork_chi` (in a fork: no Ruby boot), `isolated_chi_env` |
+| `effective_model_configs.rb` | `EffectiveModelConfigs`: one config.yml holding every host the effective-model characterization pins, and its goldens |
+| `env.rb` | *helper*: `with_env` sets ENV for a block and puts it back (nil unsets) |
+| `failing_saves.rb` | shared context "failing session saves": `Session#save` raising ENOSPC while `saves_fail`, and the worker's `save_failed` records |
+| `fake_chat_adapter.rb` | `FakeChatAdapter`: an `LLM::OpenAIChat` stand-in answering `#chat` with queued steps, recording each request |
+| `fake_executables.rb` | `FakeExecutables`: fake commands (`gh`, `git`) for a spec's PATH, symlinks to one launcher (macOS's first-exec check is paid once) |
+| `fake_provider_server.rb` | `FakeProviderServer`: an in-process HTTP provider replaying spec/fixtures/providers, recording requests |
+| `fake_tailscale.rb` | A fake `tailscale` for `Web::Tunnel::Tailscale` (status, serve, lock from JSON files; argv.log) |
+| `git_repo.rb` | *helper*: `git_repo`, a temp folder with `git init`, removed after the example |
+| `integration_server.rb` | *helper*: the live model server `:integration` examples use, from `SAMAGOTCHI_INTEGRATION_*` ([Integration specs](#integration-specs)) |
+| `mcp_bundle.rb` | The shipped mcp bundle's path and the fake MCP server its specs start (`MCP_FAKE_COMMAND`, no RubyGems) |
+| `no_console.rb` | Loaded first (`ruby -r`) by spawned bin/chi children: `IO.console` is nil, so output never wraps at a terminal's width |
+| `recording_surface.rb` | `RecordingSurface`: a `TerminalUI::Surface` that records commits and slots instead of drawing |
+| `remote_backend.rb` | `RemoteBackend`: `SessionAccess::Remote` against chi web's Rack app in this process (no socket, LAN token gate) |
+| `reply_wait_looks.rb` | `ReplyWaitLooks`: counts a `ReplyWait`'s polls, so a step waits for the looks instead of a delay |
+| `stamps.rb` | *helper*: `next_stamp`, distinct ordered times for the lib's `now:` seams; the pinned history clock |
+| `task_dirs.rb` | `with_task_dir`: a tasks' folder of its own, every task stopped and its recorders joined after |
+| `test_kernel.rb` | `TestKernel`: `test_kernel` (a real `KernelLoop` to stub `#run` on) and `test_client` for Engine specs |
+| `thinking_off.rb` | shared context "thinking off": `SAMAGOTCHI_THINKING_LEVEL=off` for the example |
+| `virtual_terminal.rb` | `VirtualTerminal`: just enough VT100 to check what a Screen leaves on the terminal |
+| `waiting.rb` | *helper*: `SpecWaiting` (`wait_for`, `wait_until`, `join!`, `pop!`, …), the test kit's helpers ([Waiting and time](#waiting-and-time)) |
+| `web_push_receiver.rb` | `WebPushReceiver`: a device's key pair and auth secret, decrypting what chi web pushed (RFC 8291) |
+| `web_server.rb` | `WebServer`: chi web's `Web::App` served for real on a free port in a thread, for specs a Rack mock can't serve |
+| `worker_loop_rounds.rb` | `WorkerLoopRounds`: counts a worker's idle loop passes, for "nothing happens" checks |
+
 ## Bundle specs: the test kit
 
 A shipped bundle's plugin and hook files are tested through the bundle test kit (`samagotchi/testing`,
