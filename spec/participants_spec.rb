@@ -6,6 +6,7 @@ require "json"
 
 require "samagotchi/participants"
 require "samagotchi/archive_store"
+require "samagotchi/web/public_url"
 
 # A session's participants: the sidecar the worker reads, the audit trail,
 # and the invite/revoke steps that keep them with Web::Grants.
@@ -63,6 +64,40 @@ RSpec.describe Samagotchi::Participants do
       expect { described_class.invite(grants, session_id: session.id, name: "A", state_dir: state_dir) }
         .to raise_error(Samagotchi::Web::Grants::Invalid, /is archived: unarchive it/)
       expect(grants.list).to eq([])
+    end
+  end
+
+  describe ".invite bound to an identity" do
+    let(:proxy) do
+      Samagotchi::Web::PublicUrl.from_config(url: "https://chi.corp.test", identity_header: "X-Forwarded-Email")
+    end
+
+    before { FileUtils.mkdir_p(dir) }
+
+    it "binds the grant behind a proxy that names the user, and audits the identity" do
+      issued = described_class.invite(grants, session_id: session.id, name: "Alex", identity: " Alex@Corp.Test ",
+                                              public_url: proxy, state_dir: state_dir)
+      expect(issued.grant.identity).to eq("alex@corp.test")
+      expect(audit.last).to include("event" => "issued", "identity" => "alex@corp.test")
+      sidecar = File.read(File.join(dir, described_class::FILE))
+      expect(sidecar).not_to include(issued.token)
+    end
+
+    it "refuses an identity with no proxy, or a proxy that names nobody (a link that would never open)" do
+      token_only = Samagotchi::Web::PublicUrl.from_config(url: "https://chi.corp.test")
+      [nil, token_only].each do |public_url|
+        expect do
+          described_class.invite(grants, session_id: session.id, name: "Alex", identity: "alex@corp.test",
+                                         public_url: public_url, state_dir: state_dir)
+        end.to raise_error(Samagotchi::Web::Grants::Unbindable, /only on a chi web behind an auth proxy that names the signed-in user/)
+      end
+      expect(grants.list).to eq([])
+      expect(File.exist?(File.join(dir, described_class::LOG))).to be(false)
+    end
+
+    it "audits no identity for an unbound grant" do
+      described_class.invite(grants, session_id: session.id, name: "Alex", public_url: proxy, state_dir: state_dir)
+      expect(audit.last).not_to have_key("identity")
     end
   end
 

@@ -98,21 +98,27 @@ module Samagotchi
     end
 
     # Invites a participant to +session_id+: the grant (+grants+, a
-    # Web::Grants), the sidecar and the audit line.
+    # Web::Grants), the sidecar and the audit line. A grant bound to
+    # +identity+ needs +public_url+ (the chi web's Web::PublicUrl) with an
+    # identity header: only a request through that proxy can carry it.
     # @return [Web::Grants::Issued]
     # @raise [Web::Grants::Invalid] an archived session, or bad values
+    #   (Unbindable: an identity without such a public_url)
     # @raise [ArgumentError] no such session
-    def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, state_dir: Session.default_state_dir)
+    def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, identity: nil, public_url: nil,
+               state_dir: Session.default_state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
+      raise Web::Grants::Unbindable if !identity.nil? && public_url&.identity_header.nil?
       if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
         raise Web::Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
       end
 
-      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap,
+      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap, identity: identity,
                             on_write: sidecar_writer(state_dir, [session_id]))
       grant = issued.grant
       log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name, kind: grant.kind,
-                               role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap)
+                               role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap,
+                               **(grant.identity ? { identity: grant.identity } : {}))
       issued
     end
 

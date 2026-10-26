@@ -74,6 +74,19 @@ module Samagotchi
       # session".
       class Invalid < StandardError; end
 
+      # An identity to bind a grant to that isn't one email address.
+      class BadIdentity < Invalid
+        def initialize(msg = "a link is bound to one email address (name@domain: one @, no spaces or commas)") = super
+      end
+
+      # An identity asked of a chi web that can't check one: no auth proxy
+      # naming the signed-in user (ProxyGate), so the link would never open.
+      class Unbindable < Invalid
+        def initialize(msg = "a link can be bound to an email only on a chi web behind an auth proxy that names the " \
+                             "signed-in user (web.public_url with web.proxy.identity_header, or chi web --tunnel " \
+                             "tailscale): bound here it would never open") = super
+      end
+
       # The store's version: 1, and BOUND_VERSION once a grant is bound to
       # an identity, so a chi that knows only 1 and checks (from this one
       # on) doesn't rewrite it. MAX_VERSION is the newest this chi reads
@@ -161,7 +174,7 @@ module Samagotchi
         def public_h(now)
           { id: id, session_id: session_id, kind: kind, name: name, role: role, created_at: created_at,
             expires_at: expires_at, revoked_at: revoked_at, revoked_by: revoked_by, last_used_at: last_used_at,
-            state: state(now).to_s, cap: spend_cap, queue: queue_limit }
+            state: state(now).to_s, cap: spend_cap, queue: queue_limit, identity: identity }
         end
 
         # A grant bound to no identity is stored as before identity existed;
@@ -225,6 +238,24 @@ module Samagotchi
 
       def self.token?(value) = value.is_a?(String) && value.start_with?(PREFIX)
 
+      # What a proxy identity header carries: an email, or a login such as
+      # Tailscale's alex@github (one @, a domain without a dot).
+      IDENTITY_RE = /\A[^@,<>"\\]+@[^@,<>"\\]+\z/
+      # No space or control character anywhere (a header can't carry one,
+      # and a name with one could mislead in a listing).
+      IDENTITY_BAD_RE = /\p{Space}|\p{Cc}/
+      IDENTITY_MAX = 254
+
+      # +identity+ as the gate compares it (ProxyGate#proxy_identity: strip,
+      # lower case).
+      # @raise [BadIdentity] not one email address
+      def self.clean_identity(identity)
+        clean = identity.is_a?(String) ? identity.strip.downcase : ""
+        raise BadIdentity unless clean.length <= IDENTITY_MAX && IDENTITY_RE.match?(clean) && !IDENTITY_BAD_RE.match?(clean)
+
+        clean
+      end
+
       # One line, at most NAME_MAX characters, no brackets (a name can't
       # forge the "[Review contribution from …]" header; ParticipantName).
       # @raise [Invalid] nothing left
@@ -260,10 +291,12 @@ module Samagotchi
       # A new grant for +session_id+, written before the token is handed out.
       # @param ttl [Integer, nil] seconds (nil: Grants.default_ttl; at most MAX_TTL)
       # @param cap [Numeric, nil] dollars (nil: Grants.default_cap)
+      # @param identity [String, nil] the proxy identity (an email) the grant
+      #   is bound to (Grants.clean_identity), nil for any
       # @param on_write [#call, nil] see #update
       # @return [Issued]
       # @raise [Invalid]
-      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, on_write: nil)
+      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, identity: nil, on_write: nil)
         Session.check_id!(session_id)
         ttl ||= Grants.default_ttl
         cap = Grants.default_cap if cap.nil?
@@ -273,13 +306,15 @@ module Samagotchi
         raise Invalid, CAP_RANGE unless Grants.cap?(cap)
 
         clean = Grants.clean_name(name)
+        identity = Grants.clean_identity(identity) unless identity.nil?
         token = "#{PREFIX}#{SecureRandom.urlsafe_base64(BYTES)}"
         issued = now
         update(on_write) do |grants|
           id = fresh_id(grants)
           grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
                             role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
-                            revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue)
+                            revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue,
+                            identity: identity)
           [grants + [grant], Issued.new(grant: grant, token: token)]
         end
       end

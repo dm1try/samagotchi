@@ -67,6 +67,36 @@ RSpec.describe Samagotchi::Web::Grants do
     end
   end
 
+  describe "#issue bound to an identity" do
+    it "keeps the identity lower case, shows it, and writes store version 2" do
+      grant = issue(identity: "  Alex@Corp.Example ").grant
+      expect(grant.identity).to eq("alex@corp.example")
+      expect(grant.public_h(now.first)).to include(identity: "alex@corp.example")
+      expect(JSON.parse(File.read(path))).to include("version" => 2)
+      expect(JSON.parse(File.read(path))["grants"].first).to include("identity" => "alex@corp.example")
+      expect(grants.find(grant.id).identity).to eq("alex@corp.example")
+    end
+
+    it "takes a login with a dot-less domain (Tailscale's alex@github)" do
+      expect(issue(identity: "alex@github").grant.identity).to eq("alex@github")
+    end
+
+    it "refuses anything that isn't one address, writing nothing" do
+      ["", "  ", "alex", "@corp", "alex@", "a@b@c", "a b@c", "a,b@c", "<a@b>", "\"a\"@b", "a\u0000@b", "a\tb@c",
+       "#{"x" * 250}@corp", 42, ["a@b"]].each do |bad|
+        expect { issue(identity: bad) }.to raise_error(described_class::BadIdentity, /bound to one email address/), bad.inspect
+      end
+      expect(File.exist?(path)).to be(false)
+    end
+
+    it "is unbound without one: nil in the view, no key in the store, version 1" do
+      grant = issue.grant
+      expect(grant.public_h(now.first)).to include(identity: nil)
+      expect(JSON.parse(File.read(path))).to include("version" => 1)
+      expect(JSON.parse(File.read(path))["grants"].first).not_to have_key("identity")
+    end
+  end
+
   describe "#lookup" do
     it "finds the grant by its token, and nothing for another token or an owner-shaped one" do
       issued = issue
