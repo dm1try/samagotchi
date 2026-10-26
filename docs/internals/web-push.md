@@ -248,9 +248,13 @@ Screen app the bell (`notifications.js`) registers `/sw.js`, asks `GET /api/push
 and is "push to this phone" when chi web pushes: on while chi web has this device. A tap asks permission from the tap
 (iOS asks only from a user gesture), subscribes, posts it (with `replaces`: the id chi web answered last time,
 kept in localStorage as `chi_push_device`, `PUSH_DEVICE_KEY`; a storage that throws only loses the replace) and sends
-a test push; a tap when on unsubscribes and deletes, and forgets the id, unless there was no subscription left to
-delete (revoked meanwhile): then the id stays for the next subscribe to replace. The tab's own OS notification is left to the push there; the title count stays. In a browser tab, or with
-chi web not pushing, the bell is the in-tab one, unchanged (no duplicate desktop pushes).
+a test push; a tap when on deletes, then unsubscribes (a DELETE that fails changes nothing local: the bell stays on
+and says the error), and forgets the id, unless there was no subscription left to delete (revoked meanwhile): then
+the id stays for the next subscribe to replace. The tab's own OS notification is left to the push there; the title
+count stays. A `GET /api/push` (or `register()`) that fails at launch (chi web restarting, a phone just woken) leaves
+the bell the in-tab one until the page next comes back in front (`backInFront` → `retryPush`, one at a time, no
+timer); chi web answering that it doesn't push is not asked again. In a browser tab, or with chi web not pushing,
+the bell is the in-tab one, unchanged (no duplicate desktop pushes).
 
 **The devices sheet** (`public/push_devices.js`, `createPushDevices` on `chip_popover.js`'s shell: a bottom sheet
 under 600 px, else a popover at the bell; made once chi web says it pushes, so a tab never gets one): in push mode

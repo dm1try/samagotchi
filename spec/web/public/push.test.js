@@ -81,6 +81,18 @@ test("unsubscribe drops this device's subscription and tells chi web its endpoin
   assert.equal(await unsubscribe({ reg: fakeReg().reg, del: async () => assert.fail("nothing to delete") }), false);
 });
 
+test("unsubscribe tells chi web first: a DELETE that fails keeps the subscription", async () => {
+  const { reg, calls } = fakeReg({ key: new Uint8Array([1]), endpoint: "https://web.push.apple.com/e" });
+  const order = [];
+  await unsubscribe({ reg, del: async () => { order.push(["DELETE", calls.length]); } });
+  assert.deepEqual(order, [["DELETE", 0]], "the DELETE before the local unsubscribe");
+
+  const flaky = fakeReg({ key: new Uint8Array([1]), endpoint: "https://web.push.apple.com/f" });
+  await assert.rejects(unsubscribe({ reg: flaky.reg, del: async () => { throw new Error("HTTP 503"); } }), /HTTP 503/);
+  assert.deepEqual(flaky.calls, []);
+  assert.ok(await flaky.reg.pushManager.getSubscription());
+});
+
 // spec/fixtures/attention_cases.json's open_keys rows (Attention.open_keys runs them too).
 const CASES = JSON.parse(readFileSync(new URL("../../fixtures/attention_cases.json", import.meta.url), "utf8"));
 

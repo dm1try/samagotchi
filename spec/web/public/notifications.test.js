@@ -148,7 +148,9 @@ test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapsh
 // +tags+ are the notifications already on the device (its getNotifications);
 // +device+ logs what the page did to them and to the app's badge.
 function fakeApp({ enabled = true, subscribed = false, known = subscribed, permission = "default", grant = "granted", failPost = null,
-  tags = [], scoped = false, visible = false, saved = {}, throwingStorage = false, failUpdate = false } = {}) {
+  tags = [], scoped = false, visible = false, saved = {}, throwingStorage = false, failUpdate = false, failDelete = null,
+  failGets = 0 } = {}) {
+  let getsToFail = failGets;
   const calls = [];
   const device = [];
   const delivered = tags.map((tag) => ({ tag, closed: false }));
@@ -177,6 +179,11 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
   };
   const api = async (method, path, body) => {
     calls.push([method, path, body]);
+    if (method === "GET" && getsToFail > 0) {
+      getsToFail -= 1;
+      throw new Error("HTTP 502");
+    }
+    if (method === "DELETE" && failDelete) throw new Error(failDelete);
     if (method === "GET") return { enabled, public_key: enabled ? "AQID" : null, origin: "https://s.example", this: known ? { id: "abcd1234", label: "iPhone" } : null };
     if (method === "POST" && path === "/api/push/subscriptions" && failPost) throw new Error(failPost);
     return method === "POST" && path === "/api/push/subscriptions" ? { id: "abcd1234", label: "iPhone" } : null;
@@ -255,9 +262,54 @@ test("a device chi web already has is on; a tap unsubscribes it and tells chi we
   assert.equal(app.button.dataset.state, "on");
   app.calls.length = 0;
   await app.tap();
-  assert.deepEqual(app.calls, [["unsubscribe", "https://web.push.apple.com/have"],
-    ["DELETE", "/api/push/subscriptions", { endpoint: "https://web.push.apple.com/have" }]]);
+  assert.deepEqual(app.calls, [["DELETE", "/api/push/subscriptions", { endpoint: "https://web.push.apple.com/have" }],
+    ["unsubscribe", "https://web.push.apple.com/have"]]);
   assert.equal(app.button.dataset.state, "off");
+});
+
+test("turning the bell off with a DELETE that fails changes nothing local: still on, subscribed, the error said", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", saved: { [PUSH_DEVICE_KEY]: "abcd1234" }, failDelete: "HTTP 503" });
+  await app.page.pushReady;
+  app.calls.length = 0;
+  assert.match(await app.tap(), /failed: HTTP 503/);
+  assert.deepEqual(app.calls, [["DELETE", "/api/push/subscriptions", { endpoint: "https://web.push.apple.com/have" }]]);
+  assert.equal(app.button.dataset.state, "on");
+  assert.match(app.button.title, /failed: HTTP 503/);
+  assert.equal(app.kept.get(PUSH_DEVICE_KEY), "abcd1234");
+});
+
+test("a failed GET /api/push at launch is tried again when the page comes back in front, once at a time, no timer", async () => {
+  const app = fakeApp({ subscribed: true, permission: "granted", failGets: 2 });
+  await app.page.pushReady;
+  assert.match(app.button.title, /while this tab is in the background/, "tab mode until chi web answers");
+  const gets = () => app.calls.filter((c) => c[0] === "GET").length;
+  assert.equal(gets(), 1);
+
+  app.doc.visibilityState = "visible";
+  app.fire("doc:visibilitychange");
+  app.fire("win:focus");
+  await app.page.pushStarting();
+  assert.equal(gets(), 2, "one retry for two back-in-front events");
+  assert.match(app.button.title, /while this tab is in the background/, "failed again: still tab mode");
+
+  app.fire("doc:visibilitychange");
+  await app.page.pushStarting();
+  assert.equal(gets(), 3);
+  assert.equal(app.button.dataset.state, "on");
+  assert.match(app.button.title, /^Notifications to this phone: on/);
+
+  app.fire("doc:visibilitychange");
+  assert.equal(app.page.pushStarting(), null, "known: no more tries");
+  assert.equal(gets(), 3);
+});
+
+test("chi web saying it doesn't push is not retried", async () => {
+  const app = fakeApp({ enabled: false, permission: "granted" });
+  await app.page.pushReady;
+  app.doc.visibilityState = "visible";
+  app.fire("doc:visibilitychange");
+  assert.equal(app.page.pushStarting(), null);
+  assert.equal(app.calls.filter((c) => c[0] === "GET").length, 1);
 });
 
 test("a subscription chi web doesn't have (another origin, a reset store) shows off and subscribes again", async () => {

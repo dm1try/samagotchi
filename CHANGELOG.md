@@ -32,6 +32,10 @@ and commands may change between minor versions. How releases are made:
   its failure instead of a backtrace.
 - The notifications sheet's switches always show what chi web has: "this device" no longer stays on after iOS's
   Don't Allow, nor "Long turns done" moved after its change failed.
+- Turning push off on a flaky connection no longer drops this phone's subscription while chi web keeps the device:
+  chi web is told first, and a failure leaves the bell on with the error. The Home Screen app whose first `GET
+  /api/push` failed (chi web restarting, a phone just woken) tries again when it comes back to the front instead of
+  staying in tab mode until a reload.
 
 ## [0.121.0] - 2026-10-26
 
