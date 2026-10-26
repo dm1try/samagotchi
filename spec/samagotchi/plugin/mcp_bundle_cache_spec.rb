@@ -31,6 +31,20 @@ RSpec.describe "The mcp bundle" do
       engine
     end
 
+    def next_engine_with_groups(groups)
+      @engine&.shutdown
+      @engine = Samagotchi::Engine.new(client: client)
+      @init_events = []
+      @engine.subscribe(observer: ->(e) { @init_events << e })
+      @engine.tools.toolkit = Samagotchi::Toolkit::Resolved.new(name: "coding", groups: groups)
+      @engine.instance_variable_get(:@tool_index).refresh!
+      @engine.start_init_tasks!
+      @engine.instance_variable_get(:@plugin_tasks).tasks.each do |task|
+        join!(task.thread, "MCP init task #{task.id}", timeout: 10) if task.thread
+      end
+      @engine.apply_staged_tools!
+    end
+
     def mcp_card
       cards = []
       handle = engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
@@ -141,11 +155,12 @@ RSpec.describe "The mcp bundle" do
     end
 
     context "with start: eager" do
-      it "starts the server with every session, cache or not" do
+      it "starts the server even when the session doesn't reach its group" do
         servers["fake"] = fake.merge("start" => "eager")
-        next_engine
+        next_engine_with_groups([])
         expect(spawned).to eq(2)
-        expect(indexed).to eq(%w[echo add slow])
+        expect(alive?(File.readlines(pids_file).last.to_i)).to be(true)
+        expect(indexed).to be_empty
       end
     end
 
@@ -183,6 +198,15 @@ RSpec.describe "The mcp bundle" do
         expect(indexed).to eq(%w[echo])
         expect(mcp_card).to start_with("**fake**: cached (not started), 1 tool, ~#{chat_tokens(%w[echo])} tokens\n" \
                                        "- `fake/echo`\n\nEvery request ")
+      end
+
+      it "refreshes an unreached group's stale cache with a short-lived server" do
+        next_engine_with_groups([])
+
+        expect(spawned).to eq(2)
+        expect(alive?(File.readlines(pids_file).last.to_i)).to be(false)
+        expect(cache["tools"].map { |tool| tool["name"] }).to eq(["echo"])
+        expect(indexed).to be_empty
       end
 
       it "leaves the refresh to the worker that holds the lock" do

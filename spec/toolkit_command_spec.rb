@@ -29,15 +29,16 @@ RSpec.describe Samagotchi::ToolkitCommand do
     lines = output.lines.map(&:chomp)
     expect(lines[0]).to eq("toolkit: lean (applies at the next turn's start)")
     expect(lines[1]).to match(/\A  declared \(16, ~\d\.\dk tokens\): execute ~\d+, read ~\d+/)
-    expect(lines[2]).to eq("  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions, " \
+    expect(lines[2]).to eq("  groups: all")
+    expect(lines[3]).to eq("  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions, " \
                            "send_note, delegate, delegate_result")
-    expect(lines[3]).to eq("  removed: none")
-    expect(lines[4]).to eq("  toolkits: full, lean, child, review; /toolkit [NAME | add TOOL | remove TOOL] changes it")
-    expect(command.run("child")[0].lines[2..3].map(&:chomp))
+    expect(lines[4]).to eq("  removed: none")
+    expect(lines[5]).to eq("  toolkits: full, lean, child, review; /toolkit [NAME | add TOOL | remove TOOL] changes it")
+    expect(command.run("child")[0].lines[3..4].map(&:chomp))
       .to eq(["  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions",
               "  removed: memory_write, delegate, delegate_result"])
     session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["call_tool"])
-    expect(command.run("")[0].lines[2]).to start_with("  not loaded: register_reminder, ")
+    expect(command.run("")[0].lines[3]).to start_with("  not loaded: register_reminder, ")
     expect(saved.size).to eq(1) # the child switch only
   end
 
@@ -49,7 +50,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
     session.toolkit = Samagotchi::Toolkit.new(name: "coding")
     lines = command.run("")[0].lines.map(&:chomp)
     expect(lines[2]).to eq("  prompt: - Be concise in your responses (+1 line, ~20 tokens)")
-    expect(lines[3]).to start_with("  reachable (find_tools): ")
+    expect(lines[4]).to start_with("  reachable (find_tools): ")
     session.toolkit = Samagotchi::Toolkit.new(name: "terse")
     expect(command.run("")[0].lines[2].chomp).to eq("  prompt: - Be concise (~3 tokens)")
     session.toolkit = Samagotchi::Toolkit.new(name: "steps")
@@ -114,6 +115,37 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(command.run("loud2")[0]).to end_with("(no change to what the next turn declares)")
   end
 
+  it "lists source groups and confirms a groups-only switch that changes the prompt cache" do
+    allow(Samagotchi::Toolkit).to receive(:config_kits)
+      .and_return("web" => { "base" => "full", "groups" => ["chrome"] },
+                  "coding" => { "base" => "full", "groups" => [] })
+    session.toolkit = Samagotchi::Toolkit.new(name: "web")
+    expect(command.run("")[0]).to include("  groups: chrome")
+    allow(engine).to receive(:history?).and_return(true)
+
+    output, changed, ask = command.run("coding")
+
+    expect(changed).to be(false)
+    expect(ask&.line).to eq("/toolkit coding --yes")
+    expect(output).to include("leaves out groups chrome")
+    expect(output).to include("The tools are the front of every request")
+    expect(command.listing(engine.toolkit_explained(Samagotchi::Toolkit.new(name: "coding"))))
+      .to include("  groups: none")
+  end
+
+  it "keeps /toolkit add scoped to tools when a source group shares a tool name" do
+    allow(Samagotchi::Toolkit).to receive(:config_kits)
+      .and_return("audit" => { "base" => "full", "remove" => ["read"], "groups" => ["read"] })
+    session.toolkit = Samagotchi::Toolkit.new(name: "audit")
+
+    _, changed, = command.run("add read")
+
+    expect(changed).to be(true)
+    expect(session.toolkit.add).to eq(["read"])
+    expect(engine.toolkit_explained.resolved.groups).to eq(["read"])
+    expect { command.run("add read/") }.to raise_error(ArgumentError, "no tool named read/ in this session")
+  end
+
   # D12: what the prompt carries includes the reachable and the removed
   # tools, so a remove of a tool lean leaves out (reachable) is a change.
   it "saves a remove of a tool the toolkit leaves out (it becomes unreachable), and an add after it declares it" do
@@ -142,7 +174,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(command.run("remove execute")[0]).to start_with("Switching to lean -execute removes execute (call_tool can't reach it).")
     session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["find_tools"])
     allow(engine).to receive(:history?).and_return(false)
-    expect(command.run("")[0].lines[2]).to start_with("  reachable (call_tool): register_reminder")
+    expect(command.run("")[0].lines[3]).to start_with("  reachable (call_tool): register_reminder")
   end
 
   it "refuses an unknown toolkit or tool, keeping a tool's case" do

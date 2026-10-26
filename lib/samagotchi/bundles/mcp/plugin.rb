@@ -354,6 +354,7 @@ class Plugin
   def register(chi)
     @chi = chi
     ctx = chi.ctx
+    @ctx = ctx
     configs = @settings["servers"]
     configs = {} unless configs.is_a?(Hash)
     unless configs.empty?
@@ -952,7 +953,10 @@ class Plugin
     return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/plugins.md, The mcp bundle)." if @servers.empty?
 
     servers = @servers.map do |server|
-      head = "**#{server.name}**: #{state_text(server)}"
+      marker = if @source && !@source.declared_groups.include?(server.name)
+                 " (not in toolkit #{@ctx.toolkit})"
+               end
+      head = "**#{server.name}**: #{state_text(server)}#{marker}"
       # Sorted: a server lists its tools in its own (often grouped) order.
       tools = server.tools.sort_by(&:name).map { |t| ["- `#{t.server}/#{t.name}`", mark(t)].compact.join(" ") }
       tools.empty? ? head : "#{head}\n#{tools.join("\n")}"

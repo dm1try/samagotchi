@@ -71,6 +71,15 @@ module Samagotchi
       lines << "  declared (#{declared.size}, ~#{format_tokens(declared.sum { |entry| tokens(entry) })} tokens): " \
                "#{declared.map { |entry| "#{entry.name} ~#{format_tokens(tokens(entry))}" }.join(", ")}"
       lines << prompt_line(explained.resolved.prompt) if explained.resolved.prompt
+      groups = explained.resolved.groups
+      group_names = if groups == :all
+                      "all"
+                    elsif groups.empty?
+                      "none"
+                    else
+                      groups.join(", ")
+                    end
+      lines << "  groups: #{group_names}"
       left_out = explained.left_out
       if explained.reachable.empty?
         lines << "  not loaded: #{left_out.empty? ? "none" : left_out.join(", ")}"
@@ -123,8 +132,22 @@ module Samagotchi
       # The kit's prompt text (Toolkit::Kit#prompt) is in the prompt too.
       text = after.resolved.prompt
       parts << (text ? "sends its kit's prompt text" : "drops the kit's prompt text") if text != before.resolved.prompt
+      parts.concat(group_changes(before.resolved.groups, after.resolved.groups))
       parts << "declares the same tools under its own name" if parts.empty?
       "Switching to #{after.toolkit.label} #{parts.join("; ")}."
+    end
+
+    def group_changes(before, after)
+      return [] if before == after
+      return ["reaches all groups"] if after == :all
+      return ["limits groups to #{after.empty? ? "none" : after.join(", ")}"] if before == :all
+
+      added = after - before
+      removed = before - after
+      changes = []
+      changes << "reaches groups #{added.join(", ")}" unless added.empty?
+      changes << "leaves out groups #{removed.join(", ")}" unless removed.empty?
+      changes
     end
 
     # What the confirm says is read again: from the tools on (the front of

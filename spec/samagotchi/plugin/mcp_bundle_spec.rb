@@ -121,6 +121,35 @@ RSpec.describe "The mcp bundle" do
   end
 
   describe "call_tool" do
+    it "keeps an unreached server running and reuses it when the toolkit switches back" do
+      pid = server_pid
+      kits = Samagotchi::Toolkit.kits(config: { "coding" => { "base" => "full", "groups" => [] } })
+      engine.tools.toolkit = Samagotchi::Toolkit.new(name: "coding").resolve(kits)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it",
+                                                working_directory: Dir.pwd)
+      session.toolkit = Samagotchi::Toolkit.new(name: "coding")
+      engine.session = session
+      engine.instance_variable_get(:@tool_index).refresh!
+
+      refusal = run_mcp("echo")
+
+      expect(refusal.output).to include("fake/echo isn't in this session's toolkit (coding)")
+      expect(alive?(pid)).to be(true)
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      engine.running_anytime { commands.run("/mcp") }
+      expect(cards.last[:body]).to include("(not in toolkit coding)")
+
+      engine.tools.toolkit = Samagotchi::Toolkit.new(name: "full").resolve(kits)
+      engine.instance_variable_get(:@tool_index).refresh!
+      reused = run_mcp("echo", { "text" => "reused" })
+
+      expect(reused.output).to include("echo: reused")
+      expect(server_pid).to eq(pid)
+    end
+
     it "takes mcp_<server>_<tool>, looked up by its sanitized name" do
       expect(handle("call_tool", { "tool" => "mcp_fake_echo", "args" => { "text" => "by name" } })).to eq("echo: by name")
       # The server doesn't know it (it answers -32602): a JSON-RPC error, with the schema.
@@ -190,6 +219,36 @@ RSpec.describe "The mcp bundle" do
         expect(start_gated_server_during { mcp("echo", { "text" => "waited" }) }).to eq("echo: waited")
         expect(names = find("echo")).to include("fake/echo: Echo the text back.")
         expect(names).not_to include("starting")
+      end
+
+      it "waits for the first-run server before applying a toolkit that excludes its group" do
+        settings["startup_timeout"] = 10
+        allow(Samagotchi::Toolkit).to receive(:config_kits)
+          .and_return("coding" => { "base" => "full", "groups" => [] })
+        @engine = Samagotchi::Engine.new(client: client)
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it",
+                                                  working_directory: Dir.pwd)
+        session.toolkit = Samagotchi::Toolkit.new(name: "coding")
+        kernel = @engine.instance_variable_get(:@kernel)
+        allow(client).to receive(:invalidate_context_window!)
+        model_result = Samagotchi::LLM::ModelResult.new(
+          text: "ok", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "ok" }],
+          exhausted: false, pending_tool_calls: false, tool_activity: []
+        )
+        applied = []
+        allow(kernel).to receive(:run) do
+          applied << kernel.tools.toolkit.groups
+          model_result
+        end
+
+        turn = Thread.new { @engine.run_turn(session, "hi") }
+        wait_for("the first-run MCP init task") { @engine.init_tasks.any? }
+        expect(applied).to be_empty
+        FileUtils.touch(gate)
+        join!(turn, "the turn waiting for MCP init", timeout: 15)
+
+        expect(applied).to eq([[]])
+        expect(kernel.tools.names).not_to include("find_tools", "call_tool")
       end
 
       context "beside one that started" do
@@ -489,7 +548,7 @@ RSpec.describe "The mcp bundle" do
   end
 
   it "/mcp says the model can't reach the tools when chi's tool index declared neither (names taken)" do
-    engine.instance_variable_get(:@tool_index).instance_variable_get(:@sources).first.declared!([], 0)
+    engine.instance_variable_get(:@tool_index).instance_variable_get(:@sources).first.declared!([], 0, [])
     commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
                                                default_model: "Gemma-4B-it", registry: engine.command_registry)
     cards = []

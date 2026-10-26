@@ -23,6 +23,11 @@ test("chipModel: what find_tools reaches and what the toolkit removes", () => {
     /Removed|Not loaded/);
 });
 
+test("chipModel: source-group scope appears in the tooltip", () => {
+  const chip = chipModel({ name: "coding", label: "coding", groups: [], left_out: [], reachable: [], removed: [] });
+  assert.match(chip.title, /Source groups: none\./);
+});
+
 test("chipModel: a kit's prompt text ends the tooltip, only when the summary has one", () => {
   const chip = chipModel({ name: "coding", label: "coding", left_out: [], reachable: [], removed: [], fallback: null,
     prompt: "- Be concise in your responses" });
