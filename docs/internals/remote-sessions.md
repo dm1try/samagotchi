@@ -289,7 +289,7 @@ bin/chi ── RunOptions.parse ── a remote, run flags ──> RemoteAttachC
 ### The plumbing
 
 **chi web's routes** (tabled in [architecture.md](../architecture.md)): `POST …/wake` (`Local#wake`: the live worker
-as is, else `SessionManager.resume_session` and `BridgeClient.wait_for`, at most `WAKE_MAX_WAIT` 10 s, the attach's
+as is, else `SessionManager.resume_session` and `WorkerLink.await`, at most `WAKE_MAX_WAIT` 10 s, the attach's
 `BRIDGE_WAIT` here, after waiting for a worker still leaving to let go of its lock, `OwnerLock.await_release`: its
 recap on leave's timeout plus 5 s; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
 in `LaunchMode::BRIDGE_LATE`'s) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner, `leaving` and `leave_seconds` when its worker

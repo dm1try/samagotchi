@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "samagotchi/bridge_client"
+require "samagotchi/worker_link"
 
 RSpec.describe Samagotchi::BridgeClient do
   # A one-connection fake Bridge: records the raw request, sends +reply+.
@@ -22,51 +23,6 @@ RSpec.describe Samagotchi::BridgeClient do
     "HTTP/1.1 #{status}\r\nContent-Type: application/json\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}"
   end
 
-  describe ".live_sidecar / .discover" do
-    let(:dir) { Dir.mktmpdir("bridge-client") }
-
-    after { FileUtils.remove_entry(dir) }
-
-    it "returns the advertised port of a live bridge" do
-      server = TCPServer.new("127.0.0.1", 0)
-      File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port))
-
-      client = described_class.discover("s1", session_dir: dir)
-
-      expect(client.port).to eq(server.local_address.ip_port)
-      expect(client.session_id).to eq("s1")
-    ensure
-      server&.close
-    end
-
-    it "removes a stale sidecar whose port refuses connections" do
-      server = TCPServer.new("127.0.0.1", 0)
-      port = server.local_address.ip_port
-      server.close
-      File.write(File.join(dir, "bridge.json"), JSON.generate(port: port))
-
-      expect(described_class.live_sidecar(dir)).to be_nil
-      expect(File.exist?(File.join(dir, "bridge.json"))).to be(false)
-    end
-
-    it "returns nil without a sidecar" do
-      expect(described_class.discover("s1", session_dir: dir)).to be_nil
-    end
-
-    it "reads a port written as a string, and is nil for a broken sidecar, one that is not an object or has no port" do
-      server = TCPServer.new("127.0.0.1", 0)
-      File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port.to_s))
-      expect(described_class.live_sidecar(dir)&.port).to eq(server.local_address.ip_port)
-
-      ["{", "[1]", JSON.generate(port: 0), JSON.generate(session_id: "s1")].each do |body|
-        File.write(File.join(dir, "bridge.json"), body)
-        expect(described_class.live_sidecar(dir)).to be_nil, body
-      end
-    ensure
-      server&.close
-    end
-  end
-
   describe "the Bridge's secret" do
     let(:dir) { Dir.mktmpdir("bridge-client") }
     let(:secret) { "ab" * 32 }
@@ -79,7 +35,7 @@ RSpec.describe Samagotchi::BridgeClient do
       Samagotchi::WorkerSidecar.new(port: port, secret: secret).write(dir)
     end
 
-    # serve_once past the liveness probe (.discover's connect that sends nothing).
+    # serve_once past the liveness probe (WorkerLink's connect that sends nothing).
     def serve_once(reply)
       server = TCPServer.new("127.0.0.1", 0)
       received = +""
@@ -108,7 +64,7 @@ RSpec.describe Samagotchi::BridgeClient do
       heads = requests.map do |send_it|
         port, finish = serve_once(ok)
         publish(port, secret)
-        send_it.call(described_class.discover("s1", session_dir: dir))
+        send_it.call(Samagotchi::WorkerLink.client("s1", session_dir: dir))
         finish.call
       end
 
@@ -118,12 +74,12 @@ RSpec.describe Samagotchi::BridgeClient do
     it "is the one a respawned worker wrote: a client made after it reads the new sidecar" do
       port, finish = serve_once(ok)
       publish(port, secret)
-      described_class.discover("s1", session_dir: dir).post_turn(prompt: "old")
+      Samagotchi::WorkerLink.client("s1", session_dir: dir).post_turn(prompt: "old")
       finish.call
       port, finish = serve_once(ok)
       publish(port, "cd" * 32)
 
-      described_class.discover("s1", session_dir: dir).post_turn(prompt: "new")
+      Samagotchi::WorkerLink.client("s1", session_dir: dir).post_turn(prompt: "new")
 
       head = finish.call
       expect(head).to include("X-Chi-Bridge: #{"cd" * 32}\r\n")
@@ -134,7 +90,7 @@ RSpec.describe Samagotchi::BridgeClient do
       port, finish = serve_once(ok)
       publish(port, nil)
 
-      described_class.discover("s1", session_dir: dir).get("state")
+      Samagotchi::WorkerLink.client("s1", session_dir: dir).get("state")
 
       expect(finish.call).not_to match(/x-chi-bridge/i)
     end
@@ -155,35 +111,6 @@ RSpec.describe Samagotchi::BridgeClient do
       expect(described_class.new(session_id: "s1", port: 4100, secret: secret).inspect).not_to include(secret)
       expect(Samagotchi::WorkerSidecar.read(dir).inspect).not_to include(secret)
       expect(Samagotchi::WorkerSidecar.read(dir).to_s).not_to include(secret)
-    end
-  end
-
-  describe ".wait_for" do
-    let(:dir) { Dir.mktmpdir("bridge-client") }
-
-    after { FileUtils.remove_entry(dir) }
-
-    it "returns a client once the worker publishes a live sidecar" do
-      server = TCPServer.new("127.0.0.1", 0)
-      writer = Thread.new do
-        sleep 0.25 # sleep-ok: the worker publishing its sidecar late is the behaviour
-        File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port))
-      end
-
-      client = described_class.wait_for("s1", session_dir: dir, timeout: 3)
-
-      expect(client.port).to eq(server.local_address.ip_port)
-      expect(client.session_id).to eq("s1")
-    ensure
-      writer&.join
-      server&.close
-    end
-
-    it "gives up with nil at the deadline" do
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-      expect(described_class.wait_for("s1", session_dir: dir, timeout: 0.3)).to be_nil
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 2.0) # not much past it
     end
   end
 

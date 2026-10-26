@@ -15,8 +15,8 @@ require_relative "bridge_client/stream_request"
 module Samagotchi
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
   # each SessionManager worker runs for its Engine (see Bridge). Discovery goes
-  # through the worker's `bridge.json` sidecar (WorkerSidecar) in the session
-  # directory.
+  # through WorkerLink (the worker's `bridge.json` sidecar, WorkerSidecar, in
+  # the session directory); .for_sidecar makes the client.
   #
   # Requests are raw one-shot HTTP/1.1 over a TCPSocket (`Connection: close`),
   # exactly what the Bridge's minimal server expects.
@@ -75,14 +75,6 @@ module Samagotchi
       "this session's worker runs an older chi and can't #{cant}; restart it: #{restart} (its turns still work)"
     end
 
-    # The live Bridge's sidecar in +session_dir+, or nil. A sidecar whose
-    # port refuses a quick connect is stale (its worker died) and is removed.
-    # @param session_dir [String]
-    # @return [WorkerSidecar, nil]
-    def self.live_sidecar(session_dir, host: HOST)
-      WorkerSidecar.live(session_dir, unlink: true, host: host)
-    end
-
     # The one way a client is made for a worker: its port and its secret
     # come from the same sidecar read, so a respawned worker (a new port, a
     # new secret) is reached by a client made after it, never by hand.
@@ -94,23 +86,10 @@ module Samagotchi
       new(session_id: session_id, port: sidecar.port, secret: sidecar.secret, host: host, read_timeout: read_timeout)
     end
 
-    # @return [BridgeClient, nil] a client for the live Bridge in +session_dir+
-    def self.discover(session_id, session_dir:, host: HOST, read_timeout: READ_TIMEOUT)
-      for_sidecar(session_id, live_sidecar(session_dir, host: host), host: host, read_timeout: read_timeout)
-    end
-
     # How often a wait for a new worker's Bridge looks: a missing sidecar is
     # one stat, and a 0.1 s step cost a create up to 0.1 s (the web's
     # create landed on 0.53/0.63/0.73 s).
     SPAWN_POLL_INTERVAL = 0.02
-
-    # Wait for a freshly spawned worker to publish its Bridge.
-    # @param timeout [Float] seconds
-    # @return [BridgeClient, nil] nil when no live sidecar appeared in time
-    def self.wait_for(session_id, session_dir:, timeout:, host: HOST)
-      sidecar = poll(timeout, interval: SPAWN_POLL_INTERVAL) { live_sidecar(session_dir, host: host) }
-      for_sidecar(session_id, sidecar, host: host)
-    end
 
     # Call the block every +interval+ seconds until it returns a truthy value
     # or +timeout+ seconds have passed (it is always called at least once).

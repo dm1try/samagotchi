@@ -131,7 +131,7 @@ module Samagotchi
 
       # @return [Boolean] the sidecar file is there and the session has a
       #   live owner (the file alone says nothing: the worker may be gone).
-      #   The owner lock, not WorkerSidecar.live's port probe: a list builds
+      #   The owner lock, not WorkerLink.resolve's port probe: a list builds
       #   this for every session, and the lock costs no connect.
       def bridge_up?(session_dir, owner)
         !owner.nil? && File.file?(WorkerSidecar.path(session_dir))

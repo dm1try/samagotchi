@@ -2,7 +2,6 @@
 
 require "json"
 require "fileutils"
-require "socket"
 require_relative "atomic_file"
 
 module Samagotchi
@@ -17,12 +16,10 @@ module Samagotchi
   # nil from a worker before it, which asks for none). The Bridge writes it
   # on start
   # and removes it on stop; one a dead worker left stays until a client's
-  # probe finds its port closed (.live with unlink: true).
+  # probe finds its port closed (WorkerLink.resolve with unlink: true).
   class WorkerSidecar < Data.define(:port, :bind, :session_id, :started_at, :version, :input_format, :features,
                                     :epoch, :secret)
     FILE = "bridge.json"
-    # Seconds a liveness probe waits for the port to take a connect.
-    PROBE_TIMEOUT = 0.2
 
     def self.path(session_dir) = File.join(session_dir, FILE)
 
@@ -45,32 +42,6 @@ module Samagotchi
     SECRET_SHAPE = /\A\h{32,128}\z/
 
     def self.secret_in(value) = value.is_a?(String) && SECRET_SHAPE.match?(value) ? value : nil
-
-    # The sidecar of a worker whose Bridge takes a connect on its port, or
-    # nil. One whose port refuses (its worker died) is stale: +unlink+
-    # removes it (the clients that would talk to it), else it stays (a
-    # read-only look, like `chi update`'s).
-    # @return [WorkerSidecar, nil]
-    def self.live(session_dir, unlink:, host: "127.0.0.1", timeout: PROBE_TIMEOUT)
-      sidecar = read(session_dir)
-      return nil unless sidecar&.port&.positive?
-
-      begin
-        # Not Socket.tcp: with connect_timeout on macOS 26 it hands back the
-        # socket of a refused connect (the kernel's second connect() says
-        # EISCONN, SO_ERROR is unchecked), so a dead worker's port read as
-        # live. Ruby bug #22223, fixed in 3.4.11 / 4.0.7, not in 3.3.
-        # TCPSocket checks SO_ERROR and raises ECONNREFUSED on every Ruby,
-        # so this stays even once 3.3 is dropped.
-        TCPSocket.new(host, sidecar.port, connect_timeout: timeout).close
-        sidecar
-      rescue StandardError
-        FileUtils.rm_f(path(session_dir)) if unlink
-        nil
-      end
-    rescue StandardError
-      nil
-    end
 
     def initialize(port:, bind: nil, session_id: nil, started_at: nil, version: nil, input_format: nil, features: [],
                    epoch: nil, secret: nil) = super

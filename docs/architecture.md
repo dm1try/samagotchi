@@ -400,7 +400,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   characters) when it starts and writes it to `bridge.json`, which is 0600 from the moment it exists
   (`AtomicFile` creates the temporary file with that mode, then renames it), so only this machine's user can read
   it: a forward that adds no proxy header, or another local account, reaches the port but not a session. Clients get
-  it only from the sidecar: `BridgeClient.discover`/`.wait_for`/`.for_sidecar` take the port and the secret from the
+  it only from the sidecar: `WorkerLink.client`/`.await` and `BridgeClient.for_sidecar` take the port and the secret from the
   same read (chi web makes its client from the sidecar for every request, the attached terminal again on a
   `worker_changed`), so a respawned worker's new one is used and nothing passes a port by hand. A worker from before
   the secret writes none and asks for none; a chi web or attached terminal from before it sends none, so a worker
@@ -491,7 +491,17 @@ Every route goes through `Bridge#dispatch`: an id other than the bridge's own se
 `handler_failed`) rather than dropping the connection.
 
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
-for client discovery, with the Bridge's secret (see above). `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
+for client discovery, with the Bridge's secret (see above).
+
+**Worker link.** Every client asks `WorkerLink` (`worker_link.rb`) whether a session's worker can be reached, never
+reading `bridge.json` or probing a port itself: `WorkerLink.resolve(session_dir, unlink:)` answers a typed outcome —
+`Live` (its sidecar; `#client` makes the one `BridgeClient`), `Stale` (a sidecar no Bridge stands behind: its port
+refuses a connect, removed with `unlink: true`, or it names no port) or `None` (no sidecar). `WorkerLink.client` is
+the Live's client or nil; `WorkerLink.await` polls for a new worker's Live (an `until:` check tells a restart's
+successor from the old worker); chi web's `App#worker_link` / `#await_worker_link` wrap them. Today the rule is the
+sidecar plus a TCP connect to its port.
+
+`chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
 `GET /api/sessions/:id/output`), as a byte pipe for the owner: `App#proxy_stream_body` gives `ProxyStreamBody` the
 request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
@@ -726,6 +736,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | System 1 | `system_one.rb`, `system_one/` (`SystemOne::Client`, `ApprovalQuestion`, `Log`, `Record`, `SelfProtect`, `Similar`, the backends), `guardrail_wiring.rb` (`GuardrailWiring#request_approval`), `guardrails_command.rb` (`chi guardrails replay`) | The approval judge: a model's `p` for each ask, logged to `judgments.jsonl` with the user's answer; in `on` mode an ask on a listed rule with a clean record is allowed once without the user. Labelled by `/guardrails wrong` (`SessionCommands`) and the web's **should have asked** (the Bridge's `POST guardrails/wrong`) ([guardrails.md](guardrails.md#system-1-experimental)). |
 | Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `tools/delegate_relay.rb`, `relay_desk.rb`, `relay_verifier.rb`, `relay_watcher.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
 | send / broadcast | `send_command.rb` (`SendCommand`), `broadcast_command.rb` (`BroadcastCommand`), `broadcast/` | `chi send` and `chi broadcast` ([broadcast.md](broadcast.md), [sub-agent.md](sub-agent.md)). |
+| Worker link | `worker_link.rb` (`WorkerLink`: `Live`, `Stale`, `None`), `worker_sidecar.rb` (`WorkerSidecar`) | Whether a session's worker can be reached and the client for it: every Bridge client asks `WorkerLink.resolve` / `.client` / `.await` (*Worker link* above); `WorkerSidecar` is the `bridge.json` it reads. |
 | Session access | `session_access.rb` (`SessionAccess`: `NewSession`, `SetupWords`, `WaitStart`, `SessionView`, `Created`, `ContextEntry`, `ContextPush`, the errors `RemoteFailed`, `RemoteTooOld`, `Refused`, `BadRequest`), `session_access/local.rb` (`SessionAccess::Local`), `session_access/remote.rb` (`SessionAccess::Remote`), `session_access/http_transport.rb`, `session_access/web_bridge_client.rb` (`SessionAccess::WebBridgeClient`, a remote attach's worker through chi web), `session_access/dispatch.rb` (`SessionAccess::Dispatch`), `session_access/contract.rb` (`SessionAccess::Contract`), `remotes.rb` (`Remotes`), `remote_command.rb` (`chi remote`), `web/session_access_routes.rb` (`Web::SessionAccessRoutes`) | The seam between the session commands and where the sessions live: `Local` is this machine's (the `SessionManager`, `ReplyWait`, `NoteDelivery`, `ContextSources` and Bridge calls the commands made); `Remote` is another machine's, the same methods as requests to its chi web's routes of the same name (Bearer token, `HTTPTransport`), results as Local's value objects and refusals as the classes Local's callees raise, built from the fields chi web sends; waits and prefixes run on the server, a wait asked again per 30 s slice. `Dispatch` is bin/chi's front for `--remote NAME` / `CHI_REMOTE` (taken off before the subcommand lookup): it refuses what the contract table lists `local_only` (exit 2, one message) and runs the command with a `Remote` on the `Remotes` entry (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). chi web's routes answer from `Local` (*chi web's routes for the session commands* above). Checks that read this machine's config or files (vision, parent answers, the cwd's project, `SAMAGOTCHI_PARENT_SESSION`) stay in the commands and are skipped under a `Remote`, where chi web's create, turn and wait routes run the vision, parent-answers and busy checks with the server's config and the worker checks a parent's answer. See [internals/remote-sessions.md](internals/remote-sessions.md). |
 | Idle work | `idle_scheduler.rb` (`IdleScheduler`), `idle_recap.rb` (`IdleRecap`), `idle_reminders.rb` | One poller for an idle session's recap and reminders. |
 | Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
