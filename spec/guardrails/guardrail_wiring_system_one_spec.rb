@@ -20,9 +20,9 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
 
   after { FileUtils.rm_rf(base) }
 
-  def wiring(system_one: client, ask: ->(_payload) { answer })
+  def wiring(system_one: client, ask: ->(_payload) { answer }, cancelled: -> { false })
     Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                    model_key: -> {}, cancelled: -> { false }, ask: ask,
+                                    model_key: -> {}, cancelled: cancelled, ask: ask,
                                     system_one: -> { system_one }, cancel_controller: -> {}).tap do |w|
       w.state_dir = state_dir
       w.interface = :worker
@@ -123,6 +123,43 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     judgment = log_lines.first
     expect(judgment["p"]).to be_nil
     expect(log_lines.last["answer"]).to eq("allow_once")
+  end
+
+  describe "a turn stopped while the judge is asked" do
+    it "opens no card when the cancel reaches the judge call, and logs no failed judgment" do
+      stopped = false
+      judge = Object.new
+      judge.define_singleton_method(:ask) do |state:, questions:, cancel_controller: nil|
+        stopped = true
+        raise Samagotchi::LLM::RequestCancelled, "user"
+      end
+      asked = []
+      allow(Samagotchi::Log).to receive(:warn)
+      w = wiring(system_one: S1::Client.new(backend: judge, mode: "audit", host: "splash"),
+                 ask: ->(payload) { asked << payload; answer }, cancelled: -> { stopped })
+      verdict = w.request_approval(verdict_for)
+      expect(asked).to be_empty
+      expect(verdict).to be_deny
+      expect(verdict.decided_by).to eq("core")
+      expect(verdict.deny_text).to include("The turn was stopped before the user was asked.")
+      expect(log_lines).to be_empty
+      expect(Samagotchi::Log).not_to have_received(:warn)
+    end
+
+    it "opens no card when the turn stopped as the judgment came back" do
+      stopped = false
+      judge = S1::FakeBackend.new do |_state, questions|
+        stopped = true
+        questions.to_h { |q| [q.id, S1::Answer.new(id: q.id, type: :noul, noul: 0.5)] }
+      end
+      asked = []
+      w = wiring(system_one: S1::Client.new(backend: judge, mode: "audit", host: "splash"),
+                 ask: ->(payload) { asked << payload; answer }, cancelled: -> { stopped })
+      verdict = w.request_approval(verdict_for)
+      expect(asked).to be_empty
+      expect(verdict).to be_deny
+      expect(log_lines.map { |line| line["kind"] }).to eq(["judgment"])
+    end
   end
 
   it "asks even when the log itself cannot be written" do

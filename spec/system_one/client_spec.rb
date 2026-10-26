@@ -34,6 +34,15 @@ RSpec.describe Samagotchi::SystemOne::Client do
     expect(answers["a"].noul).to eq(0.5)
   end
 
+  it "lets a turn's cancel through: it is not a failed judgment" do
+    backend = Object.new
+    def backend.ask(state:, questions:, cancel_controller: nil) = raise(Samagotchi::LLM::RequestCancelled, "user")
+
+    expect(Samagotchi::Log).not_to receive(:warn)
+    expect { client(backend).ask(state: "x", questions: { "a" => question("a") }) }
+      .to raise_error(Samagotchi::LLM::RequestCancelled)
+  end
+
   it "is nil with no questions, and asks for nothing" do
     expect(client(Samagotchi::SystemOne::FakeBackend.new).ask(state: "x", questions: {})).to be_nil
   end

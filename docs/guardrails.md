@@ -706,6 +706,10 @@ their last label.
 Everything about the log is best-effort: a write that fails is one
 `Log.warn(:guardrails, "system_one_log_failed", …)` and the approval goes on
 as if System 1 were not there.
+A turn stopped while the judge is asked is not a failed judgment: the cancel
+(`LLM::RequestCancelled`) goes through `SystemOne::Client#ask`, no line is
+written, and the call is denied without a card; a turn that stopped as the
+judgment came back opens no card either.
 
 `ruby script/system-one-probe HOST [MODEL]` asks three fixed approval-like
 questions through the client and prints each probability and the latency of

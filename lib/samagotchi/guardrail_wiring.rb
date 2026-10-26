@@ -271,7 +271,14 @@ module Samagotchi
       # System 1: the ask is judged before the user sees it, and in `on` mode
       # one that passes every gate is allowed once without reaching them
       # (docs/guardrails.md, "System 1").
-      judgment = system_one_judge(payload)
+      judgment = begin
+        system_one_judge(payload)
+      rescue LLM::RequestCancelled
+        return turn_stopped(verdict)
+      end
+      # A turn stopped while the judge was asked opens no card.
+      return turn_stopped(verdict) if @cancelled_lookup.call
+
       if judgment && judgment[:auto]
         verdict.judgment = { id: judgment[:id], p: judgment[:p] }
         verdict.settle!(:allow, decided_by: "system one")
@@ -285,6 +292,12 @@ module Samagotchi
     end
 
     private
+
+    # The deny for a call whose turn was stopped before its ask reached the
+    # user (as Guardrails::Gate words one stopped before the vote).
+    def turn_stopped(verdict)
+      verdict.settle!(:deny, decided_by: "core", note: "The turn was stopped before the user was asked.")
+    end
 
     # The judgments log (SystemOne::Log), beside the approvals store; nil
     # while there is no store dir.
@@ -319,6 +332,8 @@ module Samagotchi
                                                             entries: entries),
                    questions: { SystemOne::ApprovalQuestion::ID => SystemOne::ApprovalQuestion.question },
                    cancel_controller: @cancel_controller.call)
+      rescue LLM::RequestCancelled
+        raise
       rescue StandardError => e
         # The client already turns every failure it knows into a nil; this is
         # the unexpected one. Either way the ask goes to the user.
@@ -338,6 +353,8 @@ module Samagotchi
                         latency_ms: latency_ms, decision: decision, origin: "live")
       # A judgment the log cannot hold is no judgment: the user is asked.
       { id: id, p: p, auto: auto && !id.nil? }
+    rescue LLM::RequestCancelled
+      raise
     rescue StandardError => e
       # The approval never fails because of System 1.
       Samagotchi::Log.warn(:guardrails, "system_one_judgment_failed", error: "#{e.class}: #{e.message}")

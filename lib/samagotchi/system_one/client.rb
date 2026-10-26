@@ -2,6 +2,7 @@
 
 require_relative "../config"
 require_relative "../log"
+require_relative "../llm/errors"
 require_relative "answer"
 require_relative "errors"
 require_relative "http_backend"
@@ -12,7 +13,9 @@ module Samagotchi
     # The one way anything asks System 1 a question: #ask answers a set of
     # questions about a state, or says nothing. A backend that is unreachable,
     # slow, refusing or nonsensical is a nil — no judgment, one log line — and
-    # the caller asks the user as it would have anyway.
+    # the caller asks the user as it would have anyway. A turn cancelled
+    # while the judge is asked is not a failed judgment: its
+    # LLM::RequestCancelled goes on to the caller, which asks no one.
     #
     #   client = SystemOne::Client.from_config(host_registry: registry)
     #   client&.ask(state: "git push origin main", questions: {"allow" => question})
@@ -61,6 +64,8 @@ module Samagotchi
 
         answers = begin
           @backend.ask(state: state, questions: questions, cancel_controller: cancel_controller)
+        rescue LLM::RequestCancelled
+          raise
         rescue StandardError => e
           return no_judgment("#{e.class}: #{e.message}", error: e.class.name)
         end

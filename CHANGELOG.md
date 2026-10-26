@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 - `chi guardrails replay` no longer judges an ask again that System 1 already judged live (audit or on mode), which
   counted each such decision twice and let a rule pass `min_record` early: a live label now carries the card's
   `question_id`, and a live line without one is matched by its session and call digest.
+- Stopping a turn while System 1 judges one of its approvals no longer opens an approval card for the stopped turn
+  (nor logs the cancel as a failed judgment): the call is denied with "The turn was stopped".
 
 ## [0.121.0] - 2026-10-26
 
