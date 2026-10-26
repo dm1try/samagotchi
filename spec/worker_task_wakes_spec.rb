@@ -490,15 +490,23 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   # no note is written into it (or saved).
   it "writes no note as the worker leaves for /exit --delete" do
     scripts["build"] = [task_create("t1"), task_wait("t1", wait_result: "canceled"), stopped_by_user]
-    worker = start_worker(poll_interval: 30)
-    run_prompt_to_sleep(worker, "build")
+    finish_after_look = Queue.new
+    finished_after_look = Queue.new
     allow_any_instance_of(Samagotchi::TaskWatch).to receive(:take_finished).and_wrap_original do |original, **kwargs|
       taken = original.call(**kwargs)
-      finish("t1") if taken.empty? && records["t1"].running?
+      if taken.empty? && records["t1"]&.running? && !finish_after_look.empty?
+        finish_after_look.pop
+        finish("t1")
+        finished_after_look << true
+      end
       taken
     end
+    worker = start_worker(poll_interval: 30)
+    run_prompt_to_sleep(worker, "build")
+    finish_after_look << true
 
     expect(worker.send(:exit_request, "tui:1", delete: true)).to be_nil
+    expect(pop!(finished_after_look, "the task to finish after the worker's last look")).to be(true)
     expect(join!(@thread, "the worker").value).to eq(:exit_requested)
     expect(saved_task_notes).to be_empty
   end
