@@ -148,6 +148,37 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     end
   end
 
+  # A store chi won't write over (Grants::Corrupt, Grants::Newer): every
+  # route refuses with the store's own words, never a 500.
+  describe "a grants store chi can't write" do
+    def refusals(routes)
+      routes.map { |path, method, body| call(path, method: method, body: body) }
+    end
+
+    it "refuses every route with 409 grants_unwritable and the store's message when it doesn't read" do
+      allow(Samagotchi::Log).to receive(:warn) # the store says so itself (grants_unreadable)
+      FileUtils.mkdir_p(File.dirname(grants.path))
+      File.write(grants.path, "{not json")
+      message = Samagotchi::Web::Grants::Corrupt.new(grants.path, "not JSON").message
+      routes = [["/api/sessions/#{session.id}/participants", "GET"], ["/api/participants", "GET"],
+                ["/api/sessions/#{session.id}/participants", "POST", { name: "Alex" }],
+                ["/api/sessions/#{session.id}/participants", "DELETE"], ["/api/participants", "DELETE"],
+                ["/api/sessions/#{session.id}/participants/p_00000000/cap", "POST", { cap: 1 }]]
+      expect(refusals(routes)).to all(eq([409, { "error" => "grants_unwritable", "detail" => message }]))
+    end
+
+    it "refuses a write into a newer chi's store with that store's message, and still lists it" do
+      invited = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      File.write(grants.path, JSON.generate(JSON.parse(File.read(grants.path)).merge("version" => 99)))
+      message = Samagotchi::Web::Grants::Newer.new(grants.path, 99).message
+      routes = [["/api/sessions/#{session.id}/participants", "POST", { name: "Sam" }],
+                ["/api/sessions/#{session.id}/participants", "DELETE"],
+                ["/api/sessions/#{session.id}/participants/#{invited.grant.id}/cap", "POST", { cap: 1 }]]
+      expect(refusals(routes)).to all(eq([409, { "error" => "grants_unwritable", "detail" => message }]))
+      expect(call("/api/participants").first).to eq(200)
+    end
+  end
+
   describe "an archive or a delete" do
     it "revokes the session's grants (archive) and the deleted one's (delete)" do
       archived = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)

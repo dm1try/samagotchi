@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   `X-Chi-Bridge` secret: both are redacted like `chp_` tokens.
 - An agent participant's `chi --remote … send --wait` goes on after chi web restarts: chi web reads whose turn it is
   from the claimed input file, the last turn or the refused turn's record, not only its memory (it answered 403).
+- chi web's participants routes (list, invite, revoke, cap) answer a grants store chi can't write (unreadable, or a
+  newer chi's) with 409 `grants_unwritable` and the store's own message, not a 500 with a backtrace on every refresh.
 
 ## [0.121.0] - 2026-10-26
 

@@ -33,7 +33,14 @@ module Samagotchi
         warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
         json_response(200, { participants: with_spend(id, grants), warning: warning,
                              identity_header: @public_url&.identity_header })
+      rescue Grants::Unwritable => e
+        grants_unwritable(e)
       end
+
+      # 409 grants_unwritable for a store chi won't read or write over
+      # (Grants::Corrupt, Grants::Newer), in the store's own words: a
+      # refusal the panel shows, not a 500 with a backtrace per refresh.
+      def grants_unwritable(error) = error_response(409, "grants_unwritable", error.message)
 
       # One session's grants with what each spent and how many turns they
       # ran (its saved analytics: SessionMetrics.saved_by_author), for the
@@ -69,6 +76,8 @@ module Samagotchi
                              link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: warning })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
+      rescue Grants::Unwritable => e
+        grants_unwritable(e)
       end
 
       # GET /api/sessions/:id/apply[?turn=T] (owner): the owner's turn that
@@ -102,6 +111,8 @@ module Samagotchi
         revoked = Participants.revoke(@grants, session_id: id, id: grant_id, by: "owner", state_dir: default_state_dir)
         now = @grants.now
         json_response(200, { revoked: revoked.map { |grant| grant.public_h(now) } })
+      rescue Grants::Unwritable => e
+        grants_unwritable(e)
       end
 
       # POST /api/sessions/:id/participants/:participant/cap {cap}: the
@@ -119,6 +130,8 @@ module Samagotchi
         json_response(200, { participant: grant.public_h(@grants.now) })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
+      rescue Grants::Unwritable => e
+        grants_unwritable(e)
       end
 
       # The link a participant opens: web.public_url's with a one-time code
