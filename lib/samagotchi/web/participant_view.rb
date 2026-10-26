@@ -374,14 +374,18 @@ module Samagotchi
           /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
           /\bxox[abprs]-[A-Za-z0-9-]{10,}/,
           /\bchp_[A-Za-z0-9_-]{20,}/,
+          # A one-time link code (LinkCodes::CODE_RE): a bearer credential
+          # until its grant expires (an owner's, 10 minutes).
+          /\bchc_[A-Za-z0-9_-]{43}/,
           /\bAIza[0-9A-Za-z_-]{30,}/,
           /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/,
           /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
           %r{https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+}
         ].freeze
-        # The value after an Authorization header or a token=/key= pair.
+        # The value after an Authorization (or a Bridge's secret,
+        # BridgeSecret::HEADER) header or a token=/key= pair.
         VALUES = [
-          /(\bAuthorization:\s*(?:Bearer\s+|Basic\s+|Token\s+)?)[^\s"'`]+/i,
+          /(\b(?:Authorization|X-Chi-Bridge):\s*(?:Bearer\s+|Basic\s+|Token\s+)?)[^\s"'`]+/i,
           /((?<![A-Za-z0-9])[A-Za-z0-9_-]*?(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)["']?\s*[=:]\s*["']?)[^\s"'&`,;}]+/i,
           # A URL's password: scheme://user:PASSWORD@host.
           %r{(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)[^@\s/]+(?=@)}i
@@ -389,7 +393,7 @@ module Samagotchi
         # A text that ends where one of VALUES' values (or a private key's
         # BEGIN line) would go on: a stream cut there would send the value
         # on its own, unredacted (ParticipantStreamFilter never cuts there).
-        OPEN_VALUE = /(?:\bAuthorization:\s*(?:(?:Bearer|Basic|Token)\s*)?|[A-Za-z0-9_-]*?(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)["']?\s*(?:[=:]\s*["']?)?|-----BEGIN [A-Z0-9 ]*)\z/i
+        OPEN_VALUE = /(?:\b(?:Authorization|X-Chi-Bridge):\s*(?:(?:Bearer|Basic|Token)\s*)?|[A-Za-z0-9_-]*?(?:token|api[_-]?key|access[_-]?key|secret|password|passwd)["']?\s*(?:[=:]\s*["']?)?|-----BEGIN [A-Z0-9 ]*)\z/i
 
         module_function
 

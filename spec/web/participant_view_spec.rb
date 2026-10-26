@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "samagotchi/web/link_codes"
 require "samagotchi/web/participant_view"
 require "samagotchi/web/participant_stream_filter"
 
@@ -201,6 +202,16 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(described_class::Redact.text("`API_KEY=sk-ant-abcdefghijklmnopqrstu` here", viewer)).to eq("`API_KEY=[redacted]` here")
       expect(out).to include("Authorization: Bearer [redacted]", "token=[redacted]", "at a.rb in ., ~/notes", "/home/oscar stays")
     end
+
+    it "takes a one-time link code (chc_, a bearer credential) and a Bridge's secret header out, in a reply too" do
+      code = "chc_#{"aB3-_" * 8}xyz"
+      text = "Send Bob https://pod/#code=#{code}&s=abc, and curl -H 'X-Chi-Bridge: 0123456789abcdef0123' there"
+      out = described_class::Redact.text(text, viewer)
+      expect(out).to eq("Send Bob https://pod/#code=[redacted]&s=abc, and curl -H 'X-Chi-Bridge: [redacted]' there")
+      expect(described_class.reply("Bob's link: https://pod/#code=#{code}&s=abc", viewer))
+        .to eq("Bob's link: https://pod/#code=[redacted]&s=abc")
+      expect(Samagotchi::Web::LinkCodes.code?(code)).to be(true)
+    end
   end
 end
 
@@ -253,6 +264,8 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
     "password: hunter2supersecret" => "hunter2supersecret",
     "Authorization: Bearer abcDEF123valuexyz" => "abcDEF123valuexyz",
     "api_key = 'qwertyQWERTY0987'" => "qwertyQWERTY0987",
+    "X-Chi-Bridge: 0123456789abcdef0123" => "0123456789abcdef",
+    "#code=chc_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ" => "abcdefghijklmnop",
     "sk-ant-abcdefghijklmnopqrstuvwxyz0123" => "abcdefghijklmnop",
     "-----BEGIN RSA PRIVATE KEY-----\nKEYBODYKEYBODY\n-----END RSA PRIVATE KEY-----" => "KEYBODY"
   }.each do |secret, value|

@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   `question_id`, and a live line without one is matched by its session and call digest.
 - Stopping a turn while System 1 judges one of its approvals no longer opens an approval card for the stopped turn
   (nor logs the cancel as a failed judgment): the call is denied with "The turn was stopped".
+- A participant no longer reads a one-time link code (`chc_…`, as in an invite link a reply quotes) or a Bridge's
+  `X-Chi-Bridge` secret: both are redacted like `chp_` tokens.
 
 ## [0.121.0] - 2026-10-26
 
