@@ -55,6 +55,20 @@ participant** and **one role**, until it expires or is revoked.
   an invite can't keep only its own grant and lose every other digest. The owner's invite, cap, revoke and list are
   refused with one message naming the file (`Grants::Corrupt`: `chi share` exits 1, chi web answers 500 with it);
   an archive or delete still goes ahead. Fix the file, or move it aside to end every link.
+- **Exposure** (`exposure`, `Web::ParticipantExposure`; the review-composer plan's D3): what the participant learns
+  of the review's usage, their review data's `viewer.usage` ([below](#what-a-participant-sees)). One level today,
+  `own`, every grant's: their own spend and cap, their own queued turns and queue limit, their link's expiry, and the
+  session's model; never another participant's or the owner's usage, nor the session's. `ParticipantExposure::LEVELS`
+  maps a level to its fields, and `ParticipantReview#review_usage` names each field's source: a later tier adds its
+  row and its sources there. A level this chi doesn't know (a newer chi's, a hand edit) reads as `own`, the narrowest,
+  and is written back as it was. `own` is left out of the store (as an unbound `identity`). A non-default level
+  **doesn't bump the store's version**, unlike `identity`: identity restricts a grant, so a chi that ignored it would
+  widen access (the version stops it writing); a chi that ignores `exposure` shows the participant `own`, so it fails
+  closed, and one with `Grant#extra` keeps the key on its rewrites. A chi from before `Grant#extra` drops it on a
+  rewrite: the grant goes back to `own`. No `--expose` flag until a second level exists; adding one touches
+  `Participants.invite`, `SessionAccess` Local/Remote `#invite`, the invite route, the web participants panel, the
+  TUI's participant commands, `SessionAccess::Contract` and `SessionAccess::ParticipantView`'s fields. The owner's
+  routes (`public_h`) don't show it yet.
 - Rotating the owner token (`chi web --new-token`) never touches grants; `chi share revoke --all` ends them all.
 - **Bound grants** (`identity`, an email in lower case; nil for any, and absent from the store then): a bound grant
   is honoured only on a request through the proxy (`web.public_url`) whose identity header carries that email; on the
@@ -143,7 +157,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); `wait/prepare` answers only what that wait needs, `{session_id, baseline: {last_turn}, known_turn, live, last_turn_id}` (`last_turn_id` only when it is their turn), never the owner's cursor, message count, question or running turn; the answer trimmed to `{status, text, turn_id, cancel_reason}`, the reply's `text` through `ParticipantView.reply` (no thinking or tool call, redacted) and any other text (an error's exception, a failed turn's summary) `ParticipantMessages::TURN_FAILED`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it; a revoke or the expiry ends a `wait` already running (401 `token_revoked` / `token_expired`), as it ends their stream |
 | `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
-| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}` |
+| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}`; a participant's `viewer` has their `usage` |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
@@ -243,7 +257,8 @@ made by `chi share revoke` in another process; the page then reads a 401 and sho
 
 D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states.
 Not tool output or arguments, thinking, approvals' and questions' content, memories (text or names), context notes,
-plugin steers, automatic and delegate input, cards, command output, the working set (the user decided: not), cost,
+plugin steers, automatic and delegate input, cards, command output, the working set (the user decided: not), cost
+(but their own usage, as their grant's exposure shows it),
 timing (durations, records: only the wall time `at` of each prompt, reply and turn start, for the page's gap lines
 and hover times, D6 of the session-time-gaps plan), host paths or the owner's prompt history. Every read a participant reaches goes through one module,
 `Web::ParticipantView` (`lib/samagotchi/web/participant_view.rb`), whose every answer is a new hash built from named
@@ -285,6 +300,20 @@ fields: a field added to an event later reaches nobody until it is named there.
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
+- **Their usage** (`viewer.usage`, `ParticipantReview#review_usage`, built from named fields by the exposure policy
+  beside `ParticipantView`'s): the fields their grant's exposure shows
+  ([Grants](#grants)); at `own`, `{spent, cap, queued, queue_limit, expires_at, model}`. `spent` is dollars: the saved
+  analytics' count by their author (the cap check's), or the live worker's `spend_by_author` for them when it is more
+  (its count holds the saved turns, the running turn's finished generations and the side requests they caused, so a
+  running turn shows before it is saved; the two are never added), read from the Bridge snapshot the review already
+  reads. `queued` counts their own queued turns on the worker; `model` is the session's model as its host is sent it
+  (the alias applied, no host name), live else saved, redacted. Every source reads the grant's own author: another
+  participant's spend, the owner's and the session's totals never reach them (the red-team spec checks the body). The
+  owner's participant view has none. The page draws it as one line under the comment box (`usageItems`): "$0.42 of
+  $2.00 cap · 1/3 queued · link: 6 d left · model", each with a title in words; warn colours from 80% of the cap, a
+  full queue and a link's last day, "over" at the cap. On a phone it is the only line under the box (the hint is
+  hidden there), cut at the end (the model first); folded, it goes with the hint. It is redrawn at each re-read (a
+  turn's end, a queued or taken-back comment), not while a turn streams.
 - **A fork's note.** A review fork (`chi review --from`, `/coordinate review`) starts with a note holding the source's
   recap and, from the coordinator, its handoff's body: a participant's review turn reads it like the rest of the
   history and may quote it (host paths, worktree names). That is by design (it is what the review is about); the

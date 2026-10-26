@@ -17,6 +17,10 @@ and commands may change between minor versions. How releases are made:
   (Annotate and typing open it again), it stays one row on a phone, and ↑/↓ recall the participant's own earlier
   comments from that browser (kept per review link, never your prompt history). No `/` list, delivery choices or
   images there yet; every comment is still a queued review turn. Your participant view has no comment box.
+- The participant page shows the participant their own usage in one line under the comment box: what their
+  comments have cost you of their cap (a running turn's too), their queued comments of their queue limit, when their
+  link ends, and the session's model. Never another participant's spend, yours or the session's. It sits on a
+  per-link exposure level (`own`, the only one so far), so a later tier can show more.
 - Review links bound to one account: `chi share ID --name NAME --identity EMAIL` (and the Invite dialog's email field,
   behind an auth proxy that names the signed-in user: `web.public_url` with `web.proxy.identity_header`, or
   `chi web --tunnel tailscale`) makes a link that opens only through that proxy, signed in as EMAIL. A forwarded
