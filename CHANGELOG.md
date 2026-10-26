@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   subscribe (400 `invalid_subscription`), and one already on disk fails that device alone, so the other devices still
   get the push, `POST /api/push/test` answers that device as failed instead of a 500, and `chi web push test` prints
   its failure instead of a backtrace.
+- The notifications sheet's switches always show what chi web has: "this device" no longer stays on after iOS's
+  Don't Allow, nor "Long turns done" moved after its change failed.
 
 ## [0.121.0] - 2026-10-26
 

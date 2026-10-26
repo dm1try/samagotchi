@@ -61,13 +61,14 @@ test("push devices: off, this device's row says so and has no done switch; denie
 });
 
 // The sheet at a real bell (happy-dom): its api calls and redraws.
-function sheetAt({ state = "on", answers = info(), toggleThis = async () => null } = {}) {
+function sheetAt({ state = "on", answers = info(), toggleThis = async () => null, refuse = null } = {}) {
   const button = document.createElement("button");
   button.id = "notifyBtn";
   document.body.appendChild(button);
   const calls = [];
   const api = async (method, path, body) => {
     calls.push([method, path, body]);
+    if (method === refuse) throw new Error("HTTP 500");
     return method === "GET" ? answers : null;
   };
   const sheet = createPushDevices({ button, api, state: () => state, toggleThis, now: () => NOW,
@@ -118,5 +119,28 @@ test("push devices: this device's switch is the bell's toggle (never the id rout
   assert.equal(toggled, 1);
   assert.ok(s.calls.every((c) => c[0] === "GET"), JSON.stringify(s.calls));
   assert.match(htmlOf(s.sheet.pop), /failed: nope/);
+  s.done();
+});
+
+test("push devices: a switch the app refuses goes back to the model (the same model redrawn)", async () => {
+  // iOS's Don't Allow: the bell stays off, the sheet redraws with the same off model.
+  const off = sheetAt({ state: "off", answers: info([device()]), toggleThis: async () => null });
+  await off.sheet.toggle();
+  const sw = off.sheet.pop.querySelector('[data-pd="this"]');
+  sw.checked = true;
+  sw.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await off.tick(); await off.tick();
+  assert.equal(off.sheet.pop.querySelector('[data-pd="this"]').checked, false);
+  off.done();
+
+  // A failed PATCH: the server keeps done on, so the switch shows it on again.
+  const s = sheetAt({ refuse: "PATCH" });
+  await s.sheet.toggle();
+  const done = s.sheet.pop.querySelector('.pd-row[data-id="9f8e7d6c"] [data-pd="done"]');
+  done.checked = false;
+  done.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await s.tick(); await s.tick();
+  assert.equal(s.sheet.pop.querySelector('.pd-row[data-id="9f8e7d6c"] [data-pd="done"]').checked, true);
+  assert.match(htmlOf(s.sheet.pop), /HTTP 500/);
   s.done();
 });
