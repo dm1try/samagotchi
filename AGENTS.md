@@ -123,6 +123,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
+- System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`
 - Writing a bundle (the walkthrough, `chi bundle new`/`check`/`test`/`try`) → `docs/bundle-authoring.md`
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
