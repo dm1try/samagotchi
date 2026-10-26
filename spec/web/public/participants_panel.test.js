@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, lateInviteText, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, nameUnnamedBadges, participantName, setParticipantNames, UNNAMED } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
@@ -236,9 +236,14 @@ function panelControl({ api: over = {}, win: winOver = {}, ...opts } = {}) {
 }
 
 // An invite answered after its panel closed (or another session opened)
-// is dropped: its one-time link never shows in a later panel.
+// never shows its one-time link in a later panel: a sticky toast keeps it.
 test("participants panel: an invite answered after the panel closed doesn't show its link in the next panel", async () => {
-  const c = panelControl();
+  const toasts = [];
+  const copied = [];
+  const c = panelControl({
+    toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
+    win: { navigator: { clipboard: { writeText: async (text) => { copied.push(text); } } } },
+  });
   await c.ctl.load();
   c.chip.click();
   await tick();
@@ -253,6 +258,31 @@ test("participants panel: an invite answered after the panel closed doesn't show
   assert.ok(c.ctl.isOpen());
   assert.ok(!c.pop.querySelector(".pp-invite-done"), "the late link isn't in the reopened panel");
   assert.ok(c.pop.querySelector("form.pp-invite"));
+  assert.equal(toasts.length, 1);
+  assert.equal(toasts[0].text, lateInviteText("Kim", "s1"));
+  assert.doesNotMatch(toasts[0].text, /chp_late/, "the toast's words don't show the link");
+  assert.deepEqual([toasts[0].action.label, toasts[0].options.sticky], ["Copy link", true]);
+  await toasts[0].action.run();
+  assert.deepEqual(copied, ["http://x/?token=chp_late"]);
+  c.done();
+});
+
+test("participants panel: a late invite's Copy link that fails shows the link itself to select", async () => {
+  const toasts = [];
+  const c = panelControl({
+    toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
+    win: { navigator: { clipboard: { writeText: async () => { throw new Error("denied"); } } } },
+  });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  c.pop.querySelector("form.pp-invite").elements.name.value = "Kim";
+  c.submit(c.pop.querySelector("form.pp-invite"));
+  c.ctl.close();
+  c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
+  await tick();
+  await toasts[0].action.run();
+  assert.deepEqual(toasts.slice(1).map((t) => [t.text, t.options.sticky]), [["Kim's review link: http://x/?token=chp_late", true]]);
   c.done();
 });
 

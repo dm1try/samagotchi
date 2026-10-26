@@ -44,6 +44,8 @@ and commands may change between minor versions. How releases are made:
 - A participant's comment box keeps what they typed while their last comment was on its way (it was cleared when the
   comment was accepted), and an error under the box (a refusal, "Images can't go in a review comment yet") goes at
   their next edit or send instead of staying until a comment went through.
+- An invite whose participants panel closed before chi web answered no longer loses its one-time link (the grant was
+  made, so the owner had to revoke and invite again): a sticky toast names it with Copy link.
 
 ## [0.121.0] - 2026-10-26
 
