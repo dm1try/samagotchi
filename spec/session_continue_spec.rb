@@ -3,12 +3,16 @@
 require "json"
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/session_continue"
 require "samagotchi/session_chain"
 require "samagotchi/tools/delegate_cursor"
+require_relative "support/worker_links"
 
 # SessionContinue.run (SessionManager.continue_session): the next link of a session chain.
 RSpec.describe Samagotchi::SessionContinue, ".run" do
+  include WorkerLinks
+
   let(:manager) { Samagotchi::SessionManager }
   let(:tmpdir) { Dir.mktmpdir("continue-spec") }
   let(:folder) { Dir.mktmpdir("continue-folder") }
@@ -139,7 +143,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     client = instance_double(Samagotchi::BridgeClient)
     allow(manager).to receive(:worker_live?).and_call_original
     allow(manager).to receive(:worker_live?).with(previous.id, state_dir: tmpdir).and_return(true)
-    allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+    allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
     allow(client).to receive(:request_recap) do
       Thread.new do
         sleep 0.3 # sleep-ok: the fresh recap comes a moment after the request
@@ -400,8 +404,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       old = make(prompt: "a", parent_id: previous.id, delegate: true)
       own(old.id)
       sidecar = Samagotchi::WorkerSidecar.new(port: 1, version: "0.46.1", features: %w[restart task_stop])
-      allow(Samagotchi::WorkerSidecar).to receive(:live).and_call_original
-      allow(Samagotchi::WorkerSidecar).to receive(:live).with(dir_of(old.id), unlink: false).and_return(sidecar)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_call_original
+      allow(Samagotchi::WorkerLink).to receive(:resolve).with(dir_of(old.id), unlink: false).and_return(live_link(sidecar))
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
         expect(e).to have_attributes(reason: :open_children, ids: [old.id])

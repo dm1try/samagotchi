@@ -3,7 +3,7 @@
 require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../session"
-require_relative "../bridge_client"
+require_relative "../worker_link"
 require_relative "../bridge/turn_accumulator"
 require_relative "../tools/delegate"
 require_relative "../children_status"
@@ -212,7 +212,7 @@ module Samagotchi
       end
 
       def live_snapshot(sid, state_dir)
-        BridgeClient.discover(sid, session_dir: Session.session_dir(sid, state_dir: state_dir))&.get_json("snapshot")
+        WorkerLink.client(sid, session_dir: Session.session_dir(sid, state_dir: state_dir))&.get_json("snapshot")
       rescue StandardError
         nil
       end

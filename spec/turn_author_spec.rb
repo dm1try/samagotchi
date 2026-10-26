@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "json"
 require "rack/mock"
@@ -100,7 +101,7 @@ RSpec.describe "a turn's author" do
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
       @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
-      @client = Samagotchi::BridgeClient.discover("s1", session_dir: session_dir)
+      @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     end
 
     after do

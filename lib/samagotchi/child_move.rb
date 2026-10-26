@@ -6,7 +6,7 @@ require "time"
 require_relative "atomic_file"
 require_relative "session"
 require_relative "session_inbox"
-require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "log"
 require_relative "tools/delegate_cursor"
 
@@ -96,10 +96,10 @@ module Samagotchi
       owner = SessionManager.session_owner(child_id, state_dir: state_dir) or return nil
       return "open in a chi REPL; close it there" if owner.tui?
 
-      sidecar = WorkerSidecar.live(Session.session_dir(child_id, state_dir: state_dir), unlink: false)
-      return nil if sidecar.nil? || sidecar.features.include?(FEATURE)
+      link = WorkerLink.resolve(Session.session_dir(child_id, state_dir: state_dir), unlink: false)
+      return nil if !link.live? || link.features.include?(FEATURE)
 
-      "older chi worker#{" #{sidecar.version}" if sidecar.version}; restart it"
+      "older chi worker#{" #{link.version}" if link.version}; restart it"
     end
 
     # Move +ids+ (direct children of +from+) to +to+: the intent, the

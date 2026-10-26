@@ -2,8 +2,7 @@
 
 require_relative "client_id"
 require_relative "session"
-require_relative "bridge_client"
-require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "question_desk"
 require_relative "log"
 
@@ -87,7 +86,7 @@ module Samagotchi
     # @return [Hash, nil] what the parent's live Bridge says about the relay
     def parent_relay(parent_id, relay_id)
       dir = Session.session_dir(parent_id, state_dir: @state_dir)
-      client = BridgeClient.discover(parent_id, session_dir: dir) or return nil
+      client = WorkerLink.client(parent_id, session_dir: dir) or return nil
       response = client.relay_status(relay_id)
       response.ok? ? response.json : nil
     rescue SystemCallError, IOError

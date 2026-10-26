@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "samagotchi/plugin/context"
 require "samagotchi/session_manager"
@@ -191,7 +192,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
     it "reads a live worker's snapshot, with its running turn so far" do
       client = instance_double(Samagotchi::BridgeClient)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       allow(client).to receive(:get_json).with("snapshot").and_return(
         "messages" => [{ "role" => "system", "content" => "prompt" }, { "role" => "user", "content" => "hello" }],
         "current_turn" => { "prompt" => "now", "parts" => [{ "kind" => "text", "iteration" => 1, "text" => "Wor" }] }

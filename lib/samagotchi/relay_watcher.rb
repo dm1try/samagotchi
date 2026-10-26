@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "log"
 
 module Samagotchi
@@ -20,7 +20,7 @@ module Samagotchi
     # @param live [#call] whether the parent's worker is up
     # @return [Thread]
     def start(engine:, question_id:, relay_id:, parent_dir:, interval: INTERVAL,
-              live: -> { WorkerSidecar.live(parent_dir, unlink: false) })
+              live: -> { WorkerLink.resolve(parent_dir, unlink: false).live? })
       Thread.new do
         loop do
           sleep(interval)

@@ -2,6 +2,7 @@
 
 require_relative "../session"
 require_relative "../bridge_client"
+require_relative "../worker_link"
 require_relative "../relay"
 require_relative "../guardrails/approval"
 require_relative "../guardrails/parent_policy"
@@ -79,7 +80,7 @@ module Samagotchi
         qid = question.id.to_s
         desk = relay.relay_desk
         relay_id = desk.open(child_id: child_id, child_question_id: qid)
-        client = BridgeClient.discover(child_id, session_dir: Session.session_dir(child_id, state_dir: state_dir))
+        client = WorkerLink.client(child_id, session_dir: Session.session_dir(child_id, state_dir: state_dir))
         post(client, "opened", relay_id, qid)
         Log.info(:turn, "relay_opened", child: child_id[0, 8], id: qid)
 

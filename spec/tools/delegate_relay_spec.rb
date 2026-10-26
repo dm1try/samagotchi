@@ -4,6 +4,7 @@ require "timeout"
 require "tmpdir"
 require "json"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/tools/delegate_wait"
 require "samagotchi/relay_desk"
 require "samagotchi/owner_lock"
@@ -67,7 +68,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
 
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
-    allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+    allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
   end
 
   after do

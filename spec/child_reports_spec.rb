@@ -3,6 +3,7 @@
 require "tmpdir"
 require "json"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/child_reports"
 require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
@@ -526,7 +527,7 @@ RSpec.describe "delegate reports" do
 
     before do
       allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
       own(child)
       s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
       s.parent_answers = "hard"

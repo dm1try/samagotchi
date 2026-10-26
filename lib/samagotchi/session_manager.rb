@@ -25,6 +25,7 @@ require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "worker_signals"
 require_relative "log"
 require_relative "log_path"
@@ -683,8 +684,10 @@ module Samagotchi
       Session.load(session_id, state_dir: sd) # ArgumentError for none
       owner = refuse_tui!(session_id, state_dir: sd)
       dir = Session.session_dir(session_id, state_dir: sd)
-      sidecar = owner&.worker? && WorkerSidecar.live(dir, unlink: false)
-      raise RestartRefused.new(session_id, :not_running) unless sidecar
+      link = WorkerLink.resolve(dir, unlink: false) if owner&.worker?
+      raise RestartRefused.new(session_id, :not_running) unless link&.live?
+
+      sidecar = link.sidecar
       unless sidecar.features.include?("restart")
         raise RestartRefused.new(session_id, :unsupported, version: sidecar.version)
       end
@@ -694,11 +697,11 @@ module Samagotchi
       raise RestartRefused.new(session_id, :failed) unless reply.status == 200
 
       Log.info(:worker, "restart", sid: session_id, from: sidecar.version, by: client_id)
-      fresh = BridgeClient.poll(wait, interval: 0.1) do
-        found = WorkerSidecar.live(dir, unlink: false)
-        found if found && found.started_at != sidecar.started_at
-      end
-      Restarted.new(session_id: session_id, from_version: sidecar.version, version: fresh&.version)
+      fresh = WorkerLink.await(session_id, session_dir: dir, timeout: wait, unlink: false, interval: 0.1,
+                               until: ->(live) { live.started_at != sidecar.started_at })
+      # Timed out: the last outcome, the old worker's Live too, is no successor.
+      version = fresh.live? && fresh.started_at != sidecar.started_at ? fresh.version : nil
+      Restarted.new(session_id: session_id, from_version: sidecar.version, version: version)
     end
 
     # Stop a session by sending TERM to its process.
@@ -741,7 +744,7 @@ module Samagotchi
     private_class_method def self.cancel_running_turn(session_id, state_dir:)
       return unless Session.load(session_id, state_dir: state_dir).status == Session::STATUS_RUNNING
 
-      client = BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
+      client = WorkerLink.client(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
       return unless client && client.cancel(reason: STOP_CANCEL_REASON).status == 202
 
       BridgeClient.poll(STOP_CANCEL_WAIT) do
@@ -1252,7 +1255,10 @@ module Samagotchi
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
                           author: nil, pending_limit: nil, state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
-      bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
+      bridge ||= lambda do
+        link = WorkerLink.await(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT)
+        link.live? ? link.client(session_id) : nil
+      end
       manager.resume_session(session_id, state_dir: state_dir)
       if (client = bridge.call)
         # A worker from before queueing (no "delivery" feature) ignores the

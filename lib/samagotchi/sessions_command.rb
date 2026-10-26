@@ -10,7 +10,7 @@ require_relative "session_metrics"
 require_relative "recap_store"
 require_relative "session_delete_command"
 require_relative "session_archive_command"
-require_relative "bridge_client"
+require_relative "worker_link"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/event_renderer"
 require_relative "cli/command"
@@ -371,7 +371,7 @@ module Samagotchi
     # @return [Array(Hash, nil, Boolean, String, nil)]
     def stats_snapshot_for(session)
       dir = Samagotchi::Session.session_dir(session.id)
-      if (client = Samagotchi::BridgeClient.discover(session.id, session_dir: dir, read_timeout: STATS_TIMEOUT))
+      if (client = Samagotchi::WorkerLink.client(session.id, session_dir: dir, read_timeout: STATS_TIMEOUT))
         body = client.get_json("stats")&.dig("metrics")
         if body.is_a?(Hash)
           return [TerminalUI::EventRenderer.deep_symbolize_keys(body), true, nil]

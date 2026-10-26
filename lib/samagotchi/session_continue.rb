@@ -9,6 +9,7 @@ require_relative "child_move"
 require_relative "archive_store"
 require_relative "recap_store"
 require_relative "bridge_client"
+require_relative "worker_link"
 require_relative "model_profile"
 require_relative "log"
 require_relative "session_manager"
@@ -306,7 +307,7 @@ module Samagotchi
       return unless SessionManager.worker_live?(id, state_dir: state_dir)
 
       dir = Session.session_dir(id, state_dir: state_dir)
-      client = BridgeClient.discover(id, session_dir: dir) or return
+      client = WorkerLink.client(id, session_dir: dir) or return
       before = RecapStore.read(dir)
       reply = client.request_recap
       asked = reply.status == 200 && reply.json.is_a?(Hash) ? reply.json["request"] : nil

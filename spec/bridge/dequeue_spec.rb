@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -23,7 +24,7 @@ RSpec.describe Samagotchi::Bridge, "dequeue" do
     WebMock.allow_net_connect! if defined?(WebMock)
     @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2,
                                   on_input: on_input).start
-    @client = Samagotchi::BridgeClient.discover("s1", session_dir: session_dir)
+    @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     engine.subscribe(observer: ->(event) { events << event if %i[turn_enqueued turn_dequeued].include?(event[:type]) })
   end
 

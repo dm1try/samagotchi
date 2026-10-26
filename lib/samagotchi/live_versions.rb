@@ -2,7 +2,7 @@
 
 require_relative "session"
 require_relative "version"
-require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "web/info_probe"
 
 module Samagotchi
@@ -21,13 +21,12 @@ module Samagotchi
 
     # @return [Array<Worker>] the workers whose Bridge answers, by session id
     def workers(state_dir: Session.default_state_dir)
-      Dir[File.join(state_dir, "*", WorkerSidecar::FILE)].sort.filter_map do |path|
-        session_dir = File.dirname(path)
-        sidecar = WorkerSidecar.live(session_dir, unlink: false)
-        next unless sidecar
+      WorkerLink.each_dir(state_dir).filter_map do |session_dir|
+        link = WorkerLink.resolve(session_dir, unlink: false)
+        next unless link.live?
 
-        Worker.new(session_id: File.basename(session_dir), version: sidecar.version,
-                   restart: sidecar.features.include?("restart"))
+        Worker.new(session_id: File.basename(session_dir), version: link.version,
+                   restart: link.features.include?("restart"))
       end
     end
 

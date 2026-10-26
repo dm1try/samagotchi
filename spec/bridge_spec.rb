@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "stringio"
 require "socket"
@@ -889,9 +890,9 @@ RSpec.describe Samagotchi::Bridge do
       it "ignores a bare connect that sends no request (a liveness probe)" do
         start_bridge
         before = @bridge.last_client_activity_at
-        expect(Samagotchi::BridgeClient.live_sidecar(
-          Samagotchi::Session.session_dir(@session.id, state_dir: state_dir)
-        )&.port).to eq(@bridge_port)
+        expect(Samagotchi::WorkerLink.resolve(
+          Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), unlink: true
+        ).port).to eq(@bridge_port)
         # The probe's connection thread read no request and ended: it noted nothing.
         threads = -> { @bridge.instance_variable_get(:@connection_threads) }
         wait_for("the probe's connection to end") { threads.call.any? && threads.call.none?(&:alive?) }

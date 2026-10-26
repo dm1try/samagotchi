@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -58,7 +59,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
   end
 
   def client_for(session)
-    Samagotchi::BridgeClient.discover(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+    Samagotchi::WorkerLink.client(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
   end
 
   # The child's approval, waiting on its turn thread.

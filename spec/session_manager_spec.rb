@@ -2,11 +2,15 @@
 
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
 require "samagotchi/reminder_store"
+require_relative "support/worker_links"
 
 RSpec.describe Samagotchi::SessionManager do
+  include WorkerLinks
+
   let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
 
   after do
@@ -98,7 +102,7 @@ RSpec.describe Samagotchi::SessionManager do
       let(:calls) { [] }
 
       before do
-        allow(Samagotchi::BridgeClient).to receive(:discover).and_return(bridge)
+        allow(Samagotchi::WorkerLink).to receive(:client).and_return(bridge)
         allow(Process).to receive(:kill).and_call_original
       end
 
@@ -1175,7 +1179,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "asks the worker for a restart and waits for its successor's Bridge" do
       fresh = old_sidecar.with(port: 4200, started_at: "t2", version: "0.19.0")
-      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar, old_sidecar, nil, fresh)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar), live_link(old_sidecar), none_link, live_link(fresh))
       allow(client).to receive(:request_exit).and_return(response(200, status: "restarting"))
 
       result = described_class.restart_session(session.id, state_dir: tmpdir, wait: 2, client_id: "web:restart")
@@ -1185,14 +1189,14 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "gives no version when the successor didn't come up within the wait" do
-      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_return(response(200, status: "restarting"))
 
       expect(described_class.restart_session(session.id, state_dir: tmpdir, wait: 0.2).version).to be_nil
     end
 
     it "is refused with the worker's reason" do
-      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_return(response(409, status: "held", reason: "reminders"))
 
       expect { described_class.restart_session(session.id, state_dir: tmpdir) }
@@ -1202,7 +1206,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "is refused for a worker from before restarts, which it never asks" do
-      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar.with(features: []))
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar.with(features: [])))
       allow(client).to receive(:request_exit)
 
       expect { described_class.restart_session(session.id, state_dir: tmpdir) }

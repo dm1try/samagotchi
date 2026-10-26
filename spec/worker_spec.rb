@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "net/http"
 require "json"
@@ -1098,7 +1099,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       def follow(client_id: nil)
-        stream = Samagotchi::BridgeClient.discover(session.id, session_dir: session_dir).follow(client_id: client_id) { |_| nil }
+        stream = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir).follow(client_id: client_id) { |_| nil }
         (@streams ||= []) << stream
         stream
       end
