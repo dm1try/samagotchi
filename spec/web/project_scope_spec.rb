@@ -144,27 +144,58 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "names the project an all view came from (?from=), to link back to its view" do
-      _, _, body = call("/?from=#{q(repo_a)}")
+      _, _, body = call("/?scope=all&from=#{q(repo_a)}")
 
       expect(body).to include(%(data-back-name="alpha"), %(data-back-dir="#{repo_a}"))
       expect(body).not_to include("data-project-name")
     end
 
-    it "offers the server's own project as the way back when the all view names none" do
-      Dir.chdir(repo_b) { expect(call("/")[2]).to include(%(data-back-name="beta"), %(data-back-dir="#{repo_b}")) }
+    it "offers the start folder's project as the way back when the all view names none" do
+      Dir.chdir(repo_b) { expect(call("/?scope=all")[2]).to include(%(data-back-name="beta"), %(data-back-dir="#{repo_b}")) }
       Dir.chdir(plain) { expect(call("/")[2]).not_to include("data-back-name") }
       Dir.chdir(plain) { expect(call("/?from=#{q(plain)}")[2]).not_to include("data-back-name") }
       Dir.chdir(plain) { expect(call("/?from=%2Fnope")[2]).not_to include("data-back-name") }
+      body = scoped_call(repo_a, "/?scope=all")
+      expect(body).to include(%(data-back-name="alpha"), %(data-back-dir="#{repo_a}"), %(data-server-dir="#{repo_a.sub(Dir.home, "~")}"))
     end
 
     it "has no way back in a project view" do
       expect(call("/?dir=#{q(repo_a)}")[2]).not_to include("data-back-name")
     end
 
-    it "has no project for no dir, a folder in no repo or a bad dir" do
-      ["/", "/?dir=#{q(plain)}", "/?dir=%2Fnope"].each do |path|
-        expect(call(path)[2]).not_to include("data-project-name")
+    it "has no project for a folder in no repo or a bad dir, nor for no dir with ?scope=all" do
+      ["/?scope=all", "/?dir=#{q(plain)}", "/?dir=%2Fnope", "/?dir=%2Fnope&scope=all"].each do |path|
+        expect(scoped_call(repo_a, path)).not_to include("data-project-name", "data-scope-dir")
       end
+    end
+
+    # A bare page: the start folder's project (data-scope-dir: the page
+    # scopes its list, its stream and new chats to it), or every session.
+    def scoped_call(start_dir, path)
+      app = described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub, start_dir: start_dir)
+      app.call(Rack::MockRequest.env_for(path, "HTTP_HOST" => "127.0.0.1"))[2].join
+    end
+
+    it "is the start folder's project view without ?dir, a subfolder's too" do
+      body = scoped_call(repo_a, "/")
+      expect(body).to include(%(data-project-name="alpha"), %(data-scope-dir="#{repo_a}"))
+      expect(body).not_to include("data-back-name")
+
+      lib = File.join(repo_a, "lib").tap { |dir| FileUtils.mkdir_p(dir) }
+      expect(scoped_call(lib, "/?view=turn")).to include(%(data-project-name="alpha"), %(data-scope-dir="#{lib}"))
+    end
+
+    it "is every session without ?dir when the start folder is in no repo or gone" do
+      [plain, File.join(@tmp, "gone")].each do |start|
+        body = scoped_call(start, "/")
+        expect(body).not_to include("data-project-name", "data-scope-dir")
+      end
+    end
+
+    it "lets ?dir= pick the project over the start folder's, and over ?scope=all" do
+      body = scoped_call(repo_a, "/?dir=#{q(repo_b)}&scope=all")
+      expect(body).to include(%(data-project-name="beta"))
+      expect(body).not_to include("data-scope-dir")
     end
   end
 end

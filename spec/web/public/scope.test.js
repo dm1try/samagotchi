@@ -12,10 +12,10 @@ test("scopeDir reads ?dir= and ignores a missing or blank one", () => {
   assert.equal(scopeDir("?dir=%20"), null);
 });
 
-test("allScopeHref drops ?dir and keeps the hash; the project it leaves goes in ?from=", () => {
-  assert.equal(allScopeHref("#/s/abc"), "/#/s/abc");
-  assert.equal(allScopeHref(""), "/");
-  assert.equal(allScopeHref("#/s/abc", "/Users/me/my proj"), "/?from=/Users/me/my%20proj#/s/abc");
+test("allScopeHref is ?scope=all without ?dir (a bare page may be the start project) and keeps the hash; the project it leaves goes in ?from=", () => {
+  assert.equal(allScopeHref("#/s/abc"), "/?scope=all#/s/abc");
+  assert.equal(allScopeHref(""), "/?scope=all");
+  assert.equal(allScopeHref("#/s/abc", "/Users/me/my proj"), "/?scope=all&from=/Users/me/my%20proj#/s/abc");
 });
 
 test("projectScopeHref: back to a folder's project view, keeping the hash", () => {
@@ -24,8 +24,8 @@ test("projectScopeHref: back to a folder's project view, keeping the hash", () =
 });
 
 test("the scope links keep the page's ?view= and drop its other params", () => {
-  assert.equal(allScopeHref("#/s/abc", null, "?view=turn"), "/?view=turn#/s/abc");
-  assert.equal(allScopeHref("", "/u/proj", "?dir=/u/proj&view=stage"), "/?from=/u/proj&view=stage");
+  assert.equal(allScopeHref("#/s/abc", null, "?view=turn"), "/?scope=all&view=turn#/s/abc");
+  assert.equal(allScopeHref("", "/u/proj", "?dir=/u/proj&view=stage"), "/?scope=all&from=/u/proj&view=stage");
   assert.equal(projectScopeHref("/u/proj", "#/sessions", "?from=/x&view=turn"), "/?dir=/u/proj&view=turn#/sessions");
   assert.equal(projectScopeHref("/u/proj", "", "?from=/x"), "/?dir=/u/proj");
 });
@@ -41,7 +41,7 @@ test("scopeTemplate: a project's name and its all link; a folder not found; all 
   const where = () => ({ hash: "#/s/abc", search: "?view=turn" });
   assert.equal(markupOf(scopeTemplate({ dir: "/p/chi", projectName: "chi", projectDir: "/p/chi" }, { where })),
     '<span class="scope-name" title="Sessions of /p/chi">chi</span>' +
-    '<a class="scope-all" href="/?from=/p/chi&amp;view=turn#/s/abc" title="Sessions of every project">all</a>');
+    '<a class="scope-all" href="/?scope=all&amp;from=/p/chi&amp;view=turn#/s/abc" title="Sessions of every project">all</a>');
   assert.match(markupOf(scopeTemplate({ dir: "/nope" }, { error: "no <such> folder", where })),
     /^<span class="scope-name error" title="no <such> folder">folder not found<\/span><a class="scope-all"/);
   assert.equal(markupOf(scopeTemplate({ serverDir: "/srv/<x>", backDir: "/p/chi", backName: "chi" }, { where })),
@@ -63,6 +63,6 @@ test("scopeTemplate: a link clicked takes the hash the page has then; drawn agai
   let hrefs = 0;
   link.addEventListener("click", () => { hrefs += 1; });
   link.dispatchEvent(new window.Event("click", { cancelable: true }));
-  assert.equal(link.getAttribute("href"), "/?from=/p/chi#/sessions");
+  assert.equal(link.getAttribute("href"), "/?scope=all&from=/p/chi#/sessions");
   assert.equal(hrefs, 1);
 });

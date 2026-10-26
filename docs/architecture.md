@@ -493,7 +493,17 @@ in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at
 probe, every 10 s), and a change is a `chi` frame `{version, installed}`. A newer one than the
 server runs is said in chi web's terminal and on the page: restart chi web (its workers already
 run the newest chi, [Sessions](sessions.md)). `GET /api/info` carries `installed` too, and the
-feature `newest_workers`.
+feature `newest_workers`; next to `cwd` (the folder chi web runs in) it names `start_dir`, the folder it
+starts in (`web.start_dir`, `--start-dir`; `Web::StartDir`), which a second `chi web` given another one
+mentions.
+
+The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's
+project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare
+`/` the start folder's project when that folder is in a repo (`App#index_data_attributes` writes
+`data-scope-dir`, which the page reads when the URL has no `?dir`), else every session. The page never
+redirects, so the `?token=` trade's 303, a link code's `#code=`, the Home Screen app's `start_url` `/`
+and a push's `/#/s/<id>` all land on the start project. `?dir=` beats `?scope=all`. A session created
+without a folder starts in the start folder.
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
 each `<id>/` folder (recap.json, bridge.json, the stopped and archived markers), re-parsing only the files whose mtime or size

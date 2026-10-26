@@ -249,7 +249,7 @@ RSpec.describe Samagotchi::Web::Server do
 
       expect(described_class.launch(host: "lan", port: 4999, start_dir: "/", scope: "all")).to eq(0)
       expect(described_class).to have_received(:probe).with("127.0.0.1", 4999)
-      expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: lan, url: "http://127.0.0.1:4999/"))
+      expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: lan, url: "http://127.0.0.1:4999/?scope=all"))
     end
 
     it "refuses an address that isn't this machine's, and lan without one, before binding anything" do
@@ -430,7 +430,7 @@ RSpec.describe Samagotchi::Web::Server do
         allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => "192.168.1.55" })
 
         expect { described_class.launch(port: 4567, start_dir: "/", scope: "all") }
-          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/\n" \
+          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?scope=all\n" \
                      "LAN: http://192.168.1.55:4567/?token=#{token}   ← anyone with this link can run commands as you\n" \
                      "Plain http: the link and your traffic can be read by anyone on this Wi-Fi.\n").to_stdout
       end
@@ -466,15 +466,15 @@ RSpec.describe Samagotchi::Web::Server do
   end
 
   describe ".scope_url" do
-    it "is the project view in a repo, the plain page outside one or for scope all" do
+    it "is the project view in a repo, and every session (?scope=all) outside one or for scope all" do
       Dir.mktmpdir do |tmp|
         repo = File.join(tmp, "my repo")
         FileUtils.mkdir_p(File.join(repo, ".git"))
 
         expect(described_class.scope_url("127.0.0.1", 4567, dir: repo))
           .to eq("http://127.0.0.1:4567/?dir=#{repo.tr(" ", "+")}")
-        expect(described_class.scope_url("127.0.0.1", 4567, dir: repo, scope: "all")).to eq("http://127.0.0.1:4567/")
-        expect(described_class.scope_url("::1", 4567, dir: tmp)).to eq("http://[::1]:4567/")
+        expect(described_class.scope_url("127.0.0.1", 4567, dir: repo, scope: "all")).to eq("http://127.0.0.1:4567/?scope=all")
+        expect(described_class.scope_url("::1", 4567, dir: tmp)).to eq("http://[::1]:4567/?scope=all")
       end
     end
   end

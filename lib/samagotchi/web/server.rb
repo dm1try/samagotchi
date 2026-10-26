@@ -434,11 +434,13 @@ module Samagotchi
         DEFAULT_HOST
       end
 
-      # The page for +dir+: its project view (?dir=) when it is in a repo,
-      # the plain page (every session) outside one or with scope "all".
+      # The page for +dir+: its project view (?dir=, explicit though a bare
+      # page opens the start folder's project too) when it is in a repo;
+      # every session (?scope=all) outside one or with scope "all", as a
+      # running chi web's bare page may be its own start project.
       def self.scope_url(host, port, dir:, scope: "project")
         base = "http://#{url_host(host)}:#{port}/"
-        return base if scope.to_s == "all" || ProjectScope.root_for(dir).nil?
+        return "#{base}?scope=all" if scope.to_s == "all" || ProjectScope.root_for(dir).nil?
 
         # Slashes stay as they are (valid in a query): a URL people can read.
         "#{base}?dir=#{URI.encode_www_form_component(dir).gsub("%2F", "/")}"

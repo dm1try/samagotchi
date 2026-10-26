@@ -7,6 +7,19 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- `chi web --start-dir DIR` and `web.start_dir`: the folder chi web starts in, in place of the one you run it in
+  (`~` and a relative path work; one that isn't a folder stops it, exit 1). Its page opens on that folder's project,
+  and a new session from the all view starts there. A chi web already running in another folder keeps it and the
+  second one says so: restart it to change it.
+
+### Changed
+
+- chi web's bare page (`/`: the LAN link and its QR code, the Home Screen app, a pushed notification's link) opens on
+  the project chi web starts in, as its printed link already did; outside a repo it shows every session as before.
+  Every project's sessions are now `/?scope=all` (the header's `all`), and `chi web --scope=all` prints that link.
+
 ## [0.119.0] - 2026-10-26
 
 ### Added

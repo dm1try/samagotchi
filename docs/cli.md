@@ -11,9 +11,9 @@
 - `chi scratch [options]` — a one-time session in the plain in-process REPL, in this folder, that leaves nothing behind (see [Scratch sessions](#scratch-sessions))
 - `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
-- `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
+- `chi web [--port 4567] [--open] [--scope=all] [--start-dir DIR]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: `/?scope=all`, every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
-- `chi web --start-dir DIR` (config `web.start_dir`) — the folder chi web starts in, in place of the one you run it in (`~` and a relative path work; chi web never changes its own folder): its printed link opens that folder's project, and a new session from the all view starts there. One that isn't a folder exits 1; `--start-dir` without `web` exits 2. A chi web already running in another folder keeps it (the second one says so: restart it to change it)
+- `chi web --start-dir DIR` (config `web.start_dir`) — the folder chi web starts in, in place of the one you run it in (`~` and a relative path work; chi web never changes its own folder): its page opens on that folder's project (the printed link, a bare `/`, the LAN link and its QR code, the Home Screen app), and a new session from the all view starts there; `/?scope=all` (the header's `all`) is every project. One that isn't a folder exits 1; `--start-dir` without `web` exits 2. A chi web already running in another folder keeps it (the second one says so: restart it to change it)
 - `chi web --tunnel tailscale` — the Web UI over https on your tailnet, for your phone anywhere: Tailscale Serve (never Funnel) on this machine's `<machine>.<tailnet>.ts.net` name for this run, the owner your Tailscale login, turned off on exit (see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet)); `--tunnel` without `web` exits 2
 - `chi web push ls [--format json]`, `chi web push rm ID`, `chi web push test [ID]` — the phones chi web pushes to (see [Phone notifications](configuration.md#phone-notifications-web-push)): list them (short id, label, origin, added, last delivery, done turns, last error; `stale` for one made on another public URL than chi web's now: never sent to), remove one, or send a test notification to ID or to every device not stale. chi web need not run; nothing printed holds a device's push address or keys. A usage error exits 2; a store others can read, a corrupt one, an unknown device or a failed test push exit 1. This machine only: `chi --remote X web push` exits 2
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply
@@ -1201,7 +1201,10 @@ Plain http: the link and your traffic can be read by anyone on this Wi-Fi.
 
 Scan the QR code with the phone's camera. The page trades the token in the
 link for a cookie (kept 400 days) and drops it from the address, so a
-bookmark or a home-screen icon keeps working across restarts. A home-screen
+bookmark or a home-screen icon keeps working across restarts. It opens on
+the project chi web starts in (`--start-dir DIR` or `web.start_dir` picks
+another; outside a repo it shows every session); the header's `all` shows
+every project's. A home-screen
 web app on iOS has cookies of its own: if it opens on "needs chi web's
 access token", paste the token there (the part of the link after
 `token=`), or open the link once in it.

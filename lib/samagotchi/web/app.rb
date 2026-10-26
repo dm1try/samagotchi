@@ -1599,6 +1599,11 @@ module Samagotchi
       # all-view new chat starts (the start folder), and, when ?dir names a
       # folder in a repo, that project's name and root. A bad dir adds
       # nothing here: the list call answers 400 and the page says so.
+      # Without ?dir (and without ?scope=all) the page is the start folder's
+      # project view when that folder is in a repo: data-scope-dir names it
+      # for the page (the URL stays bare, so a token's 303, a link code's
+      # #code= and the app's start_url "/" all land there). ?dir= beats
+      # ?scope=all.
       def index_data_attributes(req)
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
@@ -1609,6 +1614,10 @@ module Samagotchi
         # Always there: an empty one means no presets, not the default.
         attrs["annotate-presets"] = @annotate_presets
         dir, = scope_dir(req.params["dir"])
+        unless dir
+          dir = default_scope_dir(req)
+          attrs["scope-dir"] = dir if dir
+        end
         root = dir && ProjectScope.root_for(dir)
         if root
           attrs["project-name"] = File.basename(root)
@@ -1624,6 +1633,17 @@ module Samagotchi
           end
         end
         attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
+      end
+
+      # The folder a bare page (no ?dir, no ?scope=all) is scoped to: the
+      # start folder when it is still a folder in a repo, else nil (every
+      # session).
+      def default_scope_dir(req)
+        return nil unless req.params["dir"].to_s.strip.empty?
+        return nil if req.params["scope"] == "all"
+
+        dir = File.expand_path(start_dir)
+        File.directory?(dir) && ProjectScope.root_for(dir) ? dir : nil
       end
 
       VIEWS = Config::BY_KEY["web.view"].enum_values
