@@ -274,6 +274,19 @@ fields: a field added to an event later reaches nobody until it is named there.
   header, the Plan's truncation note. No plugin pills (a review turn refuses `/` lines), and none of it in the owner's
   participant view (no presets in its shell) or while `can_comment` is false. On a touch screen the bar docks above the
   composer. A re-read keeps unchanged thread nodes and the Plan's (redrawn only on change), so a selection survives it.
+- **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
+  `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
+  double-click resets, click or drag down folds it; folded, the grip is the handle on the dock's edge and typing on the
+  page opens it; Annotate opens it for the visit), the one-row layout of the owner's session composer (Send at its
+  bottom right; a phone keeps it one row), and ↑/↓ over the participant's own comments: the ones the server took from
+  this browser, in localStorage under `chi_review_history:<grant id>` (`review_history.js`; the grant id is the review
+  data's `viewer.id`), at most 50, forgotten when the link ends (a 401 with chi's words), never the owner's `GET
+  /api/history` (the owner may open a link in the same browser). It lacks: the `/` list and plugin pills (a review turn
+  refuses `/` lines), the delivery line and its steer/queue choices (every comment is `POST …/turn`, a queued review
+  turn; Alt+Enter is Enter), the model picker, Stop turn, and images: the chips are mounted but `imagesOff` refuses a
+  paste, drop or pick with one line (the image button is hidden) until participant images land. The grip's floor and
+  the fold are the owner page's keys (`chi_composer_floor`, `chi_composer_collapsed`), per browser. The owner's
+  participant view mounts none: its dock stays hidden.
 - **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or

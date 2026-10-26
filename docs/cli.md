@@ -1413,8 +1413,9 @@ chi share revoke --all          # every link to every session
 - **The participant page.** Their link opens a page of its own (never yours): the session's title and status, who
   else takes part, and the conversation as a participant sees it: every prompt and reply with who wrote it, each
   step's tools as one line (`read docs/plan.md`: the tool and a project file's path, never arguments or output), and
-  the reply streaming in while a turn runs. A "Comment or ask" box sends their comment; their queued comments show
-  with **Take back**; "waiting for the owner" shows while you answer a question or an approval of the turn; a refused
+  the reply streaming in while a turn runs. A "Comment or ask" box sends their comment (your composer's box, with its
+  grip to resize or fold it and ↑/↓ over their own earlier comments from that browser; no `/` list, no images yet);
+  their queued comments show with **Take back**; "waiting for the owner" shows while you answer a question or an approval of the turn; a refused
   comment (a `!` or `/` line, too many waiting, their cap reached) says why. On a phone it is the thread first with
   the box pinned, tool lines folded. They never see tool output or arguments, thinking, approvals or questions,
   memories, context notes, plugin and delegate input, cards, command output, the working set, cost, timing or host

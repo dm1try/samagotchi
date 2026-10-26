@@ -13,6 +13,10 @@ and commands may change between minor versions. How releases are made:
   (`~` and a relative path work; one that isn't a folder stops it, exit 1). Its page opens on that folder's project,
   and a new session from the all view starts there. A chi web already running in another folder keeps it and the
   second one says so: restart it to change it.
+- The participant page's comment box is the owner's composer: it grows with the text, its grip resizes or folds it
+  (Annotate and typing open it again), it stays one row on a phone, and ↑/↓ recall the participant's own earlier
+  comments from that browser (kept per review link, never your prompt history). No `/` list, delivery choices or
+  images there yet; every comment is still a queued review turn. Your participant view has no comment box.
 
 ### Changed
 
