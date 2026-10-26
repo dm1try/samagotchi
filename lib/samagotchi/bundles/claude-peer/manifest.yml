@@ -1,6 +1,6 @@
 ---
 name: claude-peer
-version: 0.4.4
+version: 0.4.5
 scope: system
 description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as the claude-outbox context; /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -12,7 +12,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:50f427d3862ae9d0d15693b4d887c528162b96c0320cc663df89d59d830d4660
 scripts:
-  pair: sha256:106d5b44020602fcd2d8065da30d10e1043e30c1b31ea82b4f27f7f79ada6592
+  pair: sha256:d8089ec422a816367d8c41393235223e06b21cbc0ae1e37b6fc22e94ea9a1497
   chi-peer-SKILL.md: sha256:b9366f8f4aee9c54d209368ce421eab7b971c03c75efab0415d1988fd40f9e60
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)

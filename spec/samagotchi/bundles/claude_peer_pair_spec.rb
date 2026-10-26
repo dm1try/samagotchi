@@ -55,6 +55,35 @@ RSpec.describe "The claude-peer pair script" do
     expect(own.snapshot("claude-outbox").text).to eq("VERDICT: OK")
   end
 
+  # Not only as `sh pair`: an assignment before `shift` on one line kept
+  # its value only where shift is a POSIX special builtin (dash, bash as
+  # sh), so `bash pair` and zsh refused every call with the usage.
+  %w[bash zsh].each do |shell|
+    it "pairs run by #{shell}, an id alone or with --inbox-socket" do
+      skip "no #{shell}" unless system("command -v #{shell} >/dev/null 2>&1")
+      socket = { "CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock" }
+      _, err, status = Open3.capture3(env.merge(socket), shell, pair, session.id, chdir: tmpdir)
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/claude-a.sock")
+
+      _, err, status = Open3.capture3(env.merge(socket), shell, pair, "--inbox-socket=/tmp/pod.sock", session.id, chdir: tmpdir)
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(own.snapshot("claude-inbox").hint).to eq("/tmp/pod.sock")
+    end
+  end
+
+  it "pushes a cwd with a carriage return or another control character as valid JSON" do
+    odd = File.join(tmpdir, "odd\r\u0001dir").tap { |d| FileUtils.mkdir_p(d) }
+    _, err, status = Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock"), "sh", pair, session.id,
+                                    chdir: odd)
+
+    expect([status.exitstatus, err]).to eq([0, ""])
+    # The push parsed (a raw CR or \x01 in a JSON string is refused); the
+    # one-line summary has chi's own CR-as-space.
+    expect(own.snapshot("claude-inbox").text).to include("claude cwd: #{odd}\n")
+    expect(own.snapshot("claude-inbox").summary).to end_with("odd \u0001dir")
+  end
+
   it "refuses outside Claude Code, a URL without a session and a missing argument, touching nothing" do
     _, err, status = run_pair(session.id, socket: "")
     expect([status.exitstatus, err]).to eq([2, "pair: CLAUDE_CODE_MESSAGING_SOCKET isn't set: run this from a Claude Code " \

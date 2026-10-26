@@ -50,6 +50,9 @@ and commands may change between minor versions. How releases are made:
   retrying…" (and "This session is gone.") shows over the thread's top instead of as a new row in the header.
 - A participant's wait on a turn whose worker died in it is no longer refused (403) after chi web restarts: the turn's
   canceled (`worker_stopped`) record keeps whose turn it was.
+- claude-peer (0.4.5): `pair` run as `bash pair` or by zsh no longer refuses every call with its usage (only `sh
+  pair` kept the id and the `--inbox-socket` path), and a carriage return or another control character in what it
+  pushes (the cwd) is escaped, so chi's JSON read no longer refuses the push.
 
 ## [0.121.0] - 2026-10-26
 
