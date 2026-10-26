@@ -51,6 +51,13 @@ module Samagotchi
       def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_EXPIRED}")
     end
 
+    # 401 token_bound: a link bound to one account, used without that
+    # account's sign-in (chi --remote doesn't go through the proxy).
+    class TokenBound < AuthRefused
+      CODE = "token_bound"
+      def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_BOUND}")
+    end
+
     # 403 not_permitted: a participant's token on a route only the session's
     # owner may use.
     class NotPermitted < RemoteFailed

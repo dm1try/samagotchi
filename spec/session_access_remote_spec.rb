@@ -278,6 +278,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       {
         [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, messages::TOKEN_EXPIRED],
         [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, messages::TOKEN_REVOKED],
+        [401, "token_bound"] => [Samagotchi::SessionAccess::TokenBound, messages::TOKEN_BOUND],
         [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, messages::NOT_PERMITTED],
         [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, messages::TOO_MANY_TURNS],
         [429, "cap_reached"] => [Samagotchi::SessionAccess::CapReached, messages::CAP_REACHED],

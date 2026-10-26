@@ -493,7 +493,9 @@ module Samagotchi
 
       # The token a trade presents: the page's ?token=, or POST /api/token's
       # body's (read once): its token, or the token a one-time link code
-      # stands for (LinkCodes#redeem: used up here, whatever the gate says).
+      # stands for (LinkCodes#redeem: used up here, whatever the gate says,
+      # but for a grant's code bound to another identity: decision C, kept
+      # for the right one, and refused token_bound, #code_token).
       def traded_token(req)
         return req.params["token"] unless fragment_trade?(req)
 
@@ -504,15 +506,33 @@ module Samagotchi
                   else parse_json(raw)
                   end
           value = {} unless value.is_a?(Hash)
-          req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(value["code"]) : string_or_nil(value["token"])
+          req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(req, value["code"]) : string_or_nil(value["token"])
         end
       end
 
       def string_or_nil(value) = value.is_a?(String) ? value : nil
 
-      def code_token(code)
-        kind, token = @link_codes.redeem(code)
+      # A bound grant's code is checked before it is used up: presented by
+      # another identity, or not through the proxy, it stays (the one it was
+      # sent to can still open it) and the trade is refused token_bound.
+      def code_token(req, code)
+        kind, token = @link_codes.redeem(code) do |found_kind, found_token|
+          found_kind == :owner || code_identity_ok?(req, found_token)
+        end
         kind == :owner ? current_token : token
+      end
+
+      def code_identity_ok?(req, token)
+        grant = @grants.lookup(token)
+        return true unless grant&.identity
+
+        proxied = proxied?(req)
+        state, identity = proxied ? proxy_identity(req) : [:none, nil]
+        identity = nil unless state == :ok
+        return true if bound_ok?(grant, identity, proxied)
+
+        refuse_bound(req, grant, identity)
+        false
       end
 
       TRADED_TOKEN_ENV = "samagotchi.traded_token"
@@ -569,7 +589,7 @@ module Samagotchi
       # no longer works is cleared too, so the browser it was left in (the
       # owner's, who opened a participant link) is the owner's again.
       def refused_token(req)
-        response = grant_ended_response(req) || unauthorized(req)
+        response = grant_bound_response(req) || grant_ended_response(req) || unauthorized(req)
         return response if token_required?(req) || !Grants.token?(req.cookies[token_cookie_name(req)])
 
         status, headers, body = response

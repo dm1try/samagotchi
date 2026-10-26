@@ -19,7 +19,8 @@ module Samagotchi
   module Web
     # What a participant (a Web::Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
-    # (token_revoked, token_expired with its ended page, another session's
+    # (token_revoked, token_expired with its ended page, token_bound for a
+    # link bound to another account, another session's
     # 404, not_permitted by role), the trimmed answers of their own routes
     # (info, the session, resolve, a wait on their turn), their turns, and
     # the running check that ends their streams when the grant does. What
@@ -65,8 +66,8 @@ module Samagotchi
       def participant_principal(req, tokens, identity: nil, proxied: false)
         tokens.each do |token|
           grant = @grants.lookup(token) or next
-          if grant.identity && !(proxied && identity == grant.identity)
-            req.env[ProxyGate::REFUSED_ENV] = "grant #{grant.id} is bound to another identity than #{identity || "(none)"}"
+          unless bound_ok?(grant, identity, proxied)
+            refuse_bound(req, grant, identity)
             next
           end
           grant = settle_grant(grant)
@@ -82,6 +83,36 @@ module Samagotchi
 
       GRANT_TOKEN_ENV = "samagotchi.grant_token"
       ENDED_GRANT_ENV = "samagotchi.ended_grant"
+      BOUND_GRANT_ENV = "samagotchi.bound_grant"
+
+      # Whether +grant+ may be used by this request: an unbound one anywhere,
+      # a bound one only proxied and only for its identity (the one check,
+      # for the gate and for a link code's trade).
+      def bound_ok?(grant, identity, proxied)
+        grant.identity.nil? || (proxied && !identity.nil? && identity == grant.identity)
+      end
+
+      # A bound grant presented by another identity, or not through the
+      # proxy: #grant_bound_response answers it (token_bound).
+      def refuse_bound(req, grant, identity)
+        req.env[ProxyGate::REFUSED_ENV] = "grant #{grant.id} is bound to another identity than #{identity || "(none)"}"
+        req.env[BOUND_GRANT_ENV] ||= [grant, identity]
+      end
+
+      # 401 token_bound for a bound grant's token (or link code) presented
+      # without its identity (the page's HTML says the same words), nil when
+      # none was: logged as a refusal and audited in the grant's session.
+      def grant_bound_response(req)
+        grant, identity = req.env[BOUND_GRANT_ENV]
+        return nil unless grant
+
+        log_refused(refused_peer(req), req.path_info, "grant #{grant.id} is bound to another identity than #{identity || "(none)"}")
+        audit_refused(req, grant, reason: "token_bound", identity: identity || "(none)")
+        detail = ParticipantMessages::TOKEN_BOUND
+        return error_response(401, "token_bound", detail) if req.path_info.start_with?("/api/")
+
+        html_response(401, BOUND_PAGE.sub(ENDED_SENTENCE, "#{detail[0].upcase}#{detail[1..]}."))
+      end
 
       def settle_grant(grant)
         return grant unless grant.active?(@grants.now)
@@ -118,16 +149,24 @@ module Samagotchi
 
       # A participant's request, past the gate: its use is recorded (the
       # grant's last_used_at, at most once a minute) and a peer not seen
-      # since chi web started goes into the audit trail.
+      # since chi web started goes into the audit trail. Behind a proxy
+      # every peer is 127.0.0.1: there the peer is the client's identity
+      # (else the proxy's X-Forwarded-For hop, #refused_peer), and the line
+      # names the identity.
       def participant_seen(req, principal)
         grant = principal.grant
         @grants.touch(grant.id)
-        peer = req.get_header("REMOTE_ADDR").to_s
+        peer = refused_peer(req)
         fresh = @participant_mutex.synchronize { @participant_peers[grant.id].add?(peer) }
         return unless fresh
 
-        Participants.log(grant.session_id, :peer, state_dir: default_state_dir, participant: grant.id, ip: peer,
-                                                  user_agent: req.get_header("HTTP_USER_AGENT").to_s[0, 200])
+        fields = { ip: req.get_header("REMOTE_ADDR").to_s, user_agent: req.get_header("HTTP_USER_AGENT").to_s[0, 200] }
+        if proxied?(req)
+          state, identity = proxy_identity(req)
+          fields[:identity] = identity if state == :ok
+          fields[:peer] = peer
+        end
+        Participants.log(grant.session_id, :peer, state_dir: default_state_dir, participant: grant.id, **fields)
       end
 
       # A participant asking for a session that isn't their grant's: 404 as
@@ -149,8 +188,10 @@ module Samagotchi
         error_response(403, "not_permitted", NOT_PERMITTED)
       end
 
-      def audit_refused(req, grant)
-        key = [grant.id, req.request_method, req.path_info]
+      # +reason+ and +fields+ go into the line (a bound refusal names the
+      # identity that presented it); each its own once a minute.
+      def audit_refused(req, grant, reason: "not_permitted", **fields)
+        key = [grant.id, req.request_method, req.path_info, reason, fields]
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @participant_mutex.synchronize do
           @participant_refused.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if @participant_refused.size > 256
@@ -161,7 +202,7 @@ module Samagotchi
 
         Participants.log(grant.session_id, :refused, state_dir: default_state_dir, participant: grant.id,
                                                      method: req.request_method, path: req.path_info[0, 200],
-                                                     reason: "not_permitted")
+                                                     reason: reason, **fields)
       end
 
       # GET /api/info for a participant: what SessionAccess::Remote's
@@ -408,6 +449,7 @@ module Samagotchi
         <p>{sentence}</p>
         </body></html>
       HTML
+      BOUND_PAGE = ENDED_PAGE.sub("<title>chi: review link ended</title>", "<title>chi: review link for another account</title>")
     end
   end
 end

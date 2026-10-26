@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
   (the link could never open), and `chi share` warns when a link could be bound and isn't. `chi share ls` shows
   `alex@corp · bound`. Through `chi --remote`, `--identity` needs that chi web to be this version or newer (an older
   one would ignore it and make a link anyone could open).
+- A bound link opened by another account, or not through the proxy, is refused with its own words (401
+  `token_bound`: "this review link is for another account …", on the page too), and the refusal goes into the
+  session's participants audit naming who tried. Its one-time code stays usable: the person it was sent to can still
+  open it. Behind a proxy the audit's new-peer lines are per signed-in identity (every peer there is 127.0.0.1).
 
 ### Changed
 

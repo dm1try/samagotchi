@@ -56,35 +56,44 @@ module Samagotchi
       end
 
       # The code's [kind, token] (token nil for the owner's), once: the code
-      # is gone after. nil for an unknown, used or expired code.
+      # is gone after. nil for an unknown, used or expired code. With a
+      # block, it is asked (kind, token) first, under the lock: false keeps
+      # the code for another try and gives nil (a bound grant's code opened
+      # by another identity: decision C).
       def redeem(code)
         return nil unless LinkCodes.code?(code)
 
         wanted = digest(code)
-        found = nil
+        result = nil
         update do |entries|
-          entries.reject do |entry|
-            next false unless same_digest?(entry["digest"].to_s, wanted)
+          entry = entries.find { |candidate| same_digest?(candidate["digest"].to_s, wanted) }
+          next entries unless entry
 
-            found = entry
-            true
-          end
+          opened = open_entry(code, entry)
+          next entries if opened && block_given? && !yield(*opened)
+
+          result = opened
+          entries.reject { |candidate| candidate.equal?(entry) }
         end
-        return nil unless found
-        return nil if Time.iso8601(found["expires_at"]) <= @clock.call
+        result
+      end
 
-        kind = found["kind"] == "grant" ? :grant : :owner
-        token = found["sealed"] && unseal(code, found["sealed"])
+      private
+
+      def digest(code) = Digest::SHA256.hexdigest(code)
+
+      # [kind, token] for a live entry whose token unseals, else nil.
+      def open_entry(code, entry)
+        return nil if Time.iso8601(entry["expires_at"].to_s) <= @clock.call
+
+        kind = entry["kind"] == "grant" ? :grant : :owner
+        token = entry["sealed"] && unseal(code, entry["sealed"])
         return nil if kind == :grant && token.nil?
 
         [kind, token]
       rescue ArgumentError
         nil
       end
-
-      private
-
-      def digest(code) = Digest::SHA256.hexdigest(code)
 
       def same_digest?(left, right) = left.bytesize == right.bytesize && OpenSSL.fixed_length_secure_compare(left, right)
 

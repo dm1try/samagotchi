@@ -337,6 +337,40 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(trade_code(expired).first).to eq(401)
     end
 
+    # Decision C, the red team's forwarded link: Alex's bound link reaches
+    # Mallory (forwarded, a shared screen). Mallory signed in as herself
+    # gets the refusal, the code stays, and Alex's own open still works.
+    describe "a bound grant's code" do
+      let(:bound) do
+        Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
+                                                public_url: public_url, state_dir: state_dir)
+      end
+      let(:code) { codes.issue(kind: :grant, token: bound.token, ttl: 600) }
+
+      it "is refused to another identity and kept: the one it was sent to still opens it, once" do
+        status, headers, body = trade_code(code, headers: proxied("mallory@pod.test"))
+        expect([status, headers["Set-Cookie"], *JSON.parse(body).values_at("error", "detail")])
+          .to eq([401, nil, "token_bound", Samagotchi::ParticipantMessages::TOKEN_BOUND])
+
+        status, headers, = trade_code(code, headers: proxied("alex@pod.test"))
+        expect(status).to eq(204)
+        expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{bound.token};")
+        expect(trade_code(code, headers: proxied("alex@pod.test")).first).to eq(401)
+      end
+
+      it "is refused and kept with no identity header, or one sent twice" do
+        expect(trade_code(code, headers: proxied(nil)).first).to eq(401)
+        expect(trade_code(code, headers: proxied("alex@pod.test", [[identity_header, "mallory@pod.test"]])).first).to eq(401)
+        expect(trade_code(code, headers: proxied("alex@pod.test")).first).to eq(204)
+      end
+
+      it "leaves an unbound grant's code as it was: anyone through the proxy uses it up" do
+        unbound = codes.issue(kind: :grant, token: issued.token, ttl: 600)
+        expect(trade_code(unbound, headers: proxied("mallory@pod.test")).first).to eq(204)
+        expect(trade_code(unbound, headers: proxied("alex@pod.test")).first).to eq(401)
+      end
+    end
+
     it "sets the __Host- cookie for the owner's token with the owner's identity, 204 and no body" do
       status, headers, body = trade(owner_token)
       expect([status, body]).to eq([204, ""])
@@ -439,14 +473,63 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(call("/api/sessions", headers: proxied("alex@pod.test")).first).to eq(401)
     end
 
-    it "honours a grant bound to an identity only proxied and only for that identity" do
-      id = issued.grant.id
-      grants.send(:update) { |all| [all.map { |g| g.id == id ? g.with(identity: "alex@pod.test") : g }, nil] }
-      path = "/api/sessions/#{session.id}/review"
-      expect(call(path, headers: proxied("alex@pod.test", [bearer(issued.token)])).first).to eq(200)
-      status, _, body = call(path, headers: proxied(owner, [bearer(issued.token)]))
-      expect([status, detail(body)]).to eq([401, "chi web behind the proxy: grant #{id} is bound to another identity than #{owner}"])
-      expect(call(path, host: "127.0.0.1:4567", headers: [bearer(issued.token)]).first).to eq(401)
+    describe "a grant bound to an identity" do
+      let(:bound) do
+        Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
+                                                public_url: public_url, state_dir: state_dir)
+      end
+      let(:path) { "/api/sessions/#{session.id}/review" }
+      let(:refused) { [401, "token_bound", Samagotchi::ParticipantMessages::TOKEN_BOUND] }
+
+      def answer(path, **) = call(path, **).then { |status, _, body| [status, *JSON.parse(body).values_at("error", "detail")] }
+
+      def audit = File.readlines(File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
+                                           Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+
+      it "is honoured only proxied and only for that identity (any case)" do
+        expect(call(path, headers: proxied("alex@pod.test", [bearer(bound.token)])).first).to eq(200)
+        expect(call(path, headers: proxied("Alex@Pod.Test", [bearer(bound.token)])).first).to eq(200)
+      end
+
+      it "refuses another identity, no identity, and this machine's loopback with one message (token_bound)" do
+        expect(answer(path, headers: proxied(owner, [bearer(bound.token)]))).to eq(refused)
+        expect(answer(path, headers: proxied("mallory@pod.test", [bearer(bound.token)]))).to eq(refused)
+        expect(answer(path, headers: proxied(nil, [bearer(bound.token)]))).to eq(refused)
+        expect(answer(path, host: "127.0.0.1:4567", headers: [bearer(bound.token)])).to eq(refused)
+        # The cookie a browser kept from when it was signed in as Alex.
+        expect(answer(path, headers: proxied("mallory@pod.test", [["Cookie", "__Host-chi_token=#{bound.token}"]])))
+          .to eq(refused)
+      end
+
+      it "says so on the page too, never naming either identity" do
+        status, _, body = call("/", headers: proxied("mallory@pod.test", [bearer(bound.token)]))
+        expect(status).to eq(401)
+        expect(body).to include("This review link is for another account: open it through the proxy, signed in as the person it was sent to.")
+        expect(body).not_to include("alex@pod.test")
+        expect(body).not_to include("mallory@pod.test")
+      end
+
+      it "audits the refusal in the session, naming who presented it, once a minute per route and identity" do
+        3.times { call(path, headers: proxied("mallory@pod.test", [bearer(bound.token)])) }
+        call(path, headers: proxied(nil, [bearer(bound.token)]))
+        refusals = audit.select { |line| line["event"] == "refused" }
+        expect(refusals.map { |line| line.slice("participant", "reason", "identity", "path") })
+          .to eq([{ "participant" => bound.grant.id, "reason" => "token_bound", "identity" => "mallory@pod.test", "path" => path },
+                  { "participant" => bound.grant.id, "reason" => "token_bound", "identity" => "(none)", "path" => path }])
+      end
+    end
+
+    # Every proxied request comes from 127.0.0.1: a new peer is a new
+    # identity there, and the audit line names it.
+    it "audits each identity that uses a grant once, behind the proxy" do
+      2.times { call("/api/sessions/#{session.id}/review", headers: proxied("alex@pod.test", [bearer(issued.token)])) }
+      call("/api/sessions/#{session.id}/review", headers: proxied("sam@pod.test", [bearer(issued.token)]))
+      peers = File.readlines(File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
+                                       Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                  .select { |line| line["event"] == "peer" }
+      expect(peers.map { |line| line.slice("identity", "ip", "peer") })
+        .to eq([{ "identity" => "alex@pod.test", "ip" => "127.0.0.1", "peer" => "proxy:alex@pod.test" },
+                { "identity" => "sam@pod.test", "ip" => "127.0.0.1", "peer" => "proxy:sam@pod.test" }])
     end
 
     it "makes the invite link the public one, a one-time code for the grant in the fragment, never the token" do

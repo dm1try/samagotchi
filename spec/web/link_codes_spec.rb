@@ -29,6 +29,26 @@ RSpec.describe Samagotchi::Web::LinkCodes do
     expect(codes.redeem(code)).to eq([:grant, token])
   end
 
+  # Decision C: a bound grant's code opened by another identity is refused
+  # and kept for the one it was sent to.
+  it "keeps a code its block declines, untouched, and gives it out once accepted" do
+    code = codes.issue(kind: :grant, token: token, ttl: 600)
+    before = File.binread(codes.path)
+    asked = []
+    expect(codes.redeem(code) { |kind, found| (asked << [kind, found]) && false }).to be_nil
+    expect(asked).to eq([[:grant, token]])
+    expect(File.binread(codes.path)).to eq(before)
+    expect(codes.redeem(code) { true }).to eq([:grant, token])
+    expect(codes.redeem(code) { true }).to be_nil
+  end
+
+  it "never asks the block about an expired or unknown code" do
+    code = codes.issue(kind: :grant, token: token, ttl: 600)
+    now[0] += 601
+    expect(codes.redeem(code) { raise "asked" }).to be_nil
+    expect(codes.redeem("chc_#{"a" * 43}") { raise "asked" }).to be_nil
+  end
+
   it "refuses an expired code, and drops expired ones at the next write" do
     code = codes.issue(kind: :owner, ttl: 600)
     now[0] += 601

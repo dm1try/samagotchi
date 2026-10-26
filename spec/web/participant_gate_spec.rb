@@ -286,6 +286,14 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(File.binread(path)).to eq(before)
     end
 
+    it "is token_bound on the LAN for a grant bound to an identity (only an auth proxy can carry one)" do
+      id = issued.grant.id
+      grants.send(:update) { |all| [all.map { |g| g.id == id ? g.with(identity: "alex@corp.test") : g }, nil] }
+      expect(json("/api/info")).to eq([401, { "error" => "token_bound", "detail" => Samagotchi::ParticipantMessages::TOKEN_BOUND }])
+      expect(json("/api/info", peer: "127.0.0.1").first).to eq(401)
+      expect(audit.find { |line| line["event"] == "refused" }).to include("reason" => "token_bound", "identity" => "(none)")
+    end
+
     it "is a plain 401 for a token no grant was issued for" do
       expect(json("/api/info", bearer: "chp_#{"x" * 43}").last["error"]).to eq("unauthorized")
     end

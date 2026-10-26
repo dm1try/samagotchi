@@ -122,7 +122,7 @@ module Samagotchi
         end
       end
 
-      ACCESS_ERRORS = [TokenRevoked, TokenExpired, NotPermitted, TooManyTurns, CapReached].freeze
+      ACCESS_ERRORS = [TokenRevoked, TokenExpired, TokenBound, NotPermitted, TooManyTurns, CapReached].freeze
 
       # --- ids and sessions
 

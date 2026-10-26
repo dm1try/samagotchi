@@ -10,6 +10,11 @@ module Samagotchi
     TOKEN_REVOKED = "this review link was revoked by the session's owner"
     # 401 token_expired: the grant's time ran out.
     TOKEN_EXPIRED = "this review link expired: ask the session's owner for a new one"
+    # 401 token_bound: a link bound to one account (chi share --identity)
+    # opened by another, or not through the auth proxy (the LAN, this
+    # machine). Never names either identity.
+    TOKEN_BOUND = "this review link is for another account: open it through the proxy, signed in as the person " \
+                  "it was sent to"
     # Either of those, where only that the link ended is known: the
     # worker's cancel_reason "revoked" (participants.json reads them
     # removed or past expires_at), as their chi send --wait reports it.
