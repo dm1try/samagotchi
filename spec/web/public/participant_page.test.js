@@ -125,6 +125,37 @@ test("participant page: a double Enter or a Send while one is in flight posts th
   assert.match(posts()[1].body, /And step 4/);
 });
 
+test("participant page: what is typed while a comment is in flight stays in the box after it is accepted", async (t) => {
+  const { $, posts } = await openPage(t);
+  $("comment").value = "Is step 3 safe?";
+  enter($("comment"));
+  await settle();
+  $("comment").value = "Is step 3 safe? And step 4";
+  posts()[0].answer(202, { status: "accepted" });
+  await settle();
+  assert.equal($("comment").value, "Is step 3 safe? And step 4");
+});
+
+test("participant page: an error under the box goes at the next edit, and at the next send", async (t) => {
+  const { $, posts } = await openPage(t);
+  const paste = new window.Event("paste", { cancelable: true });
+  Object.defineProperty(paste, "clipboardData", { value: { files: [{ name: "a.png", type: "image/png", size: 10 }], items: [], getData: () => "" } });
+  $("comment").dispatchEvent(paste);
+  assert.equal($("error").hidden, false);
+  $("comment").value = "A";
+  $("comment").dispatchEvent(new window.Event("input"));
+  assert.equal($("error").hidden, true);
+
+  $("comment").dispatchEvent(paste);
+  assert.equal($("error").hidden, false);
+  $("comment").value = "B";
+  enter($("comment"));
+  await settle();
+  assert.equal($("error").hidden, true, "cleared as the comment goes");
+  posts()[0].answer(202, { status: "accepted" });
+  await settle();
+});
+
 test("participant page: a comment whose post fails can be sent again", async (t) => {
   const { $, posts } = await openPage(t);
   $("comment").value = "Is step 3 safe?";

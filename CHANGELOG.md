@@ -41,6 +41,9 @@ and commands may change between minor versions. How releases are made:
   over-$1000 one: it refuses as the Invite's cap field does ("A cap is dollars, 0 to 1000.").
 - A double tap on the web's Stop no longer asks twice (two confirms, or two stops): a second Stop of the same session
   while the first one asks the worker what still runs, or stops it, does nothing.
+- A participant's comment box keeps what they typed while their last comment was on its way (it was cleared when the
+  comment was accepted), and an error under the box (a refusal, "Images can't go in a review comment yet") goes at
+  their next edit or send instead of staying until a comment went through.
 
 ## [0.121.0] - 2026-10-26
 
