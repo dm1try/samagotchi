@@ -31,9 +31,10 @@ module Samagotchi
       # A participant's refused routes are audited at most this often per
       # route (a page retrying would fill the log).
       REFUSED_AUDIT_INTERVAL = 60.0
-      # At most this many refusals a minute are remembered, so audited:
-      # rotating paths or headers can't grow the map or the audit file
-      # without bound (as App::REFUSED_LOG_KEYS for the log).
+      # At most this many refusals a minute are remembered per reason, so
+      # audited: rotating paths or headers can't grow the map or the audit
+      # file without bound (as App::REFUSED_LOG_KEYS for the log), nor one
+      # reason's flood silence another's.
       REFUSED_AUDIT_KEYS = 256
 
       ENDED = {
@@ -201,11 +202,12 @@ module Samagotchi
         key = per_route ? [grant.id, req.request_method, req.path_info, reason, fields] : [grant.id, reason, fields]
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @participant_mutex.synchronize do
-          @participant_refused.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if @participant_refused.size > 64
-          next false if @participant_refused.size >= REFUSED_AUDIT_KEYS && !@participant_refused.key?(key)
+          seen = (@participant_refused[reason] ||= {})
+          seen.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if seen.size > 64
+          next false if seen.size >= REFUSED_AUDIT_KEYS && !seen.key?(key)
 
-          last = @participant_refused[key]
-          (last.nil? || now - last >= REFUSED_AUDIT_INTERVAL).tap { |fresh| @participant_refused[key] = now if fresh }
+          last = seen[key]
+          (last.nil? || now - last >= REFUSED_AUDIT_INTERVAL).tap { |fresh| seen[key] = now if fresh }
         end
         return unless due
 

@@ -364,6 +364,13 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
         expect(trade_code(code, headers: proxied("alex@pod.test")).first).to eq(204)
       end
 
+      it "keeps a code whose grant can't be found (deleted, left out of a newer store), refusing the trade" do
+        code
+        File.write(grants.path, JSON.generate(JSON.parse(File.read(grants.path)).merge("grants" => [])))
+        expect(trade_code(code, headers: proxied("alex@pod.test")).first).to eq(401)
+        expect(codes.redeem(code)&.first).to eq(:grant)
+      end
+
       it "leaves an unbound grant's code as it was: anyone through the proxy uses it up" do
         unbound = codes.issue(kind: :grant, token: issued.token, ttl: 600)
         expect(trade_code(unbound, headers: proxied("mallory@pod.test")).first).to eq(204)

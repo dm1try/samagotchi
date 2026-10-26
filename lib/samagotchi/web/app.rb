@@ -524,7 +524,10 @@ module Samagotchi
 
       def code_identity_ok?(req, token)
         grant = @grants.lookup(token)
-        return true unless grant&.identity
+        # No grant to check it against (deleted, left out of a newer store,
+        # a store that doesn't read): kept, the trade refused.
+        return false if grant.nil?
+        return true unless grant.identity
 
         proxied = proxied?(req)
         state, identity = proxied ? proxy_identity(req) : [:none, nil]

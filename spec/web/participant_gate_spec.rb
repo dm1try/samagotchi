@@ -290,7 +290,17 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       stub_const("Samagotchi::Web::ParticipantAccess::REFUSED_AUDIT_KEYS", 5)
       12.times { |i| call("/api/sessions/#{session.id}/context/n#{i}") }
       expect(audit.count { |line| line["event"] == "refused" }).to eq(5)
-      expect(app.instance_variable_get(:@participant_refused).size).to eq(5)
+      expect(app.instance_variable_get(:@participant_refused)["not_permitted"].size).to eq(5)
+    end
+
+    it "keeps a bound refusal's audit line when another reason filled its cap (one cap per reason)" do
+      stub_const("Samagotchi::Web::ParticipantAccess::REFUSED_AUDIT_KEYS", 3)
+      6.times { |i| call("/api/sessions/#{session.id}/context/n#{i}") }
+      bound = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Kim", state_dir: state_dir)
+      grants.send(:update) { |all| [all.map { |g| g.id == bound.grant.id ? g.with(identity: "kim@corp.test") : g }, nil] }
+      expect(json("/api/info", bearer: bound.token).last["error"]).to eq("token_bound")
+      reasons = audit.select { |line| line["event"] == "refused" }.map { |line| line["reason"] }
+      expect(reasons.tally).to eq("not_permitted" => 3, "token_bound" => 1)
     end
 
     it "is token_bound on the LAN for a grant bound to an identity (only an auth proxy can carry one)" do
