@@ -189,6 +189,23 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       expect(sent.first[3].keys).not_to include(:badge, :open)
       expect(store.subscriptions.map(&:label)).to eq(%w[phone stale])
     end
+
+    context "with a device whose key on disk is off the curve" do
+      let(:client) do
+        ok = Struct.new(:code, :body) { def [](_name) = nil }.new("201", "")
+        Samagotchi::Web::Push::Client.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: ->(_uri, _request) { ok })
+      end
+
+      it "answers its failure and still pushes to the others, no 500" do
+        bad = store.add(receiver.subscription(endpoint), origin: origin, label: "bad")
+        store.add(WebPushReceiver.new.subscription("#{endpoint}2"), origin: origin, label: "good")
+        WebPushReceiver.spoil(store, bad.id)
+
+        status, body = json("/api/push/test", method: "POST", body: {})
+        expect(status).to eq(200)
+        expect(body["devices"].map { |d| [d["label"], d["status"]] }).to eq([%w[bad failed], %w[good ok]])
+      end
+    end
   end
 
   describe "PATCH /api/push/subscriptions/:id" do

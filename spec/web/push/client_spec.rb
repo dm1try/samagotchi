@@ -118,4 +118,11 @@ RSpec.describe Samagotchi::Web::Push::Client do
     expect(described_class.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: slow).deliver(sub, {}, ttl: 1, urgency: "high").error)
       .to eq("timeout")
   end
+
+  it "is failed, with the error's class, for a device whose key on disk is off the curve, and posts nothing" do
+    WebPushReceiver.spoil(store, sub.id)
+    result = client.deliver(store.find(sub.id), { kind: "show" }, ttl: 1, urgency: "high")
+    expect(result).to have_attributes(status: :failed, code: nil, error: "ArgumentError", retry_after: nil)
+    expect(requests).to be_empty
+  end
 end

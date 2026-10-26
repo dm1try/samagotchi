@@ -66,10 +66,11 @@ files, one per machine, never in config.yml:
 `Store#add` checks what `pushManager.subscribe` gave, one message per refusal (the route answers it as 400
 `invalid_subscription`): an endpoint and both keys; https on port 443 without userinfo, at most 2048 bytes; a host in
 `Store::PUSH_SERVICES` (Apple, Google's FCM, Mozilla, `*.notify.windows.com`; a `services:` seam for specs, not
-config): chi web POSTs to that URL, so it never takes an arbitrary host; `p256dh` a 65-byte uncompressed point,
-`auth` 16 bytes. The same endpoint again replaces the old entry. `replaces:` (the device's id from its last
-subscribe, which the page keeps) drops that entry on this origin too, before the `MAX_SUBS` cap is counted, and
-yields it (the route logs `push_replaced`); its own endpoint is never dropped that way, and an unknown id is ignored.
+config): chi web POSTs to that URL, so it never takes an arbitrary host; `p256dh` a 65-byte uncompressed point
+on P-256 (built as `Crypto.ec_public` builds it), `auth` 16 bytes. The same endpoint again replaces the old entry.
+`replaces:` (the device's id from its last subscribe, which the page keeps) drops that entry on this origin too,
+before the `MAX_SUBS` cap is counted, and yields it (the route logs `push_replaced`); its own endpoint is never
+dropped that way, and an unknown id is ignored.
 That is how a subscription iOS revoked silently (Apple keeps answering 201, so `:gone` never comes) leaves the store:
 the user turns the bell off and on, the page has no live subscription to delete, and the new one replaces it. Every write is a read-change-write under
 `store.lock` (chi web's request threads and the sender thread both write). A `subscriptions.json` that doesn't read
@@ -85,7 +86,9 @@ tailnet leaves the old ones stale (never sent to: a tap would open an origin tha
 `Client#deliver(sub, payload, ttl:, urgency:)` encrypts the payload's JSON, POSTs it over TLS (open 5 s, read 10 s,
 no redirects, no retry of its own) with `Content-Encoding: aes128gcm`, `TTL`, `Urgency` and the VAPID header, and
 answers a `Client::Result`: `:ok` (200/201/202), `:gone` (404/410: the device dropped it), `:bad_jwt` (403 with
-`BadJwtToken`), `:failed` (anything else; a connection error as its class name or `timeout`, never its message).
+`BadJwtToken`), `:failed` (anything else; a connection error as its class name or `timeout`, never its message;
+any other error too, so a key off the curve on disk fails that device alone, never the Notifier's flush or the test
+push).
 A 429 or 5xx also carries `retry_after`: its `Retry-After` delta-seconds up to `RETRY_MAX` 60, else (missing, an
 HTTP date) `RETRY_DEFAULT` 10; nil for anything else, a connection error too (it may have been delivered). The
 transport is injectable: `spec/web/push/client_spec.rb` runs a fake push service (WEBrick, plain http through the

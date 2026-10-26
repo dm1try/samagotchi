@@ -307,6 +307,7 @@ module Samagotchi
           unless p256dh&.bytesize == 65 && p256dh.getbyte(0) == 4
             raise Invalid, "a push subscription's p256dh must be a P-256 public key (65 bytes, base64url)"
           end
+          raise Invalid, "a push subscription's p256dh is not a point on P-256" unless point?(p256dh)
           raise Invalid, "a push subscription's auth must be 16 bytes (base64url)" unless decoded(keys["auth"])&.bytesize == 16
 
           [endpoint, keys["p256dh"], keys["auth"]]
@@ -329,6 +330,15 @@ module Samagotchi
 
         def service?(host)
           @services.any? { |entry| entry.start_with?(".") ? host.end_with?(entry) && host.length > entry.length : host == entry }
+        end
+
+        # The key as Crypto.encrypt builds it: 65 bytes starting 0x04 can
+        # still lie off the curve (encrypt would raise on every push).
+        def point?(raw)
+          Crypto.ec_public(raw)
+          true
+        rescue ArgumentError, OpenSSL::OpenSSLError
+          false
         end
 
         def decoded(text)

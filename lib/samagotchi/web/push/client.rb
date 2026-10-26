@@ -76,6 +76,11 @@ module Samagotchi
           result_for(response, ms(started))
         rescue *NETWORK_ERRORS => e
           Result.new(status: :failed, code: nil, ms: ms(started), error: e.is_a?(Timeout::Error) ? "timeout" : e.class.name)
+        rescue StandardError => e
+          # Anything else is this device's failure too (a p256dh off the
+          # curve on disk: Crypto.encrypt raises), never the other devices'
+          # or the Notifier's flush. Its class, never its message.
+          Result.new(status: :failed, code: nil, ms: ms(started), error: e.class.name)
         end
 
         private

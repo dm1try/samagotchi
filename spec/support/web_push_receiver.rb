@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "openssl"
 require "samagotchi/web/push/crypto"
 
@@ -45,6 +46,18 @@ class WebPushReceiver
     raise "no last-record delimiter" unless plain.end_with?("\x02".b)
 
     plain.delete_suffix("\x02".b)
+  end
+
+  # A p256dh the length and prefix check pass (65 bytes, 0x04) that is no
+  # point on P-256: Crypto.encrypt raises on it.
+  OFF_CURVE = Crypto.b64u("\x04".b + ("\x01".b * 64))
+
+  # Gives the device +id+ in +store+ the OFF_CURVE key on disk (a
+  # hand-edited subscriptions.json, or one stored before the check).
+  def self.spoil(store, id)
+    data = JSON.parse(File.read(store.subs_path))
+    data["subscriptions"].each { |row| row["keys"]["p256dh"] = OFF_CURVE if row["id"] == id }
+    File.write(store.subs_path, JSON.generate(data))
   end
 
   # The JWT's claims when +header+ (a vapid Authorization) verifies with

@@ -135,6 +135,16 @@ RSpec.describe Samagotchi::PushCommand do
       expect(store.find(old.id).last_error).to eq("500")
     end
 
+    it "prints the failure of a device whose key on disk is off the curve, no backtrace (exit 1)" do
+      WebPushReceiver.spoil(store, phone.id)
+      ok = Struct.new(:code, :body) { def [](_name) = nil }.new("201", "")
+      real = ->(_sub) { Samagotchi::Web::Push::Client.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: ->(*) { ok }) }
+      code = described_class.new(["test", phone.id], stdout: out, stderr: err, store: store, origin: -> { current }, client: real).run
+      expect(code).to eq(1)
+      expect(out.string).to match(/\A#{phone.id}  iPhone · 2026-10-24  failed  \(\d+ ms\): ArgumentError\n\z/)
+      expect(store.find(phone.id).last_error).to eq("ArgumentError")
+    end
+
     it "says so when there is no device to push to" do
       store.remove(phone.id)
       expect(run("test")).to eq(1)

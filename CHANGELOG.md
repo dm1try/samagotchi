@@ -26,6 +26,10 @@ and commands may change between minor versions. How releases are made:
   newer chi's) with 409 `grants_unwritable` and the store's own message, not a 500 with a backtrace on every refresh.
 - A participant name or an annotate preset holding `\&`, `` \` `` or `\'` no longer breaks chi web's page: it was read
   as a backreference when the page's attributes went in.
+- One push subscription with a `p256dh` key off the P-256 curve no longer stops every push: chi web refuses such a
+  subscribe (400 `invalid_subscription`), and one already on disk fails that device alone, so the other devices still
+  get the push, `POST /api/push/test` answers that device as failed instead of a 500, and `chi web push test` prints
+  its failure instead of a backtrace.
 
 ## [0.121.0] - 2026-10-26
 

@@ -112,6 +112,7 @@ RSpec.describe Samagotchi::Web::Push::Store do
         sub.merge("endpoint" => "https://web.push.apple.com.evil.example/x") => /push services/,
         sub.merge("keys" => sub["keys"].merge("p256dh" => "AAAA")) => /p256dh must be a P-256 public key/,
         sub.merge("keys" => sub["keys"].merge("p256dh" => "!!")) => /p256dh must be a P-256 public key/,
+        sub.merge("keys" => sub["keys"].merge("p256dh" => WebPushReceiver::OFF_CURVE)) => /p256dh is not a point on P-256/,
         sub.merge("keys" => sub["keys"].merge("auth" => Samagotchi::Web::Push::Crypto.b64u("x" * 15))) => /auth must be 16 bytes/
       }
       refusals.each do |given, message|

@@ -320,6 +320,45 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     end
   end
 
+  context "with a device whose key on disk is off the curve, before a good one" do
+    let(:posted) { [] }
+    # The real Client (its Crypto.encrypt) on a transport that answers 201,
+    # the calls recorded as the fake records them.
+    let(:client) do
+      ok = Struct.new(:code, :body) { def [](_name) = nil }.new("201", "")
+      transport = lambda do |uri, _request|
+        posted << uri.path
+        ok
+      end
+      real = Samagotchi::Web::Push::Client.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: transport)
+      PushNotifierSpecClient.new.tap do |fake|
+        fake.define_singleton_method(:deliver) do |sub, payload, ttl:, urgency:|
+          calls << { sub: sub.id, payload: payload, ttl: ttl, urgency: urgency }
+          real.deliver(sub, payload, ttl: ttl, urgency: urgency)
+        end
+      end
+    end
+    let!(:pad) { store.add(WebPushReceiver.new.subscription("https://web.push.apple.com/pad"), origin: origin, label: "iPad") }
+
+    before do
+      WebPushReceiver.spoil(store, phone.id)
+      notifier.start(PushNotifierSpecHub.new, sender: false)
+    end
+
+    it "still pushes to the good one, keeps the bad one's failure and marks the key handled" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      session(question: { id: "q1", kind: "approval" })
+      expect { advance(3) }.not_to raise_error
+
+      expect(client.calls.map { |c| c[:sub] }).to eq([phone.id, pad.id])
+      expect(posted).to eq(["/pad"])
+      expect(store.find(phone.id).last_error).to eq("ArgumentError")
+      expect(store.find(pad.id).last_ok_at).not_to be_nil
+      expect(store.sent_keys.keys).to eq(["s1:q1"])
+      expect(Samagotchi::Log).to have_received(:warn).with(:web, "push_failed", hash_including(device: phone.id)).once
+    end
+  end
+
   context "with the hour's cap" do
     before { notifier.start(PushNotifierSpecHub.new, sender: false) }
 
