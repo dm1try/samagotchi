@@ -63,6 +63,49 @@ test("participants: Invite's body: a name, person or agent, the expiry in second
   assert.match(inviteBody({ name: "A", cap: "5000" }).error, /dollars/);
 });
 
+test("participants: Invite's email binds the link (lower case), names them by its local part, refuses a non-address", () => {
+  assert.deepEqual(inviteBody({ name: "", kind: "human", days: "7", identity: " Alex.Doe@Corp.Example " }).body,
+    { name: "alex.doe", kind: "human", ttl: 604800, identity: "alex.doe@corp.example" });
+  assert.equal(inviteBody({ name: "Alex", identity: "alex@github" }).body.name, "Alex");
+  assert.ok(!("identity" in inviteBody({ name: "Alex", identity: "  " }).body));
+  for (const bad of ["alex", "a@b@c", "a b@c", "a,b@c", "<a@b>"]) {
+    assert.match(inviteBody({ name: "A", identity: bad }).error, /one address/, bad);
+  }
+});
+
+test("participants: the email field only behind a proxy that names the user; a bound row and link say so", () => {
+  const plain = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
+  assert.doesNotMatch(plain, /name="identity"/);
+  const proxied = markupOf(panelTemplate([], { now: NOW, sessionId: "s", identityHeader: "X-Forwarded-Email" }));
+  assert.match(proxied, /name="identity"[^>]*type="email"/);
+  assert.match(proxied, /anyone the proxy lets in who gets the link can open it/);
+  const bound = markupOf(panelTemplate([grant({ identity: "alex@corp.example" })], { now: NOW, sessionId: "s" }));
+  assert.match(bound, /bound to alex@corp\.example/);
+  assert.doesNotMatch(markupOf(panelTemplate([grant()], { now: NOW, sessionId: "s" })), /bound to/);
+  const shown = markupOf(panelTemplate([], { now: NOW, sessionId: "s",
+    invite: { name: "Alex", link: "https://x/#code=chc_c", lan: true, identity: "alex@corp.example" } }));
+  assert.match(shown, /It opens this session only, for alex@corp\.example only\./);
+});
+
+test("participants panel: the list's identity_header shows the email field, and the invite sends it", async () => {
+  const sent = [];
+  const c = panelControl({ api: { list: async () => ({ participants: [], identity_header: "X-Forwarded-Email" }),
+                                  invite: async (_id, body) => { sent.push(body); return { participant: { name: body.name, identity: body.identity }, link: "https://x/#code=chc_c", lan: true }; } } });
+  await c.ctl.load();
+  c.chip.click();
+  await tick();
+  const form = c.pop.querySelector("form.pp-invite");
+  assert.ok(form.elements.identity, "the email field");
+  form.elements.identity.value = "Kim@Corp.Example";
+  c.submit(form);
+  await tick();
+  await tick();
+  assert.deepEqual(sent.map(({ name, kind, identity }) => ({ name, kind, identity })),
+    [{ name: "kim", kind: "human", identity: "kim@corp.example" }]);
+  assert.match(c.pop.querySelector(".pp-invite-done").textContent, /for kim@corp\.example only/);
+  c.done();
+});
+
 test("participants: the panel lists the active ones with Cap and Revoke, folds the ended, links the participant view", () => {
   const out = markupOf(panelTemplate([grant(), grant({ id: "p_old", name: "Kim", state: "expired" })], { now: NOW, sessionId: "s 1" }));
   assert.match(out, /data-act="revoke" data-id="p_0001abcd"/);
