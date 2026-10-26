@@ -218,6 +218,31 @@ test("participant page: a re-read that fails after a turn boundary keeps the thr
   assert.match($("thread").textContent, /Next/);
 });
 
+// happy-dom lays nothing out, so the header's height can't be measured
+// here: what keeps it is that #offline is out of the header's rows (an
+// absolute overlay on the thread's top) and a failed read leaves #note as
+// it was.
+test("participant page: a failed read is said over the thread, never as a header row, and leaves the note", async (t) => {
+  assert.match(HTML, /\.p-offline\{position:absolute;/);
+  let gets = 0;
+  const { $, sources, tick } = await openPage(t, {
+    respond: (call) => {
+      gets++;
+      if (gets === 2) call.answer(404, { error: "not_found" });
+      else call.answer(200, REVIEW);
+    },
+  });
+  assert.equal($("offline").closest(".p-head-in"), null, "not in the header's flex rows");
+  assert.ok($("offline").parentElement === $("head"));
+  const note = $("note").textContent;
+  assert.match(note, /You can comment and ask/);
+  sources[0].emit("turn_completed");
+  await tick(120);
+  assert.equal($("offline").hidden, false);
+  assert.equal($("offline").textContent, "This session is gone.");
+  assert.equal($("note").textContent, note);
+});
+
 test("participant page: a 401 ends the page with the server's words for revoked and expired", async (t) => {
   for (const [code, detail] of [["token_revoked", "this review link was revoked by the session's owner"],
     ["token_expired", "this review link expired: ask the session's owner for a new one"]]) {

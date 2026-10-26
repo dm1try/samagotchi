@@ -46,6 +46,8 @@ and commands may change between minor versions. How releases are made:
   their next edit or send instead of staying until a comment went through.
 - An invite whose participants panel closed before chi web answered no longer loses its one-time link (the grant was
   made, so the owner had to revoke and invite again): a sticky toast names it with Copy link.
+- A participant's thread no longer jumps when a read fails and again when it recovers: "Can't reach the session —
+  retrying…" (and "This session is gone.") shows over the thread's top instead of as a new row in the header.
 
 ## [0.121.0] - 2026-10-26
 
