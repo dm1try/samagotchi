@@ -47,20 +47,27 @@ module Samagotchi
 
       # @param id [String] a judgment's id
       # @param answer [String] one of ANSWERS
+      # @param question_id [String, nil] the question the user answered: a
+      #   live judgment is written before its card exists, so its label
+      #   carries the card's id (what `chi guardrails replay` skips by)
       # @return [Boolean] whether the line was written
-      def label(id, answer)
+      def label(id, answer, question_id: nil)
         return false if id.to_s.strip.empty?
 
-        append({ "kind" => "label", "id" => id.to_s, "at" => Time.now.utc.iso8601, "answer" => answer.to_s })
+        line = { "kind" => "label", "id" => id.to_s, "at" => Time.now.utc.iso8601, "answer" => answer.to_s }
+        line["question_id"] = question_id.to_s unless question_id.to_s.empty?
+        append(line)
       end
 
       # The judgments, oldest first, each joined with its LAST label
-      # (answer: nil when it has none). Lines that don't parse are skipped;
-      # labels of a judgment that isn't there are dropped.
+      # (answer: nil when it has none) and the first question_id a label
+      # gave it, when the judgment line has none. Lines that don't parse are
+      # skipped; labels of a judgment that isn't there are dropped.
       # @return [Array<Hash>]
       def entries
         judgments = {}
         labels = {}
+        question_ids = {}
         with_lock(File::LOCK_SH) do |file|
           file.each_line do |line|
             data = parse(line)
@@ -68,11 +75,19 @@ module Samagotchi
 
             case data["kind"]
             when "judgment" then judgments[data["id"]] = data
-            when "label" then labels[data["id"]] = data["answer"] if data.key?("id")
+            when "label"
+              next unless data.key?("id")
+
+              labels[data["id"]] = data["answer"]
+              question_ids[data["id"]] ||= data["question_id"]
             end
           end
         end
-        judgments.map { |id, judgment| judgment.merge("answer" => labels[id]) }
+        judgments.map do |id, judgment|
+          joined = judgment.merge("answer" => labels[id])
+          joined["question_id"] ||= question_ids[id] if question_ids[id]
+          joined
+        end
       rescue StandardError => e
         warn_about(e)
         []

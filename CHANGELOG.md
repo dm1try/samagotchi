@@ -13,6 +13,9 @@ and commands may change between minor versions. How releases are made:
   (`$XDG_CONFIG_HOME/samagotchi/config.yml`, `$HOME/.config/…`, `memories/../config.yml`, `cd ~/.config && …`): it
   refuses by the same test that makes an ask the user's alone, so such a call goes to the user. Memory files still
   can be auto-allowed.
+- `chi guardrails replay` no longer judges an ask again that System 1 already judged live (audit or on mode), which
+  counted each such decision twice and let a rule pass `min_record` early: a live label now carries the card's
+  `question_id`, and a live line without one is matched by its session and call digest.
 
 ## [0.121.0] - 2026-10-26
 

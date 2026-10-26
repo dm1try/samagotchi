@@ -56,6 +56,9 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     expect(lines[0]["call_digest"]).to eq(Digest::SHA256.hexdigest("git push origin main"))
     expect(lines[0]["latency_ms"]).to be_a(Integer)
     expect(lines[1]).to include("kind" => "label", "id" => lines[0]["id"], "answer" => "allow_once")
+    # The card's id: the judgment was written before the card existed, and
+    # `chi guardrails replay` skips the ask by it.
+    expect(lines[1]["question_id"]).to eq("q1")
   end
 
   it "labels a wider scope allow_wide and a declined call deny" do
@@ -76,6 +79,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     expect(verdict).to be_deny
     expect(log_lines.map { |line| line["kind"] }).to eq(%w[judgment label])
     expect(log_lines.last["answer"]).to eq("none")
+    expect(log_lines.last).not_to have_key("question_id")
   end
 
   it "writes no label for a parent agent's allow, since that is not the user" do

@@ -408,7 +408,7 @@ module Samagotchi
                   "deny"
                 end
       end
-      system_one_log.label(id, label)
+      system_one_log.label(id, label, question_id: (answer.id if answer.is_a?(Samagotchi::QuestionAnswer)))
     rescue StandardError => e
       Samagotchi::Log.warn(:guardrails, "system_one_label_failed", error: "#{e.class}: #{e.message}")
       nil

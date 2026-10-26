@@ -61,6 +61,7 @@ module Samagotchi
     # uses.
     SKIP_WORDS = {
       already_replayed: "already replayed",
+      judged_live: "already judged live",
       answered_by_parent: "answered by a parent agent",
       parent_cannot_allow: "answered by a parent that could not allow",
       unanswered: "unanswered",
@@ -72,6 +73,36 @@ module Samagotchi
     # from, its approval as the card saved it, the label its answer gives,
     # and when the user was asked.
     Ask = Data.define(:question_id, :session_id, :approval, :label, :asked_at)
+
+    # What the judgments log already holds, so no ask is judged twice: the
+    # question ids its judgments name, with their origin (a replay's own, a
+    # live one's through its label), and, for live judgments with none (an ask that was
+    # cancelled, or a line older than the id), how many each (session, call
+    # digest) has. A card with no id match takes one of those (#take_live).
+    Judged = Data.define(:question_ids, :live_calls) do
+      # @param entries [Array<Hash>] SystemOne::Log#entries
+      def self.of(entries)
+        ids = entries.filter_map { |entry| [entry["question_id"], entry["origin"]] if entry["question_id"] }.to_h
+        live = Hash.new(0)
+        entries.each do |entry|
+          next unless entry["origin"] == "live" && entry["question_id"].nil?
+
+          live[[entry["session_id"], entry["call_digest"]]] += 1
+        end
+        new(question_ids: ids, live_calls: live)
+      end
+
+      # Whether a live judgment without a question id is this card's: true
+      # (and that judgment counted off) while one with its session and call
+      # digest is left.
+      def take_live(session_id, approval)
+        key = [session_id, SystemOne::ApprovalQuestion.call_fields(approval)["call_digest"]]
+        return false unless live_calls[key].positive?
+
+        live_calls[key] -= 1
+        true
+      end
+    end
 
     # @param argv [Array<String>] the arguments after "guardrails"
     # @param client [SystemOne::Client, nil] the judgment client; nil: the
@@ -122,7 +153,7 @@ module Samagotchi
 
       sessions_dir = @sessions_dir || Session.default_state_dir
       log = @log || SystemOne::Log.new(dir: Guardrails::Approvals.dir_for(sessions_dir))
-      replayed = File.exist?(log.path) ? log.entries.filter_map { |entry| entry["question_id"] if entry["origin"] == "replay" }.to_set : Set.new
+      judged = Judged.of(File.exist?(log.path) ? log.entries : [])
       @dry_run = options[:dry_run] ? true : false
 
       asks = []
@@ -140,7 +171,7 @@ module Samagotchi
           end
 
           entries.each do |entry|
-            ask = ask_of(entry, name, replayed, sessions_dir)
+            ask = ask_of(entry, name, judged, sessions_dir)
             next if ask.nil?
 
             ask.is_a?(Symbol) ? skipped[ask] += 1 : asks << ask
@@ -168,9 +199,10 @@ module Samagotchi
     end
 
     # One card entry as an ask to judge: an Ask, a skip reason (:already_replayed,
-    # :answered_by_parent, :parent_cannot_allow, :unanswered, :no_approval,
-    # :no_question_id), or nil for an entry that is not a question at all.
-    def ask_of(entry, session_id, replayed, sessions_dir)
+    # :judged_live, :answered_by_parent, :parent_cannot_allow, :unanswered,
+    # :no_approval, :no_question_id), or nil for an entry that is not a
+    # question at all.
+    def ask_of(entry, session_id, judged, sessions_dir)
       return nil unless entry.is_a?(Hash) && entry[:type] == "question"
 
       pending = entry[:pending_question]
@@ -178,7 +210,10 @@ module Samagotchi
 
       question_id = pending[:id].to_s
       return :no_question_id if question_id.empty?
-      return :already_replayed if replayed.include?(question_id)
+
+      origin = judged.question_ids[question_id]
+      return origin == "replay" ? :already_replayed : :judged_live if origin
+      return :judged_live if judged.take_live(session_id, pending[:approval])
 
       answer = entry[:answer]
       label = if entry[:cancelled]

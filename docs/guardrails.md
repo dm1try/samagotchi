@@ -684,7 +684,7 @@ rewritten to add its label:
 
 ```json
 {"kind":"judgment","id":"…","at":"…","session_id":"…","rule":"git-push","source":"config","tool":"execute","call":"git push origin main","call_digest":"<sha256 of the whole call>","repo_name":"samagotchi","p":0.97,"threshold":0.8,"model":"Qwen3.8-Flash","latency_ms":180,"decision":"audit","origin":"live"}
-{"kind":"label","id":"…","at":"…","answer":"allow_once"}
+{"kind":"label","id":"…","at":"…","answer":"allow_once","question_id":"…"}
 ```
 
 `decision` is what the judgment led to: `audit` (audit mode), `asked` (on
@@ -692,7 +692,9 @@ mode, the user was asked), `auto` (on mode, System 1 answered for the user).
 A judgment that never arrived is logged too, with `p` null, so the failures
 count as well. The label line, keyed by the judgment's id, is what the user
 did: `allow_once`, `allow_wide` (any scope wider than once), `deny`, or
-`none` for an ask that was cancelled. **A parent agent's answer is not the
+`none` for an ask that was cancelled. A live label carries the card's
+`question_id` when the user answered (the judgment is written before the card
+exists), so a replay knows the ask was judged. **A parent agent's answer is not the
 user's: its allow labels nothing. Its deny is a label only where the parent
 could have allowed instead** — the ask is not `user_only` and the session's
 parent level permits a permit (`Guardrails::ParentPolicy`); a parent that was
@@ -783,8 +785,11 @@ whose `pending_question.approval` is there and that have an `answer` or were
 `cancelled`. A label is the scope the user took — `allow_once` for "Allow once",
 `allow_wide` for a wider one, `deny` for anything else, `none` for a cancelled
 ask. Skipped: a question no one answered, a relay card, which carries no
-approval of its own, and a question id a previous replay already logged — so
-running it twice adds nothing. A parent agent's answer is not the user's: its
+approval of its own, a question id a previous replay already logged — so
+running it twice adds nothing — and an ask already judged live (audit or on
+mode): by the `question_id` its label carries, or, for a live judgment with
+none (a cancelled ask, an older line), by its session and `call_digest`, one
+card per such line. A parent agent's answer is not the user's: its
 allow is skipped, and its deny is replayed only where the parent could have
 allowed (the card is not `user_only` and the session's parent level permits a
 permit). A cards file that doesn't parse is skipped with one warning line,

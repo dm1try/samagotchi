@@ -174,6 +174,50 @@ RSpec.describe Samagotchi::GuardrailsCommand do
     expect(out.string).to include("6 already replayed")
   end
 
+  describe "asks already judged live (audit or on mode)" do
+    # Three git-push asks the user allowed, each judged live before its card
+    # opened: the live judgment and its label, with the card's id on the
+    # label as GuardrailWiring writes it, or none (an older line).
+    def live_judged(ids:, with_question_id:)
+      id = session(ids.map { |qid| question(qid, "git-push", answer: answer(0)) })
+      ids.each do |qid|
+        judgment = log.judgment(session_id: id, rule: "git-push", tool: "execute",
+                                **S1::ApprovalQuestion.call_fields(approval("git-push").transform_keys(&:to_sym)),
+                                p: 0.97, decision: "audit", origin: "live")
+        log.label(judgment, "allow_once", question_id: (qid if with_question_id))
+      end
+      id
+    end
+
+    def record = S1::Record.new(lines, rule: "git-push").summary
+
+    it "judges none of them again: the record is 3 allows, not 6" do
+      live_judged(ids: %w[q-1 q-2 q-3], with_question_id: true)
+      expect(run(["replay"])).to eq(0)
+      expect(lines.size).to eq(3)
+      expect(lines.map { |entry| entry["origin"] }).to eq(%w[live live live])
+      expect(lines.map { |entry| entry["question_id"] }).to eq(%w[q-1 q-2 q-3])
+      expect(record).to include(asks: 3, allow_once: 3)
+      expect(S1::Record.new(lines, rule: "git-push").qualifies?(threshold: 0.8, min_record: 5)).to be(false)
+      expect(out.string).to include("3 already judged live")
+    end
+
+    it "matches a live line with no question id by its session and call digest, one card per line" do
+      session_id = live_judged(ids: %w[q-1 q-2 q-3], with_question_id: false)
+      # A fourth identical ask in that session, never judged live.
+      cards = File.join(Samagotchi::Session.session_dir(session_id, state_dir: sessions_dir), "cards.json")
+      data = JSON.parse(File.read(cards))
+      data["entries"] << question("q-4", "git-push", answer: answer(0))
+      File.write(cards, JSON.generate(data))
+
+      expect(run(["replay"])).to eq(0)
+      expect(lines.map { |entry| entry["origin"] }).to eq(%w[live live live replay])
+      expect(lines.last["question_id"]).to eq("q-4")
+      expect(record).to include(asks: 4, allow_once: 4)
+      expect(out.string).to include("3 already judged live")
+    end
+  end
+
   it "judges but writes nothing with --dry-run" do
     fixture
     expect(run(["replay", "--dry-run"])).to eq(0)
