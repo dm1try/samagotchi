@@ -40,13 +40,16 @@ module Samagotchi
 
       # What Tools::ToolIndex#declare registered: the entries of +source+
       # are the index's search and call tools, +call_name+ the call tool's
-      # name, and +sourced+ whether a source (an MCP server's bundle)
-      # registered when the plugins loaded. +deferrable+ (→ the sources'
+      # name, and +groups+ the source groups registered when the plugins
+      # loaded. +deferrable+ (→ the sources'
       # tools a host that loads tools may declare deferred) and +wrap+
       # (call → the call_tool call a direct call of one of them runs as, or
       # nil) are nil when nothing reaches them.
-      Index = Data.define(:source, :call_name, :sourced, :deferrable, :wrap) do
-        def initialize(source:, call_name:, sourced:, deferrable: nil, wrap: nil) = super
+      Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap) do
+        def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil)
+          super(source: source, call_name: call_name, groups: Array(groups).map(&:to_s).uniq.freeze,
+                deferrable: deferrable, wrap: wrap)
+        end
       end
 
       def initialize
@@ -181,7 +184,7 @@ module Samagotchi
       # the declared tools stay the same for a session's life. A built-in
       # left out counts only while call_tool can reach it (not removed).
       def index_needed?(toolkit)
-        return true if @index.sourced
+        return true unless @index.groups.empty?
         return false if toolkit&.removed&.include?(@index.call_name)
 
         index_reaches?(toolkit)
@@ -191,7 +194,7 @@ module Samagotchi
       # removed or not: a source registered at load, or a built-in the
       # toolkit leaves out without removing it.
       def index_reaches?(toolkit)
-        @index.sourced || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
+        !@index.groups.empty? || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
       end
 
       # Not declared by +toolkit+ under +layers+. An index tool counts only

@@ -196,7 +196,7 @@ module Samagotchi
         @registry = nil
         # The source groups' lines in the search tool's description, as
         # #declare found them (#find_description).
-        @described = [].freeze
+        @described = {}.freeze
         @dropped = []
         @dropped_mutex = Mutex.new
       end
@@ -216,7 +216,7 @@ module Samagotchi
       # sources'. A source group with a reserved name, or one an earlier
       # group has, is left out of search, lookup and the description (said
       # once per name: a source publishes after load too).
-      def groups
+      def all_groups
         own = registry_groups
         taken = own.map(&:name) | RESERVED_GROUPS
         kept = @sources.flat_map(&:groups).select do |group|
@@ -230,6 +230,8 @@ module Samagotchi
         own + kept
       end
 
+      def reached_groups = all_groups
+
       # Register the search and call tools in +registry+, once, after the
       # plugins load (or without them: the built-ins a toolkit leaves out
       # are reachable either way); +registry+ declares them per toolkit
@@ -238,7 +240,7 @@ module Samagotchi
       # @return [Array<String>] the names registered
       def declare(registry, failures: nil)
         @registry = registry
-        @described = description_lines(groups.reject { |group| own?(group) }).freeze
+        @described = description_lines(all_groups.reject { |group| own?(group) }).freeze
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
           if (taken = registry[spec.name])
@@ -251,7 +253,8 @@ module Samagotchi
           registry.register(spec.name, source: SOURCE, unwrap: unwrap, **spec.entry_fields(nil))
           spec
         end
-        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?,
+        source_groups = all_groups.reject { |group| own?(group) }.map(&:name)
+        registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: source_groups,
                                              deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) })
         declared!(declared)
         declared.map(&:name)
@@ -293,7 +296,7 @@ module Samagotchi
       def find_description
         "Search tools this session doesn't declare, by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
           "its name (<group>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
-          "name.\nGroups:\n#{(description_lines(registry_groups) + @described).join("\n")}"
+          "name.\nGroups:\n#{(description_lines(registry_groups).values + @described.values).join("\n")}"
       end
 
       # ── Search ──────────────────────────────────────────────────────────
@@ -372,9 +375,10 @@ module Samagotchi
       # same list in any session and after a respawn.
       # @return [Array<Tool>]
       def deferrable
-        tools = groups.reject { |group| own?(group) }.flat_map(&:tools)
-        counts = tools.map(&:acts_as).tally
-        tools.select do |tool|
+        all = all_groups.reject { |group| own?(group) }.flat_map(&:tools)
+        reached = reached_groups.reject { |group| own?(group) }.flat_map(&:tools)
+        counts = all.map(&:acts_as).tally
+        reached.select do |tool|
           tool.refusal.nil? && counts[tool.acts_as] == 1 && tool.acts_as.match?(DEFERRABLE_NAME) &&
             !@registry&.key?(tool.acts_as)
         end.sort_by(&:acts_as)
@@ -466,7 +470,7 @@ module Samagotchi
       end
 
       def find_in(query, only)
-        all = groups
+        all = reached_groups
         searched = all
         if only && !only.strip.empty?
           searched = all.select { |group| group.name == only.strip }
@@ -536,16 +540,16 @@ module Samagotchi
       # One line per group in the search tool's description: its name, its
       # summary and how many tools it can call.
       def description_lines(groups)
-        groups.map do |group|
+        groups.to_h do |group|
           count = group.callable.size
           line = "- #{group.name}"
           line += ": #{group.summary}" if group.summary
           line += " (#{count} tool#{"s" unless count == 1})" unless group.tools.empty?
-          line
+          [group.name, line]
         end
       end
 
-      # Say once per name that a source's group was left out (#groups).
+      # Say once per name that a source's group was left out (#all_groups).
       def dropped(name, why)
         first = @dropped_mutex.synchronize { @dropped.include?(name) ? false : (@dropped << name) }
         return unless first
@@ -614,7 +618,7 @@ module Samagotchi
       # @return [Tool, String]
       def lookup(name, waited: false)
         name = name.strip
-        all = groups
+        all = all_groups
         tool = all.lazy.filter_map do |group|
           next unless name.start_with?("#{group.name}/")
 
@@ -632,8 +636,8 @@ module Samagotchi
 
         # A name with a group's <group>/ waits for that group only; any
         # other name (an acts_as) for every one starting.
-        named = all.select { |group| name.start_with?("#{group.name}/") }
-        starting = (named.empty? ? all : named).select { |group| group.state == :starting }
+        named = reached_groups.select { |group| name.start_with?("#{group.name}/") }
+        starting = (named.empty? ? reached_groups : named).select { |group| group.state == :starting }
         unless waited || starting.empty?
           starting.each { |group| source_of(group.name)&.wait(group.name) }
           return lookup(name, waited: true)
@@ -662,7 +666,7 @@ module Samagotchi
       # anything else.
       # @return [Array(String, String), Array(String, nil), nil]
       def claimed(name)
-        all = groups
+        all = all_groups
         if (own = all.select { |g| own?(g) }.find { |g| g.tools.any? { |t| t.acts_as == name } })
           return [name, "#{own.name}: #{name}"]
         end

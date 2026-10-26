@@ -66,6 +66,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect([find_entry.source, call_entry.source]).to eq(%w[index index])
       expect(find_entry.core?).to be(false)
       expect(call_entry.label).to eq("mcp")
+      expect(registry.index.groups).to eq(%w[fs slow])
       expect(fs.declared_names).to eq([find_name, call_name])
       expect(fs.declared_tokens).to be > 50
     end
@@ -188,7 +189,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "lists them per toolkit, never a removed or layer-gated one, first in the description" do
       lean!
-      chi = index.groups.first
+      chi = index.all_groups.first
       expect(chi.name).to eq("chi")
       expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                              delegate delegate_result])
@@ -197,12 +198,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       )
 
       registry.toolkit = kit("child")
-      expect(index.groups.first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
-                                                            list_sessions])
+      expect(index.all_groups.first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
+                                                                list_sessions])
       registry.toolkit = kit(remove: %w[delegate])
-      expect(index.groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
+      expect(index.all_groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
       registry.toolkit = nil
-      expect(index.groups).to eq([])
+      expect(index.all_groups).to eq([])
     end
 
     it "answers a search with the tool's name, its registered schema, and how to call it" do
@@ -277,12 +278,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     second.publish([described_class::Group.new(name: "fs", tools: [tool("fs", "other")])])
     index.declare(registry)
 
-    expect(index.groups.map(&:name)).to eq(["fs"])
+    expect(index.all_groups.map(&:name)).to eq(["fs"])
     expect(registry[find_name].schema[:description]).to end_with("\nGroups:\n- fs (1 tool)")
     expect(index.find("echo")).to include("fs/echo")
     expect(index.find("echo")).not_to include("chi/echo")
     expect(index.find("other")).to start_with("No tool matches")
-    index.groups
+    index.all_groups
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "chi")).once
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "fs")).once
   end

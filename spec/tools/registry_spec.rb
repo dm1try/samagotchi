@@ -215,7 +215,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       let(:registry) do
         extended_registry.tap do |registry|
           registry.register("call_tool", schema: schema.merge(name: "call_tool"), handler: ->(*) { "" }, source: "index")
-          registry.index = described_class::Index.new(source: "index", call_name: "call_tool", sourced: true)
+          registry.index = described_class::Index.new(source: "index", call_name: "call_tool", groups: ["fs"])
         end
       end
 
@@ -234,7 +234,7 @@ RSpec.describe Samagotchi::Tools::Registry do
 
       it "declares the index's tools when they reach something, on full (nil) and a resolved toolkit alike" do
         registry.register("find_tools", schema: schema.merge(name: "find_tools"), handler: ->(*) { "" }, source: "index")
-        registry.index = described_class::Index.new(source: "index", call_name: "call_tool", sourced: false)
+        registry.index = described_class::Index.new(source: "index", call_name: "call_tool", groups: [])
         expect(registry.names).not_to include("find_tools", "call_tool")
         expect(registry.names(toolkit: kit("full"))).not_to include("find_tools", "call_tool")
         expect(registry.left_out_names).to eq([])
@@ -249,7 +249,7 @@ RSpec.describe Samagotchi::Tools::Registry do
         # full declares every built-in: call_tool would reach nothing, so removing it leaves nothing out.
         expect(registry.left_out_names(toolkit: kit("full", remove: %w[call_tool]))).to eq([])
 
-        registry.index = registry.index.with(sourced: true) # an MCP server at load: every toolkit
+        registry.index = registry.index.with(groups: ["fs"]) # an MCP server at load: every toolkit
         expect(registry.names).to include("find_tools", "call_tool")
         expect(registry.names(toolkit: kit(remove: %w[find_tools]))).to eq(registry.names(toolkit: kit) - ["find_tools"])
         expect(registry.names(toolkit: kit(remove: %w[call_tool]))).to include("find_tools") # MCP's, as on main
@@ -261,7 +261,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       # into hash during iteration". The register runs inside the walk here,
       # which makes the interleaving deterministic.
       it "walks a snapshot, so a tool registered meanwhile doesn't raise" do
-        registry.index = registry.index.with(sourced: false)
+        registry.index = registry.index.with(groups: [])
         registered = false
         allow(registry).to receive(:soft?).and_wrap_original do |original, *args|
           unless registered
