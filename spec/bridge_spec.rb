@@ -874,6 +874,18 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.last_client_activity_at).to be > after_request
       end
 
+      it "notes no activity for a refused request: an older chi web's polls don't keep the worker up" do
+        start_bridge
+        before = @bridge.last_client_activity_at
+        [{}, { "X-Chi-Bridge" => "f" * 64 }, { "X-Chi-Bridge" => @bridge_secret, "Origin" => "null" }].each do |headers|
+          res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/state"), headers)
+          expect(res.code).to eq("403")
+        end
+        wait_for("the refused connections to end") { @bridge.instance_variable_get(:@connection_threads).none?(&:alive?) }
+
+        expect(@bridge.last_client_activity_at).to eq(before)
+      end
+
       it "ignores a bare connect that sends no request (a liveness probe)" do
         start_bridge
         before = @bridge.last_client_activity_at

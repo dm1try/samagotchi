@@ -459,7 +459,6 @@ module Samagotchi
         request = read_request(io)
         break if request.nil?
 
-        note_client_activity
         started = monotonic_now
 
         method = request[:method].to_s.upcase
@@ -481,16 +480,22 @@ module Samagotchi
         elsif !secret_ok?(headers)
           note_refused(:secret, "secret_refused", request[:path])
           write_json(io, 403, nil, { error: BridgeSecret::ERROR, detail: SECRET_REFUSED })
+        # From here on a client of this worker (it named the secret): only its
+        # requests keep the worker from its idle exit, never a refused one's
+        # (an older chi web's polls, a scan through a forward).
         elsif route.nil?
+          note_client_activity
           write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })
         elsif route.first == :stream
+          note_client_activity
           cursor = reconnect_cursor(headers, request[:query])
           Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
           serve_sse(io, route.last, last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
                                     client_id: stream_client_id(request[:query]), raw: raw_requested?(request[:query]))
           break # SSE owns the connection until the client disconnects.
         else
+          note_client_activity
           payload, status, body = dispatch(route.first, route.last, request[:body], request[:query])
           write_json(io, status, payload, body)
         end
