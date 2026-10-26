@@ -200,6 +200,10 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "lists the reminders it holds for, each with its schedule" do
       reminders.register(name: "api_health", description: "check the API", interval_minutes: 20)
       reminders.register(name: "stretch", description: "stretch", interval_minutes: 5)
+      # The store stamps next_fire_at on the real monotonic clock; read "due
+      # now" on that clock too, not the fake 1000 s (a fresh CI runner's uptime
+      # is under 1000 + 300 s, which made "stretch" due).
+      now[0] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       hold = policy.request_hold(requester: "tui:1")
 
