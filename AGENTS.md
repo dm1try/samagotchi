@@ -59,6 +59,9 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   this machine's login; never written to config.yml. Adopts only its own exact handler, refuses anything else on 443,
   turns 443 off on exit only while it is still exactly that. Specs: a fake tailscale via `SAMAGOTCHI_TAILSCALE_CLI`
   (spec_helper points it at a missing file). See docs/configuration.md (Tailscale Serve).
+- Also (docs/cli.md): `chi web --start-dir DIR` (config `web.start_dir`: the project chi web's page opens on),
+  `chi web push ls|rm|test` (this machine's Web Push devices, `PushCommand`), `chi guardrails replay`
+  (`GuardrailsCommand`: seeds System 1's record from the approvals already answered).
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that
