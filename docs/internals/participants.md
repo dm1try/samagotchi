@@ -188,7 +188,8 @@ written, under the session dir's `participants.lock` (`SessionManager.deliver_tu
 pass. The ack is 202 with
 `delivery: "queue"`; chi web keeps enqueued id → grant (the last 1000), which `dequeue` and `wait` check, falling
 back after a restart to the author the session's files keep (`ParticipantAccess#turn_author`): the waiting or claimed
-input file's, then `last_turn`'s or the settled record's (a refused turn's, `TurnCheckpoint.record_refused`).
+input file's, then `last_turn`'s or the settled record's (a refused turn's, `TurnCheckpoint.record_refused`; one whose
+worker died, `TurnCheckpoint.settle`, from its checkpoint mark's `author`).
 
 **The worker.** A participant's input file waits for its own turn whatever its delivery says
 (`SessionInbox.waits_for_turn_end?`), so a drain never merges it into another author's turn; the Bridge queues their

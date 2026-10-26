@@ -13,9 +13,12 @@ module Samagotchi
   # runs (its ack's id, LastTurn#enqueued_id once it ends; a Continue turn
   # carries its offer turn's), so any process that loads the session can
   # tell which turn is running (ReplyWait.own_turn); nil when it ran none,
-  # or a worker from before it wrote one.
-  InterruptedTurn = Data.define(:id, :started_at, :at, :iteration, :enqueued_id) do
-    def initialize(id: nil, started_at: nil, at: nil, iteration: nil, enqueued_id: nil) = super
+  # or a worker from before it wrote one. author: a participant's turn's
+  # "p:<id>" (nil for the owner's), which its settled record keeps, so a
+  # chi web restarted since still knows whose wait it is
+  # (ParticipantAccess#turn_author).
+  InterruptedTurn = Data.define(:id, :started_at, :at, :iteration, :enqueued_id, :author) do
+    def initialize(id: nil, started_at: nil, at: nil, iteration: nil, enqueued_id: nil, author: nil) = super
 
     # A saved record (string or symbol keys), an InterruptedTurn as it is;
     # nil for anything else.

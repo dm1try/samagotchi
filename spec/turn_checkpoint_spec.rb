@@ -52,6 +52,19 @@ RSpec.describe Samagotchi::TurnCheckpoint do
     expect(on_disk["interrupted_turn"]).not_to have_key("enqueued_id")
   end
 
+  it "puts a participant's author on every mark of their turn, none on the owner's" do
+    checkpoint.begin_turn(prompt: "task", enqueued_id: "q1", author: { author: "p:abc", author_name: "Alex" })
+    session.save(state_dir: tmpdir)
+    expect(on_disk["interrupted_turn"]).to include("author" => "p:abc")
+
+    checkpoint.boundary(conversation, turn_id: "t1")
+    expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).interrupted_turn.author).to eq("p:abc")
+
+    checkpoint.begin_turn(prompt: "next", enqueued_id: "q2")
+    checkpoint.boundary(conversation)
+    expect(on_disk["interrupted_turn"]).not_to have_key("author")
+  end
+
   it "loads a mark written without enqueued_id (an older worker's) with none" do
     mark = Samagotchi::InterruptedTurn.from_file("id" => "t1", "iteration" => 2)
     expect(mark).to have_attributes(id: "t1", iteration: 2, enqueued_id: nil)
@@ -161,6 +174,14 @@ RSpec.describe Samagotchi::TurnCheckpoint do
         expect(session.last_turn).to be_nil
         # Outside the input glob: no worker takes it as a message.
         expect(Samagotchi::SessionInbox.find_new_input_files(dir)).to be_empty
+      end
+
+      it "keeps a participant's turn's author in its record (whose wait it is after chi web restarts)" do
+        session.interrupted_turn = mark.with(enqueued_id: "q1", author: "p:abc")
+        described_class.settle(session, session_dir: dir)
+
+        expect(described_class.settled_turn(dir, "q1"))
+          .to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped", author: "p:abc")
       end
 
       it "records nothing for a turn that ran no input, or with no session_dir" do

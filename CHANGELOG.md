@@ -48,6 +48,8 @@ and commands may change between minor versions. How releases are made:
   made, so the owner had to revoke and invite again): a sticky toast names it with Copy link.
 - A participant's thread no longer jumps when a read fails and again when it recovers: "Can't reach the session —
   retrying…" (and "This session is gone.") shows over the thread's top instead of as a new row in the header.
+- A participant's wait on a turn whose worker died in it is no longer refused (403) after chi web restarts: the turn's
+  canceled (`worker_stopped`) record keeps whose turn it was.
 
 ## [0.121.0] - 2026-10-26
 

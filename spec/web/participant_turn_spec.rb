@@ -205,6 +205,16 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       expect([prepare("e-done", token: other.token).first, wait_on("e-refused", token: other.token).first]).to eq([403, 403])
     end
 
+    it "knows their turn whose worker died by its settled worker_stopped record's author" do
+      session.interrupted_turn = Samagotchi::InterruptedTurn.new(enqueued_id: "e-died", author: grant.author)
+      Samagotchi::TurnCheckpoint.settle(session, session_dir: dir)
+      session.save(state_dir: state_dir)
+
+      expect(wait_on("e-died").last.slice("status", "outcome", "cancel_reason"))
+        .to eq("status" => "no_reply", "outcome" => "canceled", "cancel_reason" => "worker_stopped")
+      expect([prepare("e-died").first, wait_on("e-died", token: other.token).first]).to eq([200, 403])
+    end
+
     it "keeps an owner's ended turn the owner's (403)" do
       session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-10-26T10:00:00Z",
                                                    enqueued_id: "e-owner")

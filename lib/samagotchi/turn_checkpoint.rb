@@ -93,8 +93,9 @@ module Samagotchi
       SessionInbox.prune_old(session_dir, SETTLED_DIR, max_age: max_age)
     end
 
-    def self.settled_record(id, ended_at: nil, seconds: nil)
-      LastTurn.new(outcome: "canceled", cancel_reason: WORKER_STOPPED, ended_at: ended_at, seconds: seconds, enqueued_id: id)
+    def self.settled_record(id, ended_at: nil, seconds: nil, author: nil)
+      LastTurn.new(outcome: "canceled", cancel_reason: WORKER_STOPPED, ended_at: ended_at, seconds: seconds, enqueued_id: id,
+                   author: author)
     end
     private_class_method :settled_record
 
@@ -140,7 +141,7 @@ module Samagotchi
       id = mark.enqueued_id.to_s
       return unless SessionInbox::ENQUEUED_ID_NAME.match?(id)
 
-      write_settled(session_dir, id, settled_record(id, ended_at: Time.now.iso8601(3), seconds: seconds))
+      write_settled(session_dir, id, settled_record(id, ended_at: Time.now.iso8601(3), seconds: seconds, author: mark.author))
     rescue SystemCallError => e
       # The settle goes on; a wait for that turn runs to its timeout.
       Log.warn(:worker, "settled_turn_write_failed", error: e.class.name, msg: e.message)
@@ -165,6 +166,7 @@ module Samagotchi
       @written_at = nil
       @started_at = nil
       @enqueued_id = nil
+      @author = nil
     end
 
     # A turn begins (before Engine#run_turn and the worker's running save):
@@ -172,7 +174,8 @@ module Samagotchi
     # images, no turn id), marked at iteration 0, so a worker killed before
     # the loop's first boundary leaves the prompt and a mark the next one
     # settles. A continue turn (no prompt) is the history, marked.
-    # Every mark of the turn carries +enqueued_id+ (InterruptedTurn's).
+    # Every mark of the turn carries +enqueued_id+ and a participant's
+    # +author+ (InterruptedTurn's).
     # @param prompt [String, nil]
     # @param enqueued_id [String, nil] the input the turn runs
     # @param author [Hash] a participant's prompt's author fields
@@ -181,6 +184,7 @@ module Samagotchi
     def begin_turn(prompt: nil, enqueued_id: nil, author: {})
       @boundaries = 0
       @enqueued_id = enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
+      @author = author[:author]
       @written_at = nil
       @started_at = Time.now.iso8601(3)
       messages = Array(@session.messages).dup
@@ -188,7 +192,7 @@ module Samagotchi
       # stamp (Engine's Turn#wall), which the turn's first boundary saves.
       messages << { role: "user", content: prompt, **author, MessageTime::KEY => MessageTime.iso(MessageTime.now) } unless prompt.to_s.empty?
       @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
-                                                                                   enqueued_id: @enqueued_id) }
+                                                                                   enqueued_id: @enqueued_id, author: @author) }
     end
 
     # The turn ended (or never began): the session saves its own messages.
@@ -214,7 +218,7 @@ module Samagotchi
       # forget stub) while a save on another thread serializes this one.
       messages = conversation.map { |message| message.is_a?(Hash) ? message.dup : message } + merged
       marker = InterruptedTurn.new(id: turn_id, started_at: @started_at, at: Time.now.iso8601(3), iteration: @boundaries,
-                                   enqueued_id: @enqueued_id)
+                                   enqueued_id: @enqueued_id, author: @author)
       @session.turn_checkpoint = { messages: messages, marker: marker }
       return false unless due? || !merged.empty?
 
