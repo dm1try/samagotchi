@@ -176,6 +176,11 @@ module Samagotchi
     # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
     # it (nil: ToolRunner's own, hooks only).
     attr_accessor :guardrail_gate
+    # Whether the current turn belongs to a participant, so pre-gate
+    # refusals can defer to ReviewBoundary.
+    attr_accessor :participant_turn
+
+    def participant_turn? = @participant_turn&.call == true
     # @return [LLM::TurnSettings] the turn's vision, sampling, thinking and
     #   model name, set by the Engine per turn (#run sets the model name
     #   too); the thinking level is its own field, since the native path

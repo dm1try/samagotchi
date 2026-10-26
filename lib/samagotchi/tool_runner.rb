@@ -77,7 +77,16 @@ module Samagotchi
       # hook, no approval card for a call that can't run (KernelLoop#dispatch
       # answers it with the not-loaded error).
       original = call.dup
-      verdict = left_out?(call) ? Guardrails::Verdict.new(call: call) : evaluate(call, iteration, params)
+      refusal = unreached_group_refusal(call)
+      verdict = if refusal
+                  Guardrails::Verdict.new(call: call).deny!(refusal.message,
+                                                            rule: Tools::ToolIndex::ToolkitGroupRefusal::RULE,
+                                                            source: "core", decided_by: "core")
+                elsif left_out?(call)
+                  Guardrails::Verdict.new(call: call)
+                else
+                  evaluate(call, iteration, params)
+                end
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       label = plugin_label(call[:name])
@@ -378,6 +387,27 @@ module Samagotchi
       !registry.left_out(call[:name], layers: layers).nil?
     end
 
+    def unreached_group_refusal(call)
+      return if participant_turn?
+
+      registry = tools
+      index = registry&.index if registry.respond_to?(:index)
+      return unless index.respond_to?(:unreached_tool)
+
+      name = if call[:name] == index.call_name
+               args = call[:args].is_a?(Hash) ? call[:args] : {}
+               args["tool"] || args[:tool]
+             else
+               call[:name]
+             end
+      tool = index.unreached_tool(name)
+      tool && Tools::ToolIndex::ToolkitGroupRefusal.new(tool, registry.toolkit)
+    end
+
+    def participant_turn?
+      @kernel.respond_to?(:participant_turn?) && @kernel.participant_turn?
+    end
+
     # Whether the turn's host loads tools (TurnSettings#loads_tools).
     def loads_tools? = @kernel.respond_to?(:turn_settings) && @kernel.turn_settings&.loads_tools == true
 
@@ -431,6 +461,12 @@ module Samagotchi
     # A legacy veto keeps its old text; a verdict's deny tells the model
     # who decided and not to route around it.
     def denied(call, verdict)
+      if verdict.rule == Tools::ToolIndex::ToolkitGroupRefusal::RULE
+        output = "[#{call[:name]}] #{verdict.reason}"
+        activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools)
+        return { output: output, activity: activity.merge(status: "blocked", guardrail: verdict.to_activity) }
+      end
+
       output = if verdict.legacy?
                  reason = verdict.reason.to_s.strip
                  "[#{call[:name]}] Error: blocked by guardrail: #{reason.empty? ? "blocked by hook" : reason}"

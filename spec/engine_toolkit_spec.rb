@@ -82,16 +82,47 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(sess.toolkit.name).to eq("coordinator")
   end
 
-  it "reads config's toolkit.kits once per process: an edit doesn't change a live session's tools" do
-    kits = { "mine" => { "base" => "lean" } }
+  it "warns once when no declare-time group matches a selector, even if a source later publishes that name" do
+    allow(Samagotchi::Toolkit).to receive(:config_kits)
+      .and_return("web" => { "base" => "full", "groups" => ["late"] })
+    index = engine.instance_variable_get(:@tool_index)
+    source = index.source(label: "spec", call: ->(*) { "ok" }, acts_as: ->(group, name) { "mcp_#{group}_#{name}" })
+    source.publish([Samagotchi::Tools::ToolIndex::Group.new(name: "known")])
+    index.add(source)
+    index.declare(engine.tools)
+    source.publish([Samagotchi::Tools::ToolIndex::Group.new(name: "known"),
+                    Samagotchi::Tools::ToolIndex::Group.new(name: "late")])
+    allow(kernel).to receive(:run).and_return(result)
+    sess = session(Samagotchi::Toolkit.new(name: "web"))
+
+    turn(sess)
+    turn(sess)
+
+    warnings = events.select { |event| event[:type] == :guardrail_warning && event[:label] == "toolkit" }
+    expect(warnings.map { |event| event[:message] }).to eq(["web: group selector \"late\" matches no group declared at load"])
+    expect(engine.tools.index.groups).to eq(["known"])
+    expect(engine.tools.index.groups).not_to include("late")
+  end
+
+  it "resolves a saved kit name against each worker's toolkit.kits snapshot" do
+    kits = { "mine" => { "base" => "lean", "groups" => ["chrome"] } }
     allow(Samagotchi::Toolkit).to receive(:config_kits) { kits }
     allow(kernel).to receive(:run).and_return(result)
     sess = session(Samagotchi::Toolkit.new(name: "mine"))
     turn(sess)
     expect(kernel.tools.names).not_to include("delegate")
-    kits = { "mine" => { "base" => "full" } }
+    expect(kernel.tools.toolkit.groups).to eq(["chrome"])
+    kits = { "mine" => { "base" => "lean", "groups" => ["postgres"] } }
     turn(sess)
     expect(kernel.tools.names).not_to include("delegate")
+
+    next_kernel = test_kernel(client: client)
+    allow(next_kernel).to receive(:run).and_return(result)
+    next_engine = described_class.new(client: client, kernel: next_kernel, profile: "gemma4")
+    next_engine.run_turn(sess, "hi")
+
+    expect(next_kernel.tools.toolkit.groups).to eq(["postgres"])
+    expect(sess.toolkit).to eq(Samagotchi::Toolkit.new(name: "mine"))
   end
 
   # B3: the request bytes of a full session with its plugins loaded (no MCP

@@ -114,6 +114,23 @@ RSpec.describe "ctx.load_tools" do
     expect(requests.map { |r| r.header("anthropic-beta") }).to eq([nil, "inline-tools-2026-09-15", "inline-tools-2026-09-15"])
   end
 
+  it "skips and logs a ctx.load_tools name from a group outside the toolkit" do
+    engine, = engine_on("ant:claude-x")
+    index = engine.instance_variable_get(:@tool_index)
+    source = index.source(label: "spec", call: ->(*) { "ok" }, acts_as: ->(group, name) { "mcp_#{group}_#{name}" })
+    tool = Samagotchi::Tools::ToolIndex::Tool.new(group: "fs", name: "read_file", acts_as: "mcp_fs_read_file")
+    source.publish([Samagotchi::Tools::ToolIndex::Group.new(name: "fs", tools: [tool])])
+    index.add(source)
+    index.declare(engine.tools)
+    engine.tools.toolkit = Samagotchi::Toolkit::Resolved.new(name: "coding", all_core: true, groups: [])
+    index.refresh!
+    allow(Samagotchi::Log).to receive(:info).and_call_original
+
+    expect(ctx(engine).load_tools(["mcp_fs_read_file"])).to eq([])
+    expect(Samagotchi::Log).to have_received(:info).with(:plugins, "load_tools_skipped",
+                                                         bundle: "loader", tool: "mcp_fs_read_file").once
+  end
+
   it "keeps a load staged when a Stop ends the turn before the model" do
     engine, session = engine_on("ant:claude-x")
     loader = ctx(engine)

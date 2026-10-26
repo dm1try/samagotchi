@@ -70,6 +70,30 @@ RSpec.describe "ChatLoop's deferred tools" do
     expect(standard.loads_tools?("old")).to be(false)
   end
 
+  it "filters source-group declarations for native and OpenAI-style requests without deferred tools" do
+    registry = Samagotchi::Tools::Builtins.registry
+    index = Samagotchi::Tools::ToolIndex.new
+    source = index.source(label: "mcp", prefix: "mcp_", context: Object.new,
+                          acts_as: ->(group, name) { "mcp_#{group}_#{name}" }, call: ->(*) { "ok" })
+    source.publish([Samagotchi::Tools::ToolIndex::Group.new(name: "chrome")])
+    index.add(source)
+    index.declare(registry)
+    registry.toolkit = Samagotchi::Toolkit::Resolved.new(name: "coding", all_core: true, groups: [])
+    index.refresh!
+
+    expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] })
+      .not_to include("find_tools", "call_tool")
+
+    chat = adapter(FakeChatAdapter.text("ok"))
+    filtered_kernel = test_kernel(tools: registry)
+    Samagotchi::LLM::ChatLoop.new(kernel: filtered_kernel, adapter: chat)
+      .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(_event) {})
+
+    expect(chat.requests.first[:tools].map { |tool| tool.dig(:function, :name) })
+      .not_to include("find_tools", "call_tool")
+    expect(deferred_names(chat.requests.first)).to eq([])
+  end
+
   it "logs a call of a tool the request deferred, with whether the conversation loaded it" do
     logged = []
     allow(Samagotchi::Log).to receive(:info).and_call_original

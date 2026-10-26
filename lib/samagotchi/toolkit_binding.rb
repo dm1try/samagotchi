@@ -116,6 +116,7 @@ module Samagotchi
       errors = []
       resolved = Toolkit.of(session&.toolkit).resolve(kits(errors))
       warn_unresolved(session, resolved, errors, on_event)
+      warn_unknown_groups(resolved, on_event)
       resolved = nil if resolved.everything?
       tools = @tools.call
       return false if resolved == tools.toolkit
@@ -139,6 +140,23 @@ module Samagotchi
       (lines - @warned).each do |line|
         @warned << line
         Log.warn(:config, "toolkit_unresolved", message: line)
+        @emit.call(on_event, { type: :guardrail_warning, message: line, label: "toolkit" })
+      end
+    end
+
+    def warn_unknown_groups(resolved, on_event)
+      return if resolved.groups == :all
+
+      names = @tools.call.index&.groups || []
+      unknown = resolved.groups.reject do |selector|
+        names.any? { |name| Toolkit.group_matches?([selector], name) }
+      end
+      unknown.each do |selector|
+        line = "#{resolved.name}: group selector #{selector.inspect} matches no group declared at load"
+        next if @warned.include?(line)
+
+        @warned << line
+        Log.warn(:config, "toolkit_group_unknown", message: line)
         @emit.call(on_event, { type: :guardrail_warning, message: line, label: "toolkit" })
       end
     end

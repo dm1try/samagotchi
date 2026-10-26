@@ -114,6 +114,37 @@ RSpec.describe "direct calls of deferred tools" do
   end
 
   describe "an MCP tool by its acts_as" do
+    it "refuses an unreached group before hooks for either call route" do
+      loads_tools!
+      registry.toolkit = registry.toolkit.with(groups: [])
+
+      direct = run(Samagotchi::Tools::BuiltinCalls.build("mcp_fs_read_file", { "path" => "a.txt" }))
+      routed = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", {
+        "tool" => "fs/read_file", "args" => { "path" => "a.txt" }
+      }))
+
+      expect(direct.output).to eq("[mcp_fs_read_file] Error: fs/read_file isn't in this session's toolkit (lean); " \
+                                  "only the user can switch (/toolkit NAME, or a kit that reaches fs).")
+      expect(routed.output).to eq("[call_tool] Error: fs/read_file isn't in this session's toolkit (lean); " \
+                                  "only the user can switch (/toolkit NAME, or a kit that reaches fs).")
+      expect([seen, ran]).to eq([[], []])
+    end
+
+    it "lets a participant's review boundary deny before the toolkit-group refusal" do
+      loads_tools!
+      registry.toolkit = registry.toolkit.with(groups: [])
+      kernel.participant_turn = -> { true }
+      boundary = Samagotchi::Guardrails::ReviewBoundary.new(author: -> { "p:review" }, root: -> { Dir.pwd },
+                                                            denied_dirs: -> { [] })
+      checks << boundary
+
+      result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "fs/read_file" }))
+
+      expect(result.output).to include("a participant's review turn may only read")
+      expect(result.output).not_to include("isn't in this session's toolkit")
+      expect(ran).to be_empty
+    end
+
     it "runs as the call_tool call it stands for: its row, an mcp_* rule, call_tool's approval key" do
       loads_tools!
       rules({ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "mcp" })

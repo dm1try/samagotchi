@@ -180,6 +180,30 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       source.publish(source.groups + [described_class::Group.new(name: "chrome_extra", tools: [tool("chrome_extra", "late")])])
       expect(index.reached_groups.map(&:name)).not_to include("chrome_extra")
     end
+
+    it "keeps claims and acts_as clashes global when one of the source groups is unreached" do
+      source = index.source(label: "mcp", prefix: "mcp_", context: context,
+                            acts_as: ->(*) { "mcp_same" }, call: ->(*) { "ok" })
+      source.publish([
+        described_class::Group.new(name: "chrome", tools: [
+          described_class::Tool.new(group: "chrome", name: "read", acts_as: "mcp_same", schema: { "type" => "object" })
+        ]),
+        described_class::Group.new(name: "postgres", tools: [
+          described_class::Tool.new(group: "postgres", name: "read", acts_as: "mcp_same", schema: { "type" => "object" })
+        ])
+      ])
+      index.add(source)
+      index.declare(registry)
+      registry.toolkit = Samagotchi::Toolkit::Resolved.new(name: "web", all_core: true, groups: ["chrome"])
+      index.refresh!
+
+      expect(index.reached_groups.map(&:name)).to include("chrome")
+      expect(index.reached_groups.map(&:name)).not_to include("postgres")
+      expect(index.deferrable).to be_empty
+      expect(index.call_targets({ "tool" => "postgres/read" }))
+        .to eq(acts_as: "mcp_same", args: {}, label: "postgres: read")
+      expect(index.unreached_tool("postgres/read")&.full_name).to eq("postgres/read")
+    end
   end
 
   # What a hit loads on a host that loads tools (lean tools P2c): the wire

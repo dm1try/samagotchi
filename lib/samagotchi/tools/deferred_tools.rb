@@ -39,7 +39,7 @@ module Samagotchi
           next if taken.include?(name) || registry.offered(name, layers: layers)
 
           taken << name
-          deferred << Deferred.new(name: name, description: STUB_DESCRIPTION, schema: STUB_SCHEMA)
+          deferred << Deferred.new(name: name, description: stub_description(registry, name), schema: STUB_SCHEMA)
         end
         deferred
       end
@@ -74,7 +74,15 @@ module Samagotchi
         end
       end
 
-      private_class_method :builtins, :sourced
+      def stub_description(registry, name)
+        index = registry.respond_to?(:index) ? registry.index : nil
+        tool = index&.unreached_tool(name)
+        return STUB_DESCRIPTION unless tool
+
+        ToolIndex::ToolkitGroupRefusal.new(tool, registry.toolkit).stub_description
+      end
+
+      private_class_method :builtins, :sourced, :stub_description
     end
   end
 end

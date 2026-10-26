@@ -91,4 +91,18 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     # read is declared: never deferred.
     expect(list.map(&:name)).not_to include("read")
   end
+
+  it "explains that a previously loaded source tool's group is outside the current toolkit" do
+    source!(Samagotchi::Tools::ToolIndex::Group.new(name: "fs", tools: [tool("read")]))
+    index.declare(registry)
+    toolkit!
+    registry.toolkit = registry.toolkit.with(groups: [])
+    conversation = [{ role: "tool_response", content: "x", loaded: ["mcp_fs_read"] }]
+
+    stub = described_class.list(registry, conversation).last
+
+    expect(stub.name).to eq("mcp_fs_read")
+    expect(stub.description).to eq("Not available in this session's toolkit (lean); only the user can switch " \
+                                    "(/toolkit NAME, or a kit that reaches fs).")
+  end
 end

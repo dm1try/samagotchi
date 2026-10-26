@@ -45,11 +45,13 @@ module Samagotchi
       # tools a host that loads tools may declare deferred) and +wrap+
       # (call → the call_tool call a direct call of one of them runs as, or
       # nil) are nil when nothing reaches them.
-      Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap) do
-        def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil)
+      Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap, :unreached) do
+        def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil, unreached: nil)
           super(source: source, call_name: call_name, groups: Array(groups).map(&:to_s).uniq.freeze,
-                deferrable: deferrable, wrap: wrap)
+                deferrable: deferrable, wrap: wrap, unreached: unreached)
         end
+
+        def unreached_tool(name) = unreached&.call(name)
       end
 
       def initialize

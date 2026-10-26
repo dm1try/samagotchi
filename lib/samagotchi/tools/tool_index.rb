@@ -63,6 +63,26 @@ module Samagotchi
         args: { type: "object", description: "the arguments, per the inputSchema #{FIND_NAME} gave" }
       }.freeze
 
+      # The user changes kits; calls and old deferred references cannot
+      # make a source group reachable again.
+      class ToolkitGroupRefusal < StandardError
+        RULE = "toolkit-group"
+
+        def initialize(tool, toolkit)
+          @tool = tool
+          @toolkit = toolkit.name
+          super("Error: #{tool.full_name} isn't in this session's toolkit (#{@toolkit}); #{hint}.")
+        end
+
+        def stub_description
+          "Not available in this session's toolkit (#{@toolkit}); #{hint}."
+        end
+
+        private
+
+        def hint = "only the user can switch (/toolkit NAME, or a kit that reaches #{@tool.group})"
+      end
+
       # One tool in the index: +group+/+name+ is what the call tool takes,
       # +schema+ its inputSchema, +acts_as+ the name guardrail rules match
       # (mcp_<server>_<tool>; a bare name the call tool looks up too).
@@ -267,7 +287,8 @@ module Samagotchi
           spec
         end
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: @declared_group_names,
-                                             deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) })
+                                             deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) },
+                                             unreached: ->(name) { unreached_tool(name) })
         declared!(declared)
         declared.map(&:name)
       end
@@ -411,6 +432,22 @@ module Samagotchi
         return nil if tool.entry || tool.refusal
 
         deferrable.any? { |t| t.acts_as == tool.acts_as } ? tool.acts_as : nil
+      end
+
+      # Finds a source tool regardless of the active toolkit, without
+      # waiting for a starting group. Used only to refuse a call or explain
+      # a deferred stub for a group the session cannot reach.
+      def unreached_tool(name)
+        name = name.to_s.strip
+        return nil if name.empty?
+
+        groups = all_groups.reject { |group| own?(group) }
+        groups.select! { |group| @declared_group_names.include?(group.name) } if @declared_group_names
+        tool = tool_in(name, groups)
+        return nil unless tool
+        return nil if reached_groups.any? { |group| group.name == tool.group }
+
+        tool
       end
 
       # What a deferred source tool's wire name may be (Messages' tool
@@ -677,21 +714,6 @@ module Samagotchi
         tool.is_a?(Tool) ? tool : nil
       end
 
-      # A source tool in the declaration-time group set that the active
-      # toolkit does not reach. Never waits for a group to start.
-      def unreached_tool(name)
-        name = name.to_s.strip
-        return nil if name.empty?
-
-        groups = all_groups.reject { |group| own?(group) }
-        groups.select! { |group| @declared_group_names.include?(group.name) } if @declared_group_names
-        tool = tool_in(name, groups)
-        return nil unless tool
-        return nil if reached_groups.any? { |group| group.name == tool.group }
-
-        tool
-      end
-
       def tool_in(name, groups)
         named = groups.filter_map do |group|
           next unless name.start_with?("#{group.name}/")
@@ -703,7 +725,6 @@ module Samagotchi
         same = groups.flat_map(&:tools).select { |tool| tool.acts_as == name }
         same.first if same.one?
       end
-      public :unreached_tool
 
       # The acts_as and label +name+ stands for, from the name alone:
       # <group>/<tool> of a known group (the one that has the tool, else the
