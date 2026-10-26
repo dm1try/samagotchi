@@ -7,10 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.118.0] - 2026-10-26
+
 ### Changed
 
 - chi's icon (the browser tab and the Home Screen app) is flat: a system-blue χ on a graphite tile, no gradient. On a
   phone, remove the Home Screen app and add it again to see it: iOS keeps the old icon.
+- chi web's blues match the icon: links, the active card and the Send button use Apple's system blue in both themes,
+  and the page background keeps only its faint blue glow (the purple one is gone).
 
 ### Fixed
 
@@ -19,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   takes at most a third of it and a chip at most 30% (cut with "…", the full text in the tooltip), so a session with a
   long model name and a long folder reads two lines at 760 px instead of five. Phones (≤ 600 px) scroll the row as
   before.
+
+Update with `chi update` (the system bundle 0.118.0), then restart `chi web`.
 
 ## [0.117.0] - 2026-10-26
 
@@ -4439,7 +4445,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.117.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.118.0...HEAD
+[0.118.0]: https://github.com/dm1try/samagotchi/compare/v0.117.0...v0.118.0
 [0.117.0]: https://github.com/dm1try/samagotchi/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/dm1try/samagotchi/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/dm1try/samagotchi/compare/v0.114.0...v0.115.0
