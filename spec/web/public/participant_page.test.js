@@ -74,8 +74,8 @@ async function settle() {
 let instance = 0;
 // The page opened on session s1; +respond+ answers each request at once
 // (return undefined to leave it pending in +calls+).
-async function openPage(t, { respond = (call) => (call.method === "GET" ? call.answer(200, REVIEW) : undefined) } = {}) {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+async function openPage(t, { respond = (call) => (call.method === "GET" ? call.answer(200, REVIEW) : undefined), fakeDate = false } = {}) {
+  t.mock.timers.enable({ apis: fakeDate ? ["setTimeout", "Date"] : ["setTimeout"] });
   const saved = { fetch: globalThis.fetch, EventSource: globalThis.EventSource };
   const calls = [];
   globalThis.fetch = (path, options) => {
@@ -512,6 +512,21 @@ test("participant page: the usage row under the comment box shows the participan
   sources[0].emit("turn_completed");
   await tick(120);
   assert.deepEqual(items().slice(0, 2), [["spent", "$2.01 of $2.00 cap", "over"], ["queued", "0/3 queued", ""]]);
+});
+
+test("participant page: the link's time left refreshes each minute and ends without a re-read", async (t) => {
+  const { $, tick, calls } = await openPage(t, {
+    fakeDate: true,
+    respond: (call) => call.answer(200, { ...REVIEW, viewer: { ...REVIEW.viewer,
+      usage: { expires_at: new Date(Date.now() + 125_000).toISOString() } } }),
+  });
+  const expiry = () => $("usage").querySelector('[data-key="expires_at"]').textContent;
+  assert.equal(expiry(), "link: 2 min left");
+  await tick(60_000);
+  assert.equal(expiry(), "link: 1 min left");
+  await tick(120_000);
+  assert.equal(expiry(), "link ended");
+  assert.equal(calls.length, 1, "expiry redraws do not request the review again");
 });
 
 test("participant page: no usage row without usage (an older chi web)", async (t) => {
