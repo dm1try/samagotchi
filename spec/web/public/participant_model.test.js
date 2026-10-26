@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import {
   authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
-  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps,
+  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps, usageItems, leftText, USAGE_WARN,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
 test("participant: a participant's author is the prefix and its id, the server's Steer::PARTICIPANT_PREFIX", () => {
@@ -174,4 +174,33 @@ test("participant: a folded run of tool steps with no reply after it keeps its l
   const at = "2026-10-24T09:00:00.000Z";
   assert.deepEqual(withToolSteps([{ role: "assistant", content: "", tools: [{ tool: "read" }], at }]),
     [{ role: "assistant", content: "", tools: [{ tool: "read" }], at }]);
+});
+
+test("participant: the usage row's items, from the fields the exposure gave and nothing else", () => {
+  const now = Date.parse("2026-10-26T12:00:00Z");
+  const usage = { spent: 0.4, cap: 2, queued: 0, queue_limit: 3, expires_at: "2026-11-02T12:00:00Z", model: "m" };
+  assert.deepEqual(usageItems(usage, now).map((i) => [i.key, i.text, i.level]), [
+    ["spent", "$0.40 of $2.00 cap", ""], ["queued", "0/3 queued", ""], ["expires_at", "link: 7 d left", ""], ["model", "m", ""],
+  ]);
+  // Most of the cap spent warns; at the cap it is over; a full queue and a link's last day warn.
+  const at = (fields) => Object.fromEntries(usageItems({ ...usage, ...fields }, now).map((i) => [i.key, i.level]));
+  assert.equal(at({ spent: 2 * USAGE_WARN }).spent, "warn");
+  assert.equal(at({ spent: 2 }).spent, "over");
+  assert.equal(at({ queued: 3 }).queued, "warn");
+  assert.equal(at({ expires_at: "2026-10-27T06:00:00Z" }).expires_at, "warn");
+  // A field the level doesn't show draws nothing; no usage, no row.
+  assert.deepEqual(usageItems({ spent: 1 }, now).map((i) => i.text), ["$1.00 spent"]);
+  assert.deepEqual(usageItems(undefined, now), []);
+  assert.deepEqual(usageItems({ queued: 1 }, now), [], "a queue with no limit isn't shown");
+  assert.equal(usageItems({ expires_at: "2026-10-26T11:00:00Z" }, now)[0].text, "link ended");
+});
+
+test("participant: a link's time left, coarse", () => {
+  const now = Date.parse("2026-10-26T12:00:00Z");
+  assert.equal(leftText("2026-10-29T13:00:00Z", now), "3 d left");
+  assert.equal(leftText("2026-10-27T17:00:00Z", now), "29 h left");
+  assert.equal(leftText("2026-10-26T12:30:00Z", now), "30 min left");
+  assert.equal(leftText("2026-10-26T12:00:20Z", now), "1 min left");
+  assert.equal(leftText("2026-10-26T11:00:00Z", now), "ended");
+  assert.equal(leftText("", now), "");
 });

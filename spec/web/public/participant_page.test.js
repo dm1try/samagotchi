@@ -476,3 +476,26 @@ test("participant page: the owner's participant view mounts no composer", async 
   assert.equal(posts().length, 0);
   assert.equal(document.body.classList.contains("composer-folded"), false);
 });
+
+test("participant page: the usage row under the comment box shows the participant's own figures, again at each re-read", async (t) => {
+  const expires = new Date(Date.now() + 6 * 24 * 3600 * 1000 + 60000).toISOString();
+  const usage = { spent: 0.42, cap: 2, queued: 1, queue_limit: 3, expires_at: expires, model: "deepseek-v4" };
+  let review = { ...REVIEW, viewer: { ...REVIEW.viewer, usage } };
+  const { $, tick, sources } = await openPage(t, { respond: (call) => call.method === "GET" && call.answer(200, review) });
+  const items = () => [...$("usage").children].map((span) => [span.dataset.key, span.textContent, span.className]);
+  assert.equal($("usage").hidden, false);
+  assert.deepEqual(items(), [["spent", "$0.42 of $2.00 cap", ""], ["queued", "1/3 queued", ""],
+    ["expires_at", "link: 6 d left", ""], ["model", "deepseek-v4", "model"]]);
+  assert.match($("usage").children[0].title, /cost the owner so far, of the \$2\.00 cap/);
+
+  review = { ...REVIEW, viewer: { ...REVIEW.viewer, can_comment: false, cap_reached: true, usage: { ...usage, spent: 2.01, queued: 0 } } };
+  sources[0].emit("turn_completed");
+  await tick(120);
+  assert.deepEqual(items().slice(0, 2), [["spent", "$2.01 of $2.00 cap", "over"], ["queued", "0/3 queued", ""]]);
+});
+
+test("participant page: no usage row without usage (an older chi web)", async (t) => {
+  const { $ } = await openPage(t);
+  assert.equal($("usage").hidden, true);
+  assert.equal($("usage").children.length, 0);
+});

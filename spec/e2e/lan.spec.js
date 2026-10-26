@@ -98,6 +98,10 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(page.locator("#actionBtn")).toHaveCount(0);
   await expect(page.locator("#commandList")).toHaveCount(0);
   await expect(page.locator("#composeGrip")).toHaveAttribute("aria-expanded", "true");
+  // Their own usage under the comment box: spend of the cap, queue, the link's time left, the model.
+  await expect(page.locator("#usage [data-key=spent]")).toHaveText(/^\$\d+\.\d\d of \$2\.00 cap$/);
+  await expect(page.locator("#usage [data-key=queued]")).toHaveText("0/3 queued");
+  await expect(page.locator("#usage [data-key=expires_at]")).toHaveText("link: 7 d left");
   // Annotate: a selection in the Plan quotes it into the comment box,
   // labelled with the subject's path; nothing is sent.
   await page.locator("#planDoc h1").selectText();
