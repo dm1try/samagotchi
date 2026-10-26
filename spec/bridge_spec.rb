@@ -22,8 +22,9 @@ require "samagotchi/bridge_client"
 class SSEClient
   attr_reader :events
 
-  def initialize(port, session_id, last_event_id: nil, snapshot: false, client_id: nil)
+  def initialize(port, session_id, last_event_id: nil, snapshot: false, client_id: nil, secret: nil)
     @client_id = client_id
+    @secret = secret
     @port = port
     @session_id = session_id
     @last_event_id = last_event_id
@@ -44,6 +45,7 @@ class SSEClient
       "GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\n" \
       "Host: 127.0.0.1\r\n" \
       "Connection: close\r\n" \
+      "#{"X-Chi-Bridge: #{@secret}\r\n" if @secret}" \
       "User-Agent: bridge-spec\r\n\r\n"
     )
     @status_line, = read_headers(@socket)
@@ -548,7 +550,7 @@ RSpec.describe Samagotchi::Bridge do
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
-      @bridge_port = JSON.parse(File.read(sidecar))["port"]
+      @bridge_port, @bridge_secret = JSON.parse(File.read(sidecar)).values_at("port", "secret")
     end
 
     it "labels this session's System 1 auto-allow and returns 404 for an unknown judgment" do
@@ -556,7 +558,7 @@ RSpec.describe Samagotchi::Bridge do
       log = Samagotchi::SystemOne::Log.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir))
       id = log.judgment(session_id: @session.id, rule: "git-push", decision: "auto", p: 0.97)
       other = log.judgment(session_id: "another-session", rule: "git-push", decision: "auto", p: 0.97)
-      client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+      client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
 
       response = client.mark_system_one_wrong(judgment_id: id)
       unknown = client.mark_system_one_wrong(judgment_id: "unknown")
@@ -716,7 +718,7 @@ RSpec.describe Samagotchi::Bridge do
           sleep(0.3)
           original.call(*args)
         end
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
         post = Thread.new { client.post_turn(prompt: "hi") }
 
         enqueued.pop
@@ -732,7 +734,7 @@ RSpec.describe Samagotchi::Bridge do
       it "drops a turn post that waited on the event log while the intake closed, without the grace" do
         stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
         start_bridge(input_format: 2)
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
         post = nil
         @engine.synchronize_events do
           post = Thread.new { client.post_turn(prompt: "hi") }
@@ -763,7 +765,7 @@ RSpec.describe Samagotchi::Bridge do
         # A long request grace: waiting on the stream would take all of it.
         stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
         start_bridge
-        @clients << SSEClient.new(@bridge_port, @session.id).start
+        @clients << SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
         wait_for("the stream to open") { @bridge.open_streams == 1 }
 
         started = mono
@@ -787,7 +789,7 @@ RSpec.describe Samagotchi::Bridge do
       it "removes its sidecar before it ends an open stream" do
         stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
         start_bridge
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
         sock, status = client.connect_stream(timeout: 5)
         expect(status).to eq(200)
         sidecar_at_end = Thread.new do
@@ -809,7 +811,7 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
         expect(@bridge.open_streams).to eq(0)
 
-        client = SSEClient.new(@bridge_port, @session.id).start
+        client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
         @clients << client
         wait_for("the stream to open") { @bridge.open_streams == 1 }
 
@@ -822,7 +824,7 @@ RSpec.describe Samagotchi::Bridge do
       # from the next one (tui:<pid> differs) until a heartbeat fails.
       it "stops counting a closed stream at once, not at its next heartbeat" do
         start_bridge(heartbeat_interval: 30)
-        gone = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
+        gone = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1", secret: @bridge_secret).start
         @clients << gone
         wait_for("the stream to open") { @bridge.open_streams == 1 }
 
@@ -834,7 +836,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "counts the streams of everyone but a given client" do
         start_bridge
-        own = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
+        own = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1", secret: @bridge_secret).start
         @clients << own
         wait_for("the stream to open") { @bridge.open_streams == 1 }
         expect(@bridge.open_streams_except("tui:1")).to eq(0)
@@ -842,8 +844,8 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.open_streams_except(nil)).to eq(1)
 
         # A reconnect overlapping the old stream, and a web tab (no client_id).
-        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
-        web = SSEClient.new(@bridge_port, @session.id).start
+        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:1", secret: @bridge_secret).start
+        web = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
         @clients << web
         wait_for("three open streams") { @bridge.open_streams == 3 }
         expect(@bridge.open_streams_except("tui:1")).to eq(1)
@@ -865,7 +867,7 @@ RSpec.describe Samagotchi::Bridge do
         after_request = @bridge.last_client_activity_at
         expect(after_request).to be > before
 
-        client = SSEClient.new(@bridge_port, @session.id).start
+        client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
         wait_for("the stream to open") { @bridge.open_streams == 1 }
         client.stop
         wait_for("the closed stream to be uncounted") { @bridge.open_streams.zero? }
@@ -875,9 +877,9 @@ RSpec.describe Samagotchi::Bridge do
       it "ignores a bare connect that sends no request (a liveness probe)" do
         start_bridge
         before = @bridge.last_client_activity_at
-        expect(Samagotchi::BridgeClient.sidecar_port(
+        expect(Samagotchi::BridgeClient.live_sidecar(
           Samagotchi::Session.session_dir(@session.id, state_dir: state_dir)
-        )).to eq(@bridge_port)
+        )&.port).to eq(@bridge_port)
         # The probe's connection thread read no request and ended: it noted nothing.
         threads = -> { @bridge.instance_variable_get(:@connection_threads) }
         wait_for("the probe's connection to end") { threads.call.any? && threads.call.none?(&:alive?) }
@@ -893,7 +895,7 @@ RSpec.describe Samagotchi::Bridge do
       run_turn_sync(@engine, @session, "hi")
 
       # Connect with no cursor → replays the whole served window.
-      client = SSEClient.new(@bridge_port, @session.id).start
+      client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
       @clients = [client]
       events = client.wait_for(4, timeout: 3)
 
@@ -908,7 +910,7 @@ RSpec.describe Samagotchi::Bridge do
 
     it "delivers live events across a turn without a hanging client stalling it" do
       start_bridge
-      client = SSEClient.new(@bridge_port, @session.id).start
+      client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
       @clients = [client]
       wait_for("the stream to open") { @bridge.open_streams == 1 } # the acceptor + per-connection subscribe happened
 
@@ -924,14 +926,14 @@ RSpec.describe Samagotchi::Bridge do
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi")
 
-      a = SSEClient.new(@bridge_port, @session.id).start.wait_for(3, timeout: 3)
-      b = (@clients << SSEClient.new(@bridge_port, @session.id)).last.start.wait_for(3, timeout: 3)
+      a = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start.wait_for(3, timeout: 3)
+      b = (@clients << SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret)).last.start.wait_for(3, timeout: 3)
       expect(a.map { |e| e[:data] }).to eq(b.map { |e| e[:data] })
     end
 
     it "resumes via ?from_seq= by replaying buffered events then continuing live" do
       start_bridge
-      c1 = SSEClient.new(@bridge_port, @session.id).start
+      c1 = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi 1")
       # The turn's events reach c1 on the bridge's threads, maybe after
@@ -946,7 +948,7 @@ RSpec.describe Samagotchi::Bridge do
       run_turn_sync(@engine, @session, "hi 2")
 
       # Reconnect from last_seen: replay the buffered window then go live.
-      c2 = SSEClient.new(@bridge_port, @session.id, last_event_id: last_seen).start
+      c2 = SSEClient.new(@bridge_port, @session.id, last_event_id: last_seen, secret: @bridge_secret).start
       @clients << c2
       events = c2.wait_until { |seen| completed.call(seen, after: last_seen.to_i) }
       expect(completed.call(events, after: last_seen.to_i)).to be(true)
@@ -981,7 +983,7 @@ RSpec.describe Samagotchi::Bridge do
         turn = Thread.new { run_turn_sync(@engine, @session, "long one") }
         wait_for("the turn's 302 events") { @engine.event_count >= 302 }
 
-        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true, secret: @bridge_secret).start
         @clients << c
         first = c.wait_for(1).first
         release << true
@@ -1011,7 +1013,7 @@ RSpec.describe Samagotchi::Bridge do
           original.call(*args)
         end
 
-        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true, secret: @bridge_secret).start
         @clients << c
         first = c.wait_for(1).first
 
@@ -1029,7 +1031,7 @@ RSpec.describe Samagotchi::Bridge do
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
         wait_for("the working set in the snapshot") { @bridge.snapshot[:working_set] }
 
-        body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")
+        body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("snapshot")
         release << true
         turn.join
 
@@ -1046,9 +1048,9 @@ RSpec.describe Samagotchi::Bridge do
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
         wait_for("the turn's first part in the snapshot") { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
 
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
         body = client.get_json("snapshot")
-        missing = Samagotchi::BridgeClient.new(session_id: "nope", port: @bridge_port).get_json("snapshot")
+        missing = Samagotchi::BridgeClient.new(session_id: "nope", port: @bridge_port, secret: @bridge_secret).get_json("snapshot")
         release << true
         turn.join
 
@@ -1086,7 +1088,7 @@ RSpec.describe Samagotchi::Bridge do
 
       describe "GET /session/:id/tail" do
         def tail(session_id = @session.id)
-          Samagotchi::BridgeClient.new(session_id: session_id, port: @bridge_port).get_json("tail")
+          Samagotchi::BridgeClient.new(session_id: session_id, port: @bridge_port, secret: @bridge_secret).get_json("tail")
         end
 
         it "carries the session state, the last answer and the cards at one event_seq, no message list" do
@@ -1101,7 +1103,7 @@ RSpec.describe Samagotchi::Bridge do
           @engine.show_card(source: "spec", title: "Card", body: "body", id: "card-1")
 
           body = tail
-          state = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("state")
+          state = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("state")
 
           expect(body.keys).to contain_exactly("session_id", "working_directory", "session_state_snapshot", "answer", "cards", "event_seq", "event_id")
           expect(body["working_directory"]).to eq(@session.working_directory)
@@ -1132,16 +1134,16 @@ RSpec.describe Samagotchi::Bridge do
           ]
 
           expect(tail.dig("answer", "content")).to eq("answer B")
-          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
             .get_json("tail?turn_id=tA").dig("answer", "content")).to eq("answer A")
-          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
             .get_json("tail?turn_id=tB").dig("answer", "content")).to eq("answer B")
           %w[nope =].each do |id|
-            expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+            expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
               .get_json("tail?turn_id=#{id}").dig("answer", "content")).to eq("answer B")
           end
           # The query reaches no other route: /state answers as ever.
-          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
             .get_json("state?turn_id=tA")).to include("session_state_snapshot")
         end
 
@@ -1201,7 +1203,7 @@ RSpec.describe Samagotchi::Bridge do
         wait_for("the turn's first part in the snapshot") { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
 
         events = Queue.new
-        stream = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).follow { |e| events << e }
+        stream = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).follow { |e| events << e }
         snap = pop!(events, "the snapshot")
         release << true
         turn.join
@@ -1228,7 +1230,7 @@ RSpec.describe Samagotchi::Bridge do
         # is emitted, and the snapshot follows the event log.
         wait_for("the pending question in the snapshot") { @bridge.snapshot.dig(:current_turn, :pending_question) }
 
-        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true, secret: @bridge_secret).start
         @clients << c
         snap = c.wait_for(1).first[:data]["snapshot"]
         @engine.answer_question(id: @engine.pending_question.id, selected: ["A"])
@@ -1274,7 +1276,7 @@ RSpec.describe Samagotchi::Bridge do
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi")
 
-      c = SSEClient.new(@bridge_port, @session.id, last_event_id: "100000").start
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: "100000", secret: @bridge_secret).start
       @clients << c
       reset = c.wait_for(1).first
       expect(reset[:data]["type"]).to eq("reset")
@@ -1299,7 +1301,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "on the first worker")
-      first = SSEClient.new(@bridge_port, @session.id).start
+      first = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
       @clients << first
       old_cursor = first.wait_for(3).last[:id]
       old_epoch = @bridge.epoch
@@ -1313,7 +1315,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(@engine.event_count).to be > old_cursor.to_i
       expect(@bridge.epoch).not_to eq(old_epoch)
 
-      c = SSEClient.new(@bridge_port, @session.id, last_event_id: old_cursor).start
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: old_cursor, secret: @bridge_secret).start
       @clients << c
       reset = c.wait_for(1).first
       expect(reset[:data]["type"]).to eq("reset")
@@ -1325,7 +1327,7 @@ RSpec.describe Samagotchi::Bridge do
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi")
 
-      c = SSEClient.new(@bridge_port, @session.id, last_event_id: "100000").start
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: "100000", secret: @bridge_secret).start
       @clients << c
       events = c.wait_for(1, timeout: 3)
       reset = events.find { |e| e[:data]&.fetch("type") == "reset" }
@@ -1343,7 +1345,7 @@ RSpec.describe Samagotchi::Bridge do
       current_seq = state.dig("session_state_snapshot", "event_seq").to_i
       expect(current_seq).to be > 0
 
-      c = SSEClient.new(@bridge_port, @session.id, last_event_id: current_seq.to_s).start
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: current_seq.to_s, secret: @bridge_secret).start
       @clients << c
       wait_for("the stream to open") { @bridge.open_streams == 1 }
       # A reset would come in the replay, before any live event: the next
@@ -1390,7 +1392,7 @@ RSpec.describe Samagotchi::Bridge do
         end
 
         def snapshot
-          Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")["snapshot"]
+          Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("snapshot")["snapshot"]
         end
 
         it "writes it into the file and acks queue while a turn runs; turn_enqueued and the snapshot's queued say so" do
@@ -1505,7 +1507,7 @@ RSpec.describe Samagotchi::Bridge do
         # The event log held until the client gave up (past its read timeout).
         holder = Thread.new { @engine.synchronize_events { held << true; release.pop } }
         held.pop
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret, read_timeout: 0.5)
 
         expect { client.post_turn(prompt: "late", client_id: "cli:send") }.to raise_error(Errno::ETIMEDOUT)
         release << true
@@ -1553,7 +1555,7 @@ RSpec.describe Samagotchi::Bridge do
 
       uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{other.id}/turn")
       res = Net::HTTP.post(uri, JSON.generate(session_id: other.id, prompt: "for someone else"),
-                           "Content-Type" => "application/json")
+                           "Content-Type" => "application/json", **secret_header)
       expect([res.code.to_i, JSON.parse(res.body)["error"]]).to eq([404, "unknown_session"])
 
       expect(Dir.glob(File.join(state_dir, "*", "input", "*"))).to be_empty
@@ -1611,7 +1613,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0, context_window_tokens: 4096 })
 
-      res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+      res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"), secret_header)
 
       expect([res.code, JSON.parse(res.body)["metrics"]]).to eq(["200", { "turns" => 0, "context_window_tokens" => 4096 }])
     end
@@ -1622,9 +1624,9 @@ RSpec.describe Samagotchi::Bridge do
       uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats")
       threads = -> { @bridge.instance_variable_get(:@connection_threads) }
 
-      5.times { Net::HTTP.get_response(uri) }
+      5.times { Net::HTTP.get_response(uri, secret_header) }
       wait_for("the connections to end") { threads.call.none?(&:alive?) }
-      Net::HTTP.get_response(uri)
+      Net::HTTP.get_response(uri, secret_header)
 
       expect(threads.call.size).to eq(1)
     end
@@ -1635,12 +1637,30 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0 })
 
-      Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"), secret_header)
 
       record = wait_for("the request's log record") do
         File.exist?(log) && File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.tag == "bridge" && r.event == "request" } }
       end
       expect(record.fields.except("ms")).to eq("method" => "GET", "path" => "/session/#{@session.id}/stats", "status" => "200")
+    end
+
+    it "never logs its secret: not at debug level, not for a refused request, not when a handler fails" do
+      log = File.join(Dir.mktmpdir, "chi.log")
+      Samagotchi::Log.configure(path: log, level: :debug)
+      start_bridge
+      allow(@engine).to receive(:stats_snapshot).and_raise(RuntimeError, "boom")
+      wrong = @bridge_secret.reverse
+
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"), secret_header)
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/state"), "X-Chi-Bridge" => wrong)
+      post_turn(JSON.generate(session_id: @session.id, prompt: "hi"))
+      @bridge.stop
+
+      text = wait_for("the refusal's log line") { File.exist?(log) && File.read(log).then { |t| t if t.include?("secret_refused") } }
+      expect(text).to include("handler_failed")
+      expect(text).not_to include(@bridge_secret)
+      expect(text).not_to include(wrong)
     end
 
     it "logs nothing when stopped (the closed server ends the accept loop)" do
@@ -1659,7 +1679,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       allow(@bridge).to receive(:handle_stats).and_raise(RuntimeError, "boom")
 
-      response = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+      response = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"), secret_header)
       expect([response.code, JSON.parse(response.body)]).to eq(["500", { "error" => "bridge_error", "detail" => "boom" }])
 
       wait_for("the log file") { File.exist?(log) }
@@ -1682,7 +1702,7 @@ RSpec.describe Samagotchi::Bridge do
       def raw(method, path, headers = {}, body = nil)
         uri = URI("http://127.0.0.1:#{@bridge_port}#{path}")
         req = Net::HTTP.const_get(method.capitalize).new(uri)
-        headers.each { |k, v| req[k] = v }
+        secret_header.merge(headers).each { |k, v| req[k] = v }
         req.body = body if body
         res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
         [res.code.to_i, res.to_hash, res.body]
@@ -1731,7 +1751,8 @@ RSpec.describe Samagotchi::Bridge do
       it "opens its event stream without any CORS header" do
         start_bridge
         sock = TCPSocket.new("127.0.0.1", @bridge_port)
-        sock.write("GET /session/#{@session.id}/stream HTTP/1.1\r\nHost: 127.0.0.1:#{@bridge_port}\r\n\r\n")
+        sock.write("GET /session/#{@session.id}/stream HTTP/1.1\r\nHost: 127.0.0.1:#{@bridge_port}\r\n" \
+                   "X-Chi-Bridge: #{@bridge_secret}\r\n\r\n")
         head = +""
         head << sock.readpartial(4096) until head.include?("\r\n\r\n")
         sock.close
@@ -1841,7 +1862,7 @@ RSpec.describe Samagotchi::Bridge do
         allow(@engine).to receive(:cancel_question)
         allow(Samagotchi::Log).to receive(:warn).and_call_original
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/question/dismiss"),
-                             JSON.generate(id: "q1", deadline: Time.now.to_f - 5), "Content-Type" => "application/json")
+                             JSON.generate(id: "q1", deadline: Time.now.to_f - 5), "Content-Type" => "application/json", **secret_header)
 
         expect(res.code).to eq("408")
         expect(JSON.parse(res.body)).to include("error" => "deadline_passed")
@@ -1853,7 +1874,7 @@ RSpec.describe Samagotchi::Bridge do
     describe "POST /session/:id/command" do
       def post_command(body)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/command"),
-                             body, "Content-Type" => "application/json")
+                             body, "Content-Type" => "application/json", **secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -1880,7 +1901,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
         expect(post_command("{nope").first).to eq(400)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/other/command"),
-                             JSON.generate(line: "/model"), "Content-Type" => "application/json")
+                             JSON.generate(line: "/model"), "Content-Type" => "application/json", **secret_header)
         expect(res.code).to eq("404")
       end
 
@@ -1987,7 +2008,7 @@ RSpec.describe Samagotchi::Bridge do
         # The event log held until the client gave up (past its read timeout).
         holder = Thread.new { @engine.synchronize_events { held << true; release.pop } }
         held.pop
-        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret, read_timeout: 0.5)
 
         expect { client.post_command(line: "!echo STALE", client_id: "tui:1") }.to raise_error(Errno::ETIMEDOUT)
         release << true
@@ -2023,7 +2044,7 @@ RSpec.describe Samagotchi::Bridge do
     describe "POST /session/:id/recap" do
       def post_recap(session_id: @session.id)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/recap"), "{}",
-                             "Content-Type" => "application/json")
+                             "Content-Type" => "application/json", **secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -2052,7 +2073,7 @@ RSpec.describe Samagotchi::Bridge do
     describe "POST /session/:id/exit" do
       def post_exit(body, session_id: @session.id)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/exit"),
-                             body, "Content-Type" => "application/json")
+                             body, "Content-Type" => "application/json", **secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -2181,13 +2202,13 @@ RSpec.describe Samagotchi::Bridge do
 
     describe "GET /session/:id/holds and POST /session/:id/holds/stop (the web's Stop asks first)" do
       def get_holds(session_id: @session.id)
-        res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/holds"))
+        res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/holds"), secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
       def post_stop_holds(session_id: @session.id)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/holds/stop"),
-                             "{}", "Content-Type" => "application/json")
+                             "{}", "Content-Type" => "application/json", **secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -2244,7 +2265,7 @@ RSpec.describe Samagotchi::Bridge do
     describe "POST /session/:id/question/dismiss" do
       def post_dismiss(body)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/question/dismiss"),
-                             body, "Content-Type" => "application/json")
+                             body, "Content-Type" => "application/json", **secret_header)
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -2297,7 +2318,7 @@ RSpec.describe Samagotchi::Bridge do
         id = @engine.post_question({ kind: "continue", question: "Continue?", options: %w[Continue Stop],
                                      multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {}).id
 
-        snap = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")["snapshot"]
+        snap = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("snapshot")["snapshot"]
         expect(snap["current_turn"]).to be_nil
         expect(snap["pending_question"]).to include("id" => id, "kind" => "continue")
       end
@@ -2333,6 +2354,7 @@ RSpec.describe Samagotchi::Bridge do
     uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/turn")
     req = Net::HTTP::Post.new(uri)
     req["Content-Type"] = "application/json"
+    req["X-Chi-Bridge"] = @bridge_secret
     req.body = body
     res = Net::HTTP.start("127.0.0.1", @bridge_port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
     [res.code.to_i, JSON.parse(res.body)]
@@ -2342,6 +2364,7 @@ RSpec.describe Samagotchi::Bridge do
     uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/answer")
     req = Net::HTTP::Post.new(uri)
     req["Content-Type"] = "application/json"
+    req["X-Chi-Bridge"] = @bridge_secret
     req.body = body
     res = Net::HTTP.start("127.0.0.1", @bridge_port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
     [res.code.to_i, JSON.parse(res.body), res.message]
@@ -2351,15 +2374,19 @@ RSpec.describe Samagotchi::Bridge do
     get_state_for(@session.id)
   end
 
+  # The header every request to the Bridge carries (Bridge#secret_ok?).
+  def secret_header = { "X-Chi-Bridge" => @bridge_secret }
+
   def get_state_for(sid)
     uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{sid}/state")
-    res = Net::HTTP.get_response(uri)
+    res = Net::HTTP.get_response(uri, secret_header)
     [res.code.to_i, JSON.parse(res.body)]
   end
 
   def options_request
     uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/turn")
     req = Net::HTTP::Options.new(uri)
+    req["X-Chi-Bridge"] = @bridge_secret
     res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
     [res.code.to_i, res.to_hash, res.body]
   end

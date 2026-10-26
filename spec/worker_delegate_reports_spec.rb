@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "support/test_kernel"
 require "support/worker_loop_rounds"
+require "support/bridge_auth"
 
 require "samagotchi/engine"
 require "samagotchi/worker"
@@ -13,6 +14,8 @@ require "samagotchi/worker"
 # parent (ChildRing), and a parent's turns take its children's reports at
 # their iteration boundaries (ChildReports), committed when the turn is kept.
 RSpec.describe Samagotchi::Worker, "delegate reports" do
+  include BridgeAuth
+
   include WorkerLoopRounds
 
   around do |example|
@@ -479,7 +482,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         port = JSON.parse(File.read(File.join(parent_dir, Samagotchi::WorkerSidecar::FILE)))["port"]
         continue = lambda do
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{parent.id}/command"),
-                         JSON.generate(line: "/continue", client_id: "web:tab1"), "Content-Type" => "application/json")
+                         JSON.generate(line: "/continue", client_id: "web:tab1"), "Content-Type" => "application/json",
+                         **bridge_auth(parent_dir))
         end
 
         send_turn(parent, "long task", "web:tab1")

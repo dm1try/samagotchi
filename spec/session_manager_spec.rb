@@ -1158,7 +1158,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
     let(:worker) { Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1, started_at: nil) }
     let(:old_sidecar) do
-      Samagotchi::WorkerSidecar.new(port: 4100, started_at: "t1", version: "0.18.1", features: ["restart"])
+      Samagotchi::WorkerSidecar.new(port: 4100, started_at: "t1", version: "0.18.1", features: ["restart"], secret: "5e" * 32)
     end
     let(:client) { instance_double(Samagotchi::BridgeClient) }
 
@@ -1168,7 +1168,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     before do
       allow(described_class).to receive(:session_owner).and_return(worker)
-      allow(Samagotchi::BridgeClient).to receive(:new).with(session_id: session.id, port: 4100).and_return(client)
+      # The worker's secret goes with its port, from the same sidecar.
+      allow(Samagotchi::BridgeClient).to receive(:new).with(session_id: session.id, port: 4100, secret: "5e" * 32,
+                                                            host: "127.0.0.1", read_timeout: 30).and_return(client)
     end
 
     it "asks the worker for a restart and waits for its successor's Bridge" do
@@ -1886,7 +1888,7 @@ RSpec.describe Samagotchi::SessionManager do
       server = TCPServer.new("127.0.0.1", 0)
       port = server.addr[1]
       server.close
-      client = Samagotchi::BridgeClient.new(session_id: session.id, port: port, read_timeout: 0.3)
+      client = Samagotchi::BridgeClient.new(session_id: session.id, port: port, secret: nil, read_timeout: 0.3)
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
 
@@ -2068,7 +2070,7 @@ RSpec.describe Samagotchi::SessionManager do
       server = TCPServer.new("127.0.0.1", 0)
       accepted = []
       acceptor = Thread.new { loop { accepted << server.accept } }
-      client = Samagotchi::BridgeClient.new(session_id: session.id, port: server.addr[1], read_timeout: 0.3)
+      client = Samagotchi::BridgeClient.new(session_id: session.id, port: server.addr[1], secret: nil, read_timeout: 0.3)
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
 

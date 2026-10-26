@@ -7,6 +7,7 @@ require "json"
 require "support/test_kernel"
 require "support/failing_saves"
 require "support/worker_loop_rounds"
+require "support/bridge_auth"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -14,6 +15,8 @@ require "samagotchi/bridge_client"
 require "samagotchi/worker"
 
 RSpec.describe Samagotchi::Worker do
+  include BridgeAuth
+
   include WorkerLoopRounds
 
   def cmd(**fields) = Samagotchi::QueuedCommand.new(**fields)
@@ -126,7 +129,7 @@ RSpec.describe Samagotchi::Worker do
       port = JSON.parse(File.read(sidecar))["port"]
       Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
                      JSON.generate(session_id: session.id, prompt: prompt),
-                     "Content-Type" => "application/json")
+                     "Content-Type" => "application/json", **bridge_auth(sidecar))
     end
 
     def next_turn(timeout: 5)
@@ -1023,7 +1026,7 @@ RSpec.describe Samagotchi::Worker do
         body = { client_id: client_id }
         body[:stop] = "all" if stop
         res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                             JSON.generate(body), "Content-Type" => "application/json")
+                             JSON.generate(body), "Content-Type" => "application/json", **bridge_auth(sidecar))
         [res.code.to_i, JSON.parse(res.body)]
       end
 
@@ -1069,7 +1072,7 @@ RSpec.describe Samagotchi::Worker do
         start_worker(poll_interval: 5, idle_exit_minutes: 0)
         port = JSON.parse(File.read(sidecar))["port"]
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                       JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json")
+                       JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json", **bridge_auth(sidecar))
 
         expect(join!(@thread, "the worker").value).to eq(:exit_requested)
         expect(engine).not_to have_received(:write_recap_now)
@@ -1095,8 +1098,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       def follow(client_id: nil)
-        port = JSON.parse(File.read(sidecar))["port"]
-        stream = Samagotchi::BridgeClient.new(session_id: session.id, port: port).follow(client_id: client_id) { |_| nil }
+        stream = Samagotchi::BridgeClient.discover(session.id, session_dir: session_dir).follow(client_id: client_id) { |_| nil }
         (@streams ||= []) << stream
         stream
       end
@@ -1214,7 +1216,7 @@ RSpec.describe Samagotchi::Worker do
           start_worker(poll_interval: 0.05)
           port = JSON.parse(File.read(sidecar))["port"]
           res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                               JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json")
+                               JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json", **bridge_auth(sidecar))
 
           expect(res.code.to_i).to eq(200)
           expect(join!(@thread, "the worker").value).to eq(:exit_requested)
@@ -1225,7 +1227,7 @@ RSpec.describe Samagotchi::Worker do
         def post_restart
           port = JSON.parse(File.read(sidecar))["port"]
           res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                               JSON.generate(client_id: "web:1", restart: true), "Content-Type" => "application/json")
+                               JSON.generate(client_id: "web:1", restart: true), "Content-Type" => "application/json", **bridge_auth(sidecar))
           [res.code.to_i, JSON.parse(res.body)]
         end
 
@@ -1387,7 +1389,7 @@ RSpec.describe Samagotchi::Worker do
         wait_for("the failed turn's steps kept") { saved_messages.length == 9 }
         port = JSON.parse(File.read(sidecar))["port"]
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
-                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json")
+                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json", **bridge_auth(sidecar))
 
         eventually { expect(saved_messages.drop(1)).to eq(%w[earlier ok]) }
       end
@@ -1499,7 +1501,7 @@ RSpec.describe Samagotchi::Worker do
 
       def bridge_snapshot
         port = JSON.parse(File.read(sidecar))["port"]
-        JSON.parse(Net::HTTP.get(URI("http://127.0.0.1:#{port}/session/#{session.id}/snapshot")))["snapshot"]
+        JSON.parse(Net::HTTP.get(URI("http://127.0.0.1:#{port}/session/#{session.id}/snapshot"), bridge_auth(sidecar)))["snapshot"]
       end
 
       it "offers to continue it, from its tool results (no [No response] placeholder)" do
@@ -1526,7 +1528,7 @@ RSpec.describe Samagotchi::Worker do
         port = JSON.parse(File.read(sidecar))["port"]
         post = lambda do |client_id|
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
-                         JSON.generate(line: "/continue yes", client_id: client_id), "Content-Type" => "application/json")
+                         JSON.generate(line: "/continue yes", client_id: client_id), "Content-Type" => "application/json", **bridge_auth(sidecar))
         end
         post.call("cli:answer")
         wait_for("the /continue command to run") { seen.any? { |e| e[:type] == :command_ran } if saw?(:command_ran) }
@@ -1549,7 +1551,7 @@ RSpec.describe Samagotchi::Worker do
         port = JSON.parse(File.read(sidecar))["port"]
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
                        JSON.generate(session_id: session.id, prompt: "something else", client_id: "web:1"),
-                       "Content-Type" => "application/json")
+                       "Content-Type" => "application/json", **bridge_auth(sidecar))
 
         wait_for("the second turn to complete") { saw?(:turn_completed) && seen.count { |e| e[:type] == :turn_completed } == 2 }
         types = seen.map { |e| e[:type] }
@@ -1580,7 +1582,7 @@ RSpec.describe Samagotchi::Worker do
         # here raced that close).
         port = JSON.parse(File.read(sidecar))["port"]
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
-                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json")
+                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json", **bridge_auth(sidecar))
         wait_for("the command to run") { saw?(:command_ran) }
         expect(seen.find { |e| e[:type] == :command_ran }).to include(line: "!rollback", output: "nothing to rollback")
       end
@@ -1626,7 +1628,7 @@ RSpec.describe Samagotchi::Worker do
         body = { line: line, client_id: client_id }
         body[:card] = card unless card.nil?
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session_id}/command"),
-                       JSON.generate(body), "Content-Type" => "application/json")
+                       JSON.generate(body), "Content-Type" => "application/json", **bridge_auth(sidecar))
       end
 
       def events_seen
@@ -1677,7 +1679,7 @@ RSpec.describe Samagotchi::Worker do
         # The same line as a message (chi send -m, /queue TEXT): the Bridge runs it as the command, with its client.
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
                        JSON.generate(session_id: session.id, prompt: "/parent-answers soft", client_id: "cli:answer"),
-                       "Content-Type" => "application/json")
+                       "Content-Type" => "application/json", **bridge_auth(sidecar))
         wait_for("the sixth command_ran") { events_seen.count { |e| e[:type] == :command_ran } >= 6 }
         expect(seen.select { |e| e[:type] == :command_ran }.last).to include(status: "error")
         expect(stored.call).to eq("hard")
@@ -1969,7 +1971,7 @@ RSpec.describe Samagotchi::Worker do
         def post_turn_from(prompt, client_id)
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
                          JSON.generate(session_id: session.id, prompt: prompt, client_id: client_id),
-                         "Content-Type" => "application/json")
+                         "Content-Type" => "application/json", **bridge_auth(sidecar))
         end
 
         def ran_line(line)
@@ -2264,7 +2266,7 @@ RSpec.describe Samagotchi::Worker do
           start_worker(poll_interval: 5)
           command_id = JSON.parse(post_command("/slowside").body)["command_id"]
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
-                         JSON.generate(client_id: "tui:9"), "Content-Type" => "application/json")
+                         JSON.generate(client_id: "tui:9"), "Content-Type" => "application/json", **bridge_auth(sidecar))
           # In its teardown: the Engine's shutdown joins the command.
           wait_for("the worker to reach its Engine's shutdown") { @thread.backtrace.to_a.any? { |frame| frame.include?("shutdown'") } }
           expect(@thread).to be_alive # waiting for the command
@@ -2421,7 +2423,7 @@ RSpec.describe Samagotchi::Worker do
         asked = events_seen.find { |e| e[:type] == :question_requested }
         answer = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/answer"),
                                 JSON.generate(id: asked[:pending_question][:id], selected: ["Continue"], client_id: "web:2"),
-                                "Content-Type" => "application/json")
+                                "Content-Type" => "application/json", **bridge_auth(sidecar))
         expect(answer.code).to eq("200")
         post_turn("something else")
         gate << :go
@@ -2447,7 +2449,7 @@ RSpec.describe Samagotchi::Worker do
         def post_answer(selected, freeform: nil, client_id: "web:2", id: question[:id])
           Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/answer"),
                          JSON.generate(id: id, selected: selected, freeform: freeform, client_id: client_id),
-                         "Content-Type" => "application/json")
+                         "Content-Type" => "application/json", **bridge_auth(sidecar))
         end
 
         def continue_ran(line)

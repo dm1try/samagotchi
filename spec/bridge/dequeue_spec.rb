@@ -23,8 +23,7 @@ RSpec.describe Samagotchi::Bridge, "dequeue" do
     WebMock.allow_net_connect! if defined?(WebMock)
     @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2,
                                   on_input: on_input).start
-    port = JSON.parse(File.read(File.join(session_dir, "bridge.json")))["port"]
-    @client = Samagotchi::BridgeClient.new(session_id: "s1", port: port)
+    @client = Samagotchi::BridgeClient.discover("s1", session_dir: session_dir)
     engine.subscribe(observer: ->(event) { events << event if %i[turn_enqueued turn_dequeued].include?(event[:type]) })
   end
 

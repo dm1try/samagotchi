@@ -11,7 +11,7 @@ require "samagotchi/session"
 require "samagotchi/bridge"
 
 # The Bridge's route table: which handler every method + path reaches, what a
-# wrong method or an unknown path gets, and that the body-size and browser
+# wrong method or an unknown path gets, and that the body-size, browser and secret
 # checks answer before any route.
 RSpec.describe Samagotchi::Bridge, "routing" do
   let(:state_dir) { Dir.mktmpdir("bridge-routing") }
@@ -35,7 +35,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     end
     @bridge.start
     sidecar = File.join(Samagotchi::Session.session_dir("s1", state_dir: state_dir), "bridge.json")
-    @port = JSON.parse(File.read(sidecar))["port"]
+    @port, @secret = JSON.parse(File.read(sidecar)).values_at("port", "secret")
   end
 
   after do
@@ -44,10 +44,12 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     FileUtils.remove_entry(state_dir)
   end
 
-  # One raw request on its own connection: [status, headers (lowercased), parsed body].
-  def request(method, target, headers: {}, body: nil)
+  # One raw request on its own connection: [status, headers (lowercased), parsed body]. It names the
+  # Bridge's secret, as chi's clients do, unless +secret+ is another one (nil: none).
+  def request(method, target, headers: {}, body: nil, secret: @secret)
     sock = TCPSocket.new("127.0.0.1", @port)
     head = "#{method} #{target} HTTP/1.1\r\nHost: 127.0.0.1:#{@port}\r\nConnection: close\r\n"
+    head << "X-Chi-Bridge: #{secret}\r\n" if secret
     headers.each { |k, v| head << "#{k}: #{v}\r\n" }
     head << "Content-Length: #{body.bytesize}\r\n" if body
     sock.write("#{head}\r\n#{body}")
@@ -164,6 +166,52 @@ RSpec.describe Samagotchi::Bridge, "routing" do
   it "answers chi's own requests, which carry no proxy trace (Last-Event-ID, Authorization, Content-Type)" do
     _, _, body = request("GET", "/session/abc/stream", headers: { "Last-Event-ID" => "3-1" })
     expect(body["handler"]).to eq("serve_sse")
+  end
+
+  describe "the Bridge's secret" do
+    let(:refused) { [403, { "error" => "bridge_secret", "detail" => described_class::SECRET_REFUSED }] }
+    # One request of each kind: the stream, a read, a write, a read-only POST, an unknown path.
+    let(:route_classes) do
+      [["GET", "/session/s1/stream"], ["GET", "/session/s1/state"], ["GET", "/session/s1/stats"],
+       ["POST", "/session/s1/turn"], ["POST", "/session/s1/exit"], ["POST", "/session/s1/relay/status"],
+       ["GET", "/session/other/state"], ["GET", "/nope"]]
+    end
+
+    it "is in the 0600 sidecar: 64 hex characters (32 random bytes), another for every Bridge" do
+      path = File.join(Samagotchi::Session.session_dir("s1", state_dir: state_dir), "bridge.json")
+      expect(@secret).to match(/\A\h{64}\z/)
+      expect(File.stat(path).mode & 0o777).to eq(0o600)
+      other = described_class.new(engine: engine, state_dir: state_dir, session_id: "s2")
+      expect(other.instance_variable_get(:@secret)).not_to eq(@secret)
+    end
+
+    it "is asked of every request before any route: none, an empty one, another one, a cut one or its upper case are refused" do
+      [nil, "", "0" * 64, @secret[0, 63], "#{@secret}0", @secret.upcase].each do |secret|
+        route_classes.each do |method, path|
+          answer = request(method, path, secret: secret, body: method == "POST" ? '{"x":1}' : nil)
+          expect(answer.values_at(0, 2)).to eq(refused), "#{method} #{path} with #{secret.inspect}"
+        end
+      end
+      handlers.each { |name| expect(@bridge).not_to have_received(name) }
+      expect(@bridge).not_to have_received(:serve_sse)
+    end
+
+    it "lets the request with it through to its route" do
+      expect(request("GET", "/session/s1/state").values_at(0, 2)).to eq([200, { "handler" => "handle_state", "sid" => "s1" }])
+      expect(request("GET", "/session/s1/stream")[2]["handler"]).to eq("serve_sse")
+    end
+
+    it "comes after the browser and proxy checks, which say more" do
+      expect(request("GET", "/session/s1/state", headers: { "Origin" => "null" }, secret: nil)[2]["error"]).to eq("cross_origin")
+      expect(request("GET", "/session/s1/state", headers: { "X-Forwarded-For" => "203.0.113.9" }, secret: nil)[2]["error"])
+        .to eq("proxied")
+    end
+
+    it "logs a refusal at most once a minute, with the path and never a header's value" do
+      allow(Samagotchi::Log).to receive(:warn)
+      3.times { request("GET", "/session/s1/state", secret: "f" * 64) }
+      expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "secret_refused", { path: "/session/s1/state" }).once
+    end
   end
 
   it "answers a body over the limit with 413 before the browser check" do

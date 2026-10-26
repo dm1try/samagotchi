@@ -8,7 +8,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
   let(:state_dir) { Dir.mktmpdir("local-link") }
   let(:id) { "s-1234" }
   let(:session_dir) { Samagotchi::Session.session_dir(id, state_dir: state_dir) }
-  let(:client) { Samagotchi::BridgeClient.new(session_id: id, port: 4100) }
+  let(:client) { Samagotchi::BridgeClient.new(session_id: id, port: 4100, secret: nil) }
   let(:link) { described_class.new(client: client, state_dir: state_dir) }
 
   before { FileUtils.mkdir_p(session_dir) }
@@ -44,6 +44,13 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
     expect([moved.session_id, moved.port, moved.host]).to eq([id, 4200, "127.0.0.1"])
     expect(link.client).to be(moved)
     expect(link.switched({ "port" => 4300 }).port).to eq(4300)
+  end
+
+  it "switches with the secret the new worker's sidecar names, none when the sidecar names another port" do
+    Samagotchi::WorkerSidecar.new(port: 4200, session_id: id, secret: "5e" * 32).write(session_dir)
+
+    expect(link.switched({ port: 4200 }).send(:secret_headers)).to eq("X-Chi-Bridge" => "5e" * 32)
+    expect(link.switched({ port: 4300 }).send(:secret_headers)).to eq({})
   end
 
   describe "#queues? and #unqueues?" do
@@ -105,7 +112,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
     end
 
     it "has none for a session id that isn't one" do
-      bad = described_class.new(client: Samagotchi::BridgeClient.new(session_id: "../x", port: 1), state_dir: state_dir)
+      bad = described_class.new(client: Samagotchi::BridgeClient.new(session_id: "../x", port: 1, secret: nil), state_dir: state_dir)
       expect([bad.saved_tool_records("t1"), bad.saved_turn_record("t1")]).to eq([[], nil])
     end
   end

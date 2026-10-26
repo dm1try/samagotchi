@@ -689,7 +689,7 @@ module Samagotchi
         raise RestartRefused.new(session_id, :unsupported, version: sidecar.version)
       end
 
-      reply = BridgeClient.new(session_id: session_id, port: sidecar.port).request_exit(client_id: client_id, restart: true)
+      reply = BridgeClient.for_sidecar(session_id, sidecar).request_exit(client_id: client_id, restart: true)
       raise RestartRefused.new(session_id, reply.json&.fetch("reason", nil) || :failed) if reply.status == 409
       raise RestartRefused.new(session_id, :failed) unless reply.status == 200
 

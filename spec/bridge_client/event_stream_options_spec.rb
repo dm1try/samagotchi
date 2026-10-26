@@ -65,7 +65,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     it "reconnects with the cursor when no byte comes for that long (a half-open connection)" do
       port, heads = scripted([->(conn) { conn.write(sse_head + frame("4-e1", "snapshot")) && hold(conn) },
                               ->(conn) { conn.write(sse_head + frame("5-e1", "turn_started")) && hold(conn) }])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), idle_timeout: 0.2)
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil), idle_timeout: 0.2)
 
       expect(types(collect(2))).to eq(%w[snapshot turn_started])
       heads.pop
@@ -85,7 +85,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
         hold(conn)
       end
       port, heads = scripted([pinging, pinging])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), idle_timeout: 0.3)
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil), idle_timeout: 0.3)
 
       expect(types(collect(1))).to eq(%w[snapshot])
       expect(pop!(still_open, "the pings")).to be(true)
@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     it "is off for a Bridge on this machine: BridgeClient#follow passes none" do
       allow(described_class).to receive(:new).and_call_original
       port, = scripted([->(conn) { conn.write(sse_head) && hold(conn) }])
-      @stream = Samagotchi::BridgeClient.new(session_id: "s1", port: port).follow { |event| events << event }
+      @stream = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil).follow { |event| events << event }
 
       expect(described_class).to have_received(:new).with(anything, hash_excluding(:idle_timeout, :epoch_watch,
                                                                                    :announce_retries))
@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     it "announces a frame from another epoch than the cursor's as a new worker, and updates the client's key" do
       port, heads = scripted([->(conn) { conn.write(sse_head + frame("7-aaaa", "snapshot")) },
                               ->(conn) { conn.write(sse_head + frame("1-bbbb", "reset")) && hold(conn) }])
-      client = web_client_class.new(session_id: "s1", port: port).tap { |made| made.worker_key = "aaaa" }
+      client = web_client_class.new(session_id: "s1", port: port, secret: nil).tap { |made| made.worker_key = "aaaa" }
       stream_for(client, epoch_watch: true)
 
       expect(collect(3)).to eq([{ "type" => "snapshot" }, { "type" => "worker_changed", "port" => nil, "epoch" => "bbbb" },
@@ -120,7 +120,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
 
     it "moves on a rediscovered key the client changed in place (the same object), with the epoch" do
       port, = scripted([->(conn) { conn.write(sse_head + frame("7-aaaa", "snapshot")) }])
-      client = web_client_class.new(session_id: "s1", port: port).tap { |made| made.worker_key = "aaaa" }
+      client = web_client_class.new(session_id: "s1", port: port, secret: nil).tap { |made| made.worker_key = "aaaa" }
       rediscover = lambda do
         client.worker_key = "cccc"
         client
@@ -139,7 +139,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
                         ->(conn) { conn.close },
                         ->(conn) { conn.close },
                         ->(conn) { conn.write(sse_head + frame("2-e", "turn_started")) && hold(conn) }])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil), announce_retries: true)
 
       expect(types(collect(4))).to eq(%w[snapshot stream_retrying stream_resumed turn_started])
     end
@@ -148,7 +148,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
       port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) },
                         ->(conn) { conn.close },
                         ->(conn) { conn.write(sse_head + ": ping\n\n") && hold(conn) }])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true)
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil), announce_retries: true)
 
       expect(types(collect(3))).to eq(%w[snapshot stream_retrying stream_resumed])
     end
@@ -162,7 +162,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
     end
 
     it "closes with the reason it was gone for" do
-      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port)
+      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port, secret: nil)
       stream_for(client, rediscover: -> { [:gone, "stopped"] })
 
       expect(collect(1)).to eq([{ "type" => "stream_closed", "reason" => "stopped" }])
@@ -170,21 +170,21 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "options for a stream thro
 
     it "says only that it closed when rediscovery finds the session stopped: no reconnecting line first" do
       port, = scripted([->(conn) { conn.write(sse_head + frame("1-e", "snapshot")) }])
-      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port), announce_retries: true,
+      stream_for(Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil), announce_retries: true,
                                                                               rediscover: -> { [:gone, "stopped"] })
 
       expect(collect(2)).to eq([{ "type" => "snapshot" }, { "type" => "stream_closed", "reason" => "stopped" }])
     end
 
     it "closes with the last reason it gave while retrying, once the delays run out" do
-      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port)
+      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port, secret: nil)
       stream_for(client, rediscover: -> { [nil, "auth"] })
 
       expect(collect(1)).to eq([{ "type" => "stream_closed", "reason" => "auth" }])
     end
 
     it "closes as unreachable without one, as before" do
-      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port)
+      client = Samagotchi::BridgeClient.new(session_id: "s1", port: dead_port, secret: nil)
       stream_for(client, rediscover: -> { :gone })
 
       expect(collect(1)).to eq([{ "type" => "stream_closed", "reason" => "unreachable" }])

@@ -6,7 +6,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
   let(:sse_head) { "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" }
   let(:events) { [] }
   let(:bridge) { scripted_bridge(scripts) }
-  let(:client) { Samagotchi::BridgeClient.new(session_id: "s1", port: bridge.port) }
+  let(:client) { Samagotchi::BridgeClient.new(session_id: "s1", port: bridge.port, secret: nil) }
 
   # A fake Bridge serving one scripted connection per entry of +scripts+.
   # Each script gets the connection after its request was read; the request
@@ -148,7 +148,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
       looks = 0
       rediscover = lambda do
         looks += 1
-        looks < 3 ? nil : Samagotchi::BridgeClient.new(session_id: "s1", port: second.port)
+        looks < 3 ? nil : Samagotchi::BridgeClient.new(session_id: "s1", port: second.port, secret: nil)
       end
       follow(rediscover: rediscover)
       collect(events, 1)

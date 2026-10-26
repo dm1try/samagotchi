@@ -28,7 +28,7 @@ RSpec.describe "Bridge SSE event projection" do
     @bridge = Samagotchi::Bridge.new(engine: @engine, state_dir: state_dir, session_id: @session.id, heartbeat_interval: 0.2)
     @bridge.start
     sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
-    @port = JSON.parse(File.read(sidecar))["port"]
+    @port, @secret = JSON.parse(File.read(sidecar)).values_at("port", "secret")
     @sockets = []
     allow(kernel).to receive(:run) do |_messages, **kwargs|
       kwargs[:on_stream_event].call(chunk)
@@ -45,7 +45,8 @@ RSpec.describe "Bridge SSE event projection" do
   def open_stream(query = "")
     socket = TCPSocket.new("127.0.0.1", @port)
     @sockets << socket
-    socket.write("GET /session/#{@session.id}/stream#{query} HTTP/1.1\r\nHost: 127.0.0.1\r\nUser-Agent: spec\r\n\r\n")
+    socket.write("GET /session/#{@session.id}/stream#{query} HTTP/1.1\r\nHost: 127.0.0.1\r\n" \
+                 "X-Chi-Bridge: #{@secret}\r\nUser-Agent: spec\r\n\r\n")
     socket
   end
 

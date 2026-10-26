@@ -341,7 +341,7 @@ RSpec.describe "a participant's author on delivery" do
                                       commands << command
                                       :anytime
                                     }).start
-      @client = Samagotchi::BridgeClient.new(session_id: "s1", port: read_file(File.join(session_dir, "bridge.json"))["port"])
+      @client = Samagotchi::BridgeClient.discover("s1", session_dir: session_dir)
     end
 
     after do

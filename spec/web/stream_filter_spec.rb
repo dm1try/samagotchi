@@ -32,8 +32,8 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
 
   def streamed(filter:)
     with_bridge do |port|
-      body = described_class::ProxyStreamBody.new(host: "127.0.0.1", port: port, session_id: "s1", query: "", headers: {},
-                                                  filter: filter)
+      client = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil)
+      body = described_class::ProxyStreamBody.new(client: client, query: "", headers: {}, filter: filter)
       out = []
       body.each { |chunk| out << chunk } # rubocop:disable Style/MapIntoArray -- a Rack body: #each only, no #map
       out.join

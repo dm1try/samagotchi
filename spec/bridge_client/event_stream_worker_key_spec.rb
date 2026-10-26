@@ -34,16 +34,16 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "worker identity" do
   end
 
   it "is the port" do
-    expect(Samagotchi::BridgeClient.new(session_id: "s1", port: 4100).worker_key).to eq(4100)
+    expect(Samagotchi::BridgeClient.new(session_id: "s1", port: 4100, secret: nil).worker_key).to eq(4100)
   end
 
   it "does not take a rediscovered client with the same key for a move" do
     port, = one_shot_bridge
-    client = Samagotchi::BridgeClient.new(session_id: "s1", port: port)
+    client = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil)
     looks = 0
     rediscover = lambda do
       looks += 1
-      Samagotchi::BridgeClient.new(session_id: "s1", port: port)
+      Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil)
     end
     stream = client.follow(rediscover: rediscover, reconnect_delays: [0.01, 0.01]) { |event| events << event }
 
@@ -55,8 +55,8 @@ RSpec.describe Samagotchi::BridgeClient::EventStream, "worker identity" do
 
   it "moves to a rediscovered client whose key differs, even on the same port" do
     port, = one_shot_bridge
-    client = Samagotchi::BridgeClient.new(session_id: "s1", port: port)
-    found = keyed_client.new(session_id: "s1", port: port)
+    client = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil)
+    found = keyed_client.new(session_id: "s1", port: port, secret: nil)
     stream = client.follow(rediscover: -> { found }, reconnect_delays: [0.01]) { |event| events << event }
 
     expect(collect(2)).to eq([{ "type" => "turn_completed" }, { "type" => "worker_changed", "port" => port }])

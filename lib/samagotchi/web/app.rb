@@ -1130,8 +1130,8 @@ module Samagotchi
       # The session's Bridge, waiting briefly for one a resume just spawned.
       # @return [BridgeClient, nil]
       def live_bridge_client(id)
-        port = bridge_sidecar_port(id) || await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min)
-        port && BridgeClient.new(session_id: id, port: port, host: DEFAULT_HOST)
+        sidecar = bridge_sidecar(id) || await_bridge_sidecar(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min)
+        bridge_client_for(id, sidecar)
       end
 
       # The process holding the session (an OwnerLock::Owner), or nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
@@ -1354,14 +1354,16 @@ module Samagotchi
         # Single live transport: proxy to the session's Bridge. When no live
         # worker exists there is nothing to stream — history is available via
         # GET /api/sessions/:id/output.
-        bridge_port = bridge_sidecar_port(id)
+        sidecar = bridge_sidecar(id)
         # A resume just spawned the worker: its bridge may still be binding.
         # Wait briefly for it so the first SSE connect lands on a live bridge
         # instead of an instantly-closed empty 200 / 503 during startup.
-        if bridge_port.nil? && @bridge_wait_timeout.to_i.positive?
-          bridge_port = await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
+        if sidecar.nil? && @bridge_wait_timeout.to_i.positive?
+          sidecar = await_bridge_sidecar(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
         end
-        return error_response(503, "not_live", "no live bridge for session #{id}") unless bridge_port
+        return error_response(503, "not_live", "no live bridge for session #{id}") unless sidecar
+
+        client = bridge_client_for(id, sidecar)
 
         headers = {
           "Content-Type" => "text/event-stream",
@@ -1376,19 +1378,19 @@ module Samagotchi
         # handler supports hijacking, stream frames straight to the socket
         # instead of returning an enumerable.
         if req.env["rack.hijack?"]
-          hijack = sse_hijack(id, req, bridge_port)
+          hijack = sse_hijack(id, req, client)
           return [200, headers.merge("rack.hijack" => hijack), []]
         end
 
-        [200, headers, proxy_stream_body(id, req, bridge_port)]
+        [200, headers, proxy_stream_body(id, req, client)]
       end
 
       # The one ProxyStreamBody both of #handle_stream's transports send:
       # the session's Bridge stream, through the request principal's frame
       # filter (#stream_filter).
-      def proxy_stream_body(id, req, port)
+      def proxy_stream_body(id, req, client)
         query = participant_view?(req) ? participant_stream_query(req) : stream_query(req)
-        ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
+        ProxyStreamBody.new(client: client, query: query, headers: req.env,
                             server_running: stream_running(principal(req)), filter: stream_filter(req, id))
       end
 
@@ -1459,45 +1461,47 @@ module Samagotchi
       # frames directly to the client socket until it disconnects. The handler
       # (WEBrick via rackup) has already sent the status line + headers, so
       # only body bytes go to the socket here.
-      def sse_hijack(id, req, port)
+      def sse_hijack(id, req, client)
         # Made before the status line goes out: a principal with no filter
         # is refused (#stream_filter), never streamed.
-        body = proxy_stream_body(id, req, port)
+        body = proxy_stream_body(id, req, client)
         lambda do |io|
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
         rescue StandardError => e
-          Log.warn(:web, "proxy_failed", sid: id, port: port, error: e.class.name, msg: e.message)
+          Log.warn(:web, "proxy_failed", sid: id, port: client.port, error: e.class.name, msg: e.message)
           nil
         end
       end
 
       # Bounded wait for a freshly-spawned worker's bridge sidecar so the
       # response hands the client a live transport without client-side polling.
-      # Returns the bridge port, or nil when it is not up by the deadline (the
+      # Returns the bridge's sidecar (WorkerSidecar), or nil when it is not up by the deadline (the
       # session still exists; EventSource auto-reconnect covers late binders).
-      def await_bridge_port(session_id, timeout: @bridge_wait_timeout)
+      def await_bridge_sidecar(session_id, timeout: @bridge_wait_timeout)
         return nil if timeout.nil? || timeout <= 0
 
-        BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) { bridge_sidecar_port(session_id) }
+        BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) { bridge_sidecar(session_id) }
       rescue StandardError
         nil
       end
 
-      # Port of the session's live Bridge (stale sidecars are removed), or nil.
-      def bridge_sidecar_port(session_id)
+      # The session's live Bridge's sidecar (stale ones are removed), or nil:
+      # read again for every request, so a respawned worker's port and secret
+      # are the ones used.
+      # @return [WorkerSidecar, nil]
+      def bridge_sidecar(session_id)
         dir = @session_class.session_dir(session_id, state_dir: default_state_dir)
-        BridgeClient.sidecar_port(dir, host: DEFAULT_HOST)
+        BridgeClient.live_sidecar(dir, host: DEFAULT_HOST)
       rescue StandardError
         nil
       end
 
       # @return [BridgeClient, nil] a client for the session's live Bridge
-      def bridge_client(session_id)
-        port = bridge_sidecar_port(session_id)
-        port && BridgeClient.new(session_id: session_id, port: port, host: DEFAULT_HOST)
-      end
+      def bridge_client(session_id) = bridge_client_for(session_id, bridge_sidecar(session_id))
+
+      def bridge_client_for(session_id, sidecar) = BridgeClient.for_sidecar(session_id, sidecar, host: DEFAULT_HOST)
 
       # GET a read path of the session's live Bridge (+path+: "state",
       # "snapshot", "stats", ...).
@@ -1815,8 +1819,9 @@ module Samagotchi
         #   is kept (the env carries the token cookie, never held or inspected)
         # @param filter [#call, nil] chunk -> String (nil or "": nothing sent);
         #   it sees the Bridge's reads as they come, not whole frames
-        def initialize(host:, port:, session_id:, query:, headers:, server_running: -> { true }, filter: nil)
-          @client = BridgeClient.new(session_id: session_id, port: port, host: host)
+        # @param client [BridgeClient] the session's Bridge (App#bridge_client_for)
+        def initialize(client:, query:, headers:, server_running: -> { true }, filter: nil)
+          @client = client
           @query = query
           @last_event_id = headers["HTTP_LAST_EVENT_ID"]
           @server_running = server_running

@@ -58,9 +58,14 @@ module Samagotchi
         [BridgeClient.discover(id, session_dir: session_dir, host: @client.host), nil]
       end
 
-      # A new worker's Bridge, on the port its event names.
+      # A new worker's Bridge, on the port its event names, with the secret
+      # its sidecar names (none when the sidecar names another port by now:
+      # that worker is gone too, and the stream finds the next one).
       def switched(event)
-        @client = BridgeClient.new(session_id: @client.session_id, port: AttachLink.event_port(event), host: @client.host)
+        port = AttachLink.event_port(event)
+        sidecar = WorkerSidecar.read(session_dir)
+        sidecar = WorkerSidecar.new(port: port) unless sidecar&.port == port
+        @client = BridgeClient.for_sidecar(@client.session_id, sidecar, host: @client.host)
       end
 
       # No sidecar to read: true, its Bridge answers (a P0-P2 worker refuses

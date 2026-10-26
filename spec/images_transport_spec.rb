@@ -73,14 +73,15 @@ RSpec.describe "Images in transport" do
       engine.subscribe(observer: ->(event) { events << event })
       @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id,
                                        input_format: Samagotchi::SessionInbox::INPUT_FORMAT).start
-      @port = JSON.parse(File.read(File.join(session_dir, "bridge.json")))["port"]
+      @port, @secret = JSON.parse(File.read(File.join(session_dir, "bridge.json"))).values_at("port", "secret")
     end
 
     after { @bridge&.stop }
 
     def post(body)
       res = Net::HTTP.post(URI("http://127.0.0.1:#{@port}/session/#{session.id}/turn"),
-                           body.is_a?(String) ? body : JSON.generate(body), "Content-Type" => "application/json")
+                           body.is_a?(String) ? body : JSON.generate(body), "Content-Type" => "application/json",
+                                                                                "X-Chi-Bridge" => @secret)
       [res.code.to_i, (JSON.parse(res.body) rescue res.body)]
     end
 

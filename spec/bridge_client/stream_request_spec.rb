@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::BridgeClient::StreamRequest do
 
   it "is what BridgeClient#connect_stream sends, and leaves the socket at the body with the status" do
     port, head = serve("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {}\n\n")
-    sock, status = Samagotchi::BridgeClient.new(session_id: "s1", port: port)
+    sock, status = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: nil)
                                            .connect_stream(query: "?snapshot=1", last_event_id: "9-e", timeout: 2)
 
     expect(status).to eq(200)

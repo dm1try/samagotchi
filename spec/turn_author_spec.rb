@@ -100,7 +100,7 @@ RSpec.describe "a turn's author" do
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
       @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
-      @client = Samagotchi::BridgeClient.new(session_id: "s1", port: read_file(File.join(session_dir, "bridge.json"))["port"])
+      @client = Samagotchi::BridgeClient.discover("s1", session_dir: session_dir)
     end
 
     after do

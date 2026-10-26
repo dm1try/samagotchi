@@ -5,6 +5,7 @@ require "json"
 require "uri"
 require "fileutils"
 require "securerandom"
+require "openssl"
 require "time"
 require_relative "atomic_file"
 require_relative "delivery"
@@ -47,8 +48,10 @@ module Samagotchi
   #   `SessionInbox` file-IPC input path.
   # * One capture observer fills a shared ring buffer; each connection gets a
   #   per-connection live queue (see SSEWriter).
-  # * Binds 127.0.0.1 only. There is NO auth: binding 0.0.0.0 exposes remote
-  #   turn-execution (RCE). Documented, not fixed.
+  # * Binds 127.0.0.1 only, and answers only a request that names its secret
+  #   (#secret_ok?): a random one per Bridge, in the worker's 0600 bridge.json,
+  #   which only this machine's user can read. Binding 0.0.0.0 would still put
+  #   remote turn-execution (RCE) one leaked secret away: don't.
   # * Optional at runtime: this module is never loaded unless explicitly
   #   engaged as a transport.
   class Bridge
@@ -67,6 +70,16 @@ module Samagotchi
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
+    # The request header that names the Bridge's secret (BridgeClient::SECRET_HEADER), lowercased as #read_request keeps it.
+    SECRET_HEADER = "x-chi-bridge"
+    # Bytes of randomness in a Bridge's secret (hex in bridge.json: twice as many characters).
+    SECRET_BYTES = 32
+    # What a request without this Bridge's secret, or with another one, is told
+    # (403 bridge_secret): it comes from a chi that read no secret, a chi web
+    # or an attached terminal started before chi was updated.
+    SECRET_REFUSED = "the request didn't name this session worker's secret: a chi web or an attached terminal " \
+                     "started before chi was updated can't reach it; restart chi web and re-attach terminals " \
+                     "(chi --attach ID)"
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -130,6 +143,9 @@ module Samagotchi
       @pending_card = PendingCard.new(session_dir)
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)
+      # Only in bridge.json (0600) and this process: never logged, never in an
+      # event, a reply or the session's files.
+      @secret = SecureRandom.hex(SECRET_BYTES)
 
       @capture_handle = nil
       @server = nil
@@ -137,14 +153,18 @@ module Samagotchi
       @connection_threads = []
       @stopped = false
       @mutex = Monitor.new
-      @proxied_log_mutex = Mutex.new
-      @proxied_logged_at = nil
+      @refused_log_mutex = Mutex.new
+      @refused_logged_at = {}
       @open_streams = 0
       # Open streams by the client_id a stream named (`?client_id=`); web
       # tabs, through the `chi web` proxy, name none.
       @streams_by_client = Hash.new(0)
       @last_client_activity_at = monotonic_now
     end
+
+    # The secret never shows in an inspect (a log line, an error's message).
+    def inspect = "#<#{self.class.name} session_id=#{@session_id.inspect} port=#{@port}>"
+    alias to_s inspect
 
     # @return [Boolean] whether the server has been stopped.
     def stopped?
@@ -458,9 +478,12 @@ module Samagotchi
         elsif browser_request?(headers)
           write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
         elsif proxied_request?(headers)
-          note_proxied_refused(request[:path])
+          note_refused(:proxied, "proxied_refused", request[:path])
           write_json(io, 403, nil, { error: "proxied", detail: "the bridge answers chi's own clients on this machine, " \
                                                                "never a request through a proxy" })
+        elsif !secret_ok?(headers)
+          note_refused(:secret, "secret_refused", request[:path])
+          write_json(io, 403, nil, { error: "bridge_secret", detail: SECRET_REFUSED })
         elsif route.nil?
           write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })
@@ -554,15 +577,26 @@ module Samagotchi
     # web's stream proxy forwards Last-Event-ID only (ProxyStreamBody).
     def proxied_request?(headers) = headers.keys.any? { |name| ProxyTrace.header?(name) }
 
-    PROXIED_LOG_INTERVAL = 60.0
+    REFUSED_LOG_INTERVAL = 60.0
 
-    # At most once a minute: a scan through a forward would fill the log.
-    def note_proxied_refused(path)
+    # Whether the request names this Bridge's secret (SECRET_HEADER), compared
+    # in constant time. Every route asks for it, the stream and the read-only
+    # ones too: what they show is the session itself.
+    def secret_ok?(headers)
+      given = headers[SECRET_HEADER]
+      given.is_a?(String) && OpenSSL.secure_compare(given, @secret)
+    end
+
+    # A refusal's log line, at most once a minute per +kind+: a scan through
+    # a forward, or an old chi web's every poll, would fill the log. The path
+    # only, never a header.
+    def note_refused(kind, event, path)
       now = monotonic_now
-      due = @proxied_log_mutex.synchronize do
-        (@proxied_logged_at.nil? || now - @proxied_logged_at >= PROXIED_LOG_INTERVAL).tap { |fresh| @proxied_logged_at = now if fresh }
+      due = @refused_log_mutex.synchronize do
+        last = @refused_logged_at[kind]
+        (last.nil? || now - last >= REFUSED_LOG_INTERVAL).tap { |fresh| @refused_logged_at[kind] = now if fresh }
       end
-      Log.warn(:bridge, "proxied_refused", path: path) if due
+      Log.warn(:bridge, event, path: path) if due
     end
 
     def browser_request?(headers)
@@ -1455,9 +1489,10 @@ module Samagotchi
       # version: the chi this worker runs (chi update and the web's badge
       # report older ones); features: what a client may ask of it; epoch:
       # this worker's, as its event ids carry it.
+      # secret: what every request must name (#secret_ok?).
       WorkerSidecar.new(port: @port, bind: @bind, session_id: @session_id, started_at: Time.now.iso8601(3),
                         version: Samagotchi::VERSION, input_format: @input_format, features: FEATURES,
-                        epoch: @epoch).write(session_dir)
+                        epoch: @epoch, secret: @secret).write(session_dir)
     rescue StandardError => e
       Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{WorkerSidecar::FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end

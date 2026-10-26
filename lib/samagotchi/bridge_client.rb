@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require "socket"
 
@@ -22,6 +23,8 @@ module Samagotchi
     HOST = "127.0.0.1"
     # A reply's status line; its code is group 1.
     STATUS_LINE = StreamRequest::STATUS_LINE
+    # The request header that carries the Bridge's secret (Bridge#secret_ok?).
+    SECRET_HEADER = "X-Chi-Bridge"
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for the Bridge's response headers, per attempt:
     # a worker that took the connection and froze must not hold the web's
@@ -68,19 +71,28 @@ module Samagotchi
       "this session's worker runs an older chi and can't #{cant}; restart it: #{restart} (its turns still work)"
     end
 
-    # Port of the live Bridge advertised in +session_dir+'s sidecar, or nil.
-    # A sidecar whose port refuses a quick connect is stale (its worker died)
-    # and is removed.
+    # The live Bridge's sidecar in +session_dir+, or nil. A sidecar whose
+    # port refuses a quick connect is stale (its worker died) and is removed.
     # @param session_dir [String]
-    # @return [Integer, nil]
-    def self.sidecar_port(session_dir, host: HOST)
-      WorkerSidecar.live_port(session_dir, unlink: true, host: host)
+    # @return [WorkerSidecar, nil]
+    def self.live_sidecar(session_dir, host: HOST)
+      WorkerSidecar.live(session_dir, unlink: true, host: host)
+    end
+
+    # The one way a client is made for a worker: its port and its secret
+    # come from the same sidecar read, so a respawned worker (a new port, a
+    # new secret) is reached by a client made after it, never by hand.
+    # @param sidecar [WorkerSidecar, nil]
+    # @return [BridgeClient, nil] nil without a sidecar
+    def self.for_sidecar(session_id, sidecar, host: HOST, read_timeout: READ_TIMEOUT)
+      return nil unless sidecar
+
+      new(session_id: session_id, port: sidecar.port, secret: sidecar.secret, host: host, read_timeout: read_timeout)
     end
 
     # @return [BridgeClient, nil] a client for the live Bridge in +session_dir+
-    def self.discover(session_id, session_dir:, host: HOST)
-      port = sidecar_port(session_dir, host: host)
-      port && new(session_id: session_id, port: port, host: host)
+    def self.discover(session_id, session_dir:, host: HOST, read_timeout: READ_TIMEOUT)
+      for_sidecar(session_id, live_sidecar(session_dir, host: host), host: host, read_timeout: read_timeout)
     end
 
     # How often a wait for a new worker's Bridge looks: a missing sidecar is
@@ -92,8 +104,8 @@ module Samagotchi
     # @param timeout [Float] seconds
     # @return [BridgeClient, nil] nil when no live sidecar appeared in time
     def self.wait_for(session_id, session_dir:, timeout:, host: HOST)
-      port = poll(timeout, interval: SPAWN_POLL_INTERVAL) { sidecar_port(session_dir, host: host) }
-      port && new(session_id: session_id, port: port, host: host)
+      sidecar = poll(timeout, interval: SPAWN_POLL_INTERVAL) { live_sidecar(session_dir, host: host) }
+      for_sidecar(session_id, sidecar, host: host)
     end
 
     # Call the block every +interval+ seconds until it returns a truthy value
@@ -113,16 +125,26 @@ module Samagotchi
     attr_reader :session_id, :port, :host
 
     # Which worker this client talks to, for EventStream: a rediscovered
-    # client with another key is a new worker. A Bridge's port.
-    def worker_key = @port
+    # client with another key is a new worker. A Bridge's port, and a
+    # fingerprint of its secret when it has one: a new worker that got the
+    # old one's port back has another secret, so it is still a new worker.
+    def worker_key = @secret ? "#{@port}-#{Digest::SHA256.hexdigest(@secret)[0, 12]}" : @port
 
+    # @param secret [String, nil] the Bridge's secret, sent in SECRET_HEADER
+    #   with every request (nil: a worker from before secrets, which asks for
+    #   none); from the worker's sidecar (.for_sidecar), never typed
     # @param read_timeout [Numeric] see READ_TIMEOUT
-    def initialize(session_id:, port:, host: HOST, read_timeout: READ_TIMEOUT)
+    def initialize(session_id:, port:, secret:, host: HOST, read_timeout: READ_TIMEOUT)
       @session_id = session_id
       @port = port
+      @secret = secret
       @host = host
       @read_timeout = read_timeout
     end
+
+    # The secret never shows in an inspect (a log line, an error's message).
+    def inspect = "#<#{self.class.name} session_id=#{@session_id.inspect} port=#{@port}>"
+    alias to_s inspect
 
     # POST /session/:id/answer. 200 = recorded, 409 = another client answered
     # first (or the question is gone), 400 = invalid selection, 408
@@ -289,7 +311,7 @@ module Samagotchi
     #   (nil when it isn't JSON); [nil, nil] when no reply came
     def get(path)
       sock = TCPSocket.new(@host, @port)
-      sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nConnection: close\r\n\r\n")
+      sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\n#{secret_line}Connection: close\r\n\r\n")
       response = read_reply(sock, path)
       sock.close rescue nil
       # A 500 whose text has "200" in it is not a 200.
@@ -375,10 +397,15 @@ module Samagotchi
     #   nil when the Bridge can't be reached
     def connect_stream(query: "", last_event_id: nil, timeout: nil)
       StreamRequest.open(host: @host, port: @port, path: "/session/#{@session_id}/stream#{query}",
-                         last_event_id: last_event_id, timeout: timeout)
+                         last_event_id: last_event_id, headers: secret_headers, timeout: timeout)
     end
 
     private
+
+    # The request header naming the Bridge's secret (none without one).
+    def secret_headers = @secret ? { SECRET_HEADER => @secret } : {}
+
+    def secret_line = secret_headers.map { |name, value| "#{name}: #{value}\r\n" }.join
 
     # When this client stops waiting for a reply, as epoch seconds (see
     # DEADLINE_SHARE). Wall clock: the worker runs on this machine and reads
@@ -388,7 +415,7 @@ module Samagotchi
     def post(path, payload, read_body:, read_timeout: @read_timeout)
       sock = TCPSocket.new(@host, @port)
       json_body = JSON.generate(payload)
-      sock.write("POST /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
+      sock.write("POST /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\n#{secret_line}Content-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
       reply = read_reply(sock, path, whole: read_body, timeout: read_timeout)
       body = read_body ? reply.split("\r\n\r\n", 2)[1] : nil
       Response.new(status: reply[STATUS_LINE, 1].to_i, body: body)
