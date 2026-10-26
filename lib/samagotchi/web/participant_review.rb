@@ -185,8 +185,10 @@ module Samagotchi
           grant = principal(req).grant
           attrs.merge!("viewer" => "participant", "session" => grant.session_id, "name" => grant.name)
         end
-        data = attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
-        html_response(200, File.read(path).sub("<body>", "<body #{data}>"))
+        # The owner's participant view has no composer; a participant's
+        # selection quotes with the same presets as the owner's page.
+        attrs.merge!(annotate_presets_data) unless principal(req).owner?
+        html_response(200, File.read(path).sub("<body>", "<body #{body_data(attrs)}>"))
       end
 
       # A filtered stream's frame filter (App#stream_filter), for the

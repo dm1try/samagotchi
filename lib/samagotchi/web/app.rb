@@ -1611,8 +1611,7 @@ module Samagotchi
         attrs["view"] = view_name(req.params["view"])
         # Only when on: the page reads its presence (the turn view ignores it).
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])
-        # Always there: an empty one means no presets, not the default.
-        attrs["annotate-presets"] = @annotate_presets
+        attrs.merge!(annotate_presets_data)
         dir, = scope_dir(req.params["dir"])
         unless dir
           dir = default_scope_dir(req)
@@ -1632,8 +1631,16 @@ module Samagotchi
             attrs["back-dir"] = back
           end
         end
-        attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
+        body_data(attrs)
       end
+
+      # +attrs+ as <body> data attributes, each value escaped.
+      def body_data(attrs) = attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
+
+      # The Annotate presets (web.annotate_presets) for a page's <body>, the
+      # owner's and the participant page's. Always there: an empty one means
+      # no presets, not the default.
+      def annotate_presets_data = { "annotate-presets" => @annotate_presets }
 
       # The folder a bare page (no ?dir, no ?scope=all) is scoped to: the
       # start folder when it is still a folder in a repo, else nil (every

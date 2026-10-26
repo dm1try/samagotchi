@@ -144,6 +144,13 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(call("/?as=owner")[2]).to include("participant page")
     end
 
+    it "GET /: the participant page carries the Annotate presets; the owner's participant view (no composer) doesn't" do
+      expect(call("/")[2]).to include(%(data-annotate-presets="Agreed|Could you please elaborate?"))
+      owner_view = call("/?as=participant", bearer: owner_token)[2]
+      expect(owner_view).to include(%(data-viewer="owner"))
+      expect(owner_view).not_to include("data-annotate-presets")
+    end
+
     it "never shows an untitled session's first prompt as its title (Session#display_title's fallback)" do
       session.title = nil
       session.messages << { role: "user", content: "the secret plan for the launch" }
