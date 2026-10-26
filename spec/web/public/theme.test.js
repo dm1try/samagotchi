@@ -12,6 +12,8 @@ const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..
 const TOKENS = fs.readFileSync(path.join(PUBLIC, "tokens.css"), "utf8");
 const PAGES = ["index.html", "participant.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const HTML = PAGES[0][1];
+// The stylesheets both pages share besides tokens.css.
+const SHARED_CSS = ["annotate_bar.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const LIGHT_OPEN = '@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){';
 
 // The text from `start` (an index just past an opening brace) to its
@@ -76,7 +78,7 @@ function outsideTokens(text) {
 
 test("theme: tokens.css and the pages have no raw colour outside the token blocks", () => {
   const hits = [];
-  for (const [name, text] of [["tokens.css", TOKENS], ...PAGES]) {
+  for (const [name, text] of [["tokens.css", TOKENS], ...PAGES, ...SHARED_CSS]) {
     outsideTokens(text).split("\n").forEach((line, i) => {
       for (const m of line.matchAll(COLOUR)) hits.push(`${name} line ~${i + 1}: ${m[0]} in ${line.trim().slice(0, 120)}`);
     });
@@ -84,8 +86,11 @@ test("theme: tokens.css and the pages have no raw colour outside the token block
   assert.deepEqual(hits, []);
 });
 
-test("theme: both pages link tokens.css", () => {
-  for (const [name, text] of PAGES) assert.match(text, /<link rel="stylesheet" href="\/assets\/tokens\.css">/, name);
+test("theme: both pages link tokens.css, then the shared stylesheets", () => {
+  for (const [name, text] of PAGES) {
+    assert.match(text, /<link rel="stylesheet" href="\/assets\/tokens\.css">/, name);
+    for (const [css] of SHARED_CSS) assert.ok(text.includes(`<link rel="stylesheet" href="/assets/${css}">`), `${name} links ${css}`);
+  }
 });
 
 test("theme: no web JS module sets a raw colour", () => {
