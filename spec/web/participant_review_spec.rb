@@ -90,6 +90,11 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect([body["current_turn"], body["waiting_for_owner"]]).to eq([nil, true])
   end
 
+  it "shows idle when the worker says running but no turn is active" do
+    snapshot["snapshot"]["current_turn"] = nil
+    expect(review(issued.token).last.dig("session", "status")).to eq("idle")
+  end
+
   it "says a participant at their cap may not comment" do
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [{ "id" => "t1", "author" => author, "cost" => 5.0 }] }))

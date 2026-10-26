@@ -60,9 +60,11 @@ module Samagotchi
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
                      (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
         queued = snapshot_list(turn_snapshot, "queued")
+        status = displayed_status(session, state)
+        status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && current.nil?
         json_response(200, {
           viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer),
-          session: { id: session.id, title: participant_title(session), status: displayed_status(session, state) },
+          session: { id: session.id, title: participant_title(session), status: status },
           subjects: review_subjects(session, viewer),
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
           messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
