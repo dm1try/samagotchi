@@ -33,7 +33,6 @@ function page({ taskStop = null, renderMarkdown } = {}) {
     sessionId: () => "s1",
     dockEl: document.getElementById("dock"),
     centerEl: document.getElementById("center"),
-    composerEl: document.getElementById("composer"),
     taskStop,
     renderMarkdown,
   });

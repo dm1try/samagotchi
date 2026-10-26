@@ -217,7 +217,9 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0); // its rise is over
   // A phone's keyboard (the window 420 px tall): the cap drops, the held
   // stage clamps to it at once and the waiting card stays in sight; when
-  // the keyboard goes the stage grows back only to what its content needs.
+  // the keyboard goes the stage grows back only to what its content needs:
+  // here its cap (the card and the asking text are taller), which follows
+  // the dock (its info bar fills and may wrap after the reload).
   const inSight = async () => {
     const [c, v] = [await card.boundingBox(), await stageEl(page).locator(".ts-scroll").boundingBox()];
     return c.y + Math.min(c.height, 40) <= v.y + v.height && c.y + c.height > v.y;
@@ -232,7 +234,12 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(clamped).toBeLessThan(before);
   await expect.poll(inSight).toBe(true);
   await page.setViewportSize({ width: 390, height: 700 });
-  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBe(before);
+  // Read in a frame's animation callbacks (that frame's resize steps ran
+  // fitCap: before them the clamped height still equals the old cap), once
+  // the growth's ease is over.
+  const filled = () => stageEl(page).evaluate((el) => new Promise((done) => requestAnimationFrame(() =>
+    done(el.getAnimations().length === 0 && el.offsetHeight === parseFloat(el.style.getPropertyValue("--stage-max"))))));
+  await expect.poll(filled).toBe(true);
   await expect.poll(inSight).toBe(true);
   // From the answer until the turn is answered nothing moves on its own:
   // the card's collapse and the slots' swap come with the click. (The

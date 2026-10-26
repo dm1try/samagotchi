@@ -24,26 +24,25 @@ function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap
   parts.scroller.append(parts.extras, parts.holdEl);
   const dockEl = el("dock");
   const centerEl = el("center");
-  const composerEl = el("composer");
   const state = { holding, collapsed, cloudOpen, roomCap };
   try {
     const frame = createStageFrame({
-      stage, ...parts, dockEl, centerEl, composerEl,
+      stage, ...parts, dockEl, centerEl,
       observed: [parts.status, parts.extras, parts.cloud],
       isHolding: () => state.holding,
       isCollapsed: () => state.collapsed,
       isCloudOpen: () => state.cloudOpen,
       isRoomCap: () => state.roomCap,
     });
-    return { frame, stage, state, observedLog, centerEl, composerEl, dockEl, ...parts };
+    return { frame, stage, state, observedLog, centerEl, dockEl, ...parts };
   } finally {
     globalThis.ResizeObserver = saved;
   }
 }
 
-test("createStageFrame observes the center, the composer, then the slots, in that order", () => {
-  const { observedLog, centerEl, composerEl, status, extras, cloud } = frameOf();
-  assert.deepEqual(observedLog, [centerEl, composerEl, status, extras, cloud]);
+test("createStageFrame observes the center, the whole dock (its info bar wraps after a load), then the slots, in that order", () => {
+  const { observedLog, centerEl, dockEl, status, extras, cloud } = frameOf();
+  assert.deepEqual(observedLog, [centerEl, dockEl, status, extras, cloud]);
 });
 
 test("fitCap writes the cap (at least 96 px) and holds the frame while the stage holds a turn", () => {
@@ -174,4 +173,17 @@ test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-e
   frame.fitCap();
   await new Promise((resolve) => requestAnimationFrame(() => resolve()));
   assert.equal(scroller.scrollTop, extras.offsetTop + extras.offsetHeight - scroller.clientHeight);
+});
+
+test("reveal now (the keyboard's smaller cap) stops a running ease, which would take the scroll back to its old target", async () => {
+  const { frame, scroller, extras } = tallAsk();
+  frame.reveal(extras); // eases toward 400 (800 - a 400 px scroller)
+  let height = 400;
+  Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => height });
+  height = 200; // the cap dropped under the card
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, 600);
+  await new Promise((resolve) => setTimeout(resolve, 300)); // past the ease's 180 ms
+  assert.equal(scroller.scrollTop, 600);
+  assert.equal(scroller.dataset.following, undefined);
 });
