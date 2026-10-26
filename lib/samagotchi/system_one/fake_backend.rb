@@ -37,8 +37,6 @@ module Samagotchi
         (@answers || {}).select { |id, _answer| ids.include?(id) }
       end
 
-      def failing? = @failing
-
       def inspect = "#<#{self.class.name} calls=#{@calls}#{" failing" if @failing}>"
     end
   end

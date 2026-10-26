@@ -24,7 +24,6 @@ RSpec.describe Samagotchi::SystemOne::FakeBackend do
 
   it "raises on every call when it is failing" do
     backend = described_class.new(failing: true, error: "the judge is asleep")
-    expect(backend).to be_failing
     expect { backend.ask(state: "x", questions: [question("a")]) }
       .to raise_error(Samagotchi::SystemOne::BackendError, "the judge is asleep")
     expect(backend.calls).to eq(1)

@@ -649,12 +649,8 @@ class LineLinker
     out << head[pos..] << text[MAX_SCAN..].to_s
   end
 
-  # The URL for +path+'s lines +from+..+to+ (+to+ nil: one line), or nil:
-  # no PR has the file, or more than one does.
-  def url_for(path, from, to = nil) = line_for(path, from, to)&.fetch(:url)
-
-  # {url:, diff:, path:, line:, end_line:} for +path+'s lines (see #url_for),
-  # or nil.
+  # {url:, diff:, path:, line:, end_line:} for +path+'s lines +from+..+to+
+  # (+to+ nil: one line), or nil: no PR has the file, or more than one does.
   def line_for(path, from, to = nil)
     found = @prs.filter_map do |pr, data|
       file = resolve(data.files, path)
