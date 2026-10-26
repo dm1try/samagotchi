@@ -69,15 +69,17 @@ module Samagotchi
 
       # `chi web`: one server serves every project, the scope is in the page
       # URL. If a chi web already runs on the port, print (and with --open,
-      # open) its page for +dir+ and leave it be; else start one.
+      # open) its page for +start_dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
+      # @param start_dir [String] the folder chi web starts in (StartDir):
+      #   its project's page, and where a new session without a dir starts
       # @param new_token [Boolean] replace the LAN access token first
       #   (--new-token): a running server takes the new one at once
       # @param tunnel [String, nil] --tunnel's provider (Tunnel.for): this
       #   run's public_url is the tunnel's, never config's, and the tunnel is
       #   on while the server runs
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false,
+      def self.launch(port: nil, host: nil, scope: "project", start_dir: Dir.pwd, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
                       working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil)
@@ -87,7 +89,7 @@ module Samagotchi
         lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
         host = resolve_host(setting)
         port = resolve_port(port)
-        url = scope_url(host, port, dir: dir, scope: scope)
+        url = scope_url(host, port, dir: start_dir, scope: scope)
         found = probe(host, port)
         raise Tunnel::AlreadyRunning, port if tunnel && found.is_a?(Hash)
 
@@ -128,7 +130,7 @@ module Samagotchi
           Push.preflight!(public_url)
           options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
                       annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
-                      public_url: public_url }
+                      public_url: public_url, start_dir: start_dir }
           started = if plan
                       with_tunnel(provider, plan) do |up|
                         start(**options, public_notes: provider.start_lines(plan), on_bound: up)
@@ -209,12 +211,13 @@ module Samagotchi
       #   (the tunnel's)
       # @param on_bound [#call, nil] run once the port is bound, before any
       #   line (the tunnel's #up); what it raises ends the run
+      # @param start_dir [String] the folder chi web starts in (App's)
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
                      working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
-                     on_bound: nil)
+                     on_bound: nil, start_dir: Dir.pwd)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -229,7 +232,7 @@ module Samagotchi
         push = push_runtime(public_url, state_dir)
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
-                      public_url: public_url, public_token: public_token, push: push)
+                      public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
         if public_url

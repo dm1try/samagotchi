@@ -247,7 +247,7 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:probe).and_return(:free)
       allow(described_class).to receive(:start).and_return(true)
 
-      expect(described_class.launch(host: "lan", port: 4999, dir: "/", scope: "all")).to eq(0)
+      expect(described_class.launch(host: "lan", port: 4999, start_dir: "/", scope: "all")).to eq(0)
       expect(described_class).to have_received(:probe).with("127.0.0.1", 4999)
       expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: lan, url: "http://127.0.0.1:4999/"))
     end
@@ -269,7 +269,7 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:start)
 
       result = nil
-      expect { result = described_class.launch(host: "lan", port: 4999, dir: "/") }
+      expect { result = described_class.launch(host: "lan", port: 4999, start_dir: "/") }
         .to output("chi web already runs on port 4999 without LAN access; stop it (Ctrl-C in its terminal, or kill 42) and run this again\n").to_stderr
       expect(result).to eq(1)
       expect(described_class).not_to have_received(:start)
@@ -280,7 +280,7 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:start).and_return(true)
 
       %w[0.0.0.0 mac.local].each do |host|
-        expect { described_class.launch(host: host, port: 4999, dir: "/") }.to output(/forcing 127.0.0.1/).to_stderr
+        expect { described_class.launch(host: host, port: 4999, start_dir: "/") }.to output(/forcing 127.0.0.1/).to_stderr
       end
       expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: nil)).twice
     end
@@ -365,7 +365,7 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:start)
 
       result = nil
-      expect { result = described_class.launch(port: 4999, dir: "/") }.to output(/Error: web.public_url must be an https origin/).to_stderr
+      expect { result = described_class.launch(port: 4999, start_dir: "/") }.to output(/Error: web.public_url must be an https origin/).to_stderr
       expect(result).to eq(1)
       expect(described_class).not_to have_received(:probe)
       expect(described_class).not_to have_received(:start)
@@ -378,13 +378,13 @@ RSpec.describe Samagotchi::Web::Server do
       allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("https://4999.pod.test")
       allow(described_class).to receive(:probe).and_return(:free)
       allow(described_class).to receive(:start).and_return(true)
-      expect(described_class.launch(port: 4999, dir: "/")).to eq(0)
+      expect(described_class.launch(port: 4999, start_dir: "/")).to eq(0)
       expect(described_class).to have_received(:start).with(hash_including(public_url: Samagotchi::Web::PublicUrl.from_config(url: "https://4999.pod.test")))
 
       allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "public_url" => "https://evil.example" })
       allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
       allow(described_class).to receive(:owner_codes).and_return(double("codes", issue: "chc_C"))
-      expect { described_class.launch(port: 4999, dir: "/", scope: "all") }
+      expect { described_class.launch(port: 4999, start_dir: "/", scope: "all") }
         .to output(a_string_including("Proxied: https://4999.pod.test/#code=chc_C ").and(satisfy { |o| !o.include?("evil") && !o.include?("token=") })).to_stdout
     end
   end
@@ -429,7 +429,7 @@ RSpec.describe Samagotchi::Web::Server do
         allow(Samagotchi::Web::Token).to receive(:path).and_return(File.join(dir, "web-token"))
         allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => "192.168.1.55" })
 
-        expect { described_class.launch(port: 4567, dir: "/", scope: "all") }
+        expect { described_class.launch(port: 4567, start_dir: "/", scope: "all") }
           .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/\n" \
                      "LAN: http://192.168.1.55:4567/?token=#{token}   ← anyone with this link can run commands as you\n" \
                      "Plain http: the link and your traffic can be read by anyone on this Wi-Fi.\n").to_stdout
@@ -444,7 +444,7 @@ RSpec.describe Samagotchi::Web::Server do
         allow(described_class).to receive(:probe).and_return(:free)
         allow(described_class).to receive(:start)
 
-        expect { expect(described_class.launch(host: "127.0.0.1", port: 4999, dir: state, new_token: true)).to eq(0) }
+        expect { expect(described_class.launch(host: "127.0.0.1", port: 4999, start_dir: state, new_token: true)).to eq(0) }
           .to output(/LAN access is off \(web.host is 127.0.0.1\): chi web --web-host lan uses the new token/).to_stdout
         expect(described_class).not_to have_received(:start)
       end
@@ -458,7 +458,7 @@ RSpec.describe Samagotchi::Web::Server do
         allow(described_class).to receive(:probe).and_return(:free)
         allow(described_class).to receive(:start).and_return(true)
 
-        expect { described_class.launch(port: 4999, dir: state, new_token: true) }
+        expect { described_class.launch(port: 4999, start_dir: state, new_token: true) }
           .to output(/New LAN access token: links and QR codes made with the old one stop working/).to_stdout
         expect(Samagotchi::Web::Token.read(path)).not_to eq(old)
       end
@@ -564,10 +564,11 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:probe).and_return(:free)
       allow(described_class).to receive(:start).and_return(true)
 
-      expect(described_class.launch(port: 4567, markdown: true, view: "stage", annotate_presets: "Yes|No", editor: "zed", working_set: true)).to eq(0)
+      expect(described_class.launch(port: 4567, markdown: true, view: "stage", annotate_presets: "Yes|No", editor: "zed", working_set: true,
+                                    start_dir: "/r")).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, view: "stage",
-              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, public_url: nil)
+              annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, public_url: nil, start_dir: "/r")
     end
 
     it "stops on Ctrl-C with one line and status 130, no backtrace" do

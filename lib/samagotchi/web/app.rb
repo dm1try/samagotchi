@@ -145,6 +145,8 @@ module Samagotchi
       #   with +public_url+ (the LAN one when both are set)
       # @param push [Push::Runtime, nil] Web Push for this run (PushRoutes);
       #   nil: off (no https public_url, or web.push.enabled false)
+      # @param start_dir [String] the folder chi web starts in (StartDir):
+      #   where a new session without a dir starts (nil: the cwd)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
@@ -152,7 +154,8 @@ module Samagotchi
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
-                     grants: nil, public_url: nil, public_token: nil, push: nil)
+                     grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil)
+        @start_dir = start_dir
         @manager = manager || SessionManager
         @registry = registry
         @registry_given = !registry.nil?
@@ -845,7 +848,7 @@ module Samagotchi
         return participant_info unless principal(req).owner?
 
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
+                             cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
       end
 
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE].freeze
@@ -1582,6 +1585,9 @@ module Samagotchi
         @state_dir || Session.default_state_dir
       end
 
+      # The folder chi web starts in (StartDir), the cwd when none was given.
+      def start_dir = @start_dir || Dir.pwd
+
       # The sessions folder as the page shows it: ~ for the home folder.
       def sessions_dir_label
         home_label(File.expand_path(default_state_dir))
@@ -1590,13 +1596,13 @@ module Samagotchi
       def home_label(dir) = Paths.tilde(dir)
 
       # <body> data for the page: where sessions are stored, where an
-      # all-view new chat starts (the server's cwd), and, when ?dir names a
+      # all-view new chat starts (the start folder), and, when ?dir names a
       # folder in a repo, that project's name and root. A bad dir adds
       # nothing here: the list call answers 400 and the page says so.
       def index_data_attributes(req)
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
-        attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd), "version" => Samagotchi::VERSION }
+        attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(start_dir), "version" => Samagotchi::VERSION }
         attrs["view"] = view_name(req.params["view"])
         # Only when on: the page reads its presence (the turn view ignores it).
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])
@@ -1609,9 +1615,9 @@ module Samagotchi
           attrs["project-dir"] = home_label(root)
         elsif dir.nil?
           # The all view's way back: the project view it came from
-          # (?from=), else the project chi web runs in.
+          # (?from=), else the project chi web starts in.
           back, = scope_dir(req.params["from"])
-          back ||= Dir.pwd
+          back ||= start_dir
           if (back_root = ProjectScope.root_for(back))
             attrs["back-name"] = File.basename(back_root)
             attrs["back-dir"] = back

@@ -33,7 +33,10 @@ class FakeResponsesManager
   end
 
   def spawn_session(prompt:, state_dir: nil, **kw)
-    @spawn_calls << { prompt: prompt, state_dir: state_dir, extra: kw }
+    # The folder (always given: ?dir or chi web's start folder) is
+    # project_scope_spec's; extra is the rest.
+    @spawn_calls << { prompt: prompt, state_dir: state_dir, working_directory: kw[:working_directory],
+                      extra: kw.except(:working_directory) }
     Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
       s.last_prompt = prompt
       # SessionManager.spawn_session gives a session created with a prompt

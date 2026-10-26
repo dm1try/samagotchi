@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
   end
 
-  def launch = described_class.launch(port: 4567, dir: "/", tunnel: "tailscale")
+  def launch = described_class.launch(port: 4567, start_dir: "/", tunnel: "tailscale")
 
   # A start that binds the port (calls on_bound, the tunnel's up), then
   # returns +result+ or raises +error+.
@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
   it "refuses before it changes anything: a foreign 443, insecure grants, a failed serve" do
     allow(described_class).to receive(:start)
     fake.serve = "serve-443-on.json"
-    expect { expect(described_class.launch(port: 4568, dir: "/", tunnel: "tailscale")).to eq(1) }
+    expect { expect(described_class.launch(port: 4568, start_dir: "/", tunnel: "tailscale")).to eq(1) }
       .to output(/\AError: Tailscale Serve already serves port 443 here/).to_stderr
     fake.serve = "serve-off.json"
     allow(Samagotchi::Web::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Web::Grants::Insecure, "0644")
@@ -203,10 +203,10 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => Process.pid })
     allow(Samagotchi::Web::Token).to receive(:read).and_return("T")
     allow(described_class).to receive(:owner_codes).and_return(double("codes", issue: "chc_C"))
-    expect { described_class.launch(port: 4567, dir: "/", scope: "all") }
+    expect { described_class.launch(port: 4567, start_dir: "/", scope: "all") }
       .to output(a_string_including("Proxied: https://#{name}/#code=chc_C ")).to_stdout
     allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => Process.pid + 1 })
-    expect { described_class.launch(port: 4567, dir: "/", scope: "all") }.not_to output(/Proxied/).to_stdout
+    expect { described_class.launch(port: 4567, start_dir: "/", scope: "all") }.not_to output(/Proxied/).to_stdout
   ensure
     Samagotchi::Web::Running.clear
   end

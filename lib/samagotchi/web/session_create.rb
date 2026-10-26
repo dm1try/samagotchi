@@ -64,7 +64,7 @@ module Samagotchi
         return handle_continue(body, prompt, idle) if body.key?("continues")
 
         # dir: the folder the chat starts in (the page's scope); without it,
-        # the server's own cwd.
+        # the folder chi web starts in (StartDir).
         dir, error = scope_dir(body["dir"])
         return error if error
 
@@ -103,7 +103,7 @@ module Samagotchi
         refused = create_refusal(body, idle ? body["preview"] : prompt, values: [parent_answers], model: model)
         return refused if refused
 
-        folder = dir ? { working_directory: dir } : {}
+        folder = { working_directory: dir || start_dir }
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
         folder[:model_name] = model unless model.empty?
@@ -117,7 +117,7 @@ module Samagotchi
         folder[:setup] = setup unless setup.empty?
         begin
           session = if review
-                      ReviewStart.start(subjects: review.subjects, dir: dir || Dir.pwd, model: folder[:model_name],
+                      ReviewStart.start(subjects: review.subjects, dir: dir || start_dir, model: folder[:model_name],
                                         setup: setup, state_dir: @state_dir)
                     else
                       @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
