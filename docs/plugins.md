@@ -579,25 +579,27 @@ end
 - Each task runs once per session start. A `-p … --non-interactive` run
   starts them with its turn and shows nothing but the answer.
 
-### `chi.toolkit(name, base:, add: [], remove: [], prompt: nil)`
+### `chi.toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil)`
 
 A toolkit sessions can be put on: `base`'s tools (`full`, `lean`, `child`, a
 config or bundle toolkit) with `add` declared and `remove` left out, and
 `prompt`: text the sessions on it get in their system prompt, verbatim (nil
 inherits the base's, `""` clears it; at most 2000 characters, and one that
-isn't a String or is longer is a load error). Users pick
+isn't a String or is longer is a load error). `groups` selects the source
+groups the toolkit reaches (names or globs, sorted and deduplicated; nil
+inherits the base's, `[]` reaches none, and `:all` reaches every group).
+Groups match against the tool index's load-time names. Users pick
 it like chi's own (`chi --toolkit NAME`, `toolkit.default`, `/toolkit NAME`),
 and the plugin with `ctx.use_toolkit` (below). Names are `a-z`, `0-9`, `_` and
 `-`; one chi has (`full`, `lean`, `child`) or another bundle declared is a
 load error. A session saved on a toolkit whose bundle is gone declares every
 tool (full) until it comes back, with a warning at its first turn. See
-[Toolkits](configuration.md#toolkits). `prompt:` needs chi 0.72.0 (an older
-chi refuses the keyword, a load error: a bundle that passes it sets
-`requires_chi: ">= 0.72.0"`).
+[Toolkits](configuration.md#toolkits).
 
 ```ruby
 chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
 chi.toolkit "coding", base: "child", prompt: "- Be concise in your responses"
+chi.toolkit "web", base: "lean", groups: %w[chrome db*]
 ```
 
 ### `chi.tool_source(call:, acts_as:, label:, wait:, prefix:)`
@@ -611,12 +613,19 @@ first source's `label`). The index has one group of its own, **`chi`**: the
 built-ins the session's toolkit leaves out but doesn't remove
 ([toolkits](configuration.md#toolkits)), each with its registered schema.
 The two tools are registered once, after the plugins load, and declared per
-toolkit: when a plugin registered a source then, or when the toolkit has a
-reachable built-in (`full` with no source declares neither). Nothing a
+toolkit when it reaches a source group or has a reachable built-in (`full`
+with no source declares neither). Nothing a
 source publishes later changes the request's tools, only what a search
 answers, so the prompt cache keeps: the search tool's description lists the
 source groups as they were at load, and a `chi` line first, per toolkit.
-The mcp bundle is the only source so far (a group per server). A source's
+The mcp bundle is the only source so far (a group per server). `groups:`
+filters the groups find_tools searches, the source descriptions in the
+request, and the MCP tools `call_tool` can reach. Its group snapshot is
+filtered again at each toolkit change; new groups published after load do
+not alter that prompt description. An unreached MCP tool call is refused
+before the guardrails without starting the server; a deferred stub says to
+switch to a toolkit that reaches its group. `/mcp` marks servers outside the
+session's toolkit. A source's
 group named `chi`, or named like an earlier group, is left out of search,
 lookup and the description, with one warning per name.
 
@@ -1377,8 +1386,12 @@ bundles:
   its tools as `(failed: …)`. The saved list stays: the next session tries
   again.
 - **`start: eager`** on a server starts it with every session (in an init
-  task, after the Bridge is up), for a server whose start does something
-  you want at once.
+  task, after the Bridge is up), even when that session's toolkit does not
+  reach its group. A first-run init task still blocks the first turn until
+  it finishes, even for an unreached group. A stale-cache refresh likewise
+  starts its short-lived server regardless of the toolkit. Switching away
+  from a group refuses its calls without starting a lazy cached server, and
+  does not stop a server already running; switching back reuses it.
 - **`npx -y …@latest` checks the npm registry on every start** (~3.4 s for
   `chrome-devtools-mcp`, against ~0.9 s for the installed binary). The cache
   hides it from new sessions, but not from the first call. For a faster first

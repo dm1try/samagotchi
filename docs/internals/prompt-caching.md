@@ -79,11 +79,13 @@ right-hand column happens.
   `Toolkit::Resolved` the Registry holds, so a switch that changes only the text is a toolkit change
   (`apply_toolkit!` → `reset!`). `full` and kits without one send the bytes they sent before.
 - find_tools' description is a function of the toolkit and the source groups **at load**: `ToolIndex#declare`
-  snapshots the MCP groups' lines (name, summary, callable count) and `ToolIndex#refresh!` (from
-  `ToolkitBinding#apply!`) rebuilds only the `chi` line, the built-ins the toolkit reaches. An MCP server that
-  finishes booting between load and the first turn changes search answers only, so two sessions on the same
-  toolkit with the same MCP cache send the same bytes. Whether find_tools/call_tool are declared at all reads the
-  same two things (`Registry#index_needed?`), never live groups.
+  snapshots source group names and description lines (name, summary, callable count). `ToolIndex#refresh!` (from
+  `ToolkitBinding#apply!`) filters that snapshot by the new toolkit and rebuilds the `chi` line from the built-ins
+  it reaches; it never consults live group names. The same group filter drives searches, deferred MCP tools and
+  whether `find_tools`/`call_tool` are declared (`Registry#index_needed?`). An MCP server that finishes booting
+  between load and the first turn changes search answers only, so two sessions on the same toolkit with the same
+  MCP cache send the same bytes. Kits that omit `groups:` keep their previous request bytes; switching only
+  groups changes the prompt key and asks `/toolkit` to confirm the cache cost once the session has history.
 - A worker's `execute` and `task_create` descriptions carry the finish wake's sentence ("if you end your turn before
   it finishes, chi tells you when it does"; `Engine.new(task_finish_notes:)`, set once as the worker builds its
   Engine); the `--no-shared` REPL's, and a worker's under `session.task_wakes: off`, don't. A session that moves
@@ -240,4 +242,3 @@ is prefilled once. The native and the chat loop use the same plan.
   `cache_prompt: true` on every native request.
 - **OpenRouter / Anthropic:** the default cache TTL is 5 minutes (`cache.ttl: 1h` for an hour, see above).
   Provider routing (which upstream serves a request) also decides whether a cache is there to hit.
-

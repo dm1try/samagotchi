@@ -1400,6 +1400,8 @@ toolkit:
   kits:                # your own, on a base
     audit: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
     terse: { base: lean, prompt: "- Be concise in your responses" }
+    web: { base: lean, groups: [chrome] }
+    coding: { base: lean, groups: [] }
 ```
 
 | toolkit | declares |
@@ -1412,8 +1414,19 @@ toolkit:
 | `review` | `read`, `memory_read` (not `forget_outputs`, even under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
-  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:` and `prompt:` (any other
-  key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil)).
+  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:`, `prompt:` and `groups:`
+  (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
+  (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
+  ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil)).
+- **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`); for the MCP bundle
+  each group is a server. Selectors are sorted and deduplicated and match the groups declared when plugins load.
+  An omitted key inherits the base's selectors; the built-in kits reach all groups, `groups: ["*"]` matches every
+  group, and `groups: []` reaches none.
+  A selector that matches no group in that load-time snapshot warns once. `find_tools` and `call_tool` are
+  declared only when the toolkit reaches a source group or has a reachable built-in. Calls naming an unreached
+  group are refused before guardrails and do not start its server. The first-run init wait is unchanged: it can
+  still block the first turn even when its server's group is unreached; `start: eager` and stale-cache refreshes
+  also still start. `/mcp` marks servers outside the current toolkit.
 - **A kit's prompt text.** `prompt:` (text, several lines allowed) goes into the system prompt of the sessions on
   that kit, verbatim, with no header: after AGENTS.md and the appended files, before the memory indexes. A kit
   without one inherits its base's (`audit: {base: terse, add: [web_fetch]}` stays concise); `prompt: ""` clears
@@ -1422,12 +1435,13 @@ toolkit:
   fits the kit's work (the coordinator bundle's `coding`: be concise): one that isn't text or is over 2000
   characters is left out with a warning, and long text belongs in `append_system_prompt:`. `/toolkit` shows it
   (`prompt: …`), `/stats` its kit and size (`kit prompt:`), the web's tools chip in its tooltip.
-- **Saved at creation, never re-resolved from config.** A session stores its toolkit as named
+- **Saved at creation, definitions resolve at worker start.** A session stores its toolkit as named
   (`"toolkit": {"name": "lean", "add": [], "remove": []}`) when it is created: `toolkit.default`, `toolkit.child`
   for a delegate child (or the kit its `delegate` call names), or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
   doesn't move existing sessions, not even when their worker is woken again; a session from before toolkits is on
-  `full`. A continue and a fork keep the toolkit. `/toolkit` shows and changes it. The prompt text is part of the
-  kit, not of the session file: it follows the name.
+  `full`. A continue and a fork keep the toolkit name. `/toolkit` shows and changes it. The kit's tools, prompt
+  text and group selectors are part of its definition, not the session file: edits reach a saved name at its next
+  worker start.
 - **Left out: reachable or removed.** A built-in missing from a kit's base list (`lean` has no `delegate`; a
   `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, with its inputSchema) beside
   the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate` itself, through the
@@ -1435,10 +1449,10 @@ toolkit:
   tool in a toolkit's `remove:`, a `--no-tool` or a `/toolkit remove` is **removed**: hard, also after an add, and
   call_tool can't reach it (`child` removes `memory_write`, `delegate` and `delegate_result`, so a child on it
   starts no children). To keep a built-in away from the model, name it under `remove:`. `find_tools` and `call_tool`
-  are declared when a toolkit has a reachable built-in (or an MCP server is configured); `full` with no MCP server
+  are declared when a toolkit has a reachable built-in or reaches a source group; `full` with no reachable source
   declares neither, and removing them there (`--no-tool call_tool`) leaves nothing out: no prompt line, no chip.
 - **On `api: anthropic`, reachable tools are callable by name.** Every tool `call_tool` reaches (the reachable
-  built-ins, the MCP servers' tools as `mcp_<server>_<tool>`) also goes in the request's tools deferred
+  built-ins, tools from reached MCP groups as `mcp_<server>_<tool>`) also goes in the request's tools deferred
   (`defer_loading`: Messages keeps them out of the model's view until something loads them, at a flat ~100 tokens).
   A direct call of one (`list_sessions`, `mcp_fs_read`) runs, under the same guardrails, approvals and rows as
   through `call_tool` (an MCP tool's call is `call_tool`'s). A `find_tools` hit **loads** its matches (up to 5):
@@ -1455,10 +1469,13 @@ toolkit:
   the route: `Error: delegate isn't declared in this session (toolkit lean); call it with call_tool(tool:
   "chi/delegate", args: {…}) (find_tools gives its inputSchema).` A removed tool's: `Error: memory_write isn't
   loaded in this session (toolkit child) and can't be loaded from here; only the user can (/toolkit add
-  memory_write).` `/toolkit` lists both kinds, and the web's toolkit chip says them in its tooltip.
+  memory_write).` An MCP tool in an unreached group gets a toolkit-specific refusal before guardrails; a deferred
+  stub for it points to the toolkit instead of suggesting a search. `/toolkit` lists group selectors and the
+  change; the web's toolkit chip says its source-group scope in the tooltip.
 - **Applied at a turn's start.** A change (`/toolkit`, a plugin's `ctx.use_toolkit`) is saved at once and the next
-  turn declares it, with its kit's prompt text; once the session has a model reply, `/toolkit` asks first
-  ("Changes that restart the prompt cache"), also for a kit with the same tools and another prompt text.
+  turn declares it, with its kit's prompt text and group filter; once the session has a model reply, `/toolkit`
+  asks first ("Changes that restart the prompt cache"), also when only the group selectors change and the
+  declared tools stay the same.
 - **A name that doesn't resolve** (a typo, a bundle that was uninstalled) declares every tool for that process,
   with one `toolkit>` warning at the first turn; the saved name stays, so the bundle's return brings it back.
 - **Versions.** A toolkit's definition (its tools and its prompt text) can change with chi or a bundle, which
