@@ -7,11 +7,16 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Toolkit kits pick the MCP servers their sessions reach: `groups: [chrome]` in `toolkit.kits` (names or globs; no
+  key = the base's; the built-ins reach every server, `review` none). `/toolkit` switches them from the next turn
+  (asking first: the cached prompt changes). A call into a server the kit doesn't reach is refused without starting
+  it, naming a kit that reaches it; its deferred stub says why, `/mcp` marks such servers, and the web's toolkit chip
+  lists a restricted kit's servers. Kits without `groups:` send the same request as before.
+
 ### Changed
 
-- Toolkit kits can filter MCP server groups with `groups:` names or globs; omitted groups inherit their base's.
-- `/toolkit` and the web's toolkit chip show source-group scope; `/mcp` marks excluded servers, and calls to an
-  unreached group are refused without starting its server.
 - `ask_user_question`'s description asks the model, when it recommends one option, to put it first and end its
   label with " (Recommended)" (eval 0005: Flash Next and DeepSeek v4.1-flash mark it 5/5 on a decision question,
   0/5 before; an answer comes back with the suffix, so `chi answer --option` takes that exact label or the number).
