@@ -1649,8 +1649,9 @@ What changes once `web.public_url` is set:
   to the proxy, but it outlives the sign-in's redirects: the sign-in page sits at that URL (its scripts can read it)
   and it stays in the browser's history, which is why it holds a code that works once. The page trades the code for
   the cookie (`POST /api/token`) and drops it from the URL; a page that already has a session asks first, since the
-  trade replaces it. A code presented with the wrong identity is used up and gives nothing, so whoever already holds
-  a link can spend it (`chi web` again, or a new invite, makes another). The 401 page's paste box posts the token in
+  trade replaces it. An owner's code (or an unbound participant's) presented with the wrong identity is used up and
+  gives nothing, so whoever already holds a link can spend it (`chi web` again, or a new invite, makes another); a
+  link bound to one account ([Inviting colleagues](#inviting-colleagues)) is refused to anyone else and keeps its code. The 401 page's paste box posts the token in
   the request's body, never in the URL.
 - When the proxy's sign-in or chi's token ends, the page says so: it reloads once (the proxy's sign-in brings you
   back), and within a minute of that shows "Signed out … Reload" instead of a list that quietly stopped updating. Its
@@ -1684,6 +1685,31 @@ one.
 | A TLS proxy with no sign-in (nginx, Caddy, an SSH tunnel) | leave unset | The token alone decides. |
 
 Keep the state dir (`web-token`, the grants) out of any folder others can read, such as a team's shared folder.
+
+### Inviting colleagues
+
+Behind a proxy whose sign-in lets colleagues in (a work pod behind Okta and oauth2-proxy, a tailnet you share), give
+each reviewer a link bound to their account:
+
+```sh
+chi share 3f9a1c2e --name Alex --identity alex@corp.example
+# p_7c01d2aa  Alex (human, reviewer) · session 3f9a1c2e · expires … · cap $2.00 · bound to alex@corp.example
+# https://4567.pod.example.com/#code=chc_…&s=3f9a1c2e-…
+```
+
+- It needs `web.proxy.identity_header` (or `chi web --tunnel tailscale`): the link opens only through the proxy,
+  signed in as that email (any case). Opened by someone else (forwarded, pasted in the wrong chat), on the LAN or on
+  this machine, it says "This review link is for another account …", and its one-time code stays: Alex can still open
+  it. The refusal is in the session's participants audit with the identity that tried. Without an identity header
+  `--identity` is refused: the link could never open.
+- An unbound link there opens for anyone the proxy lets in who has it; `chi share` warns when you make one. The web's
+  Invite has an email field behind such a proxy (the name defaults to the email's first part).
+- The identity is what the trusted header carries: the work email through Okta, the Tailscale login (`alex@github`)
+  through Tailscale Serve. Bind to the one your proxy sends. A tagged Tailscale device has no user login, so a bound
+  link refuses it.
+- The header is the proxy's word only for requests that come through the proxy: any program on this machine that
+  reaches chi web's port directly can send it too. On a machine or pod only you use, that is you already; on a host
+  other users share, a bound link's identity isn't a boundary against them.
 
 ### Tailscale Serve (your tailnet)
 

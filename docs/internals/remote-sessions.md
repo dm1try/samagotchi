@@ -160,6 +160,10 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   only when its detail starts with `not found: /` (the 404 from `serve_static`, for a path no route takes). A route's
   own 404 (no such session or source) stays a refusal. **Keep that rule:** a new route's 404 must never use the
   `not found: /…` wording.
+- **A field an older chi web would ignore.** A body field whose meaning is a restriction (`share --identity`'s
+  `identity`: an older chi web drops it and issues a link anyone could open) gets a feature of its own
+  (`bound_grants`, `App::BOUND_FEATURE`), and `Remote` requires it before sending the field (`require_feature!`):
+  never a silent downgrade.
 
 ## Which checks run where
 

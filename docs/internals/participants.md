@@ -38,7 +38,11 @@ participant** and **one role**, until it expires or is revoked.
   bare 401; then it goes.
 - **Store.** `$XDG_STATE_HOME/samagotchi/web-grants/grants.json`, next to `web-token`: the file 0600, in its own 0700
   folder, written whole (`AtomicFile`) under a lock file (`grants.lock`) since chi web and a local `chi share` both
-  write it. Readers follow its mtime (a `chi share revoke` in another process takes effect at chi web's next request).
+  write it. Its `version` is 1, and 2 once a grant is bound (never lowered); a store above `Grants::MAX_VERSION` is a
+  newer chi's: read (its links work) but never written (`Grants::Newer`, one message saying to update chi; a revoke
+  the gate can't write still refuses the grant). A grant's keys this chi doesn't know are kept on a rewrite
+  (`Grant#extra`), so a field a later chi adds the omit-if-default way survives. A chi from before the version check
+  doesn't look at it. Readers follow its mtime (a `chi share revoke` in another process takes effect at chi web's next request).
   `last_used_at` is written at most once a minute per grant. **chi web refuses to start** when that folder or file can
   be read by another user, or isn't this user's (`Grants.check_permissions!`, one message naming the `chmod`). Only
   those two are checked: the state dir above is often 0755, and that's fine. Never point `XDG_STATE_HOME` at a
@@ -51,8 +55,35 @@ participant** and **one role**, until it expires or is revoked.
 - Rotating the owner token (`chi web --new-token`) never touches grants; `chi share revoke --all` ends them all.
 - **Bound grants** (`identity`, an email in lower case; nil for any, and absent from the store then): a bound grant
   is honoured only on a request through the proxy (`web.public_url`) whose identity header carries that email; on the
-  LAN or this machine it is refused (401). The gate checks it (`participant_principal(identity:, proxied:)`);
-  issuing one (`chi share --identity`, the Invite dialog's email) is shared-sessions P6.
+  LAN, this machine or for another identity it is refused **401 `token_bound`** (`ParticipantMessages::TOKEN_BOUND`,
+  the page says it as a sentence; neither identity is named). One check, `ParticipantAccess#bound_ok?`, for the gate
+  (`participant_principal(identity:, proxied:)`) and the code trade (below).
+  - **Issuing.** `chi share ID --name NAME --identity EMAIL`, `POST …/participants {identity}`, the Invite dialog's
+    email field (shown when `GET …/participants` gives `identity_header`). `Grants.clean_identity` strips and
+    lower-cases it as `ProxyGate#proxy_identity` does, and refuses anything but one address (one `@`, no space,
+    control character, comma, quote or angle bracket, at most 254 characters; `Grants::BadIdentity`); a dot-less
+    domain is fine. `Participants.invite(identity:, public_url:)` refuses it unless that chi web's `PublicUrl` has an
+    identity header (`Grants::Unbindable`: the link could never open). Locally `public_url` is config's
+    `web.public_url` + `web.proxy.identity_header`, or a running `chi web --tunnel`'s (web.json records its origin and
+    identity header). The `issued` audit line names the identity; `chi share` warns after an unbound invite when the
+    chi web could have bound it (decision B).
+  - **Through `--remote`.** `/api/info` lists the feature `bound_grants` (`App::BOUND_FEATURE`); `Remote#invite` with
+    an identity requires it first, so an older chi web (which would drop the unknown `identity` and issue an unbound
+    grant) is never asked (`RemoteTooOld`). A grant that still comes back unbound is revoked at once and refused, its
+    link never printed. The owner's `/api/info` carries `proxy: {identity_header}` (nil without a proxy):
+    `Remote#identity_header`, for the warning and `chi review`'s hint.
+  - **The code (decision C).** A bound grant's link code is checked before it is used up: `LinkCodes#redeem` asks its
+    block under the lock, and `App#code_identity_ok?` declines unless the trade is proxied with the grant's identity.
+    Declined, the code stays and the trade answers `token_bound`, so a forwarded link opened by someone else still
+    opens, once, for the account it was sent to. Owner codes and unbound grants' codes are used up whatever the gate
+    says, as before.
+  - **Which identity string.** The grant binds to whatever the header this run trusts carries: through Okta and
+    oauth2-proxy the work email (`alex@corp.com`), through Tailscale Serve the Tailscale login (`alex@github`, or a
+    private-relay address). The same person is two strings: bind to the one that proxy sends. A request from a
+    tagged Tailscale device carries no user login, so a bound grant refuses it.
+  - **Local header spoofing (decision D).** Any process on this machine that reaches chi web's port directly can send
+    the identity header itself: it is trusted only as the proxy's word. That is fine on a single-user machine or pod
+    (whoever runs code there is the owner already); on a host other users share, the identity header isn't a boundary.
 
 ## The gate
 
@@ -73,7 +104,8 @@ participant** and **one role**, until it expires or is revoked.
    grant:)`), from any peer: loopback and a chi web not on the LAN too. An ended or unknown one is refused
    (below), never the owner.
 3. No `chp_` token from a loopback peer, or on a chi web not on the LAN: the **owner** (unchanged).
-4. Anything else: nil. `#token_gate` answers an ended grant's token **401 `token_revoked`** or **401
+4. Anything else: nil. `#token_gate` answers a bound grant's token without its identity **401 `token_bound`**, an
+   ended grant's token **401 `token_revoked`** or **401
    `token_expired`** (the page says the same words as a sentence: "This review link was revoked by the session's
    owner." / "This review link expired: ask the session's owner for a new one."), any other **401
    `unauthorized`** as before.
@@ -351,16 +383,17 @@ gate and routes) answers these.
 
 | Route | Body / params | Answer | Refusals |
 |---|---|---|---|
-| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it | |
+| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning, identity_header}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it; `identity_header`: the header this chi web's proxy names the user in (null without one), the Invite's email field | |
 | `GET /api/participants` | | 200 `{participants: [grant]}`, every session's | |
-| `POST /api/sessions/:id/participants` | `name`, `kind` (`human`/`agent`), `ttl` (seconds) | 201 `{participant: grant, token, link, lan, qr_svg, warning}`: the token and the link once; `warning` for a session that isn't a review session (`ReviewStart.share_warning`, null for one); `link` names this chi web's LAN address (`http://IP:PORT/?token=…#s=<id>`), `lan` false when it has none | 400 `invalid_participant` (name, kind, ttl, an archived session); 404 |
+| `POST /api/sessions/:id/participants` | `name`, `kind` (`human`/`agent`), `ttl` (seconds), `cap`, `identity` (an email: a bound grant) | 201 `{participant: grant, token, link, lan, qr_svg, warning}`: the token and the link once; `warning` for a session that isn't a review session (`ReviewStart.share_warning`, null for one); `link` names this chi web's LAN address (`http://IP:PORT/?token=…#s=<id>`), `lan` false when it has none | 400 `invalid_participant` (name, kind, ttl, an identity that isn't one address or with no proxy to check it, an archived session); 404 |
 | `GET /api/sessions/:id/apply[?turn=T]` | `turn`: a turn id or a prefix (none: the latest review turn with a reply) | 200 `{text, turn_id, author, author_name}`: the Apply turn for the composer, never sent | 404 `not_found` (no such turn, no review turn), 400 `not_review_turn` (an owner's turn), 409 `no_reply` |
 | `DELETE /api/sessions/:id/participants[?id=p_…]` | | 200 `{revoked: [grant]}`: one participant, or the session's | 400 `invalid_participant` |
 | `DELETE /api/participants` | | 200 `{revoked: [grant]}`: every session's | |
 | `POST /api/sessions/:id/participants/:p/cap` | `cap` (dollars, 0 to 1000) | 200 `{participant: grant}`: their cap from their next turn on | 400 `invalid_participant` (the cap, no such active participant) |
 
 A grant here is `Grant#public_h`: `id, session_id, kind, name, role, created_at, expires_at, revoked_at, revoked_by,
-last_used_at, state` (`active | revoked | expired`), `cap` (dollars) and `queue`. Never the token or its digest.
+last_used_at, state` (`active | revoked | expired`), `cap` (dollars), `queue` and `identity` (null: unbound). Never
+the token or its digest.
 `POST …/participants` also takes `cap`. A grant from before caps takes the config's.
 
 `chi share` (docs/cli.md) uses them through `--remote`, and `SessionAccess::Local`'s same-named operations here
@@ -381,8 +414,11 @@ invited to has none: its files stay byte for byte as they were.
   The worker reads it with `Participants.read` (P3a's system-prompt line, `ctx`).
 - **`participants.jsonl`** (0600, append-only, `Participants.log`): one JSON line per event, with `at`: `issued`
   (participant, name, kind, role, expires_at), `revoked` (participant, by), `expired` (the first refused use after the
-  expiry, once per chi web), `peer` (the first use and each new peer address since chi web started: ip, user agent),
-  `refused` (method, path, reason; at most once a minute per route; or `what: command`, a participant's `/word` or
+  expiry, once per chi web), `peer` (the first use and each new peer since chi web started: ip, user agent; behind a
+  proxy, where every ip is 127.0.0.1, the peer is the signed-in identity, else the proxy's X-Forwarded-For hop:
+  `identity`, `peer`), `issued` names a bound grant's `identity`,
+  `refused` (method, path, reason; at most once a minute per route; `token_bound` with the `identity` that presented
+  it, or `(none)`; or `what: command`, a participant's `/word` or
   `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
   the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
   cap). It goes with the session (retention, delete).
@@ -434,6 +470,7 @@ code, for any route):
 |---|---|---|
 | 401 `token_revoked` | `TokenRevoked` (an `AuthRefused`) | `this review link was revoked by the session's owner` |
 | 401 `token_expired` | `TokenExpired` (an `AuthRefused`) | `this review link expired: ask the session's owner for a new one` |
+| 401 `token_bound` | `TokenBound` (an `AuthRefused`) | `this review link is for another account: open it through the proxy, signed in as the person it was sent to` |
 | 403 `not_permitted` | `NotPermitted` | `a participant can't do that: only the session's owner can` |
 | 429 `too_many_turns` | `TooManyTurns` | `this participant has too many turns waiting: wait for one to finish` |
 | 429 `cap_reached` | `CapReached` | `this participant's spending cap is reached: ask the session's owner to raise it` |
@@ -470,6 +507,8 @@ participant TUI in v1.
   no participant token; nothing else. Through a proxy the owner is the token and, with an identity header
   configured, that identity: never the identity alone, never a loopback peer. A participant token never widens to the
   owner, from any peer.
+- A bound grant works only on a proxied request whose identity header is its identity: never on the LAN, this
+  machine's loopback or for another identity, and its link code is used up only by that identity.
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.
