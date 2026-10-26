@@ -207,8 +207,16 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     sheet.hooks = hooks;
     return { toggle() { sheet.toggles += 1; }, refresh() { sheet.refreshes += 1; } };
   };
+  // The streams of every session a project's page opened (allEvents):
+  // their handlers and options, and whether they were closed.
+  const streams = [];
+  const allEvents = (handlers, opts) => {
+    const stream = { handlers, opts, closed: false, close() { stream.closed = true; } };
+    streams.push(stream);
+    return stream;
+  };
   const page = createNotifications({ button, doc, win, nav, api, storage, channel: null, NotificationApi, scoped, now: () => clock.ms,
-    sendPresence: () => {}, every: () => {}, devices });
+    sendPresence: () => {}, every: () => {}, devices, allEvents });
   // A tap on the bell, then (push mode: it opened the sheet) on this
   // device's switch.
   const tap = async () => {
@@ -217,7 +225,7 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
   };
   const fire = (key) => (listeners[key] || []).forEach((fn) => fn());
   const synced = async () => { await page.syncing(); };
-  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept, clock, sheet,
+  return { page, button, calls, shown, doc, tap, NotificationApi, device, delivered, fire, synced, kept, clock, sheet, streams,
     revoke: () => { current = null; } };
 }
 
@@ -354,13 +362,47 @@ test("a tidy asked for while one runs runs once more after it", async () => {
   assert.deepEqual(app.device.at(-1), ["badge", 0]);
 });
 
-test("a project's page (?dir=) never tidies the device", async () => {
-  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1"], scoped: true, visible: true });
+test("a project's page (?dir=, the start project) tidies the device over every project's sessions, from a stream of its own", async () => {
+  // a:q1 was answered in another project; b:q2 (this project) still waits; c:card:k1 (another project) too.
+  const app = fakeApp({ subscribed: true, permission: "granted", tags: ["a:q1", "b:q2", "c:card:k1"], scoped: true, visible: true });
   await app.page.pushReady;
-  app.page.noticeSessions("snapshot", { sessions: [session({ id: "b" })] });
+  assert.equal(app.streams.length, 1);
+  // The page's own frames (its project only) never tidy: they don't see the others.
+  app.page.noticeSessions("snapshot", { sessions: [approval("b", "q2")] });
   app.fire("doc:visibilitychange");
   await app.synced();
   assert.deepEqual(app.device, []);
+
+  const all = app.streams[0].handlers;
+  all.snapshot({ sessions: [session({ id: "a" }), approval("b", "q2"), session({ id: "c", pending_card: { id: "k1" } })] });
+  await app.synced();
+  assert.deepEqual(app.delivered.map((n) => [n.tag, n.closed]), [["a:q1", true], ["b:q2", false], ["c:card:k1", false]]);
+  assert.deepEqual(app.device.at(-1), ["badge", 2]);
+
+  // Another project's card resolved: closed, though the page's list never heard of it.
+  all.session({ session: session({ id: "c" }) });
+  await app.synced();
+  assert.deepEqual(app.delivered.map((n) => n.closed), [true, false, true]);
+  assert.deepEqual(app.device.at(-1), ["badge", 1]);
+});
+
+test("a project's page opens its stream of every session only with the bell on, closes it with the bell off, and opens it again once it ended", async () => {
+  const off = fakeApp({ permission: "granted", scoped: true, visible: true });
+  await off.page.pushReady;
+  assert.equal(off.streams.length, 0);
+  const tab = fakeApp({ subscribed: true, permission: "granted", visible: true });
+  await tab.page.pushReady;
+  assert.equal(tab.streams.length, 0, "the all view's own frames are every session's already");
+
+  const app = fakeApp({ subscribed: true, permission: "granted", scoped: true, visible: true });
+  await app.page.pushReady;
+  app.fire("doc:visibilitychange");
+  assert.equal(app.streams.length, 1, "one at a time");
+  app.streams[0].opts.onClosed();
+  app.fire("doc:visibilitychange");
+  assert.equal(app.streams.length, 2);
+  await app.tap();
+  assert.equal(app.streams[1].closed, true);
 });
 
 test("with the bell off the app neither tidies nor badges; turning it off clears the badge", async () => {

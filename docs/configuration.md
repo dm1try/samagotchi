@@ -1798,6 +1798,9 @@ What it needs:
 
 Turning it on, on the phone: open the `Proxied:` link in Safari → Share → **Add to Home Screen** → open the **Chi**
 app → tap the **bell** at the top → turn on **This device** in the sheet → Allow. A test notification arrives at once.
+The app opens on the project chi web starts in (`web.start_dir`; the header's `all` shows every project), but its
+notifications are every project's: opening it closes the ones whose question or card is no longer open and sets its
+badge for every project, whichever project the page shows.
 In a browser tab the bell stays the tab's own notifications (while the tab is in the background), as before.
 
 **The devices** (the bell's sheet in the app; a bottom sheet on the phone): this device first, with its switch (off
