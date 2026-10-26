@@ -122,8 +122,14 @@ module Samagotchi
           break if closed?
           return finish("unknown_session") if outcome == :unknown_session
           # Refused for want of the secret: a new worker (a new sidecar, a
-          # new secret) is followed; else no retry would get in.
-          return finish(BridgeSecret::ERROR) if outcome == :secret_refused && rediscover_worker != :moved
+          # new secret) is followed at once; else no retry would get in.
+          if outcome == :secret_refused
+            return finish(BridgeSecret::ERROR) unless rediscover_worker == :moved
+
+            failures = 0
+            @reason = nil
+            next
+          end
 
           if outcome == :events
             failures = 0

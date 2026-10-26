@@ -190,11 +190,14 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     it "follows a new worker rediscovery finds (a new secret) before giving up" do
       second = scripted_bridge([->(conn) { conn.write(sse_head + frame(1, { type: :snapshot, snapshot: {} })); hold(conn) }])
       fresh = Samagotchi::BridgeClient.new(session_id: "s1", port: second.port, secret: "cd" * 32)
-      follow(rediscover: -> { fresh }, reconnect_delays: [5, 5])
+      looks = 0
+      # Followed at once: no second look, no retry's 5 s sleep first.
+      follow(rediscover: -> { (looks += 1) && fresh }, reconnect_delays: [5, 5])
 
       got = collect(events, 2)
       expect(got.map { |e| e["type"] }).to eq(%w[worker_changed snapshot])
       expect(second.requests.pop).to include("X-Chi-Bridge: #{"cd" * 32}\r\n")
+      expect(looks).to eq(1)
     ensure
       second&.close&.call
     end
