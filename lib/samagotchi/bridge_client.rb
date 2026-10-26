@@ -358,13 +358,21 @@ module Samagotchi
       # the bridge socket briefly refuses). A few quick bounded retries
       # avoid the silent empty-200 that EventSource would otherwise keep
       # re-opening.
+      status = nil
       STREAM_CONNECT_ATTEMPTS.times do |attempt|
-        sock, = connect_stream(query: query, last_event_id: last_event_id, timeout: header_timeout)
+        sock, status = connect_stream(query: query, last_event_id: last_event_id, timeout: header_timeout)
         break if sock
 
         sleep(0.15 * (attempt + 1))
       end
       return unless sock
+
+      # A refusal (a 403 such as bridge_secret) is no event stream: its JSON
+      # isn't passed on as one.
+      if status == 403
+        sock.close rescue nil
+        return
+      end
 
       begin
         loop do

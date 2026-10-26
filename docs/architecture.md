@@ -393,9 +393,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   worker.
 - **The secret.** Every request, on every route (the stream, the reads such as `state` and `stats`, the writes, and
   an unknown path), names the Bridge's secret in `X-Chi-Bridge`; one without it, or with another one, is
-  `403 bridge_secret` with one message (`Bridge::SECRET_REFUSED`: restart chi web and re-attach terminals), after
-  the browser and proxy checks and before any route (`Bridge#secret_ok?`, `OpenSSL.secure_compare`). No route is left
-  open: what the reads show is the session itself. Each Bridge makes its own (`SecureRandom.hex(32)`, 64 hex
+  `403 bridge_secret` with one message (`BridgeSecret::REFUSED`: restart chi web, re-attach terminals and restart
+  older session workers), after the browser and proxy checks and before any route (`Bridge#secret_ok?`,
+  `OpenSSL.secure_compare`). No route is left open: what the reads show is the session itself. Only a request that
+  got past it counts as client activity, so a refused one (an older chi web's polls) never holds the idle exit. Each Bridge makes its own (`SecureRandom.hex(32)`, 64 hex
   characters) when it starts and writes it to `bridge.json`, which is 0600 from the moment it exists
   (`AtomicFile` creates the temporary file with that mode, then renames it), so only this machine's user can read
   it: a forward that adds no proxy header, or another local account, reaches the port but not a session. Clients get
@@ -403,7 +404,11 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   same read (chi web makes its client from the sidecar for every request, the attached terminal again on a
   `worker_changed`), so a respawned worker's new one is used and nothing passes a port by hand. A worker from before
   the secret writes none and asks for none; a chi web or attached terminal from before it sends none, so a worker
-  the newer chi started refuses it until it is restarted. The secret is never logged (a refusal logs
+  the newer chi started refuses it until it is restarted. A client tells that refusal from a route's own 403
+  (`BridgeClient::Response#secret_refused?`) and shows the one message: chi web's relays answer 502 `bridge_secret`,
+  `chi answer` and a parent's approval relay say it instead of "refused", and an event stream ends with reason
+  `bridge_secret` once rediscovery finds no newer worker (the attached terminal's closing line), never retrying in
+  silence; chi web's stream proxy passes no refusal on as frames. The secret is never logged (a refusal logs
   `secret_refused` with the path, at most once a minute), never in an event, a reply, `/api/info` or a session
   file, and `WorkerSidecar`, `BridgeClient` and `Bridge` leave it out of `#inspect`.
 

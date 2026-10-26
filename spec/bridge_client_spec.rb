@@ -398,6 +398,16 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to include("GET /session/s1/stream?from_seq=3 HTTP/1.1\r\n", "Last-Event-ID: 7\r\n")
   end
 
+  it "passes no refusal on as a stream: a 403's JSON (bridge_secret) yields nothing" do
+    port, finish = serve_once(json_reply("403 Forbidden", JSON.generate(error: "bridge_secret", detail: "restart")))
+    chunks = []
+
+    described_class.new(session_id: "s1", port: port, secret: nil).stream { |c| chunks << c }
+
+    finish.call
+    expect(chunks).to be_empty
+  end
+
   it "ends a quiet stream once `running` turns false" do
     server = TCPServer.new("127.0.0.1", 0)
     peer = Thread.new do

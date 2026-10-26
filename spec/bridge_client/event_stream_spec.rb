@@ -172,4 +172,37 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
       expect(collect(events, 2).last).to eq("type" => "stream_closed", "reason" => "unreachable")
     end
   end
+
+  context "when the Bridge refuses it for want of its secret (403 bridge_secret)" do
+    let(:refusal) do
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      ->(conn) { conn.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}") }
+    end
+    let(:scripts) { [refusal, refusal, refusal] }
+
+    it "ends at once with reason bridge_secret, no silent retries" do
+      follow(reconnect_delays: [5, 5])
+
+      expect(collect(events, 1)).to eq([{ "type" => "stream_closed", "reason" => "bridge_secret" }])
+      expect(bridge.requests.size).to eq(1)
+    end
+
+    it "follows a new worker rediscovery finds (a new secret) before giving up" do
+      second = scripted_bridge([->(conn) { conn.write(sse_head + frame(1, { type: :snapshot, snapshot: {} })); hold(conn) }])
+      fresh = Samagotchi::BridgeClient.new(session_id: "s1", port: second.port, secret: "cd" * 32)
+      follow(rediscover: -> { fresh }, reconnect_delays: [5, 5])
+
+      got = collect(events, 2)
+      expect(got.map { |e| e["type"] }).to eq(%w[worker_changed snapshot])
+      expect(second.requests.pop).to include("X-Chi-Bridge: #{"cd" * 32}\r\n")
+    ensure
+      second&.close&.call
+    end
+
+    it "gives up when rediscovery finds the same worker" do
+      follow(rediscover: -> { client }, reconnect_delays: [5, 5])
+
+      expect(collect(events, 1)).to eq([{ "type" => "stream_closed", "reason" => "bridge_secret" }])
+    end
+  end
 end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../client_id"
+require_relative "../bridge_secret"
 require_relative "../composer_route"
 require_relative "event_renderer"
 require_relative "formatting"
@@ -450,6 +451,8 @@ module Samagotchi
       # The stream ended for good: why, and what brings the session back.
       def closed_line(reason)
         id = @client.session_id
+        # The worker asked for a secret this terminal's chi doesn't send.
+        return "Lost the session's worker: #{BridgeSecret::REFUSED}" if reason == BridgeSecret::ERROR
         return remote_closed_line(reason, id) if via.remote?
 
         # Here a stopped session has always read as unreachable.

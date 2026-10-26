@@ -86,6 +86,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --shared --resume s-1234")
     end
 
+    it "says what to restart when the worker asks for a secret this terminal doesn't send" do
+      attached.handle_event({ "type" => "stream_closed", "reason" => "bridge_secret" })
+      expect(screen.lines.last).to eq("Lost the session's worker: #{Samagotchi::BridgeSecret::REFUSED}")
+    end
+
     it "shows queued prompts and the turn so far, with a tool still running as the status line" do
       turn = { prompt: "check the logs", origin: { client_id: "web:tab1", enqueued_id: "e1" }, continue: false,
                parts: [{ kind: "text", iteration: 1, text: "Looking" },
