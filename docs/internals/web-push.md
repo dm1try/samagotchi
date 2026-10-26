@@ -281,8 +281,11 @@ page's `byId` (`push.js openPushKeys`: `Attention.open_keys`'s rule), and sets o
 badge (`navigator.setAppBadge` / `clearAppBadge`); the bell turned off clears it. It runs once push is known, when
 the page comes back in front, and after each hub frame while visible (so answering on the Mac with the app open
 clears it at once), one at a time with one rerun. Never before the first snapshot (an empty `byId` would close
-everything) and never on a project's page (`createNotifications({scoped})`, app.js passes `!!scope.dir`: its
-`/api/events?dir=` leaves out the other projects' sessions).
+everything). The device's notifications are every project's, so on a project's page (`?dir=`, or the bare page on
+chi web's start project: `createNotifications({scoped})`, app.js passes `!!scope.dir`) the tidy-up goes by a stream
+of every session of its own (`watchAll`, through `allEvents`: data.js `openEvents` without a dir), not the page's
+`/api/events?dir=` frames, which leave out the other projects' sessions. That stream is open only with the bell on
+(turning it off closes it), one at a time, and one that ended is opened again when the page next comes back in front.
 
 Accepted staleness: an approval answered elsewhere keeps its banner until the app opens (the worker's cleanup on the next push doesn't work on iOS yet: see iOS facts)
 (or a swipe), and the icon badge may be too high until then; a show already handed to Apple just before its answer
