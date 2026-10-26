@@ -19,6 +19,11 @@ and commands may change between minor versions. How releases are made:
   text fields beside them (flat box, same height and corners, one thin caret), as the Thinking and LLM context
   dialogs' selects already did, in place of the browser's own pill.
 
+### Fixed
+
+- claude-peer (0.4.4): `pair --inbox-socket PATH` says the remote socket is forwarded to this Claude's socket, not
+  from it (`ssh -R`).
+
 ## [0.120.0] - 2026-10-26
 
 ### Added

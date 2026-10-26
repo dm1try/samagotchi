@@ -173,7 +173,7 @@ RSpec.describe "The claude-peer pair script" do
 
       expect([status.exitstatus, err]).to eq([0, ""])
       expect(out).to include("paired with chi #{session.id} (socket /tmp/pod-claude.sock on chi's machine, " \
-                             "forwarded from /tmp/claude-a.sock)")
+                             "forwarded to this Claude's /tmp/claude-a.sock)")
       expect(out).not_to include("pair: chi is on")
       expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/pod-claude.sock", cmd: nil)
       inbox = own.snapshot("claude-inbox")

@@ -147,6 +147,6 @@ attach claude-outbox --why "Claude's answers to what you sent it (claude-peer)" 
 if [ -z "$inbox" ]; then
   echo "paired with chi $id (socket $sock)"
 else
-  echo "paired with chi $id (socket $inbox on chi's machine, forwarded from $sock)"
+  echo "paired with chi $id (socket $inbox on chi's machine, forwarded to this Claude's $sock)"
 fi
 $chi context ls "$id"
