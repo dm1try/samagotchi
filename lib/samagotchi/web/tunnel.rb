@@ -103,10 +103,19 @@ module Samagotchi
         # @return [Result]
         # @raise [Timeout]
         # @raise [SystemCallError] the command can't run (ENOENT, EACCES)
-        def call(argv, timeout:)
+        # +before_timeout+ lets a test synchronize the deadline with a
+        # child-side ready signal; the timeout starts after it returns.
+        def call(argv, timeout:, before_timeout: nil)
           Open3.popen3(*argv, pgroup: true) do |stdin, out, err, wait|
             stdin.close
             readers = [out, err].map { |io| Thread.new { io.read }.tap { |t| t.report_on_exception = false } }
+            begin
+              before_timeout&.call
+            rescue StandardError
+              stop(wait.pid)
+              readers.each { |reader| reader.join(1) }
+              raise
+            end
             unless wait.join(timeout)
               stop(wait.pid)
               readers.each { |reader| reader.join(1) }

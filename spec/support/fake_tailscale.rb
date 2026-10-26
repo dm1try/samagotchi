@@ -34,7 +34,11 @@ class FakeTailscale
     esac
     if [ -f "$dir/fail-$key" ]; then cat "$dir/fail-$key" >&2; exit 1; fi
     if [ -f "$dir/slow-$key" ]; then sleep "$(cat "$dir/slow-$key")"; fi
-    if [ -f "$dir/hang-$key" ]; then cat "$dir/hang-$key"; exec sleep 30; fi
+    if [ -f "$dir/hang-$key" ]; then
+      cat "$dir/hang-$key"
+      : > "$dir/printed-$key"
+      exec sleep 30
+    fi
     case "$key" in
       status) cat "$dir/status.json" ;;
       serve-status) cat "$dir/serve.json" ;;
@@ -99,6 +103,8 @@ class FakeTailscale
 
   # +key+ prints +text+ and sleeps 30 s.
   def hang!(key, text = "") = File.write(File.join(@state, "hang-#{key}"), text)
+
+  def printed?(key) = File.exist?(File.join(@state, "printed-#{key}"))
 
   # +key+ waits +seconds+ before it answers (and, for serve-bg/serve-off,
   # changes 443), as a slow tailscaled would.

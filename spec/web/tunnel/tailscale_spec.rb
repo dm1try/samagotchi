@@ -97,7 +97,15 @@ RSpec.describe Samagotchi::Web::Tunnel::Tailscale do
     it "stops a command that doesn't finish in time" do
       stub_const("#{described_class}::STATUS_TIMEOUT", 0.3)
       fake.hang!("status", "waiting")
-      expect { prepare }.to raise_error(Samagotchi::Web::Tunnel::CliTimeout, /waiting/)
+      runner = Samagotchi::Web::Tunnel::Runner.new
+      allow(runner).to receive(:call).and_wrap_original do |original, argv, timeout:|
+        original.call(argv, timeout: timeout, before_timeout: lambda {
+          wait_for("the fake CLI to print before its timeout starts") { fake.printed?("status") }
+        })
+      end
+      tunnel = described_class.new(env: env, app_cli: File.join(dir, "no-app"), runner: runner)
+
+      expect { tunnel.prepare(port: 4567) }.to raise_error(Samagotchi::Web::Tunnel::CliTimeout, /waiting/)
     end
 
     it "refuses a web.public_url or identity header that differs from the tunnel's, from config or the environment" do
