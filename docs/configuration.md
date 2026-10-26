@@ -1418,8 +1418,9 @@ toolkit:
   (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
   (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
   ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil)).
-- **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`); for the MCP bundle
-  each group is a server. Selectors are sorted and deduplicated and match the groups declared when plugins load.
+- **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
+  as the guardrails rules' `models:`); for the MCP bundle each group is a server; anything but a name or a list is
+  refused (the kit loads without it). Selectors are sorted and deduplicated and match the groups declared when plugins load.
   An omitted key inherits the base's selectors; `full` and `lean` (and `child`, which is on `lean`) reach all
   groups, `review` (the participants' kit) reaches none, `groups: ["*"]` matches every group, and `groups: []`
   reaches none. A kit whose base doesn't resolve (an unknown name, a cycle) falls back to `full`, which reaches

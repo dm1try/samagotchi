@@ -98,6 +98,13 @@ RSpec.describe Samagotchi::Toolkit do
       .to eq(%i[all all all])
   end
 
+  it "matches group selectors in the rules' grammar: any case, braces (extglob)" do
+    expect(described_class.group_matches?(["Chrome"], "chrome")).to be(true)
+    expect(described_class.group_matches?(["{db,chrome}*"], "chrome-dev")).to be(true)
+    expect(described_class.group_matches?(["db*"], "chrome")).to be(false)
+    expect(described_class.group_matches?(:all, "anything")).to be(true)
+  end
+
   it "keeps a groups-only kit on full from resolving to everything" do
     kits = described_class.kits(config: { "chrome" => { "base" => "full", "groups" => ["chrome"] } })
     resolved = described_class.new(name: "chrome").resolve(kits)
@@ -208,6 +215,16 @@ RSpec.describe Samagotchi::Toolkit do
       expect(kits["c"].prompt.length).to eq(2000)
       expect(errors).to eq(["toolkit.kits.a: prompt must be text; the kit loads without it",
                             "toolkit.kits.b: prompt is over 2000 characters; the kit loads without it"])
+    end
+
+    it "loads a config kit without groups that aren't a name or a list of them, with a line saying why" do
+      errors = []
+      kits = described_class.kits(config: { "a" => { "base" => "lean", "groups" => { "chrome" => true } },
+                                            "b" => { "base" => "lean", "groups" => [{ "x" => 1 }] },
+                                            "c" => { "base" => "lean", "groups" => ["chrome", :db] } }, errors: errors)
+      expect([kits["a"].groups, kits["b"].groups, kits["c"].groups]).to eq([nil, nil, %w[chrome db]])
+      expect(errors).to eq(["toolkit.kits.a: groups must be a list of group names or globs; the kit loads without it",
+                            "toolkit.kits.b: groups must be a list of group names or globs; the kit loads without it"])
     end
 
     describe "Explained" do

@@ -53,6 +53,9 @@ and commands may change between minor versions. How releases are made:
 - claude-peer (0.4.5): `pair` run as `bash pair` or by zsh no longer refuses every call with its usage (only `sh
   pair` kept the id and the `--inbox-socket` path), and a carriage return or another control character in what it
   pushes (the cwd) is escaped, so chi's JSON read no longer refuses the push.
+- A toolkit's `groups:` match source groups in any case and with `{a,b}` braces, as the guardrails rules' `models:`
+  do (`groups: [Chrome]` missed `chrome`), and a config kit's `groups:` that isn't a name or a list (a map) is refused
+  with a line, the kit loading without it, instead of matching its stringified pairs.
 
 ## [0.121.0] - 2026-10-26
 

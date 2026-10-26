@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "model_match"
 
 module Samagotchi
   # A session's toolkit: which of the registered tools its prompts declare
@@ -118,8 +119,20 @@ module Samagotchi
       Array(groups).map { |group| group.to_s.strip }.reject(&:empty?).uniq.sort.freeze
     end
 
+    # Whether a source group +name+ is one of +selectors+: fnmatch globs in
+    # the guardrails rules' grammar (ModelMatch::GLOB_FLAGS: any case,
+    # extglob), so `groups: [Chrome]` reaches chrome.
     def self.group_matches?(selectors, name)
-      selectors == :all || selectors.any? { |selector| File.fnmatch?(selector, name.to_s) }
+      selectors == :all || selectors.any? { |selector| File.fnmatch?(selector, name.to_s, ModelMatch::GLOB_FLAGS) }
+    end
+
+    # Why +value+ can't be a kit's groups (a group name or glob, or a list
+    # of them), nil when it can (nil too: its base's groups).
+    def self.groups_error(value)
+      return nil if value.nil? || value.is_a?(String)
+      return nil if value.is_a?(Array) && value.all? { |group| group.is_a?(String) || group.is_a?(Symbol) || group.is_a?(Numeric) }
+
+      "groups must be a list of group names or globs"
     end
 
     # A named list of declared tools: +tools+ (:all, every built-in; or the
@@ -325,9 +338,11 @@ module Samagotchi
             errors << "toolkit.kits.#{name}: unknown key #{key} " \
                       "(a kit takes base:, add:, remove:, prompt:, groups:)"
           end
-          if (problem = prompt_error(spec["prompt"]))
+          { "prompt" => prompt_error(spec["prompt"]), "groups" => groups_error(spec["groups"]) }.each do |key, problem|
+            next unless problem
+
             errors << "toolkit.kits.#{name}: #{problem}; the kit loads without it"
-            spec.delete("prompt")
+            spec.delete(key)
           end
           kits[name] = Kit.new(name: name, base: spec["base"] || FULL, add: spec["add"], remove: spec["remove"],
                                prompt: spec["prompt"], groups: spec["groups"], source: "config")
