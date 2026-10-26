@@ -94,7 +94,9 @@ participant** and **one role**, until it expires or is revoked.
     block under the lock, and `App#code_identity_ok?` declines unless the trade is proxied with the grant's identity.
     Declined, the code stays and the trade answers `token_bound`, so a forwarded link opened by someone else still
     opens, once, for the account it was sent to. Owner codes and unbound grants' codes are used up whatever the gate
-    says, as before.
+    says, as before. Owner codes burn on purpose (user decision 2026-10-26, don't "align" them with bound grants): an
+    owner code is the whole control plane, so one presented by another identity has leaked and is killed at once;
+    the owner prints a new link (spec: proxy_gate_spec "uses up an owner's code someone else presents").
   - **Which identity string.** The grant binds to whatever the header this run trusts carries: through Okta and
     oauth2-proxy the work email (`alex@corp.com`), through Tailscale Serve the Tailscale login (`alex@github`, or a
     private-relay address). The same person is two strings: bind to the one that proxy sends. A request from a
