@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::Web::Grants do
 
     it "refuses anything that isn't one address, writing nothing" do
       ["", "  ", "alex", "@corp", "alex@", "a@b@c", "a b@c", "a,b@c", "<a@b>", "\"a\"@b", "a\u0000@b", "a\tb@c",
-       "#{"x" * 250}@corp", 42, ["a@b"]].each do |bad|
+       "#{"x" * 250}@corp", "al\u00e9x@corp", "alex@b\u00fccher.de", 42, ["a@b"]].each do |bad|
         expect { issue(identity: bad) }.to raise_error(described_class::BadIdentity, /bound to one email address/), bad.inspect
       end
       expect(File.exist?(path)).to be(false)
@@ -195,6 +195,24 @@ RSpec.describe Samagotchi::Web::Grants do
       it_behaves_like "fails closed and keeps the file"
     end
 
+    context "when a grant's identity isn't one #issue would store (it could read as unbound)" do
+      before do
+        issue
+        data = JSON.parse(File.read(path))
+        [false, "", ["a@b"], "Alex@Corp", " a@b"].each_with_index do |bad, i|
+          data["grants"] << data["grants"].first.merge("id" => "p_0000000#{i}", "identity" => bad)
+        end
+        File.write(path, JSON.generate(data))
+      end
+
+      it_behaves_like "fails closed and keeps the file"
+
+      it "names the bad identity" do
+        allow(Samagotchi::Log).to receive(:warn)
+        expect { grants.list }.to raise_error(described_class::Corrupt, /grant 2 has a bad identity/)
+      end
+    end
+
     context "when a grant lacks its digest or expiry (no 500 for every participant)" do
       before do
         issue
@@ -261,6 +279,20 @@ RSpec.describe Samagotchi::Web::Grants do
       let!(:issued) { issue }
 
       before { rewrite! { |data| data["version"] = 3 } }
+
+      it "leaves out a grant with fields this chi doesn't know (they may restrict it), keeps the others" do
+        other = described_class.new(path, clock: -> { now.first })
+        rewrite! do |data|
+          data["version"] = 2
+          data["grants"].first["bound_to"] = { "who" => "alex@corp" }
+        end
+        plain = other.issue(session_id: session_id, name: "Sam")
+        rewrite! { |data| data["version"] = 3 }
+        expect(grants.lookup(issued.token)).to be_nil
+        expect(grants.active?(issued.grant.id)).to be(false)
+        expect(grants.lookup(plain.token)&.id).to eq(plain.grant.id)
+        expect(grants.list.map(&:id)).to eq([plain.grant.id])
+      end
 
       it "still finds its grants, and refuses every write without touching the file" do
         before = File.binread(path)

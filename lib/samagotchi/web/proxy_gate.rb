@@ -11,9 +11,12 @@ module Samagotchi
     # chi web behind an auth proxy (web.public_url), mixed into App. With a
     # PublicUrl every request needs a token (this machine's too: a proxy
     # with no trace and a rewritten Host looks local). A request is
-    # *proxied* when it carries a proxy trace (ProxyTrace: X-Forwarded-*,
-    # Forwarded, X-Real-IP, a known identity header…), the configured
-    # identity header, or the public Host. A proxied request:
+    # *proxied* when it comes from a loopback peer (the proxy runs on this
+    # machine: the pod's Caddy/oauth2-proxy, Tailscale Serve) and carries a
+    # proxy trace (ProxyTrace: X-Forwarded-*, Forwarded, X-Real-IP, a known
+    # identity header…), the configured identity header, or the public Host.
+    # A LAN peer's traces are its own words, never the proxy's: it is a LAN
+    # request (the LAN token rules; a bound grant refused). A proxied request:
     # - is the owner with the owner token, and, when web.proxy.identity_header
     #   is set, only if that header is one clean value equal to
     #   web.proxy.owner (D-a: identity AND token);
@@ -45,6 +48,13 @@ module Samagotchi
       # and another port does.
       SECURE_COOKIE = "__Host-chi_token"
 
+      # 127.0.0.0/8, ::1 and their IPv4-mapped form: the only peers whose
+      # proxy traces and identity header are trusted (the proxy is local).
+      def self.loopback_peer?(addr)
+        addr = addr.to_s
+        addr.start_with?("127.", "::ffff:127.") || addr == "::1"
+      end
+
       private
 
       def init_proxy_gate(public_url, token)
@@ -59,6 +69,8 @@ module Samagotchi
         return false unless @public_url
 
         env = req.env
+        return false unless ProxyGate.loopback_peer?(env["REMOTE_ADDR"])
+
         return true if @public_url.host?(env["HTTP_HOST"])
         return true if @public_url.identity_env && env.key?(@public_url.identity_env)
 
@@ -86,6 +98,9 @@ module Samagotchi
         value = value.strip
         return [:bad, "identity header empty"] if value.empty?
         return [:bad, "identity header repeated or with a comma"] if value.include?(",")
+        # Grants.clean_identity takes ASCII only: a non-ASCII header could
+        # never match a grant or the owner, so it is refused as such.
+        return [:bad, "identity header not ASCII"] unless value.ascii_only?
 
         [:ok, value.downcase]
       end

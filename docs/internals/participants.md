@@ -39,10 +39,13 @@ participant** and **one role**, until it expires or is revoked.
 - **Store.** `$XDG_STATE_HOME/samagotchi/web-grants/grants.json`, next to `web-token`: the file 0600, in its own 0700
   folder, written whole (`AtomicFile`) under a lock file (`grants.lock`) since chi web and a local `chi share` both
   write it. Its `version` is 1, and 2 once a grant is bound (never lowered); a store above `Grants::MAX_VERSION` is a
-  newer chi's: read (its links work) but never written (`Grants::Newer`, one message saying to update chi; a revoke
+  newer chi's: read (its links work, but a grant with keys this chi doesn't know is left out: such a key may
+  restrict it, so it fails closed) and never written (`Grants::Newer`, one message saying to update chi; a revoke
   the gate can't write still refuses the grant). A grant's keys this chi doesn't know are kept on a rewrite
   (`Grant#extra`), so a field a later chi adds the omit-if-default way survives. A chi from before the version check
-  doesn't look at it. Readers follow its mtime (a `chi share revoke` in another process takes effect at chi web's next request).
+  doesn't look at it: **mixed installs** on one state dir are a hazard, as a chi before 0.109 (no `identity`) rewriting
+  the store unbinds every grant, and one before this change drops unknown keys. A stored `identity` that isn't one
+  `#issue` would write (`false`, `""`, a list, upper case) makes the store Corrupt (fails closed). Readers follow its mtime (a `chi share revoke` in another process takes effect at chi web's next request).
   `last_used_at` is written at most once a minute per grant. **chi web refuses to start** when that folder or file can
   be read by another user, or isn't this user's (`Grants.check_permissions!`, one message naming the `chmod`). Only
   those two are checked: the state dir above is often 0755, and that's fine. Never point `XDG_STATE_HOME` at a
@@ -60,7 +63,8 @@ participant** and **one role**, until it expires or is revoked.
   (`participant_principal(identity:, proxied:)`) and the code trade (below).
   - **Issuing.** `chi share ID --name NAME --identity EMAIL`, `POST …/participants {identity}`, the Invite dialog's
     email field (shown when `GET …/participants` gives `identity_header`). `Grants.clean_identity` strips and
-    lower-cases it as `ProxyGate#proxy_identity` does, and refuses anything but one address (one `@`, no space,
+    lower-cases it as `ProxyGate#proxy_identity` does (both ASCII only: the gate refuses a non-ASCII header, so the
+    two lower cases always agree), and refuses anything but one address (one `@`, no space,
     control character, comma, quote or angle bracket, at most 254 characters; `Grants::BadIdentity`); a dot-less
     domain is fine. `Participants.invite(identity:, public_url:)` refuses it unless that chi web's `PublicUrl` has an
     identity header (`Grants::Unbindable`: the link could never open). Locally `public_url` is config's
@@ -91,7 +95,9 @@ participant** and **one role**, until it expires or is revoked.
 
 0. With `web.public_url` (`Web::ProxyGate`; `chi web --tunnel tailscale` sets the same for its run, never in config:
    public_url = the machine's `ts.net` name, identity_header `Tailscale-User-Login`, owner `web.proxy.owner` else this
-   machine's Tailscale login, `Web::Tunnel::Tailscale`), a **proxied** request (a proxy trace: `X-Forwarded-*`, `Forwarded`,
+   machine's Tailscale login, `Web::Tunnel::Tailscale`), a **proxied** request (from a loopback peer only,
+   `ProxyGate.loopback_peer?`: the proxy runs on this machine, and a LAN peer's traces are its own words, so with
+   `web.host: lan` and `web.public_url` a LAN device forging them is a LAN request; with a proxy trace: `X-Forwarded-*`, `Forwarded`,
    `X-Real-IP`, a known identity header, the configured one, or the public Host) is `#proxied_principal`'s: the owner
    only with the owner's token **and**, when `web.proxy.identity_header` is set, that header being one clean value
    (not repeated, no comma, not empty, under one name with no underscore: the raw header names) equal to
@@ -418,7 +424,8 @@ invited to has none: its files stay byte for byte as they were.
   proxy, where every ip is 127.0.0.1, the peer is the signed-in identity, else the proxy's X-Forwarded-For hop:
   `identity`, `peer`), `issued` names a bound grant's `identity`,
   `refused` (method, path, reason; at most once a minute per route; `token_bound` with the `identity` that presented
-  it, or `(none)`; or `what: command`, a participant's `/word` or
+  it, or `(none)`, once a minute per grant and identity whatever the path; at most 256 refusals a minute are
+  remembered and audited; or `what: command`, a participant's `/word` or
   `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
   the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
   cap). It goes with the session (retention, delete).

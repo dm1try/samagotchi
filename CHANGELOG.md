@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
   (the link could never open), and `chi share` warns when a link could be bound and isn't. `chi share ls` shows
   `alex@corp · bound`. Through `chi --remote`, `--identity` needs that chi web to be this version or newer (an older
   one would ignore it and make a link anyone could open).
+- chi web trusts proxy headers (`X-Forwarded-*`, the identity header, the public Host) only from this machine
+  (a loopback peer): the proxy must run where chi web runs. With `web.host: lan` and `web.public_url` together, a LAN
+  device sending those headers is a LAN request, never one through the proxy. An identity header that isn't ASCII is
+  refused.
 - A bound link opened by another account, or not through the proxy, is refused with its own words (401
   `token_bound`: "this review link is for another account …", on the page too), and the refusal goes into the
   session's participants audit naming who tried. Its one-time code stays usable: the person it was sent to can still

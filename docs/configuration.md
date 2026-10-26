@@ -1608,7 +1608,11 @@ web:
 
 Experimental. `chi web` binds 127.0.0.1 only; to use it from elsewhere over https, put it behind a proxy that does TLS
 and, usually, a sign-in (oauth2-proxy, nginx `auth_request`, Caddy `forward_auth`, Cloudflare Access, Tailscale
-Serve; a work pod forwarding `https://<port>.<pod>.<domain>` through oauth2-proxy) and tell chi web its public URL:
+Serve; a work pod forwarding `https://<port>.<pod>.<domain>` through oauth2-proxy) and tell chi web its public URL.
+The proxy must run **on the same machine** as chi web: only a request from a loopback peer (127.0.0.0/8, ::1) counts
+as one through the proxy, with its identity header. A proxy on another host, reaching chi web on its LAN address
+(`web.host: lan`), isn't supported: its requests are LAN requests (the LAN token; a link bound to an account refused),
+since any LAN device could send the same headers.
 
 ```yaml
 web:
@@ -1702,13 +1706,15 @@ chi share 3f9a1c2e --name Alex --identity alex@corp.example
   this machine, it says "This review link is for another account …", and its one-time code stays: Alex can still open
   it. The refusal is in the session's participants audit with the identity that tried. Without an identity header
   `--identity` is refused: the link could never open.
+- Run only chi 0.109 or newer on the same state dir: an older chi rewriting the grants store drops the binding and
+  makes every bound link open for anyone the proxy lets in.
 - An unbound link there opens for anyone the proxy lets in who has it; `chi share` warns when you make one. The web's
   Invite has an email field behind such a proxy (the name defaults to the email's first part).
 - The identity is what the trusted header carries: the work email through Okta, the Tailscale login (`alex@github`)
   through Tailscale Serve. Bind to the one your proxy sends. A tagged Tailscale device has no user login, so a bound
   link refuses it.
-- The header is the proxy's word only for requests that come through the proxy: any program on this machine that
-  reaches chi web's port directly can send it too. On a machine or pod only you use, that is you already; on a host
+- The header is the proxy's word only for requests from this machine (the proxy is local; a LAN device's copy is
+  ignored): any program on this machine that reaches chi web's port directly can send it too. On a machine or pod only you use, that is you already; on a host
   other users share, a bound link's identity isn't a boundary against them.
 
 ### Tailscale Serve (your tailnet)

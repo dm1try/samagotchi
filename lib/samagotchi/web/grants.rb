@@ -76,7 +76,8 @@ module Samagotchi
 
       # An identity to bind a grant to that isn't one email address.
       class BadIdentity < Invalid
-        def initialize(msg = "a link is bound to one email address (name@domain: one @, no spaces or commas)") = super
+        def initialize(msg = "a link is bound to one email address (name@domain: one @, no spaces or commas, ASCII " \
+                             "only)") = super
       end
 
       # An identity asked of a chi web that can't check one: no auth proxy
@@ -250,7 +251,9 @@ module Samagotchi
       # lower case).
       # @raise [BadIdentity] not one email address
       def self.clean_identity(identity)
-        clean = identity.is_a?(String) ? identity.strip.downcase : ""
+        # ASCII only, as ProxyGate#proxy_identity: its lower case is the same
+        # whatever the string's encoding.
+        clean = identity.is_a?(String) && identity.ascii_only? ? identity.strip.downcase : ""
         raise BadIdentity unless clean.length <= IDENTITY_MAX && IDENTITY_RE.match?(clean) && !IDENTITY_BAD_RE.match?(clean)
 
         clean
@@ -437,8 +440,13 @@ module Samagotchi
         grants
       end
 
+      # In a newer chi's store (Newer) a grant with fields this chi doesn't
+      # know is left out: such a field may restrict it (a binding moved to a
+      # new key), so it fails closed here. Its link works on that chi again.
       def reload(stamp)
-        @grants = stamp ? read.first : []
+        grants, version = stamp ? read : [[], VERSION]
+        grants = grants.select { |grant| grant.extra.empty? } if version > MAX_VERSION
+        @grants = grants
         @corrupt = nil
       rescue Corrupt => e
         @grants = []
@@ -474,10 +482,19 @@ module Samagotchi
                   elsif !grant.digest.is_a?(String) || grant.digest.empty? then "no digest"
                   elsif !time?(grant.expires_at) then "no expiry"
                   elsif !grant.revoked_at.nil? && !time?(grant.revoked_at) then "a bad revoked_at"
+                  elsif !identity?(grant.identity) then "a bad identity"
                   end
         raise Corrupt.new(@path, "grant #{index + 1} has #{problem}") if problem
 
         grant
+      end
+
+      # nil (unbound), or an identity as #issue stores it: anything else
+      # (false, "", a list) could read as unbound.
+      def identity?(value)
+        value.nil? || (value.is_a?(String) && Grants.clean_identity(value) == value)
+      rescue BadIdentity
+        false
       end
 
       def time?(value)

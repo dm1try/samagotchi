@@ -473,6 +473,67 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(call("/api/sessions", headers: proxied("alex@pod.test")).first).to eq(401)
     end
 
+    # chi web on the LAN and behind a proxy at once: the proxy is on this
+    # machine, so a LAN peer's proxy headers are its own words. Forged, they
+    # make it neither proxied nor an identity.
+    describe "a LAN peer forging the proxy's headers (web.host lan with web.public_url)" do
+      let(:lan_ip) { "192.168.1.55" }
+      let(:app) do
+        described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
+                            hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir), public_url: public_url,
+                            public_token: owner_token, lan: { ip: lan_ip, token: owner_token })
+      end
+      let(:bound) do
+        Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
+                                                public_url: public_url, state_dir: state_dir)
+      end
+      let(:lan) { { peer: "192.168.1.77", host: "#{lan_ip}:4567" } }
+
+      def forged(email) = [["X-Forwarded-For", "203.0.113.9"], [identity_header, email]]
+
+      it "is never proxied, whatever it sends: not even with the public Host" do
+        req = ->(**opts) { Rack::Request.new(env_for("/", headers: forged("alex@pod.test"), **opts)) }
+        expect(app.send(:proxied?, req.call(**lan))).to be(false)
+        expect(app.send(:proxied?, req.call(peer: "192.168.1.77"))).to be(false)
+        expect(app.send(:proxied?, req.call)).to be(true)
+        expect(app.send(:proxied?, req.call(peer: "::1"))).to be(true)
+        expect(app.send(:proxied?, req.call(peer: "127.0.0.2"))).to be(true)
+      end
+
+      it "gets a bound grant's token refused (token_bound), the identity header forged or not" do
+        path = "/api/sessions/#{session.id}/review"
+        [lan, { peer: "192.168.1.77" }].each do |where|
+          status, _, body = call(path, headers: forged("alex@pod.test") + [bearer(bound.token)], **where)
+          expect([status, JSON.parse(body)["error"]]).to eq([401, "token_bound"]), where.inspect
+        end
+        expect(call(path, headers: proxied("alex@pod.test", [bearer(bound.token)])).first).to eq(200)
+      end
+
+      it "can't spend a bound grant's code: refused and kept for the proxied account" do
+        code = app.instance_variable_get(:@link_codes).issue(kind: :grant, token: bound.token, ttl: 600)
+        trade = lambda do |headers, **where|
+          call("/api/token", method: "POST", body: JSON.generate(code: code),
+                             headers: [["Content-Type", "application/json"], *headers], **where)
+        end
+        status, _, body = trade.call(forged("alex@pod.test"), **lan)
+        expect([status, JSON.parse(body)["error"]]).to eq([401, "token_bound"])
+        expect(trade.call(proxied("alex@pod.test")).first).to eq(204)
+      end
+
+      # The owner on the LAN is the LAN token, as before this change: the
+      # forged identity adds nothing, and without the token gets nothing.
+      it "is the owner only with the owner's token, the identity header forged or not" do
+        expect(call("/api/sessions", headers: forged(owner), **lan).first).to eq(401)
+        expect(call("/api/sessions", headers: forged(owner) + [bearer], **lan).first).to eq(200)
+        expect(call("/api/sessions", headers: forged("alex@pod.test") + [bearer], **lan).first).to eq(200)
+      end
+    end
+
+    it "refuses an identity header that isn't ASCII (it could never match a grant or the owner)" do
+      status, _, body = call("/api/sessions", headers: proxied("ow\u00e9ner@pod.test", [bearer]))
+      expect([status, detail(body)]).to eq([401, "chi web behind the proxy: identity header not ASCII"])
+    end
+
     describe "a grant bound to an identity" do
       let(:bound) do
         Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
@@ -507,6 +568,11 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
         expect(body).to include("This review link is for another account: open it through the proxy, signed in as the person it was sent to.")
         expect(body).not_to include("alex@pod.test")
         expect(body).not_to include("mallory@pod.test")
+      end
+
+      it "audits a bound refusal once a minute per identity, whatever path it is sent to" do
+        40.times { |i| call("#{path}x#{i}", headers: proxied("mallory@pod.test", [bearer(bound.token)])) }
+        expect(audit.count { |line| line["event"] == "refused" }).to eq(1)
       end
 
       it "audits the refusal in the session, naming who presented it, once a minute per route and identity" do

@@ -31,6 +31,10 @@ module Samagotchi
       # A participant's refused routes are audited at most this often per
       # route (a page retrying would fill the log).
       REFUSED_AUDIT_INTERVAL = 60.0
+      # At most this many refusals a minute are remembered, so audited:
+      # rotating paths or headers can't grow the map or the audit file
+      # without bound (as App::REFUSED_LOG_KEYS for the log).
+      REFUSED_AUDIT_KEYS = 256
 
       ENDED = {
         revoked: ["token_revoked", ParticipantMessages::TOKEN_REVOKED],
@@ -107,7 +111,7 @@ module Samagotchi
         return nil unless grant
 
         log_refused(refused_peer(req), req.path_info, "grant #{grant.id} is bound to another identity than #{identity || "(none)"}")
-        audit_refused(req, grant, reason: "token_bound", identity: identity || "(none)")
+        audit_refused(req, grant, reason: "token_bound", per_route: false, identity: (identity || "(none)")[0, 200])
         detail = ParticipantMessages::TOKEN_BOUND
         return error_response(401, "token_bound", detail) if req.path_info.start_with?("/api/")
 
@@ -189,12 +193,17 @@ module Samagotchi
       end
 
       # +reason+ and +fields+ go into the line (a bound refusal names the
-      # identity that presented it); each its own once a minute.
-      def audit_refused(req, grant, reason: "not_permitted", **fields)
-        key = [grant.id, req.request_method, req.path_info, reason, fields]
+      # identity that presented it). Once a minute per route for
+      # not_permitted; once a minute per grant and identity for a bound
+      # refusal, whatever the path (+per_route+ false); at most
+      # REFUSED_AUDIT_KEYS keys a minute.
+      def audit_refused(req, grant, reason: "not_permitted", per_route: true, **fields)
+        key = per_route ? [grant.id, req.request_method, req.path_info, reason, fields] : [grant.id, reason, fields]
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @participant_mutex.synchronize do
-          @participant_refused.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if @participant_refused.size > 256
+          @participant_refused.delete_if { |_, at| now - at >= REFUSED_AUDIT_INTERVAL } if @participant_refused.size > 64
+          next false if @participant_refused.size >= REFUSED_AUDIT_KEYS && !@participant_refused.key?(key)
+
           last = @participant_refused[key]
           (last.nil? || now - last >= REFUSED_AUDIT_INTERVAL).tap { |fresh| @participant_refused[key] = now if fresh }
         end

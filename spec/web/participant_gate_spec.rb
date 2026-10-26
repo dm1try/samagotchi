@@ -286,6 +286,13 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(File.binread(path)).to eq(before)
     end
 
+    it "audits at most REFUSED_AUDIT_KEYS refusals a minute, however many paths are tried" do
+      stub_const("Samagotchi::Web::ParticipantAccess::REFUSED_AUDIT_KEYS", 5)
+      12.times { |i| call("/api/sessions/#{session.id}/context/n#{i}") }
+      expect(audit.count { |line| line["event"] == "refused" }).to eq(5)
+      expect(app.instance_variable_get(:@participant_refused).size).to eq(5)
+    end
+
     it "is token_bound on the LAN for a grant bound to an identity (only an auth proxy can carry one)" do
       id = issued.grant.id
       grants.send(:update) { |all| [all.map { |g| g.id == id ? g.with(identity: "alex@corp.test") : g }, nil] }
