@@ -9,5 +9,4 @@ plugin:
   file: plugin.rb
   sha256: sha256:c4bb4cf99ad43168ea68c25283a153c5dea1e5be123743c8a4c1278c16b5ea90
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
-requires_chi: ">= 0.67.0"
-requires_chi_next: uses the tool index's declare-time group selectors
+requires_chi: ">= 0.121.0"

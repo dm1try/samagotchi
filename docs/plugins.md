@@ -596,9 +596,8 @@ load error. A session saved on a toolkit whose bundle is gone declares every
 tool (full) until it comes back, with a warning at its first turn. See
 [Toolkits](configuration.md#toolkits). `prompt:` needs chi 0.72.0 (an older
 chi refuses the keyword, a load error: a bundle that passes it sets
-`requires_chi: ">= 0.72.0"`). `groups:` needs the chi release that ships it
-(the one after 0.120.0): an older chi refuses that keyword too, so a bundle
-passing it raises `requires_chi` to that release.
+`requires_chi: ">= 0.72.0"`). `groups:` needs chi 0.121.0: an older chi refuses that keyword
+too, so a bundle passing it sets `requires_chi: ">= 0.121.0"`.
 
 ```ruby
 chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]

@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.121.0] - 2026-10-26
+
 ### Added
 
 - Toolkit kits pick the MCP servers their sessions reach: `groups: [chrome]` in `toolkit.kits` (names or globs; no
@@ -35,6 +37,8 @@ and commands may change between minor versions. How releases are made:
 - The participant review status stays idle when a live snapshot has no current turn and its status is stale.
 - The participant usage row no longer says "0 queued" when no worker is running.
 - The participant usage row counts link time down and shows its end while the page stays open.
+
+Update with `chi update` (the mcp bundle 0.7.2, claude-peer 0.4.4, the dev profile 0.7.3).
 
 ## [0.120.0] - 2026-10-26
 
@@ -4547,7 +4551,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.120.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.121.0...HEAD
+[0.121.0]: https://github.com/dm1try/samagotchi/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/dm1try/samagotchi/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/dm1try/samagotchi/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/dm1try/samagotchi/compare/v0.117.0...v0.118.0
