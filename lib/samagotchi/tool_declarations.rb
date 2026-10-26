@@ -412,7 +412,7 @@ module Samagotchi
       },
       {
         name: "ask_user_question",
-        description: "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.",
+        description: "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}. If you recommend one option, put it first and end its label with ' (Recommended)'.",
         parameters: {
           type: "object",
           properties: {
