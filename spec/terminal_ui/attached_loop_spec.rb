@@ -2841,6 +2841,129 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
+  describe "the exit ask (what still runs, and what to do with it)" do
+    def holds(kind, items) = { "kind" => kind, "items" => items }
+    def held(reason, holds) = response(409, JSON.generate(status: "held", reason: reason, holds: holds))
+
+    let(:ask) do
+      held("reminders", [
+        holds("reminders", [{ "id" => "api_health", "label" => "api_health", "detail" => "every 20m" },
+                            { "id" => "git push", "label" => "git push", "detail" => "every 5m" }]),
+        holds("background_tasks", [{ "id" => "3f9a2c1d-77", "label" => "rails s", "detail" => "2m" }]),
+        holds("delegates", [{ "id" => "c1c1c1c1-1111", "label" => "Fix the composer", "detail" => "running a turn" }])
+      ])
+    end
+
+    it "asks what to do, listing each thing that still runs" do
+      allow(client).to receive(:request_exit).and_return(ask, response(200, '{"status":"exiting"}'))
+
+      run_lines("/exit", "3", "/exit")
+
+      expect(screen.lines).to include(<<~ASK.strip)
+        This session still has:
+          • 2 reminders: api_health (every 20m), git push (every 5m)
+          • 1 background task: rails s (2m)
+          • 1 delegate: c1c1c1c1 "Fix the composer" (running a turn)
+          1. Keep running in the background (detach)
+          2. Stop them and exit
+          3. Back to the session
+      ASK
+    end
+
+    it "1 detaches and leaves everything running" do
+      allow(client).to receive(:request_exit).and_return(ask)
+
+      expect(run_lines("/exit", "1")).to eq(:detached)
+
+      expect(screen.lines.last).to eq("Detached; the session keeps running (2 reminders, 1 background task, " \
+                                      "1 delegate). Re-attach with: chi --attach s-1234")
+      expect(stream).to have_received(:close)
+    end
+
+    it "2 asks the worker to stop them all and exit, saying what it stopped" do
+      allow(client).to receive(:request_exit).and_return(
+        ask,
+        response(200, JSON.generate(status: "exiting", session_id: "s-1234",
+                                    stopped: { "reminders" => ["api_health", "git push"],
+                                               "tasks" => ["rails s"], "delegates" => ["c1c1c1c1"] }))
+      )
+
+      expect(run_lines("/exit", "2")).to eq(:detached)
+
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1", stop: true)
+      expect(screen.lines.last).to eq("Detached; stopped 2 reminders (api_health, git push), 1 background task " \
+                                      "(rails s), 1 delegate (c1c1c1c1). Resume with: chi --resume s-1234")
+    end
+
+    it "3 stays in the session: nothing stops, and the next /exit asks again" do
+      allow(client).to receive(:request_exit).and_return(ask, ask)
+
+      expect(run_lines("/exit", "3", "/detach")).to eq(:detached)
+
+      expect(screen.lines).to include("(nothing stopped; the worker keeps running)")
+      expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi --attach s-1234")
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1").once
+    end
+
+    it "refuses to answer anything else and keeps asking" do
+      allow(client).to receive(:request_exit).and_return(ask)
+
+      expect(run_lines("/exit", "stop the dev server first", "1")).to eq(:detached)
+
+      expect(screen.lines).to include("Say 1 (keep running), 2 (stop them and exit) or 3 (back to the session).")
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1").once
+    end
+
+    it "detaches when the input ends without an answer" do
+      allow(client).to receive(:request_exit).and_return(ask)
+
+      expect(run_lines("/exit", nil)).to eq(:detached)
+
+      expect(screen.lines.last).to eq("Detached; the session keeps running (2 reminders, 1 background task, " \
+                                      "1 delegate). Re-attach with: chi --attach s-1234")
+    end
+
+    it "asks for delegates alone, and 1 leaves them running" do
+      only = held("delegates", [holds("delegates", [{ "id" => "c1c1c1c1-1111", "label" => "Fix the composer",
+                                                      "detail" => "running a turn" }])])
+      allow(client).to receive(:request_exit).and_return(only)
+
+      expect(run_lines("/exit", "1")).to eq(:detached)
+
+      expect(screen.lines).to include(<<~ASK.strip)
+        This session still has:
+          • 1 delegate: c1c1c1c1 "Fix the composer" (running a turn)
+          1. Keep running in the background (detach)
+          2. Stop them and exit
+          3. Back to the session
+      ASK
+      expect(screen.lines.last).to eq("Detached; the session keeps running (1 delegate). " \
+                                      "Re-attach with: chi --attach s-1234")
+    end
+
+    it "refuses as before when a hold the user can't stop is there too" do
+      allow(client).to receive(:request_exit).and_return(held("turn_running", []))
+
+      expect(run_lines("/exit")).to eq(:detached)
+
+      expect(screen.lines.last).to eq("Detached; the session keeps running (a turn is running). " \
+                                      "Re-attach with: chi --attach s-1234")
+    end
+
+    it "says what the worker stopped even in a session it discards" do
+      allow(client).to receive(:request_exit).and_return(
+        held("background_tasks", [holds("background_tasks", [{ "id" => "t1", "label" => "rails s", "detail" => "1m" }])]),
+        response(200, JSON.generate(status: "exiting", session_id: "s-1234", discard: true,
+                                    stopped: { "reminders" => [], "tasks" => ["rails s"], "delegates" => [] }))
+      )
+
+      expect(run_lines("/exit", "2")).to eq(:detached)
+
+      expect(screen.lines.last).to eq("Detached; stopped 1 background task (rails s). The session is empty: it " \
+                                      "will be discarded if nothing arrives before its worker stops.")
+    end
+  end
+
   it "says the worker didn't answer in time when the Bridge read the exit too late" do
     allow(client).to receive(:request_exit).and_return(response(408, '{"error":"deadline_passed"}'))
 
@@ -2946,7 +3069,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
 
       expect(run_lines("/archive")).to eq(:detached)
 
-      expect(client).to have_received(:request_exit).with(client_id: "tui:1")
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1", ask: false)
       expect(archived).to eq(["s-1234"])
       expect(screen.lines.last).to eq("Detached; archived session s-1234. chi sessions list --archived finds it.")
     end
@@ -2994,7 +3117,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
 
       expect(ended).to eq(:detached)
       expect(screen.lines).to include("(archives after this turn)")
-      expect(client).to have_received(:request_exit).once.with(client_id: "tui:1")
+      expect(client).to have_received(:request_exit).once.with(client_id: "tui:1", ask: false)
       expect(archived).to eq(["s-1234"])
       expect(screen.lines.last).to eq("Detached; archived session s-1234. chi sessions list --archived finds it.")
     end

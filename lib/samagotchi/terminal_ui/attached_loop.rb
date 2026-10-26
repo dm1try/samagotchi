@@ -57,17 +57,35 @@ module Samagotchi
       # An exit the worker agreed to in an empty session. Said before it has
       # left: it checks again once it lets go, and a note or prompt arriving
       # first keeps the session (SessionManager.discard_left_session).
-      EMPTY_EXIT = "Detached; the session is empty: it will be discarded if nothing arrives before its worker stops."
+      EMPTY_WORDS = "the session is empty: it will be discarded if nothing arrives before its worker stops."
+      EMPTY_EXIT = "Detached; #{EMPTY_WORDS}"
       # Why the worker stayed up after /exit, by the reason it gave.
       HELD_REASONS = {
         "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
         "continue_offered" => "a continue offer is pending", "client_connected" => "another UI is attached",
         "reminders" => "reminders are set", "starting" => "the worker is still starting",
-        "background_tasks" => "background tasks it started are still running"
+        "background_tasks" => "background tasks it started are still running",
+        "delegates" => "delegates of this session are still running"
       }.freeze
       # How to end a background task that holds the worker up (an older
       # worker's 409 has no hint of its own).
       TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"
+      # The /exit ask, when every hold is one the user can stop: what still
+      # runs, then the three answers. Each kind, singular and plural.
+      EXIT_HOLD_WORDS = {
+        "reminders" => %w[reminder reminders],
+        "background_tasks" => ["background task", "background tasks"],
+        "delegates" => %w[delegate delegates]
+      }.freeze
+      # The 200's +stopped+ keys, by the kind the ask lists them under.
+      STOPPED_KEYS = { "reminders" => "reminders", "tasks" => "background_tasks", "delegates" => "delegates" }.freeze
+      EXIT_ASK_OPTIONS = ["Keep running in the background (detach)", "Stop them and exit", "Back to the session"].freeze
+      # How the ask reads an answer.
+      EXIT_ANSWERS = {
+        "1" => :keep, "keep" => :keep, "detach" => :keep, "background" => :keep,
+        "2" => :stop, "stop" => :stop, "exit" => :stop,
+        "3" => :back, "back" => :back, "stay" => :back
+      }.freeze
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
       JOIN_ANSWER_CHARS = 1200
@@ -175,6 +193,8 @@ module Samagotchi
         @own_failed = false
         # A continue offer is pending: the prompt asks for the answer.
         @continue_offer = nil
+        # The /exit ask is open: the next line is its answer (#answer_exit_ask).
+        @exit_ask = nil
         # The status row: the worker's model, ctx, the session's memories.
         @status = StatusRow.new(screen)
         # Participants' names by author ("p:<id>"), from the join's state
@@ -470,6 +490,14 @@ module Samagotchi
 
       # @return [Symbol, nil] :detach to end the loop
       def submit(line)
+        if @exit_ask
+          # The exit ask is open: this line answers it. Ctrl-D and /detach
+          # detach without stopping anything, the way its 1 does.
+          return detach(kept_line(@exit_ask)) if line.nil? || command_registry.lookup_local(line.strip)&.id == :detach
+
+          return answer_exit_ask(line)
+        end
+
         return detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if line.nil?
 
         text = line.strip
@@ -599,12 +627,102 @@ module Samagotchi
 
       # Detach, and ask the worker to exit now. The worker decides: it stays
       # up while anything still needs it (a turn, queued input, a continue
-      # offer, another UI, reminders), and the line says which.
-      # @return [Symbol] :detach
+      # offer, another UI, reminders), and the line says which. When the only
+      # holds are ones the user can stop, it asks what to do with them instead
+      # of detaching (#answer_exit_ask).
+      # @return [Symbol, nil] :detach, or nil to stay at the prompt
       def exit_worker
-        detach(exit_line(@client.request_exit(client_id: @client_id)))
+        reply = @client.request_exit(client_id: @client_id)
+        holds = reply.status == 409 ? reply.json&.fetch("holds", nil) : nil
+        return detach(exit_line(reply)) unless holds.is_a?(Array) && !holds.empty?
+
+        @exit_ask = holds
+        @screen.commit(ask_lines(holds))
+        nil
       rescue SystemCallError, IOError => e
         detach(exit_failed_line(e.message))
+      end
+
+      # The ask: what still runs, then the three answers.
+      def ask_lines(holds)
+        lines = holds.map do |hold|
+          items = Array(hold["items"])
+          singular, plural = hold_words(hold["kind"])
+          "  • #{items.size} #{items.size == 1 ? singular : plural}: #{items.map { |item| item_word(item, hold["kind"]) }.join(", ")}"
+        end
+        lines += EXIT_ASK_OPTIONS.each_with_index.map { |option, index| "  #{index + 1}. #{option}" }
+        (["This session still has:"] + lines).join("\n")
+      end
+
+      # One entry of a hold: the command or name, with its detail in
+      # brackets; a delegate leads with its short id and its title in quotes.
+      def item_word(item, kind)
+        label = item["label"].to_s
+        label = "#{item["id"].to_s[0, 8]} \"#{label}\"" if kind == "delegates"
+        detail = item["detail"].to_s
+        detail.empty? ? label : "#{label} (#{detail})"
+      end
+
+      # The answer to the exit ask.
+      # @return [Symbol, nil] :detach for 1 and 2, nil for 3 or a line the
+      #   ask doesn't understand
+      def answer_exit_ask(line)
+        choice = EXIT_ANSWERS[line.to_s.strip.downcase]
+        unless choice
+          @screen.commit("Say 1 (keep running), 2 (stop them and exit) or 3 (back to the session).")
+          return nil
+        end
+
+        holds = @exit_ask
+        @exit_ask = nil
+        case choice
+        when :keep then detach(kept_line(holds))
+        when :stop then stop_and_exit
+        else
+          @screen.commit("(nothing stopped; the worker keeps running)")
+          nil
+        end
+      end
+
+      # 1: detach, everything left running.
+      def kept_line(holds)
+        "Detached; the session keeps running (#{hold_words_list(holds)}). " \
+          "Re-attach with: #{via.attach(@client.session_id)}"
+      end
+
+      # 2: ask the worker to stop them all and exit.
+      # @return [Symbol] :detach
+      def stop_and_exit
+        reply = @client.request_exit(client_id: @client_id, stop: true)
+        detach(exit_line(reply))
+      rescue SystemCallError, IOError => e
+        detach(exit_failed_line(e.message))
+      end
+
+      # "2 reminders, 1 background task, 1 delegate" from the ask's holds.
+      def hold_words_list(holds)
+        holds.map do |hold|
+          items = Array(hold["items"])
+          singular, plural = hold_words(hold["kind"])
+          "#{items.size} #{items.size == 1 ? singular : plural}"
+        end.join(", ")
+      end
+
+      def hold_words(kind) = EXIT_HOLD_WORDS.fetch(kind.to_s, [kind.to_s, kind.to_s])
+
+      # What a stop-all exit stopped: "stopped 2 reminders (api_health, git
+      # push), 1 background task (rails s)"; nil when it stopped nothing.
+      def stopped_words(stopped)
+        return nil unless stopped.is_a?(Hash)
+
+        parts = STOPPED_KEYS.filter_map do |key, kind|
+          names = Array(stopped[key])
+          next if names.empty?
+
+          singular, plural = hold_words(kind)
+          "#{names.size} #{names.size == 1 ? singular : plural} (#{names.join(", ")})"
+        end
+        parts.empty? ? nil : "stopped #{parts.join(", ")}"
       end
 
       # /exit --delete: the worker exits as for /exit, then the session is
@@ -656,7 +774,9 @@ module Samagotchi
       # (SessionManager.archive_session). An empty session: the worker
       # deletes it as it leaves.
       def exit_and_archive
-        reply = @client.request_exit(client_id: @client_id)
+        # /archive can't ask about what still runs: a child the archive will
+        # stop is not worth a question here.
+        reply = @client.request_exit(client_id: @client_id, ask: false)
         id = @client.session_id
         return detach(EMPTY_EXIT) if reply.status == 200 && discards?(reply)
         return detach("#{exit_line(reply)} Not archived.") unless [200, 409].include?(reply.status)
@@ -676,9 +796,11 @@ module Samagotchi
         error = reply.json&.fetch("error", nil)
         case reply.status
         when 200
-          return EMPTY_EXIT if discards?(reply)
+          stopped = stopped_words(reply.json&.fetch("stopped", nil))
+          return EMPTY_EXIT if discards?(reply) && stopped.nil?
+          return "Detached; #{stopped}. #{EMPTY_WORDS.capitalize}" if discards?(reply)
 
-          "Detached; the session's worker is stopping. Resume with: #{via.resume(id)}"
+          "Detached; #{stopped || "the session's worker is stopping"}. Resume with: #{via.resume(id)}"
         when 409
           reason = reply.json&.fetch("reason", nil).to_s
           "Detached; the session keeps running (#{held_words(reason, reply.json&.fetch("tasks", nil))}). " \
