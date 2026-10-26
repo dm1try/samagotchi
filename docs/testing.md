@@ -163,7 +163,7 @@ A session's Bridge answers only a request that names its secret (`X-Chi-Bridge`,
 see [architecture.md](architecture.md)). A spec that writes its own request to a real Bridge (`Net::HTTP`, a raw
 socket) names it too: `include BridgeAuth` (spec/support/bridge_auth.rb, required by the spec that needs it) gives
 `bridge_auth(session_dir_or_sidecar)`, the header as a Hash, and `bridge_auth_line(...)` for a raw request; or read
-`port` and `secret` from the sidecar in one go, as `BridgeClient.discover` does. A client made with `BridgeClient.new`
+`port` and `secret` from the sidecar in one go, as `WorkerLink.client` does. A client made with `BridgeClient.new`
 takes `secret:` (nil for a fake Bridge that doesn't check it).
 
 ### Support files
@@ -198,6 +198,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `waiting.rb` | *helper*: `SpecWaiting` (`wait_for`, `wait_until`, `join!`, `pop!`, …), the test kit's helpers ([Waiting and time](#waiting-and-time)) |
 | `web_push_receiver.rb` | `WebPushReceiver`: a device's key pair and auth secret, decrypting what chi web pushed (RFC 8291) |
 | `web_server.rb` | `WebServer`: chi web's `Web::App` served for real on a free port in a thread, for specs a Rack mock can't serve |
+| `worker_links.rb` | `WorkerLinks`: `live_link(sidecar)` / `none_link`, the `WorkerLink` outcomes a stub of `WorkerLink.resolve` / `.await` (or chi web's `#worker_link`) returns |
 | `worker_loop_rounds.rb` | `WorkerLoopRounds`: counts a worker's idle loop passes, for "nothing happens" checks |
 
 ## Bundle specs: the test kit
