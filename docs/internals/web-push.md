@@ -209,7 +209,8 @@ public URL, or `web.push.enabled: false`):
 - `POST /api/push/subscriptions {subscription: {endpoint, keys}, replaces?: id}` → 201 `{id, label}`; the label is
   chi's own ("iPhone · <date>", from the User-Agent's device class: iPhone, iPad, Mac, else Browser); `replaces`
   drops the device's earlier entry (`Store#add`).
-- `DELETE /api/push/subscriptions {endpoint}` → 204: this device's bell turned off.
+- `DELETE /api/push/subscriptions {endpoint}` → 204: this device's bell turned off (`Store#remove(endpoint, origin:)`:
+  only a device on this origin goes, as with the other device routes).
 - `DELETE /api/push/subscriptions/ID` → 204, 404 `unknown_device` (another origin's, or not a short id); logs
   `push_removed`. The devices sheet's Remove for another device; this device's own row never uses it (its switch is
   the bell, so the page's state and the store stay one).

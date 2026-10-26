@@ -201,11 +201,14 @@ module Samagotchi
           added
         end
 
-        # Removes the subscription with this short id or endpoint.
+        # Removes the subscription with this short id or endpoint, only one
+        # subscribed on +origin+ (nil: any; a push service's 404/410).
         # @return [Sub, nil] the one removed
-        def remove(id_or_endpoint)
+        def remove(id_or_endpoint, origin: nil)
           update do |subs|
-            gone = subs.find { |sub| sub.id == id_or_endpoint || sub.endpoint == id_or_endpoint }
+            gone = subs.find do |sub|
+              (sub.id == id_or_endpoint || sub.endpoint == id_or_endpoint) && (origin.nil? || sub.origin == origin)
+            end
             [subs - [gone], gone]
           end
         end

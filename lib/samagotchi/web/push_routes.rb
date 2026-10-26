@@ -86,7 +86,8 @@ module Samagotchi
         [204, { "Cache-Control" => "no-store" }, []]
       end
 
-      # {endpoint} → 204: this device's bell turned off.
+      # {endpoint} → 204: this device's bell turned off (only a device
+      # subscribed on this origin, as the other device routes).
       def handle_push_unsubscribe(req)
         return push_off unless @push
 
@@ -94,7 +95,7 @@ module Samagotchi
         endpoint = body["endpoint"] if body.is_a?(Hash)
         return error_response(400, "missing_fields", "endpoint is required") unless endpoint.is_a?(String) && !endpoint.empty?
 
-        gone = @push.store.remove(endpoint)
+        gone = @push.store.remove(endpoint, origin: @push.origin)
         Log.info(:web, "push_unsubscribed", device: gone.id) if gone
         [204, { "Cache-Control" => "no-store" }, []]
       end

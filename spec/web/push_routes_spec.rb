@@ -164,6 +164,12 @@ RSpec.describe Samagotchi::Web::App, "push routes" do
       expect(call("/api/push/subscriptions", method: "DELETE", body: { endpoint: endpoint }).first).to eq(204)
       expect(json("/api/push/subscriptions", method: "DELETE", body: {}).first).to eq(400)
     end
+
+    it "keeps another origin's device with that endpoint (204 all the same)" do
+      store.add(receiver.subscription(endpoint), origin: "https://old.example", label: "far")
+      expect(call("/api/push/subscriptions", method: "DELETE", body: { endpoint: endpoint }).first).to eq(204)
+      expect(store.subscriptions.map(&:label)).to eq(["far"])
+    end
   end
 
   describe "POST /api/push/test" do
