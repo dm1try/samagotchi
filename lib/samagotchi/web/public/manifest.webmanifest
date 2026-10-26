@@ -5,7 +5,7 @@
   "scope": "/",
   "display": "standalone",
   "background_color": "#0b0d11",
-  "theme_color": "#7aa5ff",
+  "theme_color": "#5aa9ff",
   "icons": [
     { "src": "/icons/chi-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/chi-512.png", "sizes": "512x512", "type": "image/png" }
