@@ -60,6 +60,23 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     end
   end
 
+  describe "POST /api/sessions/:id/participants with an identity" do
+    it "refuses it on a chi web with no auth proxy (400, Unbindable's words), issuing nothing" do
+      status, body = call("/api/sessions/#{session.id}/participants", method: "POST",
+                                                                      body: { name: "Alex", identity: "alex@corp.test" })
+      expect([status, body]).to eq([400, { "error" => "invalid_participant",
+                                           "detail" => Samagotchi::Web::Grants::Unbindable.new.message }])
+      expect(grants.list).to eq([])
+    end
+
+    it "says on the owner's /api/info that it has bound grants, and no proxy" do
+      _, info = call("/api/info")
+      expect(info["features"]).to include("bound_grants")
+      expect(info).to include("proxy" => nil)
+      expect(call("/api/sessions/#{session.id}/participants").last).to include("identity_header" => nil)
+    end
+  end
+
   describe "POST /api/sessions/:id/participants/:participant/cap" do
     it "sets an active participant's cap (grant and sidecar), and takes one at the invite" do
       _, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex", cap: 4 })

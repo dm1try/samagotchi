@@ -336,7 +336,8 @@ module Samagotchi
       # tunnel's), for chi share's link (Web::Running); a write that fails
       # leaves the server running and the readers on web.port and config.
       def self.record_running(path, port, public_url = nil)
-        Running.record(port: port, path: path, public_url: public_url&.origin)
+        Running.record(port: port, path: path, public_url: public_url&.origin,
+                       identity_header: public_url&.identity_header)
       rescue SystemCallError => e
         Samagotchi::Log.warn(:web, "running_record_failed", error: e.class.name)
       end

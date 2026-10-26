@@ -370,12 +370,16 @@ module Samagotchi
       # and port when one runs on the LAN (the port it recorded, else
       # web.port), else 127.0.0.1 (+lan+ false: the link opens on this
       # machine only).
+      # A grant bound to +identity+ needs that public_url with an identity
+      # header (Participants.invite).
       # @return [Invitation]
       # @raise [ArgumentError] no such session
-      # @raise [BadRequest] a bad name, kind or ttl, an archived session
-      def invite(id, name:, kind:, ttl: nil, cap: nil)
-        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap, state_dir: state_dir!)
+      # @raise [BadRequest] a bad name, kind, ttl or identity, an archived
+      #   session, an identity with no proxy to check it
+      def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
         public_url = configured_public_url
+        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap,
+                                             identity: identity, public_url: public_url, state_dir: state_dir!)
         web = public_url ? nil : local_web
         link = if public_url then public_url.link(link_code(issued), "s=#{id}")
                else "http://#{web.ip || "127.0.0.1"}:#{web.port}/?token=#{issued.token}#s=#{id}"
@@ -386,6 +390,13 @@ module Samagotchi
       rescue Web::Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
       end
+
+      # The header this machine's chi web names the signed-in user in (a
+      # link can be bound to an email: chi share --identity), nil when it
+      # has no such proxy: config's web.public_url with
+      # web.proxy.identity_header, or a running chi web --tunnel's.
+      # @return [String, nil]
+      def identity_header = configured_public_url&.identity_header
 
       # @return [Array<ParticipantView>] the ones it revoked
       def revoke_participants(id = nil, participant: nil)
@@ -440,7 +451,7 @@ module Samagotchi
         configured = Config.get("web.public_url")
         return Web::Running.live_public_url(path: Web::Running.path(state_dir: state_dir!)) if configured.to_s.strip.empty?
 
-        Web::PublicUrl.from_config(url: configured)
+        Web::PublicUrl.from_config(url: configured, identity_header: Config.get("web.proxy.identity_header"))
       rescue Web::PublicUrl::Invalid
         nil
       end

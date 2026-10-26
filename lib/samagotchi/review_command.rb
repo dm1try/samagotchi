@@ -110,7 +110,9 @@ module Samagotchi
       @stdout.puts("#{id}  #{what}#{subjects} · idle")
       @stdout.puts("warning: #{created.model_warning}") if created.model_warning
       @stdout.puts("open it: #{@access.invocation.open_it(id[0, 8])}")
-      @stdout.puts("invite someone: #{@access.invocation.command("share #{id[0, 8]} --name NAME")}")
+      # Behind a proxy that names the user, a link can be bound to them.
+      identity = " --identity EMAIL" if @access.identity_header
+      @stdout.puts("invite someone: #{@access.invocation.command("share #{id[0, 8]} --name NAME#{identity}")}")
     end
 
     def refused(message)

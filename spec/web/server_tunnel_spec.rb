@@ -211,6 +211,15 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     Samagotchi::Web::Running.clear
   end
 
+  it "records the tunnel's identity header, so chi share can bind a link to an email while it runs" do
+    path = described_class.record_running(Samagotchi::Web::Running.path, 4567,
+                                          Samagotchi::Web::PublicUrl.from_config(url: "https://#{name}",
+                                                                                 identity_header: "Tailscale-User-Login"))
+    expect(JSON.parse(File.read(path))).to include("public_url" => "https://#{name}", "identity_header" => "Tailscale-User-Login")
+  ensure
+    Samagotchi::Web::Running.clear
+  end
+
   it "adds the tunnel's lines and, at a terminal, the link's QR code to the start lines" do
     url = Samagotchi::Web::PublicUrl.from_config(url: "https://#{name}", identity_header: "Tailscale-User-Login",
                                                  owner: "owner@example.com")

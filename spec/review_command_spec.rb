@@ -51,6 +51,15 @@ RSpec.describe Samagotchi::ReviewCommand do
                                       "invite someone: #{via.command("share #{short} --name NAME")}\n"])
     end
 
+    it "names --identity in the invite hint behind a proxy that names the user", local_only: "this machine's config" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return("https://4567.pod.test")
+      allow(Samagotchi::Config).to receive(:get).with("web.proxy.identity_header").and_return("X-Forwarded-Email")
+      expect(review("docs/plan.md", "--dir", project)).to eq(0), err.string
+      short = sessions.find { |s| s["review"] }["id"][0, 8]
+      expect(out.string.lines.last).to eq("invite someone: chi share #{short} --name NAME --identity EMAIL\n")
+    end
+
     it "refuses a secret or missing subject with one line, exit 1, and starts nothing" do
       [".env", "docs/nope.md"].each do |file|
         err.truncate(0)

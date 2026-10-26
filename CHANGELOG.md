@@ -17,6 +17,13 @@ and commands may change between minor versions. How releases are made:
   (Annotate and typing open it again), it stays one row on a phone, and ↑/↓ recall the participant's own earlier
   comments from that browser (kept per review link, never your prompt history). No `/` list, delivery choices or
   images there yet; every comment is still a queued review turn. Your participant view has no comment box.
+- Review links bound to one account: `chi share ID --name NAME --identity EMAIL` (and the Invite dialog's email field,
+  behind an auth proxy that names the signed-in user: `web.public_url` with `web.proxy.identity_header`, or
+  `chi web --tunnel tailscale`) makes a link that opens only through that proxy, signed in as EMAIL. A forwarded
+  link opens for nobody else, and on the LAN or this machine for nobody. `--identity` without such a proxy is refused
+  (the link could never open), and `chi share` warns when a link could be bound and isn't. `chi share ls` shows
+  `alex@corp · bound`. Through `chi --remote`, `--identity` needs that chi web to be this version or newer (an older
+  one would ignore it and make a link anyone could open).
 
 ### Changed
 

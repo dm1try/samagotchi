@@ -22,13 +22,16 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi share ID --name NAME [--agent] [--expires 3d] [--cap 2]
+      Usage: chi share ID --name NAME [--identity EMAIL] [--agent] [--expires 3d] [--cap 2]
              chi share ls [ID] [--format text|json]
              chi share cap ID PARTICIPANT DOLLARS
              chi share revoke ID [PARTICIPANT] | --all
         ID --name NAME   invite NAME to review session ID: prints the link they open (chi web on
                          the LAN, web.host: lan) and its QR code at a terminal. The link is shown
                          once; chi keeps only a digest of its token.
+          --identity EMAIL  bind the link to that account: it opens only through chi web's auth proxy
+                         signed in as EMAIL (web.public_url with web.proxy.identity_header, or
+                         chi web --tunnel tailscale); a forwarded link opens for nobody else
           --agent        the participant is an agent (the same link, used as a Bearer token)
           --expires N    Nh or Nd, 1h to 30d (default 7d, web.participants.expires)
           --cap DOLLARS  what their turns may cost you, $0 to $1000 (default $2, web.participants.cap)
@@ -50,6 +53,7 @@ module Samagotchi
     # The invite's flags (chi share ID …), and ls's and revoke's.
     FLAGS = CLI::Flags.new(help: HELP_WORDS) do |f|
       f.value "--name"
+      f.value "--identity"
       f.switch "--agent"
       f.value "--expires"
       f.value "--cap"
@@ -91,7 +95,7 @@ module Samagotchi
       return parsed if parsed.is_a?(Integer)
 
       send(:"run_#{@sub || "invite"}", parsed.options, parsed.args)
-    rescue SessionAccess::BadRequest => e
+    rescue SessionAccess::BadRequest, Web::Grants::BadIdentity => e
       usage_error(e.message)
     rescue Web::Grants::Unwritable => e
       error_line("#{command_name}: #{e.message}")
@@ -116,9 +120,13 @@ module Samagotchi
       cap = options[:cap] && dollars(options[:cap])
       return usage_error(CAP_USAGE) if cap == false
 
+      identity = options[:identity] && Web::Grants.clean_identity(options[:identity])
+
       id = @access.resolve(args.first)
-      invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap)
+      invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap,
+                                      identity: identity)
       print_invitation(id, invitation)
+      warn_unbound(invitation.participant)
       @changes = [[:joined, invitation.participant.id]]
       0
     end
@@ -186,10 +194,21 @@ module Samagotchi
       0
     end
 
+    # Decision B: an unbound link behind a proxy that could bind it opens
+    # for anyone the proxy lets in who holds it.
+    def warn_unbound(row)
+      return unless row.identity.nil? && (header = @access.identity_header)
+
+      error_line("#{command_name}: warning: #{format(UNBOUND_WARNING, header: header)}")
+    end
+
+    UNBOUND_WARNING = "this link isn't bound to an account: anyone the proxy lets in who gets it can open it " \
+                      "(--identity EMAIL binds it to the email %<header>s carries)"
+
     def print_invitation(id, invitation)
       row = invitation.participant
       @stdout.puts("#{row.id}  #{row.name} (#{row.kind}, #{row.role}) · session #{id[0, 8]} · expires " \
-                   "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}")
+                   "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}#{" · bound to #{row.identity}" if row.identity}")
       @stdout.puts(invitation.link)
       @stdout.puts("(shown once: chi keeps only its digest; chi share revoke #{id[0, 8]} #{row.id} ends it)")
       if invitation.warning
@@ -201,12 +220,14 @@ module Samagotchi
       @stdout.puts(Web::QR.lines(invitation.link)) if @tty
     end
 
-    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP", "STATE"].freeze
+    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
+               "STATE"].freeze
 
     def print_table(rows)
       cells = rows.map do |row|
-        [row.session_id[0, 8], row.id, row.name, row.kind, row.role, local(row.created_at), local(row.expires_at),
-         row.last_used_at ? local(row.last_used_at) : "-", money(row.cap), row.state]
+        [row.session_id[0, 8], row.id, row.name, row.identity ? "#{row.identity} · bound" : "-", row.kind, row.role,
+         local(row.created_at), local(row.expires_at), row.last_used_at ? local(row.last_used_at) : "-", money(row.cap),
+         row.state]
       end
       widths = COLUMNS.each_index.map { |i| ([COLUMNS[i]] + cells.map { |c| c[i] }).map(&:length).max }
       [COLUMNS, *cells].each do |line|

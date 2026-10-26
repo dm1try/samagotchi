@@ -39,6 +39,12 @@ RSpec.describe Samagotchi::Web::Running do
       expect(live).to eq(Samagotchi::Web::PublicUrl.from_config(url: origin))
     end
 
+    it "keeps a tunnel's identity header with it (a link bound to an email needs one)" do
+      described_class.record(port: 4999, path: path, public_url: origin, identity_header: "Tailscale-User-Login")
+      answers[4999] = { "app" => "chi-web", "pid" => Process.pid }
+      expect(live.identity_header).to eq("Tailscale-User-Login")
+    end
+
     it "is nil for a record left behind: another pid on the port, nothing there, a dead pid" do
       described_class.record(port: 4999, path: path, public_url: origin)
       answers[4999] = { "app" => "chi-web", "pid" => Process.pid + 1 }

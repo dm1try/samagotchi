@@ -108,6 +108,8 @@ module Samagotchi
     def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, identity: nil, public_url: nil,
                state_dir: Session.default_state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
+
+      identity = Web::Grants.clean_identity(identity) unless identity.nil?
       raise Web::Grants::Unbindable if !identity.nil? && public_url&.identity_header.nil?
       if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
         raise Web::Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"

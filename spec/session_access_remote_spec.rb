@@ -91,6 +91,55 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "a bound invite (chi share --identity)" do
+    let(:participant) do
+      { id: "p_0000beef", session_id: "s", kind: "human", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",
+        state: "active", cap: 2.0, queue: 3 }
+    end
+    let(:bound_info) { { app: "chi-web", version: "9.9.9", features: %w[session_commands bound_grants] } }
+
+    it "names the feature chi web lists (Web::App::BOUND_FEATURE), and that chi web lists it" do
+      expect(described_class::BOUND_FEATURE).to eq(Samagotchi::Web::App::BOUND_FEATURE)
+      expect(Samagotchi::Web::App::INFO_FEATURES).to include(described_class::BOUND_FEATURE)
+    end
+
+    it "is never sent to a chi web without bound grants, which would ignore the identity" do
+      old, calls = scripted([201, { participant: participant, token: "chp_x", link: "https://l" }],
+                            info: { app: "chi-web", version: "0.119.0", features: %w[session_commands] })
+      expect { old.invite("s", name: "Alex", kind: "human", identity: "alex@corp.test") }
+        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /runs chi 0\.119\.0, too old/)
+      expect(calls.map(&:first)).to eq([:get])
+      # An unbound invite still goes to it, as before.
+      expect(old.invite("s", name: "Alex", kind: "human").participant.identity).to be_nil
+      expect(calls.map { |method, path| [method, path] }).to include([:post, "/api/sessions/s/participants"])
+    end
+
+    it "revokes and refuses a grant that came back unbound (its link never printed)" do
+      access, calls = scripted([201, { participant: participant, token: "chp_x", link: "https://l" }], [200, { revoked: [] }],
+                               info: bound_info)
+      expect { access.invite("s", name: "Alex", kind: "human", identity: "alex@corp.test") }
+        .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /issued p_0000beef unbound, so chi revoked it/)
+      expect(calls.last.first(2)).to eq([:delete, "/api/sessions/s/participants"])
+      expect(calls.last[2][:query]).to eq({ id: "p_0000beef" })
+      expect(calls.find { |method, _| method == :post }[2][:body]).to include(identity: "alex@corp.test")
+    end
+
+    it "takes the grant chi web bound, compared as the gate compares (lower case)" do
+      bound = participant.merge(identity: "alex@corp.test")
+      access, = scripted([201, { participant: bound, token: "chp_x", link: "https://l" }], info: bound_info)
+      invitation = access.invite("s", name: "Alex", kind: "human", identity: " Alex@Corp.Test")
+      expect(invitation.participant.identity).to eq("alex@corp.test")
+    end
+
+    it "reads the identity header from the owner's /api/info, nil without a proxy or from an older chi web" do
+      access, = scripted([200, {}], info: bound_info.merge(proxy: { identity_header: "X-Forwarded-Email" }))
+      expect(access.identity_header).to eq("X-Forwarded-Email")
+      [bound_info, bound_info.merge(proxy: nil), bound_info.merge(proxy: { identity_header: nil })].each do |info|
+        expect(scripted([200, {}], info: info).first.identity_header).to be_nil
+      end
+    end
+  end
+
   describe "the errors a refusal raises, as on this machine" do
     it "resolves a prefix on the server: an unknown one comes back as given, several raise AmbiguousId with the ids" do
       a = make(id: "abcd1111-0000-0000-0000-000000000000")

@@ -7,6 +7,7 @@ require "spec_helper"
 require "samagotchi/share_command"
 require "samagotchi/participants"
 require "samagotchi/web/running"
+require "samagotchi/web/public_url"
 require_relative "support/remote_backend"
 
 # chi share: invite a participant to review a session, list them, revoke
@@ -45,6 +46,100 @@ RSpec.describe Samagotchi::ShareCommand do
   it "prints the usage for no arguments and --help" do
     expect(described_class.new([], stdout: out, stderr: err).run).to eq(0)
     expect(out.string).to start_with("Usage: chi share ID --name NAME")
+  end
+
+  # Behind an auth proxy that names the signed-in user (X-Forwarded-Email):
+  # this machine's config for the local backend, the remote's chi web's
+  # public_url for the remote one.
+  describe "bound links (--identity)" do
+    let(:header) { "X-Forwarded-Email" }
+    let(:public_url) { Samagotchi::Web::PublicUrl.from_config(url: "https://4567.pod.test", identity_header: header) }
+
+    def run_with(access, *argv)
+      described_class.new(argv, stdout: out, stderr: err, state_dir: state_dir, access: access, tty: false).run
+    end
+
+    shared_examples "binds links behind the proxy" do
+      it "binds the link, says so, and lists it bound; no warning" do
+        expect(run_with(access, session.id, "--name", "Alex", "--identity", "Alex@Corp.Test")).to eq(0), err.string
+        grant = grants.list.first
+        expect(grant.identity).to eq("alex@corp.test")
+        expect(out.string.lines[0]).to end_with("· cap $2.00 · bound to alex@corp.test\n")
+        expect(out.string.lines[1]).to match(%r{\Ahttps://4567\.pod\.test/#code=chc_\S+&s=#{session.id}$})
+        expect(err.string).to eq("")
+
+        out.truncate(0)
+        out.rewind
+        expect(run_with(access, "ls", session.id)).to eq(0)
+        expect(out.string.lines[1].split(/\s{2,}/)[3]).to eq("alex@corp.test · bound")
+        out.truncate(0)
+        out.rewind
+        run_with(access, "ls", "--format", "json")
+        expect(JSON.parse(out.string).first).to include("identity" => "alex@corp.test")
+      end
+
+      it "warns when a link could be bound and isn't (decision B), naming the header" do
+        expect(run_with(access, session.id, "--name", "Alex")).to eq(0), err.string
+        expect(grants.list.first.identity).to be_nil
+        warning = format(described_class::UNBOUND_WARNING, header: header)
+        expect(err.string).to eq("chi share: warning: #{warning}\n")
+        expect(warning).to include("--identity EMAIL")
+      end
+    end
+
+    context "with this machine's config" do
+      let(:access) { nil }
+
+      before do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("web.public_url").and_return(public_url.origin)
+        allow(Samagotchi::Config).to receive(:get).with("web.proxy.identity_header").and_return(header)
+      end
+
+      it_behaves_like "binds links behind the proxy"
+    end
+
+    context "with a running chi web --tunnel's (web.json records its identity header)" do
+      let(:access) { nil }
+
+      before do
+        running = Samagotchi::Web::Running.path(state_dir: state_dir)
+        Samagotchi::Web::Running.record(port: 4999, path: running, public_url: public_url.origin, identity_header: header)
+        allow(Samagotchi::Web::InfoProbe).to receive(:call).with("127.0.0.1", 4999, timeout: anything)
+                                                           .and_return({ "app" => "chi-web", "pid" => Process.pid })
+      end
+
+      it_behaves_like "binds links behind the proxy"
+    end
+
+    context "through chi --remote, the remote's chi web behind its proxy" do
+      let(:app) do
+        Samagotchi::Web::App.new(manager: Samagotchi::SessionManager, state_dir: state_dir, bridge_wait_timeout: 0,
+                                 lan: { ip: RemoteBackend::LAN_IP, token: RemoteBackend::TOKEN }, public_url: public_url,
+                                 public_token: RemoteBackend::TOKEN)
+      end
+      let(:access) { RemoteBackend.access(state_dir: state_dir, app: app) }
+
+      it_behaves_like "binds links behind the proxy"
+    end
+
+    it "never asks a remote chi web without bound grants (it would issue a link anyone could open)" do
+      app = RemoteBackend.app(state_dir: state_dir)
+      transport = RemoteBackend::RackTransport.new(app)
+      old = lambda do |method, path, **opts|
+        reply = transport.call(method, path, **opts)
+        next reply unless path == "/api/info"
+
+        json = reply.json.merge("features" => reply.json["features"] - ["bound_grants"], "version" => "0.119.0")
+        Samagotchi::SessionAccess::HTTPTransport::Reply.of(200, JSON.generate(json))
+      end
+      access = Samagotchi::SessionAccess::Remote.new(RemoteBackend.entry, transport: old, sleeper: ->(_) {})
+
+      expect { run_with(access, session.id, "--name", "Alex", "--identity", "alex@corp.test") }
+        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /remote studio runs chi 0\.119\.0, too old for this command/)
+      expect(transport.requests.map(&:first)).not_to include(:post)
+      expect(grants.list).to eq([])
+    end
   end
 
   RemoteBackend.both(self) do
@@ -200,6 +295,18 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(grants.list.size).to eq(1)
       end
 
+      it "refuses --identity on a chi web with no proxy that names the user (the link would never open)" do
+        expect(run(session.id, "--name", "Alex", "--identity", "alex@corp.test")).to eq(2)
+        expect(err.string).to eq("chi share: #{Samagotchi::Web::Grants::Unbindable.new.message} (see chi share --help)\n")
+        expect(grants.list).to eq([])
+      end
+
+      it "refuses an --identity that isn't one address" do
+        expect(run(session.id, "--name", "Alex", "--identity", "alex")).to eq(2)
+        expect(err.string).to include(Samagotchi::Web::Grants::BadIdentity.new.message)
+        expect(grants.list).to eq([])
+      end
+
       it "refuses an archived session" do
         Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
         expect(run(session.id, "--name", "A")).to eq(2)
@@ -216,10 +323,11 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(run("ls")).to eq(0), err.string
         lines = out.string.lines.map(&:rstrip)
         expect(lines[0].split(/\s{2,}/))
-          .to eq(["SESSION", "PARTICIPANT", "NAME", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP", "STATE"])
+          .to eq(["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
+                  "STATE"])
         expect(lines.size).to eq(3)
-        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 7, 8, 9))
-          .to eq([session.id[0, 8], a.grant.id, "Alex", "human", "reviewer", "-", "$2.00", "active"])
+        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 5, 8, 9, 10))
+          .to eq([session.id[0, 8], a.grant.id, "Alex", "-", "human", "reviewer", "-", "$2.00", "active"])
         expect(out.string).not_to include(a.token)
 
         out.truncate(0)

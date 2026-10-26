@@ -75,7 +75,8 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions with review" do
       env = Rack::MockRequest.env_for("/api/sessions/#{id}/participants", "HTTP_HOST" => "127.0.0.1")
       JSON.parse(app.call(env)[2].each.to_a.join)
     end
-    expect(list.call(plain.id)).to eq("participants" => [], "warning" => Samagotchi::ReviewStart.share_warning(plain))
-    expect(list.call(review["id"])).to eq("participants" => [], "warning" => nil)
+    expect(list.call(plain.id)).to eq("participants" => [], "warning" => Samagotchi::ReviewStart.share_warning(plain),
+                                      "identity_header" => nil)
+    expect(list.call(review["id"])).to eq("participants" => [], "warning" => nil, "identity_header" => nil)
   end
 end

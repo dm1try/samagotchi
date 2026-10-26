@@ -30,9 +30,12 @@ module Samagotchi
 
       # @return [String] +path+
       # @param public_url [String, nil] the https origin it runs behind
-      def record(port:, path: self.path, pid: Process.pid, public_url: nil)
+      # @param identity_header [String, nil] the header that proxy names the
+      #   signed-in user in (a --tunnel's, which no config has)
+      def record(port:, path: self.path, pid: Process.pid, public_url: nil, identity_header: nil)
         FileUtils.mkdir_p(File.dirname(path))
-        AtomicFile.write(path, JSON.generate({ pid: pid, port: port, public_url: public_url }.compact))
+        AtomicFile.write(path, JSON.generate({ pid: pid, port: port, public_url: public_url,
+                                               identity_header: identity_header }.compact))
       end
 
       # Removes the file when this process wrote it (a second chi web's
@@ -57,14 +60,14 @@ module Samagotchi
       # @return [PublicUrl, nil]
       def live_public_url(path: self.path, probe: ->(port) { InfoProbe.call("127.0.0.1", port, timeout: PROBE_TIMEOUT) })
         data = read(path) or return nil
-        pid, port, url = data.values_at("pid", "port", "public_url")
+        pid, port, url, header = data.values_at("pid", "port", "public_url", "identity_header")
         return nil unless pid.is_a?(Integer) && pid.positive? && port.is_a?(Integer) && port.positive? && url.is_a?(String)
         return nil unless alive?(pid)
 
         info = probe.call(port)
         return nil unless info.is_a?(Hash) && info["pid"] == pid
 
-        PublicUrl.from_config(url: url)
+        PublicUrl.from_config(url: url, identity_header: header.is_a?(String) ? header : nil)
       rescue PublicUrl::Invalid
         nil
       end

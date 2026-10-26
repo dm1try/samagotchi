@@ -22,14 +22,17 @@ module Samagotchi
       # grants (one session's, or every one), in every state, never a token
       # or digest. One session's also carries +warning+: the share warning
       # for a session that isn't a review session (ReviewStart.share_warning,
-      # null for one), which the panel shows before its Invite.
+      # null for one), which the panel shows before its Invite; and
+      # +identity_header+: the header this chi web's auth proxy names the
+      # signed-in user in (null without one), for the Invite's email field.
       def handle_participants_list(_req, id = nil)
         now = @grants.now
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
         warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
-        json_response(200, { participants: with_spend(id, grants), warning: warning })
+        json_response(200, { participants: with_spend(id, grants), warning: warning,
+                             identity_header: @public_url&.identity_header })
       end
 
       # One session's grants with what each spent and how many turns they
@@ -44,9 +47,11 @@ module Samagotchi
       end
 
       # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
-      # cap? (dollars)}: a new grant. The answer carries the token and the
-      # link once (chi keeps only its digest), and +warning+ for a session
-      # that isn't a review session (ReviewStart.share_warning; null for one).
+      # cap? (dollars), identity? (an email: the grant is bound to it, only
+      # behind an auth proxy with an identity header)}: a new grant. The
+      # answer carries the token and the link once (chi keeps only its
+      # digest), and +warning+ for a session that isn't a review session
+      # (ReviewStart.share_warning; null for one).
       def handle_participants_invite(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         ttl = body["ttl"]
@@ -56,7 +61,8 @@ module Samagotchi
         return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
 
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
-                                              ttl: ttl, cap: cap, state_dir: default_state_dir)
+                                              ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
+                                              state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
         warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,

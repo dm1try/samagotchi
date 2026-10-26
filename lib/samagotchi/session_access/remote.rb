@@ -252,15 +252,37 @@ module Samagotchi
       end
 
       # @param ttl [Integer, nil] seconds; nil: the grant's default
+      # @param identity [String, nil] bind the grant to this email: only a
+      #   chi web with bound grants (BOUND_FEATURE) is asked; an older one
+      #   would ignore it and issue a grant anyone could open
       # @return [Invitation]
-      # @raise [BadRequest] a bad name, kind or ttl, an archived session
-      def invite(id, name:, kind:, ttl: nil, cap: nil)
-        reply = request(:post, "#{session_path(id)}/participants", body: { name: name, kind: kind, ttl: ttl, cap: cap }.compact)
+      # @raise [BadRequest] a bad name, kind, ttl or identity, an archived
+      #   session, an identity that chi web has no proxy to check
+      # @raise [RemoteTooOld] an identity, and a chi web without bound grants
+      def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
+        require_feature!(BOUND_FEATURE) unless identity.nil?
+        body = { name: name, kind: kind, ttl: ttl, cap: cap, identity: identity }.compact
+        reply = request(:post, "#{session_path(id)}/participants", body: body)
         raise_refusal(reply) unless reply.status == 201
 
         json = reply.json
-        Invitation.new(participant: ParticipantView.from_h(json.fetch("participant")), token: json.fetch("token"),
-                       link: json.fetch("link"), lan: json["lan"] == true, warning: json["warning"])
+        participant = ParticipantView.from_h(json.fetch("participant"))
+        check_bound!(id, participant, identity)
+        Invitation.new(participant: participant, token: json.fetch("token"), link: json.fetch("link"),
+                       lan: json["lan"] == true, warning: json["warning"])
+      end
+
+      # Web::App::BOUND_FEATURE: POST …/participants takes an identity.
+      BOUND_FEATURE = "bound_grants"
+
+      # The header that chi web names the signed-in user in (GET
+      # /api/info's proxy), nil when it has no such proxy, or is a chi
+      # web from before it said.
+      # @return [String, nil]
+      def identity_header
+        check_server!
+        header = @proxy.is_a?(Hash) ? @proxy["identity_header"] : nil
+        header.is_a?(String) && !header.empty? ? header : nil
       end
 
       # Revokes one participant (+participant+), a session's, or with no
@@ -602,6 +624,7 @@ module Samagotchi
         if reply.json.is_a?(Hash)
           @version = reply.json["version"]
           @features = Array(reply.json["features"])
+          @proxy = reply.json["proxy"]
         end
         problem = Remote.info_problem(@entry, reply)
         raise problem if problem
@@ -610,6 +633,18 @@ module Samagotchi
       end
 
       def too_old(version) = Remote.too_old_message(@entry, version)
+
+      # A grant asked bound to +identity+ came back bound to it, or is
+      # revoked at once (its link never printed) and refused: belt and
+      # braces behind BOUND_FEATURE.
+      # @raise [RemoteFailed]
+      def check_bound!(id, participant, identity)
+        return if identity.nil? || participant.identity == identity.to_s.strip.downcase
+
+        revoke_participants(id, participant: participant.id)
+        raise RemoteFailed, "#{@entry.label}: its chi web issued #{participant.id} unbound, so chi revoked it: " \
+                            "update chi there (chi update)"
+      end
 
       def strategy_or_hard(json) = strategy_of(json) || Guardrails::ParentPolicy.strategy(Guardrails::ParentPolicy::HARD)
 

@@ -461,6 +461,30 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(app.instance_variable_get(:@link_codes).redeem(code)).to eq([:grant, answer["token"]])
     end
 
+    it "invites a participant bound to an identity, and refuses one that isn't an address" do
+      path = "/api/sessions/#{session.id}/participants"
+      status, _, body = call(path, method: "POST", body: '{"name":"Alex","identity":"Alex@Pod.Test"}',
+                                   headers: proxied(owner, [bearer]))
+      expect(status).to eq(201)
+      answer = JSON.parse(body)
+      expect(answer["participant"]).to include("identity" => "alex@pod.test")
+      expect(grants.lookup(answer["token"]).identity).to eq("alex@pod.test")
+
+      status, _, body = call(path, method: "POST", body: '{"name":"Kim","identity":"kim"}', headers: proxied(owner, [bearer]))
+      expect([status, JSON.parse(body)]).to eq([400, { "error" => "invalid_participant",
+                                                       "detail" => Samagotchi::Web::Grants::BadIdentity.new.message }])
+      expect(grants.list.size).to eq(1)
+    end
+
+    it "names the identity header on the owner's /api/info (the Invite dialog's email field), never a participant's" do
+      _, _, body = call("/api/info", headers: proxied(owner, [bearer]))
+      expect(JSON.parse(body)).to include("proxy" => { "identity_header" => identity_header })
+      _, _, body = call("/api/info", headers: proxied("alex@pod.test", [bearer(issued.token)]))
+      expect(JSON.parse(body)).not_to have_key("proxy")
+      _, _, body = call("/api/sessions/#{session.id}/participants", headers: proxied(owner, [bearer]))
+      expect(JSON.parse(body)).to include("identity_header" => identity_header)
+    end
+
     it "keeps the owner's token out of what a participant reads (a secret of their view)" do
       req = Rack::Request.new(env_for("/", headers: proxied("alex@pod.test", [bearer(issued.token)])))
       req.env[described_class::PRINCIPAL_ENV] = app.send(:principal_for, req)

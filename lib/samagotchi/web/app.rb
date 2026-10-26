@@ -840,18 +840,27 @@ module Samagotchi
       # workers it starts run that one, not this chi web's version;
       # session_commands: the routes chi --remote needs
       # (SessionAccessRoutes::FEATURE); remote_attach: the ones a remote
-      # attached TUI needs (ATTACH_FEATURE). lan: its LAN address, nil when it
-      # listens on loopback only; public_url: web.public_url's origin, nil
-      # without one. A participant gets app, version and features only
+      # attached TUI needs (ATTACH_FEATURE); bound_grants: an invite takes an
+      # identity (BOUND_FEATURE). lan: its LAN address, nil when it listens
+      # on loopback only; proxy: {identity_header} behind an auth proxy
+      # (web.public_url or a tunnel; the header nil when none is trusted),
+      # nil without one: the Invite dialog's email field and chi share's
+      # warning. A participant gets app, version and features only
       # (#participant_info).
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
-                             cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip] })
+                             cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip],
+                             proxy: @public_url && { identity_header: @public_url.identity_header } })
       end
 
-      INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE].freeze
+      # POST …/participants takes an identity (a grant bound to it): a chi
+      # web without it would ignore one and issue an unbound grant, so chi
+      # --remote share --identity asks for this first.
+      BOUND_FEATURE = "bound_grants"
+      INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
+                       BOUND_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and

@@ -123,6 +123,9 @@ module Samagotchi
         "share --agent" => SUPPORTED,
         "share --expires" => SUPPORTED,
         "share --cap" => SUPPORTED,
+        # A chi web without bound grants (Remote#invite checks its
+        # bound_grants feature) is refused, never sent the identity.
+        "share --identity" => SUPPORTED,
         "share cap" => SUPPORTED,
         "share ls" => SUPPORTED,
         "share ls --format" => SUPPORTED,

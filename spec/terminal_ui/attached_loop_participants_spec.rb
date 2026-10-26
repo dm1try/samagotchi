@@ -99,7 +99,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "its own /share and /partic
   let(:screen) { RecordingSurface.new(columns: 100) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: "/state") }
-  let(:access) { instance_double(Samagotchi::SessionAccess::Local) }
+  let(:access) { instance_double(Samagotchi::SessionAccess::Local, identity_header: nil) }
   let(:alex) { { id: "p_aaaa1111", name: "Alex", kind: "human" } }
   let(:grant) do
     Samagotchi::SessionAccess::ParticipantView.new(
@@ -152,7 +152,11 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
     )
   end
 
-  before { allow(access).to receive(:resolve) { |id| id } }
+  before do
+    allow(access).to receive(:resolve) { |id| id }
+    # No auth proxy that names the user: no bound link to offer.
+    allow(access).to receive(:identity_header).and_return(nil)
+  end
 
   it "/share NAME invites through chi share's access and words: the link once" do
     allow(access).to receive(:invite).and_return(
@@ -160,7 +164,8 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
     )
     out = commands.run("/share Alex Smith --cap 5 --expires 3d")
 
-    expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", kind: "human", ttl: 3 * 86_400, cap: 5.0)
+    expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", kind: "human", ttl: 3 * 86_400, cap: 5.0,
+                                                                 identity: nil)
     expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (human, reviewer) · session abcdef12 · expires " \
                                           "#{Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")} · cap $2.00",
                                           "http://10.0.0.2:8080/?token=chp_x#s=abcdef12",
@@ -178,7 +183,7 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
   it "/participants lists, revokes and caps this session's" do
     allow(access).to receive_messages(participants: [grant], revoke_participants: [grant], set_participant_cap: grant)
 
-    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  human")
+    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  -         human")
     expect(access).to have_received(:participants).with("abcdef12-0000")
     expect(commands.run("/participants revoke p_aaaa1111")).to eq("p_aaaa1111  Alex Smith  revoked")
     expect(access).to have_received(:revoke_participants).with("abcdef12-0000", participant: "p_aaaa1111")
