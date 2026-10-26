@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-10-26
+
 ### Added
 
 - `/exit` in an attached terminal **asks what to do with what still runs** when only things you can stop keep the
@@ -4425,7 +4427,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.116.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.117.0...HEAD
+[0.117.0]: https://github.com/dm1try/samagotchi/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/dm1try/samagotchi/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/dm1try/samagotchi/compare/v0.114.0...v0.115.0
 [0.114.0]: https://github.com/dm1try/samagotchi/compare/v0.113.0...v0.114.0
