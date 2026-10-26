@@ -39,6 +39,8 @@ and commands may change between minor versions. How releases are made:
 - `chi --help` lists `chi guardrails replay` (seeding System 1's record), the one subcommand it left out.
 - The participants panel's Cap form no longer sets a $0 cap when its field is cleared, nor sends a negative or
   over-$1000 one: it refuses as the Invite's cap field does ("A cap is dollars, 0 to 1000.").
+- A double tap on the web's Stop no longer asks twice (two confirms, or two stops): a second Stop of the same session
+  while the first one asks the worker what still runs, or stops it, does nothing.
 
 ## [0.121.0] - 2026-10-26
 

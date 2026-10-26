@@ -117,6 +117,21 @@ test("Stop asks the worker what still runs first; with nothing it is the confirm
   assert.deepEqual(h.opened, [["s1aaaaaaaa", []]]);
 });
 
+test("a second Stop while the holds read is under way asks nothing more: one confirm, one stop", async () => {
+  let answer;
+  const pending = new Promise((resolve) => { answer = resolve; });
+  const h = harness({ api: { sessionHolds: () => pending } });
+  const first = h.actions.stopSelected();
+  const second = h.actions.stopSelected();
+  answer({ holds: [] });
+  await Promise.all([first, second]);
+
+  assert.deepEqual(h.calls, [["sessionHolds", "s1aaaaaaaa"], ["stopSession", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.opened, [["s1aaaaaaaa", []]], "one sheet-or-confirm");
+  await h.actions.stopSelected();
+  assert.equal(h.calls.filter(([name]) => name === "sessionHolds").length, 2, "a later Stop asks again");
+});
+
 test("with something stoppable the sheet decides: no confirm, nothing stopped yet", async () => {
   const held = [{ kind: "background_tasks", items: [{ id: "t1", label: "npm test", detail: "3m" }] }];
   const h = harness({ holds: held });
