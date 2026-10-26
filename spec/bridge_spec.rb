@@ -537,13 +537,14 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil,
-                     exit_stopped: nil, heartbeat_interval: 0.2)
+                     exit_stopped: nil, on_holds: nil, on_holds_stop: nil, heartbeat_interval: 0.2)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
-        on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped
+        on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped,
+        on_holds: on_holds, on_holds_stop: on_holds_stop
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -2175,6 +2176,68 @@ RSpec.describe Samagotchi::Bridge do
         expect(post_exit(JSON.generate(client_id: "tui:1", stop: "all")))
           .to eq([200, { "status" => "exiting", "session_id" => @session.id,
                          "stopped" => { "reminders" => ["api_health"], "tasks" => ["rails s"], "delegates" => [] } }])
+      end
+    end
+
+    describe "GET /session/:id/holds and POST /session/:id/holds/stop (the web's Stop asks first)" do
+      def get_holds(session_id: @session.id)
+        res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/holds"))
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      def post_stop_holds(session_id: @session.id)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/holds/stop"),
+                             "{}", "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      def holds
+        [Samagotchi::WorkerIdleExit::StoppableHold.new(kind: :background_tasks, items: [
+          Samagotchi::WorkerIdleExit::HoldItem.new(id: "t1", label: "npm test", detail: "3m")
+        ])]
+      end
+
+      it "answers with what the user can stop, in the same shape as the exit 409's holds" do
+        start_bridge(on_holds: -> { holds })
+
+        expect(get_holds).to eq([200, { "session_id" => @session.id,
+                                        "holds" => [{ "kind" => "background_tasks",
+                                                      "items" => [{ "id" => "t1", "label" => "npm test",
+                                                                    "detail" => "3m" }] }] }])
+      end
+
+      it "answers with no holds when the worker has nothing stoppable" do
+        start_bridge(on_holds: -> { [] })
+
+        expect(get_holds).to eq([200, { "session_id" => @session.id }])
+      end
+
+      it "refuses another session's holds" do
+        start_bridge(on_holds: -> { holds })
+
+        expect(get_holds(session_id: "other")).to eq([404, { "error" => "unknown_session" }])
+        expect(post_stop_holds(session_id: "other")).to eq([404, { "error" => "unknown_session" }])
+      end
+
+      it "stops everything the user can, without the worker exiting, and says what went" do
+        stopped = false
+        start_bridge(on_holds: -> { holds }, on_holds_stop: lambda {
+          stopped = true
+          Samagotchi::HoldStop::Stopped.new(reminders: ["api_health"], tasks: ["npm test"], delegates: ["ab12cd34"])
+        })
+
+        expect(post_stop_holds).to eq([200, { "status" => "stopped", "session_id" => @session.id,
+                                              "stopped" => { "reminders" => ["api_health"], "tasks" => ["npm test"],
+                                                             "delegates" => ["ab12cd34"] } }])
+        expect(stopped).to be true
+        expect(@bridge).not_to be_stopped
+      end
+
+      it "answers 501 when this worker has no holds step" do
+        start_bridge
+
+        expect(get_holds).to eq([501, { "error" => "holds_unavailable" }])
+        expect(post_stop_holds).to eq([501, { "error" => "holds_unavailable" }])
       end
     end
 

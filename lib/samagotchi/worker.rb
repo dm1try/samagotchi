@@ -339,7 +339,11 @@ module Samagotchi
                                             # Decided again as it leaves (a note may still come in).
                                             exit_discards: method(:empty_session?),
                                             # What a stop-all /exit stopped, for its 200.
-                                            exit_stopped: method(:stopped_holds))
+                                            exit_stopped: method(:stopped_holds),
+                                            # chi web's Stop asks about these before TERMed-ing
+                                            # the worker (its own holds routes).
+                                            on_holds: -> { @idle_exit&.stoppable_holds },
+                                            on_holds_stop: -> { @hold_stop&.stop_all })
       # What failed to load and what plugins showed as they loaded, now that
       # a UI can be there (a late one gets them in the snapshot).
       @engine.announce_load_events!

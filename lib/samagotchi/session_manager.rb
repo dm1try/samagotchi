@@ -1141,12 +1141,12 @@ module Samagotchi
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
     def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
-                          exit_discards: nil, exit_stopped: nil)
+                          exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
-        exit_stopped: exit_stopped
+        exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop
       ).start
     rescue StandardError => e
       Log.error(:bridge, "start_failed", echo: "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}", sid: session_id, error: e.class.name)

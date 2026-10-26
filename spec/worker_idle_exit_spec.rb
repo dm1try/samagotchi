@@ -275,6 +275,54 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(p).to be_due
     end
 
+    # The web's Stop asks with this before it TERMs the worker, so it is read
+    # whatever else keeps the worker up (docs/sessions.md, "Stopping a worker").
+    describe "the holds the web's Stop asks about (#stoppable_holds)" do
+      it "lists what the user can stop even while a turn runs or another UI is open" do
+        reminders.register(name: "api_health", description: "check the API", interval_minutes: 20)
+        watched_running[0] = [task("3f9a2c1d-77", "npm test", 180)]
+        delegates[0] = [child("c1c1c1c1-1111", state: "running")]
+        allow(engine).to receive(:turn_running?).and_return(true)
+        allow(bridge).to receive(:open_streams_except).with("web:tab-1").and_return(2)
+
+        expect(policy.stoppable_holds).to eq([
+          described_class::StoppableHold.new(kind: :reminders, items: [
+            described_class::HoldItem.new(id: "api_health", label: "api_health", detail: "every 20m")
+          ]),
+          described_class::StoppableHold.new(kind: :background_tasks, items: [
+            described_class::HoldItem.new(id: "3f9a2c1d-77", label: "npm test", detail: "3m")
+          ]),
+          described_class::StoppableHold.new(kind: :delegates, items: [
+            described_class::HoldItem.new(id: "c1c1c1c1-1111", label: "Fix the composer", detail: "running a turn")
+          ])
+        ])
+        # The exit itself is still refused for the turn, holds and all.
+        expect(policy.request_hold(requester: "web:tab-1")).to eq(described_class::Hold.new(reason: :turn_running))
+      end
+
+      it "is empty when nothing runs the user can stop, and reads the watched tasks once" do
+        looks = 0
+        running = [Samagotchi::TaskWatch::Running.new(id: "t1", command: "rails s", age_seconds: 30)]
+        p = described_class.new(engine: engine, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
+                                watched_running: lambda {
+                                  looks += 1
+                                  running
+                                }, clock: clock)
+
+        expect(p.stoppable_holds.map(&:kind)).to eq([:background_tasks])
+        expect(looks).to eq(1)
+        running.clear
+        expect(p.stoppable_holds).to eq([])
+        expect(looks).to eq(2)
+      end
+
+      it "leaves the delegates out for a client that cannot ask about them" do
+        delegates[0] = [child("c1c1c1c1-1111", state: "running")]
+        expect(policy.stoppable_holds.map(&:kind)).to eq([:delegates])
+        expect(policy.stoppable_holds(include_delegates: false)).to eq([])
+      end
+    end
+
     it "words each reminder's schedule, and only what the store can say" do
       store = double("store", reminders: {
         "a" => { name: "hourly", interval_minutes: 60, next_fire_at: 2000.0 },

@@ -238,6 +238,16 @@ module Samagotchi
       post("tasks/stop", { task_id: task_id }, read_body: true)
     end
 
+    # POST /session/:id/holds/stop: stop everything this worker's user can
+    # stop (its reminders, the background tasks a finish wake watches that
+    # still run, its delegate children) without the worker exiting
+    # (Bridge#handle_holds_stop). 200 {status: "stopped", stopped:
+    # {reminders:, tasks:, delegates:}}; 501 for a worker without the route.
+    # @return [Response]
+    def stop_holds
+      post("holds/stop", {}, read_body: true)
+    end
+
     # How long the approval relay's calls wait for a reply: a parent's Stop
     # isn't held for READ_TIMEOUT by a child that doesn't answer.
     RELAY_TIMEOUT = 5

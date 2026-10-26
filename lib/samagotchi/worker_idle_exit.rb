@@ -115,6 +115,28 @@ module Samagotchi
     #   :client_connected, :reminders or :background_tasks
     def hold_for_request(requester:, streams: true) = request_hold(requester: requester, streams: streams)&.reason
 
+    # What the user could stop in this worker right now, whatever else keeps
+    # it up: its reminders, the watched background tasks still running, and
+    # (for a UI that asks about them, +include_delegates+) the delegate
+    # children with a live worker. #request_hold's +holds+ is this, and the
+    # web's Stop asks with it before TERMed-ing the worker — a turn running
+    # or another UI attached does not hide it, since Stop cancels the turn
+    # anyway (docs/sessions.md, "Stopping a worker").
+    # @return [Array<StoppableHold>]
+    def stoppable_holds(running: @watched_running.call, include_delegates: true)
+      holds = []
+      reminders = reminder_items
+      tasks = running.map do |task|
+        HoldItem.new(id: task.id, label: task.command, detail: age_words(task.age_seconds))
+      end
+      children = include_delegates ? delegate_items : []
+
+      holds << StoppableHold.new(kind: :reminders, items: reminders) if reminders.any?
+      holds << StoppableHold.new(kind: :background_tasks, items: tasks) if tasks.any?
+      holds << StoppableHold.new(kind: :delegates, items: children) if children.any?
+      holds
+    end
+
     # #hold_for_request as a Hold: for :background_tasks, the watched tasks
     # still running, read once (TaskWatch#running looks at each task's
     # process), with +hint+. +ask+: the client will ask the user about what
@@ -133,17 +155,8 @@ module Samagotchi
       return Hold.new(reason: reason) if reason
 
       running = @watched_running.call
-      reminders = reminder_items
-      tasks = running.map do |task|
-        HoldItem.new(id: task.id, label: task.command, detail: age_words(task.age_seconds))
-      end
-      children = ask ? delegate_items : []
-      return nil if reminders.empty? && tasks.empty? && children.empty?
-
-      holds = []
-      holds << StoppableHold.new(kind: :reminders, items: reminders) if reminders.any?
-      holds << StoppableHold.new(kind: :background_tasks, items: tasks) if tasks.any?
-      holds << StoppableHold.new(kind: :delegates, items: children) if children.any?
+      holds = stoppable_holds(running: running, include_delegates: ask)
+      return nil if holds.empty?
 
       Hold.new(reason: holds.first.kind, tasks: running.map(&:to_h), hint: hint, holds: holds)
     end

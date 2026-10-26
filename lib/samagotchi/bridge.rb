@@ -97,16 +97,26 @@ module Samagotchi
     #   +discard+); without one the reply leaves the field out
     # @param exit_stopped [#call, nil] after a stop-all exit: what it stopped
     #   (a HoldStop::Stopped) for the 200's +stopped+; nil leaves it out
+    # @param on_holds [#call, nil] what the user could stop in this worker
+    #   right now (WorkerIdleExit#stoppable_holds) for GET /holds; without
+    #   one that route answers 501
+    # @param on_holds_stop [#call, nil] stop every one of them (HoldStop#stop_all)
+    #   without the worker exiting, for POST /holds/stop; returns the
+    #   HoldStop::Stopped the 200's +stopped+ carries; without one that route
+    #   answers 501
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
-                   on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil)
+                   on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil,
+                   on_holds: nil, on_holds_stop: nil)
       @engine = engine
       @on_input = on_input
       @on_command = on_command
       @on_exit_request = on_exit_request
       @exit_discards = exit_discards
       @exit_stopped = exit_stopped
+      @on_holds = on_holds
+      @on_holds_stop = on_holds_stop
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -595,6 +605,8 @@ module Samagotchi
       %w[POST turn/dequeue] => :handle_dequeue_turn,
       %w[POST command] => :handle_command,
       %w[POST exit] => :handle_exit_request,
+      %w[GET holds] => :handle_holds,
+      %w[POST holds/stop] => :handle_holds_stop,
       %w[POST recap] => :handle_recap,
       %w[POST relay] => :handle_relay,
       %w[POST relay/status] => :handle_relay_status,
@@ -955,6 +967,38 @@ module Samagotchi
       return nil if holds.nil? || holds.empty?
 
       holds.map { |hold| { kind: hold.kind.to_s, items: hold.items.map { |item| item.to_h } } }
+    end
+
+    # GET /session/:id/holds: what the user could stop in this worker right
+    # now — the same holds the exit ask's 409 carries (reminders, the watched
+    # background tasks still running, the delegate children with a live
+    # worker), whatever else keeps the worker up: chi web's Stop asks about
+    # these before it TERMs the worker, and a Stop cancels a running turn
+    # anyway, so a turn is not a reason to hide them.
+    # 200 {session_id, holds: [{kind:, items: [...]}]} (no +holds+ when there
+    # are none); 501 holds_unavailable when this worker has no such step.
+    # Returns [headers, status, body].
+    def handle_holds(_session_id, _body = nil)
+      return [{}, 501, { error: "holds_unavailable" }] unless @on_holds
+
+      [{}, 200, { session_id: @session_id, holds: holds_json(@on_holds.call) }.compact]
+    end
+
+    # POST /session/:id/holds/stop: stop everything the user can stop (HoldStop#stop_all)
+    # without the worker leaving — the reminders cleared, the watched tasks
+    # killed as task_stop does, the delegate children stopped as
+    # `chi sessions stop` does. What the user can't stop (a turn running,
+    # another UI attached) is untouched. The web's Stop's "Stop all" runs
+    # this, then stops the worker.
+    # 200 {status: "stopped", session_id, stopped: {reminders:, tasks:,
+    # delegates:}}; 501 holds_unavailable when this worker has no such step.
+    # Returns [headers, status, body].
+    def handle_holds_stop(_session_id, _body = nil)
+      return [{}, 501, { error: "holds_unavailable" }] unless @on_holds_stop
+
+      Log.info(:bridge, "holds_stop")
+      stopped = @on_holds_stop.call
+      [{}, 200, { status: "stopped", session_id: @session_id, stopped: stopped.to_h }]
     end
 
     # Queue a turn for this session through its file IPC (the worker polls
