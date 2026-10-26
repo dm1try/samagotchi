@@ -236,6 +236,8 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/holds\z}, :handle_session_holds, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/holds/stop\z}, :handle_stop_holds, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive, :owner, :session],

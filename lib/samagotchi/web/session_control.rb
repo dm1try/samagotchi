@@ -13,9 +13,10 @@ module Samagotchi
   module Web
     # The owner's routes that act on a session's worker: answer or dismiss
     # its question, run a command, send a turn (and its images), cancel, stop
-    # a task, dequeue a queued turn, stop, restart, archive, unarchive and
-    # delete (handle_question_answer … handle_delete), with the refusals they
-    # answer (owned_by_repl, owned_by_tui, archive_refused). Included in App:
+    # a task, dequeue a queued turn, what it could stop and stop it
+    # (handle_session_holds, handle_stop_holds — the page's Stop asks about
+    # these first), stop, restart, archive, unarchive and delete
+    # (handle_question_answer … handle_delete), with the refusals they answer (owned_by_repl, owned_by_tui, archive_refused). Included in App:
     # its ROUTES name the handlers, and its helpers (json_response,
     # error_response, parse_json, request_body, relay, not_live,
     # bridge_error, reply_detail, worker_timeout, bridge_client,
@@ -356,6 +357,42 @@ module Samagotchi
           when 404
             json_response(404, { error: "unknown_enqueued_id", enqueued_id: enqueued_id, session_id: id }) if body["error"] == "unknown_enqueued_id"
           end
+        end
+      end
+
+      # GET /api/sessions/:id/holds: what this session's worker could stop
+      # right now (its Bridge's GET holds: reminders, the background tasks a
+      # finish wake watches that still run, the delegate children with a live
+      # worker), so the page's Stop can ask about them before TERMed-ing the
+      # worker. 200 {session_id, holds: []} — always a list: with no live
+      # worker, a worker from before the route, or one that didn't answer
+      # there is nothing to ask about, and Stop stays one tap as it was.
+      def handle_session_holds(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        client = bridge_client(id)
+        return json_response(200, { session_id: id, holds: [] }) unless client
+
+        status, json = client.get("holds")
+        holds = status == 200 && json.is_a?(Hash) ? json["holds"] : nil
+        json_response(200, { session_id: id, holds: holds.is_a?(Array) ? holds : [] })
+      rescue SystemCallError, IOError, SocketError
+        json_response(200, { session_id: id, holds: [] })
+      end
+
+      # POST /api/sessions/:id/holds/stop: the sheet's "Stop all" — the worker
+      # stops everything the user can stop (Bridge#handle_holds_stop) before
+      # today's Stop TERMs it. 200 {status: "stopped", session_id, stopped:
+      # {reminders:, tasks:, delegates:}}; 503 no live worker, 501 a worker
+      # from before the route, 504/502 as every relay (the page says which
+      # thing it could not stop and stops the session anyway).
+      def handle_stop_holds(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        request = ->(client) { client.stop_holds }
+        relay(id, bridge_client(id), request, what: "nothing was stopped", cant: "stop what the session runs") do |reply|
+          next unless reply.status == 200
+
+          stopped = reply.json&.dig("stopped")
+          json_response(200, { status: "stopped", session_id: id, stopped: stopped || {} })
         end
       end
 

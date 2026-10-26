@@ -1226,6 +1226,22 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .push-devices.sheet .pd-done{font-size:13px}
 .push-devices.sheet .pd-meta,.push-devices.sheet .pd-note{font-size:12.5px}
 .push-devices.sheet .pd-remove{padding:6px 12px;font-size:13px}
+/* The Stop button's sheet (stop_sheet.js): what still runs, and the three answers; a bottom sheet on a phone. */
+.stop-sheet .ctx-pop-head strong{font-family:inherit}
+.stop-sheet.sheet{border-radius:14px;padding:14px 16px;font-size:14px}
+.ss-lines{list-style:none;display:flex;flex-direction:column;gap:6px;margin:4px 0 10px;padding:0}
+.ss-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;padding:8px 10px;border-radius:10px;background:var(--bg-inset)}
+.ss-line b{color:var(--text-bright)}
+.ss-items{flex-basis:100%;color:var(--text-2)}
+.ss-note,.ss-more{font-size:11.5px;color:var(--text-muted)}
+.ss-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ss-acts button{padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text-2)}
+.ss-acts button:hover{background:var(--bg-hover);color:var(--text-hover)}
+.ss-stop-all{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-text)}
+.ss-stop-all:hover{background:var(--warn-border);color:var(--text-hover)}
+.ss-cancel{background:transparent}
+.stop-sheet.sheet .ss-acts button{flex:1 1 auto;font-size:14px;padding:10px 12px}
+.ss-foot{font-size:11.5px;color:var(--text-muted);margin-top:6px}
 .ctx-pop-head{display:flex;align-items:baseline;gap:8px}
 .ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}

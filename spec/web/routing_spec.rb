@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
 
   let(:handlers) do
     %i[serve_index handle_list handle_create handle_info handle_models handle_events handle_stream
-       handle_output handle_cancel handle_stop handle_archive handle_unarchive handle_turn
+       handle_output handle_cancel handle_stop handle_session_holds handle_stop_holds handle_archive handle_unarchive handle_turn
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
        handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render
        handle_resolve handle_summaries handle_wait_prepare handle_wait handle_notes handle_context_add
@@ -95,6 +95,8 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["GET", "/api/sessions/s1/output"] => %w[handle_output s1],
       ["POST", "/api/sessions/s1/cancel"] => %w[handle_cancel s1],
       ["POST", "/api/sessions/s1/stop"] => %w[handle_stop s1],
+      ["GET", "/api/sessions/s1/holds"] => %w[handle_session_holds s1],
+      ["POST", "/api/sessions/s1/holds/stop"] => %w[handle_stop_holds s1],
       ["POST", "/api/sessions/s1/archive"] => %w[handle_archive s1],
       ["POST", "/api/sessions/s1/unarchive"] => %w[handle_unarchive s1],
       ["POST", "/api/sessions/s1/turn"] => %w[handle_turn s1],

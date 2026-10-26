@@ -1873,6 +1873,37 @@ test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" 
   await expect(page.locator("#history > .plugin-card.warn").filter({ hasText: "e2e warn card" })).toHaveCount(1);
 });
 
+// The Stop button asks first what the worker still has that the user can
+// stop (stop_sheet.js): a background task the turn started is listed at phone
+// width as a bottom sheet with its three answers, and "Stop all" runs the
+// worker's stop-all step before the stop itself.
+test("stop asks about the background task still running: the sheet, then Stop all stops it and the session", async ({ page, script }) => {
+  script("stop_sheet");
+  await send(page, "Start a background task");
+  await turnEnded(page, 1);
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.locator("#infoStopBtn").click();
+
+  const sheet = page.locator("#stopSheet");
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator(".ss-line")).toHaveCount(1);
+  await expect(sheet.locator(".ss-line").first()).toContainText("1 background task");
+  await expect(sheet.locator(".ss-line").first()).toContainText("sleep 120");
+  await expect(sheet.locator(".ss-acts button")).toHaveText(["Stop all", "Stop session only", "Cancel"]);
+  await page.screenshot({ path: "tmp/e2e/stop-sheet-phone.png" });
+
+  const held = page.waitForResponse((res) => res.url().endsWith(`/api/sessions/${id}/holds/stop`) && res.status() === 200);
+  const stopped = page.waitForResponse((res) => res.url().endsWith(`/api/sessions/${id}/stop`) && res.status() === 200);
+  await sheet.locator('[data-act="all"]').click();
+  expect((await held).ok()).toBe(true);
+  expect((await stopped).ok()).toBe(true);
+  await expect(sheet).toBeHidden();
+  // The worker is gone: the page says so, and the sheet is not left open.
+  await expect(page.locator("#infoStopBtn")).toBeHidden();
+});
+
 // A notice marked fallback_for: display (here the e2e-fallback-notice test
 // bundle's, after the answer) stands in for the answer's links, which the
 // page renders (web.markdown on): it is never drawn, not even for a moment

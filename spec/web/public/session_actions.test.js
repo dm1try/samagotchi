@@ -12,12 +12,16 @@ function failure(status, code = null, message = "boom", body = null) {
 
 // +api+: overrides of the data.js calls (each records its call in +calls+).
 // +displaced+: what fillOpener returns (a draft from another session it replaced, or null).
-function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true, displaced = null } = {}) {
+// +holds+: what the worker answers GET …/holds with; +sheet+ stands in for
+// stop_sheet.js' sheet (the default opens when there is something, as it does).
+function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true,
+                  displaced = null, holds = [], sheet = null } = {}) {
   const world = { selected: open, sessions: list, state: { status: "running" } };
   const log = [];
   const calls = [];
   const toasts = [];
   const alerts = [];
+  const opened = [];
   const wrap = (name, fallback) => async (...args) => {
     calls.push([name, ...args]);
     return (api[name] || fallback)(...args);
@@ -34,6 +38,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
       archiveSession: wrap("archiveSession", async (id) => ({ archived: [id], stopped: [] })),
       unarchiveSession: wrap("unarchiveSession", async (id) => ({ unarchived: [id] })),
       startReview: wrap("startReview", async () => ({ id: "s3cccccccc", review: { from: "s1aaaaaaaa" } })),
+      sessionHolds: wrap("sessionHolds", async () => ({ holds })),
+      stopSessionHolds: wrap("stopSessionHolds", async () => ({ status: "stopped", stopped: {} })),
     },
     eventsLive: () => eventsLive,
     refresh: () => log.push("refresh"),
@@ -50,8 +56,9 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     workerGone: (id) => log.push(`workerGone ${id} stopping=${actions.stoppingId()}`),
     alert: (text) => alerts.push(text),
     confirm: () => confirms,
+    stopSheet: sheet ?? { open: (id, held) => { opened.push([id, held]); return Array.isArray(held) && held.length > 0; } },
   });
-  return { actions, world, log, calls, toasts, alerts };
+  return { actions, world, log, calls, toasts, alerts, opened };
 }
 
 test("confirmDelete: after a confirm the list drops it, and the open session goes to the start page", async () => {
@@ -93,12 +100,50 @@ test("stopSelected: the stream's end is a stop while the request runs; the open 
   let release;
   const h = harness({ eventsLive: false, api: { stopSession: () => new Promise((resolve) => { release = resolve; }) } });
   const stopping = h.actions.stopSelected();
+  await new Promise((resolve) => setImmediate(resolve)); // the holds check comes first
   assert.equal(h.actions.stoppingId(), "s1aaaaaaaa");
   release({});
   await stopping;
   assert.equal(h.world.state.status, "stopped");
   assert.deepEqual(h.log, ["closeLiveStream", "workerGone s1aaaaaaaa stopping=s1aaaaaaaa", "refresh"]);
   assert.equal(h.actions.stoppingId(), null);
+});
+
+test("Stop asks the worker what still runs first; with nothing it is the confirm and one stop", async () => {
+  const h = harness();
+  await h.actions.stopSelected();
+
+  assert.deepEqual(h.calls, [["sessionHolds", "s1aaaaaaaa"], ["stopSession", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.opened, [["s1aaaaaaaa", []]]);
+});
+
+test("with something stoppable the sheet decides: no confirm, nothing stopped yet", async () => {
+  const held = [{ kind: "background_tasks", items: [{ id: "t1", label: "npm test", detail: "3m" }] }];
+  const h = harness({ holds: held });
+  await h.actions.stopSelected();
+
+  assert.deepEqual(h.calls, [["sessionHolds", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.opened, [["s1aaaaaaaa", held]]);
+});
+
+test("a worker that can't answer what it holds is today's one-tap stop", async () => {
+  const h = harness({ api: { sessionHolds: async () => { throw failure(503, "not_live", "no live bridge"); } } });
+  await h.actions.stopSelected();
+
+  assert.deepEqual(h.calls, [["sessionHolds", "s1aaaaaaaa"], ["stopSession", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("the sheet's Stop all: the worker's stop-all step, then the stop; a failed step is a sticky toast and stops anyway", async () => {
+  const h = harness();
+  await h.actions.stopSelected("s1aaaaaaaa", { stopHolds: true });
+  assert.deepEqual(h.calls, [["stopSessionHolds", "s1aaaaaaaa"], ["stopSession", "s1aaaaaaaa"]]);
+
+  const failed = harness({ api: { stopSessionHolds: async () => { throw failure(502, "bridge_error", "the worker refused"); } } });
+  await failed.actions.stopSelected("s1aaaaaaaa", { stopHolds: true });
+  assert.deepEqual(failed.calls, [["stopSessionHolds", "s1aaaaaaaa"], ["stopSession", "s1aaaaaaaa"]]);
+  assert.match(failed.toasts[0].text, /Can't stop what the session runs: the worker refused — stopping the session anyway/);
+  assert.equal(failed.toasts[0].options.sticky, true);
 });
 
 test("stopSelected: a refusal is a sticky toast; a switch meanwhile leaves the other session alone", async () => {

@@ -1,0 +1,9 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"thinking": "A background task that keeps running, so the session's worker still has something the user can stop.",
+     "text": "Starting the task.",
+     "tools": [{"name": "task_create", "arguments": {"command": "sleep 120; echo E2E_TASK_DONE", "description": "A task that runs for two minutes"}}]},
+    {"text": "The task is running in the background."}
+  ]
+}

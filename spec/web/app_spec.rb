@@ -3249,7 +3249,8 @@ RSpec.describe Samagotchi::Web::App do
     it "answers 404 not_found" do
       id = "#{"a" * 8}-0000-4000-8000-#{"0" * 12}"
       routes = [["GET", "output"], ["POST", "cancel"], ["POST", "tasks/20261020120000-abcdef12/stop"],
-                ["POST", "turn/q1/dequeue"], ["POST", "stop"], ["POST", "restart"], ["POST", "archive"],
+                ["POST", "turn/q1/dequeue"], ["GET", "holds"], ["POST", "holds/stop"], ["POST", "stop"],
+                ["POST", "restart"], ["POST", "archive"],
                 ["POST", "unarchive"], ["POST", "turn", '{"prompt":"hi"}'], ["POST", "command", '{"line":"/model"}'],
                 ["GET", "context"], ["GET", "context/pr-1"], ["POST", "context", '{"url":"https://example.com/x"}'],
                 ["DELETE", "context/pr-1"], ["GET", nil], ["DELETE", nil]]
@@ -3345,6 +3346,86 @@ RSpec.describe Samagotchi::Web::App do
       allow(bridge).to receive(:stop_task)
       ["nope", "20261004120000-0a1b2c3", "..%2F..%2Fx"].each { |bad| expect(stop(bad)).to match([400, hash_including("error" => "invalid_task_id")]) }
       expect(bridge).not_to have_received(:stop_task)
+    end
+  end
+
+  describe "GET and POST /api/sessions/:id/holds (what the Stop button asks about first)" do
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:state_dir) { Dir.mktmpdir("web-holds-spec") }
+    let(:app) do
+      build_app(state_dir: state_dir).tap { |app| allow(app).to receive(:bridge_client).with("s1").and_return(bridge) }
+    end
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    def holds
+      status, _headers, out = app.call(env_for("/api/sessions/s1/holds"))
+      [status, JSON.parse(out.first)]
+    end
+
+    def stop_holds
+      status, _headers, out = app.call(env_for("/api/sessions/s1/holds/stop", method: "POST"))
+      [status, JSON.parse(out.first)]
+    end
+
+    it "relays the worker's stoppable holds to the page" do
+      allow(bridge).to receive(:get).with("holds")
+                                    .and_return([200, { "session_id" => "s1", "holds" => [
+                                      { "kind" => "reminders", "items" => [{ "id" => "api_health", "label" => "api_health", "detail" => "every 20m" }] },
+                                      { "kind" => "delegates", "items" => [{ "id" => "c1c1", "label" => "fix the grip", "detail" => "running a turn" }] }
+                                    ] }])
+
+      expect(holds).to eq([200, { "session_id" => "s1", "holds" => [
+        { "kind" => "reminders", "items" => [{ "id" => "api_health", "label" => "api_health", "detail" => "every 20m" }] },
+        { "kind" => "delegates", "items" => [{ "id" => "c1c1", "label" => "fix the grip", "detail" => "running a turn" }] }
+      ] }])
+    end
+
+    it "answers with nothing to ask about when there is no live worker, so Stop stays one tap" do
+      allow(app).to receive(:bridge_client).with("s1").and_return(nil)
+
+      expect(holds).to eq([200, { "session_id" => "s1", "holds" => [] }])
+    end
+
+    it "answers with nothing for a worker from before the route, or one that did not answer" do
+      allow(bridge).to receive(:get).with("holds").and_return([404, { "error" => "not_found" }])
+      expect(holds).to eq([200, { "session_id" => "s1", "holds" => [] }])
+
+      allow(bridge).to receive(:get).with("holds").and_return([nil, nil])
+      expect(holds).to eq([200, { "session_id" => "s1", "holds" => [] }])
+
+      allow(bridge).to receive(:get).with("holds").and_return([500, {}])
+      expect(holds).to eq([200, { "session_id" => "s1", "holds" => [] }])
+    end
+
+    it "runs the worker's stop-all step and answers with what it stopped" do
+      allow(bridge).to receive(:stop_holds)
+                    .and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: JSON.generate(
+                      status: "stopped", session_id: "s1",
+                      stopped: { reminders: ["api_health"], tasks: ["npm test"], delegates: ["c1c1"] }
+                    )))
+
+      expect(stop_holds).to eq([200, { "status" => "stopped", "session_id" => "s1",
+                                       "stopped" => { "reminders" => ["api_health"], "tasks" => ["npm test"],
+                                                      "delegates" => ["c1c1"] } }])
+    end
+
+    it "answers 503 when the stop-all step has no worker, and 501 for a worker without the route" do
+      allow(app).to receive(:bridge_client).with("s1").and_return(nil)
+      expect(stop_holds).to match([503, hash_including("error" => "not_live")])
+
+      allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
+      allow(bridge).to receive(:stop_holds)
+                    .and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
+      expect(stop_holds).to match([501, hash_including("error" => "not_supported")])
+    end
+
+    it "answers 404 for a session that is not there" do
+      id = "#{"a" * 8}-0000-4000-8000-#{"0" * 12}"
+      real = build_app(state_dir: state_dir, session_class: Samagotchi::Session)
+
+      expect([real.call(env_for("/api/sessions/#{id}/holds"))[0],
+              real.call(env_for("/api/sessions/#{id}/holds/stop", method: "POST"))[0]]).to eq([404, 404])
     end
   end
 
