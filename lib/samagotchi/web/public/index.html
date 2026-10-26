@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/annotate_bar.css">
 <link rel="stylesheet" href="/assets/composer.css">
+<link rel="stylesheet" href="/assets/forms.css">
 <style>
 /* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor); the image icon is composer.css's. */
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
@@ -1055,12 +1056,9 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
 .llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
 .llmctx-field select:focus,.llmctx-field input:focus{outline:none;border-color:var(--accent-border)}
-/* The settings selects draw their own closed box (each browser's native one differs) with the model picker's drawn caret on the label; the open list stays the OS menu. */
-.llmctx-field select{appearance:none;-webkit-appearance:none;padding-right:26px;cursor:pointer}
-.llmctx-field select option{background:var(--bg-raised);color:var(--text)}
+/* A select's closed box and caret: forms.css (.select-wrap); here the wrapper takes the field's width. */
+.llmctx-field>.select-wrap{flex:1}
 .llmctx-field input::placeholder{color:var(--text-faint);opacity:1}
-.llmctx-field:has(select){position:relative}
-.llmctx-field:has(select)::after{content:"";position:absolute;right:11px;top:50%;width:5px;height:5px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:translateY(-70%) rotate(45deg);pointer-events:none}
 .llmctx-form .llmctx-set{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
 .llmctx-form .llmctx-set:disabled{opacity:.6;cursor:default}
 /* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */

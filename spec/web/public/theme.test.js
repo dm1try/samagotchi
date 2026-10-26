@@ -12,8 +12,8 @@ const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..
 const TOKENS = fs.readFileSync(path.join(PUBLIC, "tokens.css"), "utf8");
 const PAGES = ["index.html", "participant.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const HTML = PAGES[0][1];
-// The stylesheets both pages share besides tokens.css (composer.css: the composer).
-const SHARED_CSS = ["annotate_bar.css", "composer.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
+// The stylesheets both pages share besides tokens.css (composer.css: the composer; forms.css: the select box).
+const SHARED_CSS = ["annotate_bar.css", "composer.css", "forms.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const LIGHT_OPEN = '@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){';
 
 // The text from `start` (an index just past an opening brace) to its

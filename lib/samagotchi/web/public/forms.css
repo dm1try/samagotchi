@@ -1,0 +1,12 @@
+/* A form's select box (participants_panel.js' Invite, level_chip.js' Level, llm_context_chip.js' Strategy / Apply):
+   one shape in every dialog. Each browser draws its own closed box (macOS a pill with a double chevron), so a select
+   in a .select-wrap drops it and keeps its dialog's text-field box (the dialog's own `input, select` rule: height,
+   radius, border, background, padding, font); the wrapper draws one thin caret at the right. The open list stays the
+   OS menu. Both pages link it, after tokens.css and before their own <style>: span.select-wrap>select outweighs a
+   dialog's `… select` rule, so its padding shorthand keeps room for the caret. Colours are tokens.css's. */
+.select-wrap{position:relative;display:inline-flex;min-width:0}
+span.select-wrap>select{appearance:none;-webkit-appearance:none;flex:1;min-width:0;padding-right:26px;cursor:pointer}
+.select-wrap::after{content:"";position:absolute;right:11px;top:50%;width:5px;height:5px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.select-wrap select option{background:var(--bg-raised);color:var(--text)}
+span.select-wrap>select:disabled{opacity:.6;cursor:default}
+.select-wrap:has(select:disabled)::after{opacity:.6}

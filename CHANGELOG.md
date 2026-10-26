@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- chi web's select boxes have one shape in every dialog: the Invite panel's person/agent and Expires now match the
+  text fields beside them (flat box, same height and corners, one thin caret), as the Thinking and LLM context
+  dialogs' selects already did, in place of the browser's own pill.
+
 ## [0.120.0] - 2026-10-26
 
 ### Added

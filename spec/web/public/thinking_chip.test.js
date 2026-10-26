@@ -57,10 +57,10 @@ test("the form is the popover's markup as it was built as a string", () => {
     '<span class="ctx-pop-kind">this session</span>' +
     '<button type="button" class="ctx-pop-close" data-act="close" aria-label="Close">×</button></div>' +
     '<div class="ctx-pop-meta think-now">Now: low (session)</div>' +
-    '<label class="llmctx-field"><span>Level</span><select name="level">' +
+    '<label class="llmctx-field"><span>Level</span><span class="select-wrap"><select name="level">' +
     '<option value="default">follow the model</option><option value="off">off</option>' +
     '<option value="low" selected="">low</option><option value="medium">medium</option>' +
-    '<option value="high">high</option></select></label>' +
+    '<option value="high">high</option></select></span></label>' +
     '<div class="ctx-pop-meta">From the next turn\'s start. On Gemma the whole prompt is read again; a hosted API reads the whole conversation again.</div>' +
     '<div class="ctx-pop-actions"><button type="submit" class="llmctx-set">Set</button></div></form>');
 });
