@@ -395,7 +395,7 @@ test("participant page: ↑ recalls this grant's own comments from this browser,
   }
   assert.equal(posts().length, 2);
   assert.deepEqual(JSON.parse(localStorage.getItem("chi_review_history:g1")), ["Is step 3 safe?", "And step 4?"]);
-  assert.deepEqual(JSON.parse(localStorage.getItem("chi_review_history:g2")), ["Another grant's comment"]);
+  assert.equal(localStorage.getItem("chi_review_history:g2"), null, "another link's list goes at the first read");
   assert.equal($("comment").value, "");
   key($("comment"), "ArrowUp");
   assert.equal($("comment").value, "And step 4?");

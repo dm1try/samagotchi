@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readStored, removeStored, writeStored } from "../../../lib/samagotchi/web/public/storage.js";
+import { readStored, removeStored, storedKeys, writeStored } from "../../../lib/samagotchi/web/public/storage.js";
 
 // A Map-backed stand-in, installed for one test and put back after it
 // (npm test shares one globalThis across the files).
@@ -21,6 +21,8 @@ function mapStorage() {
     getItem: (k) => (map.has(k) ? map.get(k) : null),
     setItem: (k, v) => map.set(k, String(v)),
     removeItem: (k) => map.delete(k),
+    get length() { return map.size; },
+    key: (i) => [...map.keys()][i] ?? null,
   };
 }
 
@@ -50,4 +52,19 @@ test("no storage at all: the fallback", () => {
     assert.equal(readStored("k", "x"), "x");
     assert.doesNotThrow(() => writeStored("k", "1"));
   });
+});
+
+test("storedKeys: the keys with a prefix, a copy safe to remove from; [] when storage throws or is missing", () => {
+  withStorage(mapStorage(), () => {
+    writeStored("a:1", "x");
+    writeStored("a:2", "y");
+    writeStored("b:1", "z");
+    const keys = storedKeys("a:");
+    assert.deepEqual(keys, ["a:1", "a:2"]);
+    keys.forEach(removeStored);
+    assert.deepEqual(storedKeys(""), ["b:1"]);
+  });
+  const boom = () => { throw new Error("SecurityError"); };
+  withStorage({ get length() { return boom(); }, key: boom }, () => assert.deepEqual(storedKeys("a:"), []));
+  withStorage(undefined, () => assert.deepEqual(storedKeys("a:"), []));
 });
