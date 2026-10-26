@@ -2249,6 +2249,26 @@ Claude pairs; without one the bundle costs one tool declaration.
   them (or ask it to run `chi --remote studio send --wait <id>`). A session
   that already has a `claude-inbox` it can't reach:
   `chi --remote studio context rm claude-inbox <id>`.
+  **Two ways to make it two-way over SSH.** SSH can forward a Unix socket, so
+  the inbox leg works too. On the laptop:
+
+  ```sh
+  ssh studio rm -f /tmp/claude-peer-ab12.sock
+  ssh -N -o ExitOnForwardFailure=yes -R /tmp/claude-peer-ab12.sock:"$CLAUDE_CODE_MESSAGING_SOCKET" studio
+  ```
+
+  the second running in the background while chi may send (the `rm -f` first:
+  a remote forward's stale socket is replaced only when the **server's** sshd
+  has `StreamLocalBindUnlink yes`). Then
+  `CHI_REMOTE=studio sh <bundle>/scripts/pair --inbox-socket /tmp/claude-peer-ab12.sock ab12`
+  attaches both sources, with `claude-inbox`'s hint that path on the Studio. A
+  re-pair this way replaces an outbox-only pairing's `claude-outbox` and its
+  why. Claude's socket changes when that Claude session restarts: stop the ssh,
+  run both lines, pair again. A path chi quotes (a `payload:` file, a diff to
+  check) is on the Studio, not the laptop. Whoever can write to that socket on
+  the remote machine can send into this Claude session (sshd makes it the
+  user's, mode 0600 by default): fine on your own machine or pod, not a shared
+  host. Claude's own skill has the same under "chi on another machine over SSH".
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):
@@ -2353,6 +2373,8 @@ skill install card) works the same.
   <bundle>/scripts/pair <id>` (or `--remote NAME` in `CHI`) pairs through
   the Studio's chi web, and only the outbox leg works: `codex_send` runs
   `codex queue` on the machine chi runs on, where this Codex's thread isn't.
+  Claude's `--inbox-socket` trick doesn't apply here: `codex-inbox`'s hint is a
+  thread id, not a socket, so there is nothing to forward through SSH.
   So `pair` attaches only `codex-outbox` and prints one line saying chi there
   can't send to this Codex. Through a remote chi talks HTTP, not files, so
   `writable_roots` doesn't matter; Codex's sandbox may block the network

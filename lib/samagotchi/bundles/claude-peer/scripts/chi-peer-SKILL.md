@@ -89,6 +89,54 @@ EOF
 - Never answer a chi message with `chi send`: it counts as the user typing,
   outside the round's limit. Use it only when the user asks you to.
 
+## chi on another machine over SSH
+
+When the chi session runs on a machine this Claude session reaches with SSH
+(the user says so, or `CHI_REMOTE` or a remote URL is in play) and chi should
+send here too, pair with `--inbox-socket`: the socket chi writes to is then one
+on chi's machine, an `ssh -R` forward of this session's socket.
+
+You need a chi remote for that machine first (`chi remote add <name> <url>`,
+through an `ssh -L` tunnel if that is how you reach it — docs/cli.md "Through
+an SSH tunnel"). Then, with the host and the chi session's first 8 chars:
+
+```sh
+ssh <host> rm -f /tmp/claude-peer-<id8>.sock
+ssh -N -o ExitOnForwardFailure=yes -R /tmp/claude-peer-<id8>.sock:"$CLAUDE_CODE_MESSAGING_SOCKET" <host>
+```
+
+Run the second in the background: it must keep running while chi may send. If
+ssh wants a password or 2FA, print both lines with the socket spelled out and
+ask the user to run them in a terminal. The `rm -f` matters: a stale remote
+socket is not replaced unless the **server's** sshd has `StreamLocalBindUnlink
+yes` (the client's `-o StreamLocalBindUnlink` covers `-L` only). A server with
+`AllowStreamLocalForwarding no` refuses the forward at start
+(`ExitOnForwardFailure`): tell the user, there is no fallback.
+
+Then pair through the remote:
+
+```sh
+CHI_REMOTE=<name> sh "__CHI_PEER_PAIR__" --inbox-socket /tmp/claude-peer-<id8>.sock <id>
+```
+
+The socket must be visible to chi's process on that machine (chi runs as the
+SSH user, in the same `/tmp`, not inside a separate container): if `/claude`
+in chi shows the socket **missing** while ssh is running, that is why.
+
+Replies are the same push, through the remote:
+`CHI_REMOTE=<name> chi context push claude-outbox <id>`.
+
+A path in a chi message — a `payload: <path>` file, a file or a diff to check —
+is on `<host>`, not here: read it with `ssh <host> cat <path>` (or the repo
+there). The `Read(...)` permission note for payload files does not apply.
+
+After this Claude session restarts its socket changes: stop the old ssh, run
+both lines again, pair again.
+
+Security: whoever can write to that socket on the remote machine can send
+prompts into this session (sshd makes it the user's, mode 0600 by default).
+Fine on the user's own machine or pod, not on a shared host.
+
 ## Don't loop
 
 Never reply to an acknowledgement, a thanks, or a message that only confirms

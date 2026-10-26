@@ -7,6 +7,13 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- claude-peer (0.4.3): `pair --inbox-socket PATH` pairs both ways with chi on
+  another machine through an `ssh -R` forward of Claude's socket
+  ([docs/plugins.md](docs/plugins.md)); docs/cli.md: remote sessions through an
+  SSH tunnel. Update with `chi update`.
+
 ## [0.118.0] - 2026-10-26
 
 ### Changed

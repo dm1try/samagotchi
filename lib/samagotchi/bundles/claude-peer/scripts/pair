@@ -10,22 +10,45 @@
 # only refreshes the socket: the push carries the new hint. CHI names the chi
 # command (default: chi on the PATH). Through a remote (CHI_REMOTE, or
 # --remote NAME in CHI) chi there can't reach this machine's socket: it
-# attaches claude-outbox only, and says so.
+# attaches claude-outbox only, and says so. With --inbox-socket PATH the hint
+# is PATH instead, a socket on chi's machine made by forwarding this Claude's
+# socket there with `ssh -R`, so chi can send here too (docs/plugins.md).
 set -eu
 
 usage() {
-  echo "usage: pair <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>" >&2
+  echo "usage: pair [--inbox-socket PATH] <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>" >&2
   exit 2
 }
 
-[ $# -eq 1 ] || usage
-case "$1" in
-  -h | --help) usage ;;
-  http://* | https://*)
-    id=$(printf '%s\n' "$1" | sed -n 's|.*/s/\([0-9A-Za-z-][0-9A-Za-z-]*\).*|\1|p')
-    [ -n "$id" ] || { echo "pair: no session id in $1 (a chi web URL ends in #/s/<id>)" >&2; exit 2; }
-    ;;
-  *) id=$1 ;;
+# The id (or URL) and, optionally, the socket on chi's machine to send through.
+inbox= target=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --inbox-socket)
+      [ $# -ge 2 ] || usage
+      inbox=$2 shift 2
+      [ -n "$inbox" ] || usage
+      ;;
+    --inbox-socket=*)
+      inbox=${1#--inbox-socket=} shift
+      [ -n "$inbox" ] || usage
+      ;;
+    -h | --help) usage ;;
+    *)
+      [ -z "$target" ] || usage
+      target=$1 shift
+      ;;
+  esac
+done
+[ -n "$target" ] || usage
+
+# A relative path would be chi's cwd, not the forward's remote end: the
+# plugin's check refuses it, so refuse it here with the reason.
+case "$inbox" in
+  "") ;;
+  /*) ;;
+  *) echo "pair: --inbox-socket needs an absolute socket path on chi's machine (the ssh -R forward's remote end): $inbox" >&2
+     exit 2 ;;
 esac
 
 sock=${CLAUDE_CODE_MESSAGING_SOCKET:-}
@@ -33,6 +56,7 @@ if [ -z "$sock" ]; then
   echo "pair: CLAUDE_CODE_MESSAGING_SOCKET isn't set: run this from a Claude Code session (2.1.224 or later)" >&2
   exit 2
 fi
+
 chi=${CHI:-chi}
 
 # The remote, as SessionAccess::Dispatch names it: a --remote NAME (or
@@ -52,6 +76,14 @@ for word in $chi; do
   esac
 done
 
+case "$target" in
+  http://* | https://*)
+    id=$(printf '%s\n' "$target" | sed -n 's|.*/s/\([0-9A-Za-z-][0-9A-Za-z-]*\).*|\1|p')
+    [ -n "$id" ] || { echo "pair: no session id in $target (a chi web URL ends in #/s/<id>)" >&2; exit 2; }
+    ;;
+  *) id=$target ;;
+esac
+
 # A JSON string: backslashes, quotes, tabs and newlines escaped.
 json() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
@@ -70,26 +102,51 @@ attach() {
   fi
 }
 
-if [ -n "$via" ]; then
+# Without a socket chi can reach, only the outbox leg works.
+if [ -n "$via" ] && [ -z "$inbox" ]; then
   attach claude-outbox --why "Claude's answers to what you sent it (claude-peer); Claude runs on another machine: claude_send can't reach it" \
     --hint "latest Claude reply"
   ask=$chi
   [ "$via" = chi ] || ask="CHI_REMOTE=$remote $chi"
   printf '%s\n' "pair: chi is on $remote, so chi can't send to this Claude session (claude_send needs its socket on chi's machine): paired with chi $id, claude-outbox only. Answer chi with $ask context push claude-outbox $id; chi's replies reach you only when the user relays them (or asks you to run $ask send --wait $id)"
+  printf '%s\n' "pair: to let chi send here too, forward this Claude's socket to $remote with ssh -R and pair again with --inbox-socket (the chi-peer skill's \"chi on another machine over SSH\")"
   $chi context ls "$id"
   exit 0
 fi
 
-attach claude-inbox --why "the Claude Code session paired with you: send it parts with claude_send" --hint "$sock"
-text="Claude Code peer inbox
+hint=${inbox:-$sock}
+if [ -z "$inbox" ]; then
+  text="Claude Code peer inbox
 socket: $sock
 claude cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
 Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-outbox context."
-printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$sock")" \
-  "$(json "Claude Code paired from $PWD")" | $chi context push claude-inbox "$id" >/dev/null
+  summary="Claude Code paired from $PWD"
+else
+  text="Claude Code peer inbox
+socket: $inbox (on this machine: an ssh -R forward of Claude's socket $sock on Claude's machine)
+claude cwd: $PWD
+paired: $(date '+%Y-%m-%d %H:%M')
+Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-outbox context.
+If claude_send says the Claude session is gone, the ssh tunnel may be down: tell the user to restart it and pair again."
+  summary="Claude Code paired from $PWD over ssh"
+fi
 
+attach claude-inbox --why "the Claude Code session paired with you: send it parts with claude_send" --hint "$hint"
+printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$hint")" "$(json "$summary")" \
+  | $chi context push claude-inbox "$id" >/dev/null
+
+# An outbox attached by an earlier outbox-only pairing carries the why that
+# says claude_send can't reach Claude; context add never updates an existing
+# source, so replace it (Claude's last answer goes with it).
+if $chi context show claude-outbox --json "$id" 2>/dev/null | grep -q "can't reach it"; then
+  $chi context rm claude-outbox "$id" >/dev/null
+fi
 attach claude-outbox --why "Claude's answers to what you sent it (claude-peer)" --hint "latest Claude reply"
 
-echo "paired with chi $id (socket $sock)"
+if [ -z "$inbox" ]; then
+  echo "paired with chi $id (socket $sock)"
+else
+  echo "paired with chi $id (socket $inbox on chi's machine, forwarded from $sock)"
+fi
 $chi context ls "$id"

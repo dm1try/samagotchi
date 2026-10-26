@@ -1659,6 +1659,8 @@ What changes once `web.public_url` is set:
   `X-Forwarded-For` or `Forwarded` (403 `proxied`). That is a heuristic, not a lock: a forward that adds no such header
   (nginx's `proxy_pass` with its defaults, a plain TCP forward) still reaches a worker, as the owner.
 - `chi --remote` to a chi web behind a sign-in proxy isn't supported yet.
+  SSH to that machine works instead: forward its port and add it as a remote
+  ([Through an SSH tunnel](cli.md#through-an-ssh-tunnel)).
 
 > **Warning.** Until Bridges get a secret of their own (planned), don't run chi web behind a proxy or tunnel that can
 > reach any local port, such as a pod forwarding every `https://<port>.<pod>…`, unless it adds `X-Forwarded-For` or

@@ -1336,6 +1336,35 @@ chi --remote studio --dir /Users/me/app -p "hi"        # a new session there (--
   has installed (`chi --remote studio sessions restart ab12`), this terminal
   older than studio (`chi update` here).
 
+#### Through an SSH tunnel
+
+When that machine's chi web is only reachable over SSH — behind a sign-in proxy
+(`chi --remote` through one isn't supported yet), or bound to 127.0.0.1 —
+forward its port and add it as a remote like any other:
+
+```sh
+ssh -N -L 14567:127.0.0.1:4567 studio          # the host's web.port, 4567 by default
+chi remote add work http://127.0.0.1:14567 --token-file work-token
+# work-token: the host's $XDG_STATE_HOME/samagotchi/web-token
+chi --remote work sessions list
+```
+
+- Pick a local port other than 14567 when this machine runs its own chi web.
+- Forward only chi web's port, never a worker's: a session's Bridge is
+  unauthenticated.
+- Without `web.public_url` there, a request that arrives through the tunnel
+  looks local and needs no token, so any process here reaching the forwarded
+  port acts as you there. With it set, every request needs the token, which
+  `chi --remote` sends as Bearer.
+- `-L` binds 127.0.0.1 unless you write `-g` or `0.0.0.0:`: don't.
+- Attaching works through the tunnel too (`chi --remote work --attach ab12`),
+  plain http, no proxy.
+
+SSH can forward a Unix socket as well, which is how claude-peer's pairing makes
+a Claude session on this laptop reachable from chi on that machine
+(`pair --inbox-socket <path>`): see [plugins.md](plugins.md), "chi on another
+machine".
+
 How it works inside (`SessionAccess`, chi web's routes, where each check runs):
 [internals/remote-sessions.md](internals/remote-sessions.md).
 

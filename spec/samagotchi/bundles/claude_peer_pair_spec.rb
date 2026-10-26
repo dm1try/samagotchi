@@ -29,8 +29,8 @@ RSpec.describe "The claude-peer pair script" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def run_pair(arg, socket:)
-    Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => socket), "sh", pair, arg, chdir: tmpdir)
+  def run_pair(*args, socket:)
+    Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => socket), "sh", pair, *args, chdir: tmpdir)
   end
 
   it "pairs from a chi web URL, and a re-pair by id prefix refreshes the socket and keeps Claude's last answer" do
@@ -64,8 +64,34 @@ RSpec.describe "The claude-peer pair script" do
     expect([status.exitstatus, err]).to eq([2, "pair: no session id in http://127.0.0.1:4567/ (a chi web URL ends in #/s/<id>)\n"])
 
     _, err, status = Open3.capture3(env, "sh", pair)
-    expect([status.exitstatus, err]).to eq([2, "usage: pair <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n"])
+    expect([status.exitstatus, err]).to eq([2, "usage: pair [--inbox-socket PATH] " \
+                                             "<chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n"])
     expect(own.source("claude-inbox")).to be_nil
+  end
+
+  it "refuses a relative --inbox-socket and one without a path, touching nothing" do
+    _, err, status = run_pair("--inbox-socket", "claude.sock", session.id, socket: "/tmp/claude-a.sock")
+    expect([status.exitstatus, err]).to eq([2, "pair: --inbox-socket needs an absolute socket path on chi's machine " \
+                                             "(the ssh -R forward's remote end): claude.sock\n"])
+
+    _, err, status = Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock"),
+                                    "sh", pair, "--inbox-socket", session.id, chdir: tmpdir)
+    expect([status.exitstatus, err]).to eq([2, "usage: pair [--inbox-socket PATH] " \
+                                             "<chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n"])
+
+    _, err, status = Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock"),
+                                    "sh", pair, "--inbox-socket=", session.id, chdir: tmpdir)
+    expect([status.exitstatus, err]).to eq([2, "usage: pair [--inbox-socket PATH] " \
+                                             "<chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n"])
+
+    _, err, status = Open3.capture3(env.merge("CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock"),
+                                    "sh", pair, "--inbox-socket", "/tmp/pod.sock", session.id, session.id,
+                                    chdir: tmpdir)
+    expect([status.exitstatus, err]).to eq([2, "usage: pair [--inbox-socket PATH] " \
+                                             "<chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n"])
+
+    expect(own.source("claude-inbox")).to be_nil
+    expect(own.source("claude-outbox")).to be_nil
   end
 
   context "through a remote" do
@@ -88,10 +114,11 @@ RSpec.describe "The claude-peer pair script" do
       SH
     end
     let(:remote_why) { "Claude's answers to what you sent it (claude-peer); Claude runs on another machine: claude_send can't reach it" }
+    let(:local_why) { "Claude's answers to what you sent it (claude-peer)" }
 
-    def run_remote(chi:, remote: nil)
+    def run_remote(chi:, remote: nil, args: [session.id])
       extra = { "CHI" => chi, "CHI_REMOTE" => remote, "CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock" }
-      Open3.capture3(env.merge(extra), "sh", pair, session.id, chdir: tmpdir)
+      Open3.capture3(env.merge(extra), "sh", pair, *args, chdir: tmpdir)
     end
 
     def says(remote, ask)
@@ -101,11 +128,17 @@ RSpec.describe "The claude-peer pair script" do
         "#{session.id})\n"
     end
 
+    def forward_hint(remote)
+      "pair: to let chi send here too, forward this Claude's socket to #{remote} with ssh -R and pair again with " \
+        "--inbox-socket (the chi-peer skill's \"chi on another machine over SSH\")\n"
+    end
+
     it "with CHI_REMOTE set, attaches only claude-outbox and says chi there can't send to this Claude" do
       out, err, status = run_remote(chi: local_chi, remote: " studio ")
 
       expect([status.exitstatus, err]).to eq([0, ""])
       expect(out).to start_with(says("studio", "CHI_REMOTE=studio #{local_chi}"))
+      expect(out).to include(forward_hint("studio"))
       expect(out).not_to include("claude-inbox", "(socket")
       expect(own.source("claude-outbox")).to have_attributes(why: remote_why, hint: "latest Claude reply", cmd: nil)
       expect(own.source("claude-inbox")).to be_nil
@@ -133,6 +166,37 @@ RSpec.describe "The claude-peer pair script" do
       expect(out).to include("paired with chi #{session.id} (socket /tmp/claude-a.sock)")
       expect(out).not_to include("pair: chi is on")
       expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/claude-a.sock")
+    end
+
+    it "through a remote, --inbox-socket attaches both sources with that path as the hint" do
+      out, err, status = run_remote(chi: local_chi, remote: "studio", args: ["--inbox-socket", "/tmp/pod-claude.sock", session.id])
+
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(out).to include("paired with chi #{session.id} (socket /tmp/pod-claude.sock on chi's machine, " \
+                             "forwarded from /tmp/claude-a.sock)")
+      expect(out).not_to include("pair: chi is on")
+      expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/pod-claude.sock", cmd: nil)
+      inbox = own.snapshot("claude-inbox")
+      expect(inbox.summary).to eq("Claude Code paired from #{tmpdir} over ssh")
+      expect(inbox.text).to include("socket: /tmp/pod-claude.sock (on this machine: an ssh -R forward of Claude's " \
+                                    "socket /tmp/claude-a.sock", "claude cwd: #{tmpdir}", "the ssh tunnel may be down")
+      expect(own.source("claude-outbox")).to have_attributes(why: local_why, hint: "latest Claude reply")
+
+      # The --inbox-socket=PATH form does the same.
+      _, err, status = run_remote(chi: local_chi, remote: "studio", args: ["--inbox-socket=/tmp/pod-claude.sock", session.id])
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(own.snapshot("claude-inbox").hint).to eq("/tmp/pod-claude.sock")
+    end
+
+    it "re-pairing with --inbox-socket replaces an outbox-only pairing's claude-outbox and its why" do
+      _, err, status = run_remote(chi: local_chi, remote: "studio")
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(own.source("claude-outbox")).to have_attributes(why: remote_why)
+
+      _, err, status = run_remote(chi: local_chi, remote: "studio", args: ["--inbox-socket", "/tmp/pod-claude.sock", session.id])
+      expect([status.exitstatus, err]).to eq([0, ""])
+      expect(own.source("claude-outbox")).to have_attributes(why: local_why, hint: "latest Claude reply")
+      expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/pod-claude.sock")
     end
 
     it "says only chi's refusal when the outbox can't be attached there" do
