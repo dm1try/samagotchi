@@ -1,0 +1,73 @@
+/* The composer (composer_mount.js): the message box, its image chips, grip and fold, its key hint and its toolbar row
+   (the image button, Send). Shared by the owner's page (index.html) and the participant page (participant.html);
+   linked after tokens.css and before a page's own <style>, so a page's rules of the same weight win. The owner's
+   own parts stay in index.html: the card (#dock), the delivery line, Stop turn, the start page's picker and chips,
+   the / list, and the 16px text fields for iOS. */
+/* The image button's icon mask (the stroke only shapes the mask; the icon takes currentColor); index.html's phone info
+   bar and all view's cards use it too. */
+:root{--icon-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.75' cy='6.25' r='1.1'/%3E%3Cpath d='m2.5 12.5 3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
+#composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
+#composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+#composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}
+/* In a session the composer is a row: the line's row wraps above the text field and the buttons. */
+body.has-session #composer{flex-wrap:wrap;row-gap:6px}
+#chips{display:flex;flex-wrap:wrap;gap:6px}
+#chips[hidden]{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:8px;padding:3px 4px 3px 3px;font-size:12px;max-width:220px}
+.chip img{width:32px;height:32px;object-fit:cover;border-radius:5px}
+.chip .chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .chip-remove{background:transparent;color:var(--text-3);padding:0 6px;min-height:0;font-size:14px}
+#composer textarea{flex:1 1 auto;min-height:72px;resize:none;background:transparent;border:0;color:var(--text);padding:2px;border-radius:0;font-size:15px;line-height:1.45}
+/* An edge grip: the thin handle on an edge between two panes (the composer's,
+   the latest-sessions strip's). The pill is the handle's look, a 36×4 px bar
+   centred on the edge, drawn on hover, while dragging or focused; the id
+   rules hold each grip's own box: height and margins (they depend on the flex
+   gap around it: none for the composer's, main's 16 px for the strip's) and
+   its own states. */
+.edge-grip{position:relative;z-index:2;cursor:ns-resize;touch-action:none}
+.edge-grip::after{content:"";position:absolute;left:50%;top:3px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--border-strong);opacity:0;transition:opacity .12s ease}
+.edge-grip:hover::after,.edge-grip.dragging::after{opacity:1}
+.edge-grip:hover::after,.edge-grip.dragging::after{background:var(--accent)}
+.edge-grip:focus-visible{outline:none}
+.edge-grip:focus-visible::after{opacity:1;box-shadow:0 0 0 2px var(--accent-ring)}
+#composeGrip{height:10px;margin:-5px 0}
+#composeGrip:has(+ #composer:hover)::after{opacity:1}
+/* Folded (composer_grip.js, composer_fold.js): the grip is the handle on the info bar's top edge, drawn always, wider so it reads as a control;
+   draft = the accent, waiting = the attention colour; .will-fold = a drag past the fold threshold (released it hides the box). */
+body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin-left:-24px}
+#composeGrip.draft::after{background:var(--accent)}
+#composeGrip.waiting::after{background:var(--warn)}
+#composeGrip.will-fold::after{opacity:1;background:var(--accent)}
+/* A phone has no hover: the pill is always there and the hit zone is taller, ~96 px wide and centred (full width would cover the
+   info bar's buttons while folded, the stage card's bottom in the stage view); it reaches 7 px below the edge, the info bar's
+   border and padding, so it never covers a button of the bar. */
+@media(max-width:600px){
+  #composeGrip{width:96px;height:26px;margin:-19px auto -7px}
+  #composeGrip::after{top:17px;opacity:1}
+}
+#composer textarea::placeholder{color:var(--text-faint)}
+/* Key hint: its line is always reserved, so focusing never shifts the layout. */
+#composeHint{order:1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
+#composer:focus-within #composeHint:not(:empty){opacity:1}
+#composer textarea:focus{outline:none}
+/* The toolbar row: model picker · hint · Cancel · Send (the JS display toggles decide what shows). */
+#composer .actions-col{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
+#composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
+#composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
+#composer #actionBtn{min-width:64px;font-weight:600}
+/* The image button (app.js: a click opens #attachInput, the hidden file picker; a phone's offers the camera and the photo library):
+   an icon just left of Start / Send, quiet like the model picker; hidden in a session a terminal owns, and on a phone while a turn runs. */
+#composer .actions-col .attach-btn{order:2;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
+#composer .actions-col .attach-btn::before{content:"";display:block;width:16px;height:16px;margin:auto;background:currentColor;-webkit-mask:var(--icon-image) center/contain no-repeat;mask:var(--icon-image) center/contain no-repeat}
+#composer .actions-col .attach-btn:hover{filter:none;color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
+#composer .actions-col .attach-btn[hidden]{display:none}
+/* In a session the composer is one row: the text field (one line, growing with its text; fitPrompt sets its height)
+   and Cancel · Send at its bottom right. The key hint is in the placeholder there, so its row goes. */
+body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
+body.has-session #composer textarea{min-height:0}
+body.has-session #composeHint{display:none}
+body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
+/* The composer folded away (composer_grip.js: the grip dragged down, Enter/Space on it): the info bar is the page's bottom edge. */
+body.has-session.composer-folded #composer{display:none}
+/* Phones: the key hint is cut off at this width, and phones have no Shift+Enter. */
+@media(max-width:600px){#composeHint{display:none}}

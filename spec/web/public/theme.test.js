@@ -12,8 +12,8 @@ const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..
 const TOKENS = fs.readFileSync(path.join(PUBLIC, "tokens.css"), "utf8");
 const PAGES = ["index.html", "participant.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const HTML = PAGES[0][1];
-// The stylesheets both pages share besides tokens.css.
-const SHARED_CSS = ["annotate_bar.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
+// The stylesheets both pages share besides tokens.css (composer.css: the composer).
+const SHARED_CSS = ["annotate_bar.css", "composer.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const LIGHT_OPEN = '@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){';
 
 // The text from `start` (an index just past an opening brace) to its
@@ -90,6 +90,14 @@ test("theme: both pages link tokens.css, then the shared stylesheets", () => {
   for (const [name, text] of PAGES) {
     assert.match(text, /<link rel="stylesheet" href="\/assets\/tokens\.css">/, name);
     for (const [css] of SHARED_CSS) assert.ok(text.includes(`<link rel="stylesheet" href="/assets/${css}">`), `${name} links ${css}`);
+  }
+});
+
+test("theme: both pages link composer.css after tokens.css and before their own <style>", () => {
+  for (const [name, text] of PAGES) {
+    const tokens = text.indexOf('<link rel="stylesheet" href="/assets/tokens.css">');
+    const composer = text.indexOf('<link rel="stylesheet" href="/assets/composer.css">');
+    assert.ok(tokens >= 0 && composer > tokens && composer < text.indexOf("<style>"), name);
   }
 });
 
