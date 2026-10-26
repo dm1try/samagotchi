@@ -134,6 +134,27 @@ RSpec.describe "a participant red-teaming a session" do
       expect(results.join).not_to include("denied by guardrail")
     end
 
+    it "denies a participant's call into a group the kit doesn't reach by the review boundary, an owner's by the toolkit refusal" do
+      allow(Samagotchi::Toolkit).to receive(:config_kits).and_return("closed" => { "base" => "lean", "groups" => [] })
+      index = engine.instance_variable_get(:@tool_index)
+      source = index.source(label: "spec", prefix: "mcp_", call: ->(*) { "ran" },
+                            acts_as: ->(group, name) { "mcp_#{group}_#{name}" })
+      source.publish([Samagotchi::Tools::ToolIndex::Group.new(
+        name: "fs", tools: [Samagotchi::Tools::ToolIndex::Tool.new(group: "fs", name: "read", acts_as: "mcp_fs_read")]
+      )])
+      index.add(source)
+      index.declare(engine.tools)
+      session.toolkit = Samagotchi::Toolkit.new(name: "closed")
+      call = [["call_tool", { "tool" => "fs/read", "args" => {} }]]
+
+      participant = participant_turn(call)
+      owner = turn(call, origin: { client_id: "web:owner" })
+
+      expect(participant[0]).to include("denied by guardrail (rule review-boundary, core)")
+      expect(participant[0]).not_to include("isn't in this session's toolkit")
+      expect(owner[0]).to include("fs/read isn't in this session's toolkit (closed)")
+    end
+
     it "leaves the owner's next turn without the boundary" do
       participant_turn([["read", { "path" => plan }]])
       results = turn([["read", { "path" => File.join(project, ".env") }]], origin: { client_id: "web:owner" })
