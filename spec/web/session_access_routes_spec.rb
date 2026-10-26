@@ -13,12 +13,15 @@ require "samagotchi/owner_lock"
 require "samagotchi/archive_store"
 require "samagotchi/worker_sidecar"
 require "socket"
+require_relative "../support/worker_links"
 
 # chi web's routes for chi's session commands run against another machine
 # (Web::SessionAccessRoutes, the remote-sessions plan's P2): resolve, the
 # CLI's list rows, a wait's prepare and the wait, notes, a context push, and
 # the create, turn, answer, delete and context changes they need.
 RSpec.describe Samagotchi::Web::App, "session access routes" do
+  include WorkerLinks
+
   around do |example|
     Dir.mktmpdir("web-access") do |tmp|
       @tmp = File.realpath(tmp)
@@ -674,23 +677,23 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     it "resumes an idle session's worker and waits for its Bridge, at most WAKE_MAX_WAIT" do
       session = make
       allow(Samagotchi::SessionManager).to receive(:resume_session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for) { live_worker(session) && :client }
+      allow(Samagotchi::WorkerLink).to receive(:await) { live_worker(session) && live_link(Samagotchi::WorkerSidecar.read(dir_of(session))) }
 
       expect(wake(session, { wait: 60 })).to match([200, include("woke" => true, "worker" => worker_json)])
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
-      expect(Samagotchi::BridgeClient).to have_received(:wait_for)
+      expect(Samagotchi::WorkerLink).to have_received(:await)
         .with(session.id, session_dir: dir_of(session), timeout: described_class::WAKE_MAX_WAIT)
     end
 
     it "answers 504 worker_timeout in chi --attach's words when the Bridge doesn't come in time" do
       session = make
       allow(Samagotchi::SessionManager).to receive(:resume_session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
 
       late = "the worker for session #{session.id} did not start its Bridge in time"
       expect(wake(session, { wait: 0.5 }))
         .to eq([504, { "error" => "worker_timeout", "detail" => late, "message" => late, "session_id" => session.id }])
-      expect(Samagotchi::BridgeClient).to have_received(:wait_for).with(session.id, session_dir: dir_of(session), timeout: 0.5)
+      expect(Samagotchi::WorkerLink).to have_received(:await).with(session.id, session_dir: dir_of(session), timeout: 0.5)
     end
 
     it "refuses a chi REPL's session (409 owned_by_tui), a leftover scratch one (409 scratch) and a bad wait (400)" do

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "samagotchi/worker_link"
 require "tmpdir"
 require "samagotchi/terminal_ui/local_link"
 
@@ -26,11 +27,11 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
   describe "#live_worker" do
     it "finds the sidecar's worker, none while there is none, and is gone once the session was stopped" do
       found = instance_double(Samagotchi::BridgeClient)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil, found)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil, found)
 
       expect(link.live_worker).to eq([nil, nil])
       expect(link.live_worker).to eq([found, nil])
-      expect(Samagotchi::BridgeClient).to have_received(:discover).with(id, session_dir: session_dir, host: "127.0.0.1").twice
+      expect(Samagotchi::WorkerLink).to have_received(:client).with(id, session_dir: session_dir, host: "127.0.0.1").twice
 
       # The stop marker in the link's state dir.
       allow(Samagotchi::Session).to receive(:stopped_marker?).with(id, state_dir: state_dir).and_return(true)
@@ -55,7 +56,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
   it "switches to the very client #live_worker found for the stream, whatever the sidecar says by now" do
     found = Samagotchi::BridgeClient.new(session_id: id, port: 4200, secret: "ab" * 32)
-    allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
+    allow(Samagotchi::WorkerLink).to receive(:client).and_return(found)
     link.live_worker
     Samagotchi::WorkerSidecar.new(port: 4900, session_id: id, secret: "cd" * 32).write(session_dir) # a later worker
 

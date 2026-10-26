@@ -8,6 +8,7 @@ require "samagotchi/send_command"
 require "samagotchi/reply_wait"
 require_relative "support/remote_backend"
 require_relative "support/reply_wait_looks"
+require_relative "support/worker_links"
 
 # chi send --new: a worker session started headlessly, the way the web start
 # page does, so it shows in the web at once.
@@ -361,6 +362,8 @@ end
 # chi send --wait: block until the session's next reply and print it, so an
 # agent gets a one-shot answer the user can watch in the web.
 RSpec.describe Samagotchi::SendCommand, "--wait" do
+  include WorkerLinks
+
   include ReplyWaitLooks
 
   let(:tmpdir) { Dir.mktmpdir("send-wait") }
@@ -453,7 +456,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     it "with --image starts the session idle, sends the image turn and prints its reply" do
       # No model server: whether the model sees images is unknown, so it is sent.
       allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: instance_double(Samagotchi::BridgeClient)))
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, images:, **|
         delivered << [id, prompt, images.map { |ref| ref[:name] }]
         later { write_reply(@started, "a red square") }
@@ -629,7 +632,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       it "waits for the fallback command outcome on a new session too" do
         enqueued_id = "new-input-command"
-        allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+        allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: instance_double(Samagotchi::BridgeClient)))
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
           Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
                                                         ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id })
@@ -646,7 +649,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       # The worker decides what is a command (a bundle's too), so the line
       # goes in as a message to a live worker, whose answer says.
       it "with --new starts the session idle and sends the line through its worker" do
-        allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+        allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: instance_double(Samagotchi::BridgeClient)))
 
         expect(run("--new", "--wait", "-m", "/model x")).to eq(0), err.string
         expect(@started.last_prompt).to be_nil

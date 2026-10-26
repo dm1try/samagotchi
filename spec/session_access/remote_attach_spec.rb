@@ -10,12 +10,15 @@ require "samagotchi/owner_lock"
 require "samagotchi/launch_mode"
 require "samagotchi/session_access/remote"
 require_relative "../support/remote_backend"
+require_relative "../support/worker_links"
 
 # SessionAccess::Remote's calls for a remote attach (RemoteConnector,
 # RemoteLink), through chi web in this process (RackTransport: the token
 # gate and the LAN Host check run): the wake, the worker read, the
 # feature check, and their refusals as the classes Local raises.
 RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
+  include WorkerLinks
+
   let(:state_dir) { Dir.mktmpdir("remote-attach") }
   let(:app) { RemoteBackend.app(state_dir: state_dir) }
   let(:remote) { RemoteBackend.access(state_dir: state_dir, app: app) }
@@ -66,7 +69,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
 
     late = make
     allow(Samagotchi::SessionManager).to receive(:resume_session)
-    allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+    allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
     expect { remote.attach_wake(late.id, wait: 0.1) }
       .to raise_error(Samagotchi::SessionAccess::Refused, format(Samagotchi::LaunchMode::BRIDGE_LATE, late.id))
 
@@ -86,7 +89,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
       calls << original.call(dir, **options, sleeper: ->(_) { lock.release })
     end
     allow(Samagotchi::SessionManager).to receive(:resume_session) { calls << :resume }
-    allow(Samagotchi::BridgeClient).to receive(:wait_for) { live_worker(session) }
+    allow(Samagotchi::WorkerLink).to receive(:await) { live_worker(session) && live_link(Samagotchi::WorkerSidecar.read(dir_of(session))) }
 
     expect(remote.attach_wake(session.id, wait: 1)).to have_attributes(woke: true)
     expect(calls).to eq(%i[released resume])

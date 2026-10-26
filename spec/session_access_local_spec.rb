@@ -2,14 +2,18 @@
 
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/session_access/local"
 require "samagotchi/session_manager"
 require "samagotchi/reply_wait"
 require "socket"
+require_relative "support/worker_links"
 
 # SessionAccess::Local: this machine's sessions, the calls the session
 # commands made before the seam (their own specs cover the behaviour).
 RSpec.describe Samagotchi::SessionAccess::Local do
+  include WorkerLinks
+
   let(:tmpdir) { Dir.mktmpdir("session-access") }
   let(:access) { described_class.new(state_dir: tmpdir) }
 
@@ -50,7 +54,7 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     it "wakes nothing for a live worker, else resumes and waits; a Bridge that doesn't come is no sidecar" do
       session = saved_session
       allow(Samagotchi::SessionManager).to receive(:resume_session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
 
       expect(access.wake(session.id, wait: 0.1)).to eq(Samagotchi::SessionAccess::Woken.new(woke: true, sidecar: nil))
 
@@ -126,7 +130,7 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     client = instance_double(Samagotchi::BridgeClient)
     timeout = Struct.new(:status).new(408)
     ok = Struct.new(:status).new(200)
-    allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+    allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
     allow(client).to receive(:dismiss_question).and_return(timeout, ok)
 
     expect(access.dismiss(session.id, question_id: "q").status).to eq(200)

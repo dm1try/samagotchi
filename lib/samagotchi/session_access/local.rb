@@ -14,6 +14,7 @@ require_relative "../context_sources"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
+require_relative "../worker_link"
 require_relative "../review_start"
 require_relative "../launch_mode"
 require_relative "../participants"
@@ -95,13 +96,13 @@ module Samagotchi
         session = show(id)
         raise Refused.new(LaunchMode::SCRATCH_LEFTOVER, code: "scratch") if session.scratch
 
-        live = WorkerSidecar.live(session_dir(id), unlink: true)
-        return Woken.new(woke: false, sidecar: live) if live
+        link = WorkerLink.resolve(session_dir(id), unlink: true)
+        return Woken.new(woke: false, sidecar: link.sidecar) if link.live?
 
         OwnerLock.await_release(session_dir(id))
         SessionManager.resume_session(id, **dir)
-        found = BridgeClient.wait_for(id, session_dir: session_dir(id), timeout: wait)
-        Woken.new(woke: true, sidecar: found && WorkerSidecar.read(session_dir(id)))
+        found = WorkerLink.await(id, session_dir: session_dir(id), timeout: wait)
+        Woken.new(woke: true, sidecar: found.live? ? found.sidecar : nil)
       end
 
       # The session's worker now, never started (chi web's GET …/worker).
@@ -109,7 +110,8 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def worker(id)
         show(id)
-        WorkerState.new(sidecar: WorkerSidecar.live(session_dir(id), unlink: true),
+        link = WorkerLink.resolve(session_dir(id), unlink: true)
+        WorkerState.new(sidecar: link.live? ? link.sidecar : nil,
                         stopped: Session.stopped_marker?(id, state_dir: state_dir!), owner: owner(id))
       end
 
@@ -148,7 +150,7 @@ module Samagotchi
       # Whether a just-created session's worker came up (its Bridge
       # answers) within +timeout+ seconds.
       def await_worker(id, timeout:)
-        BridgeClient.wait_for(id, session_dir: session_dir(id), timeout: timeout)
+        WorkerLink.await(id, session_dir: session_dir(id), timeout: timeout).live?
       end
 
       # Copies of +refs+ (ImageStore refs stored in +from+) in the
@@ -479,7 +481,7 @@ module Samagotchi
       # The block's post to the session's live worker, again on a 408 (the
       # worker didn't take it in time).
       def on_worker(id)
-        client = BridgeClient.discover(id, session_dir: session_dir(id)) or return nil
+        client = WorkerLink.client(id, session_dir: session_dir(id)) or return nil
         reply = nil
         2.times do
           reply = yield client

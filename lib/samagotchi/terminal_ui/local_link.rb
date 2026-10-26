@@ -4,6 +4,7 @@ require_relative "attach_link"
 require_relative "../session"
 require_relative "../bridge_client"
 require_relative "../worker_sidecar"
+require_relative "../worker_link"
 require_relative "../delivery"
 require_relative "../session_inbox"
 require_relative "../image_store"
@@ -57,7 +58,7 @@ module Samagotchi
 
         # Kept: the stream moves to this very client (EventStream), and
         # #switched takes it, port and secret, rather than reading again.
-        @found = BridgeClient.discover(id, session_dir: session_dir, host: @client.host)
+        @found = WorkerLink.client(id, session_dir: session_dir, host: @client.host)
         [@found, nil]
       end
 

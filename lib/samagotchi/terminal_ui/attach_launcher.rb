@@ -6,6 +6,7 @@ require_relative "../model_profile"
 require_relative "../session_manager"
 require_relative "../thinking_command"
 require_relative "../bridge_client"
+require_relative "../worker_link"
 require_relative "../parent_report"
 require_relative "../cli/exit"
 require_relative "../launch_mode"
@@ -207,8 +208,8 @@ module Samagotchi
                                                                          toolkit: toolkit, settings: settings,
                                                                          parent_answers: parent_answers))
                   end
-        client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
-        client || raise(Error, format(LaunchMode::BRIDGE_LATE, session.id))
+        link = WorkerLink.await(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
+        link.live? ? link.client(session.id) : raise(Error, format(LaunchMode::BRIDGE_LATE, session.id))
       rescue SessionManager::OwnedByTUI => e
         raise Error, e.message
       rescue ArgumentError => e
@@ -250,7 +251,7 @@ module Samagotchi
       # @return [BridgeClient, nil] the running worker's, or nil when none runs
       def connect_existing(session_id, state_dir)
         Session.load(session_id, state_dir: state_dir)
-        BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
+        WorkerLink.client(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
       end
     end
   end

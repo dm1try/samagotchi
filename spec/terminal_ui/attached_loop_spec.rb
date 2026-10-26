@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "samagotchi/worker_link"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
@@ -71,11 +72,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "looks for the session's live worker for the stream, and gives up once the session was stopped" do
       allow(client).to receive(:host).and_return("127.0.0.1")
       found = instance_double(Samagotchi::BridgeClient)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(found)
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)
       expect(attached.send(:live_worker)).to eq([found, nil])
-      expect(Samagotchi::BridgeClient).to have_received(:discover)
+      expect(Samagotchi::WorkerLink).to have_received(:client)
         .with("s-1234", session_dir: Samagotchi::Session.session_dir("s-1234"), host: "127.0.0.1")
 
       allow(Samagotchi::Session).to receive(:stopped_marker?)

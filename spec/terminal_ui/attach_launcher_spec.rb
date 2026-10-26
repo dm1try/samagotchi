@@ -6,8 +6,11 @@ require "stringio"
 require "samagotchi/terminal_ui"
 require "samagotchi/session_manager"
 require "samagotchi/terminal_ui/attach_launcher"
+require_relative "../support/worker_links"
 
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
+  include WorkerLinks
+
   let(:state_dir) { Dir.mktmpdir("attach-launcher") }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
@@ -28,16 +31,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
   describe "--attach ID" do
     it "connects to the live Bridge of the session's worker" do
-      allow(Samagotchi::BridgeClient).to receive(:discover)
+      allow(Samagotchi::WorkerLink).to receive(:client)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir)).and_return(client)
 
       expect(connect(attach: session.id)).to be(client)
     end
 
     it "wakes a worker when none is running (it idle-exited)" do
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       expect(connect(attach: session.id)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
@@ -47,14 +50,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       err = StringIO.new
       calls = []
       owner = Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", leaving_at: Time.now.iso8601, leave_wait: 30.0)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
       allow(Samagotchi::OwnerLock).to receive(:await_release) do |dir, on_wait:|
         calls << [:await, dir]
         on_wait.call(owner)
         :released
       end
       allow(Samagotchi::SessionManager).to receive(:resume_session) { (calls << [:resume]) && session }
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       expect(connect(attach: session.id, err: err)).to be(client)
       expect(calls).to eq([[:await, Samagotchi::Session.session_dir(session.id, state_dir: state_dir)], [:resume]])
@@ -63,9 +66,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "says nothing when no worker is leaving (--resume ID too)" do
       err = StringIO.new
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
       allow(Samagotchi::OwnerLock).to receive(:await_release).and_call_original
 
       expect(connect(attach: session.id, err: err)).to be(client)
@@ -75,7 +78,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
     end
 
     it "refuses a session a chi REPL has open" do
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
       allow(Samagotchi::SessionManager).to receive(:resume_session)
         .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
@@ -91,18 +94,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
   describe "--shared" do
     it "starts a worker for a new session, with no prompt, and waits for its Bridge" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       expect(connect(shared: true)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new)
-      expect(Samagotchi::BridgeClient).to have_received(:wait_for)
+      expect(Samagotchi::WorkerLink).to have_received(:await)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
 
     it "starts a new session on --model as typed (spawn_session stores its alias resolved)" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       connect(shared: true, model: "fast")
 
@@ -113,7 +116,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "starts a new session with its own --llm-context values" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       connect(shared: true, llm_context: { strategy: "none", budget_tokens: "off" })
 
@@ -123,7 +126,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "starts a new session with its --memory and --mute lists" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       expect { connect(shared: true, memories: ["cli_usage"], muted_memories: ["gh-helper"]) }.not_to output.to_stderr
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
@@ -133,7 +136,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "starts a new session with --append-system-prompt's files in its setup" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       connect(shared: true, appended_prompt_files: ["/r/a.md"])
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
@@ -143,8 +146,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
     it "starts a new session on its --toolkit, and ignores it for an existing one with a line" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       toolkit = Samagotchi::Toolkit.new(name: "lean", add: ["delegate"])
       err = StringIO.new
 
@@ -160,8 +163,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "starts a new session with its --parent-answers, and ignores it for an existing one with a line (never sent as a command)" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       err = StringIO.new
 
       connect(shared: true, parent_answers: "standard")
@@ -174,8 +177,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "starts a new session with its --set bundle settings, and ignores them for an existing one with a line" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       settings = Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 3 } })
       err = StringIO.new
 
@@ -189,8 +192,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "ignores --append-system-prompt for an existing session, with --memory and --mute's line" do
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       err = StringIO.new
 
       connect(attach: session.id, appended_prompt_files: ["/r/a.md"], err: err)
@@ -204,8 +207,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "ignores --memory/--mute for an existing session, saying so, and goes on" do
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
       err = StringIO.new
 
       expect(connect(shared: true, resume: session.id, muted_memories: ["gh-helper"], err: err)).to be(client)
@@ -222,7 +225,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "resumes a session in a worker (or joins the one running it)" do
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
 
       expect(connect(shared: true, resume: session.id)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
@@ -238,7 +241,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
     it "gives up when the worker's Bridge doesn't come up" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
 
       expect { connect(shared: true) }
         .to raise_error(described_class::Error, "the worker for session #{session.id} did not start its Bridge in time")
@@ -350,6 +353,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
+  include WorkerLinks
+
   it "sets a resumed or attached session's level through its worker, after the others; a new one starts with it" do
     client = instance_double(Samagotchi::BridgeClient)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
@@ -374,7 +379,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
   it "spawns a new session with the level as its own" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
     allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
-    allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+    allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: instance_double(Samagotchi::BridgeClient)))
 
     described_class.connect(shared: true, thinking: "low", state_dir: Dir.pwd, wait: 0.1)
 

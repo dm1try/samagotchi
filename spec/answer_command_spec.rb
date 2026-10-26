@@ -4,6 +4,7 @@ require "json"
 require "stringio"
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/worker_link"
 require "samagotchi/answer_command"
 require_relative "support/remote_backend"
 require_relative "support/reply_wait_looks"
@@ -57,13 +58,13 @@ RSpec.describe Samagotchi::AnswerCommand do
     stub_const("Samagotchi::AnswerCommand::POLL_INTERVAL", 0.02)
     count_reply_wait_looks
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
-    allow(Samagotchi::BridgeClient).to receive(:discover) { bridge }
+    allow(Samagotchi::WorkerLink).to receive(:client) { bridge }
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @parent_answers || "soft" }
     # Remotely chi web reaches the worker through its sidecar's port: the
     # same fake Bridge (nil: none).
     if backend == :remote
-      allow(backend_app(tmpdir)).to receive(:bridge_client) { Samagotchi::BridgeClient.discover("x", session_dir: tmpdir) }
+      allow(backend_app(tmpdir)).to receive(:bridge_client) { Samagotchi::WorkerLink.client("x", session_dir: tmpdir) }
     end
   end
 
@@ -243,14 +244,14 @@ RSpec.describe Samagotchi::AnswerCommand do
 
     it "says the worker is gone when no Bridge answers, and how to send the task again" do
       s = asking(question)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil)
 
       expect(run(s.id, "--question", "q1", "--option", "1")).to eq(1)
       expect(err.string).to eq("chi answer: the worker is gone and the question with it; " \
                                "send the task again: #{via.chi} send --wait -m \"…\" #{s.id}\n")
 
       allow(bridge).to receive(:answer).and_raise(Errno::ECONNREFUSED)
-      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(bridge)
+      allow(Samagotchi::WorkerLink).to receive(:client).and_return(bridge)
       expect(run(s.id, "--question", "q1", "--option", "1", "--format", "json")).to eq(1)
       expect(json_out).to include("status" => "error", "detail" => start_with("the worker is gone"))
     end
