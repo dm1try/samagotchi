@@ -10,39 +10,28 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- The web's `stop session` button asks what still runs before it stops the worker: when the session's worker has
-  reminders, a background task it watches, or a delegate with a live worker, a sheet (a bottom sheet on a phone)
-  counts them and offers **Stop all** (stop them, then stop the session), **Stop session only** (the stop as it was)
-  or **Cancel**. With nothing to stop, or no worker to ask, Stop is one tap as before. Bridge
-  `GET /session/:id/holds` and `POST /session/:id/holds/stop`, chi web's owner-only
-  `GET /api/sessions/:id/holds` and `POST /api/sessions/:id/holds/stop`; see [Sessions](docs/sessions.md).
+- `/exit` in an attached terminal **asks what to do with what still runs** when only things you can stop keep the
+  worker up (reminders, a watched background task, a delegate with a live worker): keep running in the background,
+  stop them and exit, or go back. Anything else that holds the worker (a running turn, queued prompts, another UI)
+  still refuses as before, and a delegate never holds the idle exit. See [cli.md](docs/cli.md#attached-terminal).
+- The web's `stop session` asks the same first: a sheet (a bottom sheet on a phone) counts what still runs and offers
+  **Stop all**, **Stop session only** (the stop as it was: background tasks and delegates keep running) or
+  **Cancel**; with nothing to stop it is one tap as before. See [Sessions](docs/sessions.md).
 
 ### Fixed
 
-- An unquoted `on`/`off` in `config.yml` now means the word for a setting whose values are `on` and `off`:
-  `guardrails.system_one.mode: on` turns System 1 on and `session.task_wakes: off` turns the finish wake off
-  instead of warning and falling back to the default (YAML 1.1 reads those words as booleans). A boolean for an
-  enum with no such word still warns, and `cache.warmup: on` counts as `auto` quietly. See
-  [Configuration](docs/configuration.md).
-- chi web's composer grip keeps the message box inside the window it is shown in: the height is now held to the same
-  half of the window a drag may set, whatever floor was saved, so a 400 px floor set in a 800 px window shows 250 px
-  in a 500 px one (a rotated phone, a resized window, a second device on the same origin) and comes back whole when
-  the room is back — the saved floor itself is untouched. See [Sessions](docs/sessions.md).
+- An unquoted `on`/`off` in `config.yml` now means that word for a setting that takes it
+  (`guardrails.system_one.mode: on`, `session.task_wakes: off`) instead of silently falling back to the default
+  (YAML 1.1 reads them as booleans). See [Configuration](docs/configuration.md).
+- chi web's composer grip keeps the message box inside the window it is shown in: a height saved in a bigger window
+  is held to half of a smaller one (a rotated phone, a resized window) and comes back whole when the room is back.
+
+Update with `chi update` (the system bundle 0.117.0), then restart `chi web`.
 
 ## [0.116.0] - 2026-10-25
 
 ### Added
 
-- `/exit` in an attached terminal now **asks what to do with what still runs** when the only things keeping the worker
-  up are ones you can stop: its reminders, a background task it watches for a finish wake, a delegate with a live
-  worker — a running delegate on its own is enough to ask. It lists them and offers `1. Keep running in the background
-  (detach)`, `2. Stop them and exit`, `3. Back to the session`; 2 clears the reminders, stops the tasks the way
-  `task_stop` does and stops the children the way `chi sessions stop ID` does (`HoldStop`), then exits, and the line
-  names what it stopped. A hold you can't stop (a turn running, prompts queued, a continue offer, another UI attached)
-  keeps today's refusal, and a delegate never holds the idle exit, `/exit --delete` or `/archive`. The exit route
-  answers `{"stop": "all"}`, and its 409 carries
-  `holds: [{kind:, items: [{id:, label:, detail:}]}]` for any client to render. See [Sessions](docs/sessions.md) and
-  [cli.md](docs/cli.md#attached-terminal).
 - System 1's judgment now sees more of the ask it is given: its state carries up to five of the user's **earlier
   answered asks** that look like this one (`SystemOne::Similar` — same rule and repository first, then the same rule,
   then the ask whose logged call shares the most words with this one, ties newest first), and a `memory_write` ask
