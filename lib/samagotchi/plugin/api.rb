@@ -24,9 +24,12 @@ module Samagotchi
       # A call not listed gets no floor check: it is in the first tag (v0.2.0:
       # chi.command/tool/on/service/init, ctx.settings, ctx.sessions,
       # ctx.ask_model, ctx.notify, ctx.card, ctx.messages…). A member of
-      # one (ctx.sessions.children) is listed when it came later. Keys have
-      # no "?" (API_CALL drops it). A keyword added later (ctx.ask_model's
-      # model: in 0.80.0, ctx.sessions.send's delivery: in 0.64.0) has none.
+      # one (ctx.sessions.children) is listed when it came later; fork, send
+      # and read are in v0.2.0. Keys have no "?" (API_CALL drops it). A
+      # keyword added later (ctx.ask_model's model: in 0.80.0,
+      # ctx.sessions.send's delivery: in 0.64.0, chi.toolkit's prompt: in
+      # 0.72.0 and groups: in 0.121.0) has none: API_CALL can't tell whose
+      # keyword it is, so docs/plugins.md says which requires_chi to set.
       # Events aren't listed: chi.on takes any symbol and an older chi never
       # fires one it doesn't know (harmless; chi bundle check warns on it),
       # and a manifest hook's events: list (BundleHook) needs the bundle's
