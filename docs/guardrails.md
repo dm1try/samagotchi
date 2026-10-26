@@ -662,8 +662,8 @@ With a client, `GuardrailWiring#request_approval` asks System 1 one `noul`
 question, `allow`, before the user is asked. Its instruction is a constant
 in code (`SystemOne::ApprovalQuestion::INSTRUCTIONS`), reviewed like a
 prompt; the state is the ask's own facts — the rule and its source, the
-reason, the tool, the command (or the paths) cut to 2000 characters, the
-edit's diff, the cwd, the repo and branch, and the session's title when it
+reason, the tool, the command (or the paths) cut to 2000 characters
+(`ApprovalQuestion::TEXT_CHARS`), the edit's diff, the cwd, the repo and branch, and the session's title when it
 has one. A memory ask also names what it is about: the entry and its scope,
 and for a removal the description that entry's index line carries
 (`Targets#memory`, read into the card by `Guardrails::Approval`): a path
@@ -680,7 +680,9 @@ Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
 `$XDG_STATE_HOME/samagotchi/guardrails/` (`SystemOne::Log`): 0600, appended
 under an exclusive `flock` (several workers write it), and rewritten —
 keeping the newest half of its lines — once it passes 5 MB. A line is never
-rewritten to add its label:
+rewritten to add its label. Its `call` is shorter than the state's: cut to 300
+characters (`ApprovalQuestion::CALL_CHARS`), with `call_digest` the SHA256 of
+the whole call:
 
 ```json
 {"kind":"judgment","id":"…","at":"…","session_id":"…","rule":"git-push","source":"config","tool":"execute","call":"git push origin main","call_digest":"<sha256 of the whole call>","repo_name":"samagotchi","p":0.97,"threshold":0.8,"model":"Qwen3.8-Flash","latency_ms":180,"decision":"audit","origin":"live"}

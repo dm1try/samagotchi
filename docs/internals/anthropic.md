@@ -130,7 +130,7 @@ gets a 400 `messages.N.content.M: Invalid signature in thinking block. The block
 conversation.`, and its last sentence says what changed ("The `system` prompt differs …"). chi's history is
 append-only within a process, so what changes the prefix is:
 
-1. **A system-prompt rebuild** (`SystemPrompt#build` is cached per process and key; `PromptBuilder#reset!` drops it):
+1. **A system-prompt rebuild** (`SystemPrompt#build` is cached per process and key; `SystemPrompt#reset!` drops it):
    a new process (`--resume`, a respawn after `session.idle_exit_minutes`, a crash) after a memory index line, an
    AGENTS.md, an appended file, a model note or a bundle memory changed; `/model` (the tail's `Model:` line, its
    overlays and notes); `/thinking` (another key); a toolkit or profile change; a plugin's `tools_changed!`; the
