@@ -24,6 +24,16 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `/exit` in an attached terminal now **asks what to do with what still runs** when the only things keeping the worker
+  up are ones you can stop: its reminders, a background task it watches for a finish wake, a delegate with a live
+  worker — a running delegate on its own is enough to ask. It lists them and offers `1. Keep running in the background
+  (detach)`, `2. Stop them and exit`, `3. Back to the session`; 2 clears the reminders, stops the tasks the way
+  `task_stop` does and stops the children the way `chi sessions stop ID` does (`HoldStop`), then exits, and the line
+  names what it stopped. A hold you can't stop (a turn running, prompts queued, a continue offer, another UI attached)
+  keeps today's refusal, and a delegate never holds the idle exit, `/exit --delete` or `/archive`. The exit route
+  answers `{"stop": "all"}`, and its 409 carries
+  `holds: [{kind:, items: [{id:, label:, detail:}]}]` for any client to render. See [Sessions](docs/sessions.md) and
+  [cli.md](docs/cli.md#attached-terminal).
 - System 1's judgment now sees more of the ask it is given: its state carries up to five of the user's **earlier
   answered asks** that look like this one (`SystemOne::Similar` — same rule and repository first, then the same rule,
   then the ask whose logged call shares the most words with this one, ties newest first), and a `memory_write` ask

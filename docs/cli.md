@@ -434,7 +434,34 @@ In an attached terminal:
   doesn't wait out the idle timeout. It stays up while something still needs
   it, and the detach line says what: a turn is running (Ctrl-C cancels it
   first), prompts are queued, a continue offer is pending, another UI is
-  attached, or reminders are set. A web tab you just closed can count as
+  attached, or reminders are set. When every hold is something you can stop —
+  reminders, a background task it watches for a [finish wake](internals/background-tasks.md#finish-wake),
+  a delegate with a live worker — it asks instead of refusing, even when that
+  is all there is:
+
+  ```
+  This session still has:
+    • 2 reminders: api_health (every 20m), git push (every 5m)
+    • 1 background task: rails s (2m)
+    • 1 delegate: c1c1c1c1 "Fix the composer" (running a turn)
+    1. Keep running in the background (detach)
+    2. Stop them and exit
+    3. Back to the session
+  ```
+
+  1 is today's detach. 2 cancels the reminders, stops the tasks the same way
+  `task_stop` does and stops the delegates the same way `chi sessions stop ID`
+  does, then exits as `/exit` does; the line names what it stopped (a child a
+  terminal owns, or a task that can't be stopped, is left running and logged).
+  Each entry says what it is: a reminder its schedule (`every 20m`, `every 1h`,
+  with `, due now` when its next turn has already come), a task how long it has
+  run, a child its title and what it is doing. 3 keeps the prompt open, and the
+  next `/exit` asks again; Ctrl-D, `/detach` and a line the ask doesn't
+  understand are not answers to it (Ctrl-D detaches, a stray line is re-asked).
+  A delegate counts only for this ask: it never holds the idle exit, so 1 leaves
+  it running and the worker idles out as usual. `/exit --delete` and `/archive`
+  don't ask — with nothing else holding the worker, a running child does not
+  stop them, as before. A web tab you just closed can count as
   attached for about 30 s. When the worker exits, `chi --resume ID` or
   `chi --attach ID` starts a new one with the conversation. Before it exits
   (here and on the idle exit) the worker writes the session's recap if
