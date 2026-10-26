@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The web's `stop session` button asks what still runs before it stops the worker: when the session's worker has
+  reminders, a background task it watches, or a delegate with a live worker, a sheet (a bottom sheet on a phone)
+  counts them and offers **Stop all** (stop them, then stop the session), **Stop session only** (the stop as it was)
+  or **Cancel**. With nothing to stop, or no worker to ask, Stop is one tap as before. Bridge
+  `GET /session/:id/holds` and `POST /session/:id/holds/stop`, chi web's owner-only
+  `GET /api/sessions/:id/holds` and `POST /api/sessions/:id/holds/stop`; see [Sessions](docs/sessions.md).
+
 ### Fixed
 
 - An unquoted `on`/`off` in `config.yml` now means the word for a setting whose values are `on` and `off`:
