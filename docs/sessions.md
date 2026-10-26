@@ -274,7 +274,8 @@ sessions](cli.md#review-sessions)); both start idle and print the `chi share` li
   continue keeps it; a fork (`ctx.sessions.fork`) and a delegate child don't.
 - **The subjects** are checked where the session starts (`ReviewStart.check_subjects`), by the same check a review
   turn's `read` goes through (`Guardrails::ReviewPaths`): an existing file under the project root, as given and as it
-  resolves, never a secret file or chi's own. They are what participants read beside the thread.
+  resolves, never a secret file or chi's own. They are what participants read beside the thread, and may quote into
+  a comment (Annotate: [participants.md](internals/participants.md#what-a-participant-sees)).
 - **The note:** it starts with a context note from `review` naming the subjects and what a review turn does; a fork's
   starts with `This review session starts from 3f9a1c2e (2026-10-23 09:12), a working session: it brings that
   session's recap, not its transcript.` and the recap (as a continue's carry note), so nothing of the source's

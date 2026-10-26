@@ -279,6 +279,49 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
   assert.equal($("thread").querySelector(".p-msg.reply .p-bubble"), bubble, "a message drawn already is kept, not drawn again");
 });
 
+// Selects +node+'s text and lets the Annotate bar read it (its frame).
+async function select(node) {
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.dispatchEvent(new window.Event("selectionchange"));
+  await new Promise((r) => window.requestAnimationFrame(r));
+}
+
+test("participant page: Annotate quotes the Plan and a comment into the comment box, labelled, with the presets", async (t) => {
+  document.body.dataset.annotatePresets = "Agreed|Why?";
+  t.after(() => delete document.body.dataset.annotatePresets);
+  const review = { ...REVIEW, subjects: [{ path: "docs/plan.md", text: "Step 3: drop the table", html: "<p>Step 3: drop the table</p>" }],
+    messages: [{ role: "user", content: "Is it safe?", author: "p:2", author_name: "Sam" }, { role: "assistant", content: "PONG" }] };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  const bar = document.getElementById("annotateBar");
+  assert.deepEqual([...bar.querySelectorAll("button")].map((b) => b.textContent), ["Annotate", "Agreed", "Why?"]);
+  $("comment").value = "First:";
+  await select($("planDoc").querySelector("p"));
+  assert.equal(bar.hidden, false);
+  bar.querySelector(".annotate-main").click();
+  assert.equal($("comment").value, "First:\n\nFrom docs/plan.md:\n> Step 3: drop the table\n\n");
+  assert.equal(document.activeElement, $("comment"));
+  assert.equal($("comment").selectionStart, $("comment").value.length);
+  assert.equal(bar.hidden, true);
+
+  await select($("thread").querySelector(".p-msg.user .p-bubble"));
+  bar.querySelector(".annotate-preset").click();
+  assert.match($("comment").value, /\n\nFrom Sam's comment:\n> Is it safe\?\n\nAgreed$/);
+  // A tool-less status line, the header: no bar.
+  await select($("title"));
+  assert.equal(bar.hidden, true);
+});
+
+test("participant page: no Annotate while the participant can't comment", async (t) => {
+  const review = { ...REVIEW, viewer: { name: "Alex", can_comment: false, cap_reached: true } };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  await select($("thread").querySelector(".p-msg.reply .p-bubble"));
+  assert.equal(document.getElementById("annotateBar").hidden, true);
+});
+
 test("participant page: the page is the dynamic viewport's height (the dock above a phone's URL bar), 100% where unknown", () => {
   assert.match(HTML, /html,body\{height:100%;height:100dvh\}/);
 });

@@ -265,6 +265,15 @@ fields: a field added to an event later reaches nobody until it is named there.
   page shows them as the Plan: beside the thread on a wide screen (≥ 1100 px), a Plan | Thread toggle on a narrower
   one (the thread first, the composer pinned in both views); several subjects get a file picker. It re-reads them
   with the rest at every turn boundary and redraws the Plan only when they changed.
+- **Annotate** (`participant_annotate.js` over the owner's `annotate_bar.js`, styled by the shared
+  `annotate_bar.css`). A participant who can comment selects text in the Plan or the thread and gets **Annotate** and
+  the owner's `web.annotate_presets` (the participant shell's `data-annotate-presets`, as `index.html`'s), which append
+  the quote to the comment box; nothing is sent. Labels: the Plan `From docs/plan.md:` (the subject shown), a comment
+  `From Sam's comment:` / `From my earlier comment:` / `From the owner's message:` (the message's `data-by`,
+  `data-name`), a reply none. Not annotatable: the reply still streaming, tool rows, waiting lines, gap lines, the
+  header, the Plan's truncation note. No plugin pills (a review turn refuses `/` lines), and none of it in the owner's
+  participant view (no presets in its shell) or while `can_comment` is false. On a touch screen the bar docks above the
+  composer. A re-read keeps unchanged thread nodes and the Plan's (redrawn only on change), so a selection survives it.
 - **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or

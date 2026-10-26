@@ -1165,6 +1165,12 @@ On a touch screen (a phone, a tablet) the bar sits just above the composer
 instead of next to the selection, where the system's own Copy menu and the
 selection handles would cover it; several pills wrap to a second row.
 
+A review's participants get the same on their page (a `chi share` / `chi
+review` link): selecting text in the Plan or the thread quotes it into
+their comment box, labelled `From docs/plan.md:` or `From Sam's comment:`,
+with the same presets. Not in the owner's participant view, and no plugin
+pills there (a review turn refuses `/` lines).
+
 The list is `web.annotate_presets`, `|`-separated (at most five; a preset
 can't contain `|`; a YAML list works too):
 

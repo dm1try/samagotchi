@@ -56,7 +56,7 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   await context.close();
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, a comment (a double Enter) gets one reply, the owner applies it", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply, the owner applies it", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -95,6 +95,12 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(page.locator("#planDoc h1")).toHaveText("e2e project");
   await expect(page.locator("#thread .p-msg.user").first()).toContainText("Say pong");
   await expect(page.locator("#actionBtn")).toHaveCount(0);
+  // Annotate: a selection in the Plan quotes it into the comment box,
+  // labelled with the subject's path; nothing is sent.
+  await page.locator("#planDoc h1").selectText();
+  await page.locator("#annotateBar .annotate-main").click();
+  await expect(page.locator("#comment")).toHaveValue("From README.md:\n> e2e project\n\n");
+  await expect(page.locator("#comment")).toBeFocused();
 
   // A double Enter posts the comment once (the post held in flight, as on
   // a phone's slow link).
