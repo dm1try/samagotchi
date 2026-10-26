@@ -5,6 +5,10 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { Window } from "happy-dom";
+import { COMPOSER_FOLD_KEY } from "../../../lib/samagotchi/web/public/composer_fold.js";
+
+if (!("localStorage" in globalThis)) globalThis.localStorage = new Window().localStorage;
 
 const HTML = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/participant.html", import.meta.url), "utf8");
 const BODY = HTML.slice(HTML.indexOf("<body>") + "<body>".length, HTML.indexOf("</body>")).replace(/<script[^]*?<\/script>/g, "");
@@ -107,7 +111,7 @@ test("participant page: a double Enter or a Send while one is in flight posts th
   $("comment").value = "Is step 3 safe?";
   enter($("comment"));
   enter($("comment"));
-  $("compose").requestSubmit($("send"));
+  $("send").click();
   await settle();
   assert.equal(posts().length, 1);
 
@@ -362,4 +366,113 @@ test("participant page: a #code= link asks before replacing the session, and a n
   assert.deepEqual(replaced, ["/#s=s1"]);
   assert.equal(calls.filter((c) => c.path === "/api/token").length, 0);
   assert.ok(calls.some((c) => c.path.endsWith("/review")));
+});
+
+// The comment box: the shared composer (composer_mount.js) with a subset on.
+const REVIEW_G1 = { ...REVIEW, viewer: { ...REVIEW.viewer, id: "g1", kind: "participant" } };
+const key = (target, k, opts = {}) => {
+  const e = new window.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...opts });
+  target.dispatchEvent(e);
+  return e;
+};
+
+test("participant page: ↑ recalls this grant's own comments from this browser, never the owner's history or another grant's", async (t) => {
+  localStorage.setItem("chi_review_history:g2", JSON.stringify(["Another grant's comment"]));
+  localStorage.setItem("chi_review_history:g1", "not json");
+  t.after(() => {
+    localStorage.removeItem("chi_review_history:g1");
+    localStorage.removeItem("chi_review_history:g2");
+  });
+  const { $, calls, posts } = await openPage(t, { respond: firstReadOnly(REVIEW_G1) });
+  $("comment").dispatchEvent(new window.Event("focus"));
+  await settle();
+  assert.equal(key($("comment"), "ArrowUp").defaultPrevented, false, "an unreadable list is no list");
+
+  for (const text of ["Is step 3 safe?", "And step 4?"]) {
+    $("comment").value = text;
+    enter($("comment"));
+    await settle();
+  }
+  assert.equal(posts().length, 2);
+  assert.deepEqual(JSON.parse(localStorage.getItem("chi_review_history:g1")), ["Is step 3 safe?", "And step 4?"]);
+  assert.deepEqual(JSON.parse(localStorage.getItem("chi_review_history:g2")), ["Another grant's comment"]);
+  assert.equal($("comment").value, "");
+  key($("comment"), "ArrowUp");
+  assert.equal($("comment").value, "And step 4?");
+  key($("comment"), "ArrowUp");
+  assert.equal($("comment").value, "Is step 3 safe?");
+  key($("comment"), "ArrowDown");
+  key($("comment"), "ArrowDown");
+  assert.equal($("comment").value, "", "past the newest, the draft there was");
+  assert.equal(calls.filter((c) => c.path.includes("/api/history")).length, 0, "never the owner's prompt history");
+});
+
+test("participant page: a comment is always a plain queued turn: Alt+Enter sends the same, a `/` line opens no list, images stay out", async (t) => {
+  const { $, posts } = await openPage(t, { respond: firstReadOnly(REVIEW_G1) });
+  t.after(() => localStorage.removeItem("chi_review_history:g1"));
+  assert.equal(document.getElementById("commandList"), null, "no `/` completion on this page");
+  $("comment").value = "/cut";
+  $("comment").dispatchEvent(new window.Event("input"));
+  enter($("comment"));
+  await settle();
+  $("comment").value = "Later";
+  key($("comment"), "Enter", { altKey: true });
+  await settle();
+  assert.deepEqual(posts().map((c) => JSON.parse(c.body)), [{ prompt: "/cut" }, { prompt: "Later" }]);
+  assert.ok(posts().every((c) => c.path === "/api/sessions/s1/turn"));
+
+  assert.equal($("attachBtn").hidden, true);
+  const paste = new window.Event("paste", { cancelable: true });
+  Object.defineProperty(paste, "clipboardData", { value: { files: [{ name: "a.png", type: "image/png", size: 10 }], items: [], getData: () => "" } });
+  $("comment").dispatchEvent(paste);
+  assert.equal($("chips").hidden, true);
+  assert.equal($("chips").children.length, 0);
+  assert.match($("error").textContent, /Images can't go in a review comment yet/);
+});
+
+test("participant page: the fold: a saved fold folds the box, Annotate opens it for the visit only", async (t) => {
+  localStorage.setItem(COMPOSER_FOLD_KEY, "1");
+  t.after(() => localStorage.removeItem(COMPOSER_FOLD_KEY));
+  const review = { ...REVIEW_G1, subjects: [{ path: "docs/plan.md", text: "Step 3", html: "<p>Step 3</p>" }] };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  assert.ok(document.body.classList.contains("has-session"));
+  assert.ok(document.body.classList.contains("composer-folded"));
+  assert.equal($("composeGrip").getAttribute("aria-expanded"), "false");
+  await select($("planDoc").querySelector("p"));
+  document.getElementById("annotateBar").querySelector(".annotate-main").click();
+  assert.equal(document.body.classList.contains("composer-folded"), false);
+  assert.equal($("comment").value, "From docs/plan.md:\n> Step 3\n\n");
+  assert.ok($("composeGrip").classList.contains("draft") === false, "open: no folded draft mark");
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1", "opened for the visit, the saved fold kept");
+});
+
+test("participant page: a link that ends forgets this grant's comments", async (t) => {
+  localStorage.setItem("chi_review_history:g1", JSON.stringify(["Mine"]));
+  t.after(() => localStorage.removeItem("chi_review_history:g1"));
+  let gets = 0;
+  const { tick, sources } = await openPage(t, {
+    respond: (call) => (++gets === 1 ? call.answer(200, REVIEW_G1)
+      : call.answer(401, { error: "token_revoked", detail: "this review link was revoked by the session's owner" })),
+  });
+  sources[0].emit("turn_completed");
+  await tick(120);
+  assert.equal(document.getElementById("ended").hidden, false);
+  assert.equal(localStorage.getItem("chi_review_history:g1"), null);
+});
+
+test("participant page: the owner's participant view mounts no composer", async (t) => {
+  document.body.dataset.viewer = "owner";
+  t.after(() => delete document.body.dataset.viewer);
+  const owner = { ...REVIEW, viewer: { kind: "owner", can_comment: false } };
+  const { $, posts } = await openPage(t, { respond: (call) => call.answer(200, owner) });
+  assert.equal($("dock").hidden, true);
+  assert.equal(document.body.classList.contains("has-session"), false);
+  assert.equal($("composeGrip").hasAttribute("role"), false, "no grip handlers drew it");
+  $("comment").value = "Sneaky";
+  enter($("comment"));
+  $("send").click();
+  key(document.body, "x");
+  await settle();
+  assert.equal(posts().length, 0);
+  assert.equal(document.body.classList.contains("composer-folded"), false);
 });

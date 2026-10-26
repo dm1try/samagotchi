@@ -11,7 +11,7 @@
 <style>
 /* The participant page (participant.js): the thread with the composer pinned, and for a review session its subjects
    (the Plan): beside the thread on a wide screen, a Plan | Thread toggle on a narrow one (the composer pinned in both).
-   The owner's participant view is the same page with no composer. Colours are tokens.css's. */
+   The owner's participant view is the same page with no composer (nothing mounted, the dock hidden). Colours are tokens.css's. */
 *{box-sizing:border-box;margin:0;padding:0}
 /* No iOS text autosizing (index.html's twin). */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -109,9 +109,18 @@ main{flex:1;min-height:0;overflow-y:auto;padding:16px 16px 8px}
 .p-queued span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .p-queue-note{font-size:12.5px;color:var(--text-muted)}
 .p-error{font-size:13px;color:var(--danger-text);background:var(--danger-bg-dim);border-radius:8px;padding:6px 10px}
-.p-compose{display:flex;gap:8px;align-items:flex-end}
-.p-compose textarea{flex:1;resize:none;min-height:42px;max-height:40vh;font:inherit;color:var(--text);background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:10px;padding:9px 12px}
-.p-compose textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+/* The comment box: the shared composer (composer.css, composer_mount.js), as the owner's session composer lays it out
+   (participant.js sets body.has-session for a participant: one row, the text field and Send at its bottom right). Its
+   grip straddles the dock's top border; folded, the dock keeps the queue and the grip as the handle. No `/` list,
+   delivery line or model picker here. */
+#composer{background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:12px}
+#composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+body.has-session #composer{padding:6px 6px 6px 10px}
+#composer textarea{font:inherit;line-height:1.45;padding:2px 0}
+#composer textarea:disabled{cursor:not-allowed}
+#composer .actions-col #send{height:30px;min-height:30px;line-height:30px;padding:0 16px;font-weight:600}
+.p-dock #composeGrip{margin:-15px 0 5px}
+body.composer-folded .p-hint{display:none}
 button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text);padding:6px 12px}
 button:hover{background:var(--bg-hover)}
 button.primary{background:var(--primary);border-color:var(--primary);color:var(--on-solid);height:42px;padding:0 18px}
@@ -131,7 +140,9 @@ button.small{font-size:12px;padding:2px 8px}
   .p-hint,.p-note{display:none}
 }
 /* Under 16px iOS Safari zooms the page on focus (and a Home Screen app never zooms back). */
-@media (max-width:600px),(pointer:coarse){.p-compose textarea{font-size:16px}}
+@media (max-width:600px),(pointer:coarse){#composer textarea{font-size:16px}}
+/* A phone's grip (composer.css: 26 px tall, the pill at 17 px): the pill on the dock's top border. */
+@media (max-width:600px){.p-dock #composeGrip{margin:-29px auto 3px}}
 </style>
 </head>
 <body>
@@ -159,14 +170,22 @@ button.small{font-size:12px;padding:2px 8px}
   <div class="p-thread" id="thread"></div>
 </main>
 <footer class="p-dock" id="dock" hidden>
+  <div id="composeGrip" class="edge-grip" tabindex="0" aria-label="Comment box" title="Drag to make the comment box taller (double-click resets)"></div>
   <div class="p-dock-in">
     <div class="p-queue" id="queue"></div>
     <div class="p-error" id="error" role="alert" hidden></div>
-    <form class="p-compose" id="compose">
-      <textarea id="comment" rows="1" placeholder="Comment or ask" aria-label="Comment or ask"></textarea>
-      <button class="primary" id="send" type="submit">Send</button>
-    </form>
-    <div class="p-hint">⏎ sends, ⇧⏎ a new line. The model answers in a read-only turn; the owner sees everything.</div>
+    <div id="composer">
+      <div class="compose-col">
+        <div id="chips" hidden></div>
+        <textarea id="comment" rows="1" placeholder="Comment or ask" aria-label="Comment or ask"></textarea>
+      </div>
+      <div class="actions-col">
+        <button type="button" id="attachBtn" class="attach-btn" title="Add images" aria-label="Add images" hidden></button>
+        <input type="file" id="attachInput" accept="image/*" multiple hidden>
+        <div class="split"><button type="button" class="primary" id="send">Send</button></div>
+      </div>
+    </div>
+    <div class="p-hint">⏎ sends, ⇧⏎ a new line, ↑ an earlier comment. The model answers in a read-only turn; the owner sees everything.</div>
   </div>
 </footer>
 </div>

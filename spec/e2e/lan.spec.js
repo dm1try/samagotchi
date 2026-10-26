@@ -56,7 +56,7 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   await context.close();
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply, the owner applies it", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -94,7 +94,10 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(page.locator("#planPath")).toHaveText("README.md");
   await expect(page.locator("#planDoc h1")).toHaveText("e2e project");
   await expect(page.locator("#thread .p-msg.user").first()).toContainText("Say pong");
+  // The shared composer, a participant's subset: no owner composer, no `/` list.
   await expect(page.locator("#actionBtn")).toHaveCount(0);
+  await expect(page.locator("#commandList")).toHaveCount(0);
+  await expect(page.locator("#composeGrip")).toHaveAttribute("aria-expanded", "true");
   // Annotate: a selection in the Plan quotes it into the comment box,
   // labelled with the subject's path; nothing is sent.
   await page.locator("#planDoc h1").selectText();
@@ -124,6 +127,10 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await page.locator("#comment").fill("!ls");
   await page.locator("#send").click();
   await expect(page.locator("#error")).toHaveText("A participant can't do that: only the session's owner can.");
+  // ↑ in the emptied box: this link's own comment (a refused one isn't kept), never the owner's prompts.
+  await page.locator("#comment").fill("");
+  await page.locator("#comment").press("ArrowUp");
+  await expect(page.locator("#comment")).toHaveValue("Is step 3 safe?");
 
   await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
   // Apply under the review turn's reply: the owner's turn in the composer,
