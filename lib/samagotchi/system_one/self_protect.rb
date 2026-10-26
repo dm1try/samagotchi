@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
-require_relative "../paths"
 require_relative "../config"
 require_relative "../memory_paths"
-require_relative "../hooks/loader"
 require_relative "../guardrails/protected_paths"
+require_relative "../guardrails/parent_approvals"
 
 module Samagotchi
   module SystemOne
@@ -23,13 +22,17 @@ module Samagotchi
       # there is one agent approving another's, so the user decides them even
       # when they are listed in `guardrails.system_one.rules`.
       NEVER_AUTO = %w[chi-answer-piped chi-answer-http chi-broadcast].freeze
-      # chi's config file, however the user names it in config.yml.
-      CONFIG_FILE = /\Aconfig[\w-]*\.ya?ml\z/i
-      # The dirs as a shell command may spell them when the settings point
-      # elsewhere: chi's default config dir and default state dir. A path
-      # into the memories dir is not a control file.
-      DEFAULT_CONFIG_TEXT = %r{\B~/\.config/samagotchi(?!/memories)}
+      # chi's default state dir as a shell command may spell it when the
+      # settings point elsewhere (the sessions and the guardrails store live
+      # there).
       DEFAULT_STATE_TEXT = %r{\B~/\.local/state/samagotchi}
+      # The characters that end a shell word: a memories path in a command
+      # ends at the first one.
+      WORD_END = %q{[\s'"`;&|<>(){}:,]}
+      # A `..` segment anywhere in a command: with one, a memories path may
+      # climb back out (`memories/../config.yml`, `cd memories && … ../x`),
+      # so the command's memories text is not taken out.
+      CLIMB = %r{(?:\A|[\s/'"=])\.\.(?:/|[\s'"]|\z)}
 
       module_function
 
@@ -39,47 +42,40 @@ module Samagotchi
       def refuse?(approval)
         return false unless approval.is_a?(Hash)
         return true if NEVER_AUTO.include?(fetch(approval, :rule).to_s)
-
-        dirs = control_dirs
-        paths = Array(fetch(approval, :paths)).map(&:to_s).reject(&:empty?)
-        return true if paths.any? { |path| control_path?(path, dirs) }
+        # The test that makes an ask user_only (ParentApprovals#chi_files?:
+        # chi's dirs, however a command spells them), minus the memories.
+        return true if Guardrails::ParentApprovals.chi_files?(beyond_memories(approval))
 
         command = fetch(approval, :command).to_s
-        !command.empty? && control_text?(command, dirs)
+        command.match?(DEFAULT_STATE_TEXT)
       end
 
-      # The dirs whose files are chi's own: its hooks, its installed bundles,
-      # the guardrails store (approvals.json and judgments.jsonl).
-      # @return [Array<String>]
-      def control_dirs
-        [Hooks::Loader.hooks_dir, MemoryPaths.bundles_dir, File.join(Paths.state_dir, "guardrails")]
-          .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?)
+      # The approval's facts without what is in the memories dir (not its
+      # installed bundles): the paths under it, and its spellings in the
+      # command unless the command climbs with `..`.
+      def beyond_memories(approval)
+        memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
+        bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
+        paths = Array(fetch(approval, :paths)).map(&:to_s).reject do |path|
+          real = Guardrails::ProtectedPaths.real(path)
+          Guardrails::ProtectedPaths.within?(real, memories) && !Guardrails::ProtectedPaths.within?(real, bundles)
+        end
+        command = fetch(approval, :command).to_s
+        unless command.match?(CLIMB)
+          command = command.gsub(memories_text) { |text| text.include?("/.bundles") ? text : "" }
+        end
+        { paths: paths, command: command }
       end
 
-      def control_path?(path, dirs)
-        real = Guardrails::ProtectedPaths.real(path)
-        return true if dirs.any? { |dir| Guardrails::ProtectedPaths.within?(real, dir) }
-        return true if config_file?(real)
-
-        control_text?(path, dirs)
-      end
-
-      # config.yml in chi's config dir — not the memories beside it.
-      def config_file?(path)
-        Guardrails::ProtectedPaths.within?(path, ConfigFile.config_dir) && File.basename(path).match?(CONFIG_FILE)
-      end
-
-      # A command or path naming one of those dirs, in the spelling this
-      # process uses or the default `~/.config/samagotchi` one.
-      def control_text?(text, dirs)
-        dirs.any? { |dir| text.include?(dir) || text.include?(File.expand_path(dir)) } ||
-          text.match?(config_text) || text.match?(DEFAULT_CONFIG_TEXT) || text.match?(DEFAULT_STATE_TEXT)
-      end
-
-      # chi's config dir as text — everything under it except the memories,
-      # which the model works with.
-      def config_text
-        Regexp.new("#{Regexp.escape(ConfigFile.config_dir)}(?![/]memories)")
+      # The memories dir as a command spells it: the default
+      # `.config/samagotchi/memories`, or this process's own path, with the
+      # rest of that shell word.
+      def memories_text
+        dir = ConfigFile.config_dir
+        prefixes = [".config/samagotchi", dir, Guardrails::ProtectedPaths.real(dir)]
+                   .map { |prefix| Regexp.escape(prefix.to_s.chomp("/")) }.uniq
+        word = WORD_END.sub("[", "[^")
+        Regexp.new("(?:#{prefixes.join("|")})/memories(?=/|#{WORD_END}|\\z)(?:/#{word}*)?")
       end
 
       def fetch(hash, key)

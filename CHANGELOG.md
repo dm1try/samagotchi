@@ -7,6 +7,13 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- System 1 no longer auto-allows a command that changes chi's own config through a spelling its check missed
+  (`$XDG_CONFIG_HOME/samagotchi/config.yml`, `$HOME/.config/…`, `memories/../config.yml`, `cd ~/.config && …`): it
+  refuses by the same test that makes an ask the user's alone, so such a call goes to the user. Memory files still
+  can be auto-allowed.
+
 ## [0.121.0] - 2026-10-26
 
 ### Added

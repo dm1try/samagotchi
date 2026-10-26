@@ -722,13 +722,18 @@ gate below passes, in this order:
    questions — `chi-answer-piped`, `chi-answer-http`, `chi-broadcast` — which
    are never auto-allowed, even when listed
    (`SystemOne::SelfProtect::NEVER_AUTO`);
-4. the call does not change chi itself (`SystemOne::SelfProtect.refuse?`): no
-   edit or write whose paths include config.yml in chi's config dir, anything
-   under the hooks dir, the installed bundles dir or the guardrails store (where
-   `approvals.json` and `judgments.jsonl` live), and no `execute` or
-   `task_create` command naming any of them — the `~/.config/samagotchi`
-   spelling counts too. The memories dir is deliberately not one of these:
-   reading or appending a memory file can be auto-allowed. A protected rule
+4. the call does not change chi itself (`SystemOne::SelfProtect.refuse?`), by
+   the same test that makes an ask one only the user may answer
+   (`ParentApprovals.chi_files?`): no edit or write whose paths are in chi's
+   config dir (config.yml), the hooks dir, the installed bundles dir, the
+   guardrails store (where `approvals.json` and `judgments.jsonl` live) or the
+   attached context dir, and no `execute` or `task_create` command naming any
+   of them, however it spells them (`ParentApprovals::CHI_TEXT`:
+   `$XDG_CONFIG_HOME/samagotchi/config.yml`, `~/.config/samagotchi/…`, a
+   `cd ~/.config` then `samagotchi/config.yml`). The memories dir is
+   deliberately not one of these: reading or appending a memory file can be
+   auto-allowed, unless the command has a `..` segment (`memories/../config.yml`
+   climbs out of it). A protected rule
    (`Verdict::PROTECTED_RULES`) may be listed by name and System 1 may answer
    it, but a call that really writes config.yml or the hooks is refused here;
 5. the judgment's `p` is at least `guardrails.system_one.threshold` (0.8);

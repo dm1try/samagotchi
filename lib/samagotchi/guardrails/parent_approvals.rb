@@ -69,6 +69,15 @@ module Samagotchi
         # memory-remove rule's ask, which a parent may answer.
         return false if fetch(facts, :rule).to_s == MEMORY_REMOVE_RULE
 
+        chi_files?(facts)
+      end
+
+      # Whether an approval's paths or command name chi's own dirs (#chi_dirs)
+      # or CHI_TEXT, whatever its rule: the part of #protected_facts? that
+      # System 1's SystemOne::SelfProtect shares.
+      def chi_files?(facts)
+        return false unless facts.is_a?(Hash)
+
         dirs = chi_dirs
         paths = Array(fetch(facts, :paths)).map(&:to_s).reject(&:empty?)
         return true if paths.any? { |path| dirs.any? { |dir| ProtectedPaths.within?(ProtectedPaths.real(path), dir) } }

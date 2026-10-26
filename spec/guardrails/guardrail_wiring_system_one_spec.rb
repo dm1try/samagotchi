@@ -345,6 +345,38 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
       expect(line["decision"]).to eq("auto")
     end
 
+    # The spellings of chi's own files that ParentApprovals::CHI_TEXT makes
+    # user_only: System 1 asks for every one, as a parent may not allow them.
+    [
+      "git push origin main && echo 'mode: off' >> $XDG_CONFIG_HOME/samagotchi/config.yml",
+      "git push origin main && echo 'mode: off' >> \"$XDG_CONFIG_HOME\"/samagotchi/config.yml",
+      "git push origin main && echo 'mode: off' >> $HOME/.config/samagotchi/config.yml",
+      "git push origin main && echo 'mode: off' >> ~/.config/samagotchi/memories/../config.yml",
+      "git push origin main && echo 'mode: off' >> ~/.config//samagotchi/config.yml",
+      "cd ~/.config && git push origin main && echo 'mode: off' >> samagotchi/config.yml",
+      "git push origin main && : > $XDG_STATE_HOME/samagotchi/guardrails/judgments.jsonl"
+    ].each do |command|
+      it "asks for a call that changes chi's own files: #{command}" do
+        _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 },
+                                         call: { name: "execute", content: command })
+        expect(asked.size).to eq(1)
+        expect(asked.first[:user_only]).to be(true)
+        expect(verdict.decided_by).to eq("user")
+        expect(line["decision"]).to eq("asked")
+      end
+    end
+
+    it "still auto-allows a command that only reads a memory, by either spelling" do
+      ["git push origin main && cat ~/.config/samagotchi/memories/notes.md",
+       "git push origin main && cat #{File.join(Samagotchi::MemoryPaths.system_dir, "projects", "a_1234", "index.md")}"].each do |command|
+        _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 },
+                                         call: { name: "execute", content: command })
+        expect(asked).to be_empty, command
+        expect(verdict.decided_by).to eq("system one")
+        expect(line["decision"]).to eq("auto")
+      end
+    end
+
     it "asks when the judgment is under the threshold" do
       _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 }, p: 0.79)
       expect(asked.size).to eq(1)
