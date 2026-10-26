@@ -5,8 +5,15 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/); before 1.0, config
 and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
-
 ## [Unreleased]
+
+### Fixed
+
+- chi web's session bar stops squeezing its meta row into a narrow column in a small window: the bar's own actions
+  (continue, archive, stop session, delete) take a line of their own when they cannot sit beside the row, the folder
+  takes at most a third of it and a chip at most 30% (cut with "…", the full text in the tooltip), so a session with a
+  long model name and a long folder reads two lines at 760 px instead of five. Phones (≤ 600 px) scroll the row as
+  before.
 
 ## [0.117.0] - 2026-10-26
 
