@@ -53,6 +53,16 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
     expect(link.switched({ port: 4300 }).send(:secret_headers)).to eq({})
   end
 
+  it "switches to the very client #live_worker found for the stream, whatever the sidecar says by now" do
+    found = Samagotchi::BridgeClient.new(session_id: id, port: 4200, secret: "ab" * 32)
+    allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
+    link.live_worker
+    Samagotchi::WorkerSidecar.new(port: 4900, session_id: id, secret: "cd" * 32).write(session_dir) # a later worker
+
+    expect(link.switched({ "port" => 4200 })).to be(found)
+    expect(link.client).to be(found)
+  end
+
   describe "#queues? and #unqueues?" do
     def sidecar(features) = Samagotchi::WorkerSidecar.new(port: 1, session_id: id, features: features).write(session_dir)
 

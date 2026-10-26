@@ -55,17 +55,27 @@ module Samagotchi
         id = @client.session_id
         return [:gone, "stopped"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
-        [BridgeClient.discover(id, session_dir: session_dir, host: @client.host), nil]
+        # Kept: the stream moves to this very client (EventStream), and
+        # #switched takes it, port and secret, rather than reading again.
+        @found = BridgeClient.discover(id, session_dir: session_dir, host: @client.host)
+        [@found, nil]
       end
 
-      # A new worker's Bridge, on the port its event names, with the secret
-      # its sidecar names (none when the sidecar names another port by now:
-      # that worker is gone too, and the stream finds the next one).
+      # A new worker's Bridge: the client #live_worker found for the stream
+      # (the event names its port), with that worker's secret. One the event
+      # doesn't name (another worker since) is read from the sidecar for that
+      # port, none when the sidecar names another one by now: that worker is
+      # gone too, and the stream finds the next.
       def switched(event)
         port = AttachLink.event_port(event)
-        sidecar = WorkerSidecar.read(session_dir)
-        sidecar = WorkerSidecar.new(port: port) unless sidecar&.port == port
-        @client = BridgeClient.for_sidecar(@client.session_id, sidecar, host: @client.host)
+        found = @found
+        @client = if found&.port == port
+                    found
+                  else
+                    sidecar = WorkerSidecar.read(session_dir)
+                    sidecar = WorkerSidecar.new(port: port) unless sidecar&.port == port
+                    BridgeClient.for_sidecar(@client.session_id, sidecar, host: @client.host)
+                  end
       end
 
       # No sidecar to read: true, its Bridge answers (a P0-P2 worker refuses
