@@ -117,7 +117,7 @@ module Samagotchi
         detail = ParticipantMessages::TOKEN_BOUND
         return error_response(401, "token_bound", detail) if req.path_info.start_with?("/api/")
 
-        html_response(401, BOUND_PAGE.sub(ENDED_SENTENCE, "#{detail[0].upcase}#{detail[1..]}."))
+        html_response(401, BOUND_PAGE.sub(ENDED_SENTENCE) { "#{detail[0].upcase}#{detail[1..]}." })
       end
 
       def settle_grant(grant)
@@ -145,7 +145,7 @@ module Samagotchi
         code, detail = ENDED.fetch(state)
         return error_response(401, code, detail) if req.path_info.start_with?("/api/")
 
-        html_response(401, ENDED_PAGE.sub(ENDED_SENTENCE, "#{detail[0].upcase}#{detail[1..]}."))
+        html_response(401, ENDED_PAGE.sub(ENDED_SENTENCE) { "#{detail[0].upcase}#{detail[1..]}." })
       end
 
       def audit_expired(grant)
