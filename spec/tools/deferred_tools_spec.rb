@@ -105,4 +105,18 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     expect(stub.description).to eq("Not available in this session's toolkit (lean); only the user can switch " \
                                     "(/toolkit NAME, or a kit that reaches fs).")
   end
+
+  it "names a kit that reaches the group in the stub when the registry knows one" do
+    source!(Samagotchi::Tools::ToolIndex::Group.new(name: "fs", tools: [tool("read")]))
+    index.declare(registry)
+    toolkit!
+    registry.toolkit = registry.toolkit.with(groups: [])
+    registry.reaching_kit = ->(group) { group == "fs" ? "web" : nil }
+    conversation = [{ role: "tool_response", content: "x", loaded: ["mcp_fs_read"] }]
+
+    stub = described_class.list(registry, conversation).last
+
+    expect(stub.description).to eq("Not available in this session's toolkit (lean); only the user can switch " \
+                                    "(/toolkit web, which reaches fs).")
+  end
 end

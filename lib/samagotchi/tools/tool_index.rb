@@ -68,9 +68,16 @@ module Samagotchi
       class ToolkitGroupRefusal < StandardError
         RULE = "toolkit-group"
 
-        def initialize(tool, toolkit)
+        # The refusal of +tool+ under +registry+'s toolkit, naming a kit that
+        # reaches its group when the registry can tell (Registry#reaching_kit).
+        def self.for(tool, registry)
+          new(tool, registry.toolkit, kit: registry.respond_to?(:reaching_kit) ? registry.reaching_kit&.call(tool.group) : nil)
+        end
+
+        def initialize(tool, toolkit, kit: nil)
           @tool = tool
           @toolkit = toolkit.name
+          @kit = kit
           super("Error: #{tool.full_name} isn't in this session's toolkit (#{@toolkit}); #{hint}.")
         end
 
@@ -80,7 +87,11 @@ module Samagotchi
 
         private
 
-        def hint = "only the user can switch (/toolkit NAME, or a kit that reaches #{@tool.group})"
+        def hint
+          return "only the user can switch (/toolkit NAME, or a kit that reaches #{@tool.group})" unless @kit
+
+          "only the user can switch (/toolkit #{@kit}, which reaches #{@tool.group})"
+        end
       end
 
       # One tool in the index: +group+/+name+ is what the call tool takes,

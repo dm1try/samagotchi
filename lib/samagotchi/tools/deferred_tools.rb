@@ -79,7 +79,7 @@ module Samagotchi
         tool = index&.unreached_tool(name)
         return STUB_DESCRIPTION unless tool
 
-        ToolIndex::ToolkitGroupRefusal.new(tool, registry.toolkit).stub_description
+        ToolIndex::ToolkitGroupRefusal.for(tool, registry).stub_description
       end
 
       private_class_method :builtins, :sourced, :stub_description

@@ -401,7 +401,7 @@ module Samagotchi
                call[:name]
              end
       tool = index.unreached_tool(name)
-      tool && Tools::ToolIndex::ToolkitGroupRefusal.new(tool, registry.toolkit)
+      tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, registry)
     end
 
     def participant_turn?

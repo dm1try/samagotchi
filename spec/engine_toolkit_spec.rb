@@ -104,6 +104,30 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(engine.tools.index.groups).not_to include("late")
   end
 
+  it "finds the first resolvable kit that reaches a group, skipping kits that don't or can't resolve" do
+    kit = Samagotchi::Toolkit::Kit
+    binding = engine.instance_variable_get(:@toolkit_binding)
+
+    expect(binding.reaching_kit("fs")).to eq("full")
+    allow(binding).to receive(:kits).and_return(
+      "a_closed" => kit.new(name: "a_closed", tools: [], groups: []),
+      "b_broken" => kit.new(name: "b_broken", base: "nowhere", groups: ["fs"]),
+      "c_fs" => kit.new(name: "c_fs", tools: [], groups: ["fs"]),
+      "d_fs" => kit.new(name: "d_fs", tools: [], groups: ["fs"])
+    )
+    expect(binding.reaching_kit("fs")).to eq("c_fs")
+    expect(binding.reaching_kit("other")).to be_nil
+  end
+
+  it "names the user's own kit before a built-in that also reaches the group" do
+    kit = Samagotchi::Toolkit::Kit
+    binding = engine.instance_variable_get(:@toolkit_binding)
+    builtins = Samagotchi::Toolkit::BUILTIN_KITS.dup
+    allow(binding).to receive(:kits).and_return(builtins.merge("web" => kit.new(name: "web", base: "lean", groups: ["fs"])))
+
+    expect(binding.reaching_kit("fs")).to eq("web")
+  end
+
   it "resolves a saved kit name against each worker's toolkit.kits snapshot" do
     kits = { "mine" => { "base" => "lean", "groups" => ["chrome"] } }
     allow(Samagotchi::Toolkit).to receive(:config_kits) { kits }

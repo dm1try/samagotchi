@@ -130,6 +130,17 @@ RSpec.describe "direct calls of deferred tools" do
       expect([seen, ran]).to eq([[], []])
     end
 
+    it "names a kit that reaches the group when the registry knows one" do
+      loads_tools!
+      registry.toolkit = registry.toolkit.with(groups: [])
+      registry.reaching_kit = ->(group) { group == "fs" ? "web" : nil }
+
+      result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "fs/read_file" }))
+
+      expect(result.output).to eq("[call_tool] Error: fs/read_file isn't in this session's toolkit (lean); " \
+                                  "only the user can switch (/toolkit web, which reaches fs).")
+    end
+
     it "lets a participant's review boundary deny before the toolkit-group refusal" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])

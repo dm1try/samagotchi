@@ -69,6 +69,11 @@ module Samagotchi
       # only there: a request's declared tools never change mid-turn.
       attr_accessor :toolkit
 
+      # Which kit reaches a source group: a lookup (group name → kit name,
+      # nil when none does) the Engine sets with the toolkit; a refusal's
+      # hint names it.
+      attr_accessor :reaching_kit
+
       # @return [Entry]
       def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, refs: nil, source: "core", layer: nil,
                    unwrap: nil)

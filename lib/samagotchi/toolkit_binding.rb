@@ -119,12 +119,26 @@ module Samagotchi
       warn_unknown_groups(resolved, on_event)
       resolved = nil if resolved.everything?
       tools = @tools.call
+      tools.reaching_kit = ->(group) { reaching_kit(group) }
       return false if resolved == tools.toolkit
 
       tools.toolkit = resolved
       @refresh_index.call
       @reset_prompt.call
       true
+    end
+
+    # The first kit that resolves and reaches source group +group+, the
+    # user's own (config's, the plugins') before the built-ins, so a hint
+    # names "/toolkit web" rather than "full"; nil when none does.
+    def reaching_kit(group)
+      kits = self.kits
+      builtin = Toolkit::BUILTIN_KITS.keys
+      kits.keys.sort_by.with_index { |name, i| [builtin.include?(name) ? 1 : 0, i] }.find do |name|
+        Toolkit.resolve_kit(name, kits).reaches_group?(group)
+      rescue Toolkit::Unresolved
+        false
+      end
     end
 
     private
