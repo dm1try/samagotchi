@@ -2588,6 +2588,8 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call(annotate_presets: %(Say "hi" & <b>|No))).to include(' data-annotate-presets="Say &quot;hi&quot; &amp; &lt;b&gt;|No"')
       expect(page.call(annotate_presets: "")).to include(' data-annotate-presets=""')
       expect(page.call(annotate_presets: %w[Agreed Why?])).to include(' data-annotate-presets="Agreed|Why?"')
+      # Spliced in by a block: \& and \` are text, not backreferences.
+      expect(page.call(annotate_presets: %w[A\\&B C\\`D])).to include(' data-annotate-presets="A\\&amp;B|C\\`D"')
     end
   end
 

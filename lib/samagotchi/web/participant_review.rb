@@ -248,7 +248,8 @@ module Samagotchi
         # The owner's participant view has no composer; a participant's
         # selection quotes with the same presets as the owner's page.
         attrs.merge!(annotate_presets_data) unless principal(req).owner?
-        html_response(200, File.read(path).sub("<body>", "<body #{body_data(attrs)}>"))
+        # A block: a name's \& or \' is text, never a backreference.
+        html_response(200, File.read(path).sub("<body>") { "<body #{body_data(attrs)}>" })
       end
 
       # A filtered stream's frame filter (App#stream_filter), for the

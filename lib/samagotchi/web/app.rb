@@ -1533,7 +1533,8 @@ module Samagotchi
 
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
-          body = File.read(path).sub("<body>", "<body #{index_data_attributes(req)}>")
+          # A block: a preset's \& or \' is text, never a backreference.
+          body = File.read(path).sub("<body>") { "<body #{index_data_attributes(req)}>" }
           [200, {
             "Content-Type" => "text/html; charset=utf-8",
             "Content-Length" => body.bytesize.to_s,

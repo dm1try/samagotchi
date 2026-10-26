@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   from the claimed input file, the last turn or the refused turn's record, not only its memory (it answered 403).
 - chi web's participants routes (list, invite, revoke, cap) answer a grants store chi can't write (unreadable, or a
   newer chi's) with 409 `grants_unwritable` and the store's own message, not a 500 with a backtrace on every refresh.
+- A participant name or an annotate preset holding `\&`, `` \` `` or `\'` no longer breaks chi web's page: it was read
+  as a backreference when the page's attributes went in.
 
 ## [0.121.0] - 2026-10-26
 

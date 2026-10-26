@@ -170,6 +170,13 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(body).not_to include("<b>Kim</b>")
     end
 
+    it "keeps a backslash-ampersand in a name as it is, never a backreference into the page" do
+      named = Samagotchi::Participants.invite(grants, session_id: session.id, name: 'Al\&ex', state_dir: state_dir)
+      body = call("/", bearer: named.token)[2]
+      expect(body).to include(%(data-name="Al\\&amp;ex"))
+      expect(body.scan("<body").size).to eq(1)
+    end
+
     it "trades ?token= for the cookie holding the participant's token, and the cookie lets them in" do
       status, headers, = call("/?token=#{token}&x=1", bearer: nil)
       expect(status).to eq(303)
