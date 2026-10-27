@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 
 - The model's orphaned-memory hint asks before using a same-named project's memories; it asks the user to confirm
   before moving them.
+- A participant wait returns 401 revoked if its grant disappears while the wait is in progress.
 - Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
 - chi web's stream 503 distinguishes an unanswered live worker from a session with no live worker.
 

@@ -268,6 +268,22 @@ RSpec.describe "a participant red-teaming a session" do
         .to eq([401, { "error" => "token_revoked", "detail" => Samagotchi::ParticipantMessages::TOKEN_REVOKED }])
     end
 
+    it "answers revoked when a grant disappears during a /wait" do
+      enqueued_id = turn({ prompt: "is step 3 safe?" }).last["enqueued_id"]
+      started = Queue.new
+      allow(app.send(:session_access)).to receive(:wait_reply).and_wrap_original do |original, *args, **options|
+        started << true
+        original.call(*args, **options, poll_interval: 0.01)
+      end
+      waiting = Thread.new { post("/api/sessions/#{session.id}/wait", { turn: enqueued_id, timeout: 20 }) }
+      pop!(started, "the participant's wait to start")
+      allow(grants).to receive(:active?).with(grant.id).and_return(false)
+      allow(grants).to receive(:find).with(grant.id).and_return(nil)
+
+      expect(join!(waiting, "the participant's wait after the grant disappears").value)
+        .to eq([401, { "error" => "token_revoked", "detail" => Samagotchi::ParticipantMessages::TOKEN_REVOKED }])
+    end
+
     # L-P9: their wait/prepare carries what their wait needs, never the
     # owner's wait state (a reply cursor, a message count, a question).
     it "can't read the owner's wait state through /wait/prepare" do

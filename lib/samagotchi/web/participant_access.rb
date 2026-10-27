@@ -420,7 +420,10 @@ module Samagotchi
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
                                                cancelled: -> { !@server_running.call || !@grants.active?(grant.id) })
         if result.status == :canceled
-          ended = @grants.find(grant.id)&.state(@grants.now)
+          current = @grants.find(grant.id)
+          return error_response(401, *ENDED.fetch(:revoked)) unless current
+
+          ended = current.state(@grants.now)
           return error_response(401, *ENDED.fetch(ended)) if ENDED.key?(ended)
 
           return error_response(503, "server_stopping", "chi web is stopping; wait again")
