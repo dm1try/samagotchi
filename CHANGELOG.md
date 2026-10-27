@@ -15,6 +15,13 @@ and commands may change between minor versions. How releases are made:
 - A built-in **Verify** annotate preset on both pages, after `web.annotate_presets`: it quotes the selection and asks
   to verify the claim against the code, ending on `Verdict: confirmed|refuted|unclear — <reason>`.
 
+### Changed
+
+- `chi sessions restart` (and chi web's restart, its update's worker restarts) keeps a session's reminders: the
+  leaving worker hands them to the new one, with their ids and schedules (one that came due meanwhile fires once),
+  instead of refusing the restart. A stop, an idle exit, a crash and the TERM fallback for a worker that can't be
+  asked still drop them; a worker from an older chi still refuses.
+
 ### Fixed
 
 - `chi sessions stop` (and the web's stop, delete and archive, which stop the same way) stops a stopped (SIGSTOPped,

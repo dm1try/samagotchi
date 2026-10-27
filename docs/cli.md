@@ -541,13 +541,14 @@ terminal and the Web UI say so, with that restart line.
 `chi sessions restart ID...` hands each session to a new worker on the newest
 chi installed, without stopping it: an attached terminal and the web's tabs
 move to the new worker. It is refused, with the reason, while something would
-be lost: a turn running or queued, a question or approval waiting, reminders,
-a `/btw` still running, an approval relayed from a delegate, or background
-tasks the session started. If the worker cannot be asked (a refused Bridge,
-protocol mismatch or stuck start), chi sends it TERM and resumes only when
+be lost: a turn running or queued, a question or approval waiting, a `/btw`
+still running, an approval relayed from a delegate, or background tasks the
+session started. Its reminders move to the new worker with their schedules
+(a worker from an older chi still refuses for them). If the worker cannot be
+asked (a refused Bridge, protocol mismatch or stuck start), chi sends it TERM and resumes only when
 disk shows no running turn, pending question or approval, queued prompt, or
 running background task; otherwise it says to run `chi sessions stop ID`, then
-send any prompt. That fallback may lose reminders, a running `/btw`, and other
+send any prompt. That fallback drops reminders, and may lose a running `/btw` and other
 in-memory state. A session with no running worker needs no restart (its next
 prompt starts one on the newest chi), and an older worker without restart
 support needs `chi sessions stop ID`. The Web UI's
