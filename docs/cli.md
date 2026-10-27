@@ -1432,7 +1432,10 @@ chi share revoke --all          # every link to every session
   command, a glob or a variable), run chi, leave a command running in the background, read the environment or the
   keychain, sweep your home with find/tar/cp/grep, delegate, set or cancel reminders, send notes, start or stop
   background tasks, load tools, forget outputs or write memories, and it asks its questions in its reply, not on a
-  card. A pair turn stops mid-turn once their cap is passed or their link ends. `chi share` and the panel's Invite
+  card. Its commands run without your secret-named environment variables (`KEY`, `TOKEN`, `SECRET`, `PASS`,
+  `CREDENTIAL`, `AUTH` in the name) and are killed at the execute limit rather than left running; a command that
+  writes outside the project asks you, as a write does (the tmp dirs aside). A pair turn stops mid-turn once their
+  cap is passed or their link ends. `chi share` and the panel's Invite
   warn you with what their turns may do and how many tool outputs the history holds, and only a link issued with
   that warning acts: links from before, or issued while the session's worker predated pair turns (the warning says
   so), stay read-only until you restart the worker and invite them again. Their messages carry a `pair` badge and no

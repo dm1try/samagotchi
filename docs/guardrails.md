@@ -382,8 +382,9 @@ message:
 
 - secrets, read or written: the review boundary's denylist (chi's state and
   config dirs, so `grants.json`, the web token and every `participants.json`;
-  `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`; the home's shell startup
-  files, histories, `.gitconfig`, `.netrc`, `.npmrc`, `.pypirc`, `.claude.json`;
+  `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.config/fish`,
+  `~/.config/git`, `~/Library/LaunchAgents`, `~/.local/bin`; the home's shell
+  startup files, histories, `.gitconfig`, `.netrc`, `.npmrc`, `.pypirc`, `.claude.json`;
   the project's secret files, any config under `.git`) on every file tool's
   path (`read`, `write`, `edit`, a plugin's `targets:` paths) and on the paths
   a command names (`execute`, and any call whose targets carry a command),
@@ -392,12 +393,20 @@ message:
   `~/.config/*/config.yml`, `.en?`), a `$var` word whose fixed part does
   (`~/.ss${d}h`), and a text match for the rest;
 - sweeping a folder that holds secrets: `find`, `tar`, `cp`, `rsync`, `scp`,
-  `zip`, `grep`/`rg`/`ag` and the like given home or any folder above a denied
-  one;
-- the environment and the keychain: `env` or `printenv` alone, `security`,
-  `/proc/*/environ`;
+  `zip`, `ditto`, `grep`/`rg`/`ag` and the like given home or any folder above
+  a denied one;
+- the environment and the keychain: `env` or `printenv` alone, `set`,
+  `export`, `declare` or `typeset` that list, `launchctl getenv`, `ps e`,
+  `security`, `/proc/*/environ`. On top of it, a pair turn's `execute` runs
+  without every variable whose name matches `KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH`
+  (`PairBoundary::SECRET_ENV_NAME`, case-insensitive), and a command still
+  running at the limit is killed, never handed over as a background task;
+- git settings that make git run a command (`core.hooksPath`,
+  `core.fsmonitor`, `core.sshCommand`, `core.pager`, `core.editor`, a `!`
+  alias) by `git config` or `git -c`, and `git config --global`/`--system`;
 - running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
-  `env … chi`, `sh -c 'chi …'`, `$(chi …)`), but `chi --version` and
+  `env … chi`, `watch`, `npx`, `sh -c 'chi …'`, `$(chi …)`), in an assignment's
+  value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and
   `chi --help`: its commands act in the owner's name (shares, caps, sends,
   answers, sessions);
 - leaving something running: `&` at a command's end, `nohup`, `setsid`,
@@ -410,9 +419,20 @@ message:
 - `ask_user_question`, with the advice to ask in the reply: nobody on the
   participant's side answers a card.
 
+A script a command hands on is read too (`Guardrails::PairCommand`): one a
+shell runs (`sh -c`, `eval`, a heredoc or here-string) as a command of its
+own, one another interpreter runs (`ruby -e`, `python - <<EOF`) by its text
+(chi, secrets, the environment, detaching). A heredoc written as data (`cat`,
+`tee`, `git commit -F -`) is not looked into: where it goes is checked. A
+command the checks can't read is refused, never let through on a text match.
+
 And it **asks the owner** before a `write` or `edit` outside the session's
-project root, every time: the ask is fresh (`Verdict#fresh_ask`: no stored
-approval answers it, and no rule lowers it), so it comes even in auto mode.
+project root, and before a command that writes there (a redirection's target,
+`tee`'s files, a `cp`/`mv`/`ln`/`install`/`rsync`/`ditto` destination, or a
+target it can't resolve), every time: the ask is fresh (`Verdict#fresh_ask`: no
+stored approval answers it, and no rule lowers it), so it comes even in auto
+mode. The tmp dirs (`Dir.tmpdir`, `$TMPDIR`, `/tmp`, `/private/tmp`) and
+`/dev/null` neither ask nor deny.
 
 A participant's ask names them on the owner's card ("Sam's turn asks: approve
 tool call?", `approval.author`/`author_name`, `approval.asked_by`, the same

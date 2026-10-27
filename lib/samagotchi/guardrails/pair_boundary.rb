@@ -23,9 +23,9 @@ module Samagotchi
     #     secret dirs and files: keys, shell startup files, histories,
     #     credential files; project secret files) on every file tool's path,
     #     read or written (read, write, edit, a plugin's targets: paths), and
-    #     on the paths a command names (execute, and any call whose targets
-    #     carry a command: ShellPaths, with SECRET_TEXT for a word it can't
-    #     resolve);
+    #     on what a command does (execute, and any call whose targets carry
+    #     a command: PairCommand, which also refuses chi, background jobs,
+    #     the environment, git settings that run commands and home sweeps);
     #   - owner-voiced tools (OWNER_VOICED, and any delegate_* tool): what
     #     speaks or acts in the owner's name beyond this turn (a delegate, a
     #     reminder, a note to another session, a background task, a
@@ -34,8 +34,9 @@ module Samagotchi
     #   - ask_user_question: there is no one on the participant's side to
     #     answer it here; the model asks in its reply instead.
     # And it asks the owner, always (Verdict#fresh_ask: no stored approval
-    # answers it, and the rules can't lower it), before a write or edit
-    # outside the session's project root.
+    # answers it, and the rules can't lower it), before a write, an edit or a
+    # command that writes outside the session's project root (the tmp dirs
+    # aside).
     # Everything else goes on to the owner's checks and rules as for the
     # owner's turns.
     class PairBoundary

@@ -19,10 +19,13 @@ and commands may change between minor versions. How releases are made:
   reach the owner's card naming who asks, with Allow once only, and System 1 never answers them; a write outside the
   project always asks, whatever the owner approved before. A new core check (`pair-boundary`) denies reading or
   writing secrets and chi's own files (keys, shell startup files, histories, credential files; by a file tool, a
-  command, a glob or a variable), running chi, backgrounding commands, reading the environment or the keychain,
-  sweeping home with find/tar/cp/grep, the owner-voiced tools (delegate, reminders, notes, background tasks,
+  command, a glob, a variable or a script it hands a shell), running chi, backgrounding commands, reading the
+  environment or the keychain, git settings that run commands, sweeping home with find/tar/cp/grep, the owner-voiced
+  tools (delegate, reminders, notes, background tasks,
   forgetting outputs, loading tools, memories) and the model's own question. A pair turn stops mid-turn once the
-  participant's cap is passed or their link is revoked or expires. Workers name a `pair_turns` feature.
+  participant's cap is passed or their link is revoked or expires. A pair turn's commands run without
+  secret-named environment variables and are killed at the execute limit, and one that writes outside the project
+  asks the owner. Workers name a `pair_turns` feature.
 
 ### Changed
 
