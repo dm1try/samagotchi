@@ -35,6 +35,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      the user message's and the reminders' stamp too), continue: true (only on a continue),
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
+  │     # starts ToolkitSuggest's audit asynchronously from a copied snapshot; it never blocks the turn or applies
+  │     # a suggestion to the session. See configuration.md (Toolkits) and guardrails.md (System 1).
   │     # refresh_profile! (may ask the server's /props once)
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools … are set in
   │     #   generate, after the hooks, from the final model),

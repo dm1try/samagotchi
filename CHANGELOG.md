@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 - Toolkit kits accept an optional `description:` for classification, separate from their prompt text.
 - Memory entries named `toolkit_<name>` define kits; project memories override system memories, and `/toolkit` shows
   their source.
+- An opt-in toolkit suggestion audit asks System 1 which described kit fits a session's first prompt, without changing
+  the session or delaying its turn; `chi toolkit report` grades suggestions against the tools the session used.
 
 ### Fixed
 

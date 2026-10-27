@@ -237,7 +237,8 @@ queued, as `--turn T` does.
 
 **The tool calls.** `Guardrails::ReviewBoundary` denies a participant's turn everything but reads of the project
 ([guardrails](../guardrails.md#a-participants-review-boundary)). Approvals and questions are owner-only: the boundary
-denies the model's own question, and `/answer` is an owner route.
+denies the model's own question, and `/answer` is an owner route. Toolkit suggestion audits skip review sessions and
+participant-authored turns; review input is never sent to the separate System 1 classifier.
 
 **Hooks and plugins** run on a participant's turn with the owner's power; every event of the turn carries `author:`
 and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
