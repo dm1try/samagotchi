@@ -545,11 +545,11 @@ be lost: a turn running or queued, a question or approval waiting, a `/btw`
 still running, an approval relayed from a delegate, or background tasks the
 session started. Its reminders move to the new worker with their schedules
 (a worker from an older chi still refuses for them). If the worker cannot be
-asked (a refused Bridge, protocol mismatch or stuck start), chi sends it TERM and resumes only when
-disk shows no running turn, pending question or approval, queued prompt, or
-running background task; otherwise it says to run `chi sessions stop ID`, then
-send any prompt. That fallback drops reminders, and may lose a running `/btw` and other
-in-memory state. A session with no running worker needs no restart (its next
+asked (a refused Bridge, protocol mismatch or stuck start), chi sends it TERM
+and resumes only when disk shows no running turn, pending question or
+approval, queued prompt, or running background task; otherwise it says to run
+`chi sessions stop ID`, then send any prompt. That fallback drops reminders,
+and may lose a running `/btw` and other in-memory state. A session with no running worker needs no restart (its next
 prompt starts one on the newest chi), and an older worker without restart
 support needs `chi sessions stop ID`. The Web UI's
 `POST /api/sessions/:id/restart` does the same (409 with `reason` and `detail`
