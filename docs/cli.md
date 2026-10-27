@@ -237,7 +237,8 @@ done
   seconds after it starts and every 24 hours after that. Once a stable release
   is at least 24 hours old and newer than both the running chi and the newest
   installed one, the page shows its version, a link to that RubyGems release,
-  and a button to copy `chi update`. The notice is once per version per tab.
+  and a button to copy `chi update`. The notice is once per version per
+  browser: a reload or a chi web restart doesn't repeat it.
   `update.notify: off` disables checking; `update.check_hours` and
   `update.min_age_hours` tune the interval and release age (see
   [configuration](configuration.md#all-settings)). If the gem can't be updated
