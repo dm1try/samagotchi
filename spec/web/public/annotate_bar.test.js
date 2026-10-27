@@ -307,3 +307,12 @@ test("Copy link: hidden without a link for the selection; with one, last, titled
   assert.deepEqual(quotes, []);
   assert.equal(bar.el.hidden, true);
 });
+
+test("a {label, text} preset (Verify): its label on the button, its text the title and the note", () => {
+  const { bar, quotes, selectionChange } = fakePage({ options: { presets: ["Agreed", { label: "Verify", text: "Check it." }] } });
+  const btn = bar.el.children[2];
+  assert.deepEqual([btn.className, btn.textContent, btn.title], ["annotate-preset", "Verify", "Check it."]);
+  selectionChange();
+  click(bar.el, btn);
+  assert.deepEqual(quotes, ["> the answer\n\nCheck it."]);
+});
