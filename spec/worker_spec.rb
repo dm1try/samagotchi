@@ -878,6 +878,22 @@ RSpec.describe Samagotchi::Worker do
         expect(File.exist?(sidecar)).to be(false) # the Bridge stopped after it
       end
 
+      it "marks its owner lock leaving before its teardown stops the Bridge, so a closed port never reads Live" do
+        lock = hold_worker(session_dir)
+        start_worker(poll_interval: 5, signals: signals, owner_lock: lock)
+        seen = []
+        allow(@worker.instance_variable_get(:@bridge)).to receive(:stop).and_wrap_original do |original, *args|
+          seen << Samagotchi::OwnerLock.owner(session_dir)&.leaving?
+          original.call(*args)
+        end
+
+        signals.fire("TERM")
+
+        expect(join!(@thread, "the worker").value).to eq(:signal)
+        expect(seen.first).to be(true)
+        expect(Samagotchi::OwnerLock.owner(session_dir)).to be_leaving
+      end
+
       it "brings the hard exit for a signal that comes after the loop left" do
         start_worker(poll_interval: 5, signals: signals, signal_grace: [3, 0.5, 0.1])
         signals.fire("TERM")

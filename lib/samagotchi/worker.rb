@@ -519,11 +519,19 @@ module Samagotchi
     # it as waiting, and the next worker drops it (drop_dead_question).
     # The context poller first: a command it runs goes (its process
     # group) before the Engine does.
+    # How long the lock stays held once #teardown marks it leaving (an upper
+    # bound): the recap on leave is written by then (#left), what is left is
+    # Bridge#stop's graces and ChildRing.await_wakes.
+    TEARDOWN_LEAVE_WAIT = 10
+
     def teardown
       @config_restart_unsubscribe&.call
       @context_poller&.stop
       drop_queued_commands
       @engine&.shutdown
+      # Leaving before the Bridge closes: a client that finds its port shut
+      # from here on reads Leaving (and waits for the lock), not Live.
+      mark_leaving(wait: TEARDOWN_LEAVE_WAIT)
       @bridge&.stop
       # The process exits next: a parent wake it rang for (a crash's
       # ring comes just above) must spawn the parent's worker first.
@@ -1438,8 +1446,14 @@ module Samagotchi
     # How long the lock stays held after the Bridge: the recap on leave's
     # timeout (#left), none for a restart (#left writes none). A delete
     # writes none either, but the bound only has to be an upper one.
-    def mark_leaving
-      @owner_lock&.mark_leaving(wait: @exit_restart ? 0 : @engine.recap_timeout.to_f)
+    # Once: the teardown's (after #stop_bridge_after's) keeps the first one.
+    # @param wait [Numeric, nil] nil: as above
+    def mark_leaving(wait: nil)
+      return if @marked_leaving
+
+      @marked_leaving = true
+      wait ||= @exit_restart ? 0 : @engine.recap_timeout.to_f
+      @owner_lock&.mark_leaving(wait: wait)
     rescue StandardError => e
       Log.warn(:worker, "mark_leaving_failed", error: e.class.name, msg: e.message)
     end
