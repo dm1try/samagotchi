@@ -1309,6 +1309,25 @@ RSpec.describe Samagotchi::Worker do
           expect(File.exist?(carry_file)).to be(false)
         end
 
+        it "takes a later exit request as the one already leaving, so a stop-all can't undo the restart" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          start_worker(poll_interval: 0.05)
+          policy = @worker.instance_variable_get(:@idle_exit)
+          worker = @worker
+          looks = 0
+          allow(policy).to receive(:hold_for_restart) do
+            looks += 1
+            # A stop-all that came in after the restart was taken, before the leave.
+            worker.send(:exit_request, "tui:1", stop: true) if looks == 2
+            nil
+          end
+
+          expect(post_restart.first).to eq(200)
+          expect(join!(@thread, "the worker").value).to eq(:restart)
+          expect(engine.reminder_store.reminders.keys).to eq(["api_health"])
+          expect(JSON.parse(File.read(carry_file))["reminders"].map { |r| r["name"] }).to eq(["api_health"])
+        end
+
         it "stays up with its reminders when the hand-off can't be written" do
           engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
           allow(Samagotchi::ReminderCarry).to receive(:write).and_raise(Errno::ENOSPC)

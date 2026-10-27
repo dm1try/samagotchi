@@ -448,7 +448,9 @@ module Samagotchi
       return if run_task_wake
       return if run_due_reminders
       return left(:idle_exit) if @idle_exit.due? && leave_idle
-      return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
+
+      leaving = @exit_requested && leave_on_request
+      return left(leaving) if leaving
 
       watch_participants
       @waker.wait(idle_wait)
@@ -1516,6 +1518,11 @@ module Samagotchi
     def exit_request(client_id, delete: false, restart: false, stop: false, ask: true)
       # The Bridge serves before the idle-exit policy exists.
       return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
+      # One exit is already taken: the first one decides how the worker
+      # leaves (a later stop-all can't turn a restart, whose reminders go to
+      # the next worker, into a plain exit). Held at the leave, it is
+      # forgotten and the next request counts again.
+      return nil if @exit_requested
 
       if restart
         hold = @idle_exit.hold_for_restart
@@ -1553,7 +1560,8 @@ module Samagotchi
     # intake and stop the idle jobs (the Bridge stops after the log). Other clients' streams no longer hold: the asker's
     # may not have closed yet, and a UI joining now finds the worker gone
     # (:stream_closed), the window #leave_idle has too.
-    # @return [Boolean] false when something came in since the request
+    # @return [Symbol, false] how it leaves (:restart or :exit_requested,
+    #   decided under the lock), false when something came in since the request
     def leave_on_request
       stop_bridge_after do
         @engine.synchronize_events do
@@ -1574,7 +1582,7 @@ module Samagotchi
           # Not joined: a recap tick's emit waits for the event log held here.
           @engine.stop_idle(join: false)
           Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
-          true
+          @exit_restart ? :restart : :exit_requested
         end
       end
     end
