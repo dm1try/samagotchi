@@ -693,7 +693,7 @@ module Samagotchi
         when "held", "not_running", "unsupported", "failed"
           if reason
             raise SessionManager::RestartRefused.new(sid, reason, version: json["version"], holds: json["holds"],
-                                                     via: invocation)
+                                                     pid: json["pid"], via: invocation)
           end
         when "parent_answers_refused", "parent_continue_refused", "no_vision"
           raise Refused.new(message.to_s, code: error)

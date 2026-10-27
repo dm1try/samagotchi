@@ -423,7 +423,8 @@ module Samagotchi
       # the newest chi installed (SessionManager.restart_session). 200
       # {status: "restarted", session_id, from_version, version} (version nil:
       # the new worker is still starting; its bridge_up follows); 409
-      # {error: "held" | "not_running" | "unsupported" | "failed", reason, detail} in words; 409
+      # {error: "held" | "not_running" | "unsupported" | "failed", reason, detail} in words (a stopped
+      # worker: held, reason stopped, its pid); 409
       # owned_by_tui; 404.
       def handle_restart(_req, id)
         result = @manager.restart_session(id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
@@ -432,7 +433,8 @@ module Samagotchi
                              version: result.version })
       rescue SessionManager::RestartRefused => e
         error = %i[not_running unsupported failed].include?(e.reason) ? e.reason.to_s : "held"
-        refusal_response(409, error, e, reason: e.reason.to_s, session_id: id, version: e.version, holds: e.holds)
+        refusal_response(409, error, e, reason: e.reason.to_s, session_id: id, version: e.version, holds: e.holds,
+                                         pid: e.pid)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end

@@ -394,5 +394,7 @@ not touched. It refuses first if disk shows a running turn, pending
 question or approval, queued input, or a running background task started by
 the session; the message directs the user to `chi sessions stop ID`, then any prompt.
 Reminders, a running `/btw`, and other in-memory worker state cannot be
-checked and may be lost in this fallback. The web restart route behaves the
-same way.
+checked and may be lost in this fallback. A stopped worker (SIGSTOP or
+Ctrl-Z: `ps` state `T`) answers neither the ask nor a TERM, so a restart
+refuses it at once, before asking, with its pid and `kill -CONT PID`.
+The web restart route behaves the same way.

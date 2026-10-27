@@ -142,6 +142,24 @@ RSpec.describe "chi sessions restart" do
     expect(fresh.sidecar.version).to eq(Samagotchi::VERSION)
   end
 
+  it "refuses a stopped (SIGSTOPped) real worker at once, saying how to continue it, and leaves it be" do
+    session = saved_session
+    spawn_unreachable_worker(session)
+    Process.kill("STOP", @unreachable_pid)
+    wait_for("the worker to be stopped") { Samagotchi::ProcessGroup.stopped?(@unreachable_pid) }
+
+    started = SpecWaiting.mono
+    _out, err, status = run_restart(session.id)
+
+    expect(status).to eq(1)
+    expect(err).to eq("session #{session.id}'s worker (pid #{@unreachable_pid}) is stopped (SIGSTOP or Ctrl-Z) and " \
+                      "can't take a restart: continue it with `kill -CONT #{@unreachable_pid}`, then restart again\n")
+    expect(SpecWaiting.mono - started).to be < Samagotchi::BridgeClient::READ_TIMEOUT
+    expect(Samagotchi::SessionManager.session_owner(session.id, state_dir: state_dir).pid).to eq(@unreachable_pid)
+  ensure
+    Process.kill("CONT", @unreachable_pid) if @unreachable_pid
+  end
+
   it "fails on an unknown session and asks for an id" do
     expect(run_restart("nope")).to match(["", /nope/, 1])
     expect(run_restart.last).to eq(2)

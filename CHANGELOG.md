@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 - Remote note calls refuse a 200 response without a status cleanly; remote worker polling uses its injected sleeper.
 - Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
 - chi web's stream 503 distinguishes an unanswered worker from no live worker, including in remote terminals.
+- `chi sessions restart` refuses a stopped (SIGSTOPped) worker at once with its pid and `kill -CONT PID`, instead of
+  ~70 s of silence before "didn't take the restart".
 
 ## [0.121.1] - 2026-10-27
 

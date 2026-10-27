@@ -23,6 +23,7 @@ require_relative "host_registry"
 require_relative "utf8_default"
 require_relative "turn_note"
 require_relative "owner_lock"
+require_relative "process_group"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "worker_link"
@@ -631,16 +632,18 @@ module Samagotchi
     # worker from before restarts, running +version+: stop it instead), a
     # WorkerIdleExit#hold_for_restart hold (:turn_running, :reminders, ...),
     # :fallback_held (disk-visible work blocks an unresponsive-worker restart),
-    # or :failed (the worker answered something else or didn't release).
+    # :stopped (its worker, +pid+, is SIGSTOPped: neither the ask nor a TERM
+    # reaches it until it is continued), or :failed (the worker answered something else or didn't release).
     class RestartRefused < StandardError
-      attr_reader :session_id, :reason, :version, :holds
+      attr_reader :session_id, :reason, :version, :holds, :pid
 
-      def initialize(session_id, reason, version: nil, holds: [], via: ChiInvocation::HERE)
+      def initialize(session_id, reason, version: nil, holds: [], pid: nil, via: ChiInvocation::HERE)
         @session_id = session_id
         @reason = reason.to_sym
         @version = version
         @holds = Array(holds).map(&:to_sym).freeze
-        super(RestartRefused.words(session_id, @reason, version, @holds, via: via))
+        @pid = pid
+        super(RestartRefused.words(session_id, @reason, version, @holds, pid: pid, via: via))
       end
 
       HOLDS = {
@@ -656,9 +659,13 @@ module Samagotchi
       }.freeze
 
       # What the CLI and the web say.
-      def self.words(session_id, reason, version = nil, holds = [], via: ChiInvocation::HERE)
+      def self.words(session_id, reason, version = nil, holds = [], pid: nil, via: ChiInvocation::HERE)
         stop = via.command("sessions stop #{session_id}")
         case reason
+        when :stopped
+          where = via.remote? ? " on #{via.remote}" : ""
+          "session #{session_id}'s worker#{" (pid #{pid})" if pid} is stopped (SIGSTOP or Ctrl-Z) and can't take " \
+            "a restart: continue it#{" with `kill -CONT #{pid}`" if pid}#{where}, then restart again"
         when :not_running
           "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
         when :unsupported
@@ -695,6 +702,10 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       Session.load(session_id, state_dir: sd) # ArgumentError for none
       owner = refuse_tui!(session_id, state_dir: sd)
+      # A stopped worker answers neither the ask (READ_TIMEOUT) nor the
+      # fallback's TERM (FALLBACK_STOP_WAIT): say so now, not after ~70 s.
+      raise RestartRefused.new(session_id, :stopped, pid: owner.pid) if owner&.worker? && ProcessGroup.stopped?(owner.pid)
+
       dir = Session.session_dir(session_id, state_dir: sd)
       link = WorkerLink.resolve(dir, unlink: false, owner: owner)
       if link.is_a?(WorkerLink::Skew)

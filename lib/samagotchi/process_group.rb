@@ -87,6 +87,19 @@ module Samagotchi
       nil
     end
 
+    # Whether +pid+ is stopped (SIGSTOP, Ctrl-Z; t: under a tracer): ps's
+    # state starts with T or t on macOS and Linux alike. Such a process
+    # takes no signal but KILL and answers no socket until it is continued.
+    # false when it isn't running or ps can't say.
+    def stopped?(pid)
+      return false unless signalable?(pid)
+
+      out, status = Open3.capture2("ps", "-o", "state=", "-p", pid.to_s, err: File::NULL)
+      status.success? && out.lstrip.start_with?("T", "t")
+    rescue SystemCallError, IOError
+      false
+    end
+
     # Field 22 (starttime); the command name (field 2) may hold spaces and
     # parentheses, so the fields are counted after its last ")".
     def proc_start_time(stat) = stat[/\A.*\)\s(.*)\z/m, 1]&.split&.[](19)

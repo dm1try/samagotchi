@@ -36,6 +36,22 @@ RSpec.describe Samagotchi::ProcessGroup do
     end
   end
 
+  describe ".stopped?" do
+    it "says a SIGSTOPped process is stopped until it is continued, and a gone one isn't" do
+      pid = spawn_group("sleep 5")
+      expect(described_class.stopped?(pid)).to be(false)
+      Process.kill("STOP", pid)
+      wait_for("the group stopped") { described_class.stopped?(pid) }
+      Process.kill("CONT", pid)
+      wait_for("the group continued") { !described_class.stopped?(pid) }
+      reap(pid)
+      expect(described_class.stopped?(pid)).to be(false)
+      expect(described_class.stopped?(1)).to be(false)
+    ensure
+      reap(pid)
+    end
+  end
+
   describe ".stop" do
     it "TERMs the whole group, a grandchild too, and says it stopped within the grace" do
       pid = spawn_group("sleep 31.91 & wait")

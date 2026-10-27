@@ -1411,6 +1411,22 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).not_to have_received(:resume_session)
     end
 
+    it "refuses a stopped worker before asking it or TERMing it" do
+      allow(Samagotchi::ProcessGroup).to receive(:stopped?).with(worker.pid).and_return(true)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit)
+      allow(Process).to receive(:kill)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |error|
+          expect(error.reason).to eq(:stopped)
+          expect(error.pid).to eq(worker.pid)
+          expect(error.message).to include("is stopped (SIGSTOP or Ctrl-Z)", "`kill -CONT #{worker.pid}`")
+        }
+      expect(client).not_to have_received(:request_exit)
+      expect(Process).not_to have_received(:kill)
+    end
+
     it "is refused for a worker from before restarts, which it never asks" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar.with(features: [])))
       allow(client).to receive(:request_exit)

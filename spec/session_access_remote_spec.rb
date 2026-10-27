@@ -241,6 +241,17 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       }
     end
 
+    it "carries a stopped worker's pid and names the machine to continue it on" do
+      session = make
+      refusal = Samagotchi::SessionManager::RestartRefused.new(session.id, :stopped, pid: 4242)
+      allow(Samagotchi::SessionManager).to receive(:restart_session).and_raise(refusal)
+
+      expect { remote.restart(session.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |error|
+        expect([error.reason, error.pid]).to eq([:stopped, 4242])
+        expect(error.message).to include("`kill -CONT 4242` on #{remote.invocation.remote}")
+      }
+    end
+
     it "asks chi web to stop with the CLI's wait, which it caps at SessionManager::STOP_WAIT" do
       session = make
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)

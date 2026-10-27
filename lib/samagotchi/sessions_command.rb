@@ -437,7 +437,7 @@ module Samagotchi
           next false
         rescue Samagotchi::SessionManager::RestartRefused => e
           @stdout.flush
-          @stderr.puts %i[not_running unsupported fallback_held failed].include?(e.reason) ? e.message : "session #{id}: #{e.message}"
+          @stderr.puts %i[not_running unsupported fallback_held stopped failed].include?(e.reason) ? e.message : "session #{id}: #{e.message}"
           next false
         rescue ArgumentError => e
           @stdout.flush
