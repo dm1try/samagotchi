@@ -34,6 +34,9 @@ test("the project picker preserves row order and marks current/default rows with
   assert.match(rows[1].textContent, /3 sessions/);
   assert.equal(host.querySelector("#projectAll").getAttribute("href"),
     "/?scope=all&from=/home/me/samagotchi/lib&view=turn");
+  // The all row's caption is a label, not a path: no .project-root (the monospace path style).
+  assert.equal(host.querySelector("#projectAll .project-root"), null);
+  assert.equal(host.querySelector("#projectAll .project-hint").textContent, "Every session");
 });
 
 test("the All projects row is current in the all view and has no hash", () => {

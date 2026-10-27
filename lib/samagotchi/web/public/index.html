@@ -1291,7 +1291,10 @@ body.has-session #newBtn .brand-new{display:inline}
 .project-meta{display:flex;flex-shrink:0;align-items:center;gap:7px;color:var(--text-muted);font-size:11px;white-space:nowrap}
 .project-default{padding:1px 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-muted);font-size:10px}
 .project-check{color:var(--accent);font-weight:700}
-.project-all{margin-top:4px;padding-top:10px;border-top:1px solid var(--border);background:transparent}
+.project-hint{flex-basis:100%;color:var(--text-muted);font-size:12px}
+/* The divider is its own hairline above the row: a border-top on the rounded row curved up at both ends. */
+.project-all{position:relative;margin-top:12px;background:transparent}
+.project-all::before{content:"";position:absolute;left:-1px;right:-1px;top:-9px;height:1px;background:var(--border);pointer-events:none}
 .project-note{padding:5px 2px;color:var(--text-muted);font-size:12px}
 .project-error{color:var(--warn-text)}
 body.has-session #scope .scope-where{display:none}
