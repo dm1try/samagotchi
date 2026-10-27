@@ -16,6 +16,9 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:config) { File.join(home, ".config", "samagotchi") }
   let(:grants) { File.join(state, "web-grants", "grants.json") }
   let(:author) { "p:p_0123abcd" }
+  # The spec's own dirs are all under Dir.tmpdir, which a pair turn writes
+  # into freely: +tmp+ stands in for the tmp dirs.
+  let(:tmp) { File.join(base, "tmp") }
 
   around { |example| with_env("HOME" => home) { example.run } }
 
@@ -33,7 +36,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
   def boundary(turn_author: author)
     described_class.new(author: -> { turn_author }, root: -> { project }, denied_dirs: -> { [state, config] },
-                        home: -> { home })
+                        home: -> { home }, tmp_roots: -> { [tmp] })
   end
 
   def verdict_for(call, **opts)
@@ -156,6 +159,88 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  describe "a command with a heredoc, a script or a value" do
+    it "reads the rest of a command after a data heredoc, and a heredoc handed to a shell or interpreter" do
+      File.write(File.join(home, "notes"), "x")
+      {
+        "cat <<EOF > docs/notes.md\nx\nEOF\ncat ~/.ss?/id_*" => described_class::SECRET,
+        "bash <<EOF\nchi send x\nEOF" => described_class::CHI,
+        "sh <<'EOF'\nsleep 9 &\nEOF" => described_class::BACKGROUND,
+        "bash <<EOF\ncat ~/.ss?/id_*\nEOF" => described_class::SECRET,
+        "python3 - <<EOF\nimport os; print(os.environ)\nEOF" => described_class::ENVIRONMENT,
+        "ruby <<EOF\nsystem('chi send x')\nEOF" => described_class::CHI,
+        "bash <<< 'chi send x'" => described_class::CHI
+      }.each { |command, reason| expect(refused(command)).to eq(reason), command }
+    end
+
+    it "lets a heredoc that is written as data say anything" do
+      ["cat <<EOF > docs/notes.md\nthe credentials doc: chi send, printenv, /proc/1/environ, sleep 9 &, ~/.ssh\nEOF",
+       "git commit -F - <<EOF\nchi: read credentials from the keychain\nEOF",
+       "tee docs/x.md <<'EOF'\nchi share x\nEOF"].each { |command| expect(refused(command)).to be_nil, command }
+    end
+
+    it "refuses a command it can't read, never letting it through on a text match" do
+      allow(Samagotchi::Guardrails::ShellLex).to receive(:lex).and_raise(ArgumentError, "bad")
+      expect(refused("ls")).to eq(described_class::UNREADABLE)
+    end
+
+    it "finds chi in values, functions, keywords, -exec/-c/-e arguments and other wrappers" do
+      ["alias x='chi send'", "f=chi; $f x", "find . -name x -exec chi send {} ;", "watch -n 2 chi sessions list",
+       "npx chi x", "f() { chi send; }; f", "if true; then chi x; fi", "! chi x", "ruby -e 'system(\"chi send\")'",
+       "python3 -c \"import os; os.system('chi x')\"", "xargs -I{} chi send {}"].each do |command|
+        expect(refused(command)).to eq(described_class::CHI), command
+      end
+    end
+
+    it "reads a shell's -c script for backgrounding and the environment" do
+      expect(refused("bash -c 'sleep 9 &'")).to eq(described_class::BACKGROUND)
+      expect(refused("sh -c 'printenv'")).to eq(described_class::ENVIRONMENT)
+    end
+
+    it "denies the environment listers, and leaves their setting forms" do
+      ["set", "export", "export -p", "declare -x", "typeset", "launchctl getenv HOME", "ps eww", "ps auxe"].each do |command|
+        expect(refused(command)).to eq(described_class::ENVIRONMENT), command
+      end
+      ["set -euo pipefail", "export FOO=1", "declare -a list", "ps aux", "ps -ef"].each do |command|
+        expect(refused(command)).to be_nil, command
+      end
+    end
+
+    it "denies git settings that run commands and git config beyond the repository" do
+      ["git config --global core.editor vim", "git config --system x.y z", "git config core.hooksPath .h",
+       "git config core.fsmonitor ./x", "git -c core.sshCommand=./x fetch", "git -C . -c core.pager=./x log",
+       "git config alias.x '!rm -rf build'"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["git config user.name Sam", "git config alias.co checkout", "git -c color.ui=false log", "git status"].each do |command|
+        expect(refused(command)).to be_nil, command
+      end
+    end
+
+    it "denies writing the shell's and git's config, launch agents and ~/.local/bin, and sweeping with ditto" do
+      ["echo x > ~/.config/fish/conf.d/x.fish", "cp evil ~/Library/LaunchAgents/x.plist", "ln -s x ~/.local/bin/git",
+       "echo x >> ~/.config/git/config"].each do |command|
+        expect(refused(command)).to eq(described_class::SECRET), command
+      end
+      expect(refused("ditto ~ /tmp/x")).to eq(described_class::HOME_SWEEP)
+    end
+  end
+
+  it "asks the owner, fresh and once only, before a command writes outside the project, never for a tmp dir" do
+    other = File.join(home, "other")
+    ["echo x > #{other}/out.txt", "ls | tee #{other}/o", "cp docs/plan.md #{other}/", "echo x > $OUT",
+     "echo x 2>#{other}/err", "mv docs/plan.md -t #{other}"].each do |command|
+      verdict = execute(command)
+      expect(verdict).to be_ask, command
+      expect([verdict.reason, verdict.scopes]).to eq([described_class::OUTSIDE_WRITE, ["once"]])
+      expect(verdict).to be_fresh_ask
+    end
+    ["echo x > docs/out.txt", "ls > /dev/null 2>&1", "echo x > #{tmp}/x", "cp docs/plan.md #{tmp}/"].each do |command|
+      expect(execute(command)).to be_allow, command
+    end
+    expect(verdict_for({ name: "write", path: File.join(tmp, "x.txt"), content: "x" })).to be_allow
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
@@ -185,9 +270,14 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   # A participant invited to act (their grant's mode), or one from before pair (none).
   let(:pair_entry) { Struct.new(:name, :mode).new("Sam", "pair") }
 
+  # The spec's dirs are under Dir.tmpdir, which a pair turn writes into freely.
+  before do
+    allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
+    FileUtils.mkdir_p(File.join(project, "docs"))
+  end
+
   around { |example| with_env("HOME" => File.join(base, "home")) { example.run } }
 
-  before { FileUtils.mkdir_p(File.join(project, "docs")) }
   after { FileUtils.rm_rf(base) }
 
   def wiring(session, entry: pair_entry)

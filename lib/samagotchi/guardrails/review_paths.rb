@@ -16,14 +16,17 @@ module Samagotchi
     class ReviewPaths
       # Home folders that hold keys and tokens, never read in a review turn
       # (nor read or written in a pair turn).
-      HOME_SECRET_DIRS = %w[.ssh .gnupg .aws .config/gh].freeze
+      # A pair turn neither reads nor writes these either: the shell's and
+      # git's config folders, the user's launch agents and ~/.local/bin (what
+      # runs at login or comes first on PATH).
+      HOME_SECRET_DIRS = %w[.ssh .gnupg .aws .config/gh .config/fish .config/git Library/LaunchAgents .local/bin].freeze
       # Home files that start a shell, hold credentials or keep what was
       # typed: a pair turn neither reads nor writes them (a review turn reads
       # only inside the project anyway).
       HOME_SECRET_FILES = %w[.zshrc .zshenv .zprofile .zlogin .bashrc .bash_profile .bash_login .profile .gitconfig
                              .netrc .npmrc .pypirc .claude.json .zsh_history .bash_history .history .python_history
                              .node_repl_history .psql_history .mysql_history .irb_history .lesshst
-                             .config/fish/config.fish .local/share/fish/fish_history].freeze
+                             .local/share/fish/fish_history].freeze
       # Project files that hold secrets, by a path part's name: .env*,
       # netrc, keys and certificates, anything named credentials, package
       # registry tokens (.npmrc, .pypirc), ssh keys, terraform state, a

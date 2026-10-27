@@ -194,6 +194,7 @@ RSpec.describe "a participant red-teaming a session" do
         asked << pending
         { selected: [pending[:options].first], selected_indices: [0] }
       end
+      allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
     end
 
     def turn(calls, origin:)
@@ -207,6 +208,8 @@ RSpec.describe "a participant red-teaming a session" do
     def participant_turn(calls) = turn(calls, origin: { client_id: "review:#{grant.id}", author: grant.author })
 
     def denied(reason) = a_string_including("denied by guardrail (rule pair-boundary, core): #{reason}")
+
+    # The spec's dirs are under Dir.tmpdir, which a pair turn writes into freely.
 
     it "writes and runs under the owner's rules, never reads a secret or uses an owner-voiced tool; nobody is asked" do
       results = participant_turn([

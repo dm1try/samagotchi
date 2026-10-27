@@ -87,8 +87,10 @@ module Samagotchi
       # as data (DataReaders) cut out, the <<TAG word and the terminator line
       # kept as written. This is what a rule's command: reads. A text the
       # lexer isn't sure of (unterminated) comes back as it was, and so does
-      # one it can't read: the safe default.
-      def self.code_text(text)
+      # one it can't read: the safe default. +keep_written+ false cuts every
+      # data body, a cat or tee writing it to a file too (a pair turn's check:
+      # text written to a file is data; where it goes is checked apart).
+      def self.code_text(text, keep_written: true)
         lexer = Lexer.new(text)
         tokens = lexer.tokens
         return text if lexer.unterminated?
@@ -104,7 +106,7 @@ module Samagotchi
 
             span = lexer.spans[i]
             cut = if bodies.include?(span)
-                    body_cut(text, span, words, redirected) if value == HEREDOC
+                    body_cut(text, span, words, redirected, keep_written) if value == HEREDOC
                   elsif value == SUBST
                     substitution_cut(text, tokens, i, span, words, position)
                   end
@@ -139,8 +141,8 @@ module Samagotchi
       # cat or tee writing a file may be run later (D1), and so may one
       # printing after an earlier exec sent the shell's output to a file
       # (+redirected+).
-      def self.body_cut(text, span, words, redirected)
-        return nil unless cut_body?(words, redirected)
+      def self.body_cut(text, span, words, redirected, keep_written = true)
+        return nil if keep_written && !cut_body?(words, redirected)
 
         [span, terminator_line(text[span])]
       end
