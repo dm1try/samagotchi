@@ -339,6 +339,14 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
   assert.equal($("thread").querySelector(".p-msg.reply .p-bubble"), bubble, "a message drawn already is kept, not drawn again");
 });
 
+test("participant page: history and the current prompt carry their turn ids", async (t) => {
+  const review = { ...REVIEW, messages: [{ role: "user", content: "Earlier", turn_id: "turn-old" }],
+    current_turn: { prompt: "Now", turn_id: "turn-live", text: "", tools: [] } };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+
+  assert.deepEqual([...$("thread").querySelectorAll(".p-msg.user")].map((node) => node.dataset.turnId), ["turn-old", "turn-live"]);
+});
+
 // Selects +node+'s text and lets the Annotate bar read it (its frame).
 async function select(node) {
   const range = document.createRange();

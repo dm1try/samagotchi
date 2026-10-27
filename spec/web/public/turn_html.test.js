@@ -27,6 +27,11 @@ test("userBubbleTemplate: a saved message's display is its copy source", () => {
   assert.match(userBubbleHtml({ role: "user", content: "a", display: "b" }), /data-copy-source="b"/);
 });
 
+test("userBubbleTemplate: a saved prompt carries its turn id", () => {
+  assert.match(userBubbleHtml({ content: "hi", turn_id: "turn-1" }), /data-turn-id="turn-1"/);
+  assert.doesNotMatch(userBubbleHtml({ content: "old" }), /data-turn-id/);
+});
+
 test("userBubbleTemplate: a steered line with its label, the step that read it, its thumbs and badge", () => {
   assert.equal(userBubbleHtml({ content: "also <this>" }, { label: "delegate report", state: "steered", step: "2", thumbs: lit`<div class="thumbs"></div>` }),
     canon('<div class="bubble user steered" data-user-state="steered" data-step="2" data-copy-source="also &lt;this&gt;">' +

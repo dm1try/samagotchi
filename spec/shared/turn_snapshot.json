@@ -4,6 +4,7 @@
     "started_at": "T0",
     "current_turn": {
       "prompt": "do it",
+      "turn_id": "turn-1",
       "origin": { "client_id": "web:abc", "enqueued_id": "e1" },
       "continue": false,
       "parts": [
@@ -33,7 +34,7 @@
     "queued": [{ "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" }]
   },
   "events": [
-    { "type": "turn_started", "prompt": "do it", "origin": { "client_id": "web:abc", "enqueued_id": "e1" }, "continue": false, "started_at": "T0" },
+    { "type": "turn_started", "prompt": "do it", "turn_id": "turn-1", "origin": { "client_id": "web:abc", "enqueued_id": "e1" }, "continue": false, "started_at": "T0" },
     { "type": "generation_started", "iteration": 1 },
     { "type": "generation_chunk", "text": "", "thinking": "hmm", "iteration": 1 },
     { "type": "generation_chunk", "text": "Let me look.", "thinking": "", "iteration": 1 },

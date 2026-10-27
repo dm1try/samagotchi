@@ -78,11 +78,13 @@ test("an own echo is tagged by its turn_enqueued, started by its turn_started; a
   bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "e1", prompt: "do it", client_id: "me" });
   assert.equal(echo.dataset.enqueuedId, "e1");
   assert.ok(bubbles.bubbleById("e1") === echo);
-  const started = bubbles.applyPromptOps({ type: "turn_started", prompt: "do it", origin: { enqueued_id: "e1", client_id: "me" } });
+  const started = bubbles.applyPromptOps({ type: "turn_started", prompt: "do it", turn_id: "turn-1", origin: { enqueued_id: "e1", client_id: "me" } });
   assert.ok(started === echo);
+  assert.equal(echo.dataset.turnId, "turn-1");
   assert.ok(!echo.classList.contains("queued"));
-  const other = bubbles.applyPromptOps({ type: "turn_started", prompt: "theirs", origin: { enqueued_id: "e2", client_id: "tui" } });
+  const other = bubbles.applyPromptOps({ type: "turn_started", prompt: "theirs", turn_id: "turn-2", origin: { enqueued_id: "e2", client_id: "tui" } });
   assert.equal(other.dataset.enqueuedId, "e2");
+  assert.equal(other.dataset.turnId, "turn-2");
   assert.equal(turnPromptBubbles(historyEl).length, 2);
 });
 

@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
   let(:snapshot) do
     { "snapshot" => {
         "messages" => [{ "role" => "user", "content" => "earlier", "turn_id" => "t0" }, { "role" => "model", "content" => "ok" }],
-        "current_turn" => { "prompt" => "owner's question", "origin" => { "client_id" => "web:1" },
+        "current_turn" => { "prompt" => "owner's question", "turn_id" => "live-1", "origin" => { "client_id" => "web:1" },
                             "pending_question" => { "question" => "Allow execute: env?" },
                             "parts" => [{ "kind" => "text", "text" => "Let me check" },
                                         { "kind" => "tool", "tool" => "execute", "params" => "env", "status" => "running" }] },
@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
-    expect(body["current_turn"]).to eq("prompt" => "owner's question", "text" => "Let me check",
+    expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
                                        "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true)
     expect(body["waiting_for_owner"]).to be(true)
     expect(body["queued"]).to eq("mine" => [{ "enqueued_id" => "e1", "prompt" => "mine" }], "others" => 1)

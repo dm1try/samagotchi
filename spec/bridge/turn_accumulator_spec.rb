@@ -96,6 +96,13 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn).not_to have_key(:cut_after)
   end
 
+  it "keeps the turn id in the live snapshot and its replayed opening event" do
+    feed({ type: :turn_started, prompt: "hi", turn_id: "turn-1" })
+
+    expect(acc.current_turn[:turn_id]).to eq("turn-1")
+    expect(described_class.replay_events(acc.current_turn).first[:turn_id]).to eq("turn-1")
+  end
+
   it "folds a running turn: prompt, origin, generations, thinking and text in order, tool calls" do
     feed(
       { type: :turn_started, session_id: "s", prompt: "hi", origin: { client_id: "web:1", enqueued_id: "e1" } },

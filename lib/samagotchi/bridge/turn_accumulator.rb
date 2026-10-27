@@ -45,7 +45,7 @@ module Samagotchi
         nil # never break the running turn
       end
 
-      # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
+      # @return [Hash, nil] a copy of the turn in progress: prompt, turn_id, origin,
       #   continue, at (its wall time), ordered parts (generation / thinking / text / tool /
       #   input / steer / reminder / notice), pending_question and the last event_seq folded
       #   in. A finished tool part keeps the live row's action and duration_ms
@@ -136,6 +136,7 @@ module Samagotchi
         return [] unless turn
 
         started = { type: :turn_started, prompt: turn[:prompt], origin: turn[:origin], continue: !!turn[:continue] }
+        started[:turn_id] = turn[:turn_id] if turn[:turn_id]
         started[:resumed] = true if turn[:resumed]
         started[:started_at] = started_at if started_at
         started.merge!(author_of(turn))
@@ -275,6 +276,7 @@ module Samagotchi
           dequeue([event[:origin]])
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }
+          @turn[:turn_id] = event[:turn_id] if event[:turn_id]
           @turn[:resumed] = true if event[:resumed]
           # Its wall time (MessageTime): a joining page's gap divider.
           @turn[:at] = event[:at] if event[:at]
