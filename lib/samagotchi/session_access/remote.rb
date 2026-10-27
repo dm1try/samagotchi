@@ -12,6 +12,7 @@ require_relative "../bridge_client"
 require_relative "../session_continue"
 require_relative "../guardrails/parent_policy"
 require_relative "../model_profile"
+require_relative "../web/grants"
 require_relative "http_transport"
 require_relative "../chi_invocation"
 
@@ -679,6 +680,8 @@ module Samagotchi
         # No model configured there, or --model's host unknown there: what
         # spawn_session raises here (chi send: could not start a session).
         when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
+        # The grants store doesn't read there: chi share says what it says here.
+        when "grants_unwritable" then raise Web::Grants::Unwritable, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images"
           # invalid_participant: chi share's name, kind or ttl, an archived session
           raise BadRequest.new(message.to_s, code: error)

@@ -140,6 +140,14 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(invitation.participant.identity).to eq("alex@corp.test")
     end
 
+    it "raises the store's own refusal for 409 grants_unwritable, so chi share prints what it prints here" do
+      message = "/x/participants.json can't be read (not JSON): chi won't write over it"
+      access, = scripted([409, { error: "grants_unwritable", detail: message }], [409, { error: "grants_unwritable", detail: message }],
+                         info: bound_info)
+      expect { access.invite("s", name: "Alex", kind: "human") }.to raise_error(Samagotchi::Web::Grants::Unwritable, message)
+      expect { access.participants("s") }.to raise_error(Samagotchi::Web::Grants::Unwritable, message)
+    end
+
     it "reads the identity header from the owner's /api/info, nil without a proxy or from an older chi web" do
       access, = scripted([200, {}], info: bound_info.merge(proxy: { identity_header: "X-Forwarded-Email" }))
       expect(access.identity_header).to eq("X-Forwarded-Email")

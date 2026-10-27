@@ -62,6 +62,8 @@ and commands may change between minor versions. How releases are made:
   must be a list of group names or globs"), as a config kit's is refused, instead of matching its stringified pairs.
 - `chi bundle check`'s `requires-chi-floor` sees a keyword added later: `chi.toolkit(prompt:)` (0.72.0),
   `chi.toolkit(groups:)` (0.121.0), `ctx.ask_model(model:)` (0.80.0) and `ctx.sessions.send(delivery:)` (0.64.0).
+- A remote `chi share` (or `share ls`/`cap`/`revoke`) whose chi web can't read its grants store prints the store's own
+  line, as a local one does, instead of "… answered 409 grants_unwritable: …".
 
 ## [0.121.0] - 2026-10-26
 
