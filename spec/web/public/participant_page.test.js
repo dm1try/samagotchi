@@ -452,6 +452,29 @@ test("participant page: a #code= link asks before replacing the session, and a n
   assert.ok(calls.some((c) => c.path.endsWith("/review")));
 });
 
+// A claim link (claim_link.js) opened on the page: its quote marked once
+// the thread is drawn; a turn this session doesn't have says so.
+const TURNED = { ...REVIEW, messages: [{ role: "user", content: "Say pong", turn_id: "0a1b2c3d-0000" }, { role: "assistant", content: "PONG" }] };
+async function openAt(t, hash) {
+  const saved = { location: globalThis.location };
+  t.after(() => Object.assign(globalThis, saved));
+  globalThis.location = { hash, pathname: "/", search: "" };
+  return openPage(t, { respond: (call) => (call.method === "GET" ? call.answer(200, TURNED) : undefined) });
+}
+
+test("participant page: a claim link marks its quote's reply", async (t) => {
+  const { $ } = await openAt(t, "#s=s1&t=0a1b2c3d&q=PONG");
+  assert.ok($("thread").querySelector(".p-msg.reply .p-bubble").classList.contains("claim-hit"));
+  assert.equal($("claimNote").hidden, true);
+});
+
+test("participant page: a claim link to a turn this session doesn't have says so", async (t) => {
+  const { $ } = await openAt(t, "#s=s1&t=99999999&q=PONG");
+  assert.equal($("thread").querySelectorAll(".claim-hit").length, 0);
+  assert.equal($("claimNote").hidden, false);
+  assert.equal($("claimNote").textContent, "The linked turn isn't in this session.");
+});
+
 // The comment box: the shared composer (composer_mount.js) with a subset on.
 const REVIEW_G1 = { ...REVIEW, viewer: { ...REVIEW.viewer, id: "g1", kind: "participant" } };
 const key = (target, k, opts = {}) => {

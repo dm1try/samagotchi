@@ -141,6 +141,8 @@ RSpec.describe Samagotchi::Web::App do
       expect(body).to include(%(data-project-name="alpha"))
       expect(body).to include(%(data-project-dir="#{repo_a.sub(Dir.home, "~")}"))
       expect(body).to include(%(data-server-dir="#{Dir.pwd.sub(Dir.home, "~")}"))
+      # The owner's home, for a claim link's quote (claim_link.js).
+      expect(body).to include(%(data-home="#{Dir.home}"))
     end
 
     it "names the project an all view came from (?from=), to link back to its view" do

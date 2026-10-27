@@ -1878,9 +1878,10 @@ module Samagotchi
       def home_label(dir) = Paths.tilde(dir)
 
       # <body> data for the page: where sessions are stored, where an
-      # all-view new chat starts (the start folder), and, when ?dir names a
-      # folder in a repo, that project's name and root. A bad dir adds
-      # nothing here: the list call answers 400 and the page says so.
+      # all-view new chat starts (the start folder), the home folder, and,
+      # when ?dir names a folder in a repo, that project's name and root. A
+      # bad dir adds nothing here: the list call answers 400 and the page
+      # says so.
       # Without ?dir (and without ?scope=all) the page is the start folder's
       # project view when that folder is in a repo: data-scope-dir names it
       # for the page (the URL stays bare, so a token's 303, a link code's
@@ -1890,6 +1891,9 @@ module Samagotchi
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(start_dir), "version" => Samagotchi::VERSION }
+        # The owner's home: a claim link's quote reads it "~", as the
+        # participant page shows it (claim_link.js).
+        attrs["home"] = Dir.home
         attrs["view"] = view_name(req.params["view"])
         # Only when on: the page reads its presence (the turn view ignores it).
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])

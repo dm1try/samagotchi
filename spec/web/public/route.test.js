@@ -20,3 +20,8 @@ test("other hashes name no session", () => {
   }
   assert.equal(sessionIdFromHash(undefined), null);
 });
+
+test("a claim link's query after the id still names the session", () => {
+  assert.equal(sessionIdFromHash(`#/s/${ID}?t=0a1b2c3d&q=x`), ID);
+  assert.equal(sessionIdFromHash(`#/s/${ID}?`), ID);
+});
