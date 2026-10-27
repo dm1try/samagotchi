@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.3.3
+version: 0.3.4
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-outbox context; /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -12,7 +12,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:b03465566272891237ac1906980ff6956579a4703d3a42c414ce50a81de551f6
 scripts:
-  pair: sha256:0830dcb856debea0e4a2a0eb0da8a73b9e9ac2444da957d2928ec734280186a1
+  pair: sha256:a61c3d311ce3f3e5386e90f0f867f649a39763a5883877e731e43d84dd9c85aa
   chi-peer-SKILL.md: sha256:7c392ac04c115ea1e762ad562b5c4c44c3eca71558ba5d9dfeaeabdd533b6a82
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)

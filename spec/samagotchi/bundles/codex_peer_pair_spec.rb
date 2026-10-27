@@ -57,6 +57,17 @@ RSpec.describe "The codex-peer pair script" do
     expect(own.snapshot("codex-outbox").text).to eq("VERDICT: OK")
   end
 
+  it "pushes a cwd with a carriage return or another control character as valid JSON" do
+    odd = File.join(tmpdir, "odd\r\u0001dir").tap { |d| FileUtils.mkdir_p(d) }
+    _, err, status = Open3.capture3(env.merge("CODEX_THREAD_ID" => thread_a), "sh", pair, session.id, chdir: odd)
+
+    expect([status.exitstatus, err]).to eq([0, ""])
+    # The push parsed (a raw CR or \x01 in a JSON string is refused); the
+    # one-line summary has chi's own CR-as-space.
+    expect(own.snapshot("codex-inbox").text).to include("codex cwd: #{odd}\n")
+    expect(own.snapshot("codex-inbox").summary).to end_with("odd \u0001dir")
+  end
+
   it "refuses outside Codex, a URL without a session and a missing argument, touching nothing" do
     _, err, status = run_pair(session.id, thread: "")
     expect([status.exitstatus, err]).to eq([2, "pair: CODEX_THREAD_ID isn't set: run this from a Codex CLI session\n"])
