@@ -57,7 +57,7 @@ RSpec.describe "a participant's author on delivery" do
     let(:events) { Queue.new }
     let(:grant) do
       grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
-      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: tmpdir).grant
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: tmpdir).grant
     end
 
     before do

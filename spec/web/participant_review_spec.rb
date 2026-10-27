@@ -64,8 +64,9 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body.keys).to contain_exactly("viewer", "session", "participants", "messages", "current_turn", "waiting_for_owner",
                                          "queued", "last_event_id", "subjects")
     expect(body["subjects"]).to eq([])
+    # Invited without the pair stamp: their turns are review turns.
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
-                                      "mode" => "pair", "can_comment" => true)
+                                      "mode" => "review", "can_comment" => true)
     expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
@@ -158,6 +159,16 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["queued"]).to eq("mine" => [], "others" => 2)
     expect(body["current_turn"]).to include("prompt" => "owner's question", "text" => "Let me check")
     expect(JSON.generate(body)).not_to include("env?", "CARD")
+  end
+
+  it "names a participant invited to act pair, and review again while an older worker holds the session" do
+    pair = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", mode: "pair", state_dir: state_dir)
+    _status, body = review(pair.token)
+    expect(body["viewer"]).to include("mode" => "pair")
+    sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
+    allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+    _status, body = review(pair.token)
+    expect(body["viewer"]).to include("mode" => "review")
   end
 
   it "names the mode review for a working session whose live worker predates pair turns" do

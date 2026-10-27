@@ -115,7 +115,6 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
     end
 
     it "comes before the rules, for a participant's turn only" do
-      expect(Samagotchi::ParticipantMode).to receive(:of).with(session).and_call_original
       expect(wiring.checks.index(wiring.review_boundary)).to eq(1)
       wiring.begin_turn({ client_id: "review:p_0123abcd", author: author })
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "docs/plan.md", content: "x" })

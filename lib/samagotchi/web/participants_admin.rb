@@ -24,14 +24,16 @@ module Samagotchi
       # for a session that isn't a review session (ReviewStart.share_warning,
       # null for one), which the panel shows before its Invite; and
       # +identity_header+: the header this chi web's auth proxy names the
-      # signed-in user in (null without one), for the Invite's email field.
+      # signed-in user in (null without one), for the Invite's email field;
+      # +mode+: what a participant invited now gets, "pair" or "review"
+      # (ReviewStart.share_terms), for the panel's words.
       def handle_participants_list(_req, id = nil)
         now = @grants.now
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
-        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
-        json_response(200, { participants: with_spend(id, grants), warning: warning,
+        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        json_response(200, { participants: with_spend(id, grants), warning: terms.warning, mode: terms.mode.to_s,
                              identity_header: @public_url&.identity_header })
       rescue Grants::Unwritable => e
         grants_unwritable(e)
@@ -67,13 +69,15 @@ module Samagotchi
         cap = body["cap"]
         return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
 
+        # The grant is stamped pair only when the warning that comes back says
+        # their turns act (one read: ReviewStart.share_terms).
+        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
                                               ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
-                                              state_dir: default_state_dir)
+                                              mode: terms.grant_mode, state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
-        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
-                             link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: warning })
+                             link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: terms.warning })
       rescue Grants::Invalid => e
         error_response(400, "invalid_participant", e.message)
       rescue Grants::Unwritable => e

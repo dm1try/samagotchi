@@ -13,6 +13,12 @@ module Samagotchi
   # Delivery::PAIR_FEATURE runs every participant's turn as :review, so
   # chi web and chi share ask .live, which reads the session's live worker,
   # before they say what a participant's turn may do.
+  #
+  # .of is the session's: what a participant invited now gets. A turn's is
+  # .for_turn: :pair only for a participant whose grant was issued for it
+  # (Participants::Entry#mode / Grant#mode "pair", stamped at invite when
+  # the owner was shown that their turns act); a grant from before, or one
+  # issued while the session's worker predated pair turns, stays :review.
   module ParticipantMode
     REVIEW = :review
     PAIR = :pair
@@ -31,7 +37,22 @@ module Samagotchi
       PAIR
     end
 
-    # The mode a participant's next turn in +session+ gets, as chi web and
+    # The mode a turn of the participant +entry+ (a Participants::Entry or a
+    # Web::Grants::Grant; nil: unknown) runs under in +session+.
+    # @return [Symbol]
+    def for_turn(session, entry, features: nil)
+      return REVIEW unless of(session, features: features) == PAIR
+      return REVIEW unless entry.respond_to?(:mode) && entry.mode.to_s == PAIR.to_s
+
+      PAIR
+    end
+
+    # .for_turn as chi web sees it, by the live worker's features (.live).
+    def live_for(session, entry, state_dir: nil)
+      for_turn(session, entry, features: live_features(session, state_dir))
+    end
+
+    # The mode a participant invited to +session+ now gets, as chi web and
     # chi share see it: by the session's live worker's features (an older
     # worker runs it as :review), else by this chi's (no live worker: the
     # one a delivery starts is this chi's).

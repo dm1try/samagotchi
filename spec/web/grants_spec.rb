@@ -67,6 +67,18 @@ RSpec.describe Samagotchi::Web::Grants do
     end
   end
 
+  describe "#issue for pair turns" do
+    it "stores the pair mode only when given, reads it back, and refuses another" do
+      pair = issue(mode: "pair").grant
+      plain = issue.grant
+      stored = JSON.parse(File.read(path))["grants"]
+      expect(stored.find { |g| g["id"] == pair.id }).to include("mode" => "pair")
+      expect(stored.find { |g| g["id"] == plain.id }).not_to have_key("mode")
+      expect(grants.list(session_id: session_id).map(&:mode)).to contain_exactly("pair", nil)
+      expect { issue(mode: "owner") }.to raise_error(described_class::Invalid, /mode is pair or none/)
+    end
+  end
+
   describe "#issue bound to an identity" do
     it "keeps the identity lower case, shows it, and writes store version 2" do
       grant = issue(identity: "  Alex@Corp.Example ").grant
@@ -300,7 +312,7 @@ RSpec.describe Samagotchi::Web::Grants do
         expect(stored["version"]).to be <= described_class::BOUND_VERSION
 
         # P6's Grant.from_h and #to_store, over P6's members.
-        older = Data.define(*(described_class::Grant.members - [:exposure])) do
+        older = Data.define(*(described_class::Grant.members - %i[exposure mode])) do
           def self.from_h(hash)
             known = members - [:extra]
             new(**known.to_h { |key| [key, hash[key.to_s]] }, extra: hash.reject { |key, _| known.include?(key.to_sym) })

@@ -173,6 +173,8 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(err.string).to eq("chi share: warning: #{Samagotchi::ReviewStart.share_warning(session)} " \
                                  "(#{via.command("review --from #{short}")} starts one)\n")
         expect(err.string).to include("#{short} is a working session").and include("(2 tool outputs so far)")
+        # The warning said their turns act: the grant is stamped pair.
+        expect(grants.list(session_id: session.id).last.mode).to eq("pair")
 
         err.truncate(0)
         err.rewind

@@ -179,9 +179,9 @@ module Samagotchi
     # Whether the current turn belongs to a participant, so pre-gate
     # refusals can defer to ReviewBoundary.
     attr_accessor :participant_turn
-    # The running session (a callable → Session or nil): ToolRunner reads
-    # its ParticipantMode for a participant's turn. The Engine sets it.
-    attr_accessor :session_lookup
+    # The running participant turn's mode (a callable → :pair, :review or
+    # nil: GuardrailWiring#turn_mode): ToolRunner reads it. The Engine sets it.
+    attr_accessor :participant_mode
     # Called before each generation, before the before_generation hook (a
     # callable, nil: none): the Engine's check that may stop the turn (a
     # pair turn past its participant's cap, Engine#guard_participant_spend).

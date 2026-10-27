@@ -4,6 +4,7 @@ require "digest"
 require "fileutils"
 require "json"
 require_relative "../steer"
+require_relative "../participant_mode"
 require "securerandom"
 require "time"
 require "rack/utils"
@@ -54,6 +55,11 @@ module Samagotchi
       KINDS = %w[human agent].freeze
       # The only role in v1: a reviewer reads and (P3) comments.
       ROLES = %w[reviewer].freeze
+      # The participant mode a grant was issued for (ParticipantMode): "pair"
+      # only when the owner was shown that a participant's turns act
+      # (ReviewStart::PAIR_WARNING); none for every other grant, and every
+      # grant from before it, whose turns stay review turns.
+      PAIR_MODE = ParticipantMode::PAIR.to_s
       NAME_MAX = ParticipantName::MAX
       ID_RE = /\Ap_[0-9a-f]{8}\z/
       # D7: what a participant's turns (and the side calls they cause) may
@@ -137,12 +143,15 @@ module Samagotchi
       # +extra+: the stored keys this chi doesn't know (a newer chi's,
       # such as a field added to a grant without a version bump), written
       # back as they were, so a rewrite here never drops them.
+      # +mode+: PAIR_MODE when the owner invited them to act (Grants#issue's
+      # mode:), nil otherwise. Stored only when set; a chi that doesn't know
+      # it keeps it in +extra+ and runs their turns as review turns.
       Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
-                          :revoked_by, :last_used_at, :cap, :queue, :identity, :exposure, :extra) do
+                          :revoked_by, :last_used_at, :cap, :queue, :identity, :exposure, :mode, :extra) do
         # identity: the proxy identity (an email, lower case) the grant is
         # bound to, nil for any (ProxyGate; issued from shared-sessions P6).
-        def initialize(cap: nil, queue: nil, identity: nil, exposure: nil, extra: {}, **)
-          super(cap: cap, queue: queue, identity: identity, extra: extra,
+        def initialize(cap: nil, queue: nil, identity: nil, exposure: nil, mode: nil, extra: {}, **)
+          super(cap: cap, queue: queue, identity: identity, extra: extra, mode: mode,
                 exposure: exposure.nil? ? ParticipantExposure::DEFAULT : exposure, **)
         end
 
@@ -198,6 +207,7 @@ module Samagotchi
         def to_store
           hash = to_h.except(:extra).transform_keys(&:to_s)
           hash.delete("identity") if identity.nil?
+          hash.delete("mode") if mode.nil?
           hash.delete("exposure") if exposure == ParticipantExposure::DEFAULT
           hash.merge(extra.reject { |key, _| hash.key?(key) })
         end
@@ -315,7 +325,8 @@ module Samagotchi
       # @param on_write [#call, nil] see #update
       # @return [Issued]
       # @raise [Invalid]
-      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, identity: nil, on_write: nil)
+      def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, identity: nil, mode: nil,
+                on_write: nil)
         Session.check_id!(session_id)
         ttl ||= Grants.default_ttl
         cap = Grants.default_cap if cap.nil?
@@ -323,6 +334,7 @@ module Samagotchi
         raise Invalid, "role is reviewer, not #{role}" unless ROLES.include?(role)
         raise Invalid, "a grant lasts 1 hour to 30 days" unless ttl.is_a?(Integer) && ttl.between?(3600, MAX_TTL)
         raise Invalid, CAP_RANGE unless Grants.cap?(cap)
+        raise Invalid, "mode is #{PAIR_MODE} or none, not #{mode}" unless mode.nil? || mode == PAIR_MODE
 
         clean = Grants.clean_name(name)
         identity = Grants.clean_identity(identity) unless identity.nil?
@@ -333,7 +345,7 @@ module Samagotchi
           grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
                             role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
                             revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue,
-                            identity: identity)
+                            identity: identity, mode: mode)
           [grants + [grant], Issued.new(grant: grant, token: token)]
         end
       end

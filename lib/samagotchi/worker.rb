@@ -707,7 +707,7 @@ module Samagotchi
       cap = participant_cap(entry)
       return nil if @engine.metrics.spend(author) < cap
 
-      cap_notice(author, entry.name, cap)
+      cap_notice(author, entry, cap)
       "cap_reached"
     end
 
@@ -736,17 +736,17 @@ module Samagotchi
 
     # The owner's notice that a participant reached their cap: once per
     # participant and cap (a raised cap that is reached again says so again).
-    # A working session's says turns (a pair turn acts), a review session's
+    # A pair participant's says turns (their turns act), a review one's
     # comments.
-    def cap_notice(author, name, cap)
+    def cap_notice(author, entry, cap)
       key = [author, cap]
       return if (@cap_noticed ||= Set.new).include?(key)
 
       @cap_noticed << key
       id = Steer.participant_id(author)
-      text = ParticipantMode.of(@session) == ParticipantMode::PAIR ? PAIR_CAP_NOTICE : CAP_NOTICE
+      text = ParticipantMode.for_turn(@session, entry) == ParticipantMode::PAIR ? PAIR_CAP_NOTICE : CAP_NOTICE
       @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
-                       text: format(text, name: participant_label(author, name), cap: cap, session: @session_id[0, 8], id: id))
+                       text: format(text, name: participant_label(author, entry.name), cap: cap, session: @session_id[0, 8], id: id))
     end
 
     CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \

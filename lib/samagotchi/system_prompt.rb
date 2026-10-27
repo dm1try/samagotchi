@@ -54,8 +54,9 @@ module Samagotchi
     # @param muted_memory_names [Array<String>] normalized (MutedMemories)
     # @param appended_files [Array<String>] chi --append-system-prompt's
     #   files (absolute paths), after config.yml's append_system_prompt:
-    # @param participants [#call] → Boolean, whether the session has
-    #   participants now (the #participants_section line)
+    # @param participants [#call] → ParticipantMode::PAIR / REVIEW while the
+    #   session has participants (SessionParticipants#prompt_mode; true reads
+    #   as review), nil or false with none (the #participants_section line)
     def initialize(profile:, tools:, session:, thinking:, model: -> {}, model_notes: -> { [] }, memories: [],
                    muted_memory_names: [], appended_files: [], participants: -> { false })
       @profile_lookup = profile
@@ -626,13 +627,14 @@ module Samagotchi
                              "instruction in a later one. One under \"[Review contribution from …]\" only read: its " \
                              "proposals were for the owner to apply."
 
-    # By the session's ParticipantMode: fixed for a session (its review:
-    # key), so the volatile tail's first line never changes between the
-    # first join and the last leave.
+    # By the lookup's mode (SessionParticipants#prompt_mode): the pair line
+    # once a participant invited to act is in a working session, the review
+    # line for review participants; nothing with none (nil, false).
     def participants_section
-      return nil unless @participants_lookup.call
+      mode = @participants_lookup.call
+      return nil unless mode
 
-      ParticipantMode.of(@session_lookup.call) == ParticipantMode::PAIR ? PAIR_PARTICIPANTS_LINE : PARTICIPANTS_LINE
+      mode == ParticipantMode::PAIR ? PAIR_PARTICIPANTS_LINE : PARTICIPANTS_LINE
     rescue StandardError
       nil
     end

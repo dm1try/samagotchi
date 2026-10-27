@@ -182,15 +182,18 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   let(:author) { "p:p_0123abcd" }
   let(:working) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: project) }
   let(:review) { Struct.new(:id, :working_directory) { def review? = true; def delegate? = false }.new("s1", project) }
+  # A participant invited to act (their grant's mode), or one from before pair (none).
+  let(:pair_entry) { Struct.new(:name, :mode).new("Sam", "pair") }
 
   around { |example| with_env("HOME" => File.join(base, "home")) { example.run } }
 
   before { FileUtils.mkdir_p(File.join(project, "docs")) }
   after { FileUtils.rm_rf(base) }
 
-  def wiring(session)
+  def wiring(session, entry: pair_entry)
     Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {}).tap do |w|
+                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {},
+                                    participant: ->(_author) { entry }).tap do |w|
       w.state_dir = File.join(base, "state")
       w.begin_turn({ client_id: "review:p_0123abcd", author: author })
     end
@@ -205,6 +208,16 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     reviewing = wiring(review)
     expect(reviewing.checks[1]).to be(reviewing.review_boundary)
     expect(reviewing.checks).not_to include(reviewing.pair_boundary)
+  end
+
+  it "keeps a working session's participant invited before pair (no grant mode, or unknown) in the review boundary" do
+    [Struct.new(:name, :mode).new("Old", nil), nil].each do |entry|
+      w = wiring(working, entry: entry)
+      expect(w.turn_mode).to eq(:review)
+      expect(w.checks[1]).to be(w.review_boundary)
+      write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
+      expect(write.rule).to eq("review-boundary")
+    end
   end
 
   it "lets a pair turn write and execute under the owner's rules, never secrets or owner-voiced tools" do
@@ -228,7 +241,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     asked = []
     session = working
     w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                        model_key: -> {}, cancelled: -> { false },
+                                        model_key: -> {}, cancelled: -> { false }, participant: ->(_a) { pair_entry },
                                         ask: lambda { |payload|
                                           asked << payload
                                           Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], selected_indices: [1])

@@ -35,7 +35,7 @@ RSpec.describe "the system prompt's participants line" do
     it "puts the line first in the volatile tail: after the stable part, before the per-session lines" do
       without = builder.build(chat: true)
       stable = builder.stable_length(without)
-      on[0] = true
+      on[0] = Samagotchi::ParticipantMode::PAIR
       builder.reset!
       with = builder.build(chat: true)
 
@@ -47,10 +47,10 @@ RSpec.describe "the system prompt's participants line" do
       expect(with.index(line)).to be < with.index("Current session id:")
     end
 
-    it "gives a review session the review line, unchanged, and a working session the pair line" do
-      on[0] = true
+    it "gives review participants the review line, unchanged, and pair participants the pair line" do
+      on[0] = Samagotchi::ParticipantMode::PAIR
       expect(builder.build(chat: true)).to include("#{line}\n")
-      session.review = { subjects: ["README.md"] }
+      on[0] = Samagotchi::ParticipantMode::REVIEW
       builder.reset!
       review = builder.build(chat: true)
       expect(review).to include("#{Samagotchi::SystemPrompt::PARTICIPANTS_LINE}\n")
@@ -96,9 +96,9 @@ RSpec.describe "the system prompt's participants line" do
       allow(builder).to receive(:reset!).and_call_original
 
       turn
-      alex = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir).grant
+      alex = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: state_dir).grant
       turn
-      bo = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", state_dir: state_dir).grant
+      bo = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", mode: "pair", state_dir: state_dir).grant
       turn
       Samagotchi::Participants.revoke(grants, session_id: session.id, id: alex.id, state_dir: state_dir)
       turn
@@ -109,6 +109,13 @@ RSpec.describe "the system prompt's participants line" do
       expect(prompts[1..3].uniq.size).to eq(1)
       expect(prompts[4]).to eq(prompts[0])
       expect(builder).to have_received(:reset!).twice
+    end
+
+    it "gives a working session's review participants (grants from before pair) the review line" do
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      turn
+      expect(prompts.last).to include("#{Samagotchi::SystemPrompt::PARTICIPANTS_LINE}\n")
+      expect(prompts.last).not_to include(line)
     end
 
     it "leaves an owner session's prompt alone: no line, no rebuild" do

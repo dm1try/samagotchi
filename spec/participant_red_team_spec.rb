@@ -170,11 +170,8 @@ RSpec.describe "a participant red-teaming a session" do
   # owner's, once only), and PairBoundary denies the secrets, the
   # owner-voiced tools and the model's own question.
   describe "the model of a participant's pair turn (PairBoundary)" do
-    # A temp HOME: a pair turn that got past the boundary must never touch the real ~/.ssh or dotfiles.
-    around do |example|
-      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it", "HOME" => File.join(root, "home")) { example.run }
-    end
-
+    # Invited to act (the owner was shown that their turns act).
+    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Mallory", mode: "pair", state_dir: state_dir) }
     let(:client) { test_client }
     let(:kernel) { test_kernel(client: client) }
     let(:engine) do
@@ -185,6 +182,11 @@ RSpec.describe "a participant red-teaming a session" do
     end
     let(:asked) { [] }
     let(:pair) { Samagotchi::Guardrails::PairBoundary }
+
+    # A temp HOME: a pair turn that got past the boundary must never touch the real ~/.ssh or dotfiles.
+    around do |example|
+      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it", "HOME" => File.join(root, "home")) { example.run }
+    end
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")

@@ -6,6 +6,7 @@ require "support/test_kernel"
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "samagotchi/participants"
 
 # A pair turn (a participant's turn in a working session) stops mid-turn
 # once its participant passed their cap: before a generation the Engine asks
@@ -24,7 +25,13 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
       s.save(state_dir: state_dir)
     end
   end
-  let(:author) { "p:p_0123abcd" }
+  # A participant invited to act (their grant's mode: pair).
+  let(:grant) do
+    FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+    grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+    Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: state_dir).grant
+  end
+  let(:author) { grant.author }
   let(:asked) { [] }
   let(:events) { [] }
   let(:generations) { [] }
@@ -53,7 +60,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   def run(origin) = engine.run_turn(session, "go", origin: origin, on_event: ->(event) { events << event })
 
   it "stops a participant's pair turn before its next generation, with the stop notice" do
-    run({ client_id: "review:p_0123abcd", author: author })
+    run({ client_id: "review:#{grant.id}", author: author })
 
     expect(asked).to eq([author])
     expect(generations).to be_empty
@@ -61,10 +68,20 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
     expect(notice).to include(hook: "participants", level: :warn, text: "stopped the turn: Alex reached their $2.00 cap")
   end
 
+  it "never checks a working session's participant invited before pair (a review turn)" do
+    grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+    FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+    old = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", state_dir: state_dir).grant
+    run({ client_id: "review:#{old.id}", author: old.author })
+
+    expect(asked).to be_empty
+    expect(generations).to eq(%i[ran ran])
+  end
+
   it "never checks the owner's turns or a review session's participant turn mid-turn" do
     run({ client_id: "web:tab" })
     session.review = { subjects: ["README.md"] }
-    run({ client_id: "review:p_0123abcd", author: author })
+    run({ client_id: "review:#{grant.id}", author: author })
 
     expect(asked).to be_empty
     expect(generations).to eq(%i[ran ran ran ran])

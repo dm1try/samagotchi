@@ -115,6 +115,30 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       expect(grants.lookup(body["token"]).id).to eq(body["participant"]["id"])
     end
 
+    it "stamps the grant pair only when the warning it answers says their turns act" do
+      _status, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
+      expect(body["warning"]).to include("a participant's turns act in it")
+      expect(grants.lookup(body["token"]).mode).to eq("pair")
+      entry = Samagotchi::Participants.read(session.id, state_dir: state_dir).first
+      expect(entry.mode).to eq("pair")
+
+      sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+      _status, older = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Bo" })
+      expect(older["warning"]).to include("a participant invited now only reads")
+      expect(grants.lookup(older["token"]).mode).to be_nil
+
+      review = new_session.tap do |s|
+        s.review = { subjects: ["x.md"] }
+        s.save(state_dir: state_dir)
+      end
+      _status, reviewing = call("/api/sessions/#{review.id}/participants", method: "POST", body: { name: "Kim" })
+      expect(reviewing["warning"]).to be_nil
+      expect(grants.lookup(reviewing["token"]).mode).to be_nil
+      expect(File.read(File.join(Samagotchi::Session.session_dir(review.id, state_dir: state_dir), "participants.json")))
+        .not_to include("mode")
+    end
+
     it "refuses a bad name, kind or ttl (400 invalid_participant) and an unknown session (404)" do
       expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: " " }))
         .to eq([400, { "error" => "invalid_participant", "detail" => "a participant needs a name" }])

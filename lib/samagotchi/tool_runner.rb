@@ -391,7 +391,7 @@ module Samagotchi
     def unreached_group_refusal(call)
       # A review turn's boundary denies it first (and words why); a pair
       # turn gets the owner's refusal.
-      return if participant_turn? && ParticipantMode.of(session) == ParticipantMode::REVIEW
+      return if participant_turn? && participant_mode != ParticipantMode::PAIR
 
       registry = tools
       index = registry&.index if registry.respond_to?(:index)
@@ -411,9 +411,10 @@ module Samagotchi
       @kernel.respond_to?(:participant_turn?) && @kernel.participant_turn?
     end
 
-    # The running session (KernelLoop#session_lookup), nil without one.
-    def session
-      lookup = @kernel.respond_to?(:session_lookup) ? @kernel.session_lookup : nil
+    # The running participant turn's mode (KernelLoop#participant_mode,
+    # GuardrailWiring#turn_mode), nil without one.
+    def participant_mode
+      lookup = @kernel.respond_to?(:participant_mode) ? @kernel.participant_mode : nil
       lookup&.call
     end
 

@@ -22,6 +22,15 @@ RSpec.describe Samagotchi::ParticipantMode do
     expect(described_class.of(review, features: %w[pair_turns])).to eq(:review)
   end
 
+  it "runs a turn as pair only for a participant whose grant was issued to act, in a working session" do
+    entry = ->(mode) { Struct.new(:mode).new(mode) }
+    expect(described_class.for_turn(working, entry.call("pair"))).to eq(:pair)
+    expect(described_class.for_turn(working, entry.call(nil))).to eq(:review)
+    expect(described_class.for_turn(working, nil)).to eq(:review)
+    expect(described_class.for_turn(review, entry.call("pair"))).to eq(:review)
+    expect(described_class.for_turn(working, entry.call("pair"), features: %w[review_turns])).to eq(:review)
+  end
+
   describe ".live" do
     def live_with(features)
       sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: working.id, features: features)

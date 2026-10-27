@@ -141,25 +141,35 @@ module Samagotchi
       parts.join("\n\n")
     end
 
-    # The warning for inviting a participant to +session+ when it isn't a
-    # review session (D2: sharing a working session is allowed, with a
-    # warning that says what a participant's turn does there and how many
-    # tool outputs its history holds); nil for a review session. What the
-    # turn may do is ParticipantMode.live's: a working session's turns act
-    # (pair), unless its live worker predates pair turns, which still runs
-    # them as review turns until it restarts. chi share and the web's
-    # Invite show it as it is.
+    # What inviting a participant to +session+ now means: the grant's mode
+    # (Web::Grants::PAIR_MODE only when the owner is shown PAIR_WARNING: a
+    # working session whose live worker runs pair turns; nil otherwise, a
+    # review participant), the mode their turns get (:pair or :review) and
+    # the warning shown for it (nil for a review session). One read of the
+    # live worker for all three, so the stamp is what the warning said.
+    ShareTerms = Data.define(:grant_mode, :mode, :warning)
+
     # @param session [Session]
     # @param state_dir [String, nil] the sessions' state dir (nil: the default)
-    # @return [String, nil]
-    def share_warning(session, state_dir: nil)
-      return nil if session.review?
+    # @return [ShareTerms]
+    def share_terms(session, state_dir: nil)
+      return ShareTerms.new(grant_mode: nil, mode: ParticipantMode::REVIEW, warning: nil) if session.review?
 
       count = session.tool_output_count
       outputs = "#{count} tool output#{"s" unless count == 1} so far"
-      text = ParticipantMode.live(session, state_dir: state_dir) == ParticipantMode::PAIR ? PAIR_WARNING : OLDER_WORKER_WARNING
-      format(text, id: session.id[0, 8], outputs: outputs)
+      pair = ParticipantMode.live(session, state_dir: state_dir) == ParticipantMode::PAIR
+      warning = format(pair ? PAIR_WARNING : OLDER_WORKER_WARNING, id: session.id[0, 8], outputs: outputs)
+      ShareTerms.new(grant_mode: (ParticipantMode::PAIR.to_s if pair), mode: pair ? ParticipantMode::PAIR : ParticipantMode::REVIEW,
+                     warning: warning)
     end
+
+    # The warning for inviting a participant to +session+ when it isn't a
+    # review session (D2: sharing a working session is allowed, with a
+    # warning that says what a participant's turn does there and how many
+    # tool outputs its history holds); nil for a review session
+    # (#share_terms). chi share and the web's Invite show it as it is.
+    # @return [String, nil]
+    def share_warning(session, state_dir: nil) = share_terms(session, state_dir: state_dir).warning
 
     # A working session's share warning (#share_warning): a participant's
     # turns act there. chi share adds the command that starts a review
@@ -167,11 +177,12 @@ module Samagotchi
     PAIR_WARNING = "%<id>s is a working session: a participant's turns act in it with this session's tools " \
                    "(writes included; asks come to you) and read what its history holds (%<outputs>s). " \
                    "A review session only reads."
-    # The same while its live worker predates pair turns (Delivery::PAIR_FEATURE).
-    OLDER_WORKER_WARNING = "%<id>s is a working session, but its worker predates pair turns: a participant's turns " \
-                           "only read until you restart it (chi sessions restart %<id>s), then act in it with this " \
-                           "session's tools (writes included; asks come to you). Either way they read what its " \
-                           "history holds (%<outputs>s). A review session only reads."
+    # The same while its live worker predates pair turns (Delivery::PAIR_FEATURE):
+    # a participant invited now gets review turns, whatever happens later.
+    OLDER_WORKER_WARNING = "%<id>s is a working session, but its worker predates pair turns: a participant invited " \
+                           "now only reads, and can quote what its history holds (%<outputs>s). For turns that act " \
+                           "in it, restart it (chi sessions restart %<id>s) and invite them again. A review session " \
+                           "only reads."
 
     def relative(full, root)
       real_root = Guardrails::ProtectedPaths.real(root)

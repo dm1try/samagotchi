@@ -45,9 +45,11 @@ module Samagotchi
     # @param system_one [#call] → SystemOne::Client or nil: the judgment client
     #   (nil while `guardrails.system_one.mode` is off or no host is set)
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
-    # @param author_name [#call] (author) → a participant's name (participants.json), nil
+    # @param participant [#call] (author) → the participant's
+    #   Participants::Entry (participants.json: their name, their grant's
+    #   mode), nil for none
     def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
-                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {}, author_name: ->(_author) {})
+                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {}, participant: ->(_author) {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
@@ -59,7 +61,8 @@ module Samagotchi
       @notify = notify
       @system_one = system_one
       @cancel_controller = cancel_controller
-      @author_name = author_name
+      @participant = participant
+      @turn_mode = nil
       # Bundle name → the rules last loaded from it whole, kept while the
       # installed version needs a newer chi; [name, version] said so once.
       @loaded_bundle_rules = {}
@@ -98,11 +101,23 @@ module Samagotchi
     end
 
     # A turn starts: its origin (Engine#run_turn's TurnOrigin; nil or a
-    # Hash is read as one, TurnOrigin.of), and the git facts read afresh.
+    # Hash is read as one, TurnOrigin.of), the git facts read afresh, and
+    # a participant's turn's mode decided once for the whole turn
+    # (#turn_mode).
     def begin_turn(origin)
       @origin = TurnOrigin.of(origin)
       @git = Guardrails::GitInfo.new
+      author = turn_author
+      @turn_entry = author && @participant.call(author)
+      @turn_mode = author && ParticipantMode.for_turn(@session_lookup.call, @turn_entry)
     end
+
+    # The running participant turn's mode (ParticipantMode.for_turn: :pair
+    # only in a working session for a participant invited to act), decided
+    # at its start; nil for the owner's turns. The boundary in #checks, the
+    # Engine's stamp and mid-turn stop, and ToolRunner read it.
+    # @return [Symbol, nil]
+    attr_reader :turn_mode
 
     # Who wrote the running turn when it isn't the session's owner (its
     # origin's participant author); nil for the owner's turns and every
@@ -141,7 +156,7 @@ module Samagotchi
 
     # The boundary for a participant's turn in this session (#checks).
     def participant_boundary
-      ParticipantMode.of(@session_lookup.call) == ParticipantMode::PAIR ? pair_boundary : review_boundary
+      @turn_mode == ParticipantMode::PAIR ? pair_boundary : review_boundary
     end
 
     # A participant's review turn's boundary (Guardrails::ReviewBoundary): a
@@ -282,7 +297,7 @@ module Samagotchi
       author = turn_author
       payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
                                                       only: (SCRATCH_SCOPES if @scratch), author: author,
-                                                      author_name: (@author_name.call(author) if author))
+                                                      author_name: (@turn_entry&.name if author))
       # A call on chi's own config, hooks or guardrails is the user's to
       # allow, never a parent agent's (Guardrails::ParentPolicy).
       payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])

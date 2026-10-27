@@ -388,15 +388,18 @@ module Samagotchi
       #   session, an identity with no proxy to check it
       def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
         public_url = configured_public_url
+        # Stamped pair only when the warning chi share prints says their turns act.
+        terms = ReviewStart.share_terms(Session.load(id, **dir), state_dir: state_dir!)
         issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap,
-                                             identity: identity, public_url: public_url, state_dir: state_dir!)
+                                             identity: identity, public_url: public_url, mode: terms.grant_mode,
+                                             state_dir: state_dir!)
         web = public_url ? nil : local_web
         link = if public_url then public_url.link(link_code(issued), "s=#{id}")
                else "http://#{web.ip || "127.0.0.1"}:#{web.port}/?token=#{issued.token}#s=#{id}"
                end
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
                        link: link, lan: !public_url.nil? || !web.ip.nil?,
-                       warning: ReviewStart.share_warning(Session.load(id, **dir), state_dir: state_dir!))
+                       warning: terms.warning)
       rescue Web::Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
       end

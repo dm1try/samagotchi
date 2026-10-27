@@ -156,6 +156,8 @@ module Samagotchi
 
         grant = principal(req).grant
         capped = !participant_cap_refusal(grant).nil?
+        # Theirs: pair only when their grant was issued to act (ParticipantMode.live_for).
+        mode = ParticipantMode.live_for(session, grant, state_dir: default_state_dir).to_s
         { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, mode: mode, can_comment: !capped,
           cap_reached: capped, session_id: id,
           usage: review_usage(grant, session: session, state: state, queued: queued, viewer: viewer) }

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "steer"
+require_relative "participant_mode"
 
 module Samagotchi
   # Loaded only when a session is read: it brings Web::Grants (and Rack).
@@ -36,13 +37,27 @@ module Samagotchi
     # the sidecar again: someone invited after the turn began. +session+:
     # the session it is asked for, when that may not be the last refreshed
     # (the worker's running save, before the Engine's first turn).
-    def name_for(author, session: nil)
+    def name_for(author, session: nil) = entry_for(author, session: session)&.name
+
+    # +author+'s Participants::Entry (their name, cap, grant mode), nil for
+    # none; read again on a miss, as #name_for.
+    def entry_for(author, session: nil)
       return nil unless Steer.participant_author?(author)
 
       refresh!(session) if session && session.id != @session_id
       id = Steer.participant_id(author)
-      entry = @entries.find { |e| e.id == id } || (@entries = read).find { |e| e.id == id }
-      entry&.name
+      @entries.find { |e| e.id == id } || (@entries = read).find { |e| e.id == id }
+    end
+
+    # The system prompt's participants line while anyone is in it (#active?
+    # as of the last #refresh!): ParticipantMode::PAIR when +session+ is a
+    # working session and an active participant was invited to act, else
+    # ParticipantMode::REVIEW; nil with nobody active.
+    def prompt_mode(session)
+      active = @entries.select { |entry| entry.active?(@clock.call) }
+      return nil if active.empty?
+
+      active.any? { |entry| ParticipantMode.for_turn(session, entry) == ParticipantMode::PAIR } ? ParticipantMode::PAIR : ParticipantMode::REVIEW
     end
 
     private

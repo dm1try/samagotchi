@@ -65,17 +65,24 @@ RSpec.describe "a turn's author on the record" do
     end
 
     # A worker's session has its dir (the owner lock, inputs); the sidecar goes there.
-    def invite(name)
+    def invite(name, mode: nil)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
       grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
-      Samagotchi::Participants.invite(grants, session_id: session.id, name: name, state_dir: state_dir).grant
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: name, mode: mode, state_dir: state_dir).grant
     end
 
     def analytics = Samagotchi::AnalyticsFile.read(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
 
+    it "stamps a working session's participant invited before pair (no grant mode) review" do
+      grant = invite("Alex")
+      engine.run_turn(session, "go", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
+
+      expect(session.messages.find { |m| m[:role] == "user" }).to include(participant_mode: "review")
+    end
+
     it "stamps a participant's opening message in a review session review, with its header" do
       session.review = { subjects: ["docs/plan.md"] }
-      grant = invite("Alex")
+      grant = invite("Alex", mode: "pair")
       engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
       opening = session.messages.find { |m| m[:role] == "user" }
@@ -84,7 +91,7 @@ RSpec.describe "a turn's author on the record" do
     end
 
     it "saves a participant's opening message with author and name, and puts the author in last_turn and analytics" do
-      grant = invite("Alex")
+      grant = invite("Alex", mode: "pair")
       events = []
       engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author },
                                                   on_event: ->(e) { events << e })
@@ -108,7 +115,9 @@ RSpec.describe "a turn's author on the record" do
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(author: "p:p_0000abcd")
       expect(opening).not_to have_key(:author_name)
-      expect(Samagotchi::Steer.header(opening)).to start_with("[From p_0000abcd, a teammate the owner invited")
+      # Not in participants.json: no grant to act, so a review turn.
+      expect(opening).to include(participant_mode: "review")
+      expect(Samagotchi::Steer.header(opening)).to start_with("[Review contribution from p_0000abcd (participant")
     end
 
     it "marks the analytics record of a turn no person sent automatic (a participant's page hides its prompt); a person's carries no mark" do

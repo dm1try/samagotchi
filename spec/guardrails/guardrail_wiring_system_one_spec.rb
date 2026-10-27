@@ -109,11 +109,13 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
                                           answer
                                         },
                                         system_one: -> { on }, cancel_controller: -> {},
-                                        author_name: ->(author) { "Sam" if author == "p:p_0123abcd" })
+                                        participant: lambda { |author|
+                                          Struct.new(:name, :mode).new("Sam", "pair") if author == "p:p_0123abcd"
+                                        })
     w.state_dir = state_dir
     w.interface = :worker
-    expect(Samagotchi::ParticipantMode.of(session)).to eq(:pair)
     w.begin_turn({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
+    expect(w.turn_mode).to eq(:pair)
     expect(on).not_to receive(:ask)
 
     verdict = w.request_approval(verdict_for(scopes: %w[once session repo rule]))

@@ -153,7 +153,18 @@ RSpec.describe Samagotchi::ReviewStart do
     allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
     expect(described_class.share_warning(session, state_dir: state_dir))
       .to eq(format(described_class::OLDER_WORKER_WARNING, id: id, outputs: "0 tool outputs so far"))
-    expect(described_class.share_warning(session, state_dir: state_dir)).to include("only read until you restart it")
+    terms = described_class.share_terms(session, state_dir: state_dir)
+    expect(terms.warning).to include("a participant invited now only reads").and include("invite them again")
+    expect([terms.grant_mode, terms.mode]).to eq([nil, :review])
+  end
+
+  it "stamps an invite pair only with the warning that their turns act" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
+    terms = described_class.share_terms(session, state_dir: state_dir)
+    expect([terms.grant_mode, terms.mode]).to eq(["pair", :pair])
+    expect(terms.warning).to start_with("#{session.id[0, 8]} is a working session: a participant's turns act")
+    session.review = { subjects: ["docs/plan.md"] }
+    expect(described_class.share_terms(session, state_dir: state_dir).to_h).to eq(grant_mode: nil, mode: :review, warning: nil)
   end
 
   it "has no warning for a review session" do

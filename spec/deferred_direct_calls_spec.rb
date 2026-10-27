@@ -145,7 +145,7 @@ RSpec.describe "direct calls of deferred tools" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])
       kernel.participant_turn = -> { true }
-      expect(Samagotchi::ParticipantMode).to receive(:of).and_call_original
+      kernel.participant_mode = -> { :review }
       boundary = Samagotchi::Guardrails::ReviewBoundary.new(author: -> { "p:review" }, root: -> { Dir.pwd },
                                                             denied_dirs: -> { [] })
       checks << boundary
@@ -157,13 +157,12 @@ RSpec.describe "direct calls of deferred tools" do
       expect(ran).to be_empty
     end
 
-    it "gives a participant's pair turn (a working session) the toolkit-group refusal, as the owner's turns get" do
+    it "gives a participant's pair turn the toolkit-group refusal, as the owner's turns get" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])
       registry.reaching_kit = ->(group) { group == "fs" ? "web" : nil }
       kernel.participant_turn = -> { true }
-      working = Struct.new(:id) { def review? = false }.new("s1")
-      kernel.session_lookup = -> { working }
+      kernel.participant_mode = -> { :pair }
 
       result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "fs/read_file" }))
 

@@ -241,7 +241,7 @@ module Samagotchi
       # start: their names for the messages they wrote.
       @participants = SessionParticipants.new(state_dir: -> { session_state_dir })
       # Whether the system prompt carries the participants line.
-      @participants_line = false
+      @participants_line = nil
       # Who is in the review now, and who came or went (#announce_participants).
       @participants_watch = ParticipantsWatch.new(session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
       @session = nil
@@ -382,7 +382,7 @@ module Samagotchi
       @kernel.session_dir = -> { @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir) }
       @kernel.guardrail_gate = @guardrail_wiring.gate
       @kernel.participant_turn = -> { Steer.participant_author?(turn_author) }
-      @kernel.session_lookup = -> { @session }
+      @kernel.participant_mode = -> { @guardrail_wiring.turn_mode }
       # A pair turn stops once its participant passed their cap.
       @kernel.generation_guard = -> { guard_participant_spend }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
@@ -415,8 +415,9 @@ module Samagotchi
         # closes a judgment that is no longer wanted.
         system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry) },
         cancel_controller: -> { active_cancel_controller },
-        # A participant's ask names them on the owner's card.
-        author_name: ->(author) { @participants.name_for(author, session: @session) }
+        # A participant's turn: their name on the owner's card, their
+        # grant's mode for the turn's (GuardrailWiring#turn_mode).
+        participant: ->(author) { @participants.entry_for(author, session: @session) }
       )
     end
     private :build_guardrail_wiring
@@ -1424,7 +1425,7 @@ module Samagotchi
     def guard_participant_spend
       author = turn_author
       return if author.nil? || @participant_stop.nil?
-      return unless ParticipantMode.of(@session) == ParticipantMode::PAIR
+      return unless @guardrail_wiring.turn_mode == ParticipantMode::PAIR
 
       reason = @participant_stop.call(author) or return
       hook_stop_turn(reason, PARTICIPANTS_HOOK)
@@ -1536,14 +1537,15 @@ module Samagotchi
       change
     end
 
-    # Reads the session's participants at a turn's start; the first to join
-    # and the last to leave rebuild the system prompt (its participants
-    # line), once each: a turn in between sends the same prefix.
+    # Reads the session's participants at a turn's start; the first to join,
+    # the first invited to act (a pair participant: the line's words) and
+    # the last to leave rebuild the system prompt (its participants line),
+    # once each: a turn in between sends the same prefix.
     def refresh_participants!(session)
-      active = @participants.refresh!(session).active?
-      return if active == @participants_line
+      line = @participants.refresh!(session).prompt_mode(session)
+      return if line == @participants_line
 
-      @participants_line = active
+      @participants_line = line
       @prompt_builder.reset!
     end
     private :refresh_participants!
@@ -1563,8 +1565,9 @@ module Samagotchi
     # A participant's opening message keeps the rules it was delivered under
     # (ParticipantMode), stamped before any request carries it, so its header
     # never changes when the session's mode does.
-    def participant_mode_fields(author, session: @session)
-      Steer.participant_author?(author) ? { participant_mode: ParticipantMode.of(session).to_s } : {}
+    def participant_mode_fields(author)
+      mode = Steer.participant_author?(author) && @guardrail_wiring.turn_mode
+      mode ? { participant_mode: mode.to_s } : {}
     end
 
     # Why a turn stopped (TurnEndings#stop_facts).
@@ -2176,7 +2179,7 @@ module Samagotchi
       # A participant's turn names them (author, author_name) for the UIs'
       # badge; the owner's turn_started stays as it was.
       turn_started.merge!(author_fields(turn.origin.author, session: session),
-                          participant_mode_fields(turn.origin.author, session: session))
+                          participant_mode_fields(turn.origin.author))
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
@@ -2356,7 +2359,7 @@ module Samagotchi
 
       unless turn.continue
         user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
-                         **participant_mode_fields(turn.origin.author, session: session), MessageTime::KEY => turn.at }
+                         **participant_mode_fields(turn.origin.author), MessageTime::KEY => turn.at }
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt
